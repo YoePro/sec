@@ -231,10 +231,10 @@ func (a *Analyzer) callableIdentityForExpression(expression ast.Expression) (Res
 		return ResolvedCallableIdentity{}, false
 	}
 	symbol, ok := a.symbols[identifier.Value]
-	if !ok || !symbol.HasCallableIdentity {
+	if !ok {
 		return ResolvedCallableIdentity{}, false
 	}
-	return cloneResolvedCallableIdentity(symbol.CallableIdentity), true
+	return a.effectiveCallableIdentity(identifier.Value, symbol)
 }
 
 // captureReferentDependencies flattens canonical aggregate provenance into a

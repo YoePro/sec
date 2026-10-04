@@ -299,13 +299,21 @@ integrations:
         result: passed on 2026-10-01; truncation and mutation of every accepted fixture satisfy progress, determinism, bounded-diagnostic, and partial-AST invariants; five regression seeds fail (unbounded memory growth) without the switch and generic-list progress fixes
       - command: go test ./...
         result: passed on 2026-10-01
+      - command: go test ./internal/parser -run TestRecoveryRetainsBareParametersAndMissingInitializers -count=1
+        result: "passed on 2026-10-04; a bare parameter name without `: Type` is retained with an invalid type and the function survives, an initializer operator followed by `}`, end of file, or a statement keyword on a later line retains the binding with an invalid value and leaves the next statement to ordinary parsing, and a let whose initializer fails after the binding is committed keeps the binding with an invalid value so later uses do not cascade into undefined-name errors; testdata/grammar/grammar_recovery.sec covers all three"
 
+      - command: go test ./internal/sema -run TestRecoveredInvalidNodesAreReportedOnce -count=1
+        result: "passed on 2026-10-04; RecoveryInfo.Reported marks a recovered invalid statement, declaration, or member whose diagnostic the parser already emitted, Sema reports only message-only or unreported invalid nodes (impl member fallbacks), and invalidStatement/invalidDeclaration now emit a diagnostic when recovery produced none, so the LSP, which publishes parser and Sema diagnostics together, shows each recovered error once instead of twice"
+      - command: go test ./internal/parser -run TestReservedBindingNameRecoversAtFinalBrace -count=1
+        result: "passed on 2026-10-04; skipStatement keeps an owned boundary (closing brace, statement start, or top-level declaration) current even when it is the last token of the file, so a failed final statement of the final block no longer consumes the block's closing brace and reports an unterminated body; a reserved keyword used as a binding name (`let new := 1`) reports P2011 \"`new` is a reserved keyword and cannot name a binding\" instead of the generic expected-IDENT error"
+      - command: go test ./internal/parser -run TestRecoveryRetainsOpenCallsAndBrokenFunctionTypes -count=1
+        result: "passed on 2026-10-04; an argument list left open before the enclosing block's `}` or before a statement keyword on a later line closes behind a virtual parenthesis with P2004 \"missing ')' to close the call opened at L:C\", keeping the completed arguments, the binding, the block's brace, and later declarations (previously the whole call was dropped, the brace consumed, and the next function lost); a function type with a missing parameter type at `,`/`)` or a missing return type keeps an invalid type there instead of abandoning the parameter list and the enclosing function"
     remaining:
-      - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, and empty impl-property type positions
+      - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, empty impl-property type positions, bare and `name:` parameters, and function-type parameter and return positions
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists, and index/slice postfix expressions at EOF
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF
       - recovery-aware Sema traversal policy for every invalid subtree
       - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
   - id: frontend.increment-decrement-aliases
@@ -404,6 +412,9 @@ integrations:
       - "the formatter Language Correction `type Name = T` -> `type Name T` (formatter.md § 27(33)) is implemented by fixLegacyAssignedNamedType and `sec fmt --fix` (governance/formatting.yaml)"
       - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md §§ 3.11–3.14, 3.39–3.44, 2026-10-03): every contract argument and the default clause are ordinary Expressions; range bounds are no longer SignedNumericConstant (the non-numeric-bound recovery diagnostic is removed), expression parsing of a bound stops at the range operator, an upper bound must start on the operator's line and is never `default` or a contract word, and a misspelled `...` operator still reports the range-operator error"
       - substantial parser unit coverage exists for canonical declarations, expressions, control flow, types, recovery, and several legacy forms
+      - "canonical grammar fixture suite (2026-10-04): the 13 fixtures grammar.md \"Required grammar fixtures\" names exist under testdata/grammar/, and TestGrammarFixtureSuite (internal/sema/grammar_fixtures_test.go) parses and analyzes them: valid fixtures must produce no diagnostic, every `/* Expected error: ... * Reason: ... */` block of an invalid fixture must be matched by a diagnostic containing its text between that block and the next, no diagnostic may fall outside a block's region (so cascades and silently accepted invalid forms fail), and the recovery fixture must retain every top-level function. Valid and invalid fixtures are separate files, so compatibility syntax cannot become canonical through a recovery test"
+      - "focused return-list and chained-assignment diagnostics (2026-10-04): `return a, b` reports P2006 \"return takes one value\" and keeps `return a`; `a = b = c` reports P2013 \"assignment is a statement and cannot be chained\" on the second operator and keeps the first assignment; the rest of the line is skipped with balanced delimiters, so the enclosing function and following statements survive without unexpected-token, unreachable, or unterminated-body cascades (TestFocusedReturnListAndChainedAssignmentRecovery, grammar_statements_invalid.sec)"
+      - "the fixtures confirm that lexical_structure.md § 7 governs reserved spellings: require (§ 7.1), task/thread/process (§ 7.2), and the contract words (§ 7.3) are rejected as declaration names although grammar.md \"Contextual spellings\" still lists several of them as contextual"
     decisions:
       - "MD-002 and MD-003 are decided by rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md §§ 3-4 and recorded in grammar.md, types.md, contracts.md, and formatter.md: Sec 0.1 accepts only canonical syntax; `type Name TypeReference` has exactly one underlying type; legacy `type Name = ...` forms, inline field/variable contracts, the enum `Value: 1` initializer, and explicit `ref self` are invalid with focused migration diagnostics; standalone `struct Name` is Sec 0.2 syntax and prefix `[N]T`/`[]T` was never normative, so both are invalid Sec 0.1 syntax; default formatting never rewrites them"
     partial:
@@ -412,7 +423,7 @@ integrations:
       - migrate the remaining grammar implementation-status material into relevant governance-ledger (parser.yaml)
       - reconcile or remove stale grammar status statements that conflict with later rulebooks, including the old dotted-module claim
       - reconcile stale 'require' contextual-identifier text with the later lexical_structure.md rule that reserves require globally
-      - create the canonical grammar fixture suite required by grammar.md
+      - "enforce one module declaration per source file (grammar.md \"Source file\": CompilationUnit has one ModuleDeclaration): the parser and Sema accept several module sections in one source, which TestDuplicateModuleDeclaration, TestUnderscoreVisibilityAcrossModules, and testdata/sema/same_test_name_different_modules_valid_test.sec use to model several modules; enforcing the rule needs those tests migrated to multi-file sources first"
       - keep parser recovery tests distinct from accepted canonical-language tests so compatibility syntax cannot silently become canonical
     required_fixtures:
       - grammar_valid.sec
@@ -429,5 +440,4 @@ integrations:
       - grammar_contextual_invalid.sec
       - grammar_recovery.sec
     verification_notes:
-      - grammar.md explicitly requires the fixture suite above; representative grammar_valid.sec, grammar_invalid.sec, and grammar_recovery.sec are not present under testdata/ at the audited repository baseline.
-      - parser_test.go still contains positive tests for standalone struct, compact '=' variants, and inline struct-field contracts, confirming that these legacy paths remain accepted rather than merely recognized for an error diagnostic.
+      - "2026-10-04: the fixture suite exists (testdata/grammar/) and `go test ./internal/sema -run TestGrammarFixtureSuite` passes; the earlier note that legacy forms were accepted by positive parser tests is superseded by the MD-002/MD-003 rejection tests"

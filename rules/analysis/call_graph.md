@@ -3144,7 +3144,7 @@ lifetime_analysis.md
 semantic_ir.md
 compiler_analysis.md
 compiler_pipeline.md
-projects.txt
+projects.md
 attributes.md
 diagnostics.md
 lsp.md

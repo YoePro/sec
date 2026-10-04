@@ -1,0 +1,58 @@
+module grammar_expressions_invalid
+
+// Invalid expression forms (rules/foundations/grammar.md "Invalid forms",
+// "Infix expressions", "Reserved syntax", "Assignment is not expression
+// syntax"). Each case is introduced by an Expected error block and must be
+// rejected there.
+
+type Figure union {
+    Dot
+    Circle(int)
+}
+
+/* Expected error: `?` is reserved and has no meaning in Sec 0.1
+ * Reason: Sec has no conditional `?:` operator; use if or match.
+ */
+fn Ternary(flag: bool) int {
+    return flag ? 1 : 2
+}
+
+/* Expected error: comparison chaining is not supported
+ * Reason: Equality-level operators do not chain.
+ */
+fn ChainedComparison(a: int, b: int, c: int) bool {
+    return a == b == c
+}
+
+/* Expected error: expected '{' after if condition
+ * Reason: Assignment is not an expression and cannot be a condition.
+ */
+fn AssignmentCondition(value: int) void {
+    let mut current := value
+    if current = 1 {
+    }
+}
+
+/* Expected error: negative Option binding is invalid
+ * Reason: A negative state test has no binding on its true path.
+ */
+fn NegatedBinding(maybe: Option[int]) int {
+    if maybe is not Some(value) {
+        return 0
+    }
+    return 1
+}
+
+/* Expected error: operator + requires numeric operands
+ * Reason: Arithmetic requires numeric operands of one type.
+ */
+fn MixedOperands(value: int, flag: bool) int {
+    return value + flag
+}
+
+/* Expected error: undefined variable missing
+ * Reason: A name must be declared before use.
+ */
+fn UnknownName() int {
+    return missing + 1
+}

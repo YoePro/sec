@@ -282,13 +282,14 @@ integrations:
       - Sema types state tests as bool against union variants, Option variants, and the Result Ok/Err variants; it rejects unknown variants, mismatched qualifiers, and non-union subjects, and inspects a possibly-empty local binding without a value read while moved-from bindings remain ownership errors
       - if statements and while loops refine definite assignment from state tests (the true path of is Variant and the false path of is empty prove a possibly-empty binding initialized; while exits refine only without a reachable break) and publish monotone ResolvedStateTest facts
       - is empty on a definitely initialized binding is proven false and its branch is reported through the canonical S3001 unreachable diagnostic
+      - "known active variant (2026-10-04): an immutable union or Result binding initialized directly by a variant constructor (`Figure.Dot`, `Figure.Line(3)`, `Ok(...)`, `Err(...)`) records Symbol.ConstructedVariant, and a dominating unmutated `binding is V` / `binding is not V` path fact (including the negated test recorded for an else branch or after an exiting branch) also proves it; `binding is W` on such a binding is StaticallyKnown and the excluded if branch is S3001 with help naming the known variant, while mutable bindings are never decided (internal/sema/analyzer_union_state.go knownVariantTest; internal/sema/known_variant_test.go)"
       - the formatter keeps the body brace separated from a trailing state word in if and while conditions
       - match over a possibly-empty local union binding reads the subject without a value read, accepts the compiler-known empty pattern, requires an unguarded empty arm or _ for exhaustiveness, proves the binding initialized inside every variant arm, rejects duplicate empty arms, and rejects an empty arm on a known-initialized subject as unreachable
       - ResolvedMatchPlan records EmptyStateReachable and an empty-state arm so termination and return analysis include the empty arm; Semantic IR and both legacy backends reject the empty state explicitly instead of treating it as a catch-all
       - direct, mutual, Option/Result-mediated, and generic-instantiation recursive union storage is rejected through the shared by-value layout dependency graph with mandatory S1071 union.recursive-by-value-layout (or S1055 when the cycle passes through a struct) and the full variant path
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
-      - record active-variant refinement (beyond initialization) for later member and payload analyses
+      - record active-variant refinement (beyond initialization and the known-variant state-test slice) for later member and payload analyses, match arms excluded by a known active variant (§ 21(6)), while-condition variant tests, and owned by-value union parameters that no mutable-receiver method can change
       - lower StateTestExpression through Semantic IR and maintained backends; Semantic IR currently rejects it as not implemented
       - warn when an unguarded _ absorbs a reachable empty state without an explicit empty arm (optional tooling policy in §10.4)
       - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
@@ -497,6 +498,7 @@ integrations:
       - testdata/interface_valid.sec
       - testdata/interface_invalid.sec
     implemented:
+      - "interface conformance diagnostics and Self (2026-10-04): `Self` in requirement parameter and result types resolves to a placeholder during interface resolution and is substituted with the conforming type before conformance comparison and in generic-constraint satisfaction; missing members report S1106 interfaces.missing-member on the implements reference and incompatible members S1107 interfaces.incompatible-member on the implementing member, both with the requirement as related location labelled interface requirement (sema.Error.RelatedLabel, shown by CLI, JSON, and LSP); incompatible methods name the first difference and show the Self-substituted requirement as help, so platform implementations such as stdlib/os file.windows.amd64.sec now show their conformance errors in their own file. Tests: internal/sema/interface_conformance_test.go"
       - interface declarations and interface inheritance through implements
       - bodyless method, property, and event requirements
       - primary impl Type implements Interface conformance placement
@@ -974,7 +976,7 @@ integrations:
       binding tables, surfaces, visibility, and incremental invalidation remain.
     rules:
       - rules/projects/modules.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
       - rules/foundations/lexical_structure.md

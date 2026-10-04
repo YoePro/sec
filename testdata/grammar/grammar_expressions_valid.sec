@@ -1,0 +1,70 @@
+module grammar_expressions
+
+// Canonical Sec 0.1 expression forms (rules/foundations/grammar.md
+// "Expression grammar" through "Membership expression"). Every expression in
+// this file is expected to parse and pass semantic analysis.
+
+type Point struct {
+    x: int,
+    y: int,
+}
+
+type Figure union {
+    Dot
+    Circle(int)
+}
+
+fn Double(value: int) int {
+    return value * 2
+}
+
+fn Identity[T](value: T) T {
+    return value
+}
+
+fn Expressions(left: int, right: int, flag: bool, values: ref int[4], figure: Figure) int {
+    // Literals and grouping.
+    let plain := 42
+    let hexadecimal := 0x2A
+    let separated := 1_000
+    let text := "sec"
+    let grouped := (left + right) * 2
+
+    // Arithmetic, comparison, and logical operators with precedence.
+    let arithmetic := left + right * 2 - right / 1 % 3
+    let compared := left < right && right >= 0 || !flag
+
+    // Array literal, index, and slice.
+    let fixed: int[3] := [1, 2, 3]
+    let element := values[0]
+    let window := ref values[1..<3]
+
+    // Struct construction and member access.
+    let point := Point { x: left, y: right }
+    let sum := point.x + point.y
+
+    // Calls, explicit generic calls, and conversions.
+    let doubled := Double(left)
+    let same := Identity[int](left)
+    let widened := int64(left)
+
+    // Lambda expression and function value.
+    let operation := fn(value: int) int {
+        return value + 1
+    }
+    let applied := operation(left)
+
+    // Membership in a range and a state test.
+    let inside := left in 0..10
+    let isDot := figure is Figure.Dot
+
+    // Union typed construction.
+    let circle := Figure.Circle(3)
+
+    if compared && inside && isDot && text == "sec" {
+        return plain + hexadecimal + separated + grouped + arithmetic + element + window[0] + sum + doubled + same + applied + fixed[0]
+    }
+    discard widened
+    discard circle
+    return 0
+}

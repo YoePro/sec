@@ -504,7 +504,7 @@ decisions:
     area: formatter-project-configuration-location
     rulebooks:
       - rules/tooling/formatter.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
     description: >-
       formatter.md § 4(5) and § 4(15) define a project-owned formatting
       configuration (format_version, vertical_style, indentation_width,
@@ -587,5 +587,26 @@ decisions:
         would resolve the same-module `impl` ambiguity; the parser, Sema,
         formatter, LSP, core and stdlib unit sources, and units.md would then
         need to follow.
+    classification: constraining
+    status: open
+
+  - id: MD-042
+    area: match-arms-excluded-by-known-variant
+    rulebooks:
+      - rules/control-flow/flowcontrol_match.md
+      - rules/declarations/unions.md
+      - rules/tooling/diagnostics.md
+    description: >-
+      flowcontrol_match.md § 5 bases coverage on "proven control-flow state",
+      and diagnostics.md § 21(6) makes an arm proven impossible invalid "when
+      its owning language rule requires reachability". flowcontrol_match.md
+      § 25 only defines arms made unreachable by earlier arms. It is not
+      decided whether an arm whose variant a known active variant excludes
+      (`let f := Figure.Dot` followed by `match f { Dot => ..., Line(x) => ...
+      }`) is (1) an S3001 error, (2) required by exhaustiveness and valid, or
+      (3) optional, so that `match f { Dot => ... }` is exhaustive. Options 1
+      and 3 also need a rule for the remaining arm set. The compiler
+      (2026-10-04) decides `is Variant` if-tests from a known active variant
+      but treats match arms by declared coverage only.
     classification: constraining
     status: open

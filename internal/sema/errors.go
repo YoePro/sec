@@ -20,6 +20,17 @@ type Error struct {
 	PreviousFile   string
 	PreviousLine   int
 	PreviousColumn int
+	// RelatedLabel names the related location; empty means "previous
+	// declaration".
+	RelatedLabel string
+}
+
+// RelatedLocationLabel is the human label of the related location.
+func (e Error) RelatedLocationLabel() string {
+	if e.RelatedLabel != "" {
+		return e.RelatedLabel
+	}
+	return "previous declaration"
 }
 
 func (e Error) WithID(id string) Error {
@@ -41,9 +52,10 @@ func (e Error) Error() string {
 	if e.Line > 0 && e.Column > 0 {
 		if e.PreviousLine > 0 && e.PreviousColumn > 0 {
 			return fmt.Sprintf(
-				"%s at %s, previous declaration at %s",
+				"%s at %s, %s at %s",
 				e.Message,
 				formatLocation(e.File, e.Line, e.Column),
+				e.RelatedLocationLabel(),
 				formatLocation(e.PreviousFile, e.PreviousLine, e.PreviousColumn),
 			)
 		}

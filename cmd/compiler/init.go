@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"sec/internal/project"
 )
 
 type initCommandOptions struct {
@@ -143,6 +145,10 @@ func initProject(options initCommandOptions) error {
 	if err != nil {
 		return err
 	}
+	// § 37(1): a new Project starts with a complete valid version model.
+	if _, versionErrors := project.ParseManifestVersions(config); len(versionErrors) > 0 {
+		return fmt.Errorf("generated manifest has an invalid version model: %v", versionErrors[0])
+	}
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		return err
 	}
@@ -176,6 +182,15 @@ func defaultSecConfig(options initCommandOptions, uuid string, targetName string
 	fmt.Fprintf(&b, "name = %q\n", options.ProjectName)
 	fmt.Fprintf(&b, "uuid = %q\n", uuid)
 	fmt.Fprintln(&b, "imports = []")
+	fmt.Fprintln(&b)
+	// A new Project starts at version 0.1.0.0 with the canonical format and
+	// no userdefined component (rules/projects/projects.md § 37(1)–(3), § 8, § 10).
+	fmt.Fprintln(&b, "[version]")
+	fmt.Fprintln(&b, "major = 0")
+	fmt.Fprintln(&b, "minor = 1")
+	fmt.Fprintln(&b, "revision = 0")
+	fmt.Fprintln(&b, "build = 0")
+	fmt.Fprintln(&b, `format = "[major].[minor].[revision].[build]"`)
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "[build]")
 	fmt.Fprintln(&b, `backend = "mlir"`)

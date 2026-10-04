@@ -27,6 +27,7 @@ import (
 	"sec/internal/lsp/protocol"
 	lspserver "sec/internal/lsp/server"
 	"sec/internal/parser"
+	platformtarget "sec/internal/platform/target"
 	"sec/internal/sema"
 )
 
@@ -295,6 +296,15 @@ type server struct {
 	shutdown             bool          //
 	workspaceRoots       []string
 	workspaceSymbols     *workspaceSymbolIndex
+	inlayHints           *inlayHintSettings
+	crossTarget          *crossTargetStore
+}
+
+func (s *server) inlayHintSettings() inlayHintSettings {
+	if s.inlayHints == nil {
+		return defaultInlayHintSettings()
+	}
+	return *s.inlayHints
 }
 
 type sourceOverlay = lspserver.SourceOverlay
@@ -373,6 +383,8 @@ func (s *server) handle(message rpcMessage) error {
 		var params initializeParams
 		if len(message.Params) > 0 && json.Unmarshal(message.Params, &params) == nil {
 			s.workspaceRoots = workspaceRootsFromInitialize(params)
+			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.InitializationOptions)
+			s.inlayHints = &settings
 		}
 		return s.respond(message.ID, map[string]any{
 			"capabilities": map[string]any{
@@ -388,6 +400,10 @@ func (s *server) handle(message rpcMessage) error {
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
 				"workspaceSymbolProvider":    true,
+				"inlayHintProvider":          true,
+				"codeLensProvider": map[string]any{
+					"resolveProvider": false,
+				},
 				"workspace": map[string]any{
 					"workspaceFolders": map[string]any{
 						"supported":           true,
@@ -443,7 +459,36 @@ func (s *server) handle(message rpcMessage) error {
 			s.workspaceSymbols = newWorkspaceSymbolIndex()
 		}
 		return s.respond(message.ID, workspaceSymbolsForQuery(s.workspaceSymbols, s.workspaceRoots, params.Query, s.sourceOverlay()))
-	case "workspace/didChangeConfiguration", "workspace/didChangeWatchedFiles":
+	case "workspace/didChangeConfiguration":
+		var params struct {
+			Settings json.RawMessage `json:"settings"`
+		}
+		if json.Unmarshal(message.Params, &params) == nil {
+			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.Settings)
+			s.inlayHints = &settings
+		}
+		return s.republishOpenDiagnostics()
+	case "textDocument/codeLens":
+		var params codeLensParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return s.respondError(message.ID, -32602, err.Error())
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, []codeLens{})
+		}
+		return s.respond(message.ID, interfaceConformanceCodeLenses(params.TextDocument.URI, snapshot.Text, s.sourceOverlay()))
+	case "textDocument/inlayHint":
+		var params inlayHintParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return s.respondError(message.ID, -32602, err.Error())
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, []inlayHint{})
+		}
+		return s.respond(message.ID, inlayHintsForSource(params.TextDocument.URI, snapshot.Text, params.Range, s.inlayHintSettings(), s.sourceOverlay()))
+	case "workspace/didChangeWatchedFiles":
 		// Analysis configuration is read from the project manifest for each
 		// analysis. Re-publishing open documents applies a changed depth without
 		// requiring a server restart and replaces facts computed at the old depth.
@@ -465,6 +510,7 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		s.documentSnapshots.Open(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
 		s.scheduleModuleDiagnostics(params.TextDocument.URI)
+		s.scheduleCrossTargetDiagnostics(params.TextDocument.URI)
 		return nil
 	case "textDocument/didChange":
 		var params didChangeParams
@@ -487,6 +533,12 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		s.stopDiagnosticTimer(params.TextDocument.URI)
 		s.documentSnapshots.Close(params.TextDocument.URI)
+		if s.crossTarget != nil {
+			s.crossTarget.mu.Lock()
+			delete(s.crossTarget.results, params.TextDocument.URI)
+			s.crossTarget.generation[params.TextDocument.URI]++
+			s.crossTarget.mu.Unlock()
+		}
 		if err := s.notify("textDocument/publishDiagnostics", map[string]any{
 			"uri":         params.TextDocument.URI,
 			"diagnostics": []diagnostic{},
@@ -505,6 +557,7 @@ func (s *server) handle(message rpcMessage) error {
 			return nil
 		}
 		s.scheduleModuleDiagnostics(snapshot.URI)
+		s.scheduleCrossTargetDiagnostics(snapshot.URI)
 		return nil
 	case "textDocument/willSave":
 		var params willSaveParams
@@ -4711,9 +4764,10 @@ func prepareProgramForLSP(program *ast.Program, sourceFile string, overlay sourc
 	if program == nil || sourceFile == "" {
 		return nil
 	}
-	lspserver.AssembleModule(program, sourceFile, overlay)
+	target := lspActiveTarget(program, sourceFile)
+	lspserver.AssembleModuleForTarget(program, sourceFile, overlay, target)
 	resolveCoreSources(program, sourceFile, overlay)
-	return resolveSourceImports(program, map[string]bool{}, sourceFile, overlay)
+	return resolveSourceImportsForTarget(program, map[string]bool{}, sourceFile, target, overlay)
 }
 
 func diagnosticBelongsToSource(err sema.Error, sourceFile string) bool {
@@ -4875,6 +4929,13 @@ func lspStatementTokenForSource(stmt ast.Statement) (lexer.Token, bool) {
 }
 
 func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string, overlays ...sourceOverlay) []sema.Error {
+	return resolveSourceImportsForTarget(program, seen, sourceFile, platformtarget.Host(), overlays...)
+}
+
+// resolveSourceImportsForTarget includes the sources of every imported module
+// that belong to target; a file whose `#target` selects another platform is
+// left out, as the compiler does.
+func resolveSourceImportsForTarget(program *ast.Program, seen map[string]bool, sourceFile string, target platformtarget.Target, overlays ...sourceOverlay) []sema.Error {
 	overlay := firstSourceOverlay(overlays)
 	issues := []sema.Error{}
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
@@ -4908,7 +4969,10 @@ func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile
 				continue
 			}
 			resolved = true
-			issues = append(issues, resolveSourceImports(imported, seen, sourcePath, overlay)...)
+			if !lspserver.ProgramMatchesTarget(imported, target) {
+				continue
+			}
+			issues = append(issues, resolveSourceImportsForTarget(imported, seen, sourcePath, target, overlay)...)
 			if module == "" {
 				module = programModulePath(imported)
 			}
@@ -6012,7 +6076,7 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 		if err.PreviousFile != "" {
 			previous = err.PreviousFile + ":" + previous
 		}
-		message += "\n\nprevious declaration at " + previous
+		message += "\n\n" + err.RelatedLocationLabel() + " at " + previous
 		if err.PreviousFile != "" {
 			relatedToken := lexer.Token{File: err.PreviousFile, Line: err.PreviousLine, Column: err.PreviousColumn}
 			point := position{Line: err.PreviousLine - 1, Character: err.PreviousColumn - 1}
@@ -6021,7 +6085,7 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 			}
 			related = append(related, diagnosticRelatedInformation{
 				Location: location{URI: uriFromPath(err.PreviousFile), Range: lspRange{Start: point, End: point}},
-				Message:  "related declaration or earlier operation",
+				Message:  err.RelatedLocationLabel(),
 			})
 		}
 	}

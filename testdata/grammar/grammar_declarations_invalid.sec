@@ -1,0 +1,63 @@
+module grammar_declarations_invalid
+
+// Invalid and legacy declaration forms (rules/foundations/grammar.md
+// "Invalid forms", "Legacy, future, and recovery syntax"). Each case is
+// introduced by an Expected error block and must be rejected there.
+
+type Shown int
+
+interface Named {
+    fn Name() string
+}
+
+/* Expected error: legacy declaration `type Alias = ...` is not Sec 0.1 syntax
+ * Reason: The legacy assigned form `type Name = T` is not Sec 0.1 syntax.
+ */
+type Alias = int
+
+/* Expected error: declares more than one underlying type
+ * Reason: A named type declaration has exactly one underlying type.
+ */
+type Several int string
+
+/* Expected error: inline contract on field age is not Sec 0.1 syntax
+ * Reason: Field contracts belong on a named type, not inline on the field.
+ */
+type User struct {
+    age: int range 0..130,
+}
+
+/* Expected error: is planned Sec 0.2 syntax
+ * Reason: Standalone `struct Name` is Sec 0.2 syntax.
+ */
+struct Later {
+    value: int,
+}
+
+/* Expected error: a type declaration declares exactly one name
+ * Reason: One type declaration declares exactly one name.
+ */
+type First, Second int
+
+/* Expected error: legacy enum initializer `Low: ...` is not Sec 0.1 syntax
+ * Reason: Enum members use `Value = 1`, not the legacy colon initializer.
+ */
+type Level enum {
+    Low: 1
+}
+
+/* Expected error: separate impl Interface for Type syntax is not supported
+ * Reason: Interface implementation uses `impl Type implements Interface`.
+ */
+impl Named for Shown {
+    fn Name() string {
+        return "shown"
+    }
+}
+
+/* Expected error: extern function declarations may not have a Sec body
+ * Reason: An extern declaration has no Sec body.
+ */
+extern "C" fn native_with_body(value: int32) int32 {
+    return value
+}

@@ -2,7 +2,7 @@
 // its representation facts into layout plans shared by compiler clients.
 //
 // Rules:
-//   - rules/projects/projects.txt — "Compilation plans and target lowering"
+//   - rules/projects/projects.md — "Compilation plans and target lowering"
 //   - rules/platform/target_profiles.md — target and profile identity
 //   - rules/memory/layout.md — resolved scalar representation facts
 package target
@@ -108,6 +108,22 @@ var definitions = []Definition{
 		CanRun:           false,
 	},
 	{
+		OS:               "linux",
+		Arch:             "riscv64",
+		LLVMTriple:       "riscv64-unknown-linux-gnu",
+		ABI:              "lp64d",
+		Profile:          "hosted",
+		PointerWidthBits: 64,
+		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelRISCVLP64D,
+		Status:           Planned,
+		CanParse:         true,
+		CanCheck:         true,
+		CanEmitLLVM:      false,
+		CanLink:          false,
+		CanRun:           false,
+	},
+	{
 		OS:               "macos",
 		Arch:             "amd64",
 		LLVMTriple:       "x86_64-apple-darwin",
@@ -196,6 +212,22 @@ var definitions = []Definition{
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
 		CABI:             layout.CModelAAPCS64,
+		Status:           Planned,
+		CanParse:         true,
+		CanCheck:         true,
+		CanEmitLLVM:      false,
+		CanLink:          false,
+		CanRun:           false,
+	},
+	{
+		OS:               "freebsd",
+		Arch:             "armv7",
+		LLVMTriple:       "armv7-unknown-freebsd-gnueabihf",
+		ABI:              "gnueabihf",
+		Profile:          "hosted",
+		PointerWidthBits: 32,
+		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSFreeBSDHF,
 		Status:           Planned,
 		CanParse:         true,
 		CanCheck:         true,

@@ -1,0 +1,43 @@
+module grammar_types_invalid
+
+// Invalid type-reference forms (rules/foundations/grammar.md "Prefix sequence
+// types are invalid", "Owning dynamic array type", "Generic type arguments").
+// Each case is introduced by an Expected error block and must be rejected
+// there.
+
+/* Expected error: prefix array type `[4]int` is not Sec syntax
+ * Reason: Fixed arrays use the postfix `T[N]` spelling; prefix `[N]T` was never normative.
+ */
+type PrefixArray struct {
+    values: [4]int,
+}
+
+/* Expected error: prefix sequence type `[]int` is not Sec syntax
+ * Reason: Sequences use the postfix `T[]` spelling; prefix `[]T` was never normative.
+ */
+type PrefixSequence struct {
+    values: []int,
+}
+
+/* Expected error: bare slice type int[] must be used behind ref
+ * Reason: A slice is a view and must be created behind `ref`.
+ */
+fn BareSlice(values: ref int[4]) void {
+    let window := values[0..2]
+}
+
+/* Expected error: unknown type Missing
+ * Reason: A type reference must name a declared type.
+ */
+fn UnknownType(value: Missing) void {
+}
+
+type Box[T] struct {
+    value: T,
+}
+
+/* Expected error: Box requires 1 generic arguments, got 2
+ * Reason: Box declares one generic parameter, so it takes one type argument.
+ */
+fn GenericArity(box: Box[int, int]) void {
+}

@@ -4045,12 +4045,12 @@ impl WrongSignature implements Vehicle {
 	expected := []string{
 		"duplicate implemented interface Marker on Duplicate at 29:35",
 		"implemented type NotInterface on BadTarget is not an interface at 32:27",
-		"type MissingMembers implements Vehicle but is missing method Start at 5:5",
-		"type MissingMembers implements Vehicle but is missing method Stop at 6:5",
-		"type MissingMembers implements Vehicle but is missing property IsRunning at 8:11",
-		"type WrongSignature method Start does not match interface Vehicle at 5:5",
-		"type WrongSignature method Stop does not match interface Vehicle at 6:5",
-		"type WrongSignature property IsRunning must provide set for interface Vehicle at 8:11",
+		"type MissingMembers implements Vehicle but is missing method Start at 35:32, interface requirement at 5:5",
+		"type MissingMembers implements Vehicle but is missing method Stop at 35:32, interface requirement at 6:5",
+		"type MissingMembers implements Vehicle but is missing property IsRunning at 35:32, interface requirement at 8:11",
+		"type WrongSignature method Start does not match interface Vehicle: the interface requires 0 parameter(s), but the method declares 1 at 49:5, interface requirement at 5:5",
+		"type WrongSignature method Stop does not match interface Vehicle: the result type is int, but the interface requires void at 53:5, interface requirement at 6:5",
+		"type WrongSignature property IsRunning must provide set for interface Vehicle at 43:11, interface requirement at 8:11",
 	}
 	assertSemaErrors(t, errors, expected)
 }

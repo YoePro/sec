@@ -92,10 +92,29 @@ func placeConstantIndexesEqual(left, right *big.Int) bool {
 	return placeConstantIndexValue(left).Cmp(placeConstantIndexValue(right)) == 0
 }
 
+// PlaceRootID is the compiler-owned identity of a Place root binding. Zero
+// means no identity was assigned, and comparisons then fall back to the root
+// display name. It is never a numeric address or a source name.
+type PlaceRootID uint32
+
+// PlaceRootKind classifies the binding role of a Place root.
+type PlaceRootKind string
+
+const (
+	PlaceRootLocal     PlaceRootKind = "local"
+	PlaceRootParameter PlaceRootKind = "parameter"
+	PlaceRootReceiver  PlaceRootKind = "receiver"
+	PlaceRootStatic    PlaceRootKind = "static"
+	PlaceRootDeref     PlaceRootKind = "deref"
+)
+
 // Place identifies a reusable semantic storage path. It is frontend-only
 // analysis data and introduces no runtime representation or borrow counter.
 type Place struct {
+	// Root is the display name of the root binding; RootID is its identity.
 	Root        string
+	RootID      PlaceRootID
+	RootKind    PlaceRootKind
 	RootToken   lexer.Token
 	Projections []PlaceProjection
 	Type        Type
@@ -249,7 +268,11 @@ func singleOriginPlaceRelationship(left, right Place) PlaceRelationship {
 	if left.Root == "" || right.Root == "" {
 		return PlaceUnknown
 	}
-	if left.Root != right.Root {
+	if left.RootID != 0 && right.RootID != 0 {
+		if left.RootID != right.RootID {
+			return PlaceDisjoint
+		}
+	} else if left.Root != right.Root {
 		return PlaceDisjoint
 	}
 	if placeIsStaticallyEmpty(left) || placeIsStaticallyEmpty(right) {
@@ -401,16 +424,7 @@ func unionPayloadPlace(subject Place, variant string, payloadType Type, token le
 func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		symbol, ok := a.symbols[expr.Value]
-		if !ok {
-			return Place{}, false
-		}
-		return Place{
-			Root: expr.Value, RootToken: symbol.Token, Type: symbol.Type,
-			Mutable:         a.canWriteThroughSymbol(symbol),
-			Addressable:     true,
-			PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginAutomatic && expr.Value != "self",
-		}, true
+		return a.rootPlace(expr.Value)
 	case *ast.MemberExpression:
 		base, ok := a.resolvePlace(expr.Object)
 		if !ok || expr.Property == nil {
@@ -642,6 +656,7 @@ func (a *Analyzer) canonicalDereferencePlace(expr ast.Expression, fallback Place
 		fallback.AmbiguousProvenance = true
 	}
 	fallback.Projections = append(fallback.Projections, PlaceProjection{Kind: PlaceDereference, Token: expressionToken(expr)})
+	fallback.RootKind = PlaceRootDeref
 	fallback.Mutable = referenceType.ReferenceMutable
 	fallback.PartialMoveSafe = false
 	return fallback
@@ -668,6 +683,12 @@ func (a *Analyzer) canonicalSlicePlace(expr ast.Expression, fallback Place) Plac
 	return fallback
 }
 
+// rootPlace builds the canonical root Place of a visible binding, carrying
+// its stable compiler-owned root identity and binding-role kind next to the
+// display name.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §10 "Stable place root identity" (revised 2026-10-03), §11 "Canonical Place"
 func (a *Analyzer) rootPlace(name string) (Place, bool) {
 	symbol, ok := a.symbols[name]
 	if !ok {
@@ -675,25 +696,86 @@ func (a *Analyzer) rootPlace(name string) (Place, bool) {
 	}
 	return Place{
 		Root: name, RootToken: symbol.Token, Type: symbol.Type,
+		RootID:          a.placeRootID(symbol.Token),
+		RootKind:        placeRootKindOf(name, symbol),
 		Mutable:         a.canWriteThroughSymbol(symbol),
 		Addressable:     true,
 		PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginAutomatic && name != "self",
 	}, true
 }
 
-func borrowPlacesOverlap(candidate Place, record borrowRecord) bool {
-	for _, alternative := range placeOriginAlternatives(candidate) {
-		if record.Place.Root == "" {
+// placeRootID returns the identity of the binding declared at token,
+// allocating identities in first-use order so one analysis assigns them
+// deterministically. The identity follows the declaration, not the spelling:
+// two bindings with the same name in sibling scopes are different roots.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §10 "Stable place root identity"
+func (a *Analyzer) placeRootID(declaration lexer.Token) PlaceRootID {
+	if declaration.Line == 0 {
+		return 0
+	}
+	if a.placeRootIDs == nil {
+		a.placeRootIDs = map[sourceTokenKey]PlaceRootID{}
+	}
+	key := sourceTokenLocation(declaration)
+	if id, ok := a.placeRootIDs[key]; ok {
+		return id
+	}
+	id := PlaceRootID(len(a.placeRootIDs) + 1)
+	a.placeRootIDs[key] = id
+	return id
+}
+
+// placeRootKindOf classifies the binding role of a root (revised § 10): the
+// receiver and its implicit member aliases, parameters, module-level and
+// static storage, and ordinary locals. The storage domain stays in
+// StorageOrigin.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §10 (revised 2026-10-03)
+//   - rules/memory/storage.md — § 3.4, § 5
+func placeRootKindOf(name string, symbol Symbol) PlaceRootKind {
+	switch {
+	case name == "self" || symbol.ImplicitMember:
+		return PlaceRootReceiver
+	case symbol.Parameter:
+		return PlaceRootParameter
+	case !symbol.Local || symbol.Storage == StorageOriginStatic || symbol.Storage == StorageOriginThreadLocal:
+		return PlaceRootStatic
+	default:
+		return PlaceRootLocal
+	}
+}
+
+// borrowRecordMayOverlap decides whether an access to candidate conflicts
+// with a recorded borrow through the canonical Relationship query. A record
+// without a resolved Place conflicts with every Place of its root; a candidate
+// without a resolved root names no tracked storage (§ 16 revised).
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §15 "Place relationship", §16 (revised 2026-10-03)
+//   - rules/memory/borrowing.md — § 12(8), § 29(2)–(4)
+func borrowRecordMayOverlap(candidate Place, record borrowRecord) bool {
+	if record.Place.Root == "" {
+		for _, alternative := range placeOriginAlternatives(candidate) {
 			if alternative.Root == record.Root {
 				return true
 			}
-			continue
 		}
-		if PlacesOverlap(alternative, record.Place) {
-			return true
-		}
+		return false
 	}
-	return false
+	return placesMayOverlap(candidate, record.Place)
+}
+
+// placesMayOverlap is the tracked-storage form of Relationship used by
+// correctness decisions: a Place without a resolved root names no tracked
+// storage, and every other answer other than Disjoint is a possible overlap.
+func placesMayOverlap(left, right Place) bool {
+	if left.Root == "" && len(left.AlternativeOrigins) == 0 || right.Root == "" && len(right.AlternativeOrigins) == 0 {
+		return false
+	}
+	return Relationship(left, right).MayOverlap()
 }
 
 func (a *Analyzer) inferPlaceBase(expr ast.Expression) (Type, expressionValue) {

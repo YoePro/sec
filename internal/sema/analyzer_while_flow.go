@@ -61,7 +61,15 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.callGraphPathReachable = previousCallGraphPathReachable && loopBodyReachable
 
 	if stmt.Body != nil {
+		bodyFacts := len(a.activeConditionFacts)
+		a.enterLoopBodyFacts()
+		if loopBodyReachable && !constantConditionKnown {
+			// The condition is re-evaluated on every iteration, so it holds
+			// at each body entry whatever the body mutates.
+			a.recordPathConditionFact(stmt.Condition, true)
+		}
 		a.analyzeBlockStatements(stmt.Body)
+		a.activeConditionFacts = a.activeConditionFacts[:bodyFacts]
 	}
 	hasReachableBreak := a.blockHasReachableBreakToCurrentLoop(stmt.Body)
 	a.recordResolvedWhileFlow(stmt, constantConditionKnown, constantCondition, hasReachableBreak)

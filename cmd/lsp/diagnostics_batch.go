@@ -11,10 +11,11 @@ import (
 )
 
 // analyzeDiagnosticBatch runs Sema once for each represented directory/module
-// and routes diagnostics back to their source documents. Parser diagnostics and
+// and effective target, and routes diagnostics back to their source documents. Parser diagnostics and
 // recovery suppression remain local to the document that produced them.
 // Rules: rules/tooling/lsp.md — "Responsiveness model", "Recovery nodes";
-// rules/projects/modules.md — "Source directory and module membership".
+// rules/projects/modules.md — "Source directory and module membership";
+// rules/platform/platform_model.md — source selection by target.
 func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverlay) map[string][]diagnostic {
 	results := make(map[string][]diagnostic, len(snapshots))
 	type document struct {
@@ -34,7 +35,12 @@ func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverla
 			continue
 		}
 		module := programModulePath(parsed.Program)
-		key := normalizedSourcePath(filepath.Dir(path)) + "\x00" + module
+		// One Sema run serves every document of the same directory, module,
+		// and effective target. The module is assembled for the first
+		// document's target, so platform files for different targets (two
+		// `#target` files of one module) must not share a run: the second
+		// would be excluded from the assembly and receive no diagnostics.
+		key := normalizedSourcePath(filepath.Dir(path)) + "\x00" + module + "\x00" + lspActiveTarget(parsed.Program, path).String()
 		if module == "" {
 			key = snapshot.URI
 		}
@@ -115,8 +121,12 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 		}
 	}
 	for _, snapshot := range selected {
+		published := results[snapshot.URI]
+		if crossTarget, ok := s.crossTargetResultFor(snapshot.URI, snapshot.Text); ok {
+			published = mergeCrossTargetDiagnostics(published, crossTarget)
+		}
 		if err := s.notify("textDocument/publishDiagnostics", map[string]any{
-			"uri": snapshot.URI, "version": snapshot.Version, "diagnostics": results[snapshot.URI],
+			"uri": snapshot.URI, "version": snapshot.Version, "diagnostics": published,
 		}); err != nil {
 			return err
 		}

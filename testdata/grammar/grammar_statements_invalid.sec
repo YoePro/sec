@@ -1,0 +1,78 @@
+module grammar_statements_invalid
+
+// Invalid statement forms (rules/foundations/grammar.md "Invalid forms",
+// "Let declarations", "Iterable for loop", "Assignment statements"). Each case
+// is introduced by an Expected error block and must be rejected there.
+
+fn Source() int {
+    return 1
+}
+
+/* Expected error: immutable binding "immutable" requires an initializer
+ * Reason: An immutable binding must be initialized where it is declared.
+ */
+fn UninitializedImmutable() void {
+    let immutable: int
+}
+
+/* Expected error: typed move initializer must use '<-', got ':<-'
+ * Reason: A typed declaration moves with `<-`; `:<-` is the inferred move form.
+ */
+fn TypedMove() void {
+    let source := Source()
+    let typed: int :<- source
+}
+
+/* Expected error: inferred move initializer must use ':<-', got '<-'
+ * Reason: An inferred declaration moves with `:<-`; `<-` is the typed move form.
+ */
+fn InferredMove() void {
+    let source := Source()
+    let inferred <- source
+}
+
+/* Expected error: condition-only for loops are not supported; use while
+ * Reason: A condition loop is written with `while`, not `for condition`.
+ */
+fn ConditionFor(ready: bool) void {
+    for ready {
+    }
+}
+
+/* Expected error: C-style for loops are not supported; use a range or while
+ * Reason: Sec has no C-style three-clause for loop.
+ */
+fn ThreeClauseFor() void {
+    for i := 0; i < 10; i += 1 {
+    }
+}
+
+/* Expected error: unexpected token "..<"
+ * Reason: A range is not a first-class value outside its contextual positions.
+ */
+fn RangeValue() void {
+    let span := 0..<10
+}
+
+/* Expected error: return takes one value
+ * Reason: A function returns exactly one value.
+ */
+fn TwoValues() int {
+    return 1, 2
+}
+
+/* Expected error: assignment is a statement and cannot be chained
+ * Reason: Assignment is a statement, not an expression, so it does not chain.
+ */
+fn ChainedAssignment() void {
+    let mut value := 1
+    let mut other := 2
+    value = other = 3
+}
+
+/* Expected error: break is only valid inside a loop
+ * Reason: break is only valid inside a loop.
+ */
+fn BreakOutsideLoop() void {
+    break
+}

@@ -701,6 +701,7 @@ func TestInitProjectCreatesScaffold(t *testing.T) {
 		`name = "My Project"`,
 		`uuid = "`,
 		`imports = []`,
+		"[version]\nmajor = 0\nminor = 1\nrevision = 0\nbuild = 0\nformat = \"[major].[minor].[revision].[build]\"\n",
 		`[build]`,
 		`backend = "mlir"`,
 		`profile = "server"`,

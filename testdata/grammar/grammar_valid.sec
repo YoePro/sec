@@ -1,0 +1,52 @@
+module grammar
+
+// A small complete canonical Sec 0.1 source file (rules/foundations/grammar.md
+// "Source file", "Module declaration", "Top-level declarations"): one module
+// declaration followed by declarations of several kinds that use each other.
+// The category fixtures cover each grammar area in depth. Every declaration in
+// this file is expected to parse and pass semantic analysis.
+
+type Celsius int range -273..1000
+
+type SensorError enum error {
+    Offline
+    OutOfRange
+}
+
+type Reading struct {
+    sensor: int,
+    value: Celsius,
+}
+
+interface Source {
+    fn Next() Result[Reading, SensorError]
+}
+
+type FixedSource struct {
+    _value: Celsius,
+}
+
+impl FixedSource implements Source {
+    fn Next() Result[Reading, SensorError] {
+        return Ok(Reading { sensor: 1, value: _value })
+    }
+}
+
+fn Average(readings: ref Reading[], count: int) int {
+    if count == 0 {
+        return 0
+    }
+    let mut total := 0
+    for index in 0..<count {
+        total += int(readings[index].value)
+    }
+    return total / count
+}
+
+fn Collect(source: ref FixedSource) Result[int, SensorError] {
+    let reading := try source.Next()
+    if reading.value > 100 {
+        return Err(SensorError.OutOfRange)
+    }
+    return Ok(int(reading.value))
+}

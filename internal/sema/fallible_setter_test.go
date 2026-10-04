@@ -48,7 +48,7 @@ func TestFallibleSetterContractDiagnostics(t *testing.T) {
 	}{
 		{31, "fallible setter Legacy must declare its error type after the value parameter: try set value ErrorType { ... }"},
 		{46, "setter error type int is not an error type"},
-		{18, "type Car property Speed setter error OtherError does not satisfy SpeedError required by interface Tunable"},
+		{24, "type Car property Speed setter error OtherError does not satisfy SpeedError required by interface Tunable"},
 		{39, "return Ok() is invalid in a try set body"},
 		{41, "a try set body returns no value"},
 	}

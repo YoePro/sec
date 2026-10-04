@@ -56,12 +56,21 @@ function activate(context) {
             { scheme: "file", language: "sec" }
         ],
         synchronize: {
-            fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{sec,se}")
+            fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{sec,se}"),
+            configurationSection: "sec"
+        },
+        initializationOptions: {
+            inlayHints: {
+                types: vscode.workspace.getConfiguration("sec.inlayHints").get("types", true),
+                parameters: vscode.workspace.getConfiguration("sec.inlayHints").get("parameters", true),
+                ownership: vscode.workspace.getConfiguration("sec.inlayHints").get("ownership", true)
+            }
         }
     };
     client = new node_1.LanguageClient("secLanguageServer", "SEC Language Server", serverOptions, clientOptions);
     context.subscriptions.push(client);
     registerCompilerKnownDefinitions(context);
+    registerShowLocations(context);
     client.start().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         output?.appendLine(`Failed to start SEC language server: ${message}`);
@@ -88,6 +97,15 @@ function registerCompilerKnownDefinitions(context) {
         if (document.uri.scheme === compilerKnownScheme && document.languageId !== "sec") {
             void vscode.languages.setTextDocumentLanguage(document, "sec");
         }
+    }));
+}
+// sec.showLocations lists locations sent by the language server, such as the
+// implementations or failing members behind an interface conformance lens.
+function registerShowLocations(context) {
+    const toPosition = (value) => new vscode.Position(value.line, value.character);
+    context.subscriptions.push(vscode.commands.registerCommand("sec.showLocations", (uri, position, locations) => {
+        const converted = (locations ?? []).map((item) => new vscode.Location(vscode.Uri.parse(item.uri), new vscode.Range(toPosition(item.range.start), toPosition(item.range.end))));
+        return vscode.commands.executeCommand("editor.action.showReferences", vscode.Uri.parse(uri), toPosition(position), converted);
     }));
 }
 function deactivate() {

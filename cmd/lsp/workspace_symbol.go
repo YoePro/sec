@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"hash/fnv"
 	"io/fs"
 	"os"
@@ -24,9 +25,10 @@ type workspaceFolder struct {
 }
 
 type initializeParams struct {
-	RootURI          string            `json:"rootUri"`
-	RootPath         string            `json:"rootPath"`
-	WorkspaceFolders []workspaceFolder `json:"workspaceFolders"`
+	RootURI               string            `json:"rootUri"`
+	RootPath              string            `json:"rootPath"`
+	WorkspaceFolders      []workspaceFolder `json:"workspaceFolders"`
+	InitializationOptions json.RawMessage   `json:"initializationOptions"`
 }
 
 type didChangeWorkspaceFoldersParams struct {

@@ -310,9 +310,13 @@ func (r *diagnosticReporter) semaDiagnostic(diagnostic sema.Error, human string)
 	}
 	if diagnostic.PreviousLine > 0 && diagnostic.PreviousColumn > 0 {
 		position := occurrencePosition{Line: diagnostic.PreviousLine, Column: diagnostic.PreviousColumn}
-		occurrence.Related = append(occurrence.Related, occurrenceRelated{
+		related := occurrenceRelated{
 			Span: occurrenceSpan{File: diagnostic.PreviousFile, Start: position, End: position},
-		})
+		}
+		if diagnostic.RelatedLabel != "" {
+			related.Message = &occurrenceMessage{Key: "related", Arguments: map[string]string{}, Text: diagnostic.RelatedLabel}
+		}
+		occurrence.Related = append(occurrence.Related, related)
 	}
 	occurrence.addHelp(diagnostic.Help)
 	r.record(occurrence, human)

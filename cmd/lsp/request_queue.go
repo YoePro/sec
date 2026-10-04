@@ -96,6 +96,8 @@ func isDeferrableAnalysisRequest(method string) bool {
 		"textDocument/documentHighlight",
 		"textDocument/documentSymbol",
 		"workspace/symbol",
+		"textDocument/inlayHint",
+		"textDocument/codeLens",
 		"sec/compilerKnownDefinition",
 		"textDocument/signatureHelp",
 		"textDocument/codeAction",

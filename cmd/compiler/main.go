@@ -1496,7 +1496,7 @@ func sourcePathMatchesTarget(path string, target CompilerTarget) bool {
 
 func isKnownTargetArch(part string) bool {
 	switch part {
-	case "amd64", "arm64", "arm32", "armv7", "x86", "cortex-m4":
+	case "amd64", "arm64", "arm32", "armv6", "armv7", "riscv64", "x86", "cortex-m4":
 		return true
 	default:
 		return false

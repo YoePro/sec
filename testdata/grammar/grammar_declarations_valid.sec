@@ -1,0 +1,97 @@
+module grammar_declarations
+
+// Canonical Sec 0.1 declaration forms (rules/foundations/grammar.md
+// "Top-level declarations" through "Static declarations"). Every declaration
+// in this file is expected to parse and pass semantic analysis.
+
+// Named type declaration with exactly one underlying type and a contract.
+type Percent int range 0..100
+type Celsius float64
+
+// Struct type declaration with trailing commas.
+type Point struct {
+    x: int,
+    y: int,
+}
+
+// Ordinary and error enums.
+type Direction enum {
+    North
+    South
+}
+
+type ParseError enum error {
+    Empty
+    Malformed
+}
+
+// Union with payload and payload-less variants.
+type Figure union {
+    Dot
+    Circle(int)
+}
+
+// Generic struct and generic union.
+type Box[T] struct {
+    value: T,
+}
+
+type Choice[A, B] union {
+    First(A)
+    Second(B)
+}
+
+// Interface with a method and a read-only property requirement.
+interface Measured {
+    fn Size() int
+    property Width: int { get }
+}
+
+// Impl with the implements clause, a method, and a property.
+impl Point implements Measured {
+    fn Size() int {
+        return x + y
+    }
+
+    property Width: int {
+        get {
+            return x
+        }
+    }
+}
+
+// Generic impl.
+impl Box[T] {
+    fn Get() T {
+        return value
+    }
+}
+
+// Functions: parameters, a Result return, and a void function.
+fn Clamp(value: int, low: int, high: int) int {
+    if value < low {
+        return low
+    }
+    if value > high {
+        return high
+    }
+    return value
+}
+
+fn Parse(text: string) Result[int, ParseError] {
+    if text == "" {
+        return Err(ParseError.Empty)
+    }
+    return Ok(1)
+}
+
+fn Ignore() void {
+}
+
+// Generic function.
+fn Identity[T](value: T) T {
+    return value
+}
+
+// Extern declaration without a body.
+extern "C" fn native_length(value: int32) int32

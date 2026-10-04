@@ -7,7 +7,11 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-03"
+    updated: "2026-10-04"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-10-04
+    corrections_applied:
+      - rules/corrections/applied/pitfall-analysis-rev2-sync-20261004.md
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
@@ -76,6 +80,10 @@ integrations:
       - pitfall.control-flow.wrong-guard-subject (Interactive, LikelyMistake, High) reports a straight-line `Y[b]` access in a strict-guarded block when no access in that block uses the guarded pair and no guard on the path covers `Y[b]`, the copy/paste shape `if leftIndex < left.Len { right[rightIndex] }`; blocks that use the guarded pair, conjunctions covering the access, enclosing if/while/loop guards, `<=` guards (owned by the ineffective-guard rule), and accesses inside nested control flow stay silent
       - pitfall.control-flow.check-without-transfer (Interactive, LikelyMistake, High) reports `if index >= X.Len { ... }` (or a strict `>` rejection, either operand order) whose branch neither leaves the path (break, continue, return, panic, checked unreachable) nor may re-establish the index (assignment at any depth, compound or `++`/`--`, or `ref mut` passing), directly followed by `X[index]`; no control transfer is suggested because the intended one cannot be inferred
       - "pitfall.iteration.structural-mutation-in-indexed-loop (Interactive, family iteration-and-mutation, 2026-10-03) correlates a forward `start..<X.Len` / `start..X.Len` for loop without step, whose end is evaluated once, with compiler-known StructuralMutation calls on the same resolved collection anywhere in the body; Clear() followed on the same straight-line path by `X[binding]` is ProvenInvalid (proven), RemoveAt/Remove/Clear/Insert while the loop indexes X by its binding or passes the binding to the mutation is LikelyMistake (high) with a SuggestedEdit to traverse in reverse or use an index-advancing while loop, and a mutation directly followed by return or by break of this loop (not of a nested loop), an Append beyond the once-evaluated range, or a loop that never addresses X by its binding (draining) is retained as a suppressed result with its reason. Tests: internal/sema/pitfall_indexed_mutation_test.go"
+      - "pitfall.bounds.capacity-as-length (Interactive, LikelyMistake, high, 2026-10-04) reports a `start..<X.Capacity` / `start..X.Capacity` loop that indexes the same resolved collection with its binding, with a SuggestedEdit replacing Capacity by Len; a proven `X.Len == X.Capacity` (either order, also as an `&&` conjunct) from a preceding assert in the same block or an enclosing if condition suppresses it unless the collection is structurally mutated after the proof or inside the loop. A direct `X[X.Capacity]` is ProvenInvalid (Len never exceeds Capacity) and a direct `X[X.Capacity - k]` with a positive constant k is a high-confidence LikelyMistake suppressed by the same proof. Tests: internal/sema/pitfall_capacity_length_test.go"
+      - "pitfall.collection.wrong-bound-source (Interactive, LikelyMistake, high, family collection-relations, 2026-10-04) reports a `start..<left.Len` loop whose binding indexes only a different resolved collection while `left` is otherwise unused in the body, with a SuggestedEdit to the indexed collection's Len; a proven `right.Len >= left.Len`, `>`, or equality (either operand order, && conjuncts, || disjuncts of a false guard) from a preceding assert, a preceding exit guard, or an enclosing if condition suppresses it unless either collection is structurally mutated after the proof or the indexed one inside the loop; parallel traversals are left to bounds. Code: internal/sema/pitfall_wrong_bound_source.go. Tests: internal/sema/pitfall_wrong_bound_source_test.go"
+      - "pitfall.range.meaningless-comparison (Deep, SuspiciousIntent, proven, 2026-10-04) reports a comparison (<, <=, >, >=, ==, !=, either operand order) of a non-constant integer value with an integer literal whose result the value's type range narrowed by range contracts decides, with evidence naming the range and the constant result; path facts are excluded, and the S3001 relational path proof ignores conditions the type range alone decides so the two never overlap. Code: internal/sema/pitfall_meaningless_comparison.go. Tests: internal/sema/pitfall_meaningless_comparison_test.go"
+      - "pitfall.range.omitted-last-element (Standard, LikelyMistake, high, 2026-10-04) reports a zero-based `0..<X.Len - 1` loop without step that indexes X with its binding; a successor access `X[i + 1]` (pairwise traversal) or a separate `X[X.Len - 1]` access in another straight-line statement of the same block suppresses it. pitfall.range.fragile-inclusive-length (Interactive, 2026-10-04) reports `start..X.Len - 1`: with a non-empty proof on entry to the loop (inherited branch proof or a directly preceding empty-collection exit guard) it is SuspiciousIntent, proven, with a ProvenFix to `start..<X.Len`; without one it is a high-confidence LikelyMistake because Len - 1 underflows for an empty collection, with a SuggestedEdit to the same form. walkBlock now exposes the entry non-empty proof to loop inspections, not only to straight-line statements. Tests: internal/sema/pitfall_length_endpoint_test.go"
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
@@ -83,9 +91,9 @@ integrations:
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
       - generalize final-element non-empty proof consumption beyond the implemented adjacent exit and first-statement branch facts to contracts, non-empty types, and mutation-aware dominating control flow
       - generalize skipped-first-element suppression beyond the implemented predecessor and same-block dominating element-zero facts to explicit suffix-traversal contracts, mutation-aware dominance, and other canonical intent evidence
-      - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
-      - implement collection bound-source correlation, equal/sufficient-length suppression, and copy/paste evidence
-      - implement length-versus-capacity pitfall reasoning without conflating capacity with live element length
+      - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
+      - extend collection bound-source correlation to inclusive and offset bounds, bounds held in locals, while loops with manual indexes, and length relations proven by contracts or transitive chains
+      - extend length-versus-capacity reasoning to bounds held in locals, while loops, proofs from contracts, and proofs established in an enclosing block outside an if condition
       - extend structural-mutation-during-indexed-iteration reasoning to while loops with manual indexes, reverse traversal, bounds held in local bindings, mutations through aliases or callees, and user-declared structural operations
       - correlate wrong-guard and check-without-transfer findings through nested control flow, later statements, and mutation-aware guard invalidation instead of the implemented straight-line and directly-following slices
       - extend interval-condition proofs to named compile-time constants, constrained-type domains, enum and char/rune ordering, and conjunction or disjunction chains longer than one comparison pair
@@ -717,8 +725,9 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/compiler/compiler_analysis.md
       - rules/tooling/lsp.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
     code:
+      - internal/sema/analyzer_callable_join.go
       - internal/ast/ast.go
       - internal/parser/expression.go
       - internal/sema/analyzer.go
@@ -732,6 +741,7 @@ integrations:
       - cmd/compiler/init.go
       - cmd/lsp/main.go
     tests:
+      - internal/sema/callable_join_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_closure_test.go
@@ -790,10 +800,11 @@ integrations:
       - command: parse governance/*.yaml and implementation-status.yaml with duplicate integration-ID validation
         result: passed
 
+      - "control-flow joins of function-value targets (2026-10-04): an assignment to a mutable function-value binding in a scope nested below its declaration is logged per declaration, and every later read joins the binding's flow-sensitive identity with the logged identities into a closed TargetSet; a branch-local reassignment was previously lost when the branch's symbol copy was restored, so a call after the join saw only the pre-branch target and @noPanic/@noAlloc could be proven unsoundly. Unknown writes, open sets, and differing closure environments make the read unknown; a binding assigned inside a loop is unknown at every read; straight-line rebinding stays exact (internal/sema/analyzer_callable_join.go; TestFunctionValueTargetsJoinAcrossControlFlow)"
     remaining:
       - extend callable-body and creation-site identity with concrete CompilationPlan and generic-specialization identity when those services are available
       - preserve the implemented abstract-environment versus runtime-instance distinction through later Semantic IR and lowering representation
-      - propagate the implemented exact TargetSet facts beyond direct local initialization/copy/rebinding through control-flow joins, aggregates, calls, and interprocedural summaries
+      - propagate the implemented exact TargetSet facts through aggregates, calls, and interprocedural summaries, and replace the conservative loop rule (a binding assigned inside a loop is unknown) and the flow-insensitive nested-write join with a path-sensitive fixed point
       - add ClosedSet joins plus KnownSetPlusOpenContract and OpenContract facts once canonical callable contracts are available
       - callable-value flow through branches, loops, projected Places, aggregates, arrays, collections, options, and unions
       - monovariant 0-CFA-equivalent baseline with deterministic bounded precision and conservative widening
@@ -928,7 +939,7 @@ integrations:
       - rules/platform/ffi.md
       - rules/platform/interrupts.md
       - rules/analysis/effect_analysis.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/tooling/lsp.md
     remaining:
       - add canonical stack-bound representation distinguishing Exact, UpperBound, Unknown, and Unbounded results
@@ -995,7 +1006,7 @@ integrations:
       - rules/platform/ffi.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/tooling/lsp.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
     remaining:
       - add deterministic ISR-root discovery and resolved ISR-profile lookup from the active CompilationPlan and canonical platform/runtime execution model
       - keep ISR profile capabilities distinct from mandatory positive safety proofs such as bounded stack, race freedom, deadlock freedom, and foreign interrupt safety
@@ -1077,7 +1088,7 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/platform/ffi.md
       - rules/tooling/lsp.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/concurrency/concurrency.md
     governance_reconciliation:
       - concurrency.md owns the invariant that ordinary data races are invalid; data_races.md owns analysis, classifications, and diagnostics.
@@ -1167,7 +1178,7 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/platform/ffi.md
       - rules/tooling/lsp.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/concurrency/concurrency.md
     governance_reconciliation:
       - concurrency.md owns common blocking and progress semantics; deadlock_analysis.md owns graph construction, proof strength, classification, and diagnostics.

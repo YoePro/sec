@@ -30,16 +30,22 @@ const (
 	PitfallWrongGuardSubject          PitfallRuleID = "pitfall.control-flow.wrong-guard-subject"
 	PitfallCheckWithoutTransfer       PitfallRuleID = "pitfall.control-flow.check-without-transfer"
 	PitfallIndexedStructuralMutation  PitfallRuleID = "pitfall.iteration.structural-mutation-in-indexed-loop"
+	PitfallCapacityAsLength           PitfallRuleID = "pitfall.bounds.capacity-as-length"
+	PitfallOmittedLastElement         PitfallRuleID = "pitfall.range.omitted-last-element"
+	PitfallFragileInclusiveLength     PitfallRuleID = "pitfall.range.fragile-inclusive-length"
+	PitfallWrongBoundSource           PitfallRuleID = "pitfall.collection.wrong-bound-source"
+	PitfallMeaninglessComparison      PitfallRuleID = "pitfall.range.meaningless-comparison"
 )
 
 type PitfallFamily string
 
 const (
-	PitfallBoundsAndRanges   PitfallFamily = "bounds-and-ranges"
-	PitfallBooleanIntent     PitfallFamily = "boolean-intent"
-	PitfallAPIUsage          PitfallFamily = "api-usage"
-	PitfallControlFlow       PitfallFamily = "control-flow"
-	PitfallIterationMutation PitfallFamily = "iteration-and-mutation"
+	PitfallBoundsAndRanges     PitfallFamily = "bounds-and-ranges"
+	PitfallBooleanIntent       PitfallFamily = "boolean-intent"
+	PitfallAPIUsage            PitfallFamily = "api-usage"
+	PitfallControlFlow         PitfallFamily = "control-flow"
+	PitfallIterationMutation   PitfallFamily = "iteration-and-mutation"
+	PitfallCollectionRelations PitfallFamily = "collection-relations"
 )
 
 type PitfallClassification string
@@ -209,6 +215,31 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
 	},
 	{
+		ID: PitfallOmittedLastElement, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "control-flow"},
+		MinimumDepth:  AnalysisStandard, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallFragileInclusiveLength, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "control-flow"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallCapacityAsLength, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallMeaninglessComparison, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"expression-types", "range-contracts", "constant-values", "operator-semantics"},
+		MinimumDepth:  AnalysisDeep, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallWrongBoundSource, Family: PitfallCollectionRelations,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
 		ID: PitfallIndexedStructuralMutation, Family: PitfallIterationMutation,
 		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
@@ -292,6 +323,9 @@ type pitfallBuilder struct {
 	handledBooleanComparisons map[*ast.InfixExpression]bool
 	activeNonEmptyProofs      map[string]lexer.Token
 	activeIndexGuards         []pitfallIndexGuard
+	activeCapacityEqualities  map[string]lexer.Token
+	activeLengthConditions    []ast.Expression // enclosing true if conditions, for Len relations
+	activePreceding           []ast.Statement  // statements before the walked one in its block
 }
 
 func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnalysis {
@@ -448,22 +482,32 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 	b.inspectIneffectiveRejectionGuards(block)
 	b.inspectCheckWithoutTransfer(block)
 	inheritedProofs := b.activeNonEmptyProofs
+	inheritedPreceding := b.activePreceding
 	for index, statement := range block.Statements {
 		b.activeNonEmptyProofs = nil
-		if pitfallStraightLineStatement(statement) && index == 0 {
-			b.activeNonEmptyProofs = clonePitfallNonEmptyProofs(inheritedProofs)
+		// The proof that holds on entry to this statement: inherited by the
+		// block's first statement, or established by a directly preceding
+		// empty-collection exit guard.
+		var entryProofs map[string]lexer.Token
+		if index == 0 {
+			entryProofs = clonePitfallNonEmptyProofs(inheritedProofs)
+		} else if collection, proof, ok := b.emptyCollectionExitGuard(block.Statements[index-1]); ok {
+			entryProofs = map[string]lexer.Token{collection: proof}
 		}
-		if pitfallStraightLineStatement(statement) && index > 0 {
-			if collection, proof, ok := b.emptyCollectionExitGuard(block.Statements[index-1]); ok {
-				b.activeNonEmptyProofs = map[string]lexer.Token{collection: proof}
-			}
+		if pitfallStraightLineStatement(statement) {
+			b.activeNonEmptyProofs = entryProofs
 		}
 		if loop, ok := statement.(*ast.ForStatement); ok {
 			b.inspectSkippedFirstElement(loop, block.Statements[:index])
+			b.inspectCapacityAsLength(loop, block.Statements[:index])
+			b.inspectWrongBoundSource(loop, block.Statements[:index])
+			b.inspectLengthEndpointIntent(loop, block.Statements, index, entryProofs)
 		}
+		b.activePreceding = block.Statements[:index]
 		b.walkStatement(statement)
 	}
 	b.activeNonEmptyProofs = inheritedProofs
+	b.activePreceding = inheritedPreceding
 }
 
 // clonePitfallNonEmptyProofs keeps branch-local proof state isolated across
@@ -503,6 +547,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	if index, ok := expression.(*ast.IndexExpression); ok {
 		b.inspectDirectIndexAtLength(index)
 		b.inspectFinalElementAccess(index)
+		b.inspectDirectCapacityIndex(index)
 	}
 	if conversion, ok := expression.(*ast.ConversionExpression); ok {
 		b.inspectBooleanConversion(conversion, conversion.Value, conversion.Type != nil && conversion.Type.Name == "bool")
@@ -517,6 +562,9 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	}
 	if condition, ok := expression.(*ast.InfixExpression); ok {
 		b.inspectIntervalCondition(condition)
+	}
+	if comparison, ok := expression.(*ast.InfixExpression); ok {
+		b.inspectMeaninglessComparison(comparison)
 	}
 	switch expression := expression.(type) {
 	case *ast.PrefixExpression:

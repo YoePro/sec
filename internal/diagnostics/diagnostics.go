@@ -183,6 +183,9 @@ const (
 	ExplicitSelfParameter                         = "S1103"
 	ParameterShadowsDeclaration                   = "S1104"
 	GenericParameterShadowsDeclaration            = "S1105"
+	InterfaceMemberMissing                        = "S1106"
+	InterfaceMemberIncompatible                   = "S1107"
+	NoAllocViolation                              = "S1108"
 	UnreachableStatement                          = "S3001"
 	UseAfterDiscard                               = "S4001"
 	LargeValueParameter                           = "A2001"
@@ -256,6 +259,9 @@ var registry = map[string]Definition{
 	ExplicitSelfParameter:                         {ID: ExplicitSelfParameter, Name: "declarations.explicit-self-parameter", Family: "declarations", DefaultSeverity: SeverityError, Mandatory: true},
 	ParameterShadowsDeclaration:                   {ID: ParameterShadowsDeclaration, Name: "names.parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	GenericParameterShadowsDeclaration:            {ID: GenericParameterShadowsDeclaration, Name: "names.generic-parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	InterfaceMemberMissing:                        {ID: InterfaceMemberMissing, Name: "interfaces.missing-member", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	InterfaceMemberIncompatible:                   {ID: InterfaceMemberIncompatible, Name: "interfaces.incompatible-member", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	NoAllocViolation:                              {ID: NoAllocViolation, Name: "allocation.no-alloc-violation", Family: "allocation", DefaultSeverity: SeverityError, Mandatory: true},
 	UseAfterDiscard:                               {ID: UseAfterDiscard, Name: "ownership.use-after-discard", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                          {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:                       {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},

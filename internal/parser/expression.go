@@ -1207,6 +1207,7 @@ func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Progress"
 func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 	args := []ast.Expression{}
+	open := p.curToken
 
 	p.skipPeekComments()
 	if p.peekToken.Type == lexer.RPAREN {
@@ -1217,6 +1218,9 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 		p.skipPeekComments()
 		if p.peekToken.Type == lexer.EOF {
 			p.expectPeek(lexer.RPAREN)
+			return args, true
+		}
+		if p.callArgumentsEndWithoutParen(open) {
 			return args, true
 		}
 		if p.peekToken.Type == lexer.COMMA {
@@ -1272,6 +1276,9 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			p.expectPeek(lexer.RPAREN)
 			return args, true
 		default:
+			if p.callArgumentsEndWithoutParen(open) {
+				return args, true
+			}
 			if p.isExpressionStart(p.peekToken.Type) && nextItemOnLaterLine(argumentEnd, p.peekToken) {
 				p.recoverMissingSeparator(argumentEnd, p.peekToken, ")", "argument")
 				continue
@@ -1280,6 +1287,28 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			return nil, false
 		}
 	}
+}
+
+// callArgumentsEndWithoutParen recognizes an argument list that the source
+// leaves open: the next token closes the enclosing block, or starts a new
+// statement on a later line than the opening parenthesis. The completed
+// arguments survive behind a virtual closing parenthesis, the diagnostic names
+// the unclosed call, and the boundary token stays with its owner so the block
+// and the following declarations are kept.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Argument-list recovery", "Unterminated constructs", "Recovery goals"
+func (p *Parser) callArgumentsEndWithoutParen(open lexer.Token) bool {
+	next := p.peekToken
+	boundary := next.Type == lexer.RBRACE ||
+		next.Line > open.Line && p.isStatementStart(next.Type) && !p.isExpressionStart(next.Type)
+	if !boundary {
+		return false
+	}
+	p.addDiagnostic(compilerdiagnostics.ParserUnterminatedDelimiter, next, []lexer.TokenType{lexer.RPAREN}, &next,
+		"missing ')' to close the call opened at %d:%d", open.Line, open.Column)
+	p.endRecoveryEpisode()
+	return true
 }
 
 func (p *Parser) parseTryExpression() ast.Expression {

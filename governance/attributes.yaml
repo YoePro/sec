@@ -66,8 +66,7 @@ integrations:
       complete target validation and lowering
     - '''@noCopy'' has a substantial vertical implementation but is not yet integrated into a general mixed attribute-set
       engine'
-    - call-graph and effect-analysis foundations exist, but source-level verified effect attributes are not generally
-      parseable or enforceable as one attribute system
+    - "'@noPanic' and '@noAlloc' form one consecutive attribute set in any order (each at most once, argument-free, comments allowed between them) on functions, methods, and extern declarations through parseEffectGuaranteeDeclaration, and Sema verifies both transitively; on extern declarations they are trusted foreign contracts (2026-10-04, TestParseEffectGuaranteeAttributeSets); other attributes still use separate parser paths"
     - target/platform concepts exist, but canonical '@target' selection is not generally implemented
     remaining:
     - implement one general parser for the closed compiler-known attribute set with positional and named arguments,
@@ -87,9 +86,8 @@ integrations:
     - >-
       implement @interrupt(vector: ...) together with @isr and @interruptSafe parsing, implication,
       target-profile validation, call-graph restrictions, vector uniqueness, and lowering
-    - implement '@noAlloc', '@noPanic', and '@noBlock' source attributes with transitive verified-effect analysis
-      and foreign-contract provenance
-    - implement the attribute implication graph while distinguishing explicit attributes from effective implied guarantees
+    - implement '@noBlock' with transitive verified-effect analysis and foreign-contract provenance ('@noPanic' and '@noAlloc' are implemented, 2026-10-04)
+    - implement the attribute implication graph while distinguishing explicit attributes from effective implied guarantees (in particular @isr and @interruptSafe implying @noPanic and @noAlloc)
     - implement canonical generic attribute diagnostics and stable diagnostic IDs beyond the implemented attribute.unknown family
     - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
     - implement LSP completion, hover, effective-guarantee display, excluded-source display, target/config/vector/address

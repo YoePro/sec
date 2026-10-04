@@ -1,0 +1,45 @@
+module grammar_contextual_invalid
+
+// Spellings that look contextual but are reserved
+// (rules/foundations/lexical_structure.md § 7.1–§ 7.3): they keep their roles
+// but are not valid user declaration names. Each case is introduced by an
+// Expected error block and must be rejected there.
+
+/* Expected error: variable name "task" is reserved by the language
+ * Reason: task is a context-specific reserved word (§ 7.2).
+ */
+fn TaskName() void {
+    let task := 1
+}
+
+/* Expected error: function name "thread" is reserved by the language
+ * Reason: thread is a context-specific reserved word (§ 7.2).
+ */
+fn thread() void {
+}
+
+/* Expected error: variable name "regex" is reserved by the language
+ * Reason: Contract words such as regex are reserved (§ 7.3).
+ */
+fn RegexName() void {
+    let regex := "abc"
+}
+
+/* Expected error: type name unique is reserved by the language
+ * Reason: Contract words such as unique are reserved (§ 7.3).
+ */
+type unique string
+
+/* Expected error: `require` is a reserved keyword and cannot name a binding
+ * Reason: require is a general language keyword (§ 7.1).
+ */
+fn RequireName() void {
+    let require := 1
+}
+
+/* Expected error: `new` is a reserved keyword and cannot name a binding
+ * Reason: new is a hard keyword in every context (§ 7.2).
+ */
+fn NewName() void {
+    let new := 1
+}

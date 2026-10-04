@@ -28,6 +28,10 @@ type RecoveryInfo struct {
 	Start        lexer.Token
 	End          lexer.Token
 	Skipped      int
+	// Reported marks a node whose diagnostic the parser has already
+	// emitted; later stages must not report its message again
+	// (rules/compiler/parser_recovery.md — "Diagnostic deduplication").
+	Reported bool
 }
 
 type InvalidStatement struct {

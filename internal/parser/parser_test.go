@@ -6725,3 +6725,276 @@ func TestParseCommentsInsideDelimitedLists(t *testing.T) {
 		t.Fatal("list comments were not retained as comment attachments")
 	}
 }
+
+// The verified effect attributes @noPanic and @noAlloc form one attribute set
+// in any order, each at most once, without arguments, on functions, methods,
+// and extern declarations.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Attribute attachment", "Duplicate attributes", "Attribute order"
+func TestParseEffectGuaranteeAttributeSets(t *testing.T) {
+	input := `module main
+
+@noAlloc
+@noPanic
+fn First() int {
+    return 1
+}
+
+@noPanic
+// comments between attributes do not change attachment
+@noAlloc
+fn Second() int {
+    return 2
+}
+
+@noAlloc
+extern "C" fn native_length(value: int32) int32
+
+type Reader struct {}
+
+impl Reader {
+    @noAlloc
+    fn Read(values: int[4]) int {
+        return values[0]
+    }
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	names := func(statement any) []string {
+		fn, ok := statement.(*ast.FunctionDeclaration)
+		if !ok {
+			t.Fatalf("statement = %#v, want a function", statement)
+		}
+		result := []string{}
+		for _, attribute := range fn.Attributes {
+			result = append(result, attribute.Name.Value)
+		}
+		return result
+	}
+	for index, want := range map[int]string{1: "noAlloc,noPanic", 2: "noPanic,noAlloc", 3: "noAlloc"} {
+		if got := strings.Join(names(program.Statements[index]), ","); got != want {
+			t.Errorf("statement %d attributes = %s, want %s", index, got, want)
+		}
+	}
+	impl := program.Statements[5].(*ast.ImplStatement)
+	if got := strings.Join(names(impl.Members[0]), ","); got != "noAlloc" {
+		t.Errorf("method attributes = %s, want noAlloc", got)
+	}
+
+	for source, want := range map[string]string{
+		"@noAlloc\n@noAlloc\nfn F() void {}\n": "duplicate attribute @noAlloc",
+		"@noAlloc(fast)\nfn F() void {}\n":     "@noAlloc does not take arguments",
+		"@noAlloc\nlet value := 1\n":           "@noAlloc may only annotate a function or method",
+	} {
+		parser := New(lexer.New("module main\n" + source))
+		parser.ParseProgram()
+		if !strings.Contains(strings.Join(parser.Errors(), "\n"), want) {
+			t.Errorf("%q errors = %v, want %q", source, parser.Errors(), want)
+		}
+	}
+}
+
+// A bare parameter name without `: Type` and an initializer operator without
+// a value keep their declarations: the parameter is retained with an invalid
+// type, the binding with an invalid value, and the following statement is
+// parsed normally.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type", "Invalid nodes"
+func TestRecoveryRetainsBareParametersAndMissingInitializers(t *testing.T) {
+	input := `module main
+
+fn Bare(value, other: int) int {
+    let missing :=
+    return other
+}
+
+fn Following() int {
+    let empty :=
+}
+`
+	result := New(lexer.New(input)).Parse()
+	messages := []string{}
+	for _, diagnostic := range result.Diagnostics {
+		messages = append(messages, diagnostic.Message)
+	}
+	joined := strings.Join(messages, "\n")
+	for _, want := range []string{"parameter value needs a type; write `value: Type`", "let missing needs a value after :=", "let empty needs a value after :="} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("diagnostics = %q, want %q", messages, want)
+		}
+	}
+	if len(messages) != 3 {
+		t.Fatalf("diagnostics = %q, want exactly three focused errors", messages)
+	}
+	bare, ok := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	if !ok || len(bare.Parameters) != 2 || bare.Parameters[0].Type == nil || bare.Parameters[1].Type.Name != "int" {
+		t.Fatalf("Bare = %#v, want both parameters retained", result.Program.Statements[1])
+	}
+	if len(bare.Body.Statements) != 2 {
+		t.Fatalf("Bare body = %d statements, want the let and the return", len(bare.Body.Statements))
+	}
+	let, ok := bare.Body.Statements[0].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("first statement = %#v, want the retained let", bare.Body.Statements[0])
+	}
+	if _, invalid := let.Value.(*ast.InvalidExpression); !invalid {
+		t.Fatalf("let value = %#v, want an invalid expression", let.Value)
+	}
+	if _, ok := bare.Body.Statements[1].(*ast.ReturnStatement); !ok {
+		t.Fatalf("second statement = %#v, want the return", bare.Body.Statements[1])
+	}
+	if following, ok := result.Program.Statements[2].(*ast.FunctionDeclaration); !ok || following.Name.Value != "Following" {
+		t.Fatalf("Following was not retained: %#v", result.Program.Statements[2])
+	}
+}
+
+// `return a, b` and a chained assignment `a = b = c` receive one focused
+// diagnostic each; the return and the first assignment are retained and the
+// enclosing function and following statements and declarations survive.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Return statement", "Assignment is not expression syntax"
+//   - rules/compiler/parser_recovery.md — "Assignment recovery"
+func TestFocusedReturnListAndChainedAssignmentRecovery(t *testing.T) {
+	input := `module main
+
+fn TwoValues() int {
+    return 1, 2
+}
+
+fn Chained() void {
+    let mut value := 1
+    let mut other := 2
+    value = other = 3
+    other = 4
+}
+
+fn After() int {
+    return 5
+}
+`
+	result := New(lexer.New(input)).Parse()
+	if len(result.Diagnostics) != 2 ||
+		result.Diagnostics[0].ID != diagnostics.ParserInvalidStatement || !strings.Contains(result.Diagnostics[0].Message, "return takes one value") ||
+		result.Diagnostics[1].ID != diagnostics.ParserInvalidAssignmentExpr || !strings.Contains(result.Diagnostics[1].Message, "cannot be chained") {
+		t.Fatalf("diagnostics = %+v, want the focused return-list and chained-assignment errors", result.Diagnostics)
+	}
+	two := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	if ret, ok := two.Body.Statements[0].(*ast.ReturnStatement); !ok || ret.Value == nil || ret.Value.String() != "1" {
+		t.Fatalf("TwoValues body = %#v, want `return 1` retained", two.Body.Statements)
+	}
+	chained := result.Program.Statements[2].(*ast.FunctionDeclaration)
+	if len(chained.Body.Statements) != 4 {
+		t.Fatalf("Chained body = %d statements, want 4", len(chained.Body.Statements))
+	}
+	if first, ok := chained.Body.Statements[2].(*ast.AssignmentStatement); !ok || first.Target.String() != "value" {
+		t.Fatalf("third statement = %#v, want the first assignment of the chain", chained.Body.Statements[2])
+	}
+	if after, ok := result.Program.Statements[3].(*ast.FunctionDeclaration); !ok || after.Name.Value != "After" {
+		t.Fatalf("After was not retained: %#v", result.Program.Statements[3])
+	}
+}
+
+// A reserved keyword used as a binding name reports one focused P2011
+// diagnostic, and statement recovery keeps the closing brace of the enclosing
+// block even when that brace is the last token of the file.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — § 7 "Reserved words"
+//   - rules/compiler/parser_recovery.md — "Statement recovery"
+func TestReservedBindingNameRecoversAtFinalBrace(t *testing.T) {
+	for _, keyword := range []string{"new", "require"} {
+		input := "module main\n\nfn First() void {\n    let " + keyword + " := 1\n    let kept := 2\n}\n\nfn Last() void {\n    let " + keyword + " := 1\n}"
+		result := New(lexer.New(input)).Parse()
+		if len(result.Diagnostics) != 2 {
+			t.Fatalf("%s: diagnostics = %+v, want two focused errors and no unterminated body", keyword, result.Diagnostics)
+		}
+		for _, diagnostic := range result.Diagnostics {
+			if diagnostic.ID != diagnostics.ParserMisplacedKeyword || !strings.Contains(diagnostic.Message, "`"+keyword+"` is a reserved keyword and cannot name a binding") {
+				t.Fatalf("%s: diagnostic = %+v", keyword, diagnostic)
+			}
+		}
+		first := result.Program.Statements[1].(*ast.FunctionDeclaration)
+		if len(first.Body.Statements) != 2 {
+			t.Fatalf("%s: First body = %d statements, want the invalid let and the kept let", keyword, len(first.Body.Statements))
+		}
+		if last, ok := result.Program.Statements[2].(*ast.FunctionDeclaration); !ok || last.Name.Value != "Last" || last.Body == nil {
+			t.Fatalf("%s: Last was not retained: %#v", keyword, result.Program.Statements[2])
+		}
+	}
+}
+
+// An argument list left open before the enclosing block's closing brace or a
+// later statement, and a function type with a missing parameter or return
+// type, each report one diagnostic; the completed arguments, the function
+// type's other parameters, the enclosing function, and the following
+// declarations are retained.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Argument-list recovery", "Missing type", "Invalid nodes", "Recovery goals"
+func TestRecoveryRetainsOpenCallsAndBrokenFunctionTypes(t *testing.T) {
+	input := `module main
+
+fn OpenCall(value: int) int {
+    let wide := int64(value
+}
+
+fn OpenCallBeforeStatement(value: int) int {
+    let first := Pick(value, 2
+    return first
+}
+
+fn MissingParameterType(callback: fn(, int) int) void {
+}
+
+fn MissingReturnType(callback: fn(int) ) void {
+}
+
+fn After() void {
+}
+`
+	result := New(lexer.New(input)).Parse()
+	messages := []string{}
+	for _, diagnostic := range result.Diagnostics {
+		messages = append(messages, diagnostic.Message)
+	}
+	want := []string{
+		"missing ')' to close the call opened at 4:22",
+		"missing ')' to close the call opened at 8:22",
+		"expected next token to be type, got \"COMMA\"",
+		"expected next token to be type, got \"RPAREN\"",
+	}
+	if len(messages) != len(want) {
+		t.Fatalf("diagnostics = %q, want exactly %d", messages, len(want))
+	}
+	for index, text := range want {
+		if !strings.Contains(messages[index], text) {
+			t.Errorf("diagnostic %d = %q, want %q", index, messages[index], text)
+		}
+	}
+	names := []string{}
+	for _, statement := range result.Program.Statements {
+		if function, ok := statement.(*ast.FunctionDeclaration); ok {
+			names = append(names, function.Name.Value)
+		}
+	}
+	if strings.Join(names, ",") != "OpenCall,OpenCallBeforeStatement,MissingParameterType,MissingReturnType,After" {
+		t.Fatalf("functions = %v, want every declaration retained", names)
+	}
+	open := result.Program.Statements[2].(*ast.FunctionDeclaration)
+	if len(open.Body.Statements) != 2 {
+		t.Fatalf("OpenCallBeforeStatement body = %d statements, want the let and the return", len(open.Body.Statements))
+	}
+	let := open.Body.Statements[0].(*ast.LetStatement)
+	if call, ok := let.Value.(*ast.CallExpression); !ok || len(call.Arguments) != 2 {
+		t.Fatalf("let value = %#v, want the call with both completed arguments", let.Value)
+	}
+	parameterType := result.Program.Statements[3].(*ast.FunctionDeclaration).Parameters[0].Type
+	if len(parameterType.FunctionParameterTypes) != 2 || parameterType.FunctionParameterTypes[1].Name != "int" {
+		t.Fatalf("function type = %#v, want an invalid first parameter type and int", parameterType)
+	}
+}

@@ -1,0 +1,120 @@
+module grammar_statements
+
+// Canonical Sec 0.1 statement forms (rules/foundations/grammar.md
+// "Statement grammar" through "Unsafe block"). Every statement in this file is
+// expected to parse and pass semantic analysis.
+
+type Level enum {
+    Low
+    High
+}
+
+type ReadError enum error {
+    Missing
+}
+
+fn Load(flag: bool) Result[int, ReadError] {
+    if flag {
+        return Ok(1)
+    }
+    return Err(ReadError.Missing)
+}
+
+fn Statements(limit: int, flag: bool, level: Level, maybe: Option[int]) int {
+    // Let declarations: inferred, typed, and mutable.
+    let first := 1
+    let typed: int := 2
+    let mut total := first + typed
+
+    // Assignment and compound assignment.
+    total = total + 1
+    total += 2
+
+    // If, else if, else.
+    if limit > 10 {
+        total += 1
+    } else if limit > 5 {
+        total += 2
+    } else {
+        total += 3
+    }
+
+    // Iterable for loop over a half-open range.
+    for index in 0..<limit {
+        total += index
+    }
+
+    // Infinite for loop with break.
+    for {
+        break
+    }
+
+    // While loop with continue.
+    let mut counter := 0
+    while counter < limit {
+        counter += 1
+        if counter == 2 {
+            continue
+        }
+    }
+
+    // Switch with values and default.
+    switch limit {
+    case 0:
+        total += 1
+    case 1, 2:
+        total += 2
+    default:
+        total += 3
+    }
+
+    // Match statement over an enum and an Option.
+    match level {
+        Level.Low => {
+            total += 1
+        }
+        Level.High => {
+            total += 2
+        }
+    }
+    match maybe {
+        Some(value) => {
+            total += value
+        }
+        None => {
+            total += 0
+        }
+    }
+
+    // Defer and discard.
+    defer {
+        discard flag
+    }
+    discard first
+
+    return total
+}
+
+// Try with local handlers and propagation.
+fn Propagate(flag: bool) Result[int, ReadError] {
+    let value := try Load(flag)
+    return Ok(value)
+}
+
+fn Handle(flag: bool) int {
+    let value := try Load(flag) {
+        Err(_) => 0
+    }
+    return value
+}
+
+// Unsafe block.
+extern "C" fn native_length(value: int32) int32
+
+fn Native(value: int32) int32 {
+    let mut result: int32 := 0
+    unsafe {
+        result = native_length(value)
+    }
+    return result
+}

@@ -179,7 +179,7 @@ func (a *Analyzer) recordDeferPlaceExpression(expr ast.Expression) {
 func (a *Analyzer) checkDeferredUsePlace(place Place, token lexer.Token, action string) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
-			if !isDeferredUseKind(record.Kind) || !borrowPlacesOverlap(candidate, record) {
+			if !isDeferredUseKind(record.Kind) || !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required by defer", action, place.String())
@@ -198,7 +198,7 @@ func (a *Analyzer) checkDeferredUsePlace(place Place, token lexer.Token, action 
 //   - rules/memory/borrowing.md — §21(4) retained reference holders
 func (a *Analyzer) checkDeferredReferenceHolderUsePlace(place Place, token lexer.Token, action string) bool {
 	for _, record := range a.borrows[place.Root] {
-		if record.Kind != deferredReferenceHolderUse || !borrowPlacesOverlap(place, record) {
+		if record.Kind != deferredReferenceHolderUse || !borrowRecordMayOverlap(place, record) {
 			continue
 		}
 		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required as a reference holder by defer", action, place.String())

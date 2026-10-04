@@ -6,6 +6,7 @@ integrations:
     area: frontend-allocation-semantics
     status: partial
     repository_baseline: 57cd774
+    revised: "2026-10-04"
     rules:
     - rules/memory/allocation.md
     - rules/memory/arena.md
@@ -15,37 +16,49 @@ integrations:
     - rules/memory/lifetime_analysis.md
     - rules/memory/references.md
     - rules/memory/destruction.md
+    - rules/foundations/attributes.md
     code:
     - internal/sema/analyzer.go
+    - internal/sema/analyzer_noalloc.go
+    - internal/sema/analyzer_panic_effects.go
+    - internal/sema/analyzer_closure.go
+    - internal/sema/string_materialization.go
     - internal/sema/types.go
     - internal/sema/call_graph.go
+    - internal/parser/parser.go
+    tests:
     - internal/sema/allocation_test.go
     - internal/sema/lifetime_test.go
+    - internal/sema/noalloc_test.go
+    - internal/sema/string_materialization_test.go
+    - internal/parser/parser_test.go
+    cross_references:
+    - analysis.arena-allocation (governance/analysis.yaml) owns the detailed Arena validation, generation, trait, and typed-allocation facts
+    - analysis.arena-reset-release-dependency-legality (governance/analysis.yaml)
     implemented:
     - compiler-known Arena type and AllocationError enum in the represented frontend subset
-    - recognition for represented Arena constructors/members including Alloc, Reset and Release
+    - recognition for represented Arena constructors/members including New, Alloc, Reset and Release
     - Arena.Alloc[T](count) validation with Result[ref mut T[], AllocationError] typing
+    - "Arena.New[T] and Arena.Alloc[T] type requirements: sized/complete T (S1072), canonical infallible default (S1073), trivial destruction (S1074); Arena is move-only and non-trivially destructible by composition (see analysis.arena-allocation)"
     - Reset/Release receiver and arity checks with represented generation mutation
     - initial Arena identity/generation metadata on arena-backed references and slices
-    - initial allocation-context, storage-origin, allocation-effect and direct MayAllocate call-graph facts
     - selected stale-reference rejection after represented Arena.Reset
+    - "runtime string concatenation and interpolation are allocation operations that require try (S1097) and an allocation context (S1098) and record an allocation site in the call graph (MD-004)"
+    - "allocation sites with unknown behavior (2026-10-04): a call through an unresolved function value, an interface or constrained-generic method call, and a call to an extern function without a trusted @noAlloc contract record an UnknownAllocation site, kept separate from definite allocation (allocation.md § 24(6))"
+    - "@noAlloc verification (2026-10-04): a Sec function or method marked @noAlloc with a synchronous path to a definite allocation, or else to unknown allocation behavior, is mandatory S1108 allocation.no-alloc-violation on the attribute with the call chain, the introducing site as related location, and help per cause; try does not make allocation acceptable; @noAlloc on an extern declaration is a trusted foreign contract (TestNoAllocGuaranteeIsVerifiedTransitively)"
+    - "ordinary copy, assignment, move initialization and move passing, parameter passing, return, reference and slice-view creation, if/match joins, and discard record no allocation site and satisfy @noAlloc (allocation.md § 4; TestOrdinaryOperationsDoNotAllocate)"
     remaining:
-    - classify every Sec 0.1 allocation-capable operation using one allocation-effect model
-    - enforce no hidden allocation in copy, move, borrow, parameter passing, return, reference creation, control-flow joins
-      or escape repair
-    - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect
-      calls
+    - classify every remaining Sec 0.1 allocation-capable operation in the same effect model (collection growth and WithCapacity, closure environments where canonically allocation-capable, spawn control storage, shaped types, allocating core and stdlib contracts)
+    - effective @noAlloc implied by @isr, @interrupt, and @interruptSafe once those attributes exist in Sema
+    - "@noAlloc coverage of defer bodies, destructors reached from the function, compiler-generated operations, and generic specializations (template calls through constraints are reported as unknown today)"
+    - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect calls
     - replace lexical Arena binding identity with stable compiler-owned ArenaDomain identity
     - integrate Arena.FromBuffer backing identity as an exclusive mutable-borrow dependency for the Arena lifetime
-    - complete size/default-initialization/destruction/overflow/alignment checks for safe manual allocation
+    - overflow and alignment checks for safe manual allocation (blocked on the layout service and MD-019)
     - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2, references-v2 and destruction-v2 facts canonically
     - complete failure behavior and only treat allocation as infallible when storage/capacity is proven
-    - integrate collection, string, shaped-type, closure, FFI and platform allocation-capable operations
+    - FFI allocation contracts beyond the trusted @noAlloc fact (ownership, deallocation responsibility, retention; allocation.md § 19)
     required_tests:
-    - ordinary copy does not allocate
-    - explicit move does not allocate
-    - borrow/reference creation does not allocate
-    - parameter passing and return do not allocate
     - invalid local-reference escape is rejected rather than heap-promoted
     - closure escape is rejected rather than silently allocated
     - Arena.Alloc count overflow rejected before allocation
@@ -55,23 +68,23 @@ integrations:
     area: allocation-effects-context-capacity-analysis
     status: partial
     repository_baseline: 57cd774
+    revised: "2026-10-04"
     implemented:
-    - initial synchronous MayAllocate summaries
-    - initial source-ordered direct Arena event facts
+    - synchronous MayAllocate summaries with a deterministic shortest allocation path (ArenaSummary.AllocationPath)
+    - separate unknown-allocation summaries (ArenaSummary.AllocationUnknown, UnknownAllocationPath) so unknown behavior is conservative under @noAlloc without being reported as allocation
+    - source-ordered direct Arena and string-materialization allocation sites
     - initial allocation-context facts
+    - transitive @noAlloc verification over the synchronous call graph (frontend.allocation)
     remaining:
-    - infer allocation effects transitively through every callable form
+    - infer allocation effects through every callable form (closure targets, deferred and destruction relations, generic specializations)
     - persist/import validated allocation-effect summaries
-    - support recursive/mutually recursive fixed points
+    - support recursive/mutually recursive fixed points beyond the current path search
     - propagate allocation contexts without forcing source-level Arena threading
     - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
     - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
-    - keep allocation effect separate from panic, I/O, volatile, FFI, blocking, synchronization and mutation
     - support static placement/allocation elimination proof without hidden escape repair
     required_tests:
-    - transitive allocation effect propagation
     - recursive allocation-effect convergence
-    - unknown indirect call conservative under noalloc
     - ISR root rejects prohibited transitive allocation
     - static capacity proof accounts for loops/recursion
   - id: semantic-ir.allocation

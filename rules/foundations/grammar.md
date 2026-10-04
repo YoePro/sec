@@ -1337,7 +1337,7 @@ never become part of the source `ModuleName`.
 
 The complete relationship between source path, `internal` directories, module
 identity, and imports belongs to `rules/projects/modules.md` and
-`rules/projects/projects.txt`.
+`rules/projects/projects.md`.
 
 ---
 

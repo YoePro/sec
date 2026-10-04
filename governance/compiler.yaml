@@ -335,7 +335,7 @@ integrations:
       - rules/platform/abi.md
       - rules/platform/ffi.md
       - rules/projects/modules.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/declarations/static.md
       - rules/memory/destruction.md
       - rules/concurrency/concurrency.md
@@ -453,7 +453,7 @@ integrations:
     rules:
       - rules/compiler/initialization.md
       - rules/projects/modules.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/declarations/static.md
       - rules/memory/destruction.md
       - rules/concurrency/concurrency.md

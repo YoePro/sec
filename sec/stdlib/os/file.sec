@@ -131,6 +131,8 @@ type FileTouchOptions struct {
     UpdateModifiedTime: bool,
 }
 
+type SeekOrigin int // Place holder stubbe
+
 impl File {
     /** Opens an existing file for reading. */
     static fn Open(fileName: ref string) Result[File, FileError] {
@@ -245,7 +247,7 @@ impl File {
         // The native handle must never be closed a second time.
         self._handle._isOpen = false
 
-        return _CloseNativeFile(self._native)
+        return self._handle._native.Close()
     }
 
     /**

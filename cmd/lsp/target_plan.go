@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sec/internal/ast"
+	lspserver "sec/internal/lsp/server"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +34,7 @@ type lspManifestTarget struct {
 //
 // Rules:
 //   - rules/tooling/lsp.md — "Target-aware analysis" and A.20
-//   - rules/projects/projects.txt — "Targets", "Variants", and "Compilation plans and target lowering"
+//   - rules/projects/projects.md — "Targets", "Variants", and "Compilation plans and target lowering"
 //   - rules/types/types.md — "int and uint" and "Binary floating-point types"
 //   - rules/corrections/applied/correction5-20260823.md — selected target plan must reach Sema
 func lspScalarPlan(sourcePath string) (layout.ResolvedScalarPlan, error) {
@@ -263,4 +265,46 @@ func stripLSPManifestComment(line string) string {
 		}
 	}
 	return line
+}
+
+// lspActiveTarget is the target whose sources one analysis of sourcePath
+// sees: the active document's own `#target` when it has one, so a
+// platform-specific file is analyzed for its platform; otherwise the project
+// target when all of its variants share one OS and architecture; otherwise the
+// host target, as `sec check` uses by default.
+//
+// Rules:
+//   - rules/platform/platform_model.md — source selection by target
+//   - rules/tooling/lsp.md — "Shared compiler workspace" (target variants)
+func lspActiveTarget(program *ast.Program, sourcePath string) platformtarget.Target {
+	if target, directed := lspserver.ProgramTarget(program); directed {
+		return target
+	}
+	if sourcePath != "" {
+		root := findProjectRoot(sourcePath)
+		variants, targets, err := readLSPProjectTargets(filepath.Join(root, ".sec", "sec.toml"))
+		if err == nil {
+			if selected, err := selectLSPManifestTarget(root, sourcePath, targets); err == nil {
+				var common platformtarget.Target
+				for index, name := range selected.variants {
+					variant, ok := variants[name]
+					if !ok {
+						common = platformtarget.Target{}
+						break
+					}
+					current := platformtarget.Target{OS: platformtarget.NormalizeOS(variant.os), Arch: platformtarget.NormalizeArch(variant.arch)}
+					if index == 0 {
+						common = current
+					} else if current != common {
+						common = platformtarget.Target{}
+						break
+					}
+				}
+				if common.OS != "" {
+					return common
+				}
+			}
+		}
+	}
+	return platformtarget.Host()
 }

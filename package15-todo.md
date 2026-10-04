@@ -170,6 +170,17 @@ nested working-directory change.
   as applicable. Root identity must be independent of source spelling and
   remain stable through shadowing, renaming, generic instantiation, and
   diagnostics presentation.
+
+Partially completed 2026-10-04: `Place` carries `RootID PlaceRootID` and
+`RootKind PlaceRootKind` beside the display name `Root`. Identities follow the
+declaration token, are allocated deterministically in first-use order per
+analysis, and are never addresses or spellings; `Relationship` compares them
+when both Places have one, so equal names of different declarations are
+disjoint. Root kinds follow the revised § 10 binding roles (local, parameter,
+receiver including implicit member aliases, static including thread-local,
+deref for an unknown referent reached through a reference). Remaining:
+identity stability across generic instantiation, and identities on the Places
+that interprocedural parameter-usage summaries build from names.
 - [ ] P15-11 — Add canonical `StorageIdentityID`, `InvalidationDomainID`,
   `EpochDependencyID`, `AddressSpaceID`, `BorrowID`, and `LifetimeID` facts.
   Define ownership, allocation, cloning, deterministic printing, and invalid/
@@ -193,22 +204,42 @@ focused unit assertions cover exact presentation and defensive cloning.
   union-payload, and dereference forms. Retain slice/property metadata only as
   deferred compatibility data; ordinary properties must not become addressable
   field Places.
-- [ ] P15-15 — Implement the one canonical `PlaceRelationship` query:
+- [x] P15-15 — Implement the one canonical `PlaceRelationship` query:
   `same`, `disjoint`, `contains`, `contained-by`, `potentially-overlapping`,
   and `unknown`. Make borrowing, move/escape/lifetime logic, and future
   consumers call it rather than reimplement alias decisions.
-- [ ] P15-16 — Retain `PlacesOverlap` only as a compatibility adapter over the
+- [x] P15-16 — Retain `PlacesOverlap` only as a compatibility adapter over the
   relationship result. Migrate new correctness decisions first and add tests
   that prevent its legacy boolean behavior from silently classifying unknown
   or potentially-overlapping Places as disjoint.
+
+Completed 2026-10-04: `Relationship` and the canonical relationship kinds were
+already in place (P15-15). The borrow, defer, lifetime, reservation, and
+move-into-itself checks now decide through `borrowRecordMayOverlap` /
+`placesMayOverlap`, which consult `Relationship`; only Places without a
+resolved root (no tracked storage, § 16 revised 2026-10-03) answer
+"no overlap". `TestLegacyPlacesOverlapDelegatesToRelationship` pins the
+adapter to the relationship result and
+`TestLegacyPlacesOverlapHasNoCorrectnessCallers` keeps correctness code off
+the adapter.
 - [ ] P15-17 — Implement relationship rules for same/nested fields, distinct
   stored struct fields, equal/distinct arbitrary-precision constant array
   indexes, dynamic indexes, union payload variants under active-variant proof,
   dereference projections, different storage identities, and containment.
+
+Status 2026-10-04: every case except different storage identities is
+implemented and covered by `TestPlaceRelationshipClassifiesCanonicalPaths`;
+storage identities wait for `StorageIdentityID` (P15-11). Different root
+declarations are disjoint through `PlaceRootID`.
 - [ ] P15-18 — Preserve finite alternative origin sets across control-flow
   joins, deterministically bounded at the documented implementation limit;
   degrade overflowed/unknown origin knowledge conservatively without adding a
   runtime origin tag or inventing a single origin.
+
+Status 2026-10-04: alternative origins are joined pairwise by `Relationship`
+and ambiguous provenance degrades to `unknown` (governance
+`lowering.sec-mlir-package15`). The documented bound on the origin set is not
+yet enforced.
 - [ ] P15-19 — Add focused Sema tests for stable root identity independent of
   display name, relationship symmetry/containment, wide and above-`int64`
   indexes, field/index disjointness, dynamic overlap, union proof scope,

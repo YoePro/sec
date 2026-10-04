@@ -1,4 +1,149 @@
 schema_version: 1
 area: tooling-projects
 purpose: User-project discovery, configuration, and project-file tooling.
-integrations: []
+integrations:
+  - id: tooling.project-discovery-and-boundary
+    area: tooling-projects
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Project discovery through the nearest `.sec/sec.toml`, the single-manifest
+      project boundary, and project validation of rules/projects/projects.md
+      revision 2.0.
+    rules:
+      - rules/projects/projects.md
+      - rules/projects/modules.md
+    code:
+      - cmd/compiler/init.go
+      - cmd/compiler/main.go
+      - cmd/compiler/module_sources.go
+      - cmd/lsp/target_plan.go
+    tests:
+      - cmd/compiler/main_test.go
+    implemented:
+      - the nearest ancestor `.sec/sec.toml` is discovered by the compiler and the LSP (§ 36)
+      - "`sec init` rejects a nested manifest below an existing project (§ 4, § 53(3))"
+    remaining:
+      - complete project validation of § 48 with registered diagnostics, including nested manifests found during discovery rather than only at init
+      - project-root source files (§ 14) and reserved and recognized directories `cmd`, `bin`, `.sec`, and `internal` (§ 15)
+      - "standard library and platform roots (§ 16) resolved through the project model instead of repository-relative lookup"
+      - "stable cache and module identity under Project directory moves (§ 34, § 50(1))"
+
+  - id: tooling.project-identity
+    area: tooling-projects
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Human-readable ProjectName and stable RFC 9562 ProjectUUID identity
+      (§ 3.2, § 3.3, § 7).
+    rules:
+      - rules/projects/projects.md
+    code:
+      - cmd/compiler/init.go
+    tests:
+      - cmd/compiler/main_test.go
+    implemented:
+      - "`sec init` writes `[project].name` and a newly generated UUIDv4 `[project].uuid` once and never regenerates it for an existing manifest (§ 37, § 53(6))"
+    remaining:
+      - parse and validate `[project]`, rejecting a nil or malformed UUID (§ 7, § 48)
+      - make the resolved ProjectUUID, ProjectName, ProjectRoot, and ProjectVersion facts available without reparsing strings (§ 49(1)–(2))
+      - make module resolution consume ProjectUUID/import-root identity rather than ProjectName (§ 49(4), rules/projects/modules.md)
+      - "`[project].module` root ModuleName override (§ 53(8))"
+      - conformance tests for UUID stability across repeated init, rename without UUID change, and invalid UUID rejection (§ 50(1))
+
+  - id: tooling.project-version-model
+    area: tooling-projects
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Revision 2.0 structured project version: `[version]` with major, minor,
+      revision, build, optional userdefined, and format; rendering through the
+      five recognized placeholders; and per-Target version overrides
+      (§ 8–§ 12, § 31).
+    rules:
+      - rules/projects/projects.md
+    code:
+      - internal/project/version.go
+      - cmd/compiler/init.go
+    tests:
+      - internal/project/version_test.go
+    implemented:
+      - "internal/project ParseManifestVersions reads exactly one `[version]` table and every `[target.<name>.version]` table into structured fields, requiring major, minor, revision, build, and format and rejecting duplicates, unknown fields, and non-decimal, negative, leading-zero, or out-of-range VersionNumbers outside 0..9223372036854775807 (§ 8(1)–(3))"
+      - "optional userdefined must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an empty Project value is rejected, and an empty Target value clears the inherited component (§ 9(3), § 11(7)–(8))"
+      - "Version.Render replaces exactly `[major]`, `[minor]`, `[revision]`, `[build]`, and `[userdefined]` from the parsed fields with unpadded base-10 numbers and verbatim userdefined, keeps every other character literal, and rejects unknown bracketed identifiers, a format that references a missing userdefined component, and an empty result (§ 10, § 49(3))"
+      - "Version.Resolve applies a Target override field by field, and validation reports a Target whose cleared userdefined leaves an inherited format referencing `[userdefined]` (§ 11(4)–(9)); the § 8(10)–(11) and § 11(10)–(11) examples render as specified"
+      - "`sec init` validates the version model of the manifest it generates before writing it (§ 37(1))"
+    remaining:
+      - validate `[version]` of discovered manifests in the compiler and the LSP, with registered diagnostics and source ranges in sec.toml (§ 48)
+      - rendered version during a build (§ 31) and build metadata (§ 32)
+      - make the resolved ProjectVersion available as a Project fact to builds and tooling (§ 49(1)–(2))
+      - accept the remaining TOML integer and string forms (hexadecimal, octal, binary, multi-line strings) or reject them with a dedicated message
+
+  - id: tooling.project-build-numbering
+    area: tooling-projects
+    status: planned
+    integrated: "2026-10-04"
+    summary: >-
+      Visible, manually editable manifest build numbers with transactional
+      automatic increment (§ 27–§ 30), superseding the revision-1 hidden
+      `.sec/state/build-counters.toml` counter (§ 52(3)), which was never
+      implemented.
+    rules:
+      - rules/projects/projects.md
+    remaining:
+      - project-scoped counter on `[version].build` and Target-scoped counter requiring a Target-local build field (§ 28)
+      - candidate allocation committed exactly once after all requested builds succeed, unchanged manifest after a failed build, one candidate across a multi-Variant Target, and serialized parallel builds (§ 29)
+      - "explicit `--build-number` for one invocation without mutating the manifest (§ 30)"
+      - comment- and layout-preserving manifest mutation through the parsed manifest syntax (§ 49(5))
+      - manual reset and jump acceptance, and no automatic reset after major, minor, or revision changes (§ 8(6)–(7))
+
+  - id: tooling.project-targets-and-configuration
+    area: tooling-projects
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Targets, Variants, profiles, compile-time parameters, configuration
+      precedence, and build output from the manifest (§ 17–§ 26). CompilationPlan
+      construction itself remains governed by the compiler and platform
+      fragments (§ 51(4)).
+    rules:
+      - rules/projects/projects.md
+      - rules/platform/platform_model.md
+    code:
+      - cmd/compiler/init.go
+      - cmd/lsp/target_plan.go
+    implemented:
+      - "`sec init` writes one `[target.<name>]` with kind, source, artifact, variants, and output, one `[variant.<os-arch>]`, one `[profile.<name>]`, `[build]`, and `[analysis] lsp_depth` (§ 17, § 19, § 22, § 23)"
+      - the LSP reads `[target.*].source`/`variants` and `[variant.*].os`/`arch` to select the scalar plan of the Target that owns a source file, and `[analysis].lsp_depth` for its analysis depth
+    remaining:
+      - complete manifest parsing and validation of Targets, Variants, profiles, and the Test Target boundary (§ 17–§ 22)
+      - compile-time project parameters (§ 24) and configuration precedence (§ 25)
+      - build output layout and build/cache identity (§ 26, § 34)
+
+  - id: tooling.sec-init
+    area: tooling-projects
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Additive, idempotent, conflict-aware, transactional, non-destructive
+      `sec init` for new projects, modules, and Targets (§ 35–§ 45).
+    rules:
+      - rules/projects/projects.md
+      - rules/projects/modules.md
+    code:
+      - cmd/compiler/init.go
+    tests:
+      - cmd/compiler/main_test.go
+    implemented:
+      - new-project scaffold `.sec/sec.toml`, `cmd/<target>/main.sec`, `bin/`, and `internal/` (§ 37(6))
+      - an existing starter source is never overwritten and a repeated init on an existing manifest is a no-op (§ 40, § 42)
+      - nested manifests are rejected (§ 4)
+      - "the new-project manifest contains the revision-2.0 `[version]` table with major 0, minor 1, revision 0, build 0, format `[major].[minor].[revision].[build]`, and no userdefined, validated before it is written (§ 37(1)–(3), 2026-10-04)"
+    remaining:
+      - minimal profile with a root `main.sec` command Target (§ 37(8))
+      - "`sec init module <path>` with module/path validation, including internal modules (§ 38)"
+      - "`sec init command|library|firmware|test <name>` additive Target creation that inherits the Project version (§ 39)"
+      - additive extension of an existing manifest instead of the current no-op, preserving its contents (§ 41)
+      - conflict detection with rollback and transactional writes (§ 42, § 43)
+      - dry run (§ 44) and project-root invocation rules (§ 45)
+      - conformance tests for dry run, conflict rollback, and no-op idempotent init (§ 50(1))

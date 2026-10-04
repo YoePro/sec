@@ -676,6 +676,8 @@ fn Connect(
 }
 ```
 
+§ 16(2a) Under § 3(7) a parameter list whose first parameter follows a line break after `(` is a deliberate multiline form and is completed to the § 16(2) layout, while a mixed list whose first parameter shares the line of `(` is normalized under § 16(1): single-line when it fits the preferred width, otherwise the § 16(2) layout. A blank line between parameters is an alignment-group boundary (§ 9(8)) and keeps the list multiline.
+
 § 16(3) Compatible parameter declarations may align their `Name: Type` structure when the alignment remains within the configured padding limit.
 
 § 16(4) The return type follows the closing parameter delimiter. If the complete signature becomes structurally multiline, the return type follows the ordinary long-type and width rules rather than introducing a separate arrow syntax.

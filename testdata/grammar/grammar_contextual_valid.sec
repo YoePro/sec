@@ -1,0 +1,68 @@
+module grammar_contextual
+
+// Contextual spellings (rules/foundations/grammar.md "Contextual spellings").
+// Outside their grammar context they are ordinary identifiers. Spellings that
+// rules/foundations/lexical_structure.md § 7 reserves (require, task, thread,
+// process, and the contract words) are covered by
+// grammar_contextual_invalid.sec instead. Every declaration in this file is
+// expected to parse and pass semantic analysis.
+
+type Settings struct {
+    step: int,
+    physical: int,
+    other: int,
+    inputs: int,
+    outputs: int,
+    address: int,
+}
+
+fn Contextual(x: int, step: int, other: int) int {
+    // `is`, `test`, `set`, and `arena` are ordinary identifiers outside their roles.
+    let is := x + step
+    let test := other + 1
+    let set := 2
+    let arena := 3
+    let using := 4
+    let detach := 5
+    let clobbers := 6
+    let currency := 7
+    let inputs := 8
+    let outputs := 9
+    return is + test + set + arena + using + detach + clobbers + currency + inputs + outputs
+}
+
+// The same spellings in their contextual roles: `set` as a collection type
+// and a property setter, `step` in a range loop, `is` as a state test, and
+// contract words in a contract position.
+type Small int range 0..100 multipleOf 5
+
+type Counter struct {
+    _value: int,
+}
+
+impl Counter {
+    property Value: int {
+        get {
+            return _value
+        }
+        set value {
+            _value = value
+        }
+    }
+}
+
+type Figure union {
+    Dot
+    Circle(int)
+}
+
+fn Roles(limit: int, members: set[int], figure: Figure) int {
+    let mut total := 0
+    for index in 0..<limit step 2 {
+        total += index
+    }
+    if figure is Figure.Dot {
+        total += 1
+    }
+    return total
+}

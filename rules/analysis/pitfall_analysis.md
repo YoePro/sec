@@ -1,8 +1,21 @@
 # Pitfall Analysis
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-08
+- **Last updated:** 2026-10-04
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/analysis/pitfall_analysis.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-10-04`
+- **Implementation governance:** `governance/analysis.yaml` (`sema.pitfall-analysis`)
+- **Related rulebooks:** `rules/analysis/effect_analysis.md`, `rules/analysis/escape_analysis.md`, `rules/analysis/parameter_usage_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/foundations/operators.md`, `rules/types/contracts.md`, `rules/collections/collections.md`, `rules/collections/shaped-types.md`, `rules/platform/ffi.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`, `rules/projects/projects.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/incremental_compilation.md`
 
-Normative compiler-analysis rulebook for Sec 0.1.
+---
+
+## Status and authority
+
+This is the normative compiler-analysis rulebook for Sec 0.1 pitfall analysis.
 
 This rulebook defines the semantic purpose, finding model, confidence model,
 evidence and suppression rules, initial pitfall catalog, diagnostic integration,
@@ -10,7 +23,7 @@ corrective-action requirements, analysis-budget behavior, tooling integration,
 incremental behavior, tests, and completion criteria for Sec pitfall analysis.
 
 Mutable implementation status does not belong in this rulebook. It is governed
-by the repository-level `implementation-status.yaml` ledger.
+by `sema.pitfall-analysis` in `governance/analysis.yaml`.
 
 ---
 
@@ -1019,11 +1032,6 @@ proven safe structural pattern
 
 rather than warning on every mutation inside a loop.
 
-Implemented as `pitfall.iteration.structural-mutation-in-indexed-loop`
-(Interactive, family `iteration-and-mutation`, 2026-10-03) for a forward
-range loop without `step` whose end is the compiler-known `Len` of a resolved
-collection, evaluated once before the loop (`rules/control-flow/flowcontrol_for.md`):
-
 ```text
 proven invalid      Clear() followed on the same straight-line path by an
                     index of the collection with the loop binding
@@ -1160,7 +1168,7 @@ analysis or by an existing project diagnostic policy if one applies.
 Example:
 
 ```sec
-if value >= 0 or value <= 10 {
+if value >= 0 || value <= 10 {
     ...
 }
 ```
@@ -1180,7 +1188,7 @@ if value in 0..10 {
 }
 ```
 
-rather than merely suggesting replacement of `or` with `and`.
+rather than merely suggesting replacement of `||` with `&&`.
 
 The canonical suggestion is appropriate only when the intended interval and
 comparison semantics are compatible with `in`.
@@ -1434,7 +1442,7 @@ comparisons with canonical range membership when evaluation semantics are
 preserved:
 
 ```sec
-if value >= 0 and value <= 10 {
+if value >= 0 && value <= 10 {
     ...
 }
 ```
@@ -1492,7 +1500,7 @@ control-flow behavior relevant to the edit
 For example:
 
 ```sec
-GetValue() >= 0 and GetValue() <= 10
+GetValue() >= 0 && GetValue() <= 10
 ```
 
 must not automatically become:
@@ -1539,8 +1547,11 @@ Advisory
 OptionalInsight
 ```
 
-The repository-wide diagnostic governance determines concrete diagnostic IDs
-and configurable severities.
+`rules/tooling/diagnostics.md` defines diagnostic identity, severity,
+configurability, structured occurrences, fixes, and CLI/LSP transport.
+
+Pitfall rule identity is analysis identity. It must not be substituted for a
+registered compiler diagnostic ID.
 
 Pitfall rule identities do not encode the current severity.
 
@@ -1563,11 +1574,17 @@ pitfall.ffi.pointer-extent-origin-mismatch
 pitfall.ffi.extent-unit-mismatch
 ```
 
-These are conceptual identities, not a requirement to use these exact strings
-as user-facing diagnostic IDs.
+These are stable pitfall-analysis rule identities used for configuration,
+testing, analysis dumps, profiling, dependency tracking, and tooling.
 
-When an occurrence is a proven bounds error, the primary user-facing diagnostic
-still belongs to bounds analysis.
+They are not compiler diagnostic IDs.
+
+When a pitfall occurrence owns a user-facing advisory diagnostic, that
+diagnostic must use a separately registered stable diagnostic ID from
+`rules/tooling/diagnostics.md`.
+
+When the underlying condition is a proven violation owned by another semantic
+analysis, that owning analysis supplies the primary diagnostic identity.
 
 ---
 
@@ -1757,6 +1774,12 @@ optional advisory presentation
 ```
 
 This rulebook does not define the concrete configuration syntax.
+
+Project-file syntax and configuration precedence are owned by
+`rules/projects/projects.md`.
+
+Pitfall analysis consumes the resolved diagnostic policy. It does not define a
+second project-configuration syntax.
 
 Optional pitfall settings cannot disable underlying normative language errors.
 
@@ -2117,19 +2140,19 @@ requirement rather than optional polish.
 
 This rulebook contains normative pitfall-analysis behavior only.
 
-Mutable implementation progress belongs in:
+Mutable implementation progress belongs to:
 
 ```text
-implementation-status.yaml
+governance/analysis.yaml
 ```
 
-A suitable ledger integration ID is conceptually:
+under the canonical integration ID:
 
 ```text
 sema.pitfall-analysis
 ```
 
-The ledger should track granular capabilities such as:
+That governance integration owns implementation tracking for at least:
 
 ```text
 finding model
@@ -2143,8 +2166,28 @@ incremental LSP integration
 Deep analysis
 ```
 
-The rulebook must not contain rapidly aging claims about which of these are
-currently implemented.
+Implementation claims, current bug lists, implementation percentages, and
+temporary compiler limitations must not be copied into this rulebook.
+
+Cross-area implementation work remains owned by its existing governance
+integration. In particular:
+
+```text
+diagnostic transport
+    governance/errors_diagnostics.yaml
+
+LSP presentation
+    governance/tooling_lsp.yaml
+
+FFI semantic support
+    governance/ffi.yaml
+
+compiler analysis coordination
+    owning compiler/analysis governance integration
+```
+
+The pitfall governance entry may depend on those integrations but must not
+duplicate their implementation state.
 
 ---
 
@@ -2176,7 +2219,7 @@ Pitfall analysis is complete for Sec 0.1 when all of the following hold:
 18. required detection, suppression, near-miss, corrective-action,
     incremental, FFI, and false-positive regression tests pass;
 19. mutable implementation status remains governed by
-    `implementation-status.yaml`.
+    `sema.pitfall-analysis` in `governance/analysis.yaml`.
 
 ---
 
@@ -2220,4 +2263,5 @@ insight.
 The LSP and `sec analyse` consume the same structured model with different
 budgets and presentation policies.
 
-Mutable implementation progress is governed by `implementation-status.yaml`.
+Mutable implementation progress is governed by `sema.pitfall-analysis` in
+`governance/analysis.yaml`.

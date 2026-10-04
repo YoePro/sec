@@ -53,7 +53,7 @@ integrations:
       snapshots, so declarations resolve consistently across module files.
     rules:
       - rules/projects/modules.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/tooling/lsp.md
     code:
       - cmd/lsp/main.go
@@ -64,6 +64,7 @@ integrations:
       - internal/lsp/server/module_sources_test.go
     implemented:
       - deterministic same-directory .sec discovery and same-module filtering
+      - "target-aware source selection (2026-10-04): sibling and imported files whose #target selects another platform are left out of the analysis, using the compiler's selection rule (OS equal, architecture equal or any) through lspserver.ProgramMatchesTarget; the active target is the document's own #target, else the unambiguous project target, else the host, so same-named declarations in platform-specific files of one module no longer collide. Tests: internal/lsp/server/source_target_test.go"
       - active in-memory source retained while assembling sibling AST statements
       - open sibling snapshots take precedence over their on-disk contents
       - one Sema analysis supplies diagnostics, completion, hover, definitions, highlights, semantic tokens, and call hierarchy
@@ -190,6 +191,7 @@ integrations:
     tests:
       - cmd/lsp/main_test.go
       - cmd/lsp/diagnostics_batch_test.go
+      - cmd/lsp/diagnostics_batch_target_test.go
       - testdata/module_siblings/completion_types.sec
     implemented:
       - open, change, save, close and configuration refresh use a debounced module job without blocking the protocol loop on diagnostic analysis
@@ -198,6 +200,7 @@ integrations:
       - changes to any captured open document invalidate publication, and diagnostics include the captured document version
       - shutdown and transport EOF stop pending jobs and prevent later diagnostic publication
       - foreign modules remain separate and unsaved overlays remain authoritative
+      - "per-target batching (2026-10-04): the batch key is directory, module, and the document's effective target (its `#target` or the manifest/host target), so open platform files of one module for different targets get separate Sema runs; previously the module was assembled for the first document's target and every other platform file in the group silently received no semantic diagnostics (for example `let mode := ...` followed by `mode = ...` in file.linux.any.sec while file.freebsd.any.sec was open) (TestDiagnosticBatchAnalyzesEachPlatformFileForItsTarget)"
     remaining:
       - cooperative cancellation inside an already-running compiler analysis
       - shared immutable analysis caching across completion, hover, navigation and semantic-token requests
@@ -449,3 +452,106 @@ integrations:
         result: passed on 2026-10-03 for a FileMode getter offering only FileMode fields and methods without the getter's own property, an unfiltered non-return selector, and a string method return
       - command: go test ./cmd/lsp -run 'Comparison|SwitchCaseCompletion|MatchArmCompletion|BlankLineOutside' -count=1
         result: passed on 2026-10-03 for == and != self. operands, an uncovered switch case, union, Option, and Result match arms, and unchanged global completion on a blank line outside match
+
+  - id: tooling.lsp-inlay-hints
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Implements textDocument/inlayHint from Sema facts with individually
+      configurable inferred-type and parameter-name categories, the first
+      slice of the rulebook's inlay-hint catalogue.
+    rules:
+      - rules/tooling/lsp.md
+    code:
+      - cmd/lsp/inlay_hints.go
+      - cmd/lsp/main.go
+      - cmd/lsp/request_queue.go
+      - vscode/src/extension.ts
+      - vscode/package.json
+    tests:
+      - cmd/lsp/inlay_hints_test.go
+    implemented:
+      - initialize advertises inlayHintProvider; textDocument/inlayHint is a deferrable read-only request
+      - inferred-type hints `: T` after a let without a declared type, from the resolved binding, omitted when a struct literal, new, or same-named conversion call already spells the type
+      - parameter-name hints `name:` before the arguments of Sema-resolved calls with two or more arguments, excluding self, stopping at variadic parameters and spread arguments, and omitted where the argument's final name equals the parameter name
+      - hints are limited to the requested range and to the active file
+      - sec.inlayHints.types and sec.inlayHints.parameters (default on) arrive through initializationOptions and workspace/didChangeConfiguration; the VS Code extension contributes both settings and synchronizes the sec section
+      - "ownership hints (sec.inlayHints.ownership, default on, 2026-10-04): `ref`/`ref mut` before a plain place passed to a reference parameter (implicit call-site borrow, borrowing.md § 15.2), `moves if selected` after a by-value match payload binding whose resolved action is a move (on the binding, never the subject), and `copy` for semantic copies of plain places at by-value arguments, let initializers, and match bindings; explicit `<-`/`ref`, temporaries, existing references, and trivial copies get no hint"
+    remaining:
+      - "`copy` hints currently never fire because no type classifies as CopySemantic yet; they follow the classification once semantic copies exist"
+      - "`move` hints for implicit consuming construction and receiver ownership effects of method calls"
+      - types of for-loop, pattern, and Option-if bindings
+      - generic instantiation, resolved overload, unit conversion, contract check, error type, allocation, and target hints
+      - resolved defaults of omitted defaultable struct fields through DefaultValueOf
+      - inlayHint/resolve with hover-style tooltips and navigable label parts
+    verification:
+      - command: go test ./cmd/lsp -run InlayHints -count=1
+        result: passed on 2026-10-04 for inferred let types, omitted hints for struct literals, declared types, single-argument calls, and same-named arguments, range restriction, and per-category settings
+      - command: go test ./cmd/lsp -run 'InlayHints' -count=1
+        result: passed on 2026-10-04 for moves-if-selected on a move-only union payload binding without a hint on a trivially copied binding, implicit ref and ref mut call-site borrows, no hint for explicit ref or existing references, and the ownership setting
+
+  - id: tooling.lsp-interface-conformance-lens
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Shows, on every interface declaration, whether its implementations
+      conform on each target selected by the module's platform files, so an
+      interface with per-platform implementations can be checked from the
+      interface file itself.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/declarations/interfaces.md
+      - rules/platform/platform_model.md
+    code:
+      - cmd/lsp/interface_conformance_lens.go
+      - internal/sema/interface_conformance.go
+      - vscode/src/extension.ts
+    tests:
+      - cmd/lsp/interface_conformance_lens_test.go
+      - internal/sema/interface_conformance_test.go
+    implemented:
+      - initialize advertises codeLensProvider; textDocument/codeLens is a deferrable read-only request
+      - one analysis per distinct #target of the module's source files (the active target when there is none), with module assembly, imports, and the registry scalar plan of that target
+      - per interface, the implementing types and the S1106/S1107 conformance failures of each target are summarized as a conforming lens or a failing lens naming targets, members, and targets without an implementation
+      - the lens command sec.showLocations (VS Code peek references) lists failing implementation members or the implementing types
+      - results are cached by a hash over the module's sources and the active text (stdlib/os interface: about 1.9 s cold over 18 targets, about 10 ms cached)
+      - an unresolved parameter type in an interface requirement is kept as an invalid type and neither the requirement nor an implementation with unresolved types reports a conformance cascade
+    remaining:
+      - codeLens/resolve so the cross-target analysis runs lazily and off the request path
+      - lenses on implementing types showing their conformance on other targets
+      - the same cross-target conformance report in sec analyse
+    verification:
+      - command: go test ./cmd/lsp -run InterfaceConformanceLens -count=1
+        result: passed on 2026-10-04 for a module with linux and windows implementations, conforming on both and failing on windows only with the failing location
+
+  - id: tooling.lsp-multi-target-diagnostics
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-04"
+    summary: >-
+      Publishes diagnostics of a target-independent document for every target
+      its module's platform files select, recording each diagnostic's
+      applicability as the rulebook requires.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/platform/platform_model.md
+    code:
+      - cmd/lsp/cross_target_diagnostics.go
+      - cmd/lsp/diagnostics_batch.go
+      - cmd/lsp/main.go
+    tests:
+      - cmd/lsp/cross_target_diagnostics_test.go
+    implemented:
+      - on didOpen and didSave a document without its own #target, in a module whose files select two or more targets, is analyzed once per target in the background with that target's module sources, imports, and registry scalar plan
+      - results are stored per document text hash, invalidated by a newer request or a close, and dropped while the document has unsaved changes
+      - publication merges them with the active diagnostics; every-target diagnostics are unchanged, some-target diagnostics state "applies to N of M targets", and diagnostics absent on the active target are added prefixed with their targets
+      - stdlib/os file.sec analyzes on 18 targets in about 1.9 s off the request path
+    remaining:
+      - share the per-target analyses with the interface conformance lens
+      - recompute while typing once incremental per-target analysis exists
+      - target selection, target status panel, and target comparison views
+    verification:
+      - command: go test ./cmd/lsp -run CrossTargetDiagnostics -count=1
+        result: passed on 2026-10-04 for a shared file calling a method that only the linux platform file provides, reported as windows-only with applicability, and no cross-target pass for a #target document

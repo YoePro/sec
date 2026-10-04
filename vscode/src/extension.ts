@@ -24,7 +24,15 @@ export function activate(context: vscode.ExtensionContext) {
       { scheme: "file", language: "sec" }
     ],
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{sec,se}")
+      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{sec,se}"),
+      configurationSection: "sec"
+    },
+    initializationOptions: {
+      inlayHints: {
+        types: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("types", true),
+        parameters: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("parameters", true),
+        ownership: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("ownership", true)
+      }
     }
   };
 
@@ -37,6 +45,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(client);
   registerCompilerKnownDefinitions(context);
+  registerShowLocations(context);
   client.start().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     output?.appendLine(`Failed to start SEC language server: ${message}`);
@@ -65,6 +74,18 @@ function registerCompilerKnownDefinitions(context: vscode.ExtensionContext) {
     if (document.uri.scheme === compilerKnownScheme && document.languageId !== "sec") {
       void vscode.languages.setTextDocumentLanguage(document, "sec");
     }
+  }));
+}
+
+// sec.showLocations lists locations sent by the language server, such as the
+// implementations or failing members behind an interface conformance lens.
+function registerShowLocations(context: vscode.ExtensionContext) {
+  type LspPosition = { line: number; character: number };
+  type LspLocation = { uri: string; range: { start: LspPosition; end: LspPosition } };
+  const toPosition = (value: LspPosition) => new vscode.Position(value.line, value.character);
+  context.subscriptions.push(vscode.commands.registerCommand("sec.showLocations", (uri: string, position: LspPosition, locations: LspLocation[]) => {
+    const converted = (locations ?? []).map((item) => new vscode.Location(vscode.Uri.parse(item.uri), new vscode.Range(toPosition(item.range.start), toPosition(item.range.end))));
+    return vscode.commands.executeCommand("editor.action.showReferences", vscode.Uri.parse(uri), toPosition(position), converted);
   }));
 }
 

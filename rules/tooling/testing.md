@@ -8,7 +8,7 @@
 - **Repository baseline reviewed:** `814a584`
 - **Canonical path:** `rules/tooling/testing.md`
 - **Replaces:** No canonical rulebook. This rulebook supersedes earlier non-canonical testing sketches where they conflict.
-- **Related rulebooks:** `rules/projects/projects.txt`, `rules/projects/modules.md`, `rules/library/core-library.md`, `rules/errors/errorhandling.md`, `rules/errors/panic.md`, `rules/control-flow/defer.md`, `rules/memory/destruction.md`, `rules/declarations/lambda-functions.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/diagnostics.md`, `rules/tooling/formatter.md`, `rules/tooling/lsp.md`
+- **Related rulebooks:** `rules/projects/projects.md`, `rules/projects/modules.md`, `rules/library/core-library.md`, `rules/errors/errorhandling.md`, `rules/errors/panic.md`, `rules/control-flow/defer.md`, `rules/memory/destruction.md`, `rules/declarations/lambda-functions.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/diagnostics.md`, `rules/tooling/formatter.md`, `rules/tooling/lsp.md`
 
 ## 1. Purpose
 
@@ -2491,7 +2491,7 @@ They are not defined by Sec 0.1 testing.
 
 ### 45.4 Projects
 
-`rules/projects/projects.txt` must define:
+`rules/projects/projects.md` must define:
 
 ```text
 project-root tests/ source tree

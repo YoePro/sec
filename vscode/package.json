@@ -174,6 +174,21 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Absolute path to the SEC language server. Leave empty to use `bin/lsp-sec` or `bin/lsp-sec.exe` inside the extension. Windows example: `C:\\\\Users\\\\Accountname\\\\.vscode\\\\extensions\\\\sec-lang.sec-syntax\\\\bin\\\\lsp-sec.exe`."
+        },
+        "sec.inlayHints.types": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show inferred types after `let` bindings without a declared type."
+        },
+        "sec.inlayHints.parameters": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show parameter names before the arguments of calls with two or more arguments."
+        },
+        "sec.inlayHints.ownership": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show ownership effects the source does not spell: implicit `ref`/`ref mut` call-site borrows, semantic copies, and match bindings that move a payload if their arm is selected."
         }
       }
     }

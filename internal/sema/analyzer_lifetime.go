@@ -236,7 +236,7 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
 				continue
 			}
-			if !borrowPlacesOverlap(candidate, record) {
+			if !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			if !mutable && record.Kind == sharedBorrow {
@@ -462,7 +462,7 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 				continue
 			}
 			for _, reservation := range reservations {
-				if reservation.Kind != mutableBorrow || !borrowPlacesOverlap(place, reservation) {
+				if reservation.Kind != mutableBorrow || !borrowRecordMayOverlap(place, reservation) {
 					continue
 				}
 				a.addErrorAtTokenWithPrevious(
@@ -486,7 +486,7 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 		}
 		conflict := false
 		for _, reservation := range reservations {
-			if !borrowPlacesOverlap(place, reservation) || !mutable && reservation.Kind == sharedBorrow {
+			if !borrowRecordMayOverlap(place, reservation) || !mutable && reservation.Kind == sharedBorrow {
 				continue
 			}
 			a.addErrorAtTokenWithPrevious(

@@ -2512,7 +2512,7 @@ This document must remain synchronized with:
 grammar.md
 lexical_structure.md
 parser_recovery.md
-projects.txt
+projects.md
 copy_move.md
 ownership.md
 runtime_checks.md

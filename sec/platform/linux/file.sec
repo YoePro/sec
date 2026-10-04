@@ -1,7 +1,32 @@
-#target(os: "linux", arch: "any")
+#target(os: "linux", arch: "amd64")
 module linux
 
-import "platform/linux/amd64"
+import (amd64 "platform/linux/amd64")
+
+enum FileAccess {
+    ReadOnly,
+    WriteOnly,
+    ReadWrite,
+}
+
+enum FileMode {
+    OpenExisting,
+    OpenOrCreate,
+    CreateNew,
+    CreateOrTruncate,
+    TruncateExisting,
+}
+
+enum FileWriteMode {
+    Normal,
+    Append,
+}
+
+type FileOpenOptions struct {
+    Access:    FileAccess,
+    Mode:      FileMode,
+    WriteMode: FileWriteMode,
+}
 
 let OpenReadOnlyFlag := 0
 let OpenWriteOnlyFlag := 1
@@ -46,11 +71,17 @@ fn _copyPath(path: string, destination: ref mut byte[]) Result[uint, LinuxError]
     return Ok(uint(index))
 }
 
+/*
+ * fn OpenFile(path: ref string, options: ref FileOpenOptions) Result[int, LinuxError] {
+ *     // Build Linux O_* flags here.
+ * }
+ */
 fn Open(path: string, flags: int, permissions: int) Result[int, LinuxError] {
     let mut encodedPath: byte[4096]
     match _copyPath(path, ref mut encodedPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
 
     unsafe {
@@ -221,7 +252,8 @@ fn Access(path: string, mode: int) Result[void, LinuxError] {
     let mut encodedPath: byte[4096]
     match _copyPath(path, ref mut encodedPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
 
     unsafe {
@@ -241,7 +273,8 @@ fn CreateDirectory(path: string, permissions: int) Result[void, LinuxError] {
     let mut encodedPath: byte[4096]
     match _copyPath(path, ref mut encodedPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
 
     unsafe {
@@ -261,7 +294,8 @@ fn RemoveFile(path: string) Result[void, LinuxError] {
     let mut encodedPath: byte[4096]
     match _copyPath(path, ref mut encodedPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
 
     unsafe {
@@ -280,7 +314,8 @@ fn RemoveDirectory(path: string) Result[void, LinuxError] {
     let mut encodedPath: byte[4096]
     match _copyPath(path, ref mut encodedPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
 
     unsafe {
@@ -300,11 +335,13 @@ fn Rename(oldPath: string, newPath: string) Result[void, LinuxError] {
     let mut encodedNewPath: byte[4096]
     match _copyPath(oldPath, ref mut encodedOldPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
     match _copyPath(newPath, ref mut encodedNewPath[..]) {
         Err(error) => return Err(error)
-        Ok(_) => { }
+        Ok(_) => {
+        }
     }
 
     unsafe {

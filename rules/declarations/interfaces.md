@@ -77,6 +77,11 @@ interface Parsable {
 
 `static fn` is a type-level member and has no instance receiver.
 
+`Self` in an interface requirement's parameter or result types, including
+nested positions such as `Result[Self, ParseError]`, names the conforming
+type; conformance compares the implementation with the requirement after that
+substitution (implemented 2026-10-04).
+
 ### 3.5 Concrete implementations
 
 Concrete implementation methods use ordinary `fn` syntax with implicit `self`.
@@ -320,6 +325,16 @@ The compiler must diagnose at least:
 - `implements` declared on an `impl extends` fragment,
 - required stored field declared directly in an interface,
 - ordinary interface implementation outside the type's defining module.
+
+Implemented (2026-10-04): a missing member is reported as S1106
+`interfaces.missing-member` on the type's `implements` reference, and an
+incompatible member as S1107 `interfaces.incompatible-member` on the
+implementing member. Both carry the interface requirement as the related
+location labelled "interface requirement". An incompatible method names the
+first § 6 difference (static versus instance membership, a mutable receiver
+against a shared promise, parameter count, parameter borrow or consuming mode,
+parameter type, or result type), and its help shows the requirement with
+`Self` substituted.
 
 ## 13. Best practice
 

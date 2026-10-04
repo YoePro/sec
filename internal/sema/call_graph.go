@@ -93,6 +93,13 @@ const (
 	ArenaEffectAllocate       ArenaEffectKind = "allocate"
 	ArenaEffectReset          ArenaEffectKind = "reset"
 	ArenaEffectRelease        ArenaEffectKind = "release"
+	// ArenaEffectUnknownCallee is a call whose target is not known here (a
+	// function value, an interface method, or a constrained generic method),
+	// so its allocation behavior is unknown.
+	ArenaEffectUnknownCallee ArenaEffectKind = "may-allocate-unknown-callee"
+	// ArenaEffectForeign is a call to an extern function without a trusted
+	// @noAlloc foreign contract.
+	ArenaEffectForeign ArenaEffectKind = "may-allocate-foreign"
 )
 
 type ArenaEffectSite struct {
@@ -100,12 +107,20 @@ type ArenaEffectSite struct {
 	Arena       string
 	Source      lexer.Token
 	MayAllocate bool
+	// UnknownAllocation marks a site whose allocation behavior is unknown;
+	// it is not proof of allocation, but never proof of allocation freedom
+	// (rules/memory/allocation.md § 24(6)).
+	UnknownAllocation bool
 }
 
 type ArenaCallableSummary struct {
 	DirectEffects  []ArenaEffectSite
 	MayAllocate    bool
 	AllocationPath []CallableID
+	// AllocationUnknown reports a synchronous path to a site whose allocation
+	// behavior is unknown, and UnknownAllocationPath the shortest such path.
+	AllocationUnknown     bool
+	UnknownAllocationPath []CallableID
 }
 
 // EffectKind identifies a language-semantic callable effect. These facts are
@@ -732,6 +747,15 @@ func (g *CallGraph) ArenaSummary(id CallableID) ArenaCallableSummary {
 		return false
 	})
 	summary.MayAllocate = len(summary.AllocationPath) > 0
+	summary.UnknownAllocationPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
+		for _, effect := range g.arenaEffects[candidate] {
+			if effect.UnknownAllocation {
+				return true
+			}
+		}
+		return false
+	})
+	summary.AllocationUnknown = len(summary.UnknownAllocationPath) > 0
 	return summary
 }
 

@@ -971,7 +971,7 @@ and when:
 This rulebook must remain semantically consistent with at least:
 
 ```text
-rules/projects/projects.txt
+rules/projects/projects.md
 rules/foundations/grammar.md
 rules/foundations/names_scopes_visibility.md
 rules/foundations/lexical_structure.md

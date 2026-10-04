@@ -1309,7 +1309,7 @@ atomics.md
 blocking.md
 scheduling.md
 platform/ffi.md
-projects.txt
+projects.md
 modules.md
 compiler/initialization.md
 rules/platform/target_profiles.md

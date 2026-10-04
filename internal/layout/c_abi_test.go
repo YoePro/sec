@@ -10,7 +10,7 @@ import "testing"
 //   - rules/platform/abi.md — § 19 "C scalar representation"
 //   - rules/platform/ffi.md — §5 "Fundamental C ABI scalar family"
 func TestCABIModelsResolveEveryFundamental(t *testing.T) {
-	models := []CABIModel{CModelSysVX8664, CModelAAPCS64, CModelDarwinX8664, CModelDarwinARM64, CModelWindowsX64, CModelWindowsARM64, CModelAAPCSLinuxHF, CModelAAPCSBareMetal, CModelRISCVILP32}
+	models := []CABIModel{CModelSysVX8664, CModelAAPCS64, CModelDarwinX8664, CModelDarwinARM64, CModelWindowsX64, CModelWindowsARM64, CModelAAPCSLinuxHF, CModelAAPCSBareMetal, CModelRISCVILP32, CModelRISCVLP64D, CModelAAPCSFreeBSDHF}
 	for _, model := range models {
 		if err := model.Validate(); err != nil {
 			t.Fatalf("%s: %v", model.Name, err)
@@ -41,6 +41,11 @@ func TestCABIModelsResolveEveryFundamental(t *testing.T) {
 		{CModelAAPCS64, "long_double", CScalarFloat, 128},
 		{CModelWindowsX64, "long_double", CScalarFloat, 64},
 		{CModelRISCVILP32, "long_long", CScalarSigned, 64},
+		{CModelRISCVLP64D, "long", CScalarSigned, 64},
+		{CModelRISCVLP64D, "char", CScalarUnsigned, 8},
+		{CModelRISCVLP64D, "long_double", CScalarFloat, 128},
+		{CModelAAPCSFreeBSDHF, "long", CScalarSigned, 32},
+		{CModelAAPCSFreeBSDHF, "char", CScalarUnsigned, 8},
 	}
 	for _, check := range checks {
 		scalar, _ := check.model.Fundamental(check.name)

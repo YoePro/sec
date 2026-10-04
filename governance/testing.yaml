@@ -19,7 +19,7 @@ integrations:
       - rules/tooling/testing.md
       - rules/foundations/grammar.md
       - rules/projects/modules.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/library/core-library.md
       - rules/errors/errorhandling.md
       - rules/errors/panic.md
@@ -131,7 +131,7 @@ integrations:
         editor-native test UI without adding an independent Sec test parser
       - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted,
         and provider regression tests from rules/tooling/testing.md
-      - synchronize rules/projects/modules.md and rules/projects/projects.txt to
+      - synchronize rules/projects/modules.md and rules/projects/projects.md to
         remove the obsolete source-visible std/... standard-library import prefix
         and preserve direct logical imports such as `import "io"` and
         `import "net/http"`

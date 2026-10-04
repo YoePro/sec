@@ -311,6 +311,13 @@ Implemented:
 - core source loading;
 - same-directory, same-module source assembly through the compiler lexer,
   parser, AST, and Sema pipeline;
+- target-aware source selection (2026-10-04): one analysis sees only the
+  sibling and imported files whose `#target` matches the active target, as the
+  compiler does, so platform-specific files of one module (for example
+  `file.linux.amd64.sec` and `file.windows.amd64.sec` in `stdlib/os`) may
+  declare the same names; the active target is the document's own `#target`,
+  otherwise the project target when all its variants share one OS and
+  architecture, otherwise the host target;
 - open-document overlays for active and sibling module files;
 - preservation of valid declarations from sibling files with recoverable syntax
   errors, including bodyless function stubs; sibling syntax errors are reported
@@ -461,6 +468,20 @@ Implemented:
 - nested symbol children, including struct-type fields and enum and union
   members of type declarations;
 - selection ranges contained by symbol ranges.
+
+### Interface conformance code lens
+
+Implemented (2026-10-04): `textDocument/codeLens` places one lens on every
+interface declared in the document. The module is assembled and analyzed once
+per target selected by its `#target` files (or for the active target when it has
+none), each with that target's scalar plan, and the lens summarizes the result:
+`✓ Handle conforms on 18 targets`, or `✗ conforms on 16 of 18 targets —
+freebsd-armv7: Open, Close; …` naming each failing target with its S1106/S1107
+members, and targets without an implementation. Its command
+(`sec.showLocations`) lists the failing implementation members, or the
+implementing types when every target conforms. Results are cached until a
+module source changes. Pending: code-lens resolve for lazy computation,
+lenses on implementations, and the same cross-target summary in `sec analyse`.
 
 ### Workspace symbols
 
@@ -1949,6 +1970,41 @@ The semantic meaning remains available independently of color configuration.
 
 Inlay hints should be individually configurable.
 
+Implemented (2026-10-04), `textDocument/inlayHint` from Sema facts:
+
+- inferred type (`sec.inlayHints.types`): `: T` after the name of a `let`
+  without a declared type, from the resolved binding; left out when the
+  initializer already spells the type (struct literal, `new`, or a conversion
+  call named like the type);
+- parameter name (`sec.inlayHints.parameters`): `name:` before each argument
+  of a Sema-resolved call with two or more arguments, stopping at a variadic
+  parameter or spread argument and left out where the argument's final name
+  already equals the parameter name;
+- both categories are on by default and individually switchable through
+  `initializationOptions.inlayHints` and `workspace/didChangeConfiguration`
+  (`sec.inlayHints.*` in VS Code); hints are restricted to the requested range
+  and never change source.
+
+Ownership hints (`sec.inlayHints.ownership`, 2026-10-04) show only effects
+the source does not spell, from Sema facts:
+
+- `ref` or `ref mut` before a plain place passed to a reference parameter,
+  the implicit call-bounded borrow of `rules/memory/borrowing.md` § 15.2;
+- `moves if selected` after a by-value match payload binding whose resolved
+  action moves a move-only payload, placed on the binding and never on the
+  subject;
+- `copy` before a plain place passed by value or used as a `let` initializer
+  when its type copies semantically, and after a semantically copying match
+  binding.
+
+Explicit `<-` and `ref` forms, temporaries, existing references, and trivial
+copies get no hint.
+
+Pending: `move` hints for implicit consuming construction (explicit `<-` is
+required today), loop and pattern binding types, generic instantiation, resolved
+overload, unit conversion, contract, error type, allocation, target, defaulted
+struct fields, and inlay-hint resolve.
+
 Possible categories:
 
 ```text
@@ -2360,6 +2416,17 @@ linux/arm64: valid
 baremetal/cortex-m4: invalid
     allocation path reaches allocator.New
 ```
+
+Implemented (2026-10-04) for target-independent documents: when a document
+without its own `#target` belongs to a module whose platform files select two
+or more targets, the server analyzes it once per target in the background on
+open and save, each with that target's sources and scalar plan. Published
+diagnostics then record applicability: one on every target is unchanged; one on
+only some targets ends with `applies to N of M targets: …`; and one absent on
+the active target is added with its targets named first, for example
+`[linux-armv7, freebsd-armv7] …`. The result belongs to the analyzed text and
+is dropped as soon as the document changes until the next save. Target
+selection, a target status panel, and comparison views remain pending.
 
 ---
 
@@ -3359,7 +3426,7 @@ compiler.md
 compiler_pipeline.md
 compiler_analysis.md
 semantic_ir.md
-projects.txt
+projects.md
 modules.md
 parser_recovery.md
 compiler/incremental_compilation.md

@@ -1,0 +1,55 @@
+module grammar_types
+
+// Canonical Sec 0.1 type-reference forms (rules/foundations/grammar.md
+// "Type-reference grammar" through "Parenthesized type"). Every declaration
+// in this file is expected to parse and pass semantic analysis.
+
+type Sample struct {
+    scalar: int,
+    wide: uint64,
+    flag: bool,
+    text: string,
+    // Postfix fixed array.
+    fixed: int[4],
+    // Nested fixed arrays.
+    grid: byte[2][3],
+    // Generic type arguments.
+    maybe: Option[int],
+    outcome: Result[int, error],
+    values: list[int],
+    lookup: map[string, int],
+    members: set[int],
+}
+
+// Shared and mutable references, including a slice view.
+fn Read(sample: ref Sample, values: ref int[]) int {
+    return sample.scalar + values[0]
+}
+
+fn Write(target: ref mut Sample) void {
+    target.scalar = 1
+}
+
+// Function types as parameter and return types.
+fn Apply(operation: fn(int) int, value: int) int {
+    return operation(value)
+}
+
+fn Twice(value: int) int {
+    return value * 2
+}
+
+fn Choose() fn(int) int {
+    return Twice
+}
+
+// Generic parameters in type positions.
+fn Count[T](values: ref T[]) uint {
+    return values.Len
+}
+
+fn Use(sample: ref Sample) int {
+    let fixed: int[4] := [1, 2, 3, 4]
+    let view := ref fixed[0..2]
+    return Read(sample, view)
+}

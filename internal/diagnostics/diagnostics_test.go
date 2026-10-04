@@ -79,6 +79,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		PartiallyUnavailableUse:                       SeverityError,
 		HeterogeneousTryErrorBinding:                  SeverityError,
 		NoPanicViolation:                              SeverityError,
+		NoAllocViolation:                              SeverityError,
 		TryPropagationIncompatible:                    SeverityError,
 		TryResidualUnpropagatable:                     SeverityError,
 		InvalidTryHandlerPattern:                      SeverityError,

@@ -158,6 +158,9 @@ func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression) {
 		// behavior is unknown, which is never positive @noPanic proof.
 		if a.callGraphPathReachable {
 			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: call.Token})
+			// rules/memory/allocation.md § 24(6): its allocation behavior is
+			// unknown as well.
+			a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: call.Token, UnknownAllocation: true})
 		}
 		return
 	}

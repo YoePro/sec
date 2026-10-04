@@ -169,3 +169,17 @@ func (a *Analyzer) recordForeignAbortEffect(callee Function, source lexer.Token)
 	}
 	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicForeign, Source: source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonForeignAbort}})
 }
+
+// recordForeignAllocationEffect treats a call to an extern function as having
+// unknown allocation behavior unless its declaration carries a trusted
+// @noAlloc foreign contract.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Sec code versus foreign declarations", "@noAlloc verification"
+//   - rules/memory/allocation.md — § 19 "FFI and foreign allocation", § 24(6)
+func (a *Analyzer) recordForeignAllocationEffect(callee Function, source lexer.Token) {
+	if !callee.Extern || callee.TrustedNoAlloc || a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectForeign, Source: source, UnknownAllocation: true})
+}

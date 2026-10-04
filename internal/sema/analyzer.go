@@ -24,6 +24,7 @@ type Analyzer struct {
 	unitTypeNames              map[string]bool             // type-table entries a unit declaration owns
 	shadowedUnitTypes          map[string]Type             // unit entries hidden by a same-spelled ordinary type of another module (rules/types/units.md)
 	shadowedUnitImpls          map[*ast.ImplStatement]bool // impl blocks that target a shadowed unit
+	implementsClauseTokens     map[string]lexer.Token      // type\x00interface -> its implements reference
 	functions                  map[string][]Function
 	externSymbols              map[string]Function
 	implBlocks                 map[string]lexer.Token
@@ -83,10 +84,18 @@ type Analyzer struct {
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
 	// facts keyed by source syntax. Consumers will use the read-only query
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
-	resolvedArrayLiteralPlans  map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
-	resolvedArrayIndexPlans    map[*ast.IndexExpression]ResolvedArrayIndexPlan
-	resolvedListIndexPlans     map[*ast.IndexExpression]ResolvedListIndexPlan
-	activeConditionFacts       []activeConditionFact
+	resolvedArrayLiteralPlans map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
+	resolvedArrayIndexPlans   map[*ast.IndexExpression]ResolvedArrayIndexPlan
+	resolvedListIndexPlans    map[*ast.IndexExpression]ResolvedListIndexPlan
+	activeConditionFacts      []activeConditionFact
+	placeRootIDs              map[sourceTokenKey]PlaceRootID // deterministic Place root identities
+	// nestedCallableWrites logs, per function-value binding declaration, the
+	// identities assigned in scopes nested below the declaration, and
+	// loopWrittenNames the bindings the current function assigns inside a
+	// loop; both keep callable target sets sound across control-flow joins.
+	nestedCallableWrites       map[sourceTokenKey][]nestedCallableWrite
+	loopWrittenNames           map[string]bool
+	currentStableBindings      map[string]bool // parameters and locals the current function never changes
 	arrayIndexMutationEpoch    uint64
 	resolvedStructLiteralPlans map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans  map[*ast.MemberExpression]ResolvedStructMemberPlan
@@ -263,10 +272,11 @@ func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
 		types:               builtinTypes(),
 		// rules/types/units.md; correction6.md requires ordinary unit identities
 		// to enter Sema through declarations/imported catalogs, never spelling.
-		units:             map[string]UnitDefinition{},
-		unitTypeNames:     map[string]bool{},
-		shadowedUnitTypes: map[string]Type{},
-		shadowedUnitImpls: map[*ast.ImplStatement]bool{},
+		units:                  map[string]UnitDefinition{},
+		unitTypeNames:          map[string]bool{},
+		shadowedUnitTypes:      map[string]Type{},
+		shadowedUnitImpls:      map[*ast.ImplStatement]bool{},
+		implementsClauseTokens: map[string]lexer.Token{},
 	}
 }
 
@@ -360,6 +370,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
+	a.placeRootIDs = map[sourceTokenKey]PlaceRootID{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedTryAssignments = map[*ast.TryAssignmentStatement]ResolvedTryAssignment{}
@@ -487,6 +498,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeTestBodies(program)
 	a.reportStringMaterializations()
 	a.validateNoPanicGuarantees(program)
+	a.validateNoAllocGuarantees(program)
 	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
 	a.emitLargeValueParameterAdvisories()
 	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
@@ -2496,12 +2508,14 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.resolveType(field.Type)
 		}
 	case *ast.InvalidStatement:
-		if stmt.Message != "" {
+		// A node the parser has already reported is not reported again
+		// (rules/compiler/parser_recovery.md — "Diagnostic deduplication").
+		if stmt.Message != "" && !parserReported(stmt.Recovery) {
 			a.addErrorAtToken(stmt.Token, "%s", stmt.Message)
 		}
 		return
 	case *ast.InvalidDeclaration:
-		if stmt.Message != "" {
+		if stmt.Message != "" && !parserReported(stmt.Recovery) {
 			a.addErrorAtToken(stmt.Token, "%s", stmt.Message)
 		}
 		return
@@ -2967,13 +2981,32 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	} else if stateTest != nil && stateTest.StaticallyKnown {
 		thenReachable = stateTest.Value
 		elseReachable = !stateTest.Value
-		if !stateTest.Value {
+		switch {
+		case stateTest.Empty && !stateTest.Value:
 			a.diagnoseImpossibleStateTestBlock(stmt.Consequence, stateTest.Binding)
+		case !stateTest.Empty && !stateTest.Value:
+			a.diagnoseKnownVariantBlock(stmt.Consequence, *stateTest)
+		case !stateTest.Empty:
+			a.diagnoseKnownVariantBlock(stmt.Alternative, *stateTest)
+		}
+	} else if stmt.OptionBinding == nil {
+		if value, known := a.relationalConditionValue(stmt.Condition); known {
+			thenReachable = value
+			elseReachable = !value
+			if value {
+				a.diagnoseRelationallyUnreachableBlock(stmt.Alternative, true, "branch")
+			} else {
+				a.diagnoseRelationallyUnreachableBlock(stmt.Consequence, false, "branch")
+			}
 		}
 	}
 	refinementCount := len(a.activeConditionFacts)
 	if stmt.OptionBinding == nil && stmt.Condition != nil && thenReachable {
 		a.recordConditionFact(stmt.Condition, ConditionFactBranchTrue, stmt.Token)
+	}
+	resultBinding, resultTrueState, resultStateKnown := ifResultStateTest(stmt)
+	if resultStateKnown && thenReachable {
+		a.recordResultStateFact(resultBinding, resultTrueState)
 	}
 	var thenBranch branchAnalysis
 	if optionBindingValid {
@@ -2991,6 +3024,13 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	}
 	if stmt.Alternative != nil {
 		var elseBranch branchAnalysis
+		elseRefinementCount := len(a.activeConditionFacts)
+		if stmt.OptionBinding == nil && elseReachable {
+			a.recordPathConditionFact(stmt.Condition, false)
+		}
+		if resultStateKnown {
+			a.recordResultStateFact(resultBinding, oppositeResultState(resultTrueState))
+		}
 		if availabilityTest != nil {
 			elseBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Alternative, *availabilityTest, availabilityTest.Negated, elseReachable)
 		} else if stateTest != nil {
@@ -2998,8 +3038,23 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		} else {
 			elseBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
 		}
+		a.activeConditionFacts = a.activeConditionFacts[:elseRefinementCount]
 		if !elseReachable {
 			elseBranch.continues = false
+		}
+		if stmt.OptionBinding == nil && thenBranch.continues != elseBranch.continues {
+			// Only one branch reaches the code after the if, so its
+			// condition value holds there until the enclosing block ends.
+			a.recordPathConditionFact(stmt.Condition, thenBranch.continues)
+		}
+		if resultStateKnown && thenBranch.continues != elseBranch.continues {
+			// Only one branch reaches the code after the if, so its state
+			// holds there until the enclosing block ends.
+			state := resultTrueState
+			if elseBranch.continues {
+				state = oppositeResultState(resultTrueState)
+			}
+			a.recordResultStateFact(resultBinding, state)
 		}
 		a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, elseBranch)
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
@@ -3030,6 +3085,14 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 			fallthroughBranch.assigned = copyAssigned(fallthroughBranch.assigned)
 			fallthroughBranch.assigned[binding] = true
 		}
+	}
+	if stmt.OptionBinding == nil && !thenBranch.continues && elseReachable {
+		a.recordPathConditionFact(stmt.Condition, false)
+	}
+	if resultStateKnown && !thenBranch.continues && elseReachable {
+		// The true branch exits, so the code after the if sees the opposite
+		// state until the enclosing block ends.
+		a.recordResultStateFact(resultBinding, oppositeResultState(resultTrueState))
 	}
 	a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, fallthroughBranch)
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
@@ -3241,6 +3304,12 @@ type branchAnalysis struct {
 type activeConditionFact struct {
 	fact  ResolvedConditionFact
 	epoch uint64
+	// resultBinding and resultState carry a Result state fact ("Ok" or
+	// "Err") of an immutable binding that a path has proven without a
+	// condition of its own: an else branch, an early exit, an Option
+	// binding, or a match arm on a borrowed projection.
+	resultBinding string
+	resultState   string
 }
 
 type loopIterationAnalysisState struct {
@@ -3955,6 +4024,9 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	if fn.Extern && hasAttribute(fn.Attributes, "noPanic") {
 		function.TrustedNoPanic = true
 	}
+	if fn.Extern && hasAttribute(fn.Attributes, "noAlloc") {
+		function.TrustedNoAlloc = true
+	}
 
 	seenParams := map[string]lexer.Token{}
 	seenVariadic := false
@@ -4484,6 +4556,12 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.arenaGenerations = map[string]int{}
 	a.scopeDepth = 0
 	a.currentFunctionName = fn.Name.Value
+	previousStableBindings := a.currentStableBindings
+	defer func() { a.currentStableBindings = previousStableBindings }()
+	a.currentStableBindings = stableBindingsOf(fn)
+	previousLoopWritten := a.loopWrittenNames
+	defer func() { a.loopWrittenNames = previousLoopWritten }()
+	a.loopWrittenNames = loopAssignedNames(fn)
 	a.currentCallable = a.callGraph.addCallable(function)
 	a.currentFunctionReturn = function.ReturnType
 	a.currentFunctionToken = function.Token
@@ -4528,7 +4606,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 			bindingType = NewVariadicPackType(param.Type)
 			mutableBinding = false
 		}
-		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0}
+		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginAutomatic, Local: true, Parameter: true, ScopeDepth: 0}
 		a.symbols[param.Name] = symbol
 		completionSymbol := symbol
 		completionSymbol.Local = true
@@ -5276,6 +5354,11 @@ func (a *Analyzer) statementCanFallThrough(stmt ast.Statement) bool {
 	case *ast.MatchStatement:
 		return !a.matchStatementDefinitelyReturns(stmt)
 	case *ast.IfStatement:
+		// The resolved flow already accounts for branches that folded
+		// constants or dominating relations prove impossible.
+		if flow, ok := a.resolvedIfFlows[stmt]; ok {
+			return flow.TruePathContinues || flow.FalsePathContinues
+		}
 		if isBoolLiteral(stmt.Condition, true) {
 			return a.blockCanFallThrough(stmt.Consequence)
 		}
@@ -7691,6 +7774,10 @@ func (a *Analyzer) analyzeInterfaceDeclaration(stmt *ast.InterfaceDeclaration) {
 }
 
 func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaration) {
+	// rules/declarations/interfaces.md §3.4: `Self` in a requirement names
+	// the conforming type; it is substituted during conformance.
+	restoreSelf := a.bindInterfaceSelfType()
+	defer restoreSelf()
 	iface := Type{
 		Name:               stmt.Name.Value,
 		Module:             a.currentModule,
@@ -7905,6 +7992,9 @@ func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.Func
 		for _, param := range fn.Parameters {
 			paramType, ok := a.resolveType(param.Type)
 			if !ok {
+				// Keep the position with an invalid type so conformance does
+				// not report a parameter-count cascade of the unresolved type.
+				function.Parameters = append(function.Parameters, FunctionParameter{Name: param.Name.Value, Type: Type{Kind: InvalidType}, Token: param.Name.Token, Ref: param.Ref, MutableRef: param.MutableRef, Consuming: param.Consuming, Variadic: param.Variadic})
 				continue
 			}
 			if paramType.Kind == VoidType {
@@ -8133,6 +8223,9 @@ func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targe
 			_ = previous
 			a.addErrorAtToken(ref.Token, "duplicate implemented interface %s on %s", typeDisplayName(typ), targetName)
 			continue
+		}
+		if _, recorded := a.implementsClauseTokens[targetName+"\x00"+typ.Name]; !recorded {
+			a.implementsClauseTokens[targetName+"\x00"+typ.Name] = ref.Token
 		}
 		seen[typ.Name] = ref.Token
 		implemented = append(implemented, typ)
@@ -9018,13 +9111,13 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 		if invalid, ok := member.(*ast.InvalidStatement); ok {
-			if invalid.Message != "" {
+			if invalid.Message != "" && !parserReported(invalid.Recovery) {
 				a.addErrorAtToken(invalid.Token, "%s", invalid.Message)
 			}
 			continue
 		}
 		if invalid, ok := member.(*ast.InvalidMember); ok {
-			if invalid.Message != "" {
+			if invalid.Message != "" && !parserReported(invalid.Recovery) {
 				a.addErrorAtToken(invalid.Token, "%s", invalid.Message)
 			}
 			continue
@@ -9389,25 +9482,45 @@ func (a *Analyzer) validateInterfaceConformance() {
 }
 
 func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
+	clause, hasClause := a.implementsClauseTokens[typ.Name+"\x00"+iface.Name]
 	for _, required := range iface.InterfaceMethods {
 		methods := a.functions[typ.Name+"."+required.Name]
 		if len(methods) == 0 {
-			a.addErrorAtToken(required.Token, "type %s implements %s but is missing method %s", typ.Name, iface.Name, required.Name)
+			anchor := required.Token
+			if hasClause {
+				anchor = clause
+			}
+			a.addInterfaceConformanceError(anchor, required.Token, diagnostics.InterfaceMemberMissing,
+				"declare "+interfaceRequirementDisplay(substituteInterfaceSelf(required, typ))+" in the impl of "+typ.Name,
+				"type %s implements %s but is missing method %s", typ.Name, iface.Name, required.Name)
 			continue
 		}
 		if !hasCompatibleInterfaceMethod(typ, iface, methods, required) {
-			a.addErrorAtToken(required.Token, "type %s method %s does not match interface %s", typ.Name, required.Name, iface.Name)
+			method := closestInterfaceCandidate(methods, required)
+			// An unresolved type is already diagnosed where it is written;
+			// comparing against it would only report a cascade.
+			if functionSignatureHasInvalidType(required) || functionSignatureHasInvalidType(method) {
+				continue
+			}
+			anchor := method.Token
+			if !validDefinitionToken(anchor) {
+				anchor = required.Token
+			}
+			expected := substituteInterfaceSelf(required, typ)
+			a.addInterfaceConformanceError(anchor, required.Token, diagnostics.InterfaceMemberIncompatible,
+				"interface "+iface.Name+" requires "+interfaceRequirementDisplay(expected),
+				"type %s method %s does not match interface %s: %s", typ.Name, required.Name, iface.Name, interfaceMethodMismatch(method, expected))
 		}
 	}
 
 	for _, required := range iface.InterfaceProperties {
 		property, ok := lookupProperty(typ, required.Name)
 		if !ok {
-			a.addErrorAtToken(required.Token, "type %s implements %s but is missing property %s", typ.Name, iface.Name, required.Name)
+			a.addInterfaceConformanceError(a.interfaceClauseAnchor(typ, iface, required.Token), required.Token, diagnostics.InterfaceMemberMissing, "declare the property in the impl of "+typ.Name, "type %s implements %s but is missing property %s", typ.Name, iface.Name, required.Name)
 			continue
 		}
 		if !sameConcreteType(property.Type, required.Type) {
-			a.addErrorAtToken(required.Token, "type %s property %s must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Type), iface.Name, typeDisplayName(property.Type))
+			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Type), iface.Name, typeDisplayName(property.Type))
 			continue
 		}
 		// rules/declarations/properties.md, section 10. Interface
@@ -9417,23 +9530,23 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 			if required.Static {
 				requiredKind, actualKind = "static", "instance"
 			}
-			a.addErrorAtToken(required.Token, "type %s property %s must be %s for interface %s, got %s property", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
+			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must be %s for interface %s, got %s property", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
 			continue
 		}
 		if required.RequiresGet && !property.HasGetter {
-			a.addErrorAtToken(required.Token, "type %s property %s must provide get for interface %s", typ.Name, required.Name, iface.Name)
+			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide get for interface %s", typ.Name, required.Name, iface.Name)
 		}
 		if required.RequiresSet && !property.HasSetter {
-			a.addErrorAtToken(required.Token, "type %s property %s must provide set for interface %s", typ.Name, required.Name, iface.Name)
+			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide set for interface %s", typ.Name, required.Name, iface.Name)
 		} else if required.RequiresSet && property.Fallible != required.SetterFallible {
 			requiredKind := "infallible"
 			actualKind := "fallible"
 			if required.SetterFallible {
 				requiredKind, actualKind = "fallible", "infallible"
 			}
-			a.addErrorAtToken(required.Token, "type %s property %s must provide %s setter for interface %s, got %s setter", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
+			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide %s setter for interface %s, got %s setter", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
 		} else if contract := a.interfaceSetterErrors[iface.Name+"."+required.Name]; required.RequiresSet && required.SetterFallible && !setterErrorContractSatisfied(property, contract) {
-			a.addErrorAtToken(required.Token, "type %s property %s setter error %s does not satisfy %s required by interface %s",
+			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s setter error %s does not satisfy %s required by interface %s",
 				typ.Name, required.Name, typeDisplayName(*property.Error), typeDisplayName(*contract), iface.Name)
 		}
 	}
@@ -9441,16 +9554,17 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 	for _, required := range iface.InterfaceEvents {
 		event, ok := lookupEvent(typ, required.Name)
 		if !ok {
-			a.addErrorAtToken(required.Token, "type %s implements %s but is missing event %s", typ.Name, iface.Name, required.Name)
+			a.addInterfaceConformanceError(a.interfaceClauseAnchor(typ, iface, required.Token), required.Token, diagnostics.InterfaceMemberMissing, "declare the event in the impl of "+typ.Name, "type %s implements %s but is missing event %s", typ.Name, iface.Name, required.Name)
 			continue
 		}
 		if !sameConcreteType(event.Payload, required.Payload) {
-			a.addErrorAtToken(required.Token, "type %s event %s payload must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Payload), iface.Name, typeDisplayName(event.Payload))
+			a.addInterfaceConformanceError(interfaceMemberAnchor(event.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s event %s payload must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Payload), iface.Name, typeDisplayName(event.Payload))
 		}
 	}
 }
 
 func hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, required Function) bool {
+	required = substituteInterfaceSelf(required, typ)
 	for _, method := range methods {
 		if compatibleInterfaceMethodSignature(method, required) &&
 			method.Static == required.Static &&
@@ -10165,6 +10279,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 			a.localRefContainers[symbol.Name] = referenceOrigin
 		}
 		a.recordBoundCallableIdentity(symbol.Name, stmt.Value)
+		a.logNestedCallableWrite(symbol.Name)
 	}
 }
 
@@ -10206,7 +10321,7 @@ func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) b
 	if !ok {
 		return true
 	}
-	if !PlacesOverlap(destination, source) {
+	if !placesMayOverlap(destination, source) {
 		return true
 	}
 	a.addErrorAtToken(expressionToken(stmt.Value), "cannot move value %s into itself", source.String())
@@ -10782,7 +10897,7 @@ func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) b
 func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind != mutableBorrow || record.Holder == candidate.Root || record.Holder == candidate.ReferenceHolder || !borrowPlacesOverlap(candidate, record) {
+			if record.Kind != mutableBorrow || record.Holder == candidate.Root || record.Holder == candidate.ReferenceHolder || !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			if record.LoopCarried {
@@ -10813,7 +10928,7 @@ func (a *Analyzer) checkBorrowedMutationPlace(place Place, token lexer.Token) bo
 			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
 				continue
 			}
-			if !borrowPlacesOverlap(candidate, record) {
+			if !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			if record.LoopCarried {
@@ -10860,7 +10975,7 @@ func (a *Analyzer) checkBorrowedMovePlaceForAction(place Place, token lexer.Toke
 			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
 				continue
 			}
-			if !borrowPlacesOverlap(candidate, record) {
+			if !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			if record.LoopCarried {
@@ -11974,8 +12089,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.recordDeferCapture(expr.Value, symbol, expr.Token)
-		if symbol.HasCallableIdentity {
-			a.resolvedCallableIdentities[expr] = cloneResolvedCallableIdentity(symbol.CallableIdentity)
+		if identity, known := a.effectiveCallableIdentity(expr.Value, symbol); known {
+			a.resolvedCallableIdentities[expr] = identity
 		}
 		return symbol.Type, expressionValue{Display: expr.String()}
 	case *ast.PrefixExpression:
@@ -15278,11 +15393,13 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if !a.summaryPass && a.callGraphPathReachable && recordCall {
 			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
 			a.recordForeignAbortEffect(best[0].Function, callCalleeDefinitionToken(expr))
+			a.recordForeignAllocationEffect(best[0].Function, callCalleeDefinitionToken(expr))
 			// rules/errors/panic.md § 21(3)–(4): a method called through an
 			// interface reference or a constrained generic parameter has no
 			// concrete body here, so its panic behavior is unknown.
 			if isMethodCall && (dereferenceType(methodReceiver.Type).Kind == InterfaceType || dereferenceType(methodReceiver.Type).Kind == GenericType) {
 				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: callCalleeDefinitionToken(expr)})
+				a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: callCalleeDefinitionToken(expr), UnknownAllocation: true})
 			}
 		}
 		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
@@ -18917,7 +19034,12 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			}
 		}
 
+		armRefinementCount := len(a.activeConditionFacts)
+		if binding, state, known := matchArmResultState(expr.Subject, arm); known {
+			a.recordResultStateFact(binding, state)
+		}
 		armType, branch := a.analyzeMatchArmBody(arm, info)
+		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]
 		branches = append(branches, branch)
 		resolvedArm := a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
 		if !guarded && matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) {
@@ -22051,4 +22173,10 @@ func expressionEndToken(expr ast.Expression) lexer.Token {
 		return expressionEndToken(expr.Value)
 	}
 	return expressionToken(expr)
+}
+
+// parserReported reports a recovered node whose diagnostic the parser has
+// already emitted.
+func parserReported(recovery *ast.RecoveryInfo) bool {
+	return recovery != nil && recovery.Reported
 }

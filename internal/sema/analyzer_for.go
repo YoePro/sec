@@ -50,6 +50,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 		a.activeCollectionIterations = append(a.activeCollectionIterations, active)
 	}
 	if stmt.Body != nil {
+		a.enterLoopBodyFacts()
 		a.analyzeBlockStatements(stmt.Body)
 	}
 	a.activeCollectionIterations = a.activeCollectionIterations[:activeIterations]

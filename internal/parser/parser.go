@@ -423,7 +423,7 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.INCREMENT, lexer.DECREMENT:
 		message := fmt.Sprintf("%s is a statement-only postfix alias; write a mutable target before it at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		p.addError("%s", message)
-		return &ast.InvalidStatement{Token: p.curToken, Message: message}
+		return &ast.InvalidStatement{Token: p.curToken, Message: message, Recovery: &ast.RecoveryInfo{Reported: true, Message: message}}
 
 	case lexer.SEMICOLON:
 		return p.parseSemicolonStatement()
@@ -445,8 +445,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noCopy" {
 			return p.parseNoCopyDeclaration()
 		}
-		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noPanic" {
-			return p.parseNoPanicDeclaration()
+		if p.peekToken.Type == lexer.IDENT && verifiedEffectAttribute(p.peekToken.Lexeme) {
+			return p.parseEffectGuaranteeDeclaration()
 		}
 		if (p.recoveryContext == RecoveryContextTopLevel || p.recoveryContext == RecoveryContextMember) &&
 			p.peekToken.Type == lexer.IDENT && !compilerKnownAttributeName(p.peekToken.Lexeme) {
@@ -620,6 +620,7 @@ func (p *Parser) parseUnattachedAttributeSet() ast.Statement {
 		Token:   start,
 		Message: message,
 		Recovery: &ast.RecoveryInfo{
+			Reported:     true,
 			DiagnosticID: compilerdiagnostics.UnattachedAttribute,
 			Message:      message,
 			Start:        recovery.Start,
@@ -681,6 +682,7 @@ func (p *Parser) parseUnknownAttribute() ast.Statement {
 		Token:   attributeToken,
 		Message: message,
 		Recovery: &ast.RecoveryInfo{
+			Reported:     true,
 			DiagnosticID: compilerdiagnostics.UnknownAttribute,
 			Message:      message,
 			Start:        attributeToken,
@@ -830,7 +832,7 @@ func (p *Parser) parseNestedTestDeclaration() ast.Statement {
 		p.nextToken()
 		p.parseStatementBlock("nested test body")
 	}
-	return &ast.InvalidStatement{Token: start, Message: "test declaration is not at module level"}
+	return &ast.InvalidStatement{Token: start, Message: "test declaration is not at module level", Recovery: &ast.RecoveryInfo{Reported: true}}
 }
 
 // parseSemicolonStatement rejects the reserved separator while retaining one
@@ -856,6 +858,7 @@ func (p *Parser) parseSemicolonStatement() ast.Statement {
 		Token:   token,
 		Message: message,
 		Recovery: &ast.RecoveryInfo{
+			Reported:     true,
 			DiagnosticID: compilerdiagnostics.ParserReservedSyntax,
 			Message:      message,
 			Start:        recovery.Start,
@@ -4089,6 +4092,29 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			}
 		}
 
+		if p.peekToken.Type == lexer.COMMA || p.peekToken.Type == lexer.RPAREN {
+			// A bare parameter name without `: Type` still belongs to the
+			// declaration. Retain it with syntax-only invalid type metadata and
+			// resume at the next parameter boundary instead of discarding the
+			// whole function.
+			//
+			// Rules:
+			//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type", "Invalid nodes"
+			//   - rules/declarations/functions.md — every parameter declares its type
+			p.addError("parameter %s needs a type; write `%s: Type` at %d:%d", parameter.Name.Value, parameter.Name.Value, p.peekToken.Line, p.peekToken.Column)
+			parameter.Type = p.invalidTypeReference(p.peekToken, "")
+			parameters = append(parameters, parameter)
+			p.nextToken()
+			p.endRecoveryEpisode()
+			if p.curToken.Type == lexer.RPAREN {
+				return parameters
+			}
+			if p.peekToken.Type == lexer.RPAREN {
+				p.nextToken()
+				return parameters
+			}
+			continue
+		}
 		if !p.expectPeek(lexer.COLON) {
 			return nil
 		}
@@ -4262,8 +4288,57 @@ func (p *Parser) parseReturnStatement() ast.Statement {
 	if stmt.Value == nil {
 		return nil
 	}
+	if p.peekToken.Type == lexer.COMMA && p.peekToken.Line == p.curToken.Line {
+		// rules/foundations/grammar.md — "Return statement": one optional
+		// Expression. Keep the first value and the statement.
+		comma := p.peekToken
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidStatement, comma, nil, &comma,
+			"return takes one value; to return several values, return one struct or Result value that holds them at %d:%d", comma.Line, comma.Column)
+		p.skipRestOfStatementLine()
+	}
 
 	return stmt
+}
+
+// rejectChainedAssignment reports `a = b = c`: assignment is a statement and
+// produces no value (rules/foundations/grammar.md "Assignment is not
+// expression syntax"). The first assignment is retained and the rest of the
+// chain on the same line is skipped, so the enclosing block stays intact.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Assignment is not expression syntax", "Assignment statements"
+//   - rules/compiler/parser_recovery.md — "Assignment recovery"
+func (p *Parser) rejectChainedAssignment() {
+	if !p.isAssignmentOperator(p.peekToken.Type) || p.peekToken.Line != p.curToken.Line {
+		return
+	}
+	operator := p.peekToken
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidAssignmentExpr, operator, nil, &operator,
+		"assignment is a statement and cannot be chained; write each assignment as its own statement at %d:%d", operator.Line, operator.Column)
+	p.skipRestOfStatementLine()
+}
+
+// skipRestOfStatementLine consumes the remaining tokens of the current line,
+// keeping delimiters balanced and leaving a closing brace that ends the
+// enclosing block for its owner.
+func (p *Parser) skipRestOfStatementLine() {
+	line := p.curToken.Line
+	depth := 0
+	for p.peekToken.Type != lexer.EOF {
+		if depth == 0 && (p.peekToken.Line != line || p.peekToken.Type == lexer.RBRACE) {
+			break
+		}
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
+			depth++
+		case lexer.RPAREN, lexer.RBRACKET, lexer.RBRACE:
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	p.endRecoveryEpisode()
 }
 
 func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
@@ -5072,7 +5147,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			p.appendImplMember(stmt, documentation, fn)
 		case lexer.AT:
-			parsed := p.parseNoPanicDeclaration()
+			parsed := p.parseEffectGuaranteeDeclaration()
 			fn, ok := parsed.(*ast.FunctionDeclaration)
 			if !ok || fn == nil {
 				continue
@@ -5745,7 +5820,19 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 
 	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
 		if !p.expectPeekTypeStart() {
-			return p.markInvalidTypeReference(ref)
+			// A missing parameter type at a list boundary is retained as an
+			// invalid type so the list, and the declaration around it, keep
+			// their structure (rules/compiler/parser_recovery.md — "Missing
+			// type", "Invalid nodes").
+			if p.peekToken.Type != lexer.COMMA && p.peekToken.Type != lexer.RPAREN {
+				return p.markInvalidTypeReference(ref)
+			}
+			ref.FunctionParameterTypes = append(ref.FunctionParameterTypes, p.invalidTypeReference(p.peekToken, ""))
+			invalidChild = true
+			if p.peekToken.Type == lexer.COMMA {
+				p.nextToken()
+			}
+			continue
 		}
 		parameterType := p.parseTypeReference()
 		ref.FunctionParameterTypes = append(ref.FunctionParameterTypes, parameterType)
@@ -5764,6 +5851,9 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	}
 
 	if !p.expectPeekTypeStart() {
+		if p.peekToken.Type == lexer.COMMA || p.peekToken.Type == lexer.RPAREN || p.peekToken.Type == lexer.LBRACE {
+			ref.FunctionReturnType = p.invalidTypeReference(p.peekToken, "")
+		}
 		return p.markInvalidTypeReference(ref)
 	}
 	ref.FunctionReturnType = p.parseTypeReference()
@@ -6828,6 +6918,15 @@ func trimCharQuotes(s string) string {
 	return s
 }
 
+// skipStatement consumes a failed statement up to the next reliable
+// boundary: a following declaration at top level, the closing brace of the
+// enclosing block, a statement start on a later line, or an unbalanced
+// delimiter. An owned boundary (declaration, statement, or closing brace)
+// stays current for its owner even when it is the last token of the file;
+// otherwise the skip advances onto the end of the file.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Statement recovery", "Recovery goals"
 func (p *Parser) skipStatement() RecoveryEvent {
 	start := p.curToken
 	end := start
@@ -6835,17 +6934,21 @@ func (p *Parser) skipStatement() RecoveryEvent {
 	delimiters := newDelimiterStack()
 	delimiters.consume(p.curToken.Type)
 
+	boundary := false
 	for p.peekToken.Type != lexer.EOF {
 		if p.recoveryContext == RecoveryContextTopLevel && p.peekToken.Line > start.Line && isDeclarationStart(p.peekToken.Type) {
 			p.nextToken()
+			boundary = true
 			break
 		}
 		if delimiters.empty() && p.peekToken.Type == lexer.RBRACE {
 			p.nextToken()
+			boundary = true
 			break
 		}
 		if delimiters.empty() && p.peekToken.Line > start.Line && p.isStatementStart(p.peekToken.Type) {
 			p.nextToken()
+			boundary = true
 			break
 		}
 		if !delimiters.canConsume(p.peekToken.Type) {
@@ -6857,12 +6960,18 @@ func (p *Parser) skipStatement() RecoveryEvent {
 		skipped++
 		delimiters.consume(p.curToken.Type)
 	}
-	if p.peekToken.Type == lexer.EOF && p.curToken.Type != lexer.EOF {
+	if !boundary && p.peekToken.Type == lexer.EOF && p.curToken.Type != lexer.EOF {
 		p.nextToken()
 	}
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
+// invalidStatement retains a recovered statement. A node carrying Recovery
+// is always backed by a parser diagnostic, so Sema never reports it again; a
+// failure that produced no diagnostic reports one here.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Invalid nodes", "Diagnostic deduplication"
 func (p *Parser) invalidStatement(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.InvalidStatement {
 	message := "invalid statement"
 	diagnosticID := compilerdiagnostics.ParserInvalidStatement
@@ -6870,11 +6979,14 @@ func (p *Parser) invalidStatement(start lexer.Token, diagnosticStart int, recove
 		diagnostic := p.diagnostics[diagnosticStart]
 		message = diagnostic.Message
 		diagnosticID = diagnostic.ID
+	} else {
+		p.addDiagnostic(diagnosticID, start, nil, nil, "%s", message)
 	}
 	return &ast.InvalidStatement{
 		Token:   start,
 		Message: message,
 		Recovery: &ast.RecoveryInfo{
+			Reported:     true,
 			DiagnosticID: diagnosticID,
 			Message:      message,
 			Start:        recovery.Start,
@@ -6888,11 +7000,14 @@ func (p *Parser) invalidDeclaration(start lexer.Token, diagnosticStart int, reco
 	message := "invalid declaration"
 	if diagnosticStart < len(p.diagnostics) {
 		message = p.diagnostics[diagnosticStart].Message
+	} else {
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidDeclaration, start, nil, nil, "%s", message)
 	}
 	return &ast.InvalidDeclaration{
 		Token:   start,
 		Message: message,
 		Recovery: &ast.RecoveryInfo{
+			Reported:     true,
 			DiagnosticID: compilerdiagnostics.ParserInvalidDeclaration,
 			Message:      message,
 			Start:        recovery.Start,
@@ -6904,13 +7019,15 @@ func (p *Parser) invalidDeclaration(start lexer.Token, diagnosticStart int, reco
 
 func (p *Parser) invalidMember(start lexer.Token, diagnosticStart int, recovery RecoveryEvent, fallback string) *ast.InvalidMember {
 	message := fallback
-	if diagnosticStart < len(p.diagnostics) {
+	reported := diagnosticStart < len(p.diagnostics)
+	if reported {
 		message = p.diagnostics[diagnosticStart].Message
 	}
 	return &ast.InvalidMember{
 		Token:   start,
 		Message: message,
 		Recovery: &ast.RecoveryInfo{
+			Reported:     reported,
 			DiagnosticID: compilerdiagnostics.ParserInvalidBlockMember,
 			Message:      message,
 			Start:        recovery.Start,
@@ -7110,6 +7227,7 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 	if stmt.Value == nil {
 		return nil
 	}
+	p.rejectChainedAssignment()
 
 	return stmt
 }
@@ -7196,6 +7314,7 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 	if stmt.Value == nil {
 		return nil
 	}
+	p.rejectChainedAssignment()
 
 	return stmt
 }
@@ -7241,7 +7360,7 @@ func (p *Parser) parsePostfixMutationAlias(token lexer.Token, target ast.Express
 			p.peekToken.Type != lexer.COMMENT && p.peekToken.Line == alias.Line {
 			p.nextToken()
 		}
-		return &ast.InvalidStatement{Token: token, Message: message}
+		return &ast.InvalidStatement{Token: token, Message: message, Recovery: &ast.RecoveryInfo{Reported: true, Message: message}}
 	}
 	operator := "+="
 	if alias.Type == lexer.DECREMENT {
@@ -7514,43 +7633,70 @@ func (p *Parser) parseNoCopyDeclaration() ast.Statement {
 	return stmt
 }
 
-// parseNoPanicDeclaration implements the verified, argument-free function
-// attribute from attributes.md. Effect verification is performed by Sema.
-func (p *Parser) parseNoPanicDeclaration() ast.Statement {
-	attributeToken := p.curToken
-	if !p.expectPeek(lexer.IDENT) {
-		return nil
-	}
-	nameToken := p.curToken
-	attribute := &ast.Attribute{
-		Token: attributeToken,
-		Name:  &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme},
-	}
-	if p.peekToken.Type == lexer.LPAREN {
-		argumentToken := p.peekToken
-		p.addError("@noPanic does not take arguments at %d:%d", argumentToken.Line, argumentToken.Column)
-		p.consumeAttributeArguments()
-	}
+// verifiedEffectAttribute names the argument-free effect-guarantee
+// attributes whose transitive guarantee Sema verifies.
+func verifiedEffectAttribute(name string) bool {
+	return name == "noPanic" || name == "noAlloc"
+}
 
-	p.skipPeekComments()
-	if p.peekToken.Type == lexer.AT {
-		p.addError("duplicate or unsupported attribute after @noPanic at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
+// parseEffectGuaranteeDeclaration parses one attribute set of the verified,
+// argument-free function attributes `@noPanic` and `@noAlloc` in any order,
+// each at most once, attached to the following function, method, or extern
+// declaration. Effect verification is performed by Sema; on an extern
+// declaration the attributes are trusted foreign contracts.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Attribute attachment", "Duplicate attributes", "Attribute order", "@noAlloc", "@noPanic"
+//   - rules/platform/ffi.md — §42 "Foreign effects"
+func (p *Parser) parseEffectGuaranteeDeclaration() ast.Statement {
+	attributes := []*ast.Attribute{}
+	seen := map[string]bool{}
+	for {
+		attributeToken := p.curToken
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		nameToken := p.curToken
+		if seen[nameToken.Lexeme] {
+			p.addError("duplicate attribute @%s at %d:%d", nameToken.Lexeme, attributeToken.Line, attributeToken.Column)
+			return nil
+		}
+		seen[nameToken.Lexeme] = true
+		attributes = append(attributes, &ast.Attribute{
+			Token: attributeToken,
+			Name:  &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme},
+		})
+		if p.peekToken.Type == lexer.LPAREN {
+			argumentToken := p.peekToken
+			p.addError("@%s does not take arguments at %d:%d", nameToken.Lexeme, argumentToken.Line, argumentToken.Column)
+			p.consumeAttributeArguments()
+		}
+		p.skipPeekComments()
+		if p.peekToken.Type != lexer.AT {
+			break
+		}
+		p.nextToken()
+		if p.peekToken.Type != lexer.IDENT || !verifiedEffectAttribute(p.peekToken.Lexeme) {
+			p.addError("unsupported attribute after @%s at %d:%d", nameToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			return nil
+		}
 	}
-	// rules/platform/ffi.md §42: an extern function declaration may carry
-	// @noPanic as a trusted foreign contract.
+	names := "@" + attributes[0].Name.Value
+	if len(attributes) > 1 {
+		names = "these attributes"
+	}
 	if p.peekToken.Type != lexer.FN && p.peekToken.Type != lexer.UNSAFE && p.peekToken.Type != lexer.EXTERN {
-		p.addError("@noPanic may only annotate a function or method at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.addError("%s may only annotate a function or method at %d:%d", names, p.peekToken.Line, p.peekToken.Column)
 		return nil
 	}
 	p.nextToken()
 	parsed := p.parseStatement()
 	fn, ok := parsed.(*ast.FunctionDeclaration)
 	if !ok || fn == nil {
-		p.addError("@noPanic may only annotate a function or method at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.addError("%s may only annotate a function or method at %d:%d", names, p.curToken.Line, p.curToken.Column)
 		return nil
 	}
-	fn.Attributes = append(fn.Attributes, attribute)
+	fn.Attributes = append(fn.Attributes, attributes...)
 	return fn
 }
 
@@ -7811,7 +7957,50 @@ func (p *Parser) skipDeclarationRest() RecoveryEvent {
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
+// recoverMissingLetInitializer handles an initializer operator (the current
+// token) with no value: the next token is `}` or the end of file, or a
+// statement keyword on a later line. The binding is retained with an invalid
+// value expression, and the following statement is left for ordinary parsing
+// instead of being consumed as the initializer.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Recovery goals", "Invalid nodes"
+//   - rules/foundations/grammar.md — "Let declarations"
+func (p *Parser) recoverMissingLetInitializer(stmt *ast.LetStatement) bool {
+	operator := p.curToken
+	next := p.peekToken
+	missing := next.Type == lexer.RBRACE || next.Type == lexer.EOF
+	if !missing && next.Line > operator.Line {
+		switch next.Type {
+		case lexer.RETURN, lexer.LET, lexer.IF, lexer.FOR, lexer.WHILE, lexer.SWITCH, lexer.MATCH,
+			lexer.DEFER, lexer.BREAK, lexer.CONTINUE:
+			missing = true
+		}
+	}
+	if !missing {
+		return false
+	}
+	name := ""
+	if stmt.Name != nil {
+		name = stmt.Name.Value
+	}
+	message := fmt.Sprintf("let %s needs a value after %s", name, operator.Lexeme)
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, operator, nil, nil, "%s", message)
+	stmt.Value = p.invalidExpression(operator, message, compilerdiagnostics.ParserInvalidExpression)
+	p.endRecoveryEpisode()
+	return true
+}
+
 func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedType *ast.TypeReference, inheritedContract ast.Contract) *ast.LetStatement {
+	if p.peekToken.Type != lexer.IDENT && isKeywordSpelling(p.peekToken) {
+		// rules/foundations/lexical_structure.md § 7: a keyword is never a
+		// declaration name. Statement recovery skips the rest of the
+		// declaration.
+		keyword := p.peekToken
+		p.addDiagnostic(compilerdiagnostics.ParserMisplacedKeyword, keyword, []lexer.TokenType{lexer.IDENT}, &keyword,
+			"`%s` is a reserved keyword and cannot name a binding; choose another name at %d:%d", keyword.Lexeme, keyword.Line, keyword.Column)
+		return nil
+	}
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
@@ -7865,6 +8054,9 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 	switch p.peekToken.Type {
 	case lexer.DECLARE:
 		p.nextToken()
+		if p.recoverMissingLetInitializer(stmt) {
+			return stmt
+		}
 		p.nextToken()
 		stmt.Value = p.parseExpression(LOWEST)
 	case lexer.MOVE_DECLARE:
@@ -7874,6 +8066,9 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		}
 		stmt.Ownership = ast.OwnershipMove
 		p.nextToken()
+		if p.recoverMissingLetInitializer(stmt) {
+			return stmt
+		}
 		p.nextToken()
 		stmt.Value = p.parseExpression(LOWEST)
 	case lexer.MOVE_ASSIGN:
@@ -7883,6 +8078,9 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		}
 		stmt.Ownership = ast.OwnershipMove
 		p.nextToken()
+		if p.recoverMissingLetInitializer(stmt) {
+			return stmt
+		}
 		p.nextToken()
 		stmt.Value = p.parseExpression(LOWEST)
 	}
@@ -7890,7 +8088,15 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		return nil
 	}
 	if stmt.Value == nil && len(p.errors) > initializerErrorCount {
-		return nil
+		// The initializer failed after the binding was committed. Retain the
+		// binding with an invalid value so later uses do not cascade into
+		// undefined-name errors (rules/compiler/parser_recovery.md — "Invalid
+		// nodes").
+		if stmt.Name == nil || p.curToken.Type == lexer.DECLARE || p.curToken.Type == lexer.MOVE_DECLARE || p.curToken.Type == lexer.MOVE_ASSIGN {
+			return nil
+		}
+		stmt.Value = p.invalidExpression(stmt.Name.Token, "invalid initializer", compilerdiagnostics.ParserInvalidExpression)
+		return stmt
 	}
 	if stmt.Value == nil && (p.curToken.Type == lexer.DECLARE || p.curToken.Type == lexer.MOVE_DECLARE || p.curToken.Type == lexer.MOVE_ASSIGN) {
 		return nil
@@ -8103,4 +8309,19 @@ func (p *Parser) skipPeekOrdinaryComments() {
 	for p.peekToken.Type == lexer.COMMENT && !strings.HasPrefix(p.peekToken.Lexeme, "/**") {
 		p.nextToken()
 	}
+}
+
+// isKeywordSpelling reports a token spelled like an identifier that the lexer
+// classified as a keyword.
+func isKeywordSpelling(token lexer.Token) bool {
+	if token.Lexeme == "" || token.Type == lexer.IDENT {
+		return false
+	}
+	for index, char := range token.Lexeme {
+		letter := char == '_' || char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z'
+		if !letter && (index == 0 || char < '0' || char > '9') {
+			return false
+		}
+	}
+	return true
 }

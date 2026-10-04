@@ -1,0 +1,37 @@
+module grammar_recovery
+
+// Parser recovery (rules/compiler/parser_recovery.md, rules/foundations/grammar.md
+// "Parser responsibilities"): each malformed construct below is reported once
+// at its own location, and every later top-level function is still parsed
+// and retained.
+
+/* Expected error: missing ')' to close the call opened at 12:25
+ * Reason: A missing closing parenthesis ends the call; recovery resumes at the next statement.
+ */
+fn UnclosedCall(value: int) int {
+    let result := Double(value
+    return result
+}
+
+fn Double(value: int) int {
+    return value * 2
+}
+
+/* Expected error: parameter value needs a type; write `value: Type`
+ * Reason: A parameter needs a type; recovery keeps the function and its body.
+ */
+fn MissingParameterType(value) int {
+    return 1
+}
+
+/* Expected error: let value needs a value after :=
+ * Reason: A let without an initializer value is incomplete; recovery continues in the block.
+ */
+fn MissingInitializer() int {
+    let value :=
+    return 2
+}
+
+fn StillParsed() int {
+    return Double(3)
+}

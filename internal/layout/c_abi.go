@@ -180,4 +180,8 @@ var (
 	CModelAAPCSLinuxHF   = ilp32CModel("aapcs-linux-gnueabihf", CFloatBinary64, 64)
 	CModelAAPCSBareMetal = ilp32CModel("aapcs-eabi", CFloatBinary64, 64)
 	CModelRISCVILP32     = ilp32CModel("riscv-ilp32", CFloatBinary128, 128)
+	// RISC-V LP64D (psABI): unsigned char and IEEE binary128 long double.
+	CModelRISCVLP64D = lp64CModel("riscv-lp64d", false, CFloatBinary128, 128)
+	// FreeBSD armv7 uses the same hard-float EABI data model as Linux.
+	CModelAAPCSFreeBSDHF = ilp32CModel("aapcs-freebsd-gnueabihf", CFloatBinary64, 64)
 )

@@ -10,8 +10,10 @@ import (
 // path reaching it, from constants, integer type ranges narrowed by range
 // contracts and by dominating comparisons against constants, `+`/`-` on those
 // refined intervals, logical composition, an identical dominating condition
-// fact, and a dominating symbolic relation between the same two values that
-// implies the asserted one (`a < b` proves `a <= b`, `a != b`, and `b > a`).
+// fact, a dominating symbolic relation between the same two values that
+// implies the asserted one (`a < b` proves `a <= b`, `a != b`, and `b > a`),
+// and a chain of such relations through other values (`a < b && b <= c`
+// proves `a < c`).
 // Only facts no mutation has invalidated are used. It never evaluates the condition; the
 // condition's own effects are recorded independently.
 //
@@ -29,7 +31,7 @@ func (a *Analyzer) proveCondition(condition ast.Expression) bool {
 		case "||":
 			return a.proveCondition(expr.Left) || a.proveCondition(expr.Right)
 		case "<", "<=", ">", ">=", "==", "!=":
-			if a.proveIntegerComparison(expr) || a.dominatingRelationImplies(expr) {
+			if a.proveIntegerComparison(expr) || a.dominatingRelationImplies(expr) || a.transitiveRelationImplies(expr) {
 				return true
 			}
 		}
@@ -66,7 +68,7 @@ func (a *Analyzer) proveIntegerComparison(expr *ast.InfixExpression) bool {
 // a compile-time constant, or the representable range of its resolved type
 // narrowed by its range contracts.
 func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, bool) {
-	if value, constant := a.integerConstantValue(expr); constant {
+	if value, constant := a.constantConditionIntegerValue(expr); constant {
 		return value, value, true
 	}
 	if infix, ok := expr.(*ast.InfixExpression); ok && (infix.Operator == "+" || infix.Operator == "-") {
@@ -81,7 +83,21 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 		return new(big.Int).Sub(leftMin, rightMax), new(big.Int).Sub(leftMax, rightMin), true
 	}
 	typ, ok := a.expressionTypes[expr]
-	if !ok || typ.MinInteger == nil || typ.MaxInteger == nil {
+	if !ok {
+		return nil, nil, false
+	}
+	minimum, maximum, ok := integerTypeInterval(typ)
+	if !ok {
+		return nil, nil, false
+	}
+	a.refineIntervalByDominatingFacts(expr, minimum, maximum)
+	return minimum, maximum, true
+}
+
+// integerTypeInterval returns the values an integer type admits: its
+// representable range narrowed by its range contracts.
+func integerTypeInterval(typ Type) (*big.Int, *big.Int, bool) {
+	if typ.MinInteger == nil || typ.MaxInteger == nil {
 		return nil, nil, false
 	}
 	minimum := new(big.Int).Set(typ.MinInteger)
@@ -104,7 +120,6 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 			}
 		}
 	}
-	a.refineIntervalByDominatingFacts(expr, minimum, maximum)
 	return minimum, maximum, true
 }
 
@@ -127,7 +142,9 @@ func (a *Analyzer) activeComparisonFacts() []*ast.InfixExpression {
 		}
 	}
 	for _, active := range a.activeConditionFacts {
-		if active.epoch == a.arrayIndexMutationEpoch && active.fact.Condition != nil {
+		// A logical right operand only proves that its left operand was
+		// false, which is not a comparison fact that holds.
+		if active.epoch == a.arrayIndexMutationEpoch && active.fact.Condition != nil && active.fact.Kind != ConditionFactLogicalRHSFalse {
 			collect(active.fact.Condition)
 		}
 	}
@@ -145,13 +162,13 @@ func (a *Analyzer) refineIntervalByDominatingFacts(expr ast.Expression, minimum,
 		operator := fact.Operator
 		var constant *big.Int
 		if spelling, ok := relationOperandSpelling(fact.Left); ok && spelling == subject {
-			value, known := a.integerConstantValue(fact.Right)
+			value, known := a.constantConditionIntegerValue(fact.Right)
 			if !known {
 				continue
 			}
 			constant = value
 		} else if spelling, ok := relationOperandSpelling(fact.Right); ok && spelling == subject {
-			value, known := a.integerConstantValue(fact.Left)
+			value, known := a.constantConditionIntegerValue(fact.Left)
 			if !known {
 				continue
 			}
@@ -300,4 +317,106 @@ func assertConditionHelp(condition ast.Expression, typ Type) string {
 		return "A Result is not a condition; handle it with try, or test its state explicitly, such as `assert " + subject + ".ErrRef is None`."
 	}
 	return "The assertion condition must have type bool; Sec applies no truthiness conversion, so write an explicit comparison or state test."
+}
+
+// relationEdge is one dominating fact `from <= to` (strict: `from < to`)
+// between two pure values.
+type relationEdge struct {
+	to     string
+	strict bool
+}
+
+// transitiveRelationImplies reports that a chain of dominating comparisons
+// through other pure values implies the asserted comparison. Every fact is
+// normalized to `x < y` or `x <= y` edges (`==` gives both directions, `!=`
+// gives none); the claim holds when a path of sufficient strictness connects
+// its operands: `l < r` needs a path from l to r with a strict edge, `l <= r`
+// any path, `l == r` paths in both directions, and `l != r` a strict path in
+// either direction. Only facts no mutation has invalidated participate.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.6(1), (3) "Assertion refinement", § 15.8(1) proof on every path
+func (a *Analyzer) transitiveRelationImplies(claim *ast.InfixExpression) bool {
+	left, leftPure := relationOperandSpelling(claim.Left)
+	right, rightPure := relationOperandSpelling(claim.Right)
+	if !leftPure || !rightPure || left == right {
+		return false
+	}
+	edges := map[string][]relationEdge{}
+	for _, fact := range a.activeComparisonFacts() {
+		from, okFrom := relationOperandSpelling(fact.Left)
+		to, okTo := relationOperandSpelling(fact.Right)
+		if !okFrom || !okTo || from == to {
+			continue
+		}
+		switch fact.Operator {
+		case "<":
+			edges[from] = append(edges[from], relationEdge{to: to, strict: true})
+		case "<=":
+			edges[from] = append(edges[from], relationEdge{to: to})
+		case ">":
+			edges[to] = append(edges[to], relationEdge{to: from, strict: true})
+		case ">=":
+			edges[to] = append(edges[to], relationEdge{to: from})
+		case "==":
+			edges[from] = append(edges[from], relationEdge{to: to})
+			edges[to] = append(edges[to], relationEdge{to: from})
+		}
+	}
+	if len(edges) == 0 {
+		return false
+	}
+	switch claim.Operator {
+	case "<":
+		_, strict := relationPath(edges, left, right)
+		return strict
+	case "<=":
+		reachable, _ := relationPath(edges, left, right)
+		return reachable
+	case ">":
+		_, strict := relationPath(edges, right, left)
+		return strict
+	case ">=":
+		reachable, _ := relationPath(edges, right, left)
+		return reachable
+	case "==":
+		forward, _ := relationPath(edges, left, right)
+		backward, _ := relationPath(edges, right, left)
+		return forward && backward
+	case "!=":
+		_, forward := relationPath(edges, left, right)
+		_, backward := relationPath(edges, right, left)
+		return forward || backward
+	}
+	return false
+}
+
+// relationPath searches the relation graph from one value to another and
+// reports whether any path exists and whether some path contains a strict
+// edge.
+func relationPath(edges map[string][]relationEdge, from string, to string) (reachable bool, strict bool) {
+	type state struct {
+		node   string
+		strict bool
+	}
+	seen := map[state]bool{{node: from}: true}
+	queue := []state{{node: from}}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, edge := range edges[current.node] {
+			next := state{node: edge.to, strict: current.strict || edge.strict}
+			if next.node == to {
+				reachable = true
+				if next.strict {
+					return true, true
+				}
+			}
+			if !seen[next] {
+				seen[next] = true
+				queue = append(queue, next)
+			}
+		}
+	}
+	return reachable, false
 }

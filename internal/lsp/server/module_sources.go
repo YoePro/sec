@@ -8,6 +8,7 @@ import (
 	"sec/internal/ast"
 	"sec/internal/lexer"
 	"sec/internal/parser"
+	platformtarget "sec/internal/platform/target"
 )
 
 // SourceOverlay is an immutable compiler-input view for open documents. Keys
@@ -49,8 +50,25 @@ func ParseSource(path string, overlay SourceOverlay) (*ast.Program, bool) {
 }
 
 // AssembleModule replaces the active single-file statement list with the
-// deterministic set of recoverable sibling files declaring the same module.
+// deterministic set of recoverable sibling files declaring the same module
+// for the active document's target: its own `#target` when it has one,
+// otherwise the host target.
 func AssembleModule(active *ast.Program, sourceFile string, overlay SourceOverlay) {
+	target, directed := ProgramTarget(active)
+	if !directed {
+		target = platformtarget.Host()
+	}
+	AssembleModuleForTarget(active, sourceFile, overlay, target)
+}
+
+// AssembleModuleForTarget assembles the module like AssembleModule, leaving
+// out sibling files whose `#target` selects another platform, so the same
+// declaration in platform-specific files of one module does not collide.
+//
+// Rules:
+//   - rules/projects/modules.md — "Source directory and module membership"
+//   - rules/platform/platform_model.md — source selection by target
+func AssembleModuleForTarget(active *ast.Program, sourceFile string, overlay SourceOverlay, target platformtarget.Target) {
 	module := ProgramModule(active)
 	if active == nil || module == "" || filepath.Ext(sourceFile) != ".sec" {
 		return
@@ -83,7 +101,7 @@ func AssembleModule(active *ast.Program, sourceFile string, overlay SourceOverla
 			continue
 		}
 		sibling, ok := ParseSource(match, overlay)
-		if !ok || ProgramModule(sibling) != module {
+		if !ok || ProgramModule(sibling) != module || !ProgramMatchesTarget(sibling, target) {
 			continue
 		}
 		statements = append(statements, sibling.Statements...)

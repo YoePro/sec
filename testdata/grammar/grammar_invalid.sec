@@ -1,0 +1,28 @@
+module grammar_invalid
+
+// Invalid source-file and top-level forms (rules/foundations/grammar.md
+// "Source file", "Module declaration", "Top-level declarations",
+// "Reserved syntax"). Each case is introduced by an Expected error block and
+// must be rejected there.
+
+/* Expected error: return is not allowed at module scope
+ * Reason: Executable statements are not top-level declarations.
+ */
+return 1
+
+/* Expected error: assignment is not allowed at module scope
+ * Reason: Assignment is not a top-level declaration.
+ */
+counter = 1
+
+/* Expected error: unknown attribute @inline
+ * Reason: An unknown attribute is not part of the closed attribute set.
+ */
+@inline
+fn Inlined() void {
+}
+
+/* Expected error: attribute @noPanic is not attached to a statement
+ * Reason: An attribute must attach to a following declaration.
+ */
+@noPanic

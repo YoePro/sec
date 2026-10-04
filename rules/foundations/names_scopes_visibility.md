@@ -913,7 +913,7 @@ declarations.
 
 Import identity, qualifier collisions, duplicate imports, visibility, and
 project-internal access are defined by `rules/projects/modules.md` and
-`rules/projects/projects.txt`.
+`rules/projects/projects.md`.
 
 ---
 
@@ -1222,7 +1222,7 @@ collections.md
 shaped-types.md
 flowcontrol_for.md
 flowcontrol_match.md
-projects/projects.txt
+projects/projects.md
 projects/modules.md
 compiler/linking.md
 diagnostics.md

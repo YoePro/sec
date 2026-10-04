@@ -1,0 +1,114 @@
+#target(os: "openbsd", arch: "any")
+module os
+
+import "io"
+
+/**
+ * Represents a native OpenBSD file handle.
+ *
+ * This type contains only the platform-specific handle representation.
+ * Ownership and lifetime are managed by FileHandle.
+ */
+@noCopy
+type NativeFileHandle struct {
+    // The native representation, a POSIX file descriptor, will be added with the
+    // platform implementation.
+}
+
+impl NativeFileHandle implements NativeFile {
+    /**
+     * Opens a native OpenBSD file handle.
+     *
+     * After this function has been called, the caller must consider the native
+     * handle consumed regardless of whether the operating system reports success
+     * or an error. The handle must never be closed a second time.
+     */
+    static fn Open(fileName: ref string, options: ref FileOpenOptions) Result[NativeFileHandle, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Closes the native file handle.
+     *
+     * The handle is considered consumed after this call regardless of whether
+     * the operating system reports success or failure.
+     */
+    fn Close() Result[void, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Reads bytes from the current native file position.
+     */
+    fn Read(buffer: ref mut byte[]) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Writes bytes at the current native file position.
+     */
+    fn Write(data: ref byte[]) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Reads bytes beginning at an absolute file offset without changing the
+     * sequential file position.
+     */
+    fn ReadAt(offset: uint64, buffer: ref mut byte[]) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Writes bytes beginning at an absolute file offset without changing the
+     * sequential file position.
+     */
+    fn WriteAt(offset: uint64, data: ref byte[]) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Changes the sequential file position and returns the resulting absolute
+     * offset from the beginning of the file.
+     */
+    fn Seek(offset: int64, origin: io.SeekOrigin) Result[uint64, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Returns the current file length in bytes.
+     */
+    fn Length() Result[uint64, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Changes the file length in bytes.
+     */
+    fn SetLength(length: uint64) Result[void, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Synchronizes pending file data with the underlying storage where supported.
+     */
+    fn Sync() Result[void, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Updates file timestamps according to the supplied touch options.
+     */
+    static fn Touch(fileName: ref string, options: FileTouchOptions) Result[void, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Resolves a file name to the absolute normalized path recorded by File.
+     *
+     * The result is lexical and does not imply symbolic-link resolution.
+     */
+    static fn ResolvePath(fileName: ref string) Result[string, FileError] {
+        return Err(FileError.Unsupported)
+    }
+}

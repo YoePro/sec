@@ -154,6 +154,7 @@ func format(text string, options Options) string {
 	}
 	normal = formatImportRegion(normal, options.compact())
 	normal = formatStructuralBlockLayout(normal)
+	normal = formatCallableParameterListLayout(normal)
 	normal = formatPropertyAccessorLayout(normal)
 	normal = formatCSTTokenSpacing(normal)
 	normal = formatCSTBlockComments(normal)

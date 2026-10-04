@@ -571,6 +571,10 @@ type Function struct {
 	// trusted foreign contract rather than a compiler-verified guarantee
 	// (rules/platform/ffi.md §42).
 	TrustedNoPanic bool
+	// TrustedNoAlloc records an extern declaration annotated @noAlloc: a
+	// trusted foreign contract that the foreign body performs no allocation
+	// (rules/foundations/attributes.md "Sec code versus foreign declarations").
+	TrustedNoAlloc bool
 }
 
 // GenericConstraint retains one resolved compile-time interface requirement
@@ -784,6 +788,7 @@ type Symbol struct {
 	Storage          StorageOrigin
 	AddressStability AddressStability
 	Local            bool
+	Parameter        bool // a function parameter binding
 	ScopeDepth       int
 	RegisterAccess   RegisterFieldAccess
 	// CallableIdentity is present only when closure analysis has proved the
@@ -799,6 +804,10 @@ type Symbol struct {
 	// initialized directly by that constructor, proving its state for the
 	// binding's whole lifetime; empty otherwise.
 	ResultConstruction string
+	// ConstructedVariant names the active variant of an immutable union or
+	// Result binding initialized directly by a variant constructor
+	// (`Figure.Dot`, `Figure.Line(3)`, `Ok(...)`, `Err(...)`); empty otherwise.
+	ConstructedVariant string
 }
 
 var (

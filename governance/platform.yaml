@@ -377,7 +377,7 @@ integrations:
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
       - rules/platform/interrupts.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
       - rules/compiler/compiler.md
       - rules/compiler/compiler_pipeline.md
       - rules/memory/storage.md
@@ -398,6 +398,8 @@ integrations:
     governance_reconciliation:
       - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
       - semantic Atomic[T] eligibility is distinct from concrete layout, operation, order, native/emulated, blocking and interrupt-safety capability in the selected CompilationPlan
+    implemented:
+      - "target registry (decision 2026-10-04): linux-riscv64 (riscv64-unknown-linux-gnu, ABI lp64d, C model riscv-lp64d with unsigned char and binary128 long double) and freebsd-armv7 (armv7-unknown-freebsd-gnueabihf, C model aapcs-freebsd-gnueabihf) are registered hosted targets with status planned (parse and check, no LLVM, link, or run yet); further less common hosted architectures may be added the same way. stdlib/os has platform files for every registered hosted target with a file system, including zephyr and rtems. Tests: internal/platform/target/target_test.go, internal/layout/c_abi_test.go"
     remaining:
       - add canonical Target and Variant platform-resolution integration that produces one concrete CompilationPlan for each requested Target x Variant pair
       - keep Target as the logical product and Variant as the concrete platform-specific build configuration throughout compiler and tooling APIs
@@ -473,7 +475,7 @@ integrations:
       - rules/concurrency/concurrency.md
       - rules/declarations/static.md
       - rules/analysis/isr_analysis.md
-      - rules/projects/projects.txt
+      - rules/projects/projects.md
     remaining:
       - introduce canonical TargetProfile and immutable ResolvedTargetProfile models distinct from platform, runtime, execution environment, device, architecture, and BuildProfile
       - implement Hosted, RTOS, and BareMetal compiler-known profile families

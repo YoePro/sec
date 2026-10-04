@@ -1,0 +1,267 @@
+#target(os: "linux", arch: "any")
+module os
+
+import (
+    "io"
+
+    linux "platform/linux"
+)
+
+/**
+ * Represents a native Linux file handle.
+ *
+ * This type contains only the platform-specific handle representation.
+ * Ownership and lifetime are managed by FileHandle.
+ */
+@noCopy
+type NativeFileHandle struct {
+    /** The Linux file descriptor. */
+    _fd: int,
+}
+
+impl NativeFileHandle implements NativeFile {
+    /**
+     * Opens a native Linux file handle.
+     *
+     * After this function has been called, the caller must consider the native
+     * handle consumed regardless of whether the operating system reports success
+     * or an error. The handle must never be closed a second time.
+     */
+    static fn Open(fileName: ref string, options: ref FileOpenOptions) Result[NativeFileHandle, FileError] {
+        let mut flags := linux.OpenFlags.ReadOnly
+
+        switch options.Access {
+            case FileAccess.ReadOnly:
+                flags = linux.OpenFlags.ReadOnly
+
+            case FileAccess.WriteOnly:
+                flags = linux.OpenFlags.WriteOnly
+
+            case FileAccess.ReadWrite:
+                flags = linux.OpenFlags.ReadWrite
+        }
+
+        let mut mode := linux.FileMode.OpenExisting
+
+        switch options.Mode {
+            case FileMode.OpenExisting:
+                mode = linux.FileMode.OpenExisting
+
+            case FileMode.OpenOrCreate:
+                mode = linux.FileMode.OpenOrCreate
+
+            case FileMode.CreateNew:
+                mode = linux.FileMode.CreateNew
+
+            case FileMode.CreateOrTruncate:
+                mode = linux.FileMode.CreateOrTruncate
+
+            case FileMode.TruncateExisting:
+                mode = linux.FileMode.TruncateExisting
+        }
+
+        let mut writeMode := FileWriteMode.Normal
+
+        switch options.WriteMode {
+            case FileWriteMode.Normal:
+                writeMode = linux.FileWriteMode.Normal
+
+            case FileWriteMode.Append:
+                writeMode = linux.FileWriteMode.Append
+        }
+
+        let nativeOptions := linux.FileOpenOptions {
+            Access: access,
+            Mode: mode,
+            WriteMode: writeMode,
+        }
+
+        match linux.OpenFile(fileName, ref nativeOptions) {
+            Ok(fd) => {
+                return Ok(NativeFileHandle {
+                    _fd: fd,
+                })
+            }
+
+            Err(error) => {
+                return Err(_LinuxFileError(error))
+            }
+        }
+    }
+    /**
+     * Closes the native file handle.
+     *
+     * The handle is considered consumed after this call regardless of whether
+     * the operating system reports success or failure.
+     */
+    fn Close() Result[void, IOError] {
+        match linux.Close(self._fd) {
+            Ok(_) => return Ok()
+            Err(error) => return Err(_LinuxIOError(error))
+        }
+    }
+
+    /**
+     * Reads bytes from the current native file position.
+     */
+    fn Read(buffer: ref mut byte[]) Result[uint, IOError] {
+        match linux.Read(self._fd, ref mut buffer[..]) {
+            Ok(count) => return Ok(count)
+            Err(error) => return Err(_LinuxIOError(error))
+        }
+    }
+
+    /**
+     * Writes bytes at the current native file position.
+     */
+    fn Write(data: ref byte[]) Result[uint, IOError] {
+        match linux.Write(self._fd, ref data[..]) {
+            Ok(count) => return Ok(count)
+            Err(error) => return Err(_LinuxIOError(error))
+        }
+    }
+
+    /**
+     * Reads bytes beginning at an absolute file offset without changing the
+     * sequential file position.
+     */
+    fn ReadAt(offset: uint64, buffer: ref mut byte[]) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Writes bytes beginning at an absolute file offset without changing the
+     * sequential file position.
+     */
+    fn WriteAt(offset: uint64, data: ref byte[]) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Changes the sequential file position and returns the resulting absolute
+     * offset from the beginning of the file.
+     */
+    fn Seek(offset: int64, origin: io.SeekOrigin) Result[uint64, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    /**
+     * Returns the current file length in bytes.
+     */
+    fn Length() Result[uint64, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Changes the file length in bytes.
+     */
+    fn SetLength(length: uint64) Result[void, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Synchronizes pending file data with the underlying storage where supported.
+     */
+    fn Sync() Result[void, FileError] {
+        match linux.Flush(self._fd) {
+            Ok(_) => return Ok()
+            Err(error) => return Err(_LinuxFileError(error))
+        }
+    }
+
+    /**
+     * Updates file timestamps according to the supplied touch options.
+     */
+    static fn Touch(fileName: ref string, options: ref FileTouchOptions) Result[void, FileError] {
+        return Err(FileError.Unsupported)
+    }
+
+    /**
+     * Resolves a file name to the absolute normalized path recorded by File.
+     *
+     * The result is lexical and does not imply symbolic-link resolution.
+     */
+    static fn ResolvePath(fileName: ref string) Result[string, FileError] {
+        return Err(FileError.Unsupported)
+    }
+}
+
+fn _LinuxFileError(error: linux.LinuxError) FileError {
+    switch error {
+        case linux.LinuxError.permDenied, linux.LinuxError.accessDenied:
+            return FileError.PermissionDenied
+
+        case linux.LinuxError.noSuchFile:
+            return FileError.NotFound
+
+        case linux.LinuxError.fileExists:
+            return FileError.AlreadyExists
+
+        case linux.LinuxError.invalidArg:
+            return FileError.InvalidPath
+
+        case linux.LinuxError.nameTooLong:
+            return FileError.PathTooLong
+
+        case linux.LinuxError.notADirectory:
+            return FileError.NotDirectory
+
+        case linux.LinuxError.isDirectory:
+            return FileError.IsDirectory
+
+        case linux.LinuxError.directoryNotEmpty:
+            return FileError.DirectoryNotEmpty
+
+        case linux.LinuxError.readOnlyFileSystem:
+            return FileError.ReadOnlyFileSystem
+
+        case linux.LinuxError.tooManyOpenFiles, linux.LinuxError.fileTableOverflow:
+            return FileError.TooManyOpenFiles
+
+        case linux.LinuxError.noSpace:
+            return FileError.NoSpace
+
+        case linux.LinuxError.fileTooLarge, linux.LinuxError.valueTooLarge:
+            return FileError.FileTooLarge
+
+        case linux.LinuxError.tooManySymlinks:
+            return FileError.TooManySymbolicLinks
+
+        case linux.LinuxError.deviceBusy:
+            return FileError.Busy
+
+        case linux.LinuxError.crossDeviceLink:
+            return FileError.CrossDevice
+
+        case linux.LinuxError.badFd:
+            return FileError.BadFileDescriptor
+
+        case linux.LinuxError.interrupted:
+            return FileError.Interrupted
+
+        case linux.LinuxError.operationNotSupported, linux.LinuxError.invalidSyscall:
+            return FileError.Unsupported
+
+        default:
+            return FileError.NativeFailure
+    }
+}
+
+fn _LinuxIOError(error: linux.LinuxError) IOError {
+    switch error {
+        case linux.LinuxError.badFd:
+            return IOError.Closed
+
+        case linux.LinuxError.interrupted:
+            return IOError.Interrupted
+
+        case linux.LinuxError.invalidArg:
+            return IOError.InvalidInput
+
+        case linux.LinuxError.operationNotSupported, linux.LinuxError.invalidSyscall:
+            return IOError.Unsupported
+
+        default:
+            return IOError.NativeFailure
+    }
+}

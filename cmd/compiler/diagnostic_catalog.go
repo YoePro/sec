@@ -73,6 +73,7 @@ var semanticOccurrenceFields = []diagnosticCatalogField{
 	{Name: "PreviousFile", Type: "string", Required: false, Description: "Related previous declaration source file."},
 	{Name: "PreviousLine", Type: "int", Required: false, Description: "One-based related source line."},
 	{Name: "PreviousColumn", Type: "int", Required: false, Description: "One-based related source column."},
+	{Name: "RelatedLabel", Type: "string", Required: false, Description: "Label of the related location, such as interface requirement; empty means previous declaration."},
 }
 
 var parserOccurrenceFields = []diagnosticCatalogField{

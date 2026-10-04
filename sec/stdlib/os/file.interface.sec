@@ -1,0 +1,127 @@
+module os
+
+/**
+ * Defines the platform-specific operations required by File.
+ *
+ * Every supported operating-system target provides one NativeFileHandle
+ * implementation of this interface.
+ *
+ * The interface is internal to stdlib/os. Public code operates on File rather
+ * than directly on NativeFileHandle.
+ */
+interface NativeFile {
+    /**
+     * Opens a native file resource using the supplied portable options.
+     *
+     * The returned NativeFileHandle represents one successfully opened native
+     * file resource.
+     */
+    static fn Open(
+        fileName: ref string,
+        options:  ref FileOpenOptions,
+    ) Result[NativeFileHandle, FileError]
+
+    /**
+     * Closes the native file resource.
+     *
+     * After this operation has been attempted, the native resource must be
+     * considered consumed and must never be closed through this handle again,
+     * even when an error is reported.
+     */
+    fn Close() Result[void, IOError]
+
+    /**
+     * Reads bytes from the current sequential file position.
+     *
+     * A successful operation may read fewer bytes than the supplied buffer can
+     * hold. The sequential file position advances by the number of bytes read.
+     */
+    fn Read(
+        buffer: ref mut byte[],
+    ) Result[uint, IOError]
+
+    /**
+     * Writes bytes at the current sequential file position.
+     *
+     * A successful operation may write fewer bytes than supplied. The
+     * sequential file position advances according to the number of bytes
+     * written and the file's write mode.
+     */
+    fn Write(
+        data: ref byte[],
+    ) Result[uint, IOError]
+
+    /**
+     * Reads bytes beginning at an absolute byte offset.
+     *
+     * The sequential file position is not changed.
+     */
+    fn ReadAt(
+        offset: uint64,
+        buffer: ref mut byte[],
+    ) Result[uint, IOError]
+
+    /**
+     * Writes bytes beginning at an absolute byte offset.
+     *
+     * The sequential file position is not changed.
+     */
+    fn WriteAt(
+        offset: uint64,
+        data:   ref byte[],
+    ) Result[uint, IOError]
+
+    /**
+     * Changes the sequential file position.
+     *
+     * Returns the resulting absolute byte position from the beginning of the
+     * file.
+     */
+    fn Seek(
+        offset: int64,
+        origin: SeekOrigin,
+    ) Result[uint64, IOError]
+
+    /**
+     * Returns the current logical file length in bytes.
+     */
+    fn Length() Result[uint64, FileError]
+
+    /**
+     * Changes the logical file length to the requested number of bytes.
+     *
+     * Reducing the length truncates data. Increasing the length extends the
+     * file according to the semantics of the underlying filesystem.
+     */
+    fn SetLength(
+        length: uint64,
+    ) Result[void, FileError]
+
+    /**
+     * Synchronizes pending file changes with the underlying storage.
+     *
+     * The exact durability guarantee is limited by the operating system,
+     * filesystem, device, and hardware.
+     */
+    fn Sync() Result[void, FileError]
+
+    /**
+     * Updates file timestamps according to the supplied touch options.
+     *
+     * The operation does not require an existing File instance.
+     */
+    static fn Touch(
+        fileName: ref string,
+        options:  ref FileTouchOptions,
+    ) Result[void, FileError]
+
+    /**
+     * Resolves a file name to the absolute normalized path recorded by File.
+     *
+     * Resolution is lexical and does not imply symbolic-link resolution.
+     * The returned string is newly owned and may require allocation.
+     */
+    static fn ResolvePath(
+        fileName: ref string,
+    ) Result[string, FileError]
+}

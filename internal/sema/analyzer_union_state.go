@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"strings"
 
 	"sec/internal/ast"
@@ -113,8 +114,125 @@ func (a *Analyzer) inferStateTestExpression(expr *ast.StateTestExpression) (Type
 		a.bindDefinition(expr.Variant.Token, variant.Token)
 	}
 	fact.Variant = expr.Variant.Value
+	if isIdentifier && !fact.MaybeEmpty {
+		if value, known := a.knownVariantTest(identifier.Value, fact.Variant); known {
+			fact.StaticallyKnown, fact.Value = true, value
+		}
+	}
 	a.recordStateTest(expr, fact)
 	return Type{Name: "bool", Kind: BoolType}, display
+}
+
+// unionConstructorVariant returns the variant a union variant constructor
+// (`Owner.Variant` or `Owner.Variant(payload)`) produces when Owner names the
+// binding's union type.
+func (a *Analyzer) unionConstructorVariant(value ast.Expression, typ Type) string {
+	if typ.Kind != UnionType || typ.Name == "Option" {
+		return ""
+	}
+	if call, ok := value.(*ast.CallExpression); ok && call != nil {
+		value = call.Callee
+	}
+	member, ok := value.(*ast.MemberExpression)
+	if !ok || member == nil || member.Property == nil {
+		return ""
+	}
+	owner, ok := member.Object.(*ast.Identifier)
+	if !ok || owner == nil || !a.stateTestOwnerMatches(owner.Value, typ) {
+		return ""
+	}
+	variants, _ := stateTestVariants(typ)
+	if _, found := variants[member.Property.Value]; !found {
+		return ""
+	}
+	return member.Property.Value
+}
+
+// knownVariantTest decides `binding is Variant` for an immutable binding whose
+// active variant is proven: by construction from a variant constructor, or
+// by a dominating, unmutated `binding is V` (true when V is Variant, false
+// otherwise) or `binding is not Variant` fact of the path. A mutable binding
+// is never decided, because a method with a mutable receiver can change its
+// variant without an assignment.
+//
+// Rules:
+//   - rules/declarations/unions.md — §8.1 "Active variant test", §8.4 "Impossible state tests"
+//   - rules/tooling/diagnostics.md — § 21(1), (5), (6) "Proven unreachable and dead code"
+func (a *Analyzer) knownVariantTest(binding string, variant string) (value bool, known bool) {
+	symbol, exists := a.symbols[binding]
+	if !exists || symbol.Mutable {
+		return false, false
+	}
+	if symbol.ConstructedVariant != "" {
+		return symbol.ConstructedVariant == variant, true
+	}
+	for _, active := range a.activeConditionFacts {
+		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil || active.fact.Kind == ConditionFactLogicalRHSFalse {
+			continue
+		}
+		for _, test := range conjunctStateTests(active.fact.Condition) {
+			subject, ok := test.Subject.(*ast.Identifier)
+			if !ok || subject == nil || subject.Value != binding || test.Empty || test.Variant == nil {
+				continue
+			}
+			switch {
+			case !test.Negated:
+				return test.Variant.Value == variant, true
+			case test.Variant.Value == variant:
+				return false, true
+			}
+		}
+	}
+	return false, false
+}
+
+// conjunctStateTests returns the state tests that are conjuncts of a fact.
+func conjunctStateTests(condition ast.Expression) []*ast.StateTestExpression {
+	switch condition := condition.(type) {
+	case *ast.StateTestExpression:
+		if condition != nil {
+			return []*ast.StateTestExpression{condition}
+		}
+	case *ast.InfixExpression:
+		if condition != nil && condition.Operator == "&&" {
+			return append(conjunctStateTests(condition.Left), conjunctStateTests(condition.Right)...)
+		}
+	}
+	return nil
+}
+
+// negatedVariantStateTest returns the `is not` form of a variant test on a
+// binding (and the reverse), which holds exactly when the test is false.
+func negatedVariantStateTest(condition ast.Expression) (ast.Expression, bool) {
+	test, ok := condition.(*ast.StateTestExpression)
+	if !ok || test == nil || test.Empty || test.Variant == nil {
+		return nil, false
+	}
+	if _, ok := test.Subject.(*ast.Identifier); !ok {
+		return nil, false
+	}
+	negated := *test
+	negated.Negated = !test.Negated
+	negated.Group = nil
+	return &negated, true
+}
+
+// diagnoseKnownVariantBlock reports the first statement of a branch that a
+// variant test decided by the binding's known active variant excludes.
+//
+// Rules:
+//   - rules/declarations/unions.md — §8.4 "Impossible state tests"
+//   - rules/tooling/diagnostics.md — § 21(5) S3001 explains the control-flow fact
+func (a *Analyzer) diagnoseKnownVariantBlock(block *ast.BlockStatement, fact ResolvedStateTest) {
+	if block == nil || len(block.Statements) == 0 {
+		return
+	}
+	a.addErrorAtTokenWithMetadata(
+		statementToken(block.Statements[0]),
+		diagnostics.UnreachableStatement,
+		fmt.Sprintf("The active variant of %s is already known here, so the test is always %t and this branch is impossible. Remove the test or the branch.", fact.Binding, fact.Value),
+		"unreachable statement",
+	)
 }
 
 // recordStateTest publishes a state-test fact. A loop condition is analyzed

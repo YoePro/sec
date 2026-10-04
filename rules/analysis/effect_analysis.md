@@ -2561,7 +2561,7 @@ stack analysis rulebook
 call graph rulebook
 compiler pipeline rulebook
 Semantic IR rulebook
-projects.txt
+projects.md
 formatter.md
 lsp.md
 diagnostics rulebook

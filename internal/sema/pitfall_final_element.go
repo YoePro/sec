@@ -77,8 +77,23 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	b.inspectWrongGuardSubject(statement, guards)
 
 	outerProofs := b.activeNonEmptyProofs
+	outerCapacityEqualities := b.activeCapacityEqualities
+	if proofs := b.capacityEqualsLengthProof(statement.Condition); len(proofs) > 0 {
+		merged := map[string]lexer.Token{}
+		for collection, token := range outerCapacityEqualities {
+			merged[collection] = token
+		}
+		for collection, token := range proofs {
+			merged[collection] = token
+		}
+		b.activeCapacityEqualities = merged
+	}
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, true)
+	outerLengthConditions := b.activeLengthConditions
+	b.activeLengthConditions = append(append([]ast.Expression(nil), outerLengthConditions...), statement.Condition)
 	b.withIndexGuards(guards, func() { b.walkBlock(statement.Consequence) })
+	b.activeLengthConditions = outerLengthConditions
+	b.activeCapacityEqualities = outerCapacityEqualities
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, false)
 	b.walkBlock(statement.Alternative)
 	b.activeNonEmptyProofs = outerProofs

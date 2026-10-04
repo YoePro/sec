@@ -223,3 +223,91 @@ fn Check(count: int, name: string, maybe: Option[int]) void {
 		}
 	}
 }
+
+// A chain of dominating relations through other values proves an assertion
+// that no single fact states; strictness, direction, and mutation are
+// respected.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.6 "Assertion refinement", § 15.8 "Assertions in @noPanic"
+func TestAssertionProofUsesTransitiveRelations(t *testing.T) {
+	source := `module main
+
+@noPanic
+fn Strict(a: int, b: int, c: int) int {
+    if a < b && b <= c {
+        assert a < c
+        assert c > a
+        assert a != c
+    }
+    return 0
+}
+
+@noPanic
+fn LongChain(a: int, b: int, c: int, d: int) int {
+    if a <= b && c >= b && c < d {
+        assert a < d
+    }
+    return 0
+}
+
+fn AssertedChain(a: int, b: int, c: int) int {
+    assert a <= b
+    assert b <= c
+    assert c <= a
+    assert a == c
+    return 0
+}
+
+fn NonStrictChain(a: int, b: int, c: int) int {
+    if a <= b && b <= c {
+        assert a < c
+    }
+    return 0
+}
+
+fn WrongDirection(a: int, b: int, c: int) int {
+    if a < b && c < b {
+        assert a < c
+    }
+    return 0
+}
+
+fn ChainInvalidated(a: int, b: int, c: int) int {
+    let mut low := a
+    if low < b && b < c {
+        low = c
+        assert low < c
+    }
+    return low
+}
+`
+	program := parser.New(lexer.New(source)).ParseProgram()
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatalf("errors = %v", errors)
+	}
+	graph := analyzer.CallGraph()
+	for name, wantPanic := range map[string]bool{
+		"Strict":           false,
+		"LongChain":        false,
+		"AssertedChain":    true, // the first three assertions are themselves unproven
+		"NonStrictChain":   true,
+		"WrongDirection":   true,
+		"ChainInvalidated": true,
+	} {
+		if got := graph.EffectSummary(callGraphNodeIDByName(t, graph, name)).MayPanic; got != wantPanic {
+			t.Errorf("%s MayPanic = %v, want %v", name, got, wantPanic)
+		}
+	}
+	for _, statement := range program.Statements {
+		function, ok := statement.(*ast.FunctionDeclaration)
+		if !ok || function.Name.Value != "AssertedChain" {
+			continue
+		}
+		final := function.Body.Statements[3].(*ast.AssertStatement)
+		if assertion, found := analyzer.ResolvedAssertionOf(final); !found || !assertion.Proven {
+			t.Errorf("assert a == c proven = %v, want proven from the asserted cycle", assertion.Proven)
+		}
+	}
+}

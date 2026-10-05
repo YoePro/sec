@@ -1,0 +1,4 @@
+module first_test_module
+
+test "same name" {
+}

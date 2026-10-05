@@ -24,7 +24,7 @@ fn ChainedComparison(a: int, b: int, c: int) bool {
     return a == b == c
 }
 
-/* Expected error: expected '{' after if condition
+/* Expected error: assignment in if condition
  * Reason: Assignment is not an expression and cannot be a condition.
  */
 fn AssignmentCondition(value: int) void {

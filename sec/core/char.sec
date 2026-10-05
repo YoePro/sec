@@ -73,14 +73,14 @@ impl char {
 
     property IsDigit: bool {
         get {
-            return self >= 48t && self <= 57t
+            return self in 48t..57t
         }
     }
 
     /** Reports whether this char is an ASCII letter. */
     property IsLetter: bool {
         get {
-            return (self >= 65t && self <= 90t) || (self >= 97t && self <= 122t)
+            return (self in 65t..90t) || (self in 97t..122t)
         }
     }
 
@@ -122,7 +122,7 @@ impl char {
     /** Reports whether this char belongs to the ASCII range. */
     property IsAscii: bool {
         get {
-            return self >= 0t && self <= 127t
+            return self in 0t..127t
         }
     }
 
@@ -130,7 +130,7 @@ impl char {
     property IsHexDigit: bool {
         get {
             // 0 - 9, A-F, a-f
-            return (self >= 48t && self <= 57t) || (self >= 65t && self <= 70t) || (self >= 97t && self <= 102t)
+            return (self in 48t..57t) || (self in 65t..70t) || (self in 97t..102t)
         }
     }
 

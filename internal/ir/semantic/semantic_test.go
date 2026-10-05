@@ -469,7 +469,7 @@ fn Add(value: int) int {
     return result
 }
 `,
-			feature: "compound assignment",
+			feature: "compound assignment +=",
 		},
 	}
 	for _, test := range tests {

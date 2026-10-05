@@ -2645,7 +2645,14 @@ if value in 0..100 {
 }
 
 let view := values[2..<8]
+
+let lower := [224r..246r, 248r..255r]
+
+try values.Append(0r..127r)
 ```
+
+Array literal range segments and the `Append` argument are defined by
+`rules/collections/collections.md` §§ 5.6a and 6.7.
 
 A range is not a general first-class runtime value in Sec 0.1.
 

@@ -2,6 +2,76 @@ schema_version: 1
 area: lowering
 purpose: Semantic IR, Sec MLIR, ABI, and target-lowering-only work.
 integrations:
+  - id: frontend.semantic-ir-v2
+    area: semantic-ir-generation
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - dedicated Semantic IR model, builder, printer, verifier and source-to-Semantic-IR compiler path exist
+    - current struct semantic-value representation and resolved struct plans are implemented for the Package 13 scope
+    - match CFG and match records are implemented for the current Package 12 executable subset
+    - typed Result/errorhandling Semantic IR operations and handler-plan integration exist for represented forms
+    - ownership availability facts and several move/discard/reference-holder transitions are represented
+    - compiler-known static/default/property/unit/FFI facts are represented in existing vertical slices
+    remaining:
+    - integrate one canonical Place/location identity across every Semantic IR operation
+    - complete availability/partial/conditional ownership representation across all source forms
+    - complete iterator resolved-plan bridge for compiler-known Iterator[T]
+    - complete collection and shaped-value Semantic IR generation
+    - complete Arena and allocation-context Semantic IR generation
+    - complete task/thread/channel/synchronization Semantic IR generation
+    - complete panic/assert/runtime-check semantic operations
+    - complete reference/storage invalidation/domain facts
+    - complete platform/interrupt/volatile/hardware operation generation across maintained targets
+    required_tests:
+    - source-to-Semantic-IR coverage for every canonical source category
+    - Iterator[T] user conformance and static Next target
+    - Arena create/alloc/reset/release
+    - task/thread transfer
+    - panic/assert/check representation
+    - collection/shaped representation
+  - id: semantic-ir.core-v2
+    area: canonical-semantic-ir-model-and-verifier
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - canonical TypeID/SymbolID/ValueID-oriented model exists
+    - dedicated verifier exists
+    - deterministic printer exists
+    - Package 13 struct operations and current match/errorhandling operations are implemented
+    remaining:
+    - add/normalize canonical Place identity and state records
+    - add explicit ArenaDomain/state/epoch operations
+    - add reference/storage invalidation operations
+    - add Iterator[T] resolved-iteration records/operations
+    - add collection/shaped records/operations
+    - add concurrency transfer and task/thread lifecycle operations
+    - add panic/assert/check operation records
+    - add complete effect/trust/target plan fields
+    - extend verifier with cross-operation ownership/storage/effect/concurrency invariants
+    - remove historical package-amendment dependency from the normative conceptual model
+    required_tests:
+    - malformed Place/ownership state rejected
+    - duplicate Arena owner state rejected
+    - invalid iterator target/conformance rejected
+    - panic versus Result contradiction rejected
+    - invalid transfer/concurrency state rejected
+    - invalid target operation rejected
+  - id: semantic-ir.compiler-pipeline
+    area: semantic-ir-boundary-and-capability-gating
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - dedicated Semantic IR exists with verification
+    - current P1-P14 vertical slices intentionally reject unsupported dependency-bounded source paths at Semantic
+      IR/lowering boundaries rather than emit partial invalid IR
+    - Sec MLIR emitter consumes canonical Semantic IR for implemented package paths
+    remaining:
+    - complete Semantic IR coverage for all canonical Sec constructs
+    - centralize UnsupportedLowering/implementation-capability diagnostics and ensure they are not reported as language
+      errors
+    - consume compiler_analysis/Iterator/Arena/reference/effect/transfer facts from one canonical lowering-readiness
+      plan
   - id: lowering.sec-mlir-package13
     package: SEC-MLIR-P13
     name: Struct Semantic Value Representation

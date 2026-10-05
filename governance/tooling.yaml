@@ -2,6 +2,38 @@ schema_version: 1
 area: tooling
 purpose: Shared tooling infrastructure and cross-tooling coordination.
 integrations:
+  - id: "tooling.borrowing"
+    area: "diagnostics-lsp-formatter-traceability-borrowing"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/tooling/diagnostics.md"
+      - "rules/tooling/lsp.md"
+      - "rules/tooling/formatter.md"
+    implemented:
+      - "Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure."
+      - "Formatter preserves established ref/ref mut syntax in functions and supported patterns."
+      - "Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.md rulebook has been removed."
+    remaining:
+      - "register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape"
+      - "ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap"
+      - "distinguish availability from borrow authority in messages; when is available succeeds but access is borrowed, say so directly"
+      - "surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful"
+      - "provide navigation to borrow origin/holder and previous-iteration source for loop-carried conflicts"
+      - "offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics"
+      - "preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting"
+      - "support source/code traceability comments referring to stable borrowing § clauses"
+    required_tests:
+      - "borrow conflict diagnostic includes related borrow origin"
+      - "loop-carried diagnostic explains previous iteration"
+      - "is available plus borrow conflict diagnostic distinguishes ownership presence from access authority"
+      - "LSP hover shows shared versus mutable borrow and canonical referent Place"
+      - "LSP handles finite alternative origins conservatively without presenting one false definitive origin"
+      - "formatter round-trips ref/ref mut function, match, and capture syntax"
+
   - id: tooling.semantic-ir-v2
     area: semantic-ir-debugging-lsp-diagnostics
     status: partial
@@ -65,3 +97,20 @@ integrations:
       - make sec check independent of backend tools wherever backend verification is not a semantic prerequisite
       - keep stable TestIdentity and test selection compiler-owned through LSP/editor integrations
       - preserve deterministic source/provenance metadata across emitted artifacts
+
+  - id: tooling.arena
+    area: arena-diagnostics-lsp-reports
+    status: partial
+    repository_baseline: 814a584
+    implemented:
+    - LSP completion for represented Arena compiler-known members
+    - LSP hover for direct Arena effects and propagated allocation cause paths
+    remaining:
+    - show Arena backing/provider/capacity/domain/epoch/profile
+    - show Reset/Release blockers with cause chains
+    - show task/thread/foreign dependencies
+    - show allocation-context origin
+    - show byte-accurate capacity-demand reports
+    - show physical planning/proof-based check elimination in analysis mode
+    - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
+    - ensure compiler/LSP/sec analyse parity and incremental invalidation

@@ -186,6 +186,17 @@ const (
 	InterfaceMemberMissing                        = "S1106"
 	InterfaceMemberIncompatible                   = "S1107"
 	NoAllocViolation                              = "S1108"
+	ProgramEntryMissing                           = "S1109"
+	ProgramEntryInvalid                           = "S1110"
+	ProgramEntryDuplicate                         = "S1111"
+	AttributeDuplicate                            = "S1112"
+	AttributeDuplicateArgument                    = "S1113"
+	AttributeInvalidArgument                      = "S1114"
+	AttributeNotAllowedOnTarget                   = "S1115"
+	NoBlockViolation                              = "S1116"
+	AttributeConflict                             = "S1117"
+	AttributeArgumentNotCompileTime               = "S1118"
+	ArrayRangeSegmentInvalid                      = "S1119"
 	UnreachableStatement                          = "S3001"
 	UseAfterDiscard                               = "S4001"
 	LargeValueParameter                           = "A2001"
@@ -262,6 +273,17 @@ var registry = map[string]Definition{
 	InterfaceMemberMissing:                        {ID: InterfaceMemberMissing, Name: "interfaces.missing-member", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceMemberIncompatible:                   {ID: InterfaceMemberIncompatible, Name: "interfaces.incompatible-member", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	NoAllocViolation:                              {ID: NoAllocViolation, Name: "allocation.no-alloc-violation", Family: "allocation", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramEntryMissing:                           {ID: ProgramEntryMissing, Name: "initialization.missing-entry", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramEntryInvalid:                           {ID: ProgramEntryInvalid, Name: "initialization.invalid-entry", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramEntryDuplicate:                         {ID: ProgramEntryDuplicate, Name: "initialization.duplicate-entry", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	AttributeDuplicate:                            {ID: AttributeDuplicate, Name: "attribute.duplicate", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	AttributeDuplicateArgument:                    {ID: AttributeDuplicateArgument, Name: "attribute.duplicate-argument", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	AttributeInvalidArgument:                      {ID: AttributeInvalidArgument, Name: "attribute.invalid-argument", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	AttributeNotAllowedOnTarget:                   {ID: AttributeNotAllowedOnTarget, Name: "attribute.not-allowed-on-target", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	NoBlockViolation:                              {ID: NoBlockViolation, Name: "blocking.no-block-violation", Family: "blocking", DefaultSeverity: SeverityError, Mandatory: true},
+	AttributeConflict:                             {ID: AttributeConflict, Name: "attribute.conflict", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	AttributeArgumentNotCompileTime:               {ID: AttributeArgumentNotCompileTime, Name: "attribute.argument-not-compile-time", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	ArrayRangeSegmentInvalid:                      {ID: ArrayRangeSegmentInvalid, Name: "collections.range-segment-invalid", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	UseAfterDiscard:                               {ID: UseAfterDiscard, Name: "ownership.use-after-discard", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                          {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:                       {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},

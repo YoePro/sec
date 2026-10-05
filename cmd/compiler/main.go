@@ -812,7 +812,16 @@ func runBuildCommand(args []string) {
 		exitCLI(1)
 	}
 
-	program := parseAndAnalyzeSourceForTarget(string(input), options.InputFile, options.Target)
+	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
+	program := analyzed.Program
+	entryErrors := validateBuildEntry(analyzed, options.InputFile)
+	for _, err := range entryErrors {
+		printSemaError(os.Stderr, err)
+	}
+	printDiagnosticSummary(diagnosticSummary{Errors: len(entryErrors), Warnings: len(analyzed.Analyzer.Warnings())})
+	if len(entryErrors) > 0 {
+		exitCLI(3)
+	}
 	llvmPath := ""
 	switch options.Pipeline {
 	case "llvm":
@@ -4002,11 +4011,11 @@ func formatTypeRef(ref *ast.TypeReference) string {
 			}
 			out += formatTypeRef(arg)
 		}
-		if ref.EventCapacitySet {
+		if ref.EventCapacitySet && ref.EventCapacityExpression != nil {
 			if len(ref.TypeArgs) > 0 {
 				out += ", "
 			}
-			out += fmt.Sprintf("%d", ref.EventCapacity)
+			out += ref.EventCapacityExpression.String()
 		}
 		out += "]"
 	}

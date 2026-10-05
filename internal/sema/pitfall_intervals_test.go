@@ -11,6 +11,11 @@ func analyzeIntervalSource(t *testing.T, depth AnalysisDepth, body string) *Anal
 	t.Helper()
 	source := `module main
 
+let FLOOR := 0
+let LIMIT := 10
+
+type Percent int range 0..100
+
 type Reading struct {
 	value: int,
 }
@@ -23,7 +28,7 @@ impl Reading {
 	}
 }
 
-fn Check(value: int, count: uint, reading: Reading, ratio: float64) bool {
+fn Check(value: int, count: uint, reading: Reading, ratio: float64, letter: char, scalar: rune, percent: Percent, flag: bool) bool {
 	` + body + `
 }
 `
@@ -162,4 +167,141 @@ func TestPitfallRangeMembershipIdiomRequiresPureSubject(t *testing.T) {
 // The suggested membership is valid Sec with the same meaning.
 func TestPitfallRangeMembershipReplacementIsValidSec(t *testing.T) {
 	analyzeIntervalSource(t, AnalysisStandard, "return value in 0..10 || value in 0..<10")
+}
+
+func intervalResults(analyzer *Analyzer, rule PitfallRuleID) []PitfallFinding {
+	results := []PitfallFinding{}
+	for _, result := range analyzer.PitfallAnalysis().Results() {
+		if result.Rule == rule {
+			results = append(results, result)
+		}
+	}
+	return results
+}
+
+// Interval proofs extend beyond one literal pair: bounds may be named
+// compile-time constants resolved in their own scope, subjects may be char
+// values ordered by their one byte or rune values ordered by Unicode scalar
+// (a non-ASCII character literal names no single char byte), chains longer than one pair are
+// decided by their tightest (`&&`) or loosest (`||`) bounds with unrelated
+// operands ignored. Each chain is reported once.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Tautological interval conditions"
+//   - rules/foundations/operators.md — "Character ordering", "Rune ordering"
+func TestPitfallIntervalConditionsUseConstantsCharsAndChains(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		rule        PitfallRuleID
+		replacement string
+		evidence    int
+	}{
+		{name: "module constant bound", body: "return value >= LIMIT && value < 5", rule: PitfallImpossibleInterval, evidence: 5},
+		{name: "local constant bound", body: "let low := 20\n\treturn value > low && value <= LIMIT", rule: PitfallImpossibleInterval, evidence: 6},
+		{name: "constant tautology keeps the written names", body: "return value >= FLOOR || value <= LIMIT", rule: PitfallTautologicalInterval, replacement: "value in FLOOR..LIMIT", evidence: 6},
+		{name: "mutable binding is not a bound", body: "let mut low := 20\n\tlow += 0\n\treturn value > low && value < 5"},
+		{name: "sibling scopes resolve their own constant", body: "if flag {\n\t\tlet bound := 20\n\t\treturn value > 3 && value < bound\n\t}\n\tlet bound := 1\n\treturn value > 3 && value < bound", rule: PitfallImpossibleInterval, evidence: 5},
+		{name: "char impossible interval", body: "return letter >= 'z' && letter <= 'a'", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "char tautology suggests char range", body: "return letter >= 'a' || letter <= 'z'", rule: PitfallTautologicalInterval, replacement: "letter in 'a'..'z'", evidence: 4},
+		{name: "rune impossible interval", body: "return scalar > 'z' && scalar < 'a'", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "char outside test is ordinary", body: "return letter < 'a' || letter > 'z'"},
+		{name: "char byte bounds", body: "return letter > 200t && letter < 100t", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "non-ASCII char literal names no byte", body: "return letter >= 'é' && letter < 'a'"},
+		{name: "non-ASCII rune literal is a scalar", body: "return scalar >= 'é' && scalar < 'a'", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "conjunction chain with unrelated operand", body: "return value > 10 && flag && value < 5", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "conjunction chain uses tightest bounds", body: "return value > 4 && value < 20 && value < 3", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "disjunction chain has no whole-condition rewrite", body: "return value >= 0 || flag || value <= 10", rule: PitfallTautologicalInterval, evidence: 4},
+		{name: "disjunction chain uses loosest bounds", body: "return value > 50 || value <= 0 || value >= 1", rule: PitfallTautologicalInterval, evidence: 4},
+		{name: "satisfiable chain is ordinary", body: "return value >= 0 && value <= 10 && value < 5"},
+		{name: "chain of other subjects is ordinary", body: "return value > 10 && count < 5 && flag"},
+		{name: "constrained subject uses the integer proof", body: "return percent > 60 && percent < 40", rule: PitfallImpossibleInterval, evidence: 4},
+		{name: "constrained interior stays ordinary", body: "return percent < 10 || percent > 90"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := analyzeIntervalSource(t, AnalysisDeep, test.body)
+			for _, rule := range []PitfallRuleID{PitfallTautologicalInterval, PitfallImpossibleInterval} {
+				results := intervalResults(analyzer, rule)
+				if rule != test.rule {
+					if len(results) != 0 {
+						t.Fatalf("unexpected %s results: %+v", rule, results)
+					}
+					continue
+				}
+				if len(results) != 1 {
+					t.Fatalf("%s results = %+v, want exactly one", rule, results)
+				}
+				result := results[0]
+				if result.State != PitfallStateFinding || result.Confidence != PitfallConfidenceProven || len(result.EvidenceFor) != test.evidence {
+					t.Fatalf("%s result = %+v, want %d evidence items", rule, result, test.evidence)
+				}
+				if test.replacement == "" && len(result.Actions) != 0 {
+					t.Fatalf("actions = %+v, want none", result.Actions)
+				}
+				if test.replacement != "" && (len(result.Actions) != 1 || result.Actions[0].Replacement != test.replacement) {
+					t.Fatalf("actions = %+v, want %q", result.Actions, test.replacement)
+				}
+			}
+		})
+	}
+}
+
+// Named constants and char literals yield canonical membership with the
+// written bound spelling, and the suggested forms are valid Sec.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Canonical idiom guidance"
+func TestPitfallRangeMembershipIdiomWithNamedAndCharBounds(t *testing.T) {
+	tests := []struct {
+		condition   string
+		replacement string
+	}{
+		{condition: "value >= FLOOR && value <= LIMIT", replacement: "value in FLOOR..LIMIT"},
+		{condition: "value >= FLOOR && value < LIMIT", replacement: "value in FLOOR..<LIMIT"},
+		{condition: "letter >= 'a' && letter <= 'z'", replacement: "letter in 'a'..'z'"},
+		{condition: "'0' <= letter && '9' >= letter", replacement: "letter in '0'..'9'"},
+	}
+	for _, test := range tests {
+		t.Run(test.condition, func(t *testing.T) {
+			analyzer := analyzeIntervalSource(t, AnalysisDeep, "return "+test.condition)
+			result := intervalResult(analyzer, PitfallRangeMembershipIdiom)
+			if result == nil || result.State != PitfallStateFinding || len(result.Actions) != 1 ||
+				result.Actions[0].Kind != PitfallProvenFix || result.Actions[0].Replacement != test.replacement {
+				t.Fatalf("idiom result = %+v, want %q", result, test.replacement)
+			}
+			analyzeIntervalSource(t, AnalysisStandard, "return "+test.replacement)
+		})
+	}
+
+	// A longer chain is not one interval, so no whole-condition rewrite is offered.
+	analyzer := analyzeIntervalSource(t, AnalysisDeep, "return value >= 0 && value <= 10 && flag")
+	if result := intervalResult(analyzer, PitfallRangeMembershipIdiom); result != nil {
+		t.Fatalf("chain produced idiom result: %+v", *result)
+	}
+}
+
+// A constrained type domain cannot decide an interval chain that the integer
+// proof leaves open, because Sema rejects every constant bound outside the
+// subject's domain: the only bounds that could make the domain matter.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Meaningless comparisons from proven ranges"
+//   - rules/types/contracts.md — range contracts
+func TestPitfallIntervalDomainBoundsAreRejectedBySema(t *testing.T) {
+	for _, condition := range []string{
+		"percent > 100 && percent < 150",
+		"percent <= 100 || percent >= 150",
+		"percent > -1 && percent < -5",
+	} {
+		source := "module main\n\ntype Percent int range 0..100\n\nfn Check(percent: Percent) bool {\n\treturn " + condition + "\n}\n"
+		p := parser.New(lexer.New(source))
+		program := p.ParseProgram()
+		if len(p.Errors()) > 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		if errors := NewAnalyzerWithDepth(AnalysisDeep).Analyze(program); len(errors) == 0 {
+			t.Fatalf("%s: out-of-domain bound was accepted; interval proofs must then consult the type domain", condition)
+		}
+	}
 }

@@ -47,7 +47,7 @@ fn ThreeClauseFor() void {
     }
 }
 
-/* Expected error: unexpected token "..<"
+/* Expected error: a range is not a value in Sec 0.1
  * Reason: A range is not a first-class value outside its contextual positions.
  */
 fn RangeValue() void {

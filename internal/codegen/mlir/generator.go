@@ -2032,6 +2032,11 @@ func (g *Generator) emitArrayLiteral(expr *ast.ArrayLiteral, targetType string, 
 	if expr == nil {
 		return value{}, fmt.Errorf("emit-mlir array literal is missing")
 	}
+	for _, element := range expr.Elements {
+		if _, isRange := element.(*ast.RangeExpression); isRange {
+			return value{}, fmt.Errorf("emit-mlir does not support range segments in array literals; use the Semantic IR path")
+		}
+	}
 
 	elementType := ""
 	expectedLength := int64(len(expr.Elements))

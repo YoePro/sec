@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-04"
+    updated: "2026-10-05"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -40,6 +40,7 @@ integrations:
       - internal/sema/pitfall_neighbor_bounds.go
       - internal/sema/pitfall_skipped_first.go
       - internal/sema/pitfall_intervals.go
+      - internal/sema/constants.go
       - internal/sema/pitfall_guard_subject.go
       - cmd/compiler/analyse.go
     tests:
@@ -76,6 +77,10 @@ integrations:
       - interval-condition rules pitfall.range.tautological-interval and pitfall.range.impossible-interval (Interactive, LikelyMistake, proven) normalize `&&`/`||` pairs of ordered comparisons of one resolved integer binding or field chain against integer literals, in either operand order, into closed half-lines and prove coverage of every integer (L <= U + 1) or emptiness (L > U); floating-point subjects are excluded because NaN breaks the total order, and only literal bounds are used so no proof depends on scope-transient binding values
       - an inclusive tautology such as `value >= 0 || value <= 10` carries a SuggestedEdit to canonical `value in 0..10` rather than an operator swap
       - pitfall.range.membership-idiom (Deep, SuspiciousIntent, proven) offers a ProvenFix from a non-empty literal `x >= a && x <= b` or `x >= a && x < b` to `x in a..b` or `x in a..<b`; a property subject that may run a getter is retained as a suppressed result with evidence because collapsing two evaluations into one is not proven semantics-preserving
+      - interval-condition proofs accept named compile-time constants as bounds; Sema records the value of each non-literal comparison operand that is an immutable, non-transient constant in the operand's own scope (comparisonConstantOperands), so sibling scopes reusing a name are resolved correctly, mutable or transient bindings are never bounds, comparisons of two constants stay with the unreachable-code rules, and membership rewrites keep the written names (`value in FLOOR..LIMIT`); the meaningless-comparison rule reads the same scope-correct fact instead of a post-hoc name lookup
+      - interval-condition proofs cover char subjects ordered by their one-byte value (bounds are ASCII character literals or values 0..255; a non-ASCII character literal names no single byte and yields no proof, see missing-decisions.yaml MD-043) and rune subjects ordered by Unicode scalar value, with character-literal and t/r-suffixed bounds and `in` rewrites such as `letter in 'a'..'z'`; enums have no ordered comparison in Sec 0.1 (rules/foundations/operators.md "Enum equality"), so no enum interval exists to prove
+      - interval-condition proofs flatten `&&`/`||` chains of any length, group comparisons by resolved subject, and decide a conjunction by its tightest bounds and a disjunction by its loosest bounds while unrelated operands are ignored; each chain is reported once, and whole-condition membership rewrites are offered only when the chain is exactly the one bound pair
+      - constrained-type domains need no separate interval proof, as shown by a proof plus a regression test: Sema rejects every constant bound outside the subject's domain [min, max], so an empty conjunction would need L = max+1 <= U and a covering disjunction would need U = max with L > max+1, and neither is expressible; TestPitfallIntervalDomainBoundsAreRejectedBySema guards that premise
       - path-sensitive strict index guards (`index < X.Len` or `X.Len > index` conjuncts of if and while conditions, and the binding of a half-open `start..<X.Len` for loop) are tracked as an active guard stack through the pitfall walk
       - pitfall.control-flow.wrong-guard-subject (Interactive, LikelyMistake, High) reports a straight-line `Y[b]` access in a strict-guarded block when no access in that block uses the guarded pair and no guard on the path covers `Y[b]`, the copy/paste shape `if leftIndex < left.Len { right[rightIndex] }`; blocks that use the guarded pair, conjunctions covering the access, enclosing if/while/loop guards, `<=` guards (owned by the ineffective-guard rule), and accesses inside nested control flow stay silent
       - pitfall.control-flow.check-without-transfer (Interactive, LikelyMistake, High) reports `if index >= X.Len { ... }` (or a strict `>` rejection, either operand order) whose branch neither leaves the path (break, continue, return, panic, checked unreachable) nor may re-establish the index (assignment at any depth, compound or `++`/`--`, or `ref mut` passing), directly followed by `X[index]`; no control transfer is suggested because the intended one cannot be inferred
@@ -96,7 +101,6 @@ integrations:
       - extend length-versus-capacity reasoning to bounds held in locals, while loops, proofs from contracts, and proofs established in an enclosing block outside an if condition
       - extend structural-mutation-during-indexed-iteration reasoning to while loops with manual indexes, reverse traversal, bounds held in local bindings, mutations through aliases or callees, and user-declared structural operations
       - correlate wrong-guard and check-without-transfer findings through nested control flow, later statements, and mutation-aware guard invalidation instead of the implemented straight-line and directly-following slices
-      - extend interval-condition proofs to named compile-time constants, constrained-type domains, enum and char/rune ordering, and conjunction or disjunction chains longer than one comparison pair
       - add canonical-idiom suggestion support without inventing a new strict compilation mode
       - add Option/Result/state-check subject-correlation support when canonical state facts are available
       - add canonical FFI buffer/extent relationship consumption without inferring pointer/length semantics from parameter names
@@ -223,6 +227,10 @@ integrations:
       - direct by-value parameter uses contribute WholeValue shape demand, while projected field/index access and direct reference flow retain their narrower independent shape and identity facts
       - compiler-known dynamic-array, list, map, and set operations that add, remove, or clear elements consume canonical member-operation contracts and produce exact StructuralMutation demand on the resolved receiver Place, distinct from ordinary element or field writes
       - "`sec analyse` and `sec analyse --all` run parameter usage analysis by default at Deep depth and report the declared capability and the access, mutation, ownership, lifetime, identity, shape, and precision demand of every receiver and parameter in the selected sources"
+      - command: go test ./internal/sema -run 'TestPitfall(Interval|RangeMembership)' -count=1
+        result: passed on 2026-10-05 with module and local named-constant bounds, char byte bounds, rejection of non-ASCII character literals as char bounds, sibling-scope constants, mutable non-bounds, char and rune tautologies, impossible intervals and membership rewrites, conjunction and disjunction chains with unrelated operands, tightest/loosest bound selection, single reporting per chain, constrained subjects, and Sema rejection of out-of-domain bounds
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-05 after extending interval-condition proofs; Deep `sec analyse sec/core` reported 12 advisory char/rune membership idioms in sec/core/char.sec and sec/core/rune.sec, which now use canonical `in` ranges such as `self in 48t..57t` and report none; `sec analyse sec/stdlib` reports no interval findings
     remaining:
       - complete explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls

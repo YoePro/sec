@@ -6,7 +6,7 @@ integrations:
     area: frontend-selection-target-binding-effects-and-tooling
     status: partial
     audited: '2026-08-19'
-    revised: '2026-09-21'
+    revised: '2026-10-05'
     document_revision: '1.1'
     repository_baseline: c515862
     summary: 'Tracks the canonical Sec 0.1 compiler-known attribute system. Individual verticals exist for #target
@@ -28,17 +28,26 @@ integrations:
     - internal/ast/ast.go
     - internal/diagnostics/diagnostics.go
     - internal/parser/parser.go
+    - internal/parser/attributes.go
     - internal/sema/analyzer.go
+    - internal/sema/attributes.go
+    - internal/sema/analyzer_noblock.go
+    - internal/cst/roles.go
     - internal/sema/types.go
     - internal/formatter
     - internal/lsp
     - cmd/lsp
+    - cmd/lsp/attributes.go
     tests:
     - internal/diagnostics/diagnostics_test.go
     - internal/parser/parser_test.go
+    - internal/parser/attributes_test.go
     - internal/sema/analyzer_test.go
+    - internal/sema/attributes_test.go
+    - internal/sema/noblock_test.go
     - internal/formatter/formatter_test.go
     - cmd/lsp/main_test.go
+    - cmd/lsp/attributes_test.go
     implemented:
     - 'file-level ''#target(os: ..., arch: ...)'' compatibility directive parsing with required os and arch string-literal
       arguments and duplicate-argument rejection'
@@ -59,22 +68,20 @@ integrations:
     - complete compiler-known attribute sets followed only by comments and EOF are rejected with mandatory stable S1048
       attribute.unattached; parser recovery retains one invalid source node and LSP preserves the diagnostic identity and
       focused attribute-name range
+    - "general attribute parser (2026-10-05): one registry of the closed Sec 0.1 attribute set (allowed targets, argument form) drives one parser for every consecutive attachment set with comments between attributes, positional and named arguments with trailing commas and recovery to the closing parenthesis, and attaches the set in source order to the following function, method, extern, type, enum, or let declaration as generic Attribute nodes; @address and @link_name derive their specialized fields from the generic attributes, replacing the former @address, @link_name, @noCopy, and effect-set special parser paths (TestGeneralAttributeParserAttachesMixedSets)"
+    - "uniform attribute validation (2026-10-05): argument form, duplicate attributes and duplicate argument names with both locations, unknown and missing named arguments, allowed attachment targets, the top-level-only attachment level, and unknown attributes inside a set use mandatory S1112 attribute.duplicate, S1113 attribute.duplicate-argument, S1114 attribute.invalid-argument, S1115 attribute.not-allowed-on-target, and attribute.unknown (TestGeneralAttributeParserValidation)"
+    - "attributes whose meaning is not implemented (@target, @when, @interrupt, @isr, @interruptSafe, @noBlock) parse and attach canonically and are rejected by Sema with 'attribute @X is not implemented yet' instead of being misparsed as module-scope code or accepted without their guarantee (TestUnimplementedAttributesAreRejected)"
+    - "@noBlock (2026-10-05): a separate blocking-effect summary in the call graph records represented waiting operations (await, Sender.Send and SendRevocable, Receiver.Receive, Mutex.lock, select without default), extern calls without a trusted @noBlock contract, and calls with unknown targets; TrySend, TryReceive, tryLock, a select with default, and operations inside select branches do not block; a @noBlock Sec function or method with a synchronous path to such a site is mandatory S1116 blocking.no-block-violation with the call chain, the introducing site, and help per cause; @noBlock on an extern declaration is a trusted foreign contract (TestNoBlockGuaranteeIsVerifiedTransitively)"
+    - "attribute implication graph (2026-10-05): EffectiveGuarantees closes the written attributes over @interrupt => @isr and @isr/@interruptSafe => @noPanic, @noAlloc, @noBlock, records each implied guarantee with its source attribute and chain without synthesizing AST attributes, and never replaces an explicit guarantee; the @noPanic, @noAlloc, and @noBlock verifiers check effective guarantees and name the implication (for example 'does not satisfy @noBlock (implied by @interrupt via @isr)') (TestAttributeImplicationGraph)"
+    - "attribute conflicts and plan-time arguments (2026-10-05): a repeated @address or @interrupt with a different value is mandatory S1117 attribute.conflict naming both locations and the rule, and an identical repetition stays S1112; a statement @target selector contradicting the file's #target directive is S1117; Sema requires every @target, @when, and @interrupt argument to be a plan-time form (S1118 attribute.argument-not-compile-time for calls, await, try, lambdas, interpolation, and indexing) and checks string-literal selectors, integer or named vectors, and the restricted @when condition language (S1114); @address keeps its register-binding check (TestAttributeConflicts, TestAttributeArgumentsArePlanTimeValues)"
+    - "attribute LSP (2026-10-05): completion after `@` offers only the compiler-known attributes valid on the following function, method, extern, type, or let (from the parser's registry); inside @target it offers unused selector names and known os and arch values from the canonical target registry, and inside @interrupt the vector name; hover on a written attribute shows its meaning, allowed targets, argument form, status (verified, trusted foreign contract, or not implemented yet), the declaration's effective guarantees with their implication chain, and the compiler's panic, allocation, and blocking cause paths; the call-graph hover gains the blocking summary; quick fixes remove a duplicate (S1112), keep the first of conflicting values (S1117), remove an attribute from a declaration it cannot modify (S1115, now reported on the attribute), and remove arguments from an argument-free attribute (S1114); implied guarantees are never written and redundant explicit ones never removed (TestAttributeCompletion, TestAttributeHover, TestAttributeCodeActions)"
     partial:
-    - attribute handling is split across special-case parser paths rather than one grammar-driven attribute parser
-      and attachment-set representation
     - fixed-address behavior is implemented only for the currently specified addressed-register subset and still lacks
       complete target validation and lowering
-    - '''@noCopy'' has a substantial vertical implementation but is not yet integrated into a general mixed attribute-set
-      engine'
-    - "'@noPanic' and '@noAlloc' form one consecutive attribute set in any order (each at most once, argument-free, comments allowed between them) on functions, methods, and extern declarations through parseEffectGuaranteeDeclaration, and Sema verifies both transitively; on extern declarations they are trusted foreign contracts (2026-10-04, TestParseEffectGuaranteeAttributeSets); other attributes still use separate parser paths"
+    - "'@noPanic' and '@noAlloc' form one consecutive attribute set in any order (each at most once, argument-free, comments allowed between them) on functions, methods, and extern declarations, and Sema verifies both transitively; on extern declarations they are trusted foreign contracts (2026-10-04, TestParseEffectGuaranteeAttributeSets); since 2026-10-05 they share the general attribute parser"
     - target/platform concepts exist, but canonical '@target' selection is not generally implemented
     remaining:
-    - implement one general parser for the closed compiler-known attribute set with positional and named arguments,
-      trailing commas, source locations, and recovery
-    - implement consecutive mixed attribute attachment sets with comments and whitespace preserving attachment to the
-      following declaration
-    - enforce allowed attachment targets, duplicate rules, conflict rules, argument shape, and compile-time argument
-      requirements uniformly
+    - represent file-level attributes on the compilation unit (only the '#target' compatibility directive is file-level today)
     - implement canonical '@target' file and statement forms with os, arch, cpu, device, and board selectors
     - migrate '#target' compatibility syntax into the same file-selection representation as canonical '@target', with a focused compatibility diagnostic and explicit migration fix rather than a second selection engine
     - implement target-variant overlap detection, no-active-variant handling, and public-shape compatibility checks
@@ -86,12 +93,10 @@ integrations:
     - >-
       implement @interrupt(vector: ...) together with @isr and @interruptSafe parsing, implication,
       target-profile validation, call-graph restrictions, vector uniqueness, and lowering
-    - implement '@noBlock' with transitive verified-effect analysis and foreign-contract provenance ('@noPanic' and '@noAlloc' are implemented, 2026-10-04)
-    - implement the attribute implication graph while distinguishing explicit attributes from effective implied guarantees (in particular @isr and @interruptSafe implying @noPanic and @noAlloc)
-    - implement canonical generic attribute diagnostics and stable diagnostic IDs beyond the implemented attribute.unknown family
+    - register the remaining attribute diagnostic families (target, config, address, interrupt, isr, and interrupt-safe families) and give 'not implemented yet' an implementation-capability diagnostic identity
+    - classify join, sleep, timer waits, process/IPC waits, and Context-based Lock as blocking once Sema represents them, and treat a Sender or Receiver reached through a reference (`ref Sender[T]`) as the same compiler-known operation
     - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
-    - implement LSP completion, hover, effective-guarantee display, excluded-source display, target/config/vector/address
-      argument completion, diagnostics, and code actions
+    - "LSP for selection and target binding once they exist: excluded-source display with target and configuration exclusion reasons and the active compilation plan (needs @target/@when selection), config.<name> completion (needs compile-time parameters), cpu, device, and board selector values and interrupt-vector and peripheral-address completion and hover (need target knowledge packs)"
     cross_references:
     - frontend.fixed-address-bindings
     - frontend.ffi-v2
@@ -122,3 +127,9 @@ integrations:
       result: passed on 2026-09-21 with stable diagnostic registration, declaration recovery, and local runtime-call separation
     - command: go test ./internal/diagnostics ./internal/parser ./cmd/lsp -run 'UnattachedAttribute' -count=1
       result: passed on 2026-09-21 with known single and mixed attribute sets, trailing comments, unknown-attribute precedence, parser recovery, and LSP range coverage
+    - command: go test ./internal/parser ./internal/sema -run 'GeneralAttribute|UnimplementedAttributes|ParseEffectGuarantee|NoCopy|LinkName' -count=1
+      result: passed on 2026-10-05 with the general attribute parser, uniform S1112–S1115 validation, and Sema rejection of unimplemented attributes
+    - command: go test ./internal/parser ./internal/sema -run 'NoBlock|ImplicationGraph|AttributeConflicts|AttributeArgumentsArePlanTime' -count=1
+      result: passed on 2026-10-05 with transitive @noBlock (S1116), the implication graph, conflicts (S1117), and plan-time argument checks (S1118)
+    - command: go test ./cmd/lsp -run 'TestAttribute' -count=1
+      result: passed on 2026-10-05 with attribute completion, argument completion, hover, and quick fixes

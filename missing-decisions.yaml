@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-03"
+updated: "2026-10-05"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -608,5 +608,29 @@ decisions:
       and 3 also need a rule for the remaining arm set. The compiler
       (2026-10-04) decides `is Variant` if-tests from a known active variant
       but treats match arms by declared coverage only.
+    classification: constraining
+    status: open
+
+  - id: MD-043
+    area: char-byte-domain
+    rulebooks:
+      - rules/types/types.md
+      - rules/foundations/operators.md
+      - rules/foundations/lexical_structure.md
+    description: >-
+      The language owner states (2026-10-05) that `char` is one byte and is
+      not a Unicode scalar by default. types.md only calls `char` "Sec's
+      character scalar type", operators.md § "Character ordering" says `char`
+      values "order by Unicode scalar value within the valid `char` domain",
+      and lexical_structure.md § 13 lets a character literal hold any one
+      Unicode scalar. Sema (2026-10-05) accepts `let e: char := 'é'` and
+      `let b: char := 300t` without diagnostics. Undecided: whether the char
+      domain is 0..255 or ASCII 0..127; whether a non-ASCII character literal
+      shaped to `char` is an error or names a specific byte (for example a
+      Latin-1 value or the first UTF-8 byte); which diagnostic rejects an
+      out-of-range `t` literal; and the rulebook wording for char ordering.
+      Pitfall interval proofs already treat a char as one byte, accept only
+      ASCII character literals and values 0..255 as char bounds, and give no
+      proof otherwise.
     classification: constraining
     status: open

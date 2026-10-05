@@ -799,6 +799,8 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			markAttachedAttributes(node.Attributes, node.Token)
 		case *ast.EnumDeclaration:
 			markAttachedAttributes(node.Attributes, node.Token)
+		case *ast.LetStatement:
+			markAttachedAttributes(node.Attributes, node.Token)
 		case *ast.LambdaExpression:
 			if node.CaptureOpen.Type == lexer.LPAREN {
 				markGroupPair(node.CaptureOpen, LambdaCaptureListOpen, LambdaCaptureListClose)

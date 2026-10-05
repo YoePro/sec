@@ -1640,3 +1640,46 @@ func mustBigInt(value string) *big.Int {
 	}
 	return parsed
 }
+
+// A range segment is one compact array.construct segment whose operand is the
+// constant lower bound and whose length is the value count; an empty
+// exclusive segment contributes nothing.
+//
+// Rules:
+//   - rules/collections/collections.md — § 5.6a "Range segments in array literals"
+func TestArrayLiteralRangeSegmentsBuildCompactSegments(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+fn Pick() int {
+    let digits := [0..<10, 42, 7..8, 3..<3]
+    return digits[1]
+}
+`, 14)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	var construct *Operation
+	for _, block := range module.Functions[0].Blocks {
+		for index := range block.Operations {
+			if block.Operations[index].Kind == OpArrayConstruct {
+				construct = &block.Operations[index]
+			}
+		}
+	}
+	if construct == nil || construct.ArrayLength != "13" {
+		t.Fatalf("array.construct = %+v", construct)
+	}
+	kinds := []ArrayConstructSegmentKind{ArraySegmentRange, ArraySegmentElement, ArraySegmentRange}
+	lengths := []string{"10", "1", "2"}
+	if len(construct.ArraySegmentKinds) != 3 {
+		t.Fatalf("segments = %v", construct.ArraySegmentKinds)
+	}
+	for index := range kinds {
+		if construct.ArraySegmentKinds[index] != kinds[index] || construct.ArraySegmentLengths[index] != lengths[index] {
+			t.Fatalf("segment %d = %s/%s", index, construct.ArraySegmentKinds[index], construct.ArraySegmentLengths[index])
+		}
+	}
+}

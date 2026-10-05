@@ -467,8 +467,11 @@ When no target type exists, the compiler may infer `T[N]` when:
 ```text
 the literal contains at least one element
 every element resolves to the same type
-N equals the literal element count
+N equals the number of values the literal contributes
 ```
+
+A plain element contributes one value, a spread its source length, and a range
+segment its value count (§ 5.6a).
 
 Example:
 
@@ -502,6 +505,37 @@ Multiple fixed-array spreads are allowed when the total result length is
 compile-time known and exactly matches the target array length.
 
 Spread does not create dynamic-length fixed arrays.
+
+## 5.6a Range segments in array literals
+
+An array literal element may be a range segment:
+
+```sec
+let lower := [224r..246r, 248r..255r, 257r..383r]
+let digits: uint8[13] := [0..<10, 42, 7..8]
+```
+
+A segment `lower..upper` contributes every value from `lower` through `upper`
+in ascending order; `lower..<upper` excludes `upper`. Consecutive values are
+consecutive integers, or for `rune` consecutive Unicode scalar values.
+
+Rules (user decision 2026-10-05):
+
+- both bounds are required and are compile-time constants, so the literal's
+  length is compile-time known;
+- the element type is the target element type when one exists, otherwise the
+  bounds' common type, and it must be a built-in integer type or `rune` without
+  contracts;
+- each bound must be representable in the element type;
+- a segment whose lower bound exceeds its upper bound is invalid; an exclusive
+  segment with equal bounds contributes no values;
+- a `rune` segment must not cover any surrogate code point `U+D800..U+DFFF`;
+- range segments build fixed arrays `T[N]`; owning dynamic-array literals are
+  not defined in Sec 0.1, so a segment cannot initialize `T[]` — use `Append`
+  (§ 6.7).
+
+A range segment is one source entry: the compiler represents it compactly and
+does not expand it into one entry per value.
 
 ## 5.7 Fixed-array public surface
 
@@ -749,6 +783,17 @@ try values.Append(value) {
     Err(error) => Handle(error)
 }
 ```
+
+`Append` also accepts a range segment (§ 5.6a) and appends its values in
+ascending order:
+
+```sec
+try values.Append(0r..127r)
+```
+
+The segment follows the § 5.6a rules for the array's element type. The
+operation is all or nothing: on failure no value of the segment is appended.
+`list[T]`, `Fill`, and other collection operations do not accept a range.
 
 `Append` must be atomic with respect to collection validity.
 

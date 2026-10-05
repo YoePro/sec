@@ -2,6 +2,123 @@ schema_version: 1
 area: control-flow
 purpose: Statements, loops, matching, try, defer, and flow facts.
 integrations:
+  - id: frontend.defer-cleanup-state-isolation
+    area: frontend-control-flow-and-lifetime
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-16'
+    document_last_updated: '2026-08-16'
+    summary: Defer registration analysis now isolates Arena generations and current resource-close state along with
+      symbols, assignment, move, borrow, and reference state. Cleanup-time effects still require explicit Semantic IR
+      representation and application on cleanup edges.
+    rules:
+    - rules/control-flow/defer.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/destruction_test.go
+    - testdata/defer_valid.sec
+    - testdata/defer_invalid.sec
+    implemented:
+    - defer body is analyzed in copied symbol state
+    - defer body is analyzed in copied definite-assignment state
+    - defer body is analyzed in copied move/move-reason state
+    - defer body is analyzed in copied borrow state
+    - defer body is analyzed in copied local-reference-container state
+    - defer body is analyzed in copied Arena-generation and current resource-close state
+    - captured outer uses are converted to pending deferred-use borrow records after defer-body analysis
+    - immediate Arena.Reset and Arena.Release increment arena generation so older arena-derived references become
+      stale
+    partial:
+    - deferred cleanup effects are not yet represented independently for later cleanup-edge consumers
+    remaining:
+    - isolate arena generation state while validating a deferred body
+    - represent deferred Arena.Reset/Release invalidation as a future cleanup effect rather than mutating the ordinary
+      continuation
+    - audit every mutable Sema flow domain touched by defer-body analysis for registration-time versus cleanup-time
+      semantics
+    - separate current resource lifecycle state from registered future cleanup where the present closedResources model
+      conflates them
+    - preserve deferred cleanup effects explicitly in resolved Sema/Semantic IR facts with registration point and
+      canonical cleanup order
+    - apply arena/resource invalidation only on cleanup edges in later flow analysis and lowering
+    - add focused regression coverage for ordinary use between defer registration and cleanup
+    bug_reference:
+    - correction18.md
+    governance_reconciliation:
+    - 'Keep frontend.defer-v2 partial. Qualify the implemented registration and delayed-use statements: pending outer-value
+      use restrictions are represented, but cleanup-time state mutation is not completely isolated from registration-time
+      analysis.'
+    - Add "isolate cleanup-time state mutations such as Arena.Reset/Release generation invalidation from ordinary
+      post-registration flow state" to remaining work.
+    - Existing remaining work for unified cleanup order, callable contexts, dynamic loop registration, Semantic IR,
+      and backend lowering remains unchanged.
+    required_tests:
+    - deferred Arena.Reset does not stale a pre-existing arena reference before cleanup
+    - immediate Arena.Reset still stales an older arena reference
+    - deferred Arena.Release does not advance current arena generation before cleanup
+    - multiple deferred arena invalidations do not mutate current generation at registration
+    - conditional deferred arena invalidation does not leak into ordinary continuation
+    - cleanup-time arena invalidation retains canonical LIFO ordering
+
+  - id: frontend.loop-arena-generation-fixed-point
+    area: frontend-control-flow-and-reference-validity
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_document: rules/control-flow/flowcontrol_while.md
+    primary_document_revision: '2.0'
+    related_documents:
+    - rules/control-flow/flowcontrol_for.md
+    - rules/memory/reference_model.md
+    - rules/compiler/rules_implementations.txt
+    summary: Loop fixed-point analysis carries ArenaDomain generations with move state, resources, borrows, and local
+      reference origins. Fallthrough and continue backedges merge generations into the loop header, generation changes
+      participate in convergence, and replay uses the merged header state for both while and for loops.
+    code:
+    - internal/sema/analyzer.go
+    implemented:
+    - arena reset/release advance current Sema arena generation
+    - stale arena-reference checks compare reference generation to current arena generation
+    - loop fixed-point state carries move state
+    - loop fixed-point state carries close-tracked resource state
+    - loop fixed-point state carries borrow state
+    - loop fixed-point state carries local reference-origin state
+    - break edges record arena generation for post-loop merging
+    - post-loop arena generations are conservatively merged
+    - loop header/backedge state carries ArenaDomain generations
+    - continue edges snapshot and merge ArenaDomain generations
+    - fixed-point convergence compares generation maps
+    - replay restores the merged header generation state
+    - while and for use the corrected shared fixed-point helper
+    remaining:
+    - prefer one structured LoopEdgeState carrying every tracked semantic domain
+    bug_reference:
+    - correction25.md
+    governance_reconciliation:
+    - Add loop-carried arena-generation validity to frontend.while-statements-v2 remaining work. The existing generic
+      loop/fixed-point claims do not document this omitted semantic state.
+    - Add the same shared-helper limitation to for-loop governance where loop-header fixed-point support is described.
+    - correction21.md continues to own nested break-target return/fallthrough analysis; correction22.md continues
+      to own logical short-circuit frontend runtime-state analysis.
+    required_tests:
+    - while second iteration sees Arena.Reset from first iteration
+    - for second iteration sees Arena.Reset from first iteration
+    - while continue edge carries arena generation
+    - for continue edge carries arena generation
+    - Arena.Release has identical generation behavior
+    - break-only arena generation affects exit but not nonexistent backedge
+    - nested loops preserve generation on the correct loop edge
+
   - id: frontend.discard-v2
     area: frontend-ownership-and-lowering
     status: partial
@@ -421,7 +538,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-22"
-    revised: "2026-10-01"
+    revised: "2026-10-05"
     document_revision: "2.0"
     repository_baseline: "56be75d"
     replaces: rules/control-flow/flowcontrol_while.txt
@@ -454,6 +571,11 @@ integrations:
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
+      - internal/ir/semantic/loops.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/printer.go
+      - internal/ir/semantic/verifier.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -466,6 +588,8 @@ integrations:
       - cmd/lsp/main_test.go
       - internal/codegen/mlir/generator_test.go
       - internal/codegen/llvm/generator_test.go
+      - internal/ir/semantic/loops_test.go
+      - internal/ir/semantic/boolean_test.go
       - testdata/while_valid.sec
       - testdata/while_invalid.sec
       - testdata/parser/condition_pattern_binding_invalid.sec
@@ -499,6 +623,8 @@ integrations:
       - loop labels such as outer: before while or for report a focused diagnostic and the labeled loop and body are retained instead of cascading through typed-declaration recovery
       - Sema proves break and continue inside a switch nested in while target the surrounding loop, with the nested break recorded as a reachable loop exit
       - canonical Markdown metadata with implementation governance kept in this ledger
+      - "Semantic IR conditions (2026-10-05): while and if conditions built from &&, ||, ! and integer range membership lower through the shared boolean-operator builder (rules/foundations/operators.md), so `while count < 5 && value != 100` and `while !(value in 0..100)` reach verified Semantic IR (TestRangeMembershipBuildsBoundComparisons)"
+      - "Semantic IR loop CFG (2026-10-05, semantic_ir.md § 66, § 67(4); while § 29): a while statement becomes an explicit LoopRecord (condition block that is also the continue target, body block, exit block that is the break target) with enter, condition, back, continue, and break edges carrying the loop identity; the condition is evaluated once per attempted iteration, ResolvedWhileFlow selects the constant forms (a proven-true condition is not re-evaluated and exits only through a reachable break, a proven-false body is never entered, a non-continuing loop has no exit), break/continue target the innermost loop including from match arms, and loop-carried state is reloaded from mutable local storage; the verifier ties every record to its edges and rejects foreign entries, mistargeted edges, and inconsistent continuation (TestWhileLoopBuildsExplicitLoopCFG, TestVerifierRejectsMalformedLoops)"
       - while conditions refine definite assignment from union state tests: the body of while value is Variant sees an initialized binding, and a while value is empty loop without a reachable break leaves the binding initialized; loop backedge re-analysis never weakens the published possibly-empty state-test fact
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
@@ -507,6 +633,8 @@ integrations:
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
       - verify that break and continue inside a switch nested in while target the surrounding loop in CFG, Semantic IR, and both backends
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
+      - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
+      - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
     excluded:
       - do-while
       - while-else

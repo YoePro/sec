@@ -2,11 +2,178 @@ schema_version: 1
 area: collections
 purpose: Collection APIs, shaped values, and iteration semantics.
 integrations:
+  - id: frontend.dynamic-array-semantic-identity
+    area: frontend-collections-and-ownership
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    document_revision: '1'
+    document_created: '2026-08-11'
+    document_last_updated: '2026-08-11'
+    summary: >-
+      Owning T[] and fixed T[N] share the Sema ArrayType representation, with
+      ArrayLength=-1 as a robust dynamic-owner category. Core frontend traits
+      preserve that distinction: T[] is always MoveOnly and non-trivially
+      destructible, is excluded from ordinary fixed-array equality, and is not
+      implicitly initialization-compatible with T[N].
+    rules:
+    - rules/collections/collections.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/memory/destruction.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/types.go
+    - internal/sema/analyzer.go
+    implemented:
+    - canonical parser syntax for fixed T[N] and owning T[]
+    - type resolver retains fixed array length N
+    - type resolver uses a dedicated dynamic-array length sentinel for T[]
+    - omitted mutable T[] initialization has the canonical empty-owner path
+    - fixed-array copy classification derives from element classification
+    - fixed-array elementwise equality infrastructure exists
+    - dynamic-array compiler-known public member signatures are independently registered
+    - every owning T[] is MoveOnly independently of element type
+    - every owning T[] is non-trivially destructible independently of element type
+    - ordinary fixed-array equality excludes owning T[]
+    - implicit initialization preserves fixed-array versus dynamic-owner identity
+    - explicit owner-to-slice borrowing remains separate from owner conversion
+    remaining:
+    - audit every ArrayType consumer across Sema, Semantic IR, formatter, LSP, lowering, ABI, FFI, layout, ownership,
+      equality, and destruction
+    bug_reference:
+    - correction26.md
+    governance_reconciliation:
+    - Keep frontend.collections partial, but add an explicit dynamic-array semantic-identity gap. Parser/type spelling
+      recognition exists; core semantic traits do not yet preserve fixed-array versus owning T[] identity reliably.
+    - Narrow frontend.copy-move implemented wording for recursive "array" classification. Fixed-array classification
+      is implemented, while owning T[] classification is incorrect until it is unconditionally MoveOnly.
+    - Keep frontend.dynamic-array-public-api member availability/signatures as implemented within its current scope;
+      this correction concerns owner value semantics.
+    - Keep the allocation-free empty mutable T[] default as implemented; the resulting owner's copy/destruction/equality
+      traits are the defect.
+    traceability:
+      policy_source: correction25.md
+      touched_functions_should_reference:
+      - rules/collections/collections.md §5 fixed arrays
+      - rules/collections/collections.md §6 owning dynamic arrays
+      - rules/collections/collections.md §10 equality
+      - rules/collections/collections.md §11 parameters and return values
+      - rules/collections/collections.md §12 destruction
+      - relevant copy_move, ownership, and destruction rules
+      functions:
+      - collection type resolution for T[N] and T[]
+      - copyClassificationOf
+      - triviallyDestructible
+      - equalityComparable
+      - canCompareEquality
+      - sameComparableArrayType
+      - canInitialize
+    required_tests:
+    - int[] copy classification is MoveOnly
+    - copyable-struct[] copy classification is MoveOnly
+    - fixed copyable array retains element-derived copyability
+    - int[] is non-trivially destructible
+    - fixed trivial int[N] remains trivially destructible
+    - int[] ordinary equality is rejected
+    - fixed int[N] equality remains valid
+    - T[N] cannot implicitly initialize T[]
+    - T[] cannot implicitly initialize T[N]
+    - by-value T[] transfer consumes the owner
+    - explicit slices remain borrowed and distinct
+    - Semantic IR preserves fixed versus dynamic owner identity
+
+  - id: frontend.shaped-static-extent-product
+    area: frontend-shaped-types
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    rulebook_generation: v2
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Sema validates static vector/matrix/tensor dimensions and computes their canonical element-count product
+      with arbitrary-precision arithmetic. Zero extents short-circuit the product, and the retained count must fit
+      the selected target uint representation. Downstream consumers do not yet all reuse this canonical fact.
+    rules:
+    - rules/collections/shaped-types.md
+    - rules/types/types.md
+    - rules/memory/layout.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - vector static arity validation
+    - matrix static arity validation
+    - variadic static tensor dimension arity validation
+    - individual shaped const arguments must be compile-time integers
+    - individual shaped const arguments must fit int64
+    - individual shaped dimensions must be non-negative
+    - zero dimensions are currently accepted syntactically and semantically
+    - static extent products use arbitrary-precision arithmetic
+    - zero extents produce a canonical zero element count without intermediate overflow
+    - static element count is checked against the selected target uint representation
+    - the canonical static element count is retained on the resolved Sema type
+    partial:
+    - layout, Semantic IR, and lowering do not yet uniformly consume the retained static element-count fact
+    remaining:
+    - reuse that fact for Len, SizeOf, dense strides, storage eligibility, Semantic IR, and lowering
+    bug_reference:
+    - correction27.md
+
+  - id: frontend.shaped-contextual-x
+    area: frontend-shaped-algebra
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    rulebook_generation: v2
+    document_revision: '2.0'
+    summary: Parser and Sema implement static contextual matrix x algebra. The result element is derived through ordinary
+      scalar multiplication and must support stable ordinary scalar accumulation; operand element types need not be
+      identical merely because the shaped operands differ. Runtime-shaped x and resolved Semantic IR facts remain.
+    rules:
+    - rules/collections/shaped-types.md
+    - rules/foundations/operators.md
+    - rules/types/units.md
+    code:
+    - internal/parser/expression.go
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - contextual identifier x recognized as infix operator only when followed by an expression
+    - x uses PRODUCT precedence
+    - x is left-associative through Pratt parser behavior
+    - Sema dispatches x to shaped matrix multiplication analysis
+    - static matrix by matrix inner-dimension validation
+    - static matrix by vector length validation
+    - static matrix by matrix result shape
+    - static matrix by vector result shape
+    - result element type derived from ordinary scalar multiplication
+    - product-term accumulation validated through ordinary scalar addition semantics
+    - focused Sema tests exercise the active subset
+    partial:
+    - runtime shaped x and ShapeError behavior remain absent
+    - no explicit resolved shaped-algebra fact is published to Semantic IR
+    remaining:
+    - implement runtime-shaped x with ShapeError and try where required
+    - publish canonical resolved x facts for Semantic IR/lowering
+    bug_reference:
+    - correction27.md
+    governance_reconciliation:
+    - 'Move contextual x from a wholly-remaining description to an explicit partial implementation: parser, precedence,
+      static matrix/matrix and matrix/vector Sema, shape checks, and tests already exist.'
+    - Record the active same-element restriction/result-type shortcut as incorrect relative to shaped-types v2.
+    - Keep runtime ShapeError, complete scalar algebra, Semantic IR, and lowering work as remaining.
+
   - id: frontend.shaped-types
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-11"
-    revised: "2026-09-28"
+    revised: "2026-10-05"
     summary: >-
       Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
       and MemorySpace independently from ordinary collections. The canonical
@@ -17,6 +184,15 @@ integrations:
       multiplication, and general tensor contraction.
     rules:
       - rules/collections/shaped-types.md
+    code:
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/shaped_runtime.go
+      - internal/sema/compiler_known_members.go
+    tests:
+      - internal/parser/runtime_shaped_tensor_test.go
+      - internal/sema/runtime_shaped_tensor_test.go
+      - internal/sema/compiler_known_members_test.go
     implemented:
       - parser and AST accept mixed type/value generic arguments used by shaped types
       - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
@@ -29,8 +205,8 @@ integrations:
       - Sema, LSP completion, and hover consume those same shaped Rank/Shape/Len entries, including useful compile-time rank, ordered-extents, and total-element-count facts
       - statically shaped vector, matrix, and tensor values expose instance Strides with the exact Strides[Rank] result and arbitrary-precision canonical dense row-major element-stride facts shared by Sema and LSP
       - canonical dense owning vector, matrix, and tensor values expose instance IsContiguous as a compiler-known bool fact fixed to true; Sema and LSP consume the shared registry entry and no type-level property is invented
+      - parser and Sema recognize owning runtime-shaped tensor[T, Shape[Rank]] as a distinct tensor identity, retain its compile-time rank, reject mixed runtime/static extent forms, and do not conflate it with tensor_view or invent a static element count
     remaining:
-      - recognize owning runtime-shaped tensor[T, Shape[Rank]] without conflating it with tensor_view
       - implement runtime Shape, Len, Strides, and IsContiguous where required, plus Layout, MemorySpace, Ptr, and shaped instance SizeOf member semantics
       - implement ShapedStorageRequest composition with StorageRequest and explicit Create request validation
       - implement Reshape as borrowed zero-copy view formation with runtime ShapeError checking where required
@@ -60,13 +236,15 @@ integrations:
         result: passed on 2026-09-28 with exact Strides[Rank] completion, hover, and canonical row-major facts
       - command: go test ./cmd/lsp -run ShapedIsContiguousCompletionAndHover -count=1
         result: passed on 2026-09-28 with registry-backed bool completion, hover, and compile-time true documentation
+      - command: go test ./internal/parser ./internal/sema
+        result: passed on 2026-10-05 with runtime-shaped owning tensor parsing, exact tensor[T, Shape[Rank]] identity, compiler-known Rank, owner/view distinction, and mixed-form rejection
 
   - id: frontend.collections
     area: frontend
     status: partial
     integrated: "2026-08-07"
     audited: "2026-08-18"
-    revised: "2026-09-11"
+    revised: "2026-10-05"
     summary: >-
       Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
       against the unified collections rulebook. Parser/type recognition and
@@ -89,6 +267,9 @@ integrations:
       - internal/sema/effect_analysis_test.go
       - internal/sema/semantic_facts_test.go
       - internal/sema/compiler_known_members_test.go
+      - internal/sema/range_segments_test.go
+      - internal/parser/range_segment_test.go
+      - internal/ir/semantic/package14_test.go
       - testdata/sema/list_indexing_valid.sec
       - testdata/sema/list_indexing_invalid.sec
       - testdata/sema/list_indexing_no_panic_invalid.sec
@@ -103,7 +284,11 @@ integrations:
       - list[T] indexing resolves ordinary reads, shared and mutable element Places, and indexed replacement through the canonical element type
       - list indexing accepts built-in and compatible named integer indexes, rejects invalid types and statically provable negative or bounded-capacity failures, and records mandatory runtime Len checks otherwise
       - list index facts remain separate from array facts so unavailable list Semantic IR and lowering cannot be inferred accidentally
+      - "array literal range segments (2026-10-05, collections.md § 5.6a, user decisions: fixed arrays only, rune segments may not cover surrogates): the parser reads `lower..upper` and `lower..<upper` elements; Sema resolves each to an ArrayLiteralRange plan entry with inclusive compile-time bounds and its value count (rune and character literals by scalar value, integers by the shared constant evaluation), infers or checks the fixed length from the contributed values, and rejects runtime bounds, descending bounds, non-integer or contract element types, bounds outside the element type, surrogate-covering rune segments, and a T[] target with S1119 collections.range-segment-invalid; a range anywhere else (for example an ordinary call argument) is S1119 'a range is not a value in Sec 0.1' instead of a silent invalid type; Semantic IR builds one compact array.construct range segment per source segment (constant lower-bound operand, count length) and drops empty segments; the legacy emit-mlir generator rejects range segments explicitly (TestArrayLiteralRangeSegments, TestArrayLiteralRangeSegmentErrors, TestRangeSegmentsParseInArrayLiteralsAndArguments, TestArrayLiteralRangeSegmentsBuildCompactSegments)"
+      - "sec/core/rune.sec IsLowerLetter builds its table as an inferred fixed rune array of range segments (2026-10-05)"
     remaining:
+      - "owning dynamic-array literals are not defined in Sec 0.1 (user decision 2026-10-05), yet Sema accepts `let values: T[] := [elements]` without an allocation context or try (11 uses in tests and fixtures); reject it with a focused diagnostic and migrate those uses to Append, or define the form in collections.md"
+
       - preserve owning dynamic-array identity across copyability, destruction, equality, initialization, and ownership transfer instead of inheriting fixed-array traits through ArrayType
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
@@ -162,7 +347,9 @@ integrations:
       - Append accepts contextually typed struct literals directly as values, including under naked try propagation
       - Clear resolves as infallible void mutation
       - RemoveAt validates an integer index and returns Option[T]
+      - "Append accepts a range segment (2026-10-05, collections.md § 6.7): `try values.Append(0r..127r)` resolves the segment with the § 5.6a rules for the element type, records a ResolvedRangeAppend fact, and returns Result[void, CollectionError]; list[T].Append and Fill reject a range with S1119"
     remaining:
+      - lower range-segment Append as one all-or-nothing growth on the P18 substrate
       - resolve omitted mutable T[] initialization as an allocation-free empty owning value with zero length, zero internal capacity, no backing storage, and no live elements
       - implement transactional Append on the P18 growth substrate
       - make Clear reverse-destroy live elements while retaining backing
@@ -170,6 +357,7 @@ integrations:
       - enforce active-borrow and storage-invalidation rules on mutating methods
     tests:
       - internal/sema/compiler_known_members_test.go
+      - internal/sema/range_segments_test.go
     verification:
       - command: go test ./internal/sema -run TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry -v
         result: passed

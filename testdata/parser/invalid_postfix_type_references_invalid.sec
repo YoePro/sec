@@ -4,6 +4,6 @@ fn FixedArray(value: int[1) void {}
 fn Collection(value: list[]) void {}
 fn MapValue(value: map[int]) void {}
 fn GenericArgument(value: Box[) void {}
-fn EventCapacity(value: Event[int, nope]) void {}
+fn EventCapacity(value: Event[int, ]) void {}
 
 fn Next() void {}

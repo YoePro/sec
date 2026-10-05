@@ -255,7 +255,7 @@ integrations:
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1108 definitions in the reviewed registry plus mandatory S3001 and
+          S1119 definitions in the reviewed registry plus mandatory S3001 and
           S4001. S1097 operators.string-materialization-requires-try and S1098
           allocation.string-materialization-without-context implement MD-004;
           S1099 names.confusable-identifier implements MD-001; S1100
@@ -274,7 +274,18 @@ integrations:
           interfaces.incompatible-member report interface conformance at the
           implementation with the requirement as labelled related location;
           S1108 allocation.no-alloc-violation reports a @noAlloc function with
-          a reachable allocation or unknown allocation behavior.
+          a reachable allocation or unknown allocation behavior; S1109
+          initialization.missing-entry, S1110 initialization.invalid-entry,
+          and S1111 initialization.duplicate-entry enforce the command and
+          firmware entry contracts; S1112 attribute.duplicate, S1113
+          attribute.duplicate-argument, S1114 attribute.invalid-argument, and
+          S1115 attribute.not-allowed-on-target are reported uniformly by the
+          general attribute parser; S1116 blocking.no-block-violation verifies
+          @noBlock; S1117 attribute.conflict and S1118
+          attribute.argument-not-compile-time enforce conflicting single-valued
+          attributes and plan-time attribute arguments; S1119
+          collections.range-segment-invalid rejects invalid array literal and
+          Append range segments and ranges used as values.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
           Invalid move-only payload extraction from union storage that cannot

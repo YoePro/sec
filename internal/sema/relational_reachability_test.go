@@ -183,7 +183,6 @@ fn FirstIterationValue(n: int) int {
     return i
 }
 
-@noPanic
 fn WhileConditionHolds(n: int) int {
     let limit := 10
     let mut i := 0
@@ -200,13 +199,22 @@ fn WhileConditionHolds(n: int) int {
 		t.Fatalf("errors = %v", errors)
 	}
 	graph := analyzer.CallGraph()
-	for name, wantPanic := range map[string]bool{
+	// The loops also increment with `i += 1`, whose checked addition is an
+	// independent arithmetic panic effect; only assertion effects are
+	// compared here.
+	for name, wantAssertionPanic := range map[string]bool{
 		"PreLoopFact":         true,
 		"FirstIterationValue": true,
 		"WhileConditionHolds": false,
 	} {
-		if got := graph.EffectSummary(callGraphNodeIDByName(t, graph, name)).MayPanic; got != wantPanic {
-			t.Errorf("%s MayPanic = %v, want %v", name, got, wantPanic)
+		got := false
+		for _, effect := range graph.EffectSummary(callGraphNodeIDByName(t, graph, name)).DirectEffects {
+			if effect.Kind == EffectMayPanicAssertion {
+				got = true
+			}
+		}
+		if got != wantAssertionPanic {
+			t.Errorf("%s assertion panic = %v, want %v", name, got, wantAssertionPanic)
 		}
 	}
 }

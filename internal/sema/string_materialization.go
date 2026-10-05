@@ -2,6 +2,7 @@ package sema
 
 import (
 	"sort"
+	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -65,12 +66,9 @@ func (a *Analyzer) activeAllocationContext() AllocationContext {
 //   - rules/foundations/operators.md — "Maximal concatenation plan", "Compile-time concatenation"
 func (a *Analyzer) storeStringConcatPlan(root ast.Expression, segments []StringConcatSegment) {
 	plan := StringConcatPlan{Segments: segments}
-	for _, segment := range segments {
-		if !constantStringConcatSegment(segment) {
-			plan.Runtime = true
-			break
-		}
-	}
+	foldedText, folded := foldedStringConcatText(segments)
+	plan.FoldedText = foldedText
+	plan.Runtime = !folded
 	if plan.Runtime {
 		plan.Allocation = StringMaterializationAllocation{Context: a.activeAllocationContext(), FailureType: a.types["StringError"]}
 		a.stringMaterializationSites[root] = stringMaterializationSite{callable: a.currentCallable, reachable: a.callGraphPathReachable && !a.summaryPass, token: expressionToken(root)}
@@ -78,19 +76,34 @@ func (a *Analyzer) storeStringConcatPlan(root ast.Expression, segments []StringC
 	a.stringConcatPlans[root] = plan
 }
 
-// constantStringConcatSegment reports a segment fully resolved at compile
-// time: constant text or a character literal. Named compile-time values are
-// not folded here; MD-011 classifies only contract and default positions as
-// SemanticCompileTimeRequiredContexts, not string concatenation operands.
-func constantStringConcatSegment(segment StringConcatSegment) bool {
-	if segment.Kind == StringConcatConstantString {
-		return true
+// foldedStringConcatText materializes the exact static-data value of a fully
+// compile-time concatenation. Literal nodes already contain lexer-decoded Sec
+// text, so folding preserves Unicode scalars and escape semantics without
+// consulting host-language quoting rules.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compile-time concatenation"
+//   - rules/foundations/lexical_structure.md — §§13–15 character, string, and escape semantics
+func foldedStringConcatText(segments []StringConcatSegment) (string, bool) {
+	var folded strings.Builder
+	for _, segment := range segments {
+		switch {
+		case segment.Kind == StringConcatConstantString:
+			folded.WriteString(segment.Text)
+		case segment.Expression != nil:
+			switch literal := segment.Expression.(type) {
+			case *ast.CharLiteral:
+				folded.WriteString(literal.Value)
+			case *ast.StringLiteral:
+				folded.WriteString(literal.Value)
+			default:
+				return "", false
+			}
+		default:
+			return "", false
+		}
 	}
-	switch segment.Expression.(type) {
-	case *ast.CharLiteral, *ast.StringLiteral:
-		return true
-	}
-	return false
+	return folded.String(), true
 }
 
 // runtimeStringMaterialization reports whether expr is the root of a final

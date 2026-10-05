@@ -2,6 +2,50 @@ schema_version: 1
 area: stdlib
 purpose: Standard-library implementation and catalog status.
 integrations:
+  - id: stdlib.units-catalog
+    area: standard-library
+    status: partial
+    integrated: "2026-08-07"
+    audited: "2026-08-18"
+    summary: >-
+      Expands the units package into a documented, metadata-complete catalog of
+      155 physical units across SI and commonly used non-SI systems.
+    rules:
+      - rules/types/units.md
+    code:
+      - sec/stdlib/units/base.sec
+      - sec/stdlib/units/core_derived.sec
+      - sec/stdlib/units/electricity.sec
+      - sec/stdlib/units/imperial_us.sec
+      - sec/stdlib/units/light.sec
+      - sec/stdlib/units/mechanics.sec
+      - sec/stdlib/units/power_energy.sec
+      - sec/stdlib/units/scaled_derived.sec
+      - sec/stdlib/units/science.sec
+      - sec/stdlib/units/time_frequency.sec
+    implemented:
+      - documentation comments on every unit declaration
+      - complete LongName, Symbol, BaseUnit, Status, Dimension, Scale, and System metadata
+      - SI base units and commonly used scaled SI units
+      - geometry, motion, mechanics, pressure, density, viscosity, and flow units
+      - time, frequency, angular, electrical, energy, power, and photometric units
+      - radiation, chemistry, thermal, Imperial, US customary, and nautical units
+      - exact rational scales where standardized exact relationships are available
+      - semantically valid reciprocal helper naming for frequency and conductance formulas
+    verification:
+      - command: parse sec/stdlib/units/*.sec
+        result: passed
+      - command: sema sec/stdlib/units/*.sec
+        result: passed
+      - command: validate documentation and required metadata for every catalog unit
+        result: passed
+    remaining:
+      - Kind metadata migration for safety-relevant same-dimension quantity families
+      - offset-temperature units after offset conversion support exists
+      - scale-sensitive algebra and automatic fixed scale-path conversion
+      - logarithmic conversion semantics for units such as decibel
+      - additional domain, currency, astronomical, and specialized engineering catalogs
+
   - id: stdlib.hardware-bus-infrastructure
     area: standard-library
     status: planned

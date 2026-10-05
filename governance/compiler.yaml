@@ -2,6 +2,39 @@ schema_version: 1
 area: compiler
 purpose: Compiler pipeline, linking, initialization, and artifacts.
 integrations:
+  - id: frontend.compiler-source-selection
+    area: target-and-config-source-selection
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - 'legacy file-level #target(os, arch) parsing/validation exists'
+    - target-aware platform file filtering exists in current frontend/LSP bootstrap paths
+    - project/platform imports and target-aware source assembly exist in partial bootstrap form
+    remaining:
+    - implement canonical @target file and statement forms with os, arch, cpu, device and board selectors
+    - implement overlap/public-shape validation for target variants
+    - implement @when with typed config.<name> compile-time parameters
+    - 'migrate legacy #target/#if/compiler.target_os/compiler.target_arch paths to compatibility-only or retire them'
+    - ensure excluded source is parsed/tool-visible but absent from active symbols/Sema/Semantic IR
+    - route platform source selection from canonical CompilationPlan identities rather than directory heuristics
+  - id: frontend.compiler-pipeline
+    area: workspace-plan-source-and-frontend-boundaries
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - project/target-aware source assembly exists for current CLI/LSP paths
+    - target filtering occurs before target-aware Sema for represented platform sources
+    - frontend parsing/Sema stop lowering on mandatory semantic failures
+    - compiler-owned test plan model is specified and partially integrated through testing governance
+    - current Iterator[T] frontend governance has explicit conformance/Next lowering requirements
+    remaining:
+    - formalize one canonical CompilationRequest/CompilationPlan construction path for CLI, LSP, build, emit and test
+      commands
+    - move all target-dependent source selection/platform routing to canonical plan facts
+    - eliminate duplicated bootstrap module/platform source-resolution paths
+    - integrate compile-time evaluation as a query service at every consuming frontend phase
+    - integrate compiler_analysis.md graph scheduling rather than relying on one hard-coded semantic pass ordering
+    - implement explicit lowering-readiness/implementation-capability classification
   - id: compiler.platform-resolution
     area: target-variant-platform-compilation-plan
     status: planned
@@ -24,8 +57,10 @@ integrations:
       - P1-P14 provide versioned Sec MLIR schemas and executable verified vertical lowering slices
       - real sec-mlir-opt / MLIR verification participates in represented package paths
       - legacy direct LLVM and legacy AST-to-LLVM-dialect paths remain for represented subsets
+      - "emit-ir builds Semantic IR through the newest completed package, P14, by default (2026-10-05); constructs outside the SEC-MLIR package sequence (while loops, compound assignment, &&/||/!, range membership) are admitted from package gate 13, so emit-sec-mlir (P12) keeps rejecting them explicitly"
     remaining:
       - make the Semantic IR -> Sec MLIR path cover all maintained Sec 0.1 features
+      - "route `sec build` through Semantic IR: both --pipeline llvm and --pipeline mlir currently generate code from the AST through internal/codegen, bypassing Semantic IR and its verifier (observed 2026-10-05)"
       - retire or explicitly isolate semantic duplication in legacy direct LLVM/legacy MLIR emitters
       - make every maintained legacy backend consume canonical CompilationPlan layout/type facts or reject unsupported lowering
       - centralize implementation-capability diagnostics distinct from source/target errors
@@ -439,8 +474,9 @@ integrations:
       - do not describe the existing direct clang invocation as canonical linking completion
   - id: compiler.program-initialization
     area: projects-initialization-and-build
-    status: planned
+    status: partial
     integrated: "2026-08-18"
+    revised: "2026-10-05"
     document_revision: "1"
     repository_baseline: "20b3606"
     summary: >-
@@ -463,11 +499,23 @@ integrations:
       - rules/platform/abi.md
       - rules/mlir/sec_mlir.md
       - rules/compiler/semantic_ir.md
+    code:
+      - internal/sema/program_entry.go
+      - internal/project/targets.go
+      - cmd/compiler/build_entry.go
+      - cmd/lsp/program_entry.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/sema/program_entry_test.go
+      - internal/project/targets_test.go
+      - cmd/compiler/build_entry_test.go
+      - cmd/lsp/program_entry_test.go
+    implemented:
+      - "entry contract validation (2026-10-05): Analyzer.ValidateProgramEntry checks a command Target for exactly one concrete, non-generic, non-extern, module-level `fn main() int` without parameters in the entry module and a firmware Target for `fn main() void`; main in the entry module is the entry identity, so an overload is a duplicate; impl methods named main are not entries; library and test Targets are not checked. Diagnostics distinguish S1109 initialization.missing-entry (at the entry module declaration), S1110 initialization.invalid-entry (naming each departure: generic, extern, parameters, wrong return type such as Result), and S1111 initialization.duplicate-entry (with the first entry as related location), each with help (§ 21, § 22, § 25, § 26, § 27, § 42; TestProgramEntryContract covers the § 45.1 list except the generated test harness)"
+      - "Target kind and source come from `[target.<name>]` through internal/project ParseManifestTargets and TargetForSource; sec build validates the input file's module against the owning Target's kind, defaulting to command for a linked executable outside every declared Target, and the LSP reports the same diagnostics while a command or firmware Target's source is edited (TestBuildTargetKindComesFromTheManifest, TestLSPReportsProgramEntryContract)"
     remaining:
       - introduce canonical ProgramInitializationPlan and ProgramShutdownPlan artifacts for every executable concrete CompilationPlan
-      - validate command entry as exactly one concrete non-generic module-level fn main() int in the designated entry module
-      - validate firmware entry as exactly one concrete non-generic module-level fn main() void in the designated entry module
-      - ensure library targets acquire no program entry, startup, shutdown, or hidden module-initialization behavior merely by being compiled
+      - ensure library targets acquire no program entry, startup, shutdown, or hidden module-initialization behavior merely by being compiled (entry validation already skips library Targets; the call graph still treats any `main` of module main as a program-entry root regardless of Target kind)
       - support compiler-generated test harness entry through the same executable initialization and shutdown model
       - remove or reject any implementation path that executes user code merely because a module is imported or present in ModuleGraph
       - keep lifecycle init strictly tied to explicit instance construction rather than module or program startup
@@ -496,7 +544,7 @@ integrations:
       - materialize resolved plans in MLIR and platform lowering and treat late missing semantic runtime requirements as invariant failures
       - expose linking-facing startup object, runtime component, entry adapter, termination adapter, and relevant section requirements without owning linker assembly
       - verify target-kind entry, TargetProfile support, runtime availability, startup and shutdown acyclicity, static-destruction capability, detached shutdown support, and termination policy before lowering
-      - add diagnostics for missing, invalid, or duplicate entry, unsupported runtime requirements, startup cycles, rollback failures, unsupported termination policy, static destruction support, and shutdown cycles
+      - add diagnostics for unsupported runtime requirements, startup cycles, rollback failures, unsupported termination policy, static destruction support, and shutdown cycles
       - track incremental dependencies on target kind, entry identity and signature, runtime requirements, detached execution, static destruction, TargetProfile, environment models, ABI adapter requirements, and termination policy
       - add cross-compilation and multi-Variant tests proving initialization planning depends on CompilationPlan rather than compiler host
       - add determinism tests covering source traversal, filesystem enumeration, map order, import order, linker input order, and worker scheduling

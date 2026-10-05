@@ -14,8 +14,7 @@ It defines:
 - patterns;
 - contextual syntax;
 - canonical syntax versus accepted recovery syntax;
-- the boundary between parsing and semantic analysis;
-- the current lexer, parser, AST, and Sema implementation status.
+- the boundary between parsing and semantic analysis.
 
 This document does not redefine:
 
@@ -26,41 +25,13 @@ This document does not redefine:
 - ownership semantics from `ownership.md` and `copy_move.md`;
 - detailed feature semantics from specialized rulebooks.
 
-Repository baseline reviewed:
-
-```text
-branch: main
-review date: 2026-08-01
-```
-
-The implementation-status sections describe the repository state reviewed on
-that date.
+Implementation status is not part of this rulebook. It is tracked by
+`frontend.grammar-conformance` in `governance/parser.yaml` and by the
+feature-specific governance entries.
 
 ---
 
-# Current implementation status
-
-## Status meaning
-
-In this document:
-
-```text
-Implemented
-    Lexer, parser, AST, and the principal Sema path exist for the syntax.
-
-Partly implemented
-    The syntax is recognized, but one or more of parsing, AST representation,
-    Sema validation, analysis, formatting, Semantic IR, or lowering is
-    incomplete or inconsistent with the canonical rule.
-
-Not implemented
-    Canonical syntax has no complete parser and semantic path, or the spelling
-    is only reserved.
-
-Legacy or recovery syntax
-    The parser recognizes the form only to issue a focused diagnostic or to
-    recover. The form is invalid Sec 0.1 source.
-```
+# Canonical syntax and legacy forms
 
 Sec 0.1 accepts only the canonical syntax defined by the active rulebooks.
 Recognizable legacy Sec syntax is invalid and receives a focused migration
@@ -71,1149 +42,50 @@ may rewrite a recognized legacy form only when the rewrite is unambiguous and
 semantics-preserving, and otherwise reports a focused migration diagnostic
 instead of guessing (MD-003; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 4).
 
-Grammar implementation status does not imply complete target lowering.
-
-Backend status belongs primarily to the specialized rulebooks.
+The recognized invalid forms are listed in "Legacy, future, and recovery
+syntax" below.
 
 ---
 
-# Implemented
-
-## Lexical and compilation-unit foundation
-
-Implemented:
-
-- identifiers;
-- keywords;
-- integer, float, decimal-family, character, rune, string, raw-string, and
-  interpolated-string tokens;
-- comments;
-- symbolic operators;
-- longest-match handling for multi-character operators;
-- `#target(os: "...", arch: "...")`;
-- `module` declarations;
-- dotted module names;
-- single imports;
-- aliased imports;
-- grouped imports;
-- parser enforcement that `#target` appears before code and declarations;
-- Sema requirement that a program contains a module declaration;
-- module-scope rejection of ordinary executable statements.
-
-## Type and declaration syntax
-
-Implemented:
-
-- named type declarations;
-- explicit type defaults;
-- sequential type contracts;
-- `range` contracts;
-- `in [...]` contracts;
-- `multipleOf`;
-- `minLen`, `maxLen`, and `exactLen`;
-- `notEmpty`;
-- `unique`;
-- `finite`;
-- `odd`;
-- `even`;
-- generic type parameter lists;
-- one interface constraint per generic parameter in the current parser;
-- named struct declarations;
-- enum declarations;
-- type-declaration enum form;
-- tagged union declarations;
-- register declarations;
-- unit declarations;
-- interface declarations;
-- `implements` lists on types and interfaces;
-- nested type declarations inside `impl`;
-- nested unit declarations inside `impl`;
-- nested enum declarations inside `impl`;
-- static declarations;
-- addressed `let` declarations through `@address(...)`;
-- function declarations;
-- generic function declarations;
-- extern function declarations;
-- unsafe function declarations;
-- static functions;
-- lambda expressions;
-- function types.
-
-## Default syntax and default construction
-
-Implemented in parser and Sema:
-
-- `default` after named-type contracts;
-- primitive default resolution;
-- named-type default inheritance;
-- exact integer and inclusive decimal range-derived defaults;
-- first-member defaults for `in [...]`;
-- explicit primitive-literal and integer constant-expression default validation;
-- ambiguity rejection for equally near-to-zero numeric defaults;
-- semantic default initialization of mutable typed declarations;
-- semantic completion of omitted struct fields;
-- recursive struct defaults;
-- fixed-array defaults;
-- rejection of omitted non-defaultable struct fields;
-- rejection of default initialization for non-defaultable references.
-
-The backend must still be audited wherever aggregate construction previously
-started from undefined storage.
-
-## Variable declarations
-
-Implemented:
-
-```sec
-let value := expression
-let mut value := expression
-let value: Type := expression
-let mut value: Type
-```
-
-Implemented grouped `let` declarations:
-
-```sec
-let a := 1, b := 2, c := 3
-```
-
-Grouped declarations are not multiple-result destructuring. This remains
-unsupported:
-
-```sec
-let literal, tokenType := self.readNumber()
-```
-
-Each declarator in a grouped declaration currently requires its own
-initializer.
-
-Implemented type-first declarations:
-
-```sec
-int mut: a, b, c
-float: a := 5.4, pi := 3.14
-```
-
-Implemented parenthesized immutable type-first groups:
-
-```sec
-TokenType (
-    ILLEGAL := "ILLEGAL",
-    EOF := "EOF",
-    IDENT := "IDENT",
-)
-```
-
-Implemented explicit move initialization:
-
-```sec
-let destination :<- source
-let destination: Type <- source
-```
-
-Implemented copy and move assignment syntax:
-
-```sec
-destination = source
-destination <- source
-```
-
-Implemented compound assignment parsing:
-
-```text
-+=
--=
-*=
-/=
-%=
-&=
-|=
-^=
-<<=
->>=
-```
-
-Implemented `try` assignment with handler block.
-
-## Struct syntax
-
-Implemented:
-
-- canonical declaration form `type Name struct`;
-- empty structs;
-- comma-separated fields;
-- trailing commas;
-- Go-style raw struct tags;
-- struct literals;
-- empty struct literals;
-- omitted-field default completion;
-- multiline struct literals with newline-separated fields;
-- comma-separated struct literals;
-- struct spread syntax;
-- member access;
-- direct field assignment;
-- nested struct types in `impl`.
-
-## Enum syntax
-
-Enum implementation progress is tracked by `frontend.enums` in
-`implementation-status.yaml`.
-
-The first omitted initializer is implicit `iota`. Every later omitted
-initializer repeats the preceding initializer expression and evaluates it using
-the current member's `iota`; it is not automatic previous-value-plus-one
-continuation.
-
-The parser also accepts `Value: expression` as formatter-recovery syntax and
-warns that `=` is canonical.
-
-An explicit ordinary enum underlying type may be an integer type or `string`.
-A string-backed enum requires an explicit compile-time string initializer for
-every member:
-
-```sec
-enum Program string {
-    OneCare = "Zebra OneCare",
-    VIQ = "Z1C+VIQ",
-}
-```
-
-Omitted member initializers and `iota` are not part of string-backed enum
-syntax semantics; the parser preserves the syntax and Sema emits the required
-specialized diagnostic.
-
-## Union syntax
-
-Implemented:
-
-- payload-less variants;
-- one unnamed payload;
-- struct-like payloads;
-- generic unions;
-- nested unions;
-- payload-less construction;
-- single-payload construction;
-- struct-like construction;
-- union patterns;
-- payload binding;
-- match exhaustiveness checks.
-
-## Register syntax
-
-Implemented:
-
-- `register[Width]`;
-- `bit`;
-- `bit[Width]`;
-- reserved `_` fields;
-- unit annotations on bit fields;
-- bit-backed enum fields;
-- `@address(...) let mut ...`;
-- register-width and total-field-width checks.
-
-## Interface and impl syntax
-
-Implemented:
-
-- interface method requirements;
-- interface property requirements;
-- interface event requirements;
-- interface inheritance through `implements`;
-- type conformance declarations through `implements`;
-- `impl Type { ... }`;
-- explicit same-module extensions through `impl extends Type { ... }`;
-- methods inside `impl`;
-- static methods inside `impl`;
-- static values inside `impl`;
-- nested type, unit, and enum declarations;
-- properties;
-- contextual event declarations;
-- rejection of stored fields inside `impl`;
-- rejection of executable statements directly inside `impl`;
-- rejection of separate `impl Interface for Type` syntax.
-
-Methods receive implicit `self`.
-
-Canonical method declarations do not write `self` in the parameter list.
-
-## Function syntax
-
-Implemented:
-
-- required return type;
-- `void` for no result;
-- immutable by-value parameters;
-- `ref` parameters;
-- `ref mut` parameters;
-- generic parameters;
-- generic constraints;
-- function overloading by parameter signature;
-- calls;
-- method calls;
-- explicit generic calls;
-- function values;
-- lambda expressions;
-- explicit capture-list syntax;
-- `Ok(...)`;
-- `Err(...)`;
-- `try`;
-- local try handlers;
-- `return`;
-- zero-value `Ok()` for `Result[void, E]`.
-
-Sec 0.1 supports one return value.
-
-## Control flow
-
-Implemented:
-
-- `if`;
-- `else if`;
-- `else`;
-- range and membership conditions;
-- infinite `for`;
-- `for ... in ...`;
-- multiple `for` bindings;
-- `step`;
-- `while`;
-- subject `switch`;
-- subjectless `switch`;
-- value cases;
-- relational switch cases;
-- range switch cases;
-- comma-separated switch case items;
-- `default`;
-- `fallthrough`;
-- `break`;
-- `continue`;
-- `match` as statement or expression;
-- wildcard `_` match pattern;
-- match guards through `where`;
-- expression, return, and block match arms;
-- `select`;
-- operation select branches;
-- binding select branches;
-- `after` timeout branches;
-- `default` select branches.
-
-## Resource, cleanup, and explicit consumption statements
-
-Implemented syntax and Sema paths exist for:
-
-- `defer { ... }`;
-- `discard expression`;
-- `detach handle`;
-- `detach handle discard`;
-- `cancel`;
-- destruction-related ownership checks for discard;
-- control-flow restrictions inside defer.
-
-## Unsafe and assembly syntax
-
-Implemented parsing:
-
-- `unsafe { ... }`;
-- `unsafe fn`;
-- `unsafe extern`;
-- `asm "template"`;
-- `asm("template")`;
-- structured asm blocks;
-- asm input sections;
-- asm output sections;
-- named asm outputs;
-- clobber sections.
-
-Basic Sema checks exist.
-
-Complete inline-assembly semantics remain a separate planned rulebook.
-
-## Concurrency expression syntax
-
-Implemented parsing and principal Sema paths:
-
-```sec
-spawn Work()
-spawn task Work()
-spawn thread Work()
-spawn process Work()
-spawn {
-    // ...
-}
-
-await handle
-detach handle
-cancel
-select {
-    // ...
-}
-```
-
-Process spawning remains a deferred feature even though its syntax is parsed.
-
-## Expressions
-
-Implemented expression forms:
-
-- identifiers;
-- `self`;
-- integer literals;
-- floating and decimal-family literals;
-- character literals;
-- canonical `i`/`u`/`g`/`m`/`t`/`r` numeric family suffixes;
-- string literals;
-- interpolated-string tokens;
-- booleans;
-- grouped expressions;
-- prefix `-`;
-- prefix `!`;
-- prefix `~`;
-- arithmetic binary expressions;
-- shifts;
-- bitwise expressions;
-- equality;
-- ordered comparison;
-- logical expressions;
-- calls;
-- explicit generic calls;
-- member access;
-- indexing;
-- slicing;
-- array literals;
-- spread;
-- struct literals;
-- conversions;
-- unit conversions;
-- `ref`;
-- `ref mut`;
-- `try`;
-- `match`;
-- lambdas;
-- capture lambdas;
-- `spawn`;
-- `await`;
-- compiler/runtime calls beginning with `@`.
-
----
-
-# Partly implemented
-
-## Canonical operator surface versus parser
-
-`operators.md` is canonical.
-
-The current implementation still differs in several places:
-
-- contextual matrix multiplication `x` is parsed at multiplicative precedence
-  and Sema validates fixed matrix/matrix and matrix/vector shapes, while
-  lowering and parser-aware formatter/LSP classification remain incomplete;
-- `++` and `--` are accepted by the language rulebook as formatter-normalized
-  statement aliases and are implemented through lexer recognition, parser
-  normalization, compound-assignment Sema, and parser-aware formatting;
-- `in` and contextual `not in` have Sema behavior for ranges, fixed arrays,
-  dynamic arrays, and slices, while
-  array/slice membership lowering remains incomplete;
-- runtime string `+` and direct `string +=` implement the canonical
-  `string`/`char`/`rune` operand matrix; interpolation holes receive frontend
-  formatting-contract selection and focused diagnostics, and mixed finite
-  concat/interpolation chains produce one maximal frontend `StringConcatPlan`,
-  while allocation effects, Semantic IR consumption, and lowering remain
-  incomplete;
-- complete checked overflow, shift validation, and remainder lowering remain
-  incomplete;
-- float `!=` lowering requires the canonical unordered-NaN behavior.
-
-The grammar records canonical syntax and marks the implementation differences.
-
-## Expression-start classification
-
-The parser now uses `isExpressionStart` as its shared classification for
-ordinary expression lookahead, including every current prefix form. Specialized
-contexts such as range bounds may deliberately accept a narrower subset and
-must keep that restriction explicit.
-
-## Generics
-
-Parsing and substantial Sema support exist for:
-
-- generic type declarations;
-- generic functions;
-- generic calls;
-- generic structs;
-- generic unions;
-- generic interfaces;
-- generic type substitution.
-
-Still incomplete:
-
-- complete generic lowering;
-- multiple interface constraints in the parser, AST, Sema, formatter, and LSP;
-- partial explicit generic argument prefixes with inference of the remainder;
-- compile-time value-parameter syntax as a general generic facility;
-- method-level generic Sema, overload resolution, monomorphization, and lowering;
-- generic named-type and generic-interface closure;
-- complete ambiguity diagnostics between indexing and explicit generic calls;
-- full generic symbol identity across modules.
-
-## Type syntax ambiguity
-
-Square brackets serve several roles:
-
-```text
-generic arguments
-collection type arguments
-shaped type arguments
-fixed-array suffixes
-owning dynamic-array suffixes
-indexing
-slicing
-array literals
-explicit generic calls
-```
-
-The parser uses lookahead and speculative parsing.
-
-The canonical grammar defines the alternatives, but complete grammar-driven
-ambiguity resolution and diagnostics remain partial.
-
-## Prefix sequence types
-
-The parser accepts:
-
-```sec
-[N]Type
-[]Type
-```
-
-as prefix sequence type references.
-
-Canonical Sec source uses postfix forms:
-
-```sec
-Type[N]
-Type[]
-```
-
-Prefix sequence spelling such as `[]byte` was never normative Sec syntax and is
-therefore not a legacy Sec form. It is invalid Sec 0.1 syntax; the canonical
-spelling is `byte[]`. Current parser acceptance of the prefix forms is
-non-conforming and must be replaced by rejection.
-
-## Standalone `struct Name`
-
-The form:
-
-```sec
-struct Name {
-}
-```
-
-is the planned Sec 0.2 spelling. It is future canonical syntax, not a Sec 0.1
-legacy form, and it is not valid Sec 0.1 source. Sec 0.1 declarations,
-including structs, use the `type` introducer:
-
-```sec
-type Name struct {
-}
-```
-
-Current parser acceptance of the standalone form is non-conforming
-(`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 4.6–4.7).
-
-## Assigned type syntax
-
-The forms:
-
-```sec
-type Name = ExistingType
-type IOError = FileNotFound AccessDenied InvalidValue
-```
-
-are legacy syntax and are not valid Sec 0.1 source. The canonical named-type
-declaration is:
-
-```sec
-type Name ExistingType
-```
-
-with exactly one underlying type. When the parser recognizes a legacy `=` form
-unambiguously, it emits a focused migration diagnostic rather than an unrelated
-generic parser error. `type Name = ExistingType` has the same nominal meaning as
-`type Name ExistingType`, so an enabled Language Correction may rewrite it. The
-compact form names several alternatives; its Sec 0.1 replacement (`enum` or
-`union`, with or without the `error` marker) is not uniquely determined, so it
-receives only the migration diagnostic (MD-002; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 3).
-
-## Field contracts
-
-The parser still accepts contracts after struct field types and type-first
-variable types.
-
-Canonical Sec contracts belong to named types.
-
-Examples such as these are not canonical:
-
-```sec
-type User struct {
-    age: int range 0..130,
-}
-
-let mut value: int range 0..100
-```
-
-Use:
-
-```sec
-type Age int range 0..130
-type Percent int range 0..100
-
-type User struct {
-    age: Age,
-}
-
-let mut value: Percent
-```
-
-Inline field or variable contracts are legacy syntax and invalid Sec 0.1
-source. The parser must reject them with a focused migration diagnostic.
-Rewriting them requires choosing a new named type, which is not uniquely
-determined, so no Language Correction rewrites them (MD-003).
-
-## Struct and list literal ambiguity
-
-The parser can parse a generic-looking type followed by braces as a typed
-literal.
-
-Sema currently resolves that path as a struct or union construction.
-
-Canonical empty list construction is:
-
-```sec
-list[T] {}
-list[T, Capacity] {}
-```
-
-The parser and AST must preserve enough syntax to distinguish a compiler-known
-collection literal from a struct literal. Implementation progress is tracked by
-`frontend.default-values` in `implementation-status.yaml`.
-
-## Properties
-
-Property syntax is implemented, including:
-
-```sec
-get { ... }
-set value { ... }
-try set value { ... }
-```
-
-Still partial:
-
-- complete getter and setter body analysis;
-- `try` property assignment;
-- complete lowering;
-- full effect and ownership integration;
-- contextual treatment of `set` rather than globally reserving it.
-
-## Events
-
-Interface event requirements and impl event declarations are parsed.
-
-Still partial:
-
-- complete event-type grammar;
-- storage-field validation;
-- event declaration body policy;
-- event lowering;
-- full interface conformance for event semantics;
-- final contextual-keyword treatment.
-
-`event` and `using` are currently contextual identifier spellings.
-
-## Interfaces
-
-Interface declarations and conformance checks exist.
-
-Still partial:
-
-- complete generic interface lowering;
-- equality and hashing contracts;
-- effect requirements;
-- ownership requirements;
-- default method bodies if ever permitted;
-- complete erased representation;
-- complete backend lowering.
-
-## Impl blocks
-
-Methods, properties, events, static members, and nested declarations are parsed.
-
-A direct `let` or `let mut` in an `impl` declares an instance-bound member.
-`static let` or `static let mut` declares a type-owned member. The modifier must
-be retained in the AST and by formatting; the two forms are not equivalent.
-
-Still partial:
-
-- complete method lowering;
-- complete property lowering;
-- complete event lowering;
-- privileged core and stdlib impl rules;
-- generic method coverage;
-- complete interface integration.
-
-## Extern declarations
-
-The parser accepts:
-
-```sec
-extern "C" fn name(...) ReturnType
-
-@link_name("foreign_symbol")
-extern "C" fn local_name(...) ReturnType
-```
-
-The current parser still accepts an optional body after an extern signature;
-that compatibility behavior is non-conforming and must be removed. Sec 0.1
-extern declarations are imported and bodyless. General Sec-to-C exported
-definitions are outside Sec 0.1.
-
-## Explicit `self` parameter recovery
-
-The parser may recognize the obsolete `ref self` or `ref mut self` parameter
-form only to issue a focused migration diagnostic.
-
-Canonical Sec methods have implicit `self`, and `self` is not written in the
-parameter list.
-
-The parser form exists for compatibility and should not appear in canonical
-examples.
-
-## Match patterns
-
-Parser and Sema support:
-
-- wildcard;
-- enum variants;
-- union variants;
-- Result and Option-style variants;
-- payload binding;
-- guards;
-- exhaustiveness.
-
-Still incomplete:
-
-- field-level destructuring;
-- array and collection patterns;
-- or-patterns;
-- richer literal-pattern grammar;
-- full backend lowering for every subject family;
-- explicit separation of pattern grammar from general expression parsing.
-
-The parser currently parses many patterns through the ordinary expression
-parser.
-
-## Try syntax
-
-Parser and Sema support:
-
-```sec
-try expression
-try expression {
-    Err(pattern) => ...
-}
-
-try assignment {
-    Err(pattern) => ...
-}
-```
-
-Still partial:
-
-- complete propagation behavior;
-- runtime contract failure integration;
-- effect typing;
-- complete lowering;
-- distinction between locally handled and propagated errors in every context.
-
-## Select and concurrency
-
-Parser and Sema cover much of the syntax.
-
-Still partial:
-
-- complete task, thread, channel, and select lowering;
-- process spawning;
-- all failure paths;
-- suspension and effect analysis;
-- structured-concurrency enforcement;
-- timeout type policy;
-- exact readiness semantics.
-
-## Unsafe
-
-The keyword and block/function forms are parsed.
-
-Still partial:
-
-- canonical unsafe operation inventory;
-- unsafe expression boundaries;
-- unsafe promises versus verified attributes;
-- pointer provenance rules in syntax;
-- complete diagnostics;
-- target restrictions.
-
-The planned `unsafe.md` remains authoritative for final semantics.
-
-## Inline assembly
-
-Structured syntax is parsed.
-
-Still partial:
-
-- constraint grammar;
-- register-class grammar;
-- immediate operands;
-- volatility;
-- memory effects;
-- target selection;
-- operand typing;
-- clobber validation;
-- backend portability;
-- exact result binding.
-
-The planned `inline_assembly.md` remains authoritative.
-
-## Parser recovery
-
-The parser contains substantial local recovery logic for:
-
-- missing struct field colons;
-- malformed struct fields;
-- malformed enum items;
-- malformed impl members;
-- malformed loop headers;
-- malformed switch cases;
-- malformed try handlers;
-- unexpected `else`;
-- invalid property members;
-- unterminated blocks.
-
-Canonical recovery behavior is specified by `parser_recovery.md`, including:
-
-- stable recovery boundaries;
-- missing-token nodes;
-- malformed-node preservation;
-- diagnostic IDs;
-- LSP behavior;
-- formatter behavior on incomplete source.
-
-## Newline-sensitive recovery
-
-The parser uses source line changes in several places:
-
-- enum value separation;
-- register field separation;
-- struct literal field separation;
-- return termination;
-- typed declaration-group recognition;
-- unit declaration termination.
-
-This is implemented but not yet centralized.
-
-The grammar defines where line layout is semantically accepted.
-
-The parser must not rely on unrelated heuristic line tests.
-
----
-
-# Not implemented
-
-## General attributes
-
-There is no complete general parser for:
-
-```sec
-@attribute
-@attribute(...)
-```
-
-The parser has special cases for:
-
-```sec
-@address(...)
-@link_name(...)
-@noCopy
-@runtime.call(...)
-```
-
-`@noCopy` is represented as an AST attribute on nominal type declarations and
-is Sema-enforced. These implemented paths are not yet a complete attribute
-system.
-
-`attributes.md` is canonical and Written.
-
-## Increment and decrement aliases
-
-Canonical formatter aliases:
-
-```sec
-value++
-value--
-```
-
-are tokenized and parsed as statement-only aliases for `value += 1` and
-`value -= 1`. The AST retains the source alias for formatter and tooling use;
-Sema applies the existing compound-assignment rules.
-
-## General conditional expression
-
-Not implemented:
-
-```sec
-condition ? whenTrue : whenFalse
-```
-
-`?` remains reserved with no Sec 0.1 meaning.
-
-## First-class range values
-
-Not implemented in Sec 0.1:
-
-```sec
-let range := 0..<10
-```
-
-Ranges remain contextual to:
-
-```text
-for
-membership
-slicing
-switch cases
-other explicitly defined range contexts
-```
-
-## General field-level defaults
-
-Not implemented:
-
-```sec
-type Config struct {
-    port: Port = Port(8080),
-}
-```
-
-Omitted fields use their type defaults.
-
-## Multiple return values
-
-Not implemented:
-
-```sec
-fn Read() (Value, Error)
-```
-
-A function returns one value.
-
-Use a named struct, union, `Result`, or another explicit type.
-
-## Separate interface impl syntax
-
-Not implemented and explicitly rejected:
-
-```sec
-impl Interface for Type {
-}
-```
-
-Interfaces are listed on the primary implementation:
-
-```sec
-impl Car implements Vehicle {
-}
-```
-
-## `free` operation syntax
-
-`free` is reserved for destruction semantics.
-
-The parser creates an invalid statement and reports that it is not implemented.
-
-Custom destruction remains governed by `destruction.md` and future compiler
-work.
-
-## Panic and assertion statements
-
-The lexer reserves spellings including:
-
-```text
-panic
-assert
-```
-
-Canonical explicit panic is a statement with an optional ordinary string
-literal:
-
-```sec
-panic
-panic "message"
-```
-
-`panic` is not an ordinary callable, so `panic("message")` is invalid. The
-parser retains a dedicated panic statement and semantic analysis treats it as
-non-returning and panic-capable in both forms. When present, the message must
-be an ordinary string literal; dynamic and interpolated messages are invalid.
-Assertion syntax is defined by `panic.md`.
-
-`require` is not globally reserved. Any grammar that assigns it a
-contract-specific role must resolve it contextually and leave ordinary
-identifier uses valid.
-
-Further panic lowering and the remaining runtime checks are tracked by their
-owning governance entries.
-
-## General compile-time execution
-
-Not implemented:
-
-- arbitrary user compile-time functions;
-- general compile-time blocks;
-- compile-time I/O;
-- compile-time allocation policy;
-- macro syntax;
-- token macros.
-
-Constant expressions exist only in approved contexts.
-
-## Classes and inheritance
-
-Not implemented and not part of Sec:
-
-```text
-class
-object inheritance
-virtual class methods
-```
-
-Sec uses:
-
-```text
-struct
-impl
-interface
-union
-```
-
-## C-style loops
-
-Explicitly rejected:
-
-```sec
-for i := 0; i < 10; i += 1 {
-}
-```
-
-Use ranges or `while`.
-
-## Condition-only `for`
-
-Explicitly rejected:
-
-```sec
-for condition {
-}
-```
-
-Use:
-
-```sec
-while condition {
-}
-```
-
-## `do while`, `goto`, and labels
-
-Not implemented.
-
-## Switch expressions
-
-Not implemented.
-
-`switch` is a statement.
-
-Use `match` when a value-producing exhaustive branch expression is required.
-
-## Select expressions
-
-Not implemented.
-
-`select` is a statement.
-
-## Arbitrary user-defined operators
-
-Not implemented and deferred.
-
-## Operator methods selected by spelling
-
-Not implemented.
-
-A token such as `+` does not dynamically resolve to an arbitrary user method.
-
-## Generic enums
-
-Generic parameter syntax is valid on enum declarations:
-
-```sec
-enum State[T] {
-    Ready
-    Busy
-}
-```
-
-The parameter list uses the same grammar as other eligible generic nominal
-declarations. Generic parameters do not give enum members payloads; payload-
-bearing alternatives remain union declarations.
-
-## Field-level match destructuring
-
-Not implemented.
-
-## General collection patterns
-
-Not implemented.
-
-## Map and set literal syntax
-
-Not finalized by this grammar.
-
-Array literals and empty list literal syntax are defined separately.
-
-## Process execution
-
-`spawn process` is parsed as the canonical process creation form whose result
-and lifecycle semantics are defined by `rules/concurrency/processes.md`.
-
-## Complete module grammar
-
-Basic module and import syntax is implemented. The canonical module model is
-defined by `rules/projects/modules.md`; source module declarations contain one
-identifier, imports contain canonical logical paths, and aliases are
-source-file-local bindings.
-
-Still not implemented as a closed language area:
-
-- complete module resolution and import-cycle enforcement;
-- re-export syntax;
-- selective imports;
-- wildcard imports;
-- module aliases beyond import aliases;
-- explicit export lists;
-- conditional imports;
-- target-conditioned declaration blocks.
-
-Module-graph, resolution, and cycle semantics are specified in
-`rules/projects/modules.md`. Sec 0.1 has no implicit user-level module
-initializer; executable startup is defined by
-`rules/compiler/initialization.md` and remains ordinary explicit program flow.
+# Forms outside Sec 0.1
+
+The following are not part of Sec 0.1:
+
+- the conditional expression `condition ? whenTrue : whenFalse`; `?` is
+  reserved with no Sec 0.1 meaning;
+- first-class range values such as `let range := 0..<10`; ranges remain
+  contextual to `for`, membership, slicing, switch cases, and other explicitly
+  defined range contexts;
+- field-level defaults in struct declarations such as `port: Port = Port(8080)`;
+  omitted fields use their type defaults;
+- multiple return values such as `fn Read() (Value, Error)`; a function returns
+  one value, and a named struct, union, `Result`, or another explicit type
+  carries several;
+- separate interface implementation syntax `impl Interface for Type`;
+  interfaces are listed on the primary implementation, as in
+  `impl Car implements Vehicle`;
+- classes, object inheritance, and virtual class methods; Sec uses `struct`,
+  `impl`, `interface`, and `union`;
+- C-style `for` loops and condition-only `for`; use ranges or `while`;
+- `do while`, `goto`, and loop labels;
+- `switch` and `select` expressions; both are statements, and `match` is the
+  value-producing exhaustive branch construct;
+- arbitrary user-defined operators and operator methods selected by spelling;
+  a token such as `+` never resolves to an arbitrary user method;
+- general compile-time execution beyond the approved constant contexts:
+  arbitrary user compile-time functions, general compile-time blocks,
+  compile-time I/O, and macro or token-macro syntax
+  (`rules/compiler/compile_time_evaluation.md`);
+- field-level match destructuring and general collection patterns;
+- an implicit user-level module initializer; executable startup is defined by
+  `rules/compiler/initialization.md`.
+
+Map and set literal syntax is not finalized by this grammar. Array literals and
+empty list literals are defined below.
+
+The module model, including resolution, import cycles, re-exports, selective
+and wildcard imports, export lists, conditional imports, and target-conditioned
+declarations, belongs to `rules/projects/modules.md`.
 
 ---
 
@@ -1314,7 +186,7 @@ Example:
 #target(os: "linux", arch: "amd64")
 ```
 
-Only `target` is currently recognized after `#`.
+`target` is the only directive after `#` in Sec 0.1.
 
 ---
 
@@ -1830,7 +702,7 @@ Settings {
 
 A newline may separate struct literal items.
 
-Declared struct fields still require commas.
+Declared struct fields require commas.
 
 An empty literal is valid when every omitted field is defaultable:
 
@@ -1846,10 +718,10 @@ Sema inserts omitted field defaults.
 
 ```text
 EnumDeclaration
-    ::= "enum" Identifier [ EnumUnderlying ] [ "error" ] EnumBody
+    ::= "enum" Identifier [ GenericParameterList ] [ EnumUnderlying ] [ "error" ] EnumBody
 
 TypeEnumDeclaration
-    ::= "type" Identifier "enum" [ EnumUnderlying ] [ "error" ] EnumBody
+    ::= "type" Identifier [ GenericParameterList ] "enum" [ EnumUnderlying ] [ "error" ] EnumBody
 
 EnumUnderlying
     ::= [ ":" ] IntegerTypeReference
@@ -1901,9 +773,37 @@ enum ClockSource: bit[2] {
 }
 ```
 
-Canonical enum value initialization uses `=`.
+Canonical enum value initialization uses `=`. The legacy `Value: expression`
+initializer is invalid Sec 0.1 syntax (see "Legacy, future, and recovery
+syntax").
 
-Parser recovery may accept `:` and emit a formatter warning.
+The first omitted initializer is implicit `iota`. Every later omitted
+initializer repeats the preceding initializer expression and evaluates it with
+the current member's `iota`; it is not automatic previous-value-plus-one
+continuation.
+
+An explicit ordinary underlying type may be an integer type or `string`. A
+string-backed enum requires an explicit compile-time string initializer for
+every member; omitted initializers and `iota` are not part of string-backed
+enums:
+
+```sec
+enum Program string {
+    OneCare = "Zebra OneCare",
+    VIQ = "Z1C+VIQ",
+}
+```
+
+Generic parameters use the ordinary `GenericParameterList` grammar. They do not
+give enum members payloads; payload-bearing alternatives are union declarations
+(`rules/declarations/enums.md` § 16.1):
+
+```sec
+enum State[T] {
+    Ready
+    Busy
+}
+```
 
 An enum must declare at least one value.
 
@@ -1966,8 +866,8 @@ type Shape union {
 
 A comma after a union variant is optional.
 
-Struct-like payload fields currently follow struct declaration field grammar and
-require commas.
+Struct-like payload fields follow struct declaration field grammar and require
+commas.
 
 At most one variant may carry the post-variant `default` marker. Its payload
 must be default-constructible under `rules/declarations/unions.md` and
@@ -2211,7 +1111,8 @@ InstanceLetDeclaration
 ```
 
 `InstanceLetDeclaration` requires an instance; `mut` controls mutability.
-`StaticLetDeclaration` requires explicit `static` and is type-owned.
+`StaticLetDeclaration` requires explicit `static` and is type-owned. The two
+forms are not equivalent; the AST and formatting retain the `static` modifier.
 
 Lifecycle and construction syntax:
 
@@ -2380,8 +1281,7 @@ Example:
 event Pressed using buttonPressedStorage
 ```
 
-The current parser skips an optional following block, but no canonical event
-body syntax is defined here.
+An event declaration has no body; a block after it is invalid.
 
 ---
 
@@ -2666,6 +1566,9 @@ defaultable.
 
 An immutable declaration must provide an initializer.
 
+A grouped declaration declares independent bindings. It is not multiple-result
+destructuring: `let literal, tokenType := self.readNumber()` is invalid.
+
 ---
 
 # Type-first declarations
@@ -2815,11 +1718,34 @@ Statement
       | CancelStatement
       | UnsafeStatement
       | AsmStatement
+      | PanicStatement
+      | AssertStatement
+      | UnreachableStatement
+      | IncrementDecrementStatement
       | StaticDeclaration
       | Comment
+
+PanicStatement
+    ::= "panic" [ StringLiteral ]
+
+AssertStatement
+    ::= "assert" Expression [ "," StringLiteral ]
+
+UnreachableStatement
+    ::= Contextual("unreachable")
+
+IncrementDecrementStatement
+    ::= PlaceExpression ( "++" | "--" )
 ```
 
 Context restricts which statements are valid.
+
+`panic` is a statement, not an ordinary callable, so `panic("message")` is
+invalid; the optional message is an ordinary string literal. Assertions and
+checked `unreachable` are defined by `rules/errors/panic.md` §§ 15–16.
+
+`value++` and `value--` are statement-only aliases for `value += 1` and
+`value -= 1` (`rules/foundations/operators.md`); they never produce a value.
 
 ---
 
@@ -3188,8 +2114,7 @@ FieldPattern
       | Identifier ":" "ref" "mut" Identifier
 ```
 
-The parser currently accepts a broader ordinary expression grammar as a
-pattern.
+The parser may read a pattern through the ordinary expression grammar.
 
 Sema restricts valid patterns.
 
@@ -3267,7 +2192,7 @@ detach task
 detach task discard
 ```
 
-`detach` is currently a contextual identifier spelling in the parser.
+`detach` is a contextual spelling.
 
 ---
 
@@ -3426,7 +2351,8 @@ asm {
 }
 ```
 
-The complete operand and constraint language is not yet closed.
+The complete operand and constraint language belongs to
+`rules/platform/inline_assembly.md`.
 
 ---
 
@@ -3526,6 +2452,10 @@ ArrayLiteral
 ArrayElement
     ::= Expression
       | Expression "..."
+      | RangeSegment
+
+RangeSegment
+    ::= Expression RangeOperator Expression
 ```
 
 Examples:
@@ -3538,9 +2468,17 @@ Examples:
 [first..., second...]
 ```
 
+```sec
+[224r..246r, 248r..255r, 0x41r]
+```
+
 The empty literal `[]` requires contextual type information.
 
 Array and collection ownership rules apply to spread elements.
+
+A `RangeSegment` contributes every value from its lower to its upper bound and
+requires both bounds; its semantics are defined by
+`rules/collections/collections.md` § 5.6a.
 
 ---
 
@@ -3675,7 +2613,7 @@ For generic function and method calls, the explicit type arguments may be a
 positional prefix of the declaration's parameters. Remaining parameters are
 inferred from arguments, receiver, and permitted expected-result context.
 Generic argument holes such as `Foo[_, B](...)` or `Foo[, B](...)` are invalid.
-Generic type references still require their complete type argument list.
+Generic type references require their complete type argument list.
 
 ---
 
@@ -3979,7 +2917,7 @@ Example shape:
 @compiler.operation(value)
 ```
 
-This current parser form must not be confused with general attributes.
+This form must not be confused with general attributes.
 
 The set of valid names is compiler-controlled.
 
@@ -4026,7 +2964,9 @@ RangeExpression
 ```
 
 Range expressions are accepted only where the surrounding grammar explicitly
-permits them.
+permits them: `for` iteration, membership, slicing, switch cases, array
+literal range segments, and the argument of `Append` on an owning dynamic
+array (`rules/collections/collections.md` §§ 5.6a and 6.7).
 
 Examples:
 
@@ -4082,8 +3022,6 @@ MembershipSource
 ```
 
 The parser accepts a range-or-expression right operand.
-
-Sema currently needs completion for fixed arrays and slices.
 
 `for value in source` is iteration grammar, not this boolean operator.
 
@@ -4388,7 +3326,8 @@ Event[ButtonPressData, 8]
 EventStorage[ButtonPressData, 8]
 ```
 
-Capacity must currently be an integer literal.
+Capacity is compile-time known and greater than zero
+(`rules/concurrency/events.md`).
 
 ---
 
@@ -4456,9 +3395,6 @@ event
 using
 detach
 step
-task
-thread
-process
 register
 bit
 physical
@@ -4467,48 +3403,32 @@ other
 inputs
 outputs
 clobbers
-multipleOf
-minLen
-maxLen
-exactLen
-notEmpty
-unique
-finite
-odd
-even
 address
 ```
 
-A contextual spelling is not globally unavailable as an identifier unless the
-lexer currently reserves it.
+A contextual spelling remains an ordinary identifier outside its context.
+
+`task`, `thread`, and `process` (`lexical_structure.md` § 7.2) and the contract
+words (§ 7.3) are also interpreted by context, but they are reserved and are
+never valid declaration names.
 
 The grammar context determines its role.
 
 ---
 
-# Currently globally reserved but intended contextual spelling
+# Contextual `set`
 
-The current lexer reserves `set`.
-
-The language design requires `set` to be contextual:
+`set` is contextual (`lexical_structure.md` § 7.2):
 
 - collection type constructor in type position;
 - property setter introducer in property position;
-- otherwise available as an identifier where unambiguous.
-
-This mismatch is partly implemented and must be corrected across lexer, parser,
-formatter, highlighting, and LSP.
+- otherwise an ordinary identifier where unambiguous.
 
 ---
 
 # Comments
 
 The lexer recognizes comments.
-
-Top-level comments may be preserved as AST comment statements.
-
-Comments inside many statement blocks are currently skipped rather than retained
-as ordinary AST statements.
 
 Documentation comments and attachment rules must remain synchronized with
 `lexical_structure.md`, formatter rules, and future documentation tooling.
@@ -4520,18 +3440,18 @@ separation.
 
 # Reserved syntax
 
-Reserved or recognized spellings without complete Sec 0.1 meaning include:
+`?` is reserved and has no Sec 0.1 meaning.
 
-```text
-?
-free
-panic
-assert
-```
+`free` is valid only as the `FreeDeclaration` impl member.
 
-The parser should issue focused diagnostics rather than generic token failures.
+`panic` and `assert` are statement keywords whose forms are defined above and by
+`rules/errors/panic.md`; neither is callable.
 
-`require` is an ordinary identifier spelling, not reserved syntax.
+`require` is a general keyword (`lexical_structure.md` § 7.1) and is not a
+valid identifier.
+
+The parser issues focused diagnostics for these spellings rather than generic
+token failures.
 
 ---
 
@@ -4610,8 +3530,8 @@ body-bearing extern declaration   focused rejection and recovery
 
 Recognized forms must be marked in AST or diagnostics where needed. Default
 formatting does not convert any of them; an enabled Language Correction may
-rewrite a legacy form only under the policy in "Grammar implementation status"
-above (MD-003).
+rewrite a legacy form only under the policy in "Canonical syntax and legacy
+forms" above (MD-003).
 
 ---
 
@@ -4735,55 +3655,6 @@ contextual identifier use
 ```
 
 The formatter must not infer language semantics.
-
----
-
-# Implementation-status matrix
-
-| Area | Lexer | Parser/AST | Sema | Current grammar status |
-|---|---|---|---|---|
-| `#target` | Implemented | Implemented | Basic validation | Implemented |
-| module/import | Implemented | Implemented | Basic namespace validation | Implemented; full modules partial |
-| named types | Implemented | Implemented | Implemented | Implemented |
-| explicit defaults | Implemented | Implemented | Implemented | Implemented |
-| contracts on named types | Implemented | Implemented | Implemented | Implemented |
-| contracts on fields/variables | Accepted | Accepted | Legacy paths | Invalid legacy syntax; must be rejected with a migration diagnostic |
-| structs | Implemented | Implemented | Implemented | Implemented |
-| omitted struct fields | N/A | Omission represented | Defaults materialized | Implemented; backend audit |
-| enums | Implemented | Implemented | Implemented | Implemented |
-| unions | Implemented | Implemented | Implemented | Implemented; lowering partial |
-| registers | Implemented | Implemented | Implemented | Implemented |
-| units | Implemented | Implemented | Implemented | Implemented; metadata partial |
-| interfaces | Implemented | Implemented | Conformance exists | Partly implemented |
-| impl methods | Implemented | Implemented | Implemented | Implemented; lowering partial |
-| properties | Implemented | Implemented | Shallow checks | Partly implemented |
-| events | Contextual identifier | Implemented | Partial | Partly implemented |
-| functions | Implemented | Implemented | Implemented | Implemented |
-| generics | Implemented | Implemented | Substantial | Partly implemented |
-| lambdas | Implemented | Implemented | Implemented paths | Partly implemented |
-| copy/move declarations | Implemented | Implemented | Implemented | Implemented |
-| compound assignment | Implemented | Implemented | Implemented paths | Partly implemented |
-| if/for/while | Implemented | Implemented | Implemented | Implemented |
-| switch | Implemented | Implemented | Implemented | Implemented |
-| match | Implemented | Implemented | Exhaustiveness exists | Partly implemented |
-| try/Result | Implemented | Implemented | Substantial | Partly implemented |
-| defer/discard | Implemented | Implemented | Implemented | Implemented |
-| spawn/await/select | Implemented | Implemented | Substantial | Partly implemented |
-| unsafe | Implemented | Implemented | Basic context checks | Partly implemented |
-| asm | Implemented | Implemented | Basic checks | Partly implemented |
-| postfix arrays/slices | Implemented | Implemented | Implemented | Implemented |
-| prefix arrays/slices | Implemented | Implemented | Implemented | Invalid (never normative); must be rejected |
-| array literals | Implemented | Implemented | Implemented | Implemented |
-| empty list literal | Tokens available | Parsed as typed braces | Not resolved as list literal | Not implemented |
-| contextual `x` | Identifier | Implemented as contextual infix | Fixed matrix/matrix and matrix/vector validation | Partly implemented; lowering and tooling pending |
-| unary `+` | Implemented | Implemented | Implemented for numeric operands and constants | Implemented; backend paths covered |
-| `++`/`--` | Implemented | Implemented as statement-only aliases | Reuses compound assignment | Implemented through frontend normalization; no distinct lowering operation |
-| general attributes | `@` available | `@noCopy` AST path plus `@address` and `@link_name` special cases | `@noCopy` enforced; other paths remain specialized | Partly implemented |
-| `?` | Reserved | No canonical form | None | Reserved |
-| `free` | Reserved | Explicit invalid node | Explicit error | Not implemented |
-| panic/assert/require | Reserved | No complete forms | No complete forms | Not implemented |
-| multiple returns | Delimiters available | Not implemented | Not implemented | Not implemented |
-| first-class ranges | Operators available | Contextual only | Contextual only | Not implemented in 0.1 |
 
 ---
 
@@ -4915,344 +3786,6 @@ Planned files remain references to future canonical closure work.
 
 ---
 
-# Appendix A — Codex synchronization plan
-
-## A.1 Add the rulebook
-
-Add:
-
-```text
-rules/foundations/grammar.md
-```
-
-Update:
-
-```text
-language-rulebook-status.md
-rules/compiler/rules_implementations.txt
-```
-
-Mark `grammar.md` as Written.
-
-Do not mark every grammar production as implemented merely because the document
-exists.
-
----
-
-## A.2 Generate or centralize parser grammar metadata
-
-Do not maintain unrelated inventories for:
-
-```text
-statement starts
-expression starts
-type starts
-precedence
-contextual words
-assignment operators
-contract starts
-impl member starts
-```
-
-Create shared parser metadata or generated tables where practical.
-
-At minimum, add consistency tests.
-
----
-
-## A.3 Unify expression-start handling
-
-Implemented for the current prefix-expression inventory.
-
-`isExpressionStart` contains every current prefix form and is used by ordinary
-expression lookahead. Keep it synchronized when new prefix forms are added.
-
-Use it for:
-
-```text
-ordinary expressions
-defaults
-contract values
-arguments
-range bounds where allowed
-try expressions
-match arms
-parser recovery
-```
-
-Broader cross-context tests remain desirable for recovery paths and deliberately
-restricted contexts.
-
----
-
-## A.4 Add contextual `x`
-
-Parser and fixed-shape Sema support are implemented.
-
-Recognize:
-
-```sec
-left x right
-```
-
-only in infix position.
-
-Preserve:
-
-```sec
-let x := 10
-```
-
-The AST retains operator `x` and uses the precedence from `operators.md`.
-Semantic IR, backend lowering, formatter context and LSP semantic-token context
-remain.
-
----
-
-## A.5 Add unary plus
-
-Implemented in parser, Sema, constant folding, MLIR, and LLVM expression
-lowering.
-
-Binary `+` remains unchanged. Parser, constant-folding and MLIR coverage has
-been added.
-
----
-
-## A.6 Add increment/decrement recovery
-
-Add lexer and parser support for statement-only:
-
-```sec
-value++
-value--
-```
-
-Represent them as parser-confirmed aliases or dedicated recovery nodes.
-
-Formatter canonicalizes to:
-
-```sec
-value += 1
-value -= 1
-```
-
-They must never produce expression values.
-
----
-
-## A.7 Remove noncanonical field and variable contracts
-
-Keep named-type contracts.
-
-For inline field or variable contract syntax:
-
-- emit focused diagnostics;
-- suggest a named type;
-- do not silently create a storage contract;
-- update parser tests that currently expect acceptance.
-
----
-
-## A.8 Normalize array type syntax
-
-Keep postfix forms canonical:
-
-```sec
-T[N]
-T[]
-ref T[]
-ref mut T[]
-```
-
-Either:
-
-- retain prefix forms as recovery and normalize them; or
-- reject them with a focused fix.
-
-Do not document both as equal canonical forms.
-
----
-
-## A.9 Resolve empty list literals
-
-Recognize:
-
-```sec
-list[T] {}
-list[T, Capacity] {}
-```
-
-as collection literals.
-
-Do not route them exclusively through struct-type validation.
-
-Create explicit AST or resolved literal category.
-
-Implement empty, allocation-free Sema defaults.
-
----
-
-## A.10 Mark recognized legacy and future declarations
-
-Preserve source information for:
-
-```text
-standalone struct declaration
-assigned type declaration
-compact variant declaration
-enum colon initializer
-explicit ref self
-```
-
-Allow formatter or diagnostics to distinguish recovery syntax from canonical
-syntax.
-
----
-
-## A.11 Extern declaration distinction
-
-Synchronize grammar with `rules/platform/ffi.md` and `rules/platform/abi.md`.
-
-Preserve enough AST/recovery information to distinguish:
-
-```text
-foreign declaration without body
-invalid body-bearing extern declaration
-```
-
-Sec 0.1 does not define general foreign-exported Sec definitions or body-bearing
-foreign shims.
-
----
-
-## A.12 Properties and contextual set
-
-Make `set` contextual.
-
-Update:
-
-```text
-lexer
-parser
-formatter
-VS Code grammar
-LSP semantic tokens
-property diagnostics
-collection type parsing
-```
-
-Add tests for an ordinary identifier named `set`.
-
----
-
-## A.13 Event contextual syntax
-
-Formalize `event` and `using` as contextual grammar spellings.
-
-Do not reserve them globally unless a later decision requires it.
-
-Add validation for event storage fields.
-
-Remove parser behavior that silently skips an unrecognized event body unless a
-body becomes canonical.
-
----
-
-## A.14 Pattern AST
-
-Introduce a dedicated pattern hierarchy rather than using unrestricted
-expressions for all match and try patterns.
-
-Initial pattern nodes should cover:
-
-```text
-wildcard
-literal
-qualified variant
-variant with binding
-identifier binding
-```
-
-Preserve current Sema behavior.
-
----
-
-## A.15 Parser recovery
-
-`parser_recovery.md` is written. The first structured diagnostic path and the
-focused parser diagnostic registry exist; broader recovery metadata and invalid
-nodes remain.
-
-Replace ad hoc recovery with documented synchronization sets.
-
-Add stable invalid nodes for LSP and formatter use.
-
-Do not discard a complete following declaration after one malformed member.
-
----
-
-## A.16 Reserved syntax diagnostics
-
-Add focused parser diagnostics for:
-
-```text
-?
-free
-panic
-assert
-C-style for
-condition-only for
-assignment expression
-multiple return syntax
-separate impl Interface for Type
-first-class range value
-```
-
----
-
-## A.17 Status tracking
-
-Update implementation tracker with separate columns or entries for:
-
-```text
-lexer
-parser
-AST
-Sema
-analysis
-Semantic IR
-MLIR
-direct LLVM
-formatter
-LSP
-```
-
-A grammar production may be implemented in the parser while incomplete in Sema
-or lowering.
-
----
-
-## A.18 Recommended implementation order
-
-```text
-1. Extend grammar consistency and fixture coverage.
-2. Unify the remaining token-start and statement-start tables.
-3. Add contextual x lowering and tooling context.
-4. Add ++/-- recovery and formatter normalization.
-5. Remove inline variable and field contracts.
-6. Resolve empty list literals.
-7. Reject prefix array syntax, legacy `type Name =` forms, and standalone `struct` with focused diagnostics.
-8. Add dedicated pattern AST.
-9. Make set and event contextual.
-10. Close extern declaration distinctions.
-11. Add focused reserved-syntax diagnostics.
-12. Extend structured parser recovery and invalid nodes.
-13. Synchronize formatter, LSP, and status trackers.
-```
-
----
-
 # Design summary
 
 Sec source files declare a module and contain declarations.
@@ -5298,8 +3831,8 @@ Canonical arrays and owning dynamic sequences use postfix type syntax.
 
 Safe slices use `ref T[]` or `ref mut T[]`.
 
-General attributes, first-class ranges, multiple returns, panic syntax, arbitrary
-operators, and process implementation are not complete Sec 0.1 features.
+First-class ranges, multiple returns, and arbitrary user-defined operators are
+not part of Sec 0.1.
 
 The parser constructs syntax.
 

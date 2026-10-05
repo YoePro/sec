@@ -575,6 +575,10 @@ type Function struct {
 	// trusted foreign contract that the foreign body performs no allocation
 	// (rules/foundations/attributes.md "Sec code versus foreign declarations").
 	TrustedNoAlloc bool
+	// TrustedNoBlock records an extern declaration annotated @noBlock: a
+	// trusted foreign contract that the foreign body never blocks
+	// (rules/concurrency/blocking.md "FFI").
+	TrustedNoBlock bool
 }
 
 // GenericConstraint retains one resolved compile-time interface requirement

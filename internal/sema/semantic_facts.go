@@ -168,6 +168,9 @@ type StringConcatPlan struct {
 	// Runtime is false for a plan fully resolved at compile time, which folds
 	// to static string data and is not fallible (MD-004).
 	Runtime bool
+	// FoldedText is the exact decoded result when Runtime is false. Later
+	// stages consume this value directly and never rebuild it from the AST.
+	FoldedText string
 	// Allocation is the resolved allocation context and failure channel of a
 	// runtime plan.
 	Allocation StringMaterializationAllocation
@@ -273,6 +276,7 @@ const (
 	ResolvedEnumCompareEQ                    ResolvedOperatorKind = "enum-compare-eq"
 	ResolvedEnumCompareNE                    ResolvedOperatorKind = "enum-compare-ne"
 	ResolvedMembershipCompare                ResolvedOperatorKind = "membership-compare"
+	ResolvedBoolNot                          ResolvedOperatorKind = "bool-not"
 	ResolvedNegatedMembershipCompare         ResolvedOperatorKind = "negated-membership-compare"
 	ResolvedMatrixMultiply                   ResolvedOperatorKind = "matrix-multiply"
 )
@@ -643,6 +647,10 @@ type ResolvedArrayLiteralEntryKind string
 const (
 	ArrayLiteralElement ResolvedArrayLiteralEntryKind = "element"
 	ArrayLiteralSpread  ResolvedArrayLiteralEntryKind = "spread"
+	// ArrayLiteralRange is a `lower..upper` or `lower..<upper` segment that
+	// contributes every value between compile-time bounds
+	// (rules/collections/collections.md § 5.6a).
+	ArrayLiteralRange ResolvedArrayLiteralEntryKind = "range"
 )
 
 // ResolvedArrayTransferAction records the ownership decision already made by
@@ -669,6 +677,10 @@ type ResolvedArrayLiteralEntry struct {
 	Type        Type
 	Length      *big.Int
 	Action      ResolvedArrayTransferAction
+	// RangeLower and RangeUpper are the inclusive compile-time bounds of a
+	// range segment; an empty exclusive segment has Length zero.
+	RangeLower *big.Int
+	RangeUpper *big.Int
 }
 
 // ResolvedArrayLiteralPlan is the compiler-owned compact fixed-array literal
@@ -1584,6 +1596,12 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 	switch expression := expr.(type) {
 	case *ast.PrefixExpression:
 		operand, ok := a.expressionTypes[expression.Right]
+		if ok && expression.Operator == "!" && operand.Kind == BoolType && result.Kind == BoolType {
+			// rules/foundations/operators.md — "Logical operators": `!`
+			// negates a bool and cannot fail.
+			resolved = ResolvedOperator{Kind: ResolvedBoolNot, LeftType: operand, ResultType: result, FailureBehavior: OperatorDoesNotFail}
+			break
+		}
 		if !ok || !isBuiltinIntegerOperatorType(operand) {
 			return
 		}
@@ -1638,68 +1656,159 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 			}
 			break
 		}
-		if !isBuiltinIntegerOperatorType(left) || !isBuiltinIntegerOperatorType(right) {
+		integer, ok := resolvedIntegerInfixOperator(expression.Operator, left, right, result)
+		if !ok {
 			return
 		}
-		switch expression.Operator {
-		case "+":
-			resolved.Kind = ResolvedIntegerAddChecked
-		case "-":
-			resolved.Kind = ResolvedIntegerSubtractChecked
-		case "*":
-			resolved.Kind = ResolvedIntegerMultiplyChecked
-		case "/":
-			resolved.Kind = ResolvedIntegerDivideChecked
-		case "%":
-			resolved.Kind = ResolvedIntegerRemainderChecked
-		case "&":
-			resolved.Kind = ResolvedIntegerBitAnd
-		case "|":
-			resolved.Kind = ResolvedIntegerBitOr
-		case "^":
-			resolved.Kind = ResolvedIntegerBitXor
-		case "<<":
-			if left.Kind == UintType {
-				resolved.Kind = ResolvedIntegerShiftLeftUnsignedChecked
-			} else {
-				resolved.Kind = ResolvedIntegerShiftLeftSignedChecked
-			}
-		case ">>":
-			if left.Kind == UintType {
-				resolved.Kind = ResolvedIntegerShiftRightUnsignedChecked
-			} else {
-				resolved.Kind = ResolvedIntegerShiftRightSignedChecked
-			}
-		case "==":
-			resolved.Kind = ResolvedIntegerCompareEQ
-		case "!=":
-			resolved.Kind = ResolvedIntegerCompareNE
-		case "<":
-			resolved.Kind = ResolvedIntegerCompareLT
-		case "<=":
-			resolved.Kind = ResolvedIntegerCompareLE
-		case ">":
-			resolved.Kind = ResolvedIntegerCompareGT
-		case ">=":
-			resolved.Kind = ResolvedIntegerCompareGE
-		default:
-			return
-		}
-		switch resolved.Kind {
-		case ResolvedIntegerAddChecked, ResolvedIntegerSubtractChecked,
-			ResolvedIntegerMultiplyChecked, ResolvedIntegerDivideChecked,
-			ResolvedIntegerRemainderChecked, ResolvedIntegerShiftLeftUnsignedChecked,
-			ResolvedIntegerShiftLeftSignedChecked, ResolvedIntegerShiftRightUnsignedChecked,
-			ResolvedIntegerShiftRightSignedChecked:
-			resolved.RuntimeCheck = true
-			resolved.FailureBehavior = OperatorArithmeticFailure
-		}
+		resolved = integer
 	default:
 		return
 	}
 	if resolved.Kind != "" {
 		a.resolvedOperators[expr] = resolved
 	}
+}
+
+// resolvedIntegerInfixOperator classifies one binary operator over built-in
+// integer operands. Binary expressions and compound assignments share it, so
+// `x op= y` applies exactly the operation and checks of `x op y`.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compound arithmetic failure"
+//   - rules/errors/runtime_checks.md — checked integer arithmetic
+func resolvedIntegerInfixOperator(operator string, left Type, right Type, result Type) (ResolvedOperator, bool) {
+	if !isBuiltinIntegerOperatorType(left) || !isBuiltinIntegerOperatorType(right) {
+		return ResolvedOperator{}, false
+	}
+	resolved := ResolvedOperator{LeftType: left, RightType: &right, ResultType: result, FailureBehavior: OperatorDoesNotFail}
+	switch operator {
+	case "+":
+		resolved.Kind = ResolvedIntegerAddChecked
+	case "-":
+		resolved.Kind = ResolvedIntegerSubtractChecked
+	case "*":
+		resolved.Kind = ResolvedIntegerMultiplyChecked
+	case "/":
+		resolved.Kind = ResolvedIntegerDivideChecked
+	case "%":
+		resolved.Kind = ResolvedIntegerRemainderChecked
+	case "&":
+		resolved.Kind = ResolvedIntegerBitAnd
+	case "|":
+		resolved.Kind = ResolvedIntegerBitOr
+	case "^":
+		resolved.Kind = ResolvedIntegerBitXor
+	case "<<":
+		if left.Kind == UintType {
+			resolved.Kind = ResolvedIntegerShiftLeftUnsignedChecked
+		} else {
+			resolved.Kind = ResolvedIntegerShiftLeftSignedChecked
+		}
+	case ">>":
+		if left.Kind == UintType {
+			resolved.Kind = ResolvedIntegerShiftRightUnsignedChecked
+		} else {
+			resolved.Kind = ResolvedIntegerShiftRightSignedChecked
+		}
+	case "==":
+		resolved.Kind = ResolvedIntegerCompareEQ
+	case "!=":
+		resolved.Kind = ResolvedIntegerCompareNE
+	case "<":
+		resolved.Kind = ResolvedIntegerCompareLT
+	case "<=":
+		resolved.Kind = ResolvedIntegerCompareLE
+	case ">":
+		resolved.Kind = ResolvedIntegerCompareGT
+	case ">=":
+		resolved.Kind = ResolvedIntegerCompareGE
+	default:
+		return ResolvedOperator{}, false
+	}
+	switch resolved.Kind {
+	case ResolvedIntegerAddChecked, ResolvedIntegerSubtractChecked,
+		ResolvedIntegerMultiplyChecked, ResolvedIntegerDivideChecked,
+		ResolvedIntegerRemainderChecked, ResolvedIntegerShiftLeftUnsignedChecked,
+		ResolvedIntegerShiftLeftSignedChecked, ResolvedIntegerShiftRightUnsignedChecked,
+		ResolvedIntegerShiftRightSignedChecked:
+		resolved.RuntimeCheck = true
+		resolved.FailureBehavior = OperatorArithmeticFailure
+	}
+	return resolved, true
+}
+
+// compoundAssignmentOperators maps each arithmetic compound assignment to
+// its underlying binary operator.
+var compoundAssignmentOperators = map[string]string{
+	"+=": "+", "-=": "-", "*=": "*", "/=": "/", "%=": "%",
+	"&=": "&", "|=": "|", "^=": "^", "<<=": "<<", ">>=": ">>",
+}
+
+// recordResolvedCompoundAssignment publishes the underlying operator of an
+// integer compound assignment and its arithmetic panic effect. `value++` and
+// `value--` arrive here as `+= 1` and `-= 1`.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compound assignment", "Compound arithmetic failure", "Increment and decrement aliases"
+//   - rules/errors/panic.md — arithmetic panic effects
+func (a *Analyzer) recordResolvedCompoundAssignment(stmt *ast.AssignmentStatement, target Type, value Type) {
+	if a == nil || stmt == nil {
+		return
+	}
+	operator, ok := compoundAssignmentOperators[stmt.Operator]
+	if !ok {
+		return
+	}
+	resolved, ok := resolvedIntegerInfixOperator(operator, target, value, target)
+	if !ok {
+		return
+	}
+	a.resolvedCompoundAssignments[stmt] = resolved
+	a.recordArithmeticPanicEffect(resolved, stmt.Token)
+}
+
+// ResolvedCompoundAssignmentOf returns the underlying integer operator of a
+// compound assignment statement.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compound assignment"
+func (a *Analyzer) ResolvedCompoundAssignmentOf(stmt *ast.AssignmentStatement) (ResolvedOperator, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedOperator{}, false
+	}
+	resolved, ok := a.resolvedCompoundAssignments[stmt]
+	if !ok {
+		return ResolvedOperator{}, false
+	}
+	right := *resolved.RightType
+	resolved.RightType = &right
+	return resolved, true
+}
+
+// ResolvedRangeMembership is the compiler-owned plan for `value in range` and
+// `value not in range`: the value is evaluated first, then the present bounds
+// left to right, each exactly once, and compared with the range's inclusive
+// or exclusive upper-bound semantics. Untyped numeric literal bounds carry the
+// value's type.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Membership expression", "Range membership", "Inclusive range", "Exclusive upper range"
+type ResolvedRangeMembership struct {
+	Negated   bool
+	ValueType Type
+	HasStart  bool
+	HasEnd    bool
+	Exclusive bool
+}
+
+// ResolvedRangeMembershipOf returns the range-membership plan of an `in` or
+// `not in` expression whose right operand is a contextual range.
+func (a *Analyzer) ResolvedRangeMembershipOf(expr *ast.InfixExpression) (ResolvedRangeMembership, bool) {
+	if a == nil || expr == nil {
+		return ResolvedRangeMembership{}, false
+	}
+	plan, ok := a.resolvedRangeMemberships[expr]
+	return plan, ok
 }
 
 func isBuiltinIntegerOperatorType(typ Type) bool {

@@ -542,10 +542,11 @@ type TypeReference struct {
 	// as list[T, 32], vector[T, 3], Shape[2], and tensor[T, 3, 224, 224].
 	ConstArgs []Expression
 
-	// EventCapacity is the optional fixed capacity in Event[T, N] and
-	// EventStorage[T, N].
-	EventCapacity    int64
-	EventCapacitySet bool
+	// EventCapacityExpression is the optional compile-time capacity in
+	// Event[T, N] and EventStorage[T, N]; Sema evaluates it with the shared
+	// compile-time integer evaluation.
+	EventCapacityExpression Expression
+	EventCapacitySet        bool
 
 	// FunctionParameterTypes and FunctionReturnType are used for function
 	// value types such as fn(int, string) bool. FunctionCapability preserves
@@ -929,6 +930,9 @@ type LetStatement struct {
 	SynthesizedDefault bool
 	Address            Expression
 	AddressToken       lexer.Token
+	// Attributes is the attachment set written before a top-level let; the
+	// Address fields are derived from its @address attribute.
+	Attributes []*Attribute
 }
 
 func (ls *LetStatement) statementNode() {}

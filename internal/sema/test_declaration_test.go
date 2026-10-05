@@ -334,21 +334,34 @@ func TestTestingOperationDiagnostics(t *testing.T) {
 func TestDistinctTestNamesAreAccepted(t *testing.T) {
 	fixtures := []string{
 		"test_identity_valid_test.sec",
-		"same_test_name_different_modules_valid_test.sec",
+		// One source file declares one module, so the two modules are two
+		// files of one program.
+		"same_test_name_different_modules_valid",
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture, func(t *testing.T) {
-			path := "../../testdata/sema/" + fixture
-			source, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
+			root := "../../testdata/sema/" + fixture
+			paths := []string{root}
+			if entries, err := os.ReadDir(root); err == nil {
+				paths = paths[:0]
+				for _, entry := range entries {
+					paths = append(paths, root+"/"+entry.Name())
+				}
 			}
-			result := parser.New(lexer.NewWithFile(string(source), path)).Parse()
-			if result.HasErrors {
-				t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+			program := &ast.Program{}
+			for _, path := range paths {
+				source, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				result := parser.New(lexer.NewWithFile(string(source), path)).Parse()
+				if result.HasErrors {
+					t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+				}
+				program.Statements = append(program.Statements, result.Program.Statements...)
 			}
 			analyzer := NewAnalyzer()
-			if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+			if errors := analyzer.Analyze(program); len(errors) != 0 {
 				t.Fatalf("valid test identity errors = %+v", errors)
 			}
 			if _, registered := analyzer.Functions()["first"]; registered {

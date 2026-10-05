@@ -21,8 +21,10 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	if program == nil || analyzer == nil {
 		return nil, fmt.Errorf("program and completed analyzer are required")
 	}
+	// The default is the newest completed SEC-MLIR package: P14 fixed arrays
+	// (rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md).
 	if options.MaxPackage == 0 {
-		options.MaxPackage = 13
+		options.MaxPackage = 14
 	}
 	identity := options.RequestedModule
 	if identity == "" {
@@ -84,6 +86,8 @@ type functionBuilder struct {
 	nextBlock   BlockID
 	nextStorage StorageID
 	nextMatch   MatchID
+	nextLoop    LoopID
+	loops       []*activeLoop
 	bindings    map[sema.BindingID]binding
 }
 type binding struct {
@@ -104,7 +108,7 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
 	b.module.Functions = append(b.module.Functions, fn)
-	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1}
+	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1}
 	for i, parameter := range resolved.Parameters {
 		typeID, err := b.internType(parameter.Type)
 		if err != nil {
@@ -530,6 +534,21 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if err := fb.buildIf(stmt); err != nil {
 				return err
 			}
+		case *ast.WhileStatement:
+			if fb.owner.maxPackage < 13 {
+				return fb.unsupported("while loop", stmt.Token)
+			}
+			if err := fb.buildWhile(stmt); err != nil {
+				return err
+			}
+		case *ast.BreakStatement:
+			if err := fb.buildLoopControl(LoopEdgeBreak, stmt.Token); err != nil {
+				return err
+			}
+		case *ast.ContinueStatement:
+			if err := fb.buildLoopControl(LoopEdgeContinue, stmt.Token); err != nil {
+				return err
+			}
 		case *ast.MatchStatement:
 			if fb.owner.maxPackage < 12 {
 				return fb.unsupported("match statement", stmt.Token)
@@ -624,7 +643,7 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 		return fb.unsupported("assignment", stmt.Token)
 	}
 	if stmt.Operator != "=" {
-		return fb.unsupported("compound assignment", stmt.Token)
+		return fb.buildCompoundAssignment(stmt)
 	}
 	if index, ok := stmt.Target.(*ast.IndexExpression); ok && fb.owner.maxPackage >= 14 {
 		if _, simple := index.Left.(*ast.Identifier); !simple {
@@ -1023,6 +1042,73 @@ func (fb *functionBuilder) buildStructFieldAssignment(stmt *ast.AssignmentStatem
 	return nil
 }
 
+// buildCompoundAssignment lowers `local op= value` for an integer mutable
+// local: the destination is read once, the source evaluated once, the
+// Sema-resolved underlying operator applied with its checks, and the result
+// written once only after the checks pass. Other targets remain an explicit
+// boundary.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compound assignment", "Compound arithmetic failure", "Increment and decrement aliases"
+//   - rules/compiler/semantic_ir.md — § 31 "Storage operations", § 58 "Arithmetic"
+func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement) error {
+	resolved, ok := fb.owner.analyzer.ResolvedCompoundAssignmentOf(stmt)
+	if !ok || fb.owner.maxPackage < 13 {
+		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
+	}
+	id, ok := stmt.Target.(*ast.Identifier)
+	if !ok {
+		return fb.unsupported("compound assignment to a non-local place", stmt.Token)
+	}
+	if _, ok := stmt.Value.(*ast.TryExpression); ok {
+		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(id)
+	if !ok {
+		return fmt.Errorf("missing resolved assignment binding")
+	}
+	bind, ok := fb.bindings[fact.ID]
+	if !ok || bind.storage == 0 {
+		return fmt.Errorf("assignment target has no semantic storage")
+	}
+	leftType, err := fb.owner.internType(resolved.LeftType)
+	if err != nil {
+		return err
+	}
+	rightType, err := fb.owner.internType(*resolved.RightType)
+	if err != nil {
+		return err
+	}
+	resultType, err := fb.owner.internType(resolved.ResultType)
+	if err != nil {
+		return err
+	}
+	if leftType != bind.typ || resultType != bind.typ {
+		return fmt.Errorf("compound assignment type does not match its storage")
+	}
+	loc := location(stmt.Token)
+	current := fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ)
+	value, err := fb.buildExpr(stmt.Value, rightType)
+	if err != nil {
+		return err
+	}
+	op := Operation{Operands: []ValueID{current.id, value.id}, Location: loc, Operator: strings.TrimSuffix(stmt.Operator, "=")}
+	if !semanticOperatorKind(resolved, &op) {
+		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
+	}
+	updated := builtValue{}
+	if resolved.RuntimeCheck {
+		updated, err = fb.emitCheckedOperator(op, resultType, nil, nil)
+		if err != nil {
+			return err
+		}
+	} else {
+		updated = fb.result(op, resultType)
+	}
+	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{updated.id}, Location: loc})
+	return nil
+}
+
 func (fb *functionBuilder) buildReturn(stmt *ast.ReturnStatement) error {
 	// Direct `return try result` has two terminal paths. Sema alone decides
 	// whether the narrow forwarding rule applies; lowering never infers it from
@@ -1295,6 +1381,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	if expected != 0 {
 		typeID = expected
 	}
+	if value, handled, foldErr := fb.buildFoldedStringConcat(expr, typeID); handled {
+		return value, foldErr
+	}
 	loc := locationFromExpression(expr)
 	switch e := expr.(type) {
 	case *ast.IntegerLiteral:
@@ -1411,6 +1500,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if fb.owner.maxPackage < 7 {
 			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
 		}
+		if fb.owner.maxPackage >= 13 {
+			if value, handled, err := fb.buildBooleanOperator(expr); handled {
+				return value, err
+			}
+		}
 		return fb.buildResolvedOperator(expr)
 	case *ast.StructLiteral:
 		if fb.owner.maxPackage >= 13 {
@@ -1510,6 +1604,23 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 		expected := elementType
 		kind := ArraySegmentElement
 		action := ArrayActionConstructDirect
+		if entry.Kind == sema.ArrayLiteralRange {
+			// One compact segment per source range: its operand is the
+			// constant lower bound, its length the value count. An empty
+			// exclusive segment contributes nothing.
+			if entry.Length.Sign() == 0 {
+				continue
+			}
+			if entry.RangeLower == nil {
+				return builtValue{}, fmt.Errorf("array literal range segment has no lower bound")
+			}
+			lower := fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(entry.RangeLower), Location: location(expressionToken(source))}, elementType)
+			op.Operands = append(op.Operands, lower.id)
+			op.ArraySegmentKinds = append(op.ArraySegmentKinds, ArraySegmentRange)
+			op.ArraySegmentLengths = append(op.ArraySegmentLengths, entry.Length.String())
+			op.ArrayActions = append(op.ArrayActions, ArrayActionConstructDirect)
+			continue
+		}
 		if entry.Kind == sema.ArrayLiteralSpread {
 			spread, spreadOK := source.(*ast.SpreadExpression)
 			resolvedAction, supported := semanticArraySpreadAction(entry.Action)
@@ -2326,9 +2437,6 @@ func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.
 }
 
 func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, continuation *Block, matchID MatchID) error {
-	if plan.Flow == sema.MatchArmLoopControl {
-		return fb.unsupported("match arm loop control before loop Semantic IR", arm.Token)
-	}
 	if arm.ReturnBody != nil {
 		return fb.buildReturn(arm.ReturnBody)
 	}
@@ -2971,6 +3079,23 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 	}
 	loc := locationFromExpression(expr)
 	op := Operation{Operands: operands, Location: loc, Operator: operatorSpelling(expr)}
+	if !semanticOperatorKind(resolved, &op) {
+		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
+	}
+	if resolved.RuntimeCheck {
+		return fb.emitCheckedOperator(op, resultType, arithmeticTry, localTry)
+	}
+	return fb.result(op, resultType), nil
+}
+
+// semanticOperatorKind selects the Semantic IR operation for one
+// Sema-resolved operator. Binary expressions and compound assignments share
+// it, so `x op= y` lowers to exactly the operation of `x op y`.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compound arithmetic failure"
+//   - rules/compiler/semantic_ir.md — § 58 "Arithmetic"
+func semanticOperatorKind(resolved sema.ResolvedOperator, op *Operation) bool {
 	switch resolved.Kind {
 	case sema.ResolvedIntegerUnaryPlus:
 		op.Kind = OpIntUnaryPlus
@@ -3019,12 +3144,9 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 	case sema.ResolvedEnumCompareNE:
 		op.Kind, op.IntegerCompare = OpEnumCompare, IntegerCompareNE
 	default:
-		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
+		return false
 	}
-	if resolved.RuntimeCheck {
-		return fb.emitCheckedOperator(op, resultType, arithmeticTry, localTry)
-	}
-	return fb.result(op, resultType), nil
+	return true
 }
 
 func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression) (builtValue, error) {

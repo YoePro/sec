@@ -199,6 +199,7 @@ type CallGraph struct {
 	rootOrder    []CallRootID
 	arenaEffects map[CallableID][]ArenaEffectSite
 	effects      map[CallableID][]EffectSite
+	blockEffects map[CallableID][]BlockEffectSite
 }
 
 func newCallGraph() *CallGraph {
@@ -209,6 +210,7 @@ func newCallGraph() *CallGraph {
 		roots:        map[CallRootID]CallRoot{},
 		arenaEffects: map[CallableID][]ArenaEffectSite{},
 		effects:      map[CallableID][]EffectSite{},
+		blockEffects: map[CallableID][]BlockEffectSite{},
 	}
 }
 
@@ -388,6 +390,9 @@ func (g *CallGraph) clone() *CallGraph {
 	}
 	for id, effects := range g.effects {
 		copyGraph.effects[id] = cloneEffectSites(effects)
+	}
+	for id, effects := range g.blockEffects {
+		copyGraph.blockEffects[id] = append([]BlockEffectSite(nil), effects...)
 	}
 	return copyGraph
 }

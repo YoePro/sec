@@ -84,6 +84,10 @@ type ParseResult struct {
 type Parser struct {
 	l *lexer.Lexer
 
+	// fileTarget is the file's #target compatibility directive, against
+	// which statement-level @target selectors are checked for contradiction.
+	fileTarget *ast.TargetDirective
+
 	// allowFinalBlockValue is set immediately before parsing a block whose
 	// final statement may be a contextual result-position expression (a try
 	// handler block). parseStatementBlock consumes it so nested blocks do not
@@ -436,17 +440,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.recoveryContext == RecoveryContextTopLevel && p.knownAttributeSetEndsAtEOF() {
 			return p.parseUnattachedAttributeSet()
 		}
-		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "address" {
-			return p.parseAddressedLetStatement()
-		}
-		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "link_name" {
-			return p.parseLinkNameExternDeclaration()
-		}
-		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noCopy" {
-			return p.parseNoCopyDeclaration()
-		}
-		if p.peekToken.Type == lexer.IDENT && verifiedEffectAttribute(p.peekToken.Lexeme) {
-			return p.parseEffectGuaranteeDeclaration()
+		if p.peekToken.Type == lexer.IDENT && compilerKnownAttributeName(p.peekToken.Lexeme) {
+			return p.parseAttributedStatement()
 		}
 		if (p.recoveryContext == RecoveryContextTopLevel || p.recoveryContext == RecoveryContextMember) &&
 			p.peekToken.Type == lexer.IDENT && !compilerKnownAttributeName(p.peekToken.Lexeme) {
@@ -506,6 +501,9 @@ func (p *Parser) parseStatement() ast.Statement {
 			}
 		}
 		unexpected := p.curToken
+		if unexpected.Type == lexer.RANGE || unexpected.Type == lexer.RANGE_EXCLUSIVE {
+			return p.rejectRangeValue(unexpected)
+		}
 		p.addDiagnostic(
 			compilerdiagnostics.ParserUnexpectedToken,
 			unexpected,
@@ -518,6 +516,50 @@ func (p *Parser) parseStatement() ast.Statement {
 		)
 		return nil
 	}
+}
+
+// recoverAssignmentInCondition reports `=` where an if or while condition
+// requires an expression and resumes at the body brace. It reports whether
+// the current token is that brace.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Assignment is not expression syntax"
+//   - rules/control-flow/flowcontrol_if.md, rules/control-flow/flowcontrol_while.md — §10 "Assignment is not an expression"
+func (p *Parser) recoverAssignmentInCondition(construct string) bool {
+	unexpected := p.peekToken
+	before := len(p.diagnostics)
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidAssignmentExpr, unexpected, []lexer.TokenType{lexer.LBRACE}, &unexpected,
+		"assignment in %s condition at %d:%d", construct, unexpected.Line, unexpected.Column)
+	if len(p.diagnostics) > before {
+		p.diagnostics[len(p.diagnostics)-1].Help = "Assignment is a statement, not an expression. Use == to compare, or assign before the " + construct + "."
+	}
+	p.skipUntilBlockStart()
+	return p.curToken.Type == lexer.LBRACE
+}
+
+// assignmentConditionPlaceholder retains the parsed left side and the `=`
+// of an assignment written as a condition inside an InvalidExpression, so
+// Sema does not report a second, cascading condition-type error.
+func (p *Parser) assignmentConditionPlaceholder(left ast.Expression) ast.Expression {
+	return &ast.InvalidExpression{Token: p.peekToken, Message: "assignment in condition", Left: left, Operator: p.peekToken,
+		Recovery: &ast.RecoveryInfo{Reported: true, DiagnosticID: compilerdiagnostics.ParserInvalidAssignmentExpr, Message: "assignment in condition"}}
+}
+
+// rejectRangeValue reports a range operator that would make a range a value
+// and skips the rest of the line; ranges are contextual syntax only.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Range expression in contextual positions", "Forms outside Sec 0.1"
+//   - rules/foundations/operators.md — "Ranges"
+func (p *Parser) rejectRangeValue(operator lexer.Token) ast.Statement {
+	before := len(p.diagnostics)
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, operator, nil, &operator,
+		"a range is not a value in Sec 0.1 at %d:%d", operator.Line, operator.Column)
+	if len(p.diagnostics) > before {
+		p.diagnostics[len(p.diagnostics)-1].Help = "Ranges appear only in for loops, membership tests, slicing, and switch cases, such as `for i in 0..<10` or `if value in 0..100`."
+	}
+	p.skipRestOfStatementLine()
+	return &ast.InvalidStatement{Token: operator, Message: "range value", Recovery: &ast.RecoveryInfo{Reported: true, DiagnosticID: compilerdiagnostics.ParserInvalidExpression, Message: "range value"}}
 }
 
 // parseFinalBlockValue parses a contextual result-position expression that
@@ -627,23 +669,6 @@ func (p *Parser) parseUnattachedAttributeSet() ast.Statement {
 			End:          recovery.End,
 			Skipped:      recovery.Skipped,
 		},
-	}
-}
-
-// compilerKnownAttributeName distinguishes the closed Sec 0.1 attribute set
-// from truly unknown names. Some names still have incomplete dedicated parser
-// verticals, but they must not be mislabeled as unknown attributes.
-//
-// Rules:
-//   - rules/foundations/attributes.md — "Initial compiler-known attribute set"
-//   - rules/foundations/attributes.md — "Closed attribute set"
-func compilerKnownAttributeName(name string) bool {
-	switch name {
-	case "target", "when", "address", "interrupt", "isr", "interruptSafe",
-		"noCopy", "noAlloc", "noPanic", "noBlock", "link_name":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -1295,6 +1320,12 @@ func (p *Parser) parseIfStatement() ast.Statement {
 				return stmt
 			}
 			stmt.Consequence = p.parseStatementBlock("if body")
+		} else if p.peekToken.Type == lexer.ASSIGN {
+			stmt.Condition = p.assignmentConditionPlaceholder(stmt.Condition)
+			if !p.recoverAssignmentInCondition("if") {
+				return stmt
+			}
+			stmt.Consequence = p.parseStatementBlock("if body")
 		} else if p.peekToken.Type != lexer.LBRACE {
 			p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return stmt
@@ -1726,18 +1757,8 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 
 	if p.peekToken.Type != lexer.LBRACE {
 		if p.peekToken.Type == lexer.ASSIGN {
-			unexpected := p.peekToken
-			p.addDiagnostic(
-				compilerdiagnostics.ParserInvalidAssignmentExpr,
-				unexpected,
-				[]lexer.TokenType{lexer.LBRACE},
-				&unexpected,
-				"assignment in while condition at %d:%d",
-				unexpected.Line,
-				unexpected.Column,
-			)
-			p.skipUntilBlockStart()
-			if p.curToken.Type != lexer.LBRACE {
+			stmt.Condition = p.assignmentConditionPlaceholder(stmt.Condition)
+			if !p.recoverAssignmentInCondition("while") {
 				return stmt
 			}
 			stmt.Body = p.parseStatementBlock("while body")
@@ -2641,6 +2662,7 @@ func (p *Parser) parseTargetDirective(hashToken lexer.Token) ast.Statement {
 		return nil
 	}
 
+	p.fileTarget = stmt
 	return stmt
 }
 
@@ -5147,7 +5169,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			p.appendImplMember(stmt, documentation, fn)
 		case lexer.AT:
-			parsed := p.parseEffectGuaranteeDeclaration()
+			parsed := p.parseAttributedStatement()
 			fn, ok := parsed.(*ast.FunctionDeclaration)
 			if !ok || fn == nil {
 				continue
@@ -5422,7 +5444,12 @@ func (p *Parser) parseEventDeclaration() *ast.EventDeclaration {
 	p.nextToken()
 	event.Storage = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 	if p.peekToken.Type == lexer.LBRACE {
+		// rules/foundations/grammar.md — "Event declaration": no event body
+		// syntax exists, so a block is rejected rather than silently skipped;
+		// the declaration is retained and the block consumed for recovery.
 		p.nextToken()
+		p.addError("event %s has no body; `event %s using %s` declares it completely at %d:%d",
+			event.Name.Value, event.Name.Value, event.Storage.Value, p.curToken.Line, p.curToken.Column)
 		p.skipCurrentBlock()
 	}
 	return event
@@ -6045,6 +6072,25 @@ func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, 
 		}
 	}
 
+	// A runtime-shaped owning tensor has one element-type argument followed by
+	// the compiler-known metadata type Shape[Rank]. Retain Shape[Rank] as a
+	// type argument rather than misclassifying it as a static extent
+	// expression; Sema then owns the exact tensor-form validation.
+	//
+	// Rules:
+	//   - rules/collections/shaped-types.md — §3.4 "Runtime-shaped owning tensor"
+	if ref.Name == "tensor" && p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "Shape" {
+		p.nextToken()
+		shape := p.parseTypeReference()
+		ref.TypeArgs = append(ref.TypeArgs, shape)
+		if shape == nil || shape.Invalid {
+			return p.markInvalidTypeReference(ref)
+		}
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+		}
+	}
+
 	for p.peekToken.Type != lexer.RBRACKET && p.peekToken.Type != lexer.EOF {
 		diagnosticStart := len(p.diagnostics)
 		p.nextToken()
@@ -6115,22 +6161,23 @@ func (p *Parser) parseEventTypeReferenceArgs(ref *ast.TypeReference, token lexer
 		return p.markInvalidTypeReference(ref)
 	}
 	if p.peekToken.Type == lexer.COMMA {
+		// rules/concurrency/events.md — "Explicit capacity": the capacity is a
+		// compile-time value greater than zero, not only an integer literal.
 		p.nextToken()
-		if p.peekToken.Type != lexer.INT {
+		if !p.isExpressionStart(p.peekToken.Type) {
 			p.nextToken()
-			p.addError("%s capacity must be an integer literal at %d:%d", ref.Name, p.curToken.Line, p.curToken.Column)
+			p.addError("%s capacity must be a compile-time integer at %d:%d", ref.Name, p.curToken.Line, p.curToken.Column)
 			if p.peekToken.Type == lexer.RBRACKET {
 				p.nextToken()
 			}
 			return p.markInvalidTypeReference(ref)
 		}
 		p.nextToken()
-		capacity, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
-		if !ok {
-			p.addError("invalid %s capacity %q at %d:%d", ref.Name, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+		capacity := p.parseExpression(LOWEST)
+		if capacity == nil {
 			return p.markInvalidTypeReference(ref)
 		}
-		ref.EventCapacity = capacity
+		ref.EventCapacityExpression = capacity
 		ref.EventCapacitySet = true
 	}
 	if !p.expectPeek(lexer.RBRACKET) {
@@ -7529,177 +7576,6 @@ func (p *Parser) parseLetStatement() ast.Statement {
 	return &ast.LetGroupStatement{Token: token, Lets: lets}
 }
 
-func (p *Parser) parseAddressedLetStatement() ast.Statement {
-	addressToken := p.curToken
-	p.nextToken()
-	if !p.expectPeek(lexer.LPAREN) {
-		return nil
-	}
-	p.nextToken()
-	address := p.parseExpression(LOWEST)
-	if address == nil {
-		return nil
-	}
-	if !p.expectPeek(lexer.RPAREN) {
-		return nil
-	}
-	if !p.expectPeek(lexer.LET) {
-		p.addError("@address must annotate a let declaration at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
-	}
-
-	stmt := p.parseLetStatement()
-	if group, ok := stmt.(*ast.LetGroupStatement); ok {
-		p.addError("@address cannot annotate grouped let declarations at %d:%d", group.Token.Line, group.Token.Column)
-		return nil
-	}
-	letStmt, ok := stmt.(*ast.LetStatement)
-	if !ok || letStmt == nil {
-		return nil
-	}
-	letStmt.Address = address
-	letStmt.AddressToken = addressToken
-	return letStmt
-}
-
-func (p *Parser) parseNoCopyDeclaration() ast.Statement {
-	attributes := []*ast.Attribute{}
-	var first lexer.Token
-
-	for {
-		attributeToken := p.curToken
-		if !p.expectPeek(lexer.IDENT) {
-			return nil
-		}
-		nameToken := p.curToken
-		if nameToken.Lexeme != "noCopy" {
-			p.addError("unknown attribute @%s at %d:%d", nameToken.Lexeme, attributeToken.Line, attributeToken.Column)
-			return nil
-		}
-		if len(attributes) > 0 {
-			p.addError(
-				"duplicate attribute @noCopy at %d:%d; first declared at %d:%d",
-				attributeToken.Line,
-				attributeToken.Column,
-				first.Line,
-				first.Column,
-			)
-		} else {
-			first = attributeToken
-		}
-		attributes = append(attributes, &ast.Attribute{
-			Token: attributeToken,
-			Name:  &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme},
-		})
-
-		if p.peekToken.Type == lexer.LPAREN {
-			argumentToken := p.peekToken
-			p.addError("@noCopy does not take arguments at %d:%d", argumentToken.Line, argumentToken.Column)
-			p.consumeAttributeArguments()
-		}
-
-		p.skipPeekComments()
-		if p.peekToken.Type != lexer.AT {
-			break
-		}
-		p.nextToken()
-		if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "noCopy" {
-			p.addError("@noCopy cannot be combined with an unsupported attribute at %d:%d", p.curToken.Line, p.curToken.Column)
-			return nil
-		}
-	}
-
-	p.skipPeekComments()
-	if p.peekToken.Type != lexer.TYPE && p.peekToken.Type != lexer.ENUM {
-		p.addError(
-			"@noCopy may only annotate a nominal type declaration at %d:%d",
-			p.peekToken.Line,
-			p.peekToken.Column,
-		)
-		return nil
-	}
-
-	p.nextToken()
-	stmt := p.parseStatement()
-	switch stmt := stmt.(type) {
-	case *ast.TypeDeclStatement:
-		stmt.Attributes = attributes
-	case *ast.EnumDeclaration:
-		stmt.Attributes = attributes
-	default:
-		p.addError("@noCopy may only annotate a nominal type declaration at %d:%d", p.curToken.Line, p.curToken.Column)
-		return nil
-	}
-	return stmt
-}
-
-// verifiedEffectAttribute names the argument-free effect-guarantee
-// attributes whose transitive guarantee Sema verifies.
-func verifiedEffectAttribute(name string) bool {
-	return name == "noPanic" || name == "noAlloc"
-}
-
-// parseEffectGuaranteeDeclaration parses one attribute set of the verified,
-// argument-free function attributes `@noPanic` and `@noAlloc` in any order,
-// each at most once, attached to the following function, method, or extern
-// declaration. Effect verification is performed by Sema; on an extern
-// declaration the attributes are trusted foreign contracts.
-//
-// Rules:
-//   - rules/foundations/attributes.md — "Attribute attachment", "Duplicate attributes", "Attribute order", "@noAlloc", "@noPanic"
-//   - rules/platform/ffi.md — §42 "Foreign effects"
-func (p *Parser) parseEffectGuaranteeDeclaration() ast.Statement {
-	attributes := []*ast.Attribute{}
-	seen := map[string]bool{}
-	for {
-		attributeToken := p.curToken
-		if !p.expectPeek(lexer.IDENT) {
-			return nil
-		}
-		nameToken := p.curToken
-		if seen[nameToken.Lexeme] {
-			p.addError("duplicate attribute @%s at %d:%d", nameToken.Lexeme, attributeToken.Line, attributeToken.Column)
-			return nil
-		}
-		seen[nameToken.Lexeme] = true
-		attributes = append(attributes, &ast.Attribute{
-			Token: attributeToken,
-			Name:  &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme},
-		})
-		if p.peekToken.Type == lexer.LPAREN {
-			argumentToken := p.peekToken
-			p.addError("@%s does not take arguments at %d:%d", nameToken.Lexeme, argumentToken.Line, argumentToken.Column)
-			p.consumeAttributeArguments()
-		}
-		p.skipPeekComments()
-		if p.peekToken.Type != lexer.AT {
-			break
-		}
-		p.nextToken()
-		if p.peekToken.Type != lexer.IDENT || !verifiedEffectAttribute(p.peekToken.Lexeme) {
-			p.addError("unsupported attribute after @%s at %d:%d", nameToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			return nil
-		}
-	}
-	names := "@" + attributes[0].Name.Value
-	if len(attributes) > 1 {
-		names = "these attributes"
-	}
-	if p.peekToken.Type != lexer.FN && p.peekToken.Type != lexer.UNSAFE && p.peekToken.Type != lexer.EXTERN {
-		p.addError("%s may only annotate a function or method at %d:%d", names, p.peekToken.Line, p.peekToken.Column)
-		return nil
-	}
-	p.nextToken()
-	parsed := p.parseStatement()
-	fn, ok := parsed.(*ast.FunctionDeclaration)
-	if !ok || fn == nil {
-		p.addError("%s may only annotate a function or method at %d:%d", names, p.curToken.Line, p.curToken.Column)
-		return nil
-	}
-	fn.Attributes = append(fn.Attributes, attributes...)
-	return fn
-}
-
 func (p *Parser) consumeAttributeArguments() RecoveryEvent {
 	p.nextToken()
 	start, end, skipped := p.curToken, p.curToken, 1
@@ -7714,40 +7590,6 @@ func (p *Parser) consumeAttributeArguments() RecoveryEvent {
 		delimiters.consume(p.curToken.Type)
 	}
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
-}
-
-func (p *Parser) parseLinkNameExternDeclaration() ast.Statement {
-	annotationToken := p.curToken
-	p.nextToken()
-	if !p.expectPeek(lexer.LPAREN) {
-		return nil
-	}
-	if p.peekToken.Type != lexer.STRING {
-		p.addError("@link_name requires a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
-	}
-	p.nextToken()
-	linkName := trimStringQuotes(p.curToken.Lexeme)
-	if linkName == "" {
-		p.addError("@link_name requires a non-empty symbol name at %d:%d", p.curToken.Line, p.curToken.Column)
-		return nil
-	}
-	if !p.expectPeek(lexer.RPAREN) {
-		return nil
-	}
-	if p.peekToken.Type != lexer.EXTERN {
-		p.addError("@link_name must annotate an extern declaration at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
-	}
-	p.nextToken()
-
-	fn := p.parseExternFunctionDeclaration()
-	if fn == nil {
-		return nil
-	}
-	fn.LinkName = linkName
-	fn.Token = annotationToken
-	return fn
 }
 
 func (p *Parser) letDeclaratorMayOmitInitializer(stmt *ast.LetStatement) bool {

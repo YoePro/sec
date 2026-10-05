@@ -4,9 +4,9 @@ purpose: Grammar consumption, parser recovery, and parse diagnostics.
 integrations:
   - id: frontend.parser-recovery-result
     area: frontend
-    status: partial
+    status: implemented
     integrated: "2026-08-07"
-    revised: "2026-10-01"
+    revised: "2026-10-05"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -308,14 +308,8 @@ integrations:
         result: "passed on 2026-10-04; skipStatement keeps an owned boundary (closing brace, statement start, or top-level declaration) current even when it is the last token of the file, so a failed final statement of the final block no longer consumes the block's closing brace and reports an unterminated body; a reserved keyword used as a binding name (`let new := 1`) reports P2011 \"`new` is a reserved keyword and cannot name a binding\" instead of the generic expected-IDENT error"
       - command: go test ./internal/parser -run TestRecoveryRetainsOpenCallsAndBrokenFunctionTypes -count=1
         result: "passed on 2026-10-04; an argument list left open before the enclosing block's `}` or before a statement keyword on a later line closes behind a virtual parenthesis with P2004 \"missing ')' to close the call opened at L:C\", keeping the completed arguments, the binding, the block's brace, and later declarations (previously the whole call was dropped, the brace consumed, and the next function lost); a function type with a missing parameter type at `,`/`)` or a missing return type keeps an invalid type there instead of abandoning the parameter list and the enclosing function"
-    remaining:
-      - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, empty impl-property type positions, bare and `name:` parameters, and function-type parameter and return positions
-      - skipped-range and shared-stack migration for remaining specialized recovery helpers
-      - recovery contexts for remaining specialized parsers
-      - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF
-      - recovery-aware Sema traversal policy for every invalid subtree
-      - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
+    remaining: []
+
   - id: frontend.increment-decrement-aliases
     area: frontend-and-tooling
     status: implemented
@@ -372,7 +366,8 @@ integrations:
 
   - id: frontend.grammar-conformance
     area: frontend-parser-ast-sema-and-recovery
-    status: partial
+    status: implemented
+    revised: "2026-10-05"
     audited: "2026-08-19"
     document_revision: inferred 1.x / pre-v2 consolidated grammar; no explicit revision metadata
     document_baseline:
@@ -401,6 +396,8 @@ integrations:
       - internal/formatter
     tests:
       - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/test_declaration_test.go
     implemented:
       - canonical postfix fixed-array and owning-dynamic-array type syntax
       - "MD-002/MD-003 rejection: `type Name = T` and compact `type Name = A B ...` (P2023 parser.legacy-assigned-type), additional underlying types such as `type A int string` (P2024 parser.multiple-underlying-types), inline field and variable contracts (P2025 parser.legacy-inline-contract), prefix `[N]T`/`[]T` (P2026 parser.prefix-sequence-type, with the postfix spelling in the message), standalone `struct Name` (P2027 parser.future-struct-declaration), several names in one type declaration such as `type A, B int` (P2029 parser.multiple-type-declaration-names, retaining the first declaration), and the enum `Member: value` initializer (P2028 parser.legacy-enum-colon-initializer, formerly only a warning promising a formatter rewrite that ordinary formatting must not perform) are errors with focused migration messages while the AST is retained for recovery; Sema keeps its own storage-site contract rejection behind the parser error"
@@ -414,17 +411,14 @@ integrations:
       - substantial parser unit coverage exists for canonical declarations, expressions, control flow, types, recovery, and several legacy forms
       - "canonical grammar fixture suite (2026-10-04): the 13 fixtures grammar.md \"Required grammar fixtures\" names exist under testdata/grammar/, and TestGrammarFixtureSuite (internal/sema/grammar_fixtures_test.go) parses and analyzes them: valid fixtures must produce no diagnostic, every `/* Expected error: ... * Reason: ... */` block of an invalid fixture must be matched by a diagnostic containing its text between that block and the next, no diagnostic may fall outside a block's region (so cascades and silently accepted invalid forms fail), and the recovery fixture must retain every top-level function. Valid and invalid fixtures are separate files, so compatibility syntax cannot become canonical through a recovery test"
       - "focused return-list and chained-assignment diagnostics (2026-10-04): `return a, b` reports P2006 \"return takes one value\" and keeps `return a`; `a = b = c` reports P2013 \"assignment is a statement and cannot be chained\" on the second operator and keeps the first assignment; the rest of the line is skipped with balanced delimiters, so the enclosing function and following statements survive without unexpected-token, unreachable, or unterminated-body cascades (TestFocusedReturnListAndChainedAssignmentRecovery, grammar_statements_invalid.sec)"
+      - "one module declaration per source file (2026-10-05, grammar.md \"Source file\"): Sema rejects a second module declaration in the same file with S1002 modules.duplicate-module-declaration, naming both modules and locations; one module may span several files and different files may declare different modules. The former single-source multi-module tests now use multi-file programs (analyzeSourceFilesRaw), testdata/sema/same_test_name_different_modules_valid/ holds one module per file, and the module-name parser test parses each spelling as its own source; a scan of testdata/, sec/, and examples/ finds no file with two module declarations (TestOneModuleDeclarationPerSourceFile, TestUnderscoreVisibilityAcrossModules)"
+      - "grammar.md status migration (2026-10-05, user decision: correct directly): the 2026-08-01 implementation-status sections, the implementation-status matrix, and Appendix A were removed; their normative content moved into normative sections ('Canonical syntax and legacy forms', 'Forms outside Sec 0.1', enum iota/string-backed/generic rules with GenericParameterList in both enum productions, grouped-let non-destructuring, instance versus static let, PanicStatement/AssertStatement/UnreachableStatement/IncrementDecrementStatement); stale claims were corrected (dotted modules, `require` is a general keyword per lexical_structure.md § 7.1, task/thread/process and contract words are reserved, `set` is contextual, the enum colon initializer is legacy, panic/assert have defined forms, event capacity follows events.md); implementation facts that were still open are tracked here or in the long-term entry, and those already implemented elsewhere (pattern AST, empty list literals, body-bearing extern rejection, multi-constraint generics) were verified"
+      - "parser conformance fixes found by the migration (2026-10-05): a block after `event Name using storage` is rejected instead of silently skipped (TestEventDeclarationBodyIsRejected); `let r := 0..<10` reports a focused P2007 'a range is not a value in Sec 0.1'; `if a = b` now shares the while condition's focused P2013 recovery and retains an InvalidExpression condition so Sema adds no cascade; Event/EventStorage capacity is a compile-time expression evaluated by Sema's shared constant evaluation instead of an integer-literal-only parser path"
+      - "recovery tests stay distinct from canonical tests: the grammar fixture suite keeps valid and invalid fixtures in separate files and rejects any diagnostic in a valid fixture"
       - "the fixtures confirm that lexical_structure.md § 7 governs reserved spellings: require (§ 7.1), task/thread/process (§ 7.2), and the contract words (§ 7.3) are rejected as declaration names although grammar.md \"Contextual spellings\" still lists several of them as contextual"
     decisions:
       - "MD-002 and MD-003 are decided by rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md §§ 3-4 and recorded in grammar.md, types.md, contracts.md, and formatter.md: Sec 0.1 accepts only canonical syntax; `type Name TypeReference` has exactly one underlying type; legacy `type Name = ...` forms, inline field/variable contracts, the enum `Value: 1` initializer, and explicit `ref self` are invalid with focused migration diagnostics; standalone `struct Name` is Sec 0.2 syntax and prefix `[N]T`/`[]T` was never normative, so both are invalid Sec 0.1 syntax; default formatting never rewrites them"
-    partial:
-      - grammar.md still contains a 2026-08-01 implementation-status snapshot that is partly stale relative to later rulebooks and current governance
-    remaining:
-      - migrate the remaining grammar implementation-status material into relevant governance-ledger (parser.yaml)
-      - reconcile or remove stale grammar status statements that conflict with later rulebooks, including the old dotted-module claim
-      - reconcile stale 'require' contextual-identifier text with the later lexical_structure.md rule that reserves require globally
-      - "enforce one module declaration per source file (grammar.md \"Source file\": CompilationUnit has one ModuleDeclaration): the parser and Sema accept several module sections in one source, which TestDuplicateModuleDeclaration, TestUnderscoreVisibilityAcrossModules, and testdata/sema/same_test_name_different_modules_valid_test.sec use to model several modules; enforcing the rule needs those tests migrated to multi-file sources first"
-      - keep parser recovery tests distinct from accepted canonical-language tests so compatibility syntax cannot silently become canonical
+    remaining: []
     required_fixtures:
       - grammar_valid.sec
       - grammar_invalid.sec
@@ -441,3 +435,26 @@ integrations:
       - grammar_recovery.sec
     verification_notes:
       - "2026-10-04: the fixture suite exists (testdata/grammar/) and `go test ./internal/sema -run TestGrammarFixtureSuite` passes; the earlier note that legacy forms were accepted by positive parser tests is superseded by the MD-002/MD-003 rejection tests"
+  - id: frontend.parser-long-term
+    area: frontend-parser-long-term
+    status: planned
+    revised: "2026-10-05"
+    summary: >-
+      Long-term parser robustness and maintainability work moved out of
+      frontend.parser-recovery-result and frontend.grammar-conformance by user
+      decision (2026-10-05) so the parser ledger can close; none of it is a
+      missing canonical language form.
+    rules:
+      - rules/compiler/parser_recovery.md
+      - rules/foundations/grammar.md
+    remaining:
+      - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, empty impl-property type positions, bare and `name:` parameters, and function-type parameter and return positions
+      - skipped-range and shared-stack migration for remaining specialized recovery helpers
+      - recovery contexts for remaining specialized parsers
+      - cross-location causal recovery-episode suppression
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF
+      - recovery-aware Sema traversal policy for every invalid subtree
+      - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
+      - "audit the parser error paths that still drop a construct instead of retaining an invalid node with a recovery event (84 sites in 46 functions on 2026-10-05) and retain or justify each"
+      - centralize parser grammar metadata (statement, expression, type, and impl-member starts, contextual words, assignment operators, contract starts) with consistency tests; precedence centralization is tracked by frontend.operators-v2
+      - centralize newline-sensitive parsing so line layout is accepted only where the grammar defines it

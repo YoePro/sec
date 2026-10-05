@@ -517,8 +517,7 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 // one identity.
 //
 // Runtime-shaped tensor and tensor_view Shape/Len are deliberately absent
-// until their runtime shape semantics exist; tensor_view Rank remains
-// type-known.
+// until their runtime shape semantics exist; their Rank remains type-known.
 //
 // Rules:
 //   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
@@ -529,7 +528,7 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 //   - rules/corrections/applied/compiler_known_members-shaped-correction-20260813.md — "Required read-only shaped properties" and "Type-level properties"
 func compilerKnownShapedFactMembers(typ Type, static bool) []CompilerKnownMember {
 	typ = dereferenceType(typ)
-	rank, length, shaped := compilerKnownStaticShapedFacts(typ)
+	rank, length, shaped := compilerKnownShapedTypeFacts(typ)
 	if !shaped {
 		return nil
 	}
@@ -616,13 +615,17 @@ func shapedStaticShape(typ Type) string {
 	return "[" + strings.Join(extents, ", ") + "]"
 }
 
-// compilerKnownStaticShapedFacts derives only facts fully encoded by the
-// canonical shaped type arguments. The empty length marks a rank-only family.
+// compilerKnownShapedTypeFacts derives only facts fully encoded by the
+// canonical shaped type arguments. The empty length marks a rank-only family,
+// including runtime-shaped owners whose extents are not part of the type.
 //
 // Rules:
 //   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
 //   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
-func compilerKnownStaticShapedFacts(typ Type) (rank string, length string, ok bool) {
+func compilerKnownShapedTypeFacts(typ Type) (rank string, length string, ok bool) {
+	if rank, runtime := runtimeShapedTensorRank(typ); runtime {
+		return strconv.FormatInt(rank, 10), "", true
+	}
 	if len(typ.TypeArgs) != 1 {
 		return "", "", false
 	}
@@ -961,7 +964,7 @@ type ShapedFacts struct {
 //   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len", § 6 "Strides", § 8 "Contiguity"
 func ShapedFactsOf(typ Type) (ShapedFacts, bool) {
 	typ = dereferenceType(typ)
-	rank, length, ok := compilerKnownStaticShapedFacts(typ)
+	rank, length, ok := compilerKnownShapedTypeFacts(typ)
 	if !ok {
 		return ShapedFacts{}, false
 	}

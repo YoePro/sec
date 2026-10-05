@@ -275,10 +275,60 @@ type Function struct {
 	Blocks     []*Block
 	Storages   []Storage
 	Matches    []MatchRecord
+	Loops      []LoopRecord
 	Location   Location
 }
 
 type MatchID uint32
+
+// LoopID identifies one source loop inside its function.
+type LoopID uint32
+
+// LoopKind distinguishes loop forms only as far as their semantics differ.
+//
+// Rules:
+//   - rules/compiler/semantic_ir.md — § 65(2), § 67(4)
+type LoopKind string
+
+const LoopWhile LoopKind = "while"
+
+// LoopEdge classifies a control transfer that belongs to a loop's CFG.
+type LoopEdge string
+
+const (
+	// LoopEdgeEnter transfers from the code before the loop to its condition.
+	LoopEdgeEnter LoopEdge = "enter"
+	// LoopEdgeCondition is the condition test that selects body or exit.
+	LoopEdgeCondition LoopEdge = "condition"
+	// LoopEdgeBack is the normal end of the body returning to the condition.
+	LoopEdgeBack LoopEdge = "back"
+	// LoopEdgeContinue is a source `continue` returning to the condition.
+	LoopEdgeContinue LoopEdge = "continue"
+	// LoopEdgeBreak is a source `break` leaving the loop.
+	LoopEdgeBreak LoopEdge = "break"
+)
+
+// LoopRecord makes the regions of one loop explicit: its condition block
+// (which is also the continue target), body entry, and exit (the break
+// target). Exit is zero when Sema proved the loop non-continuing. Loop-carried
+// state lives in mutable local storage, so no loop block takes parameters.
+// Cleanup edges are empty while only trivially destructible storage is
+// admitted.
+//
+// Rules:
+//   - rules/compiler/semantic_ir.md — § 66(1)–(2) "Loop CFG", § 67(4)
+//   - rules/control-flow/flowcontrol_while.md — §§ 19–20, § 29 "CFG requirements"
+type LoopRecord struct {
+	ID             LoopID
+	Kind           LoopKind
+	ConditionBlock BlockID
+	BodyBlock      BlockID
+	ExitBlock      BlockID
+	ConditionKnown bool
+	ConditionValue bool
+	ContinuesAfter bool
+	Location       Location
+}
 
 type MatchRecord struct {
 	ID           MatchID
@@ -388,6 +438,7 @@ const (
 	OpArrayExtract                    OpKind = "array.extract"
 	OpArrayReplace                    OpKind = "array.replace"
 	OpBoundsFailure                   OpKind = "fail.bounds"
+	OpBoolNot                         OpKind = "bool.not"
 )
 
 type IntegerCheckedBinaryKind string
@@ -476,6 +527,11 @@ type ArrayConstructSegmentKind string
 const (
 	ArraySegmentElement ArrayConstructSegmentKind = "element"
 	ArraySegmentSpread  ArrayConstructSegmentKind = "spread"
+	// ArraySegmentRange contributes its segment length of consecutive scalar
+	// values starting at its operand, the constant lower bound
+	// (rules/collections/collections.md § 5.6a). Sema guarantees the values
+	// fit the element type and, for rune, avoid surrogate code points.
+	ArraySegmentRange ArrayConstructSegmentKind = "range"
 )
 
 type ArrayTransferAction string
@@ -586,6 +642,8 @@ type Operation struct {
 	MatchArmIndex         int
 	MatchStage            string
 	MatchPatternKind      string
+	LoopID                LoopID
+	LoopEdge              LoopEdge
 }
 
 func (o Operation) IsTerminator() bool {

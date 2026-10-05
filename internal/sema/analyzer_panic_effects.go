@@ -56,7 +56,17 @@ func (a *Analyzer) recordResolvedOperatorEffect(expr ast.Expression) {
 		return
 	}
 	resolved, ok := a.resolvedOperators[expr]
-	if !ok || !resolved.RuntimeCheck || resolved.FailureBehavior != OperatorArithmeticFailure {
+	if !ok {
+		return
+	}
+	a.recordArithmeticPanicEffect(resolved, expressionToken(expr))
+}
+
+// recordArithmeticPanicEffect records the may-panic effect of one checked
+// integer operation, whether written as an expression or a compound
+// assignment.
+func (a *Analyzer) recordArithmeticPanicEffect(resolved ResolvedOperator, source lexer.Token) {
+	if a.summaryPass || !a.callGraphPathReachable || !resolved.RuntimeCheck || resolved.FailureBehavior != OperatorArithmeticFailure {
 		return
 	}
 	reasons := arithmeticPanicReasonIDs(resolved)
@@ -65,7 +75,7 @@ func (a *Analyzer) recordResolvedOperatorEffect(expr ast.Expression) {
 	}
 	a.callGraph.addEffect(a.currentCallable, EffectSite{
 		Kind:           EffectMayPanicArithmetic,
-		Source:         expressionToken(expr),
+		Source:         source,
 		PanicReasonIDs: reasons,
 	})
 }

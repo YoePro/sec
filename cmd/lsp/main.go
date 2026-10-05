@@ -421,7 +421,7 @@ func (s *server) handle(message rpcMessage) error {
 				"callHierarchyProvider": true,
 				"codeActionProvider":    true,
 				"completionProvider": map[string]any{
-					"triggerCharacters": []string{"."},
+					"triggerCharacters": []string{".", "@"},
 				},
 				"signatureHelpProvider": map[string]any{
 					"triggerCharacters":   []string{"(", ","},
@@ -589,6 +589,7 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)
 		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
+		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
 		actions = append(actions, missingSeparatorCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
 		return s.respond(message.ID, actions)
 	case "textDocument/completion":
@@ -1263,6 +1264,9 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		return items
 	}
 
+	if items, ok := attributeCompletionItems(text, offset); ok {
+		return items
+	}
 	if items, ok := subjectCompletionItems(uri, text, offset, context, firstSourceOverlay(overlays)); ok {
 		return items
 	}
@@ -1985,6 +1989,9 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := attributeHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := tryExpressionHover(text, program, analyzer, token); ok {
 			return hover, true
 		}
@@ -2580,6 +2587,7 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 		}
 	}
 	lines = append(lines, panicHoverLines(graph, node.ID)...)
+	lines = append(lines, blockingHoverLine(graph, node.ID))
 	return "\n\n" + strings.Join(lines, "\n\n")
 }
 

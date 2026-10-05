@@ -491,6 +491,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyMatchRecords(module.Types, fn, blocks, values); err != nil {
 		return err
 	}
+	if err := verifyLoopRecords(fn, blocks); err != nil {
+		return err
+	}
 	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
@@ -892,6 +895,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyArrayReplace(module, op, values); err != nil {
 			return err
 		}
+	case OpBoolNot:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeBool) || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
+			return fmt.Errorf("invalid bool.not")
+		}
 	case OpBoundsFailure:
 		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || op.ArrayOperation != "fixed-array-index" {
 			return fmt.Errorf("invalid fail.bounds")
@@ -931,6 +938,10 @@ func verifyArrayConstruct(types *TypeTable, op Operation, values map[ValueID]Val
 		case ArraySegmentElement:
 			if op.ArrayActions[index] != ArrayActionConstructDirect || op.ArraySegmentLengths[index] != "1" || operandType != op.ArrayElementType {
 				return fmt.Errorf("array.construct element segment %d mismatch", index)
+			}
+		case ArraySegmentRange:
+			if op.ArrayActions[index] != ArrayActionConstructDirect || operandType != op.ArrayElementType {
+				return fmt.Errorf("array.construct range segment %d mismatch", index)
 			}
 		case ArraySegmentSpread:
 			spread, ok := types.Lookup(operandType)

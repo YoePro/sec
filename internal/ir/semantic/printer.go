@@ -122,6 +122,17 @@ func formatFunction(out *strings.Builder, fn *Function) {
 		}
 		out.WriteString("    }\n")
 	}
+	if len(fn.Loops) > 0 {
+		out.WriteString("    loops {\n")
+		for _, loop := range fn.Loops {
+			fmt.Fprintf(out, "      @%d %s condition=^%d body=%s exit=%s", loop.ID, loop.Kind, loop.ConditionBlock, formatOptionalBlock(loop.BodyBlock), formatOptionalBlock(loop.ExitBlock))
+			if loop.ConditionKnown {
+				fmt.Fprintf(out, " constant=%t", loop.ConditionValue)
+			}
+			fmt.Fprintf(out, " continues=%t %s\n", loop.ContinuesAfter, formatLocation(loop.Location))
+		}
+		out.WriteString("    }\n")
+	}
 	for _, b := range fn.Blocks {
 		fmt.Fprintf(out, "    ^%d", b.ID)
 		if len(b.Parameters) > 0 {
@@ -193,7 +204,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		formatTarget(out, op.Successors[0])
 		out.WriteString(",")
 		formatTarget(out, op.Successors[1])
-	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot:
+	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpIntBinaryChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])
@@ -288,6 +299,13 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 		out.WriteByte(']')
 	}
+	if op.LoopID != 0 {
+		fmt.Fprintf(out, " [loop=@%d", op.LoopID)
+		if op.LoopEdge != "" {
+			fmt.Fprintf(out, " edge=%s", op.LoopEdge)
+		}
+		out.WriteByte(']')
+	}
 	if len(op.Results) > 0 {
 		out.WriteString(" : ")
 		for index, result := range op.Results {
@@ -312,6 +330,12 @@ func formatTarget(out *strings.Builder, t BranchTarget) {
 		}
 		out.WriteByte(')')
 	}
+}
+func formatOptionalBlock(id BlockID) string {
+	if id == 0 {
+		return "none"
+	}
+	return fmt.Sprintf("^%d", id)
 }
 func formatLocation(l Location) string {
 	if l.Line == 0 {

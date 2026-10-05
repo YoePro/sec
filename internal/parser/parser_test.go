@@ -1051,29 +1051,18 @@ func TestParseRejectsDottedModuleName(t *testing.T) {
 }
 
 func TestParseModuleNameAllowsSnakeCamelAndPlainText(t *testing.T) {
-	input := `
-module plain
-module snake_case
-module camelCase
-module raspberry_Matter
-module i2c_sensor_driver
-`
-	l := lexer.New(input)
-	p := New(l)
-	program := p.ParseProgram()
-	checkParserErrors(t, p)
-
-	expected := []string{"plain", "snake_case", "camelCase", "raspberry_Matter", "i2c_sensor_driver"}
-	if len(program.Statements) != len(expected) {
-		t.Fatalf("wrong statement count. got=%d want=%d", len(program.Statements), len(expected))
-	}
-	for i, want := range expected {
-		stmt, ok := program.Statements[i].(*ast.ModuleStatement)
-		if !ok {
-			t.Fatalf("statement %d is not ModuleStatement. got=%T", i, program.Statements[i])
+	// One source file declares exactly one module (grammar.md "Source file"),
+	// so each spelling is its own source.
+	for _, want := range []string{"plain", "snake_case", "camelCase", "raspberry_Matter", "i2c_sensor_driver"} {
+		p := New(lexer.New("module " + want + "\n"))
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+		if len(program.Statements) != 1 {
+			t.Fatalf("%s: wrong statement count. got=%d want=1", want, len(program.Statements))
 		}
-		if stmt.Path != want {
-			t.Fatalf("module %d path = %q, want %q", i, stmt.Path, want)
+		stmt, ok := program.Statements[0].(*ast.ModuleStatement)
+		if !ok || stmt.Path != want {
+			t.Fatalf("%s: statement = %#v", want, program.Statements[0])
 		}
 	}
 }
@@ -2707,7 +2696,7 @@ impl Button {
 
 	typeDecl := program.Statements[1].(*ast.TypeDeclStatement)
 	eventField := typeDecl.StructType.Fields[0]
-	if eventField.Type.Name != "Event" || len(eventField.Type.TypeArgs) != 1 || eventField.Type.TypeArgs[0].Name != "ButtonPressData" || !eventField.Type.EventCapacitySet || eventField.Type.EventCapacity != 8 {
+	if eventField.Type.Name != "Event" || len(eventField.Type.TypeArgs) != 1 || eventField.Type.TypeArgs[0].Name != "ButtonPressData" || !eventField.Type.EventCapacitySet || eventField.Type.EventCapacityExpression == nil || eventField.Type.EventCapacityExpression.String() != "8" {
 		t.Fatalf("wrong event field type: %+v", eventField.Type)
 	}
 
@@ -4800,9 +4789,15 @@ fn Test() void {
 	if !ok {
 		t.Fatalf("statement is not WhileStatement. got=%T", fn.Body.Statements[1])
 	}
-	ident, ok := whileStmt.Condition.(*ast.Identifier)
-	if !ok || ident.Value != "running" {
+	// The assignment-shaped condition is retained as an InvalidExpression
+	// whose left side is the parsed target, so Sema adds no cascading
+	// condition-type error.
+	invalid, ok := whileStmt.Condition.(*ast.InvalidExpression)
+	if !ok {
 		t.Fatalf("wrong condition. got=%T %v", whileStmt.Condition, whileStmt.Condition)
+	}
+	if ident, ok := invalid.Left.(*ast.Identifier); !ok || ident.Value != "running" || invalid.Operator.Type != lexer.ASSIGN {
+		t.Fatalf("wrong retained condition: %#v", invalid)
 	}
 	if _, ok := whileStmt.Body.Statements[0].(*ast.BreakStatement); !ok {
 		t.Fatalf("body statement is not BreakStatement. got=%T", whileStmt.Body.Statements[0])

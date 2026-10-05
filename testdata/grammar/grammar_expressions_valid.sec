@@ -68,3 +68,10 @@ fn Expressions(left: int, right: int, flag: bool, values: ref int[4], figure: Fi
     discard circle
     return 0
 }
+
+fn RangeSegments() int {
+    let digits := [0..<10, 42, 7..8]
+    let lower := [224r..246r, 248r..255r]
+    discard lower
+    return digits[0]
+}

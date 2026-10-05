@@ -2,6 +2,495 @@ schema_version: 1
 area: memory
 purpose: Storage, layout, allocation domains, arenas, raw pointers, and unsafe.
 integrations:
+  - id: frontend.arena-value-traits-and-domain-identity
+    area: frontend-arena-semantics
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_rule: rules/memory/arena.md
+    rulebook_status: canonical Sec 0.1 Arena rulebook
+    explicit_document_revision: null
+    summary: The Arena frontend preserves the canonical owner traits and domain identity. Arena is MoveOnly and
+      non-trivially destructible, aggregates derive those traits compositionally, and owner moves preserve a stable
+      ArenaDomain ID used by Reset/Release epoch validation while diagnostics retain source-friendly owner names.
+    rules:
+    - rules/memory/arena.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/memory/destruction.md
+    - rules/memory/reference_model.md
+    code:
+    - internal/sema/types.go
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/destruction_test.go
+    implemented:
+    - compiler-known Arena type exists
+    - Arena New and Alloc return Arena-origin reference metadata
+    - Arena Reset and Release update a represented generation state
+    - stale-generation checks compare reference generation to current represented generation
+    - Release marks the current lexical Arena owner consumed
+    - generic ownership infrastructure can mark values requiring ownership transfer unavailable
+    - Arena is MoveOnly and non-trivially destructible
+    - containing aggregates derive Arena ownership/destruction traits compositionally
+    - Arena creation assigns stable semantic ArenaDomain identity
+    - owner moves preserve ArenaDomain identity and epoch state
+    - diagnostics keep source display names separate from semantic domain identity
+      to the destination
+    - Reset through a moved-to owner can therefore fail to stale references created through the moved-from owner
+    remaining:
+    - make Arena explicitly MoveOnly in compiler-owned type traits
+    - make Arena explicitly non-trivially destructible
+    - derive containing aggregate copy/destruction traits correctly from Arena
+    - introduce stable ArenaDomainID separate from lexical owner names
+    - assign ArenaDomainID at all Arena creation sites
+    - carry ArenaDomainID and current epoch through Arena ownership moves
+    - key epoch validity by ArenaDomainID rather than source variable name
+    - keep diagnostic naming/source provenance separate from semantic identity
+    - update stale-reference validation to consume domain/epoch identity
+    - add owner-move/Reset/Release regression coverage
+    - add correction25 traceability comments to touched Arena/type-trait functions
+    bug_reference:
+    - correction29.md
+    governance_reconciliation:
+    - Keep analysis.arena-allocation partial, but explicitly record that Arena builtin copy/destruction traits are
+      currently incorrect rather than only saying "complete ownership" remains.
+    - Qualify "semantic arena name and generation metadata" as the current lexical-name-based mechanism, not stable
+      canonical ArenaDomain identity.
+    - Qualify stale-generation rejection as valid only within the represented identity/control-flow subset until corrections
+      18, 25, 28, and 29 are implemented.
+
+  - id: frontend.arena-borrowed-backing-lifetime
+    area: frontend-arena-borrowing
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_rule: rules/memory/arena.md
+    summary: Arena.FromBuffer retains its supplied mutable backing Place as an exclusive borrow owned by the resulting
+      Arena. The holder and ArenaDomain identity transfer across owner moves, Reset retains the backing borrow, Release
+      ends it, and direct conflicting backing access is rejected. Escape, task, nested-Arena, and implicit-destruction
+      integration remains partial.
+    rules:
+    - rules/memory/arena.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/reference_model.md
+    code:
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    - internal/sema/analyzer_test.go
+    implemented:
+    - Arena.FromBuffer compiler-known member recognition
+    - exact ref mut byte[] argument-shape validation
+    - ArenaEffectCreateBorrowed call-graph event
+    - general ref mut borrow conflict checking infrastructure
+    - general borrow-holder registration for direct RefExpression bindings
+    - borrow-holder transfer for represented reference-returning calls
+    - FromBuffer attaches the backing mutable borrow to its result holder
+    - Arena owner moves transfer backing-borrow responsibility
+    - Reset retains and Release ends the backing borrow
+    - direct conflicting backing access is rejected while the borrowed Arena lives
+    partial:
+    - implicit destruction does not yet end the represented backing borrow on every path
+    - return/escape, nested Arena, capture, and task transfer remain incomplete
+    remaining:
+    - end the borrow on implicit Arena destruction
+    - enforce backing lifetime on Arena return/escape
+    - integrate nested Arena parent/backing dependencies
+    - add focused borrowed-backing lifetime regression tests
+    - add correction25 traceability comments
+    bug_reference:
+    - correction29.md
+
+  - id: frontend.transferability
+    area: boundary-transfer-validation
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/memory/ownership.md
+    - rules/memory/copy_move.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/references.md
+    - rules/memory/raw_pointers.md
+    - rules/memory/destruction.md
+    - rules/concurrency/spawn.md
+    - rules/concurrency/threads.md
+    - rules/concurrency/channels.md
+    - rules/concurrency/thread_local.md
+    - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    - rules/platform/interrupts.md
+    governance_reconciliation:
+    - concurrency.md requires one canonical boundary-transfer validation path for task, thread, process, ISR, and foreign execution boundaries.
+    remaining:
+    - introduce one canonical boundary-transfer validation path instead of ad-hoc per-feature checks
+    - derive boundary-specific transfer facts recursively from the semantic value graph
+    - integrate ownership-v2 availability/partial/conditional state and copy/move commit semantics
+    - integrate borrowing-v2 live ranges and lifetime-analysis-v2 escape facts
+    - model task migration/pinning when validating thread-bound captures/references
+    - validate destination destruction affinity and allocation/storage-domain restrictions
+    - validate closures from capture facts without hiding them behind callable representation
+    - validate Method receiver transfer exactly like explicit arguments
+    - validate RawPtr/FFI handles conservatively from explicit contracts rather than machine-value copyability
+    - enforce ownership-v2 explicit moves for reusable move-only task transfers and retain capture, migration, detach-lifetime, terminal-payload, and borrow restrictions
+    required_tests:
+    - move-only task transfer consumes source
+    - copyable but thread-affine value rejected
+    - detached local borrow rejected
+    - migratable task rejects thread-local reference
+    - pinned-task thread-local case accepted when canonical scheduling rule permits it
+    - active MutexGuard blocks transfer
+    - partial aggregate allows disjoint transferable sub-Place but not whole-value transfer
+  - id: frontend.memory-model
+    status: partial
+    remaining:
+    - establish one canonical Place/root/subplace identity service across all source forms
+    - complete availability/reason and partial/conditional state tracking
+    - complete initialization masks and replacement/reinitialization state
+    - replace root-symbol reference/storage approximations with canonical identities
+  - id: frontend.storage
+    status: partial
+    remaining:
+    - migrate all legacy storage-origin categories to the canonical orthogonal storage model
+    - propagate storage facts through every Place/value/reference/aggregate and control-flow join
+    - introduce stable compiler-owned storage-domain and invalidation-domain identities
+    - complete initialization/object-lifetime and replacement/reinitialization integration
+    - integrate mapped/foreign/fixed-address contracts canonically
+  - id: frontend.unsafe
+    status: partial
+    remaining:
+    - complete both unsafe context forms across parser/AST/Sema/formatter
+    - complete unsafe fn/method and unsafe extern callable safety checking
+    - centralize unsafe operation classification
+    - preserve caller obligations and safe-wrapper boundaries
+  - id: frontend.references
+    area: frontend-reference-provenance-lifetime
+    status: partial
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/reference_model.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/ownership.md
+    - rules/memory/copy_move.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/place.go
+    - internal/sema/types.go
+    - internal/sema/escape_analysis.go
+    implemented:
+    - semantic reference types carry origin metadata including source symbol/token, local-storage indication and known storage
+      origin
+    - ref creation attaches origin metadata and local reference variables preserve it
+    - returned references to local function storage are rejected in direct, local-reference, Result payload, aggregate and selected
+      lambda escape paths
+    - caller-owned reference parameters may be returned when origin proof is sufficient
+    - field/index/slice projections propagate reference-origin metadata
+    - local reference and slice bindings retain canonical structured referent Places
+    - shared-reference copy and mutable-reference move preserve referent Place; moved mutable-reference holder takes over the
+      granting borrow
+    - match ref/ref mut payload bindings carry active-variant Place provenance and branch-scoped non-escaping origin
+    - locally constructed struct/fixed-array values retain contained reference origins across supported transfers, assignments
+      and control-flow joins
+    - finite path-disjunctive origin sets are maintained with conservative unknown fallback beyond supported limits
+    - functions infer deterministic returned-reference summaries over supported parameters, receiver projections, finite multi-source
+      sets and aggregate result paths
+    - arena-backed references/slices carry generation dependencies and stale use after Arena.Reset is rejected
+    remaining:
+    - complete canonical references-v2 integration with lifetime-analysis-v2 and borrowing-v2 facts instead of legacy parallel
+      checks
+    - complete reference creation/refinement from ownership-v2 ConditionallyAvailable Places while keeping is available distinct
+      from borrow/generation/platform validity
+    - complete provenance for dynamic containers, nested opaque aggregates, imported/foreign aggregates and symbolic range relationships
+    - complete closure/reference escape validation for every callable/capture form
+    - complete generic/interface/indirect/recursive returned-reference relationships
+    - complete fixed-address, runtime mapping, register-view, remap and platform-lifetime integration
+    - complete ISR/local/deferred-work reference escape checks using interrupts.md execution contexts
+    - complete FFI retain/no-retain and raw-to-safe reference proof integration
+    - complete mentor diagnostics and LSP parity for all reference failures
+    required_tests:
+    - shared ref creation does not consume owner
+    - ref mut establishes exclusive authority without ownership transfer
+    - Unavailable Place cannot be referenced
+    - ConditionallyAvailable Place requires path refinement before safe ref creation
+    - returned local reference rejected
+    - returned caller-owned parameter accepted
+    - finite multi-origin return accepted only when every origin is valid
+    - aggregate-contained local reference escape rejected
+    - shared-reference copy preserves origin
+    - mutable-reference move transfers holder and granting borrow
+    - arena reset invalidates prior reference
+    - reference equality uses live storage identity plus location
+  - id: frontend.reference-model
+    area: reference-validity-and-category-model
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - map every source-level ref/ref mut/slice creation and derivation to canonical storage/provenance/reference facts
+    - complete safe-reference equality semantics using live storage identity plus referenced location
+    - complete address-space and representation-validity checks
+    - complete raw-to-safe conversion validation using raw/unsafe proof obligations
+    - remove root-symbol/address approximations where canonical storage identities are available
+    required_tests:
+    - ref non-nullness
+    - subreference provenance/bounds narrowing
+    - safe-reference equality across reused address identities
+    - raw-to-safe known-invalid rejection
+    - address-space mismatch rejection
+  - id: frontend.arena
+    area: arena-builtin-members-ownership-lifecycle
+    status: partial
+    repository_baseline: 814a584
+    implemented:
+    - Arena semantic builtin exists
+    - AllocationError semantic builtin exists
+    - Arena.FromBuffer, WithCapacity, Growable, New, Alloc, Reset and Release are recognized as compiler-known members
+    - lowercase arena is treated as ordinary identifier
+    - LSP completion is sourced from compiler-known member registry for represented Arena members
+    - initial released-owner use rejection exists
+    remaining:
+    - complete move-only Arena ownership and composition across every source form
+    - represent Release as compiler-known terminal lifecycle consumption without generalizing ordinary consuming methods
+    - complete borrowed backing exclusive-lifetime validation
+    - complete constructor/provider policy validation
+    - complete New/Alloc layout/default/trivial-destruction validation
+    - complete atomic allocation state on success/failure
+    - complete Reset/Release dependency validation through canonical memory identities
+    - complete nested Arena/source diagnostics
+  - id: "semantic-ir.copy-move"
+    area: "semantic-ir-ownership"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/copy_move.md"
+      - "rules/memory/ownership.md"
+      - "rules/compiler/semantic_ir.md"
+    implemented:
+      - "Current Semantic IR carries selected call argument actions and ownership-adjacent facts, but the root implementation-status still records explicit copy/move/replace/destruction operations as deferred."
+    remaining:
+      - "represent Copy, Move, Replace, Reinitialize, Discard, Destroy, TransferToReturn, TransferToArgument, and TransferToAggregate explicitly when needed for downstream ownership correctness"
+      - "preserve source Place/projection identity, copy classification, destination ownership, partial availability, transfer commit, and destruction responsibility"
+      - "preserve explicit <- call/payload actions instead of reconstructing them from types in lowering"
+      - "represent recursive aggregate, Option, Result, union, and value-producing control-flow return forwarding without requiring source markers at every nested edge"
+      - "represent volatile access boundaries separately from ordinary value copy/move operations"
+      - "fail explicitly when an ownership-sensitive construct cannot be represented without losing semantics"
+    required_tests:
+      - "Semantic IR distinguishes copy from move even when both could lower to identical machine operations"
+      - "Semantic IR preserves reusable-source explicit consuming call action"
+      - "Semantic IR preserves explicit aggregate/Option/Result/union payload move"
+      - "Semantic IR preserves return transfer with optional source marker normalized to one semantic transfer"
+      - "Semantic IR preserves replacement versus reinitialization and cleanup responsibility"
+      - "Semantic IR never models a volatile hardware read itself as ownership move-out"
+
+  - id: "semantic-ir.borrowing"
+    area: "semantic-ir-borrowing-reference-authority"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/memory/reference_model.md"
+      - "rules/memory/ownership.md"
+      - "rules/compiler/semantic_ir.md"
+    implemented:
+      - "Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification."
+    remaining:
+      - "represent BorrowShared, BorrowMutable, ReborrowShared, ReborrowMutable or equivalent resolved operations/facts"
+      - "preserve source Place/provenance set, holder identity, mutable authority, range/extent, borrow begin/end live range, and parent-child reborrow relationship"
+      - "distinguish borrowed call arguments/method receivers from copy/move ownership transfers"
+      - "preserve ref mut call reborrow without consuming caller holder"
+      - "preserve match-arm candidate borrow and guard-false end semantics"
+      - "preserve closure/defer/returned-reference retention dependencies and storage invalidation dependencies"
+      - "carry reference-model generation/epoch/address-space/bounds facts separately from borrow compatibility"
+      - "fail explicitly when borrowing semantics cannot be represented without downstream rediscovery or weakening"
+    required_tests:
+      - "Semantic IR distinguishes shared borrow, mutable borrow, copy, and move"
+      - "Semantic IR preserves ref mut reborrow parent holder"
+      - "Semantic IR preserves branch/loop borrow live-range edges"
+      - "Semantic IR preserves match guard-false borrow termination"
+      - "Semantic IR preserves returned-reference origin and borrow dependency"
+      - "Semantic IR keeps generation validity separate from alias authority"
+
+  - id: "semantic-ir.destruction"
+    area: "semantic-ir-destruction"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/copy_move.md"
+      - "rules/compiler/semantic_ir.md"
+    implemented:
+      - "Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation."
+    remaining:
+      - "represent DestroyValue/DestroyPlace/DestroySubPlace/DestroyActiveVariant/ConditionalDestroy or equivalent explicit terminal cleanup semantics"
+      - "represent InvokeFree, allocator-aware DeallocateOwnedStorage, cleanup registration/order, and cleanup regions"
+      - "preserve cancellation of cleanup after move, discard, return, consuming argument, aggregate transfer, and FFI transfer"
+      - "represent Replace versus Reinitialize and the old-destination destruction plan"
+      - "preserve partial and conditional availability masks/reasons/provenance needed for exact cleanup"
+      - "represent construction-failure cleanup without manufacturing a completed outer value/free call"
+      - "preserve defer/automatic destruction in one ordered cleanup plan"
+      - "preserve return try and error propagation payload transfer before local cleanup"
+      - "preserve allocator/release authority, custom free identity, active union variant, concrete interface destruction, and target policy requirements"
+      - "fail explicitly when source destruction semantics cannot be represented without losing exact-once guarantees"
+    required_tests:
+      - "Semantic IR has one terminal ownership action for every represented non-trivial owned value on each reachable path"
+      - "moved/discarded sub-Place has no remaining former-owner destroy action"
+      - "partial aggregate cleanup names/masks only still-owned sub-Places"
+      - "conditional destruction remains explicit until control-flow lowering resolves it"
+      - "free body and remaining-field cleanup are separately represented in correct order"
+      - "defer and automatic destroy entries preserve source registration order"
+      - "construction-failure cleanup excludes completed-value free"
+      - "replacement and reinitialization remain semantically distinct"
+      - "return/error transfer excludes transferred payload from callee cleanup"
+
+  - id: "semantic-ir.lifetime-analysis"
+    area: "semantic-ir-lifetime-facts"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/compiler/semantic_ir.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/borrowing.md"
+      - "rules/memory/destruction.md"
+    remaining:
+      - "represent canonical storage origin/domain and reference provenance dependencies needed after Sema"
+      - "represent borrow/reborrow live-range or equivalent verified dependency facts"
+      - "represent ownership invalidation, replacement/reinitialization, destruction and deallocation lifetime effects"
+      - "represent returned-reference source relations and callable retention summaries"
+      - "represent arena generation/epoch and runtime mapping/register-view lifetime dependencies"
+      - "represent defer-delayed dependencies and closure/callback capture lifetime obligations"
+      - "verify contradictory or impossible lifetime state before lower-level lowering"
+      - "erase high-level facts only after equivalent lowering constraints/plans exist"
+    required_tests:
+      - "reference origin retained in Semantic IR"
+      - "reborrow relation retained"
+      - "returned-reference dependency retained"
+      - "defer delayed lifetime dependency retained"
+      - "arena generation dependency retained"
+      - "mapping/view lifetime dependency retained"
+      - "invalid lifetime IR rejected by verifier"
+
+  - id: semantic-ir.transferability
+    area: semantic-ir-boundary-transfer
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/compiler/semantic_ir.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Semantic IR preserves owned and borrowed transfers plus process-adapter, ISR, and foreign-context distinctions required by concurrency.md.
+    remaining:
+    - represent task/thread owned and borrowed transfers explicitly where semantically relevant
+    - represent observer/lifecycle-handle transfer distinctly
+    - represent process-adapter transfer distinctly from in-process pointer/value transfer
+    - represent ISR-to-ordinary and ordinary-to-ISR handoff direction
+    - represent foreign callback-context transfer where required
+    - preserve source/destination owner, copied/moved state, retained borrow, transfer proof and affinity/destruction restrictions
+    - verify contradictory transfer/sharing facts before lowering
+    - preserve task-boundary ownership and the complete TaskOutcome[T] terminal distinction
+    required_tests:
+    - owned and borrowed task transfer remain distinct
+    - thread transfer retains destination destruction restriction
+    - process adapter retained
+    - ISR direction retained
+    - invalid contradictory transfer facts rejected
+  - id: semantic-ir.memory-model
+    status: planned
+    remaining:
+    - normalize explicit memory operations
+    - represent canonical value/storage state separately
+    - retain ownership/borrow/reference/storage/layout/transfer facts required by lowering
+    - add verifier rules for invalid memory states
+  - id: semantic-ir.storage
+    status: planned
+    remaining:
+    - represent canonical stable storage facts
+    - represent path-dependent epoch/object/pin/protection state
+    - represent domain/object/backing/relocation/protection operations
+    - verify contradictory storage facts before lowering
+  - id: semantic-ir.unsafe
+    status: planned
+    remaining:
+    - represent unsafe operation identity, accepted obligations, trust provenance and source location
+    - retain target/foreign facts and safe-wrapper boundary where needed
+    - keep unsafe status distinct from effect summaries
+    - verify contradictory trusted facts
+  - id: semantic-ir.references
+    area: semantic-ir-reference-facts
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/reference_model.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/borrowing.md
+    remaining:
+    - represent reference kind/mutability and canonical provenance required after Sema
+    - represent storage domain/address space and generation/epoch dependencies where required
+    - represent bounds/view information needed for safe lowering
+    - represent returned-reference and callable retention relations
+    - represent runtime mapping/register-view dependencies
+    - represent relevant borrow/reborrow and escape facts until equivalent lower-level constraints exist
+    - verify impossible or contradictory safe-reference facts before lowering
+    required_tests:
+    - reference provenance retained in Semantic IR
+    - returned-reference relationship retained
+    - arena epoch dependency retained
+    - mapping/view dependency retained
+    - invalid reference IR rejected
+  - id: semantic-ir.reference-model
+    area: semantic-ir-reference-validity
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - represent direct ref, stable handle, weak handle and RawPtr distinctly
+    - represent source storage/invalidation-domain identity, bounds, authority, borrow live range and epoch dependency
+    - represent handle resolution, invalidation, relocation, pinning and raw conversion operations
+    - retain stale-reference versus stale-handle failure behavior
+    - verify contradictory reference facts before lowering
+    required_tests:
+    - direct ref versus handle distinction
+    - epoch dependency preserved
+    - invalidation visible to verifier
+    - stale ordinary ref failure category preserved
+    - stale handle remains fallible
+  - id: semantic-ir.arena
+    area: arena-semantic-ir
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - represent ArenaCreateBorrowed, ArenaCreateOwnedFixed, ArenaCreateGrowable, ArenaNew, ArenaAlloc, ArenaReset, ArenaRelease
+      and ArenaDestroy
+    - represent ArenaDomain, Arena state version and validity epoch distinctly
+    - represent atomic allocation success/failure with one continuing Arena state
+    - represent backing/growth/provider policy
+    - represent allocation context and task/thread dependency transfer
+    - represent capacity proof and failure-path facts
+    - verify no dependency across Reset/Release and no duplicate owner state
   - id: frontend.raw-pointers
     area: raw-pointer-types-and-operations
     status: partial

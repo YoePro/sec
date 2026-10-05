@@ -38,7 +38,7 @@ func (b *pitfallBuilder) inspectMeaninglessComparison(comparison *ast.InfixExpre
 	if _, _, literalSubject := intervalLiteral(subject); literalSubject {
 		return
 	}
-	if _, constant := b.analyzer.constantConditionIntegerValue(subject); constant {
+	if _, constant := b.analyzer.comparisonConstantOperands[subject]; constant {
 		return
 	}
 	subjectType, typed := b.analyzer.expressionTypes[subject]

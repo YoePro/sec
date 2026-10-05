@@ -1,4 +1,31 @@
 schema_version: 1
 area: concurrency-blocking
 purpose: Blocking operations and blocking-context policy.
-integrations: []
+integrations:
+  - id: frontend.blocking-effects
+    area: frontend-blocking-effect-analysis
+    status: partial
+    revised: "2026-10-05"
+    rules:
+    - rules/concurrency/blocking.md
+    - rules/foundations/attributes.md
+    - rules/concurrency/channels.md
+    code:
+    - internal/sema/analyzer_noblock.go
+    - internal/sema/analyzer.go
+    - internal/sema/analyzer_closure.go
+    - internal/sema/call_graph.go
+    tests:
+    - internal/sema/noblock_test.go
+    implemented:
+    - "blocking effects (2026-10-05): the call graph keeps a separate blocking-effect summary (BlockSummary) over synchronous edges; represented waiting operations (await, Sender.Send, Sender.SendRevocable, Receiver.Receive, Mutex.lock, select without default) are direct sites, while TrySend, TryReceive, tryLock, a select with default, and operations inside select branches are not; extern calls without a trusted @noBlock contract and calls with unknown targets are conservative sites; @noBlock is verified from it (frontend.attributes-v2)"
+    remaining:
+    - represent and classify join (Task, Thread, Process, Command), ProcessObserver.Wait, pipe and IPC waits, SharedValue.Lock, timer waits, and Context-based or duration Lock overloads
+    - separate task suspension (maySuspend) from physical blocking per target profile
+    - feed blocking facts into ISR, deadlock, guard-across-wait, and executor-starvation analysis
+    - expose may-block facts and paths in LSP hover
+    required_tests:
+    - each represented waiting operation blocks and its Try form does not
+    - select with default is nonblocking
+    - blocking reached through a spawned task does not block the spawner
+

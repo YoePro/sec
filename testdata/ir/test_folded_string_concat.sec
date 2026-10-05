@@ -1,0 +1,5 @@
+module main
+
+fn Folded() string {
+    return "A" + '\u{03A9}' + "\nB"
+}

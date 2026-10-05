@@ -7,19 +7,13 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
+	"sec/internal/operators"
 	"sec/internal/parser"
 )
 
-// leadingOperatorLevels groups the binary operators of § 9(15) by precedence
-// level; one broken chain flattens only operators of the same level.
-var leadingOperatorLevels = map[string]int{
-	"||": 1, "&&": 2,
-	"|": 3, "^": 4, "&": 5,
-	"==": 6, "!=": 6,
-	"<": 7, "<=": 7, ">": 7, ">=": 7,
-	"<<": 8, ">>": 8,
-	"+": 9, "-": 9,
-	"*": 10, "/": 10, "%": 10,
+type infixLayoutOperator struct {
+	token    lexer.Token
+	spelling string
 }
 
 // formatMultilineInfixLayout lays out a let or assignment value whose infix
@@ -108,29 +102,33 @@ func infixLayoutReplacement(text string, start lexer.Token, value ast.Expression
 	if !ok {
 		return formatterReplacement{}, false
 	}
-	level, ok := leadingOperatorLevels[root.Operator]
+	level, ok := operators.BinaryPrecedence(root.Operator)
 	if !ok {
 		return formatterReplacement{}, false
 	}
-	operators := []lexer.Token{}
+	operatorTokens := []infixLayoutOperator{}
 	for node := ast.Expression(root); ; {
 		infix, isInfix := node.(*ast.InfixExpression)
-		if !isInfix || leadingOperatorLevels[infix.Operator] != level {
+		if !isInfix {
 			break
 		}
-		operators = append([]lexer.Token{infix.Token}, operators...)
+		candidate, known := operators.BinaryPrecedence(infix.Operator)
+		if !known || candidate != level {
+			break
+		}
+		operatorTokens = append([]infixLayoutOperator{{token: infix.Token, spelling: infix.Operator}}, operatorTokens...)
 		node = infix.Left
 	}
-	header, headerOperatorEnd, ok := valueHeader(text, start, operators[0].ByteStart)
+	header, headerOperatorEnd, ok := valueHeader(text, start, operatorTokens[0].token.ByteStart)
 	if !ok {
 		return formatterReplacement{}, false
 	}
-	if headerOperatorEnd > operators[0].ByteStart {
+	if headerOperatorEnd > operatorTokens[0].token.ByteStart {
 		return formatterReplacement{}, false
 	}
 	// The last operand starts at the first non-space byte after the last
 	// operator, possibly on the next line, and ends with its line.
-	lastStart := operators[len(operators)-1].ByteEnd
+	lastStart := infixLayoutOperatorEnd(text, operatorTokens[len(operatorTokens)-1])
 	for lastStart < len(text) && (text[lastStart] == ' ' || text[lastStart] == '\t' || text[lastStart] == '\n' || text[lastStart] == '\r') {
 		lastStart++
 	}
@@ -141,8 +139,8 @@ func infixLayoutReplacement(text string, start lexer.Token, value ast.Expression
 		lastEnd += lastStart
 	}
 	boundaries := []int{headerOperatorEnd}
-	for _, operator := range operators {
-		boundaries = append(boundaries, operator.ByteStart, operator.ByteEnd)
+	for _, operator := range operatorTokens {
+		boundaries = append(boundaries, operator.token.ByteStart, infixLayoutOperatorEnd(text, operator))
 	}
 	boundaries = append(boundaries, lastEnd)
 	operands := []string{}
@@ -164,7 +162,7 @@ func infixLayoutReplacement(text string, start lexer.Token, value ast.Expression
 	// Every operand must already sit on its own line: the gap between two
 	// consecutive operands, which holds their operator, crosses exactly one
 	// line break.
-	for index := range operators {
+	for index := range operatorTokens {
 		if strings.Count(text[contentEnds[index]:contentStarts[index+1]], "\n") != 1 {
 			return formatterReplacement{}, false
 		}
@@ -175,18 +173,41 @@ func infixLayoutReplacement(text string, start lexer.Token, value ast.Expression
 	out.WriteString("\n")
 	out.WriteString(strings.Repeat(" ", operandColumn))
 	out.WriteString(operands[0])
-	for index, operator := range operators {
-		padding := operandColumn - 1 - len(operator.Lexeme)
+	for index, operator := range operatorTokens {
+		padding := operandColumn - 1 - len(operator.spelling)
 		if padding < len(indent) {
 			return formatterReplacement{}, false
 		}
 		out.WriteString("\n")
 		out.WriteString(strings.Repeat(" ", padding))
-		out.WriteString(operator.Lexeme)
+		out.WriteString(operator.spelling)
 		out.WriteString(" ")
 		out.WriteString(operands[index+1])
 	}
 	return formatterReplacement{start: headerOperatorEnd, end: lastEnd, text: out.String()}, true
+}
+
+// infixLayoutOperatorEnd returns the complete source extent of a binary
+// operator. Most operators are one lexer token; contextual `not in` spans the
+// parser-owned `not` token, separating trivia, and the following `in` token.
+// Token spacing has already canonicalized that trivia before this pass.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Membership operators `in` and `not in`"
+//   - rules/tooling/formatter.md — § 9(13)–(15) multiline infix expressions
+func infixLayoutOperatorEnd(text string, operator infixLayoutOperator) int {
+	end := operator.token.ByteEnd
+	if operator.spelling == operator.token.Lexeme || !strings.HasPrefix(operator.spelling, operator.token.Lexeme) {
+		return end
+	}
+	remainder := strings.TrimSpace(operator.spelling[len(operator.token.Lexeme):])
+	for end < len(text) && (text[end] == ' ' || text[end] == '\t') {
+		end++
+	}
+	if remainder != "" && strings.HasPrefix(text[end:], remainder) {
+		end += len(remainder)
+	}
+	return end
 }
 
 // valueHeader returns the declaration or assignment header line that starts

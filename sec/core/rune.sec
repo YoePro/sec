@@ -12,28 +12,121 @@ impl rune {
     /** Reports whether this rune is an ASCII decimal digit. */
     property IsDigit: bool {
         get {
-            return self >= 48r && self <= 57r
+            return self in 48r..57r
         }
     }
 
-    /** Reports whether this rune is an ASCII letter. */
+    /** Reports whether this rune is a decimal digit in any Unicode numbering system. */
+    property IsUnicodeDigit: bool {
+        get {
+            // Fast path: Standard ASCII digits
+            if self <= 127r {
+                return self in 48r..57r
+            }
+
+            // Compile-time constant array containing international decimal digit ranges (0-9)
+            let r := [
+                1632r..1641r,   // Arabic-Indic Digits (٠..٩)
+                1776r..1785r,   // Extended Arabic-Indic Digits (۰..۹)
+                2406r..2415r,   // Devanagari Digits (०..९)
+                2416r..2425r,   // Bengali Digits
+                2544r..2553r,   // Gurmukhi Digits
+                2662r..2671r,   // Gujarati Digits
+                2790r..2799r,   // Oriya Digits
+                2918r..2927r,   // Tamil Digits
+                3046r..3055r,   // Telugu Digits
+                3174r..3183r,   // Kannada Digits
+                3302r..3311r,   // Malayalam Digits
+                3430r..3439r,   // Thai Digits
+                3558r..3567r,   // Lao Digits
+                3664r..3673r,   // Tibetan Digits
+                65296r..65305r,  // Fullwidth Digits (０..９)
+            ]
+
+            return self in r
+        }
+    }
+
+    /** Reports whether this rune is a letter, ASCII or Unicode. */
     property IsLetter: bool {
         get {
-            return (self in 65r..90r) || (self in 97r..122r)
+            // Fast path: ASCII
+            if self <= 127r {
+                return (self in 65r..90r) || (self in 97r..122r)
+            }
+
+            // Reuse our logic for bicameral scripts
+            if self.IsLowerLetter || self.IsUpperLetter {
+                return true
+            }
+
+            // Compile-time constant array for major unicameral scripts (Hebrew, Arabic, CJK, etc.)
+            let r := [
+                1425r..1524r,   // Hebrew
+                1536r..1791r,   // Arabic
+                2304r..2431r,   // Devanagari (Hindi)
+                12352r..12447r, // Hiragana (Japanese)
+                12448r..12543r, // Katakana (Japanese)
+                19968r..40959r, // CJK Unified Ideographs (Chinese, Japanese, Korean)
+                44032r..55215r,  // Hangul Syllables (Korean)
+            ]
+
+            return self in r
         }
     }
 
-    /** Reports whether this char is a lowcase ASCII letter */
+    /** Reports whether this rune is a lowercase letter */
     property IsLowerLetter: bool {
         get {
-            return self in 97r..122r
+            // Fast path: ASCII är det absolut vanligaste fallet
+            if self <= 127r {
+                return self in 97r..122r
+            }
+
+            let r := [
+                224r..246r,     // Latin-1 Supplement (à..ö)
+                248r..255r,     // Latin-1 Supplement (ø..ÿ)
+                257r..383r,     // Latin Extended-A
+                385r..563r,     // Latin Extended-B
+                565r..591r,     // Latin Extended-B (additional)
+                945r..969r,     // Greek and Coptic (lowercase alpha..omega)
+                970r..1019r,    // Greek symbols and Coptic lowercase additions
+                1072r..1103r,   // Cyrillic (lowercase)
+                1105r..1119r,   // Cyrillic extensions
+                1377r..1416r,   // Armenian (lowercase)
+                4304r..4338r,   // Georgian Mkhedruli (lowercase)
+                11264r..11310r, // Glagolitic (lowercase)
+                13824r..13923r, // Cherokee syllables (lowercase)
+                65345r..65370r,  // Halfwidth and Fullwidth Forms (Fullwidth lowercase a..z)
+            ]
+            return self in r
         }
     }
 
-    /** Reports whether this char is an uppercase ASCII letter */
+    /** Reports whether this rune is an uppercase letter */
     property IsUpperLetter: bool {
         get {
-            return self in 65r..90r
+            if self <= 127r {
+                return self in 65r..90r
+            }
+            let r := [
+                192r..214r,     // Latin-1 Supplement (À..Ö)
+                216r..222r,     // Latin-1 Supplement (Ø..Þ)
+                256r..382r,     // Latin Extended-A
+                384r..562r,     // Latin Extended-B
+                564r..590r,     // Latin Extended-B (additional)
+                912r..939r,     // Greek and Coptic (uppercase Alpha..Omega)
+                940r..944r,     // Greek uppercase additions and accented forms
+                1040r..1071r,   // Cyrillic (uppercase)
+                1024r..1039r,   // Cyrillic extensions
+                1329r..1368r,   // Armenian (uppercase)
+                4256r..4293r,   // Georgian Asomtavruli/Mtavruli (uppercase)
+                11204r..11249r, // Glagolitic (uppercase)
+                5024r..5108r,   // Cherokee syllables (uppercase)
+                65313r..65338r,  // Halfwidth and Fullwidth Forms (Fullwidth uppercase A..Z)
+            ]
+
+            return self in r
         }
     }
 
@@ -44,17 +137,111 @@ impl rune {
         }
     }
 
-    /** Reports whether this rune is an ASCII whitespace character. */
+    /** Reports whether this rune is a Unicode letter or decimal digit. */
+    property IsUnicodeLetterOrDigit: bool {
+        get {
+            return self.IsLetter || self.IsUnicodeDigit
+        }
+    }
+
+    /** Reports whether this rune belongs to a standard Unicode Emoji block. */
+    property IsEmoji: bool {
+        get {
+            // Fast path: ASCII contains no standalone emojis
+            if self <= 127r {
+                return false
+            }
+
+            // Compile-time constant array containing main Unicode Emoji ranges
+            let r := [
+                8986r..8987r,     // Watch & Hourglass elements
+                9200r..9203r,     // Alarm clock, Stopwatch, Timer
+                9728r..9999r,     // Miscellaneous Symbols & Dingbats
+                10084r..10175r,   // Heavy Dingbats additions
+                11088r..11093r,   // Star and geometric shapes used as emoji
+                126980r..127569r, // Mahjong, Dominoes, and Cultural Symbols
+                127744r..128591r, // Transport, Map, and Miscellaneous Symbols
+                128640r..128767r, // Transport and Map Symbols extended
+                128768r..128895r, // Geometric Shapes Extended
+                128992r..129039r, // Supplemental Symbols and Pictographs
+                129292r..129791r, // Symbols and Pictographs Extended-A
+                129792r..131071r,  // Extended Pictographs & future additions
+            ]
+
+            return self in r
+        }
+    }
+
+    /** Reports whether this rune is a whitespace character according to Unicode. */
     property IsWhitespace: bool {
         get {
-            return self == 9r || self == 10r || self == 13r || self == 32r
+            // Fast path: ASCII whitespace characters (\t, \n, \r, space)
+            if self <= 127r {
+                return self == 9r || self == 10r || self == 13r || self == 32r
+            }
+
+            // Compile-time constant array containing Unicode separator and whitespace spaces
+            let r := [
+                160r,         // No-Break Space
+                8192r..8202r, // En Space, Em Space, Thin Space, Hair Space, etc.
+                8232r,        // Line Separator
+                8233r,        // Paragraph Separator
+                8239r,        // Narrow No-Break Space
+                8287r,        // Medium Mathematical Space
+                12288r,        // Ideographic Space (CJK / Chinese-Japanese-Korean)
+            ]
+
+            return self in r
         }
     }
 
     /** Reports whether this rune is an ASCII control character. */
     property IsControl: bool {
         get {
-            return self < 32r || self == 127r
+            return self < 32r || self in 127r..159r
+        }
+    }
+
+    /** Reports whether this rune is a punctuation character according to Unicode. */
+    property IsPunctuation: bool {
+        get {
+            // Fast path: ASCII punctuation characters
+            if self <= 127r {
+                return (self in 33r..47r) || (self in 58r..64r) || (self in 91r..96r) || (self in 123r..126r)
+            }
+
+            // Compile-time constant array containing Unicode punctuation ranges
+            let r := [
+                161r,         // Inverted Exclamation Mark
+                162r,         // Cent Sign
+                163r,         // Pound Sign
+                164r,         // Currency Sign
+                165r,         // Yen Sign
+                166r,         // Broken Bar
+                167r,         // Section Sign
+                168r,         // Diaeresis
+                169r,         // Copyright Sign
+                170r,         // Feminine Ordinal Indicator
+                171r,         // Left-Pointing Double Angle Quotation Mark
+                172r,         // Not Sign
+                173r,         // Soft Hyphen
+                174r,         // Registered Sign
+                175r,         // Macron
+                176r..191r,   // Miscellaneous Symbols and Punctuation
+                8943r..8959r, // Miscellaneous Technical Symbols and Punctuation
+                11840r..11871r, // Supplemental Punctuation
+                12289r..12319r,  // CJK Symbols and Punctuation (Asian quotes/brackets)
+                65072r..65103r,  // Halfwidth and Fullwidth Forms (Fullwidth punctuation)
+            ]
+
+            return self in r
+        }
+    }
+
+    /** Reports whether this rune is a printable character according to Unicode. */
+    property IsPrintable: bool {
+        get {
+            return !self.IsControl
         }
     }
 
@@ -62,7 +249,7 @@ impl rune {
     property IsHexDigit: bool {
         get {
             // 0 - 9, A-F, a-f
-            return (self >= 48r && self <= 57r) || (self >= 65r && self <= 70r) || (self >= 97r && self <= 102r)
+            return (self in 48r..57r) || (self in 65r..70r) || (self in 97r..102r)
         }
     }
 
@@ -77,7 +264,7 @@ impl rune {
     /** Reports whether this rune belongs to the ASCII range. */
     property IsAscii: bool {
         get {
-            return self >= 0r && self <= 127r
+            return self <= 127r
         }
     }
 
@@ -97,14 +284,102 @@ impl rune {
         }
     }
 
-    /** Returns the lowercase variant of a letter when possible */
+    /** Returns the lowercase variant of a letter when possible. */
     fn ToLower() rune {
-        return 0r
+        // Fast path: ASCII uppercase to lowercase ('A'..'Z' -> 'a'..'z')
+        if self in 65r..90r {
+            return rune(int(self) + 32)
+        }
+
+        // If it's already ASCII lowercase or not a letter, return as is
+        if self <= 127r {
+            return self
+        }
+
+        // Latin-1 Supplement: À..Ö -> à..ö, Ø..Þ -> ø..þ
+        if (self in 192r..214r) || (self in 216r..222r) {
+            return rune(int(self) + 32)
+        }
+
+        // Latin Extended-A & Cyrillic: Stride-2 pattern (Uppercase is even, Lowercase is Upper + 1)
+        // Example: Ameliorated cases where U+0100 is 'Ā' and U+0101 is 'ā'
+        if (self in 256r..382r) || (self in 1040r..1071r) {
+            if int(self) % 2 == 0 {
+                return rune(int(self) + 1)
+            }
+            return self
+        }
+
+        // Special case: Capital 'Ÿ' (376r) to lowercase 'ÿ' (255r)
+        if self == 376r {
+            return 255r
+        }
+
+        // Greek uppercase to lowercase (Alpha..Omega)
+        if self in 912r..939r {
+            return rune(int(self) + 32)
+        }
+
+        // Armenian uppercase to lowercase
+        if self in 1329r..1368r {
+            return rune(int(self) + 48)
+        }
+
+        // Fullwidth Latin: 'A'..'Z' -> 'a'..'z'
+        if self in 65313r..65338r {
+            return rune(int(self) + 32)
+        }
+
+        // Return unchanged if no lowercase variant exists
+        return self
     }
 
-    /** Returns the uppercase variant of a letter when possible */
+    /** Returns the uppercase variant of a letter when possible. */
     fn ToUpper() rune {
-        return 0r
-    }
+        // Fast path: ASCII lowercase to uppercase ('a'..'z' -> 'A'..'Z')
+        if self in 97r..122r {
+            return rune(int(self) - 32)
+        }
 
+        // If it's already ASCII uppercase or not a letter, return as is
+        if self <= 127r {
+            return self
+        }
+
+        // Latin-1 Supplement: à..ö -> À..Ö, ø..þ -> Ø..Þ
+        if (self in 224r..246r) || (self in 248r..254r) { // Skip 255r (ÿ) as its capital Ÿ is outside this block
+            return rune(int(self) - 32)
+        }
+
+        // Latin Extended-A & Cyrillic: Stride-2 pattern (Lowercase is odd, Uppercase is Lower - 1)
+        if (self in 257r..383r) || (self in 1072r..1103r) {
+            if int(self) % 2 == 1 {
+                return rune(int(self) - 1)
+            }
+            return self
+        }
+
+        // Special case: Lowercase 'ÿ' (255r) to uppercase 'Ÿ' (376r)
+        if self == 255r {
+            return 376r
+        }
+
+        // Greek lowercase to uppercase (alpha..omega)
+        if self in 945r..969r {
+            return rune(int(self) - 32)
+        }
+
+        // Armenian lowercase to uppercase
+        if self in 1377r..1416r {
+            return rune(int(self) - 48)
+        }
+
+        // Fullwidth Latin: 'a'..'z' -> 'A'..'Z'
+        if self in 65345r..65370r {
+            return rune(int(self) - 32)
+        }
+
+        // Return unchanged if no uppercase variant exists
+        return self
+    }
 }

@@ -321,11 +321,13 @@ type pitfallBuilder struct {
 	result                    *PitfallAnalysis
 	counts                    map[PitfallRuleID]*PitfallRuleEvaluation
 	handledBooleanComparisons map[*ast.InfixExpression]bool
-	activeNonEmptyProofs      map[string]lexer.Token
-	activeIndexGuards         []pitfallIndexGuard
-	activeCapacityEqualities  map[string]lexer.Token
-	activeLengthConditions    []ast.Expression // enclosing true if conditions, for Len relations
-	activePreceding           []ast.Statement  // statements before the walked one in its block
+	// handledIntervalChains marks inner links of an inspected `&&`/`||` chain.
+	handledIntervalChains    map[*ast.InfixExpression]bool
+	activeNonEmptyProofs     map[string]lexer.Token
+	activeIndexGuards        []pitfallIndexGuard
+	activeCapacityEqualities map[string]lexer.Token
+	activeLengthConditions   []ast.Expression // enclosing true if conditions, for Len relations
+	activePreceding          []ast.Statement  // statements before the walked one in its block
 }
 
 func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnalysis {
@@ -334,6 +336,7 @@ func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnal
 		result:                    newPitfallAnalysis(),
 		counts:                    map[PitfallRuleID]*PitfallRuleEvaluation{},
 		handledBooleanComparisons: map[*ast.InfixExpression]bool{},
+		handledIntervalChains:     map[*ast.InfixExpression]bool{},
 	}
 	for _, rule := range pitfallRuleRegistry {
 		evaluation := &PitfallRuleEvaluation{Rule: rule.ID, State: PitfallStateNoFinding}

@@ -152,10 +152,9 @@ impl DeviceWithWrongStorage implements PressSource {
     event ButtonPressed using changedStorage
 }
 
-@interrupt(Uart0)
+@interrupt(vector: Uart0)
 fn InvalidPublishFromISR(button: ref mut Button) void {
-    // CURRENT ERROR: @interrupt function attributes are not implemented here
-    // and are parsed as module-scope code.
+    // CURRENT ERROR: attribute @interrupt is not implemented yet.
     // FUTURE ERROR: Ordinary event publication is not ISR-safe.
     button.ButtonPressed.Publish(ButtonPressData {
         buttonID: 1,

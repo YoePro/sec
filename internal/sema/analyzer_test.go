@@ -583,6 +583,58 @@ module main
 	}
 }
 
+// A source file declares exactly one module: a second module section in the
+// same file is rejected, while one module spread over several files and
+// different modules in different files are valid.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Source file"
+func TestOneModuleDeclarationPerSourceFile(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module y
+
+module z
+`)
+	assertSemaErrors(t, errors, []string{
+		"source file declares module z after module y; a source file declares exactly one module at 4:1, previous declaration at 2:1",
+	})
+	if errors[0].ID != diagnostics.DuplicateModuleDeclaration {
+		t.Fatalf("ID = %q", errors[0].ID)
+	}
+
+	for _, files := range [][]sourceFile{
+		{{"a.sec", "module main\n\nfn A() int {\n\treturn B()\n}\n"}, {"b.sec", "module main\n\nfn B() int {\n\treturn 1\n}\n"}},
+		{{"y.sec", "module y\n\nfn Y() int {\n\treturn 1\n}\n"}, {"z.sec", "module z\n\nfn Z() int {\n\treturn 2\n}\n"}},
+	} {
+		if _, errors := analyzeSourceFilesRaw(t, files...); len(errors) != 0 {
+			t.Errorf("multi-file program errors = %v", errors)
+		}
+	}
+}
+
+// sourceFile is one named source of a multi-file test program.
+type sourceFile struct {
+	name   string
+	source string
+}
+
+// analyzeSourceFilesRaw parses each source as its own file and analyzes the
+// combined program, as the compiler does for a multi-file build.
+func analyzeSourceFilesRaw(t *testing.T, files ...sourceFile) (*Analyzer, []Error) {
+	t.Helper()
+	program := &ast.Program{}
+	for _, file := range files {
+		p := parser.New(lexer.NewWithFile(file.source, file.name))
+		parsed := p.ParseProgram()
+		if len(p.Errors()) > 0 {
+			t.Fatalf("parser errors in %s: %v", file.name, p.Errors())
+		}
+		program.Statements = append(program.Statements, parsed.Statements...)
+	}
+	analyzer := NewAnalyzer()
+	return analyzer, analyzer.Analyze(program)
+}
+
 func TestModuleDeclarationNamespaceConflicts(t *testing.T) {
 	input := `
 module main
@@ -675,8 +727,8 @@ func TestAnalyzeIgnoresTypedNilTopLevelStatements(t *testing.T) {
 }
 
 func TestUnderscoreVisibilityAcrossModules(t *testing.T) {
-	input := `
-module y
+	_, errors := analyzeSourceFilesRaw(t,
+		sourceFile{"y.sec", `module y
 
 type _SharedInt int
 type __PrivateInt int
@@ -688,8 +740,8 @@ fn _shared() int {
 fn __private() int {
 	return 2
 }
-
-module z
+`},
+		sourceFile{"z.sec", `module z
 
 fn UseShared() int {
 	let value: _SharedInt := 1
@@ -704,15 +756,13 @@ fn UsePrivateType() int {
 	let value: __PrivateInt := 1
 	return 0
 }
-`
-
-	errors := analyzeSourceRaw(t, input)
+`})
 
 	expected := []string{
-		"type _SharedInt is not accessible from module z at 18:13",
-		"function _shared is not accessible from module z at 19:9",
-		"function __private is not accessible from module z at 23:9",
-		"type __PrivateInt is not accessible from module z at 27:13",
+		"type _SharedInt is not accessible from module z at z.sec:4:13",
+		"function _shared is not accessible from module z at z.sec:5:9",
+		"function __private is not accessible from module z at z.sec:9:9",
+		"type __PrivateInt is not accessible from module z at z.sec:13:13",
 	}
 
 	assertSemaErrors(t, errors, expected)

@@ -320,3 +320,20 @@ func (a *Analyzer) updateAssignedConstInt(name string, stmt *ast.AssignmentState
 
 	a.constInts[name] = new(big.Int).Set(value)
 }
+
+// recordComparisonConstantOperand publishes the scope-correct value of a
+// comparison operand that is a named compile-time constant: a non-literal
+// integer expression whose value Sema proves without depending on a mutable
+// or transient binding. Literals carry their own value and are not recorded.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Tautological interval conditions"
+//   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
+func (a *Analyzer) recordComparisonConstantOperand(operand ast.Expression) {
+	if operand == nil || isNumericLiteral(operand) {
+		return
+	}
+	if value, ok := a.constantConditionIntegerValue(operand); ok {
+		a.comparisonConstantOperands[operand] = value
+	}
+}

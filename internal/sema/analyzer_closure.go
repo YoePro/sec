@@ -161,6 +161,9 @@ func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression) {
 			// rules/memory/allocation.md § 24(6): its allocation behavior is
 			// unknown as well.
 			a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: call.Token, UnknownAllocation: true})
+			// rules/concurrency/blocking.md "Call graph analysis": and its
+			// blocking behavior.
+			a.recordUnknownBlockingCallee(call.Token)
 		}
 		return
 	}

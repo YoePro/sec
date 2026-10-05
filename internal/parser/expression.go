@@ -7,53 +7,27 @@ import (
 	"sec/internal/ast"
 	compilerdiagnostics "sec/internal/diagnostics"
 	"sec/internal/lexer"
+	"sec/internal/operators"
 )
 
-type precedence int
+type precedence = operators.Precedence
 
 const (
-	LOWEST  precedence = iota
-	OR                 // ||
-	AND                // &&
-	BIT_OR             // |
-	BIT_XOR            // ^
-	BIT_AND            // &
-	EQUALS             // == !=
-	COMPARE            // < <= > >=
-	SHIFT              // << >>
-	SUM                // + -
-	PRODUCT            // * / %
-	PREFIX             // -x !x
-	CALL               // Type(value)
-	MEMBER             // value.field
+	LOWEST  = operators.Lowest
+	OR      = operators.LogicalOr
+	AND     = operators.LogicalAnd
+	BIT_OR  = operators.BitwiseOr
+	BIT_XOR = operators.BitwiseXor
+	BIT_AND = operators.BitwiseAnd
+	EQUALS  = operators.Equality
+	COMPARE = operators.Comparison
+	SHIFT   = operators.Shift
+	SUM     = operators.Additive
+	PRODUCT = operators.Multiplicative
+	PREFIX  = operators.Prefix
+	CALL    = operators.Postfix
+	MEMBER  = operators.Member
 )
-
-var precedences = map[lexer.TokenType]precedence{
-	lexer.OR:          OR,
-	lexer.AND:         AND,
-	lexer.BIT_OR:      BIT_OR,
-	lexer.BIT_XOR:     BIT_XOR,
-	lexer.BIT_AND:     BIT_AND,
-	lexer.EQ:          EQUALS,
-	lexer.NEQ:         EQUALS,
-	lexer.LT:          COMPARE,
-	lexer.LTE:         COMPARE,
-	lexer.GT:          COMPARE,
-	lexer.GTE:         COMPARE,
-	lexer.IN:          COMPARE,
-	lexer.SHIFT_LEFT:  SHIFT,
-	lexer.SHIFT_RIGHT: SHIFT,
-	lexer.PLUS:        SUM,
-	lexer.MINUS:       SUM,
-	lexer.SLASH:       PRODUCT,
-	lexer.ASTERISK:    PRODUCT,
-	lexer.PERCENT:     PRODUCT,
-	lexer.LPAREN:      CALL,
-	lexer.LBRACKET:    CALL,
-	lexer.LBRACE:      CALL,
-	lexer.SPREAD:      CALL,
-	lexer.DOT:         MEMBER,
-}
 
 // parseExpression parses a value-producing expression using Pratt parsing.
 //
@@ -1049,6 +1023,9 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 		if element == nil {
 			return nil
 		}
+		if p.peekToken.Type == lexer.RANGE || p.peekToken.Type == lexer.RANGE_EXCLUSIVE {
+			element = p.parseRangeSegment(element)
+		}
 		if _, alreadySpread := element.(*ast.SpreadExpression); !alreadySpread && p.peekToken.Type == lexer.SPREAD {
 			p.nextToken()
 			element = &ast.SpreadExpression{Token: p.curToken, Value: element}
@@ -1251,6 +1228,9 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			p.stopBeforeBrace = previousStopBeforeBrace
 			if arg == nil {
 				return nil, false
+			}
+			if p.peekToken.Type == lexer.RANGE || p.peekToken.Type == lexer.RANGE_EXCLUSIVE {
+				arg = p.parseRangeSegment(arg)
 			}
 		}
 		if _, alreadySpread := arg.(*ast.SpreadExpression); !alreadySpread && p.peekToken.Type == lexer.SPREAD {
@@ -1994,6 +1974,32 @@ func (p *Parser) parseNotInExpression(left ast.Expression) ast.Expression {
 	return expr
 }
 
+// parseRangeSegment completes `lower..upper` or `lower..<upper` after its
+// parsed lower bound in an array literal element or a call argument. Both
+// bounds are required; Sema decides whether the position permits a range
+// (an array literal or Append on an owning dynamic array).
+//
+// Rules:
+//   - rules/collections/collections.md — § 5.6a "Range segments in array literals", § 6.7 "Append"
+//   - rules/foundations/grammar.md — "Range expression in contextual positions"
+func (p *Parser) parseRangeSegment(lower ast.Expression) ast.Expression {
+	p.nextToken()
+	segment := &ast.RangeExpression{Token: p.curToken, Start: lower, Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE}
+	if !p.isExpressionStart(p.peekToken.Type) {
+		missing := p.peekToken
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, missing, nil, &missing,
+			"range segment requires an upper bound at %d:%d", missing.Line, missing.Column)
+		segment.End = p.invalidExpression(missing, "missing range upper bound", compilerdiagnostics.ParserInvalidExpression)
+		return segment
+	}
+	p.nextToken()
+	segment.End = p.parseExpression(COMPARE)
+	if segment.End == nil {
+		segment.End = p.invalidExpression(p.curToken, "missing range upper bound", compilerdiagnostics.ParserInvalidExpression)
+	}
+	return segment
+}
+
 func (p *Parser) parseRangeOrExpression() ast.Expression {
 	if p.curToken.Type == lexer.RANGE || p.curToken.Type == lexer.RANGE_EXCLUSIVE {
 		rangeExpr := &ast.RangeExpression{
@@ -2064,16 +2070,16 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 
 func (p *Parser) peekPrecedence() precedence {
 	if p.contextualMatrixMultiplyAhead() {
-		return PRODUCT
+		return contextualOperatorPrecedence("x")
 	}
 	if p.contextualIsAhead() {
-		return EQUALS
+		return contextualOperatorPrecedence("is")
 	}
 	if p.contextualNotInAhead() {
-		return COMPARE
+		return contextualOperatorPrecedence("not in")
 	}
-	if p, ok := precedences[p.peekToken.Type]; ok {
-		return p
+	if precedence, ok := operators.TokenPrecedence(p.peekToken.Type); ok {
+		return precedence
 	}
 
 	return LOWEST
@@ -2124,16 +2130,27 @@ func (p *Parser) contextualMatrixMultiplyAhead() bool {
 
 func (p *Parser) curPrecedence() precedence {
 	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "x" {
-		return PRODUCT
+		return contextualOperatorPrecedence("x")
 	}
 	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "not" && p.peekToken.Type == lexer.IN {
-		return COMPARE
+		return contextualOperatorPrecedence("not in")
 	}
-	if p, ok := precedences[p.curToken.Type]; ok {
-		return p
+	if precedence, ok := operators.TokenPrecedence(p.curToken.Type); ok {
+		return precedence
 	}
 
 	return LOWEST
+}
+
+// contextualOperatorPrecedence resolves a parser-confirmed contextual
+// operator through the shared canonical operator table. Every caller supplies
+// a spelling registered by rules/foundations/operators.md.
+func contextualOperatorPrecedence(spelling string) precedence {
+	level, ok := operators.BinaryPrecedence(spelling)
+	if !ok {
+		return LOWEST
+	}
+	return level
 }
 
 // parseListCollectionLiteral parses the compiler-known empty list literals

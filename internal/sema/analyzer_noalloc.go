@@ -40,16 +40,11 @@ func (a *Analyzer) validateFunctionNoAllocGuarantee(fn *ast.FunctionDeclaration,
 	if fn.Extern || fn.Name == nil {
 		return
 	}
-	var attribute *ast.Attribute
-	for _, candidate := range fn.Attributes {
-		if candidate != nil && candidate.Name != nil && candidate.Name.Value == "noAlloc" {
-			attribute = candidate
-			break
-		}
-	}
-	if attribute == nil {
+	guarantee, ok := EffectiveGuaranteeOf(fn.Attributes, GuaranteeNoAlloc)
+	if !ok {
 		return
 	}
+	attribute := guarantee.Source
 	function, ok := a.lookupFunctionByToken(name, fn.Name.Token)
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
@@ -76,7 +71,7 @@ func (a *Analyzer) validateFunctionNoAllocGuarantee(fn *ast.FunctionDeclaration,
 	if unknown {
 		kind = "unknown allocation behavior"
 	}
-	message := fmt.Sprintf("function %s does not satisfy @noAlloc: reachable %s via %s", name, kind, strings.Join(chain, " -> "))
+	message := fmt.Sprintf("function %s does not satisfy @noAlloc%s: reachable %s via %s", name, guarantee.impliedSuffix(), kind, strings.Join(chain, " -> "))
 	if found {
 		message += fmt.Sprintf("; introduced at %s", formatLocation(site.Source.File, site.Source.Line, site.Source.Column))
 	}

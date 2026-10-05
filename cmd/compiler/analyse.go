@@ -253,10 +253,12 @@ func analyseEscapeDispositions(dispositions []sema.EscapeParameterDisposition) s
 	return strings.Join(parts, ", ")
 }
 
-// addParameterUsage reports the semantic demand of each declared parameter.
+// addParameterUsage reports semantic demand and candidate confidence, reasons,
+// and blockers, keeping estimated copy cost separate from capability proof.
 //
 // Rules:
 //   - rules/analysis/parameter_usage_analysis.md — `sec analyse`; Deep output (declared capability, required demand)
+//   - rules/analysis/parameter_usage_analysis.md — "Recommendation confidence", "Recommendation reasons", "Blocked narrowing advisory"
 func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, inSelection func(lexer.Token) bool) {
 	section := r.section("parameter usage")
 	for _, summary := range usage.Summaries() {
@@ -277,6 +279,24 @@ func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, in
 				summary.Name, parameter.Name, sema.TypeDisplayName(parameter.DeclaredType), demand.Access, demand.Mutation, demand.Ownership, demand.Lifetime, demand.Identity, strings.Join(shapes, ", "), demand.Precision)
 		}
 	}
+	for _, recommendation := range usage.Recommendations() {
+		if !inSelection(recommendation.Source) {
+			continue
+		}
+		section.add("%s(%s): candidate %s, %s", recommendation.CallableName, recommendation.Parameter, recommendation.Candidate, recommendation.Status)
+		if recommendation.Confidence != "" {
+			section.add("  confidence %s", recommendation.Confidence)
+		}
+		for _, reason := range recommendation.Reasons {
+			section.add("  reason: %s", reason)
+		}
+		for _, blocker := range recommendation.Blockers {
+			section.add("  blocked: %s", blocker)
+		}
+		if recommendation.SizeKnown {
+			section.add("  estimated size: %d bytes", recommendation.EstimatedSizeBytes)
+		}
+	}
 }
 
 // pitfallReportClass keeps proven invalidity an error under its owning rule
@@ -294,6 +314,9 @@ func pitfallReportClass(finding sema.PitfallFinding) analyseReportClass {
 // Rule: rules/analysis/pitfall_analysis.md — sec analyse Deep output.
 func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection func(lexer.Token) bool) {
 	section := r.section("pitfalls")
+	if coverage := pitfalls.Coverage(); coverage.SkippedUnits > 0 {
+		section.add("incomplete coverage: %d unit(s) skipped; syntax search %d/%d nodes, depth limit %d", coverage.SkippedUnits, coverage.VisitedNodes, coverage.MaxNodes, coverage.MaxDepth)
+	}
 	for _, finding := range pitfalls.Results() {
 		if !inSelection(finding.Subject.Source) {
 			continue
@@ -322,13 +345,15 @@ func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection 
 	}
 	notEvaluated := []string{}
 	for _, evaluation := range pitfalls.Evaluations() {
-		if evaluation.State == sema.PitfallStateNotEvaluated || evaluation.State == sema.PitfallStatePending {
-			notEvaluated = append(notEvaluated, fmt.Sprintf("%s (%s)", evaluation.Rule, evaluation.State))
+		if evaluation.Incomplete {
+			notEvaluated = append(notEvaluated, fmt.Sprintf("incomplete %s (%s)", evaluation.Rule, evaluation.State))
+		} else if evaluation.State == sema.PitfallStateNotEvaluated || evaluation.State == sema.PitfallStatePending {
+			notEvaluated = append(notEvaluated, fmt.Sprintf("not evaluated %s (%s)", evaluation.Rule, evaluation.State))
 		}
 	}
 	sort.Strings(notEvaluated)
 	for _, rule := range notEvaluated {
-		section.add("not evaluated %s", rule)
+		section.add("%s", rule)
 	}
 }
 

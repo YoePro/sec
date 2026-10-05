@@ -157,6 +157,9 @@ const (
 
 // forIterationSource returns the iterable category and whether the iterable is
 // itself a reference, and if so whether that reference is mutable.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §13 "Sec 0.1 iterable categories", §§20–21, §37
 func (a *Analyzer) forIterationSource(stmt *ast.ForStatement) (forIterationCategory, bool, bool) {
 	if _, ok := stmt.Iterable.(*ast.RangeExpression); ok {
 		return forCategoryRange, false, false
@@ -171,9 +174,9 @@ func (a *Analyzer) forIterationSource(stmt *ast.ForStatement) (forIterationCateg
 	switch {
 	case base.Kind == StringType:
 		return forCategoryString, isReference, mutableReference
-	case base.Name == "Set" || base.Name == "set":
+	case isForCollectionFamily(base) && base.Name == "set":
 		return forCategorySet, isReference, mutableReference
-	case base.Name == "Map" || base.Name == "map":
+	case isForCollectionFamily(base) && base.Name == "map":
 		return forCategoryMap, isReference, mutableReference
 	}
 	return forCategorySequential, isReference, mutableReference
@@ -387,20 +390,20 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			// iteration over native variadic packs with their element type.
 			return a.inferSequentialForBindingTypes(stmt, *iterableType.Element, indexType)
 		}
-		if (iterableType.Name == "Vec" || iterableType.Name == "list") && len(iterableType.TypeArgs) == 1 {
+		if isForCollectionFamily(iterableType) && iterableType.Name == "list" {
 			return a.inferSequentialForBindingTypes(stmt, iterableType.TypeArgs[0], indexType)
 		}
-		if iterableType.Name == "vector" && len(iterableType.TypeArgs) == 1 && len(iterableType.ConstArgs) == 1 {
+		if isForCollectionFamily(iterableType) && iterableType.Name == "vector" {
 			return a.inferSequentialForBindingTypes(stmt, iterableType.TypeArgs[0], indexType)
 		}
-		if (iterableType.Name == "Set" || iterableType.Name == "set") && len(iterableType.TypeArgs) == 1 {
+		if isForCollectionFamily(iterableType) && iterableType.Name == "set" {
 			if len(stmt.Bindings) > 1 {
 				a.addErrorAtToken(stmt.Bindings[0].Token, "set iteration supports one loop binding, got %d", len(stmt.Bindings))
 				return nil, false
 			}
 			return []Type{iterableType.TypeArgs[0]}, true
 		}
-		if (iterableType.Name == "Map" || iterableType.Name == "map") && len(iterableType.TypeArgs) == 2 {
+		if isForCollectionFamily(iterableType) && iterableType.Name == "map" {
 			if len(stmt.Bindings) != 2 {
 				a.addErrorAtToken(stmt.Bindings[0].Token, "map iteration requires key and value bindings, got %d", len(stmt.Bindings))
 				return nil, false
@@ -410,35 +413,6 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		a.addErrorAtToken(expressionToken(iterable), "type %s is not iterable", typeDisplayName(iterableType))
 		return nil, false
 	}
-}
-
-// compilerKnownIterator resolves only explicit Iterator[T] conformance. The
-// method name Next alone is deliberately insufficient: flowcontrol_for.md
-// section 37 forbids naming-convention discovery, and no interface value or
-// dynamic-dispatch runtime is introduced here.
-func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, bool) {
-	concrete := dereferenceType(source)
-	for _, iface := range concrete.Implements {
-		if iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
-			continue
-		}
-		element := iface.TypeArgs[0]
-		for _, method := range a.functions[concrete.Name+".Next"] {
-			if method.Static || len(explicitInterfaceComparableParameters(method.Parameters)) != 0 {
-				continue
-			}
-			if method.ReturnType.Name != "Option" || len(method.ReturnType.TypeArgs) != 1 || !sameConcreteType(method.ReturnType.TypeArgs[0], element) {
-				continue
-			}
-			method.CompilerKnownID = "CKM-ITERATOR-NEXT"
-			return element, method, iface, true
-		}
-		// Preserve useful loop binding inference while ordinary interface
-		// conformance emits the canonical missing/signature diagnostic.
-		required := Function{Name: "Next", ImplTarget: concrete.Name, CompilerKnownID: "CKM-ITERATOR-NEXT", ReceiverMutable: true, ReturnType: Type{Name: "Option", Kind: UnionType, TypeArgs: []Type{element}}}
-		return element, required, iface, true
-	}
-	return Type{}, Function{}, Type{}, false
 }
 
 // inferSequentialForBindingTypes types the one-binding (element) and
@@ -455,19 +429,6 @@ func (a *Analyzer) inferSequentialForBindingTypes(stmt *ast.ForStatement, valueT
 		return []Type{indexType, valueType}, true
 	}
 	return []Type{valueType}, true
-}
-
-// isForCollectionFamily reports compiler-known sequential collection types.
-//
-// Rules:
-//   - rules/control-flow/flowcontrol_for.md — §13 "Sec 0.1 iterable categories"
-func isForCollectionFamily(typ Type) bool {
-	switch typ.Name {
-	case "Vec", "Set", "Map", "list", "set", "map", "vector":
-		return true
-	default:
-		return false
-	}
 }
 
 // forIterableKind names the iterable category for diagnostics.

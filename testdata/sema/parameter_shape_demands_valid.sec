@@ -1,0 +1,23 @@
+module main
+
+type Packet struct { values: int[4], }
+fn ReturnArray(values: int[4]) int[4] { return values }
+fn ForwardArray(values: int[4]) int[4] { return ReturnArray(values) }
+fn ReturnField(packet: Packet) int[4] { return packet.values }
+fn ReturnCarrier(values: int[4]) Packet { return Packet { values: values } }
+fn ReturnResult(values: int[4]) Result[int[4], ArithmeticError] { return Ok(values) }
+fn ReturnBorrow(values: ref int[4]) ref int[4] { return values }
+fn First(values: int[4]) int { return values[0] }
+fn Length(values: int[4]) uint { return values.Len }
+fn ForwardRead(values: int[4]) int { return First(values) }
+fn Iterate(values: int[4]) void { for value in values { discard value } }
+fn ArrayPointer(values: int[100]) void { unsafe { discard values.Ptr } }
+fn ForwardPointer(values: int[100]) void { ArrayPointer(values) }
+fn DynamicPointer(values: int[]) void { unsafe { discard values.Ptr } }
+fn SlicePointer(values: ref int[]) void { unsafe { discard values.Ptr } }
+fn ListPointer(values: list[int]) void { unsafe { discard values.Ptr } }
+fn StringPointer(values: string) void { unsafe { discard values.Ptr } }
+fn ScalarPointer(value: int) void { unsafe { discard value.Ptr } }
+
+fn ReturnMoved(values: int[4]) int[4] { return <-values }
+fn ProjectedPointer(packet: Packet) void { unsafe { discard packet.values.Ptr } }

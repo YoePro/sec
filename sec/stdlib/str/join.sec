@@ -1,0 +1,24 @@
+module str
+
+/*
+ * Sec Standard Library - str - Sequence joining and concatenation
+ *
+ * File:        stdlib/str/join.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Materializes a sequence of strings as one string, optionally inserting a
+ * separator between elements.
+ *
+ * Allocation:
+ * Produces one materialized output string.
+ *
+ * Unicode:
+ * Copies valid UTF-8 string data without changing rune contents.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

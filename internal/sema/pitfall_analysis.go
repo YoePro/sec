@@ -141,6 +141,8 @@ type PitfallRuleEvaluation struct {
 	State           PitfallAnalysisState
 	FindingCount    int
 	SuppressedCount int
+	// Incomplete preserves partial coverage even when another unit produced a finding.
+	Incomplete bool
 }
 
 var pitfallRuleRegistry = []PitfallRuleDefinition{
@@ -261,6 +263,7 @@ func PitfallRules() []PitfallRuleDefinition {
 type PitfallAnalysis struct {
 	results     []PitfallFinding
 	evaluations []PitfallRuleEvaluation
+	coverage    PitfallCoverage
 }
 
 func newPitfallAnalysis() *PitfallAnalysis { return &PitfallAnalysis{} }
@@ -275,6 +278,7 @@ func (p *PitfallAnalysis) clone() *PitfallAnalysis {
 		result.results[index] = clonePitfallFinding(finding)
 	}
 	result.evaluations = append([]PitfallRuleEvaluation(nil), p.evaluations...)
+	result.coverage = p.coverage
 	return result
 }
 
@@ -328,30 +332,6 @@ type pitfallBuilder struct {
 	activeCapacityEqualities map[string]lexer.Token
 	activeLengthConditions   []ast.Expression // enclosing true if conditions, for Len relations
 	activePreceding          []ast.Statement  // statements before the walked one in its block
-}
-
-func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnalysis {
-	builder := &pitfallBuilder{
-		analyzer:                  analyzer,
-		result:                    newPitfallAnalysis(),
-		counts:                    map[PitfallRuleID]*PitfallRuleEvaluation{},
-		handledBooleanComparisons: map[*ast.InfixExpression]bool{},
-		handledIntervalChains:     map[*ast.InfixExpression]bool{},
-	}
-	for _, rule := range pitfallRuleRegistry {
-		evaluation := &PitfallRuleEvaluation{Rule: rule.ID, State: PitfallStateNoFinding}
-		if !analysisDepthAtLeast(analyzer.analysisDepth, rule.MinimumDepth) {
-			evaluation.State = PitfallStateNotEvaluated
-		}
-		builder.counts[rule.ID] = evaluation
-	}
-	if program != nil {
-		for _, statement := range program.Statements {
-			builder.walkStatement(statement)
-		}
-	}
-	builder.finish()
-	return builder.result
 }
 
 func analysisDepthAtLeast(actual AnalysisDepth, minimum AnalysisDepth) bool {

@@ -1,0 +1,14 @@
+module main
+fn Nested(values: ref int[]) int {
+    if values.Len > 0 {
+        if values.Len > 0 {
+            if values.Len > 0 {
+                if values.Len > 0 {
+                    return values[values.Len - 1]
+                }
+            }
+        }
+    }
+    return 0
+}
+fn After(value: bool) bool { return value == true }

@@ -1,0 +1,27 @@
+module str
+
+/*
+ * Sec Standard Library - str - Sec string-literal escaping and unescaping
+ *
+ * File:        stdlib/str/escape.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Produces and parses escaped text using the canonical Sec string-literal
+ * escape rules.
+ *
+ * Allocation:
+ * Escaping and unescaping materialize new strings.
+ *
+ * Unicode:
+ * Unicode escapes must decode only to valid Unicode scalar values.
+ *
+ * Standards:
+ * - Sec lexical/string-literal rulebook
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

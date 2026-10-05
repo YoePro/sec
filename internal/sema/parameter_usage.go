@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"sec/internal/ast"
-	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -262,82 +261,6 @@ func buildParameterUsageAnalysis(program *ast.Program, analyzer *Analyzer) *Para
 		builder.finishSummary(builder.result.summaries[id])
 	}
 	return builder.result
-}
-
-const largeByValueParameterThresholdBytes int64 = 64
-
-// emitLargeValueParameterAdvisories emits A2001 only after the complete local
-// and interprocedural demand fixed point proves that a shared borrow preserves
-// every currently modeled critical capability. Size is cost evidence only.
-//
-// Rules:
-//   - rules/analysis/parameter_usage_analysis.md — "Candidate narrowing"
-//   - rules/analysis/parameter_usage_analysis.md — "Unknown critical dimensions block narrowing"
-//   - rules/analysis/parameter_usage_analysis.md — "Large-value advisory"
-func (a *Analyzer) emitLargeValueParameterAdvisories() {
-	if a == nil || a.parameterUsageAnalysis == nil {
-		return
-	}
-	for _, id := range a.parameterUsageAnalysis.summaryOrder {
-		summary := a.parameterUsageAnalysis.summaries[id]
-		if summary == nil || summary.Precision != ParameterDemandExact {
-			continue
-		}
-		for _, parameter := range summary.Parameters {
-			a.emitLargeValueParameterAdvisory(parameter)
-		}
-	}
-}
-
-// emitLargeValueParameterAdvisory combines a proven shared-borrow semantic
-// candidate with the current size policy without altering ParameterDemand.
-//
-// Rules:
-//   - rules/analysis/parameter_usage_analysis.md — "Large value to reference"
-//   - rules/analysis/parameter_usage_analysis.md — "Semantic demand and recommendation policy are separate"
-//   - rules/analysis/parameter_usage_analysis.md — "ResolvedLayout as cost input"
-func (a *Analyzer) emitLargeValueParameterAdvisory(parameter ParameterUsageParameterSummary) {
-	typ := parameter.DeclaredType
-	if !sharedReferencePreservesParameterDemand(parameter) || typ.Kind == ReferenceType || typ.Kind == SliceType || typ.Kind == VoidType || typ.Kind == InvalidType {
-		return
-	}
-	size, ok := estimatedTypeSizeBytes(typ, map[string]bool{})
-	if !ok || size < largeByValueParameterThresholdBytes {
-		return
-	}
-	help := "Pass the parameter by shared reference when the function does not need to own or copy the whole value."
-	if typ.Kind == ArrayType {
-		if parameterDemandHasShape(parameter.Demand, ParameterShapeExactExtent) || parameterDemandHasShape(parameter.Demand, ParameterShapeUnknown) {
-			a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
-			return
-		}
-		a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s or ref %s[]", parameter.Name, typeDisplayName(typ), typeDisplayName(typ), arrayElementDisplayName(typ))
-		return
-	}
-	a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large value %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
-}
-
-// sharedReferencePreservesParameterDemand is the conservative capability gate
-// for the current A2001 shared-reference candidate.
-//
-// Rules:
-//   - rules/analysis/parameter_usage_analysis.md — "Candidate narrowing"
-//   - rules/analysis/parameter_usage_analysis.md — "Candidate blockers"
-func sharedReferencePreservesParameterDemand(parameter ParameterUsageParameterSummary) bool {
-	demand := parameter.Demand
-	if parameter.DeclaredRef || parameter.DeclaredMut || parameter.Consuming || demand.Precision != ParameterDemandExact {
-		return false
-	}
-	if demand.Access != ParameterAccessUnused && demand.Access != ParameterAccessRead {
-		return false
-	}
-	if demand.Mutation != ParameterNoMutation || demand.Ownership != ParameterBorrowSufficient || demand.Lifetime != ParameterLifetimeCallOnly || demand.Identity != ParameterValueOnly {
-		return false
-	}
-	if demand.Representation != ParameterRepresentationNone || hasSpecialParameterStorage(demand.Storage) {
-		return false
-	}
-	return !parameterDemandHasShape(demand, ParameterShapeUnknown)
 }
 
 func parameterDemandHasShape(demand ParameterDemand, shape ParameterShapeDemand) bool {
@@ -621,6 +544,10 @@ func parameterHasWholePlaceUse(parameter *ParameterUsageParameterSummary) bool {
 	return false
 }
 
+// walkStatement joins demand from reachable statement operations, preserving
+// returned fixed-array shape requirements independently of ordinary reads.
+// Rules: rules/analysis/parameter_usage_analysis.md — "Operation-to-demand transfer",
+// "Exact extent and length observation are distinct", "Unreachable paths".
 func (b *parameterUsageBuilder) walkStatement(statement ast.Statement) {
 	if parameterUsageNodeIsNil(statement) {
 		return
@@ -658,6 +585,7 @@ func (b *parameterUsageBuilder) walkStatement(statement ast.Statement) {
 		b.walkExpression(statement.Value)
 	case *ast.ReturnStatement:
 		b.walkExpression(statement.Value)
+		b.recordReturnedExactExtent(statement.Value)
 	case *ast.IfStatement:
 		b.walkIfStatement(statement)
 	case *ast.SwitchStatement:
@@ -709,8 +637,15 @@ func (b *parameterUsageBuilder) walkSwitchCase(item *ast.SwitchCase) {
 	b.walkBlock(item.Body)
 }
 
+// walkExpression records resolved parameter access and shape demand, consuming
+// the compiler-owned pointer member fact before ordinary member projections.
+// Rules: rules/analysis/parameter_usage_analysis.md — "Operation-to-demand transfer",
+// "Raw pointer/address formation", "Contiguous-sequence demand".
 func (b *parameterUsageBuilder) walkExpression(expression ast.Expression) {
 	if parameterUsageNodeIsNil(expression) {
+		return
+	}
+	if b.walkCompilerKnownPointerAccess(expression) {
 		return
 	}
 	if b.markExpression(expression, ParameterUseRead, false, ParameterBorrowSufficient, ParameterValueOnly) {

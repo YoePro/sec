@@ -1,0 +1,26 @@
+module str
+
+/*
+ * Sec Standard Library - str - Allocating rune-to-string transformations
+ *
+ * File:        stdlib/str/transform.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Materializes rune mapping, filtering, expansion, repetition, and reversal
+ * as new strings.
+ *
+ * Allocation:
+ * Public functions produce new string storage unless the documented no-op
+ * fast path safely reuses the original string.
+ *
+ * Unicode:
+ * Transform callbacks operate on Unicode scalar values. Reverse reverses
+ * runes, not grapheme clusters.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

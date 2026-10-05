@@ -1,0 +1,25 @@
+module str
+
+/*
+ * Sec Standard Library - str - Position-based immutable string editing
+ *
+ * File:        stdlib/str/edit.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Creates new strings by inserting, removing, or replacing explicit byte
+ * ranges in existing strings.
+ *
+ * Allocation:
+ * Successful edits that change content materialize new string storage.
+ *
+ * Unicode:
+ * Edit boundaries are byte offsets and must lie on valid UTF-8 rune
+ * boundaries.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

@@ -11278,60 +11278,6 @@ fn StringIndexValueLoop(values: string) void {
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestForCompilerKnownCollectionLoopBindings(t *testing.T) {
-	input := `
-module main
-
-fn VecLoop(values: Vec[int]) void {
-	for value in values {
-		let copy: int := value
-	}
-}
-
-fn VecIndexValueLoop(values: Vec[int]) void {
-	for index, value in values {
-		let i: int := index
-		let copy: int := value
-	}
-}
-
-fn RefVecLoop(values: ref Vec[int]) void {
-	for value in values {
-		let copy: int := value
-	}
-}
-
-fn VectorLoop(values: vector[int, 3]) void {
-	for value in values {
-		let copy: int := value
-	}
-}
-
-fn RefVectorIndexValueLoop(values: ref vector[float64, 3]) void {
-	for index, value in values {
-		let i: int := index
-		let copy: float64 := value
-	}
-}
-
-fn SetLoop(values: Set[string]) void {
-	for value in values {
-		let copy: string := value
-	}
-}
-
-fn MapLoop(values: Map[string, int]) void {
-	for key, value in values {
-		let copyKey: string := key
-		let copyValue: int := value
-	}
-}
-`
-
-	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, nil)
-}
-
 func TestForCompilerKnownIteratorUsesExplicitGenericConformance(t *testing.T) {
 	input := `
 module main
@@ -11422,41 +11368,6 @@ impl Wrong implements Iterator[string] {
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "type Wrong method Next does not match interface Iterator") {
 		t.Fatalf("generic Iterator conformance was not substituted: %v", errors)
 	}
-}
-
-func TestForCompilerKnownCollectionLoopBindingErrors(t *testing.T) {
-	input := `
-module main
-
-fn SetIndexValueLoop(values: Set[string]) void {
-	for index, value in values {
-	}
-}
-
-fn MapSingleBinding(values: Map[string, int]) void {
-	for entry in values {
-	}
-}
-
-fn MapTooManyBindings(values: Map[string, int]) void {
-	for key, value, extra in values {
-	}
-}
-
-fn VectorTooManyBindings(values: vector[int, 3]) void {
-	for index, value, extra in values {
-	}
-}
-`
-
-	errors := analyzeSourceRaw(t, input)
-	expected := []string{
-		"set iteration supports one loop binding, got 2 at 5:6",
-		"map iteration requires key and value bindings, got 1 at 10:6",
-		"map iteration requires key and value bindings, got 3 at 15:6",
-		"sequential iteration supports one or two loop bindings, got 3 at 20:6",
-	}
-	assertSemaErrors(t, errors, expected)
 }
 
 func TestBareSequenceTypesAreOwnedArrays(t *testing.T) {

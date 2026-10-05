@@ -32,6 +32,8 @@ integrations:
       - rules/collections/collections.md
       - rules/platform/ffi.md
     code:
+      - internal/sema/pitfall_budget.go
+      - internal/sema/analysis_budget.go
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/pitfall_analysis.go
@@ -44,12 +46,19 @@ integrations:
       - internal/sema/pitfall_guard_subject.go
       - cmd/compiler/analyse.go
     tests:
+      - internal/sema/pitfall_budget_test.go
+      - cmd/compiler/analyse_budget_test.go
+      - testdata/sema/pitfall_budget_valid.sec
+      - testdata/sema/pitfall_budget_nested_valid.sec
+      - testdata/sema/pitfall_budget_invalid.sec
       - internal/sema/pitfall_analysis_test.go
       - internal/sema/pitfall_skipped_first_test.go
       - internal/sema/pitfall_intervals_test.go
       - internal/sema/pitfall_guard_subject_test.go
       - cmd/compiler/analyse_test.go
     implemented:
+      - deterministic depth-specific pitfall syntax-search budgets admit complete function/accessor bodies or module statements before contextual rule evaluation; Interactive allows 4096 AST records and nesting 64, Standard 32768/128, and Deep 262144/256, with compiler API overrides through SetPitfallBudget and no new source or CLI syntax
+      - immutable Coverage metadata exposes search limits, inspected AST records and skipped units; enabled rule evaluations carry Incomplete coverage after any skipped unit and never claim NoFinding for a partial search, while findings and suppressions from completely admitted units remain available; sec analyse explains incomplete coverage without introducing a validity error
       - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
       - canonical defensive rule registry with required semantic facts, minimum Interactive/Standard/Deep analysis depth, and default confidence
       - distinct Finding, NoFinding, Suppressed, NotEvaluated, and Pending states plus per-rule evaluation counts
@@ -111,12 +120,17 @@ integrations:
       - extend the implemented ProvenFix versus SuggestedEdit distinction to further pitfall families
       - verify automatic fixes preserve evaluation count/order, effects, ownership/move behavior, and relevant failure semantics
       - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
-      - integrate Interactive, Standard, and Deep pitfall budgets without changing source-language semantics
       - expose configurable LSP diagnostics/code actions and refresh affected findings when project analysis configuration changes
       - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
       - add false-positive regression corpus for neighbor traversal, sentinels, separately handled endpoints, equal-length parallel collections, ring buffers, capacity-level storage manipulation, protocol ranges, and byte-buffer FFI APIs
     verification:
+      - command: "go test ./internal/sema ./cmd/compiler -run 'TestPitfall|TestAnalyzerAnalysisDepth|TestAnalyse' -count=1"
+        result: passed on 2026-10-05 with deterministic node and nesting exhaustion, complete-unit suppression safety, partial findings and explicit incomplete coverage, disabled zero-budget search, unchanged normative type errors at all depths, defensive coverage snapshots, analyzer reuse, increasing depth defaults, rejected negative overrides and Deep report classification
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-05 after adding depth-specific pitfall search budgets
+      - command: go vet ./...
+        result: passed on 2026-10-05
       - command: go test ./internal/sema -run 'TestPitfallAnalysis(Recognizes|EndpointGuard|Suppresses)' -count=1
         result: passed; safe else exits suppress later indexes, ineffective guards and indexes inside a guard remain findings
       - command: go test ./internal/sema -run TestPitfallAnalysis -count=1
@@ -167,7 +181,7 @@ integrations:
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-10-02"
+    revised: "2026-10-05"
     summary: >-
       Implements immutable post-Sema ParameterDemand summaries from resolved
       bindings, canonical Places, calls, escape facts, and interprocedural fixed
@@ -190,6 +204,8 @@ integrations:
       - rules/platform/ffi.md
       - rules/analysis/effect_analysis.md
     code:
+      - internal/sema/parameter_usage_shape.go
+      - internal/sema/parameter_usage_recommendations.go
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/parameter_usage.go
@@ -199,10 +215,19 @@ integrations:
       - internal/sema/semantic_snapshot.go
       - cmd/compiler/analyse.go
     tests:
+      - internal/sema/parameter_usage_shape_test.go
+      - testdata/sema/parameter_shape_demands_valid.sec
+      - testdata/sema/parameter_shape_unreachable_invalid.sec
+      - internal/sema/parameter_usage_recommendations_test.go
+      - testdata/sema/parameter_recommendations_valid.sec
       - internal/sema/parameter_usage_test.go
       - internal/sema/copy_move_test.go
       - cmd/compiler/analyse_test.go
     implemented:
+      - fixed-array ExactExtent demand is recorded for reachable returned values and borrows, projected array fields, explicit move returns, and array values materialized inside returned struct/array/Result carriers; direct-call summary propagation preserves it, while declarations, element reads, Len, ordinary iteration, read-only forwarding, and Sema-proven dead returns do not establish it
+      - canonical CKM-PTR-VALUE facts establish AddressRequired on the receiver Place rather than a fictitious Ptr field; array, slice, list, and string element-pointer formation adds ContiguousSequence plus Contiguous storage demand, scalar/struct address formation does not gain sequence shape, direct-call propagation preserves the demand, and address-dependent large values no longer receive unsound A2001 narrowing advice
+      - structured recommendation confidence, reasons, and blocked-candidate reporting for the existing explicit by-value shared-reference candidate; immutable deterministic Recommendations snapshots expose callable/binding/source identity, candidate type, recommended/blocked/not-preferred status, Strong confidence for supported API opportunities, AvoidCopyCost plus demand evidence, all failed critical capability checks, and separate estimated size cost evidence
+      - sec analyse Deep output presents candidate confidence, reasons, and blockers without treating blocked candidates as errors; A2001 uses the same capability and cost policy, unknown dimensions and non-exact callable summaries block confidence claims, small values and unknown cost remain not preferred, and ref T[N] preserves exact extent
       - canonical access, mutation, ownership, lifetime, identity, shape, storage, representation, and precision dimensions
       - deterministic per-callable summaries for explicit parameters and implicit impl receivers
       - immutable Analyzer snapshot API with defensive structural cloning of types, Places, projections, uses, and demand sets
@@ -235,17 +260,27 @@ integrations:
       - complete explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls
       - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
-      - add fixed-array exact-extent and contiguous-sequence demand where semantic operations prove those requirements
       - derive capability-preserving narrowing candidates for fixed arrays, owning sequences, mutable references, and unnecessary mutability or ownership beyond the guarded A2001 shared-reference slice
       - replace approximate size estimation with ResolvedLayout and separate target-specific recommendation cache invalidation
       - respect explicit fixed-extent, ownership, hardware, FFI, storage, and representation contracts as narrowing blockers
-      - add recommendation confidence, reason, and blocked-candidate reporting
       - add versioned persisted demand summaries for separate compilation
       - extend the current Interactive summary-iteration budget to depth-specific Standard and Deep recommendation and persistence work
       - expose configurable LSP hover/advisory information without making optional insight mandatory
       - support explicit parameter-usage-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add narrowing, projection-widening recursion, FFI, recommendation-policy, shadowing, and false-positive regression tests
     verification:
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-05 after adding fixed-array exact-extent and contiguous-sequence demand
+      - command: go vet ./...
+        result: passed on 2026-10-05
+      - command: go run ./cmd/compiler analyse testdata/sema/parameter_shape_demands_valid.sec
+        result: passed on 2026-10-05 with zero errors/warnings; Deep output exposes exact-extent return demand and contiguous-sequence Ptr demand, keeps index/Len/iteration requirements weaker, and reports the address/contiguity blockers for ArrayPointer and ForwardPointer
+      - command: "go test ./internal/sema -run 'TestParameterUsage|TestLargeValue|TestParameterRecommend' -count=1"
+        result: passed on 2026-10-05 with fixed-array returns, projected/struct/Result return carriers, borrowed and explicit move returns, transitive return and Ptr demand, array/dynamic/slice/list/string and projected-field Ptr use, scalar address distinction, no stronger demand from weaker uses or unreachable returns, receiver Place evidence, and address-dependent A2001 suppression
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-05 after adding recommendation confidence, reasons, and blocked-candidate reporting
+      - command: "go test ./internal/sema ./cmd/compiler -run 'TestParameterRecommend|TestLargeValue|TestAnalyseCLI$' -count=1"
+        result: passed on 2026-10-05 with local/transitive read and consumption demand, independent recommendation snapshots, unchanged semantic summaries, all unknown critical dimensions, fixed-extent preservation, small/unknown-cost policy, A2001 consistency, selected-source CLI output, and advisory-only blocked candidates
       - command: go test ./internal/sema -run TestParameterUsageExcludesSemaProvenUnreachableIfPaths -count=1
         result: passed on 2026-09-27 with statically true, statically false, and dynamic if-path demand coverage
       - command: go test ./internal/sema -count=1
@@ -653,22 +688,37 @@ integrations:
     area: iterator-conformance-analysis
     status: partial
     repository_baseline: 998d8d1
+    updated: "2026-10-05"
+    rules:
+    - rules/control-flow/flowcontrol_for.md
+    - rules/compiler/compiler_analysis.md
     remaining:
     - record structural-mutation dependencies of the iterated source and the iterator lifetime relative to borrows taken by the loop body (compiler_analysis.md § 18(2))
-    - remove/reject legacy closed-whitelist or naming-convention iterator discovery where present
     - consume ResolvedForIteration in Semantic IR instead of AST rediscovery (LSP already shares it through the call graph)
     implemented:
+    - canonical for categories require resolved compiler-known identity and arity for list, set, map, and vector; the historical Vec/Set/Map whitelist no longer grants iteration, including through references, and a user Next/Len method or non-intrinsic interface named Iterator cannot establish iteration; approved built-in categories remain available alongside explicit intrinsic Iterator[T] conformance
     - compiler-known Iterator[T] is an ordinary generic InterfaceType whose conformance comes only from explicit implements Iterator[T]; Next is never discovered by name
     - ResolvedForIteration is one immutable plan carrying the concrete Iterator[T] conformance, yielded T, resolved Next target and its call-graph CallableID, reusable-storage versus fresh-temporary source state with the source Place, owned-value versus discard binding, and DestroysTemporary cleanup for a non-trivially destructible fresh iterator
     - every Iterator[T] loop records a static-method call edge to the concrete Next, so Next effects, panic and allocation cause paths, @noPanic verification, reachability, and LSP call hierarchy consume the same compiler-owned resolution
     code:
+    - internal/sema/analyzer_for_categories.go
     - internal/sema/analyzer_for.go
     - internal/sema/semantic_facts.go
     - cmd/compiler/analyse.go
     tests:
+    - internal/sema/for_iterable_categories_test.go
+    - testdata/sema/for_canonical_collections_valid.sec
+    - testdata/sema/for_canonical_collection_bindings_invalid.sec
+    - testdata/sema/for_legacy_collections_invalid.sec
     - internal/sema/semantic_facts_test.go
     - cmd/lsp/main_test.go
     verification:
+    - command: go test ./... -count=1
+      result: passed across all packages on 2026-10-05 after rejecting legacy iterable categories and requiring canonical compiler identity
+    - command: go vet ./...
+      result: passed on 2026-10-05
+    - command: "go test ./internal/sema -run 'TestFor|TestResolvedIterator|TestResolvedForIteration' -count=1"
+      result: passed on 2026-10-05 with canonical collection binding types and diagnostics, direct/reference legacy-category rejection, Next/Len-only user-type rejection, compiler identity and arity checks, explicit Iterator conformance, and unchanged resolved Next plans
     - command: "go test ./internal/sema -run 'TestResolvedIteratorPlan|TestResolvedForIteration' -count=1"
       result: passed on 2026-10-02 with conformance, Next identity, reusable and fresh-temporary sources, discard binding, temporary cleanup, the static Next call edge, and the panic path through Next
     - command: "go test ./cmd/lsp -run 'TestCallHierarchy' -count=1"
@@ -712,7 +762,7 @@ integrations:
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-09-23"
+    revised: "2026-10-05"
     summary: >-
       Existing parser and Sema support provides function types, named function
       values, function-value calls, explicit owned value-capture validation,
@@ -735,6 +785,7 @@ integrations:
       - rules/tooling/lsp.md
       - rules/projects/projects.md
     code:
+      - internal/sema/analyzer_closure_snapshot.go
       - internal/sema/analyzer_callable_join.go
       - internal/ast/ast.go
       - internal/parser/expression.go
@@ -749,6 +800,8 @@ integrations:
       - cmd/compiler/init.go
       - cmd/lsp/main.go
     tests:
+      - internal/sema/analyzer_closure_snapshot_test.go
+      - testdata/sema/closure_snapshot_types_valid.sec
       - internal/sema/callable_join_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -757,6 +810,7 @@ integrations:
       - cmd/lsp/main_test.go
       - cmd/compiler/main_test.go
     implemented:
+      - defensive closure capture and creation snapshots detach the supported structural Type surface on SourcePlace, direct referent Places, aggregate-contained referent Places, and recursively retained AlternativeOrigins as well as CapturedType, exact index projections, tags, and callable target slices; consumers can no longer mutate compiler-owned Place type internals, and named recursive types use the existing bounded semantic snapshot surface
       - lambda and explicit capture parsing with capture-list AST retention
       - resolved function-type representation with parameter and return types
       - named function values with contextual overload resolution
@@ -801,6 +855,12 @@ integrations:
       - lambda bodies have distinct call-graph callable nodes so nested calls retain the correct caller identity
       - unknown callable parameters do not create unsound empty-target graph edges before callable contracts exist
     verification:
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-05 after detaching closure Place type snapshots
+      - command: go vet ./...
+        result: passed on 2026-10-05
+      - command: "go test ./internal/sema -run 'TestClosureSnapshots|TestResolvedLambdaCaptureFacts|TestLambdaCapturePreserves|TestResolvedCallableIdentities' -count=1"
+        result: passed on 2026-10-05 with both public snapshot APIs, resolved reference and aggregate-contained dependencies, nested type arguments and arrays, union payloads and tags, alternative-origin trees, arbitrary-precision projection indexes, callable targets, and terminating named recursive type snapshots; the source regression failed before the fix because one returned Place type mutation changed later queries
       - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestLambdaCapturePreservesNestedReferentDependencies|TestResolvedCallableIdentitiesAreExactAndStable|TestResolvedLambdaCaptureFacts|TestInvalidLambdaCaptureDoesNotPublishFact|TestLambda|TestResolvedCallable|TestCallGraph' -count=1
         result: passed; direct binding/rebinding and nested callable dependencies, unknown callable-parameter handling, nested carrier-path dependencies, immutable closure creation summaries, exact stable callable identities and target sets, canonical capture facts, call-graph integration, invalid-capture exclusion, and existing lambda/callable behavior are covered
       - command: go test ./... -count=1

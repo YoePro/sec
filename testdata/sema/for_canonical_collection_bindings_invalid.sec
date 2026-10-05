@@ -1,0 +1,22 @@
+
+module main
+
+fn SetIndexValueLoop(values: set[string]) void {
+	for index, value in values {
+	}
+}
+
+fn MapSingleBinding(values: map[string, int]) void {
+	for entry in values {
+	}
+}
+
+fn MapTooManyBindings(values: map[string, int]) void {
+	for key, value, extra in values {
+	}
+}
+
+fn VectorTooManyBindings(values: vector[int, 3]) void {
+	for index, value, extra in values {
+	}
+}

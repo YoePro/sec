@@ -1,0 +1,25 @@
+module str
+
+/*
+ * Sec Standard Library - str - Identifier-style naming conversions
+ *
+ * File:        stdlib/str/naming.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Converts human/programmatic word sequences between common identifier and
+ * delimiter naming styles.
+ *
+ * Allocation:
+ * Produces new materialized strings.
+ *
+ * Unicode:
+ * Word classification uses canonical rune/core Unicode classification and
+ * locale-independent case conversion.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

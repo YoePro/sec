@@ -1,0 +1,25 @@
+module str
+
+/*
+ * Sec Standard Library - str - Allocating whitespace and layout transforms
+ *
+ * File:        stdlib/str/whitespace.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Produces new strings by collapsing whitespace, normalizing whitespace,
+ * indenting/dedenting lines, and padding text.
+ *
+ * Allocation:
+ * Content-changing operations materialize new string storage.
+ *
+ * Unicode:
+ * General whitespace recognition uses the canonical rune/core Unicode
+ * whitespace property. Indentation rules are separately specified.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

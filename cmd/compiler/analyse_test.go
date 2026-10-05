@@ -40,6 +40,14 @@ func TestAnalyseCLI(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	recommendations := filepath.Join(dir, "recommendations.sec")
+	fixture, err := os.ReadFile("../../testdata/sema/parameter_recommendations_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(recommendations, fixture, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name    string
 		args    []string
@@ -47,6 +55,17 @@ func TestAnalyseCLI(t *testing.T) {
 		want    []string
 		without []string
 	}{
+		{
+			name: "parameter recommendation explanations", args: []string{recommendations}, code: 0,
+			want: []string{
+				"Read(frame): candidate ref Frame, recommended", "confidence strong", "reason: AvoidCopyCost",
+				"ForwardRead(frame): candidate ref Frame, recommended",
+				"ForwardSink(frame): candidate ref Frame, blocked", "blocked: ownership demand is consumption-required",
+				"Small(value): candidate ref int, not-preferred", "reason: value is below the large-value cost threshold",
+				"First(values): candidate ref int[100], recommended", "estimated size:",
+			},
+			without: []string{"confidence certain", "Borrowed(frame): candidate", "sec/core"},
+		},
 		{
 			name: "default runs all analyses", args: []string{advisory}, code: 0,
 			want: []string{

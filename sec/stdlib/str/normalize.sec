@@ -1,0 +1,28 @@
+module str
+
+/*
+ * Sec Standard Library - str - Unicode normalization materialization
+ *
+ * File:        stdlib/str/normalize.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Materializes Unicode NFC, NFD, NFKC, and NFKD normalized strings.
+ *
+ * Allocation:
+ * Normalization produces a materialized string when normalization changes
+ * representation; a safe no-op may reuse the original string.
+ *
+ * Unicode:
+ * Uses the repository's canonical Unicode normalization data and algorithm.
+ *
+ * Standards:
+ * - Unicode Standard Annex #15 - Unicode Normalization Forms
+ *     https://www.unicode.org/reports/tr15/
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

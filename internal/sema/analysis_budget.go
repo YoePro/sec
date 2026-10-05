@@ -18,8 +18,12 @@ const (
 
 // AnalysisBudget contains finite limits used by the current analysis slices.
 // Zero MaxSummaryIterations means to use the finite lattice-derived bound.
+// MaxPitfallNodes bounds syntax preflight across the snapshot; MaxPitfallDepth
+// bounds nesting within an admitted unit. Zero in either skips optional search.
 type AnalysisBudget struct {
 	MaxSummaryIterations int
+	MaxPitfallNodes      int
+	MaxPitfallDepth      int
 }
 
 func ParseAnalysisDepth(value string) (AnalysisDepth, error) {
@@ -32,15 +36,18 @@ func ParseAnalysisDepth(value string) (AnalysisDepth, error) {
 	}
 }
 
+// analysisBudget assigns increasing optional search limits without changing safety proofs.
+// Rules: rules/compiler/compiler_analysis.md — §§14–15;
+// rules/analysis/pitfall_analysis.md — "Interactive, Standard, and Deep analysis".
 func analysisBudget(depth AnalysisDepth) AnalysisBudget {
 	switch depth {
 	case AnalysisInteractive:
 		// Editor analysis widens recursive/direct-call return-origin propagation
 		// after a small number of global passes instead of monopolizing the UI.
-		return AnalysisBudget{MaxSummaryIterations: 4}
+		return AnalysisBudget{MaxSummaryIterations: 4, MaxPitfallNodes: 4096, MaxPitfallDepth: 64}
 	case AnalysisDeep:
-		return AnalysisBudget{}
+		return AnalysisBudget{MaxPitfallNodes: 262144, MaxPitfallDepth: 256}
 	default:
-		return AnalysisBudget{}
+		return AnalysisBudget{MaxPitfallNodes: 32768, MaxPitfallDepth: 128}
 	}
 }

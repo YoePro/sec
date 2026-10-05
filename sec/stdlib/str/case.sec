@@ -1,0 +1,30 @@
+module str
+
+/*
+ * Sec Standard Library - str - Allocating Unicode case conversion
+ *
+ * File:        stdlib/str/case.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Locale-independent full-string Unicode case conversion and case folding.
+ *
+ * Allocation:
+ * Produces materialized string results and may expand one input rune into
+ * multiple output runes.
+ *
+ * Unicode:
+ * Uses canonical repository Unicode data. Must not duplicate or fork the
+ * lower-level Unicode/rune property tables.
+ *
+ * Standards:
+ * - The Unicode Standard - Default Case Conversion
+ * - Unicode CaseFolding.txt
+ * - Unicode SpecialCasing.txt
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

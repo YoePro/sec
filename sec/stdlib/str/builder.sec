@@ -1,0 +1,88 @@
+module str
+
+/*
+ * Sec Standard Library - str - Mutable UTF-8 string construction
+ *
+ * File:        stdlib/str/builder.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Owned mutable UTF-8 construction buffer used to efficiently materialize
+ * strings from repeated append operations.
+ *
+ * Allocation:
+ * Owns growable dynamic storage. Growth is fallible.
+ *
+ * Unicode:
+ * Appended strings are already valid UTF-8. Appended runes are encoded as
+ * valid UTF-8 before being committed to the buffer.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */
+
+@noCopy
+type Builder struct {
+    // private storage
+}
+
+impl Builder {
+    init(initialCapacity: uint) CollectionError {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    free() {
+    }
+
+    property ByteCount: uint {
+        get {
+            return 0
+        }
+    }
+    property Capacity: uint {
+        get {
+            return 0
+        }
+    }
+    property IsEmpty: bool {
+        get {
+            return true
+        }
+    }
+
+    fn Reserve(additionalBytes: uint) Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    fn Append(value: string) Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+    fn Append(value: rune) Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    fn AppendLine() Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    fn AppendLine(value: string) Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    fn AppendRepeat(value: string, count: uint) Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+    fn AppendRepeat(value: rune, count: uint) Result[void, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    fn Clear() void {
+    }
+
+    fn Finish() Result[string, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+}

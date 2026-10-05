@@ -1,0 +1,26 @@
+module str
+
+/*
+ * Sec Standard Library - str - Materialized string splitting
+ *
+ * File:        stdlib/str/split.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Materializes lazy/core string splitting and field iteration into owning
+ * dynamic collections.
+ *
+ * Allocation:
+ * Allocates the result collection. Substring values may remain views of the
+ * source string when Sec string ownership permits this safely.
+ *
+ * Unicode:
+ * Empty-separator splitting and predicate-based fields operate at rune
+ * boundaries.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

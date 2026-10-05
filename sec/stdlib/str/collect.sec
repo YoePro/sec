@@ -1,0 +1,24 @@
+module str
+
+/*
+ * Sec Standard Library - str - String and rune/byte materialization
+ *
+ * File:        stdlib/str/collect.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-05
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Materializes strings into owning dynamic byte/rune arrays and materializes
+ * rune sequences into new strings.
+ *
+ * Allocation:
+ * All public operations in this file materialize owning storage.
+ *
+ * Unicode:
+ * Rune materialization follows Sec's valid UTF-8 string iteration semantics.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */

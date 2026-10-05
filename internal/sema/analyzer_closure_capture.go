@@ -328,36 +328,3 @@ func (a *Analyzer) ResolvedLambdaCapturesOf(lambda *ast.LambdaExpression) ([]Cap
 	}
 	return cloneCaptureRecords(records), true
 }
-
-// cloneCaptureRecords recursively detaches Place, type, and dependency data
-// before capture facts cross the Analyzer snapshot boundary.
-//
-// Rules:
-//   - rules/analysis/closure_analysis.md — "Capture record"
-//   - rules/compiler/compiler_analysis.md — immutable analysis results
-func cloneCaptureRecords(records []CaptureRecord) []CaptureRecord {
-	cloned := make([]CaptureRecord, len(records))
-	for index, record := range records {
-		cloned[index] = record
-		cloned[index].SourcePlace = clonePlace(record.SourcePlace)
-		cloned[index].CapturedType = semanticSnapshotType(record.CapturedType)
-		cloned[index].Dependencies.ReferentPlaces = clonePlaces(record.Dependencies.ReferentPlaces)
-		cloned[index].Dependencies.Referents = cloneCaptureReferentDependencies(record.Dependencies.Referents)
-		cloned[index].Dependencies.CallableTargets = cloneCallableTargetSet(record.Dependencies.CallableTargets)
-	}
-	return cloned
-}
-
-// cloneCaptureReferentDependencies detaches nested Place alternatives before
-// capture dependencies cross the Analyzer snapshot boundary.
-//
-// Rules:
-//   - rules/compiler/compiler_analysis.md — immutable analysis results
-func cloneCaptureReferentDependencies(dependencies []CaptureReferentDependency) []CaptureReferentDependency {
-	cloned := make([]CaptureReferentDependency, len(dependencies))
-	for index, dependency := range dependencies {
-		cloned[index] = dependency
-		cloned[index].ReferentPlaces = clonePlaces(dependency.ReferentPlaces)
-	}
-	return cloned
-}

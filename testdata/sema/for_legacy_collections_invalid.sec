@@ -1,0 +1,15 @@
+module main
+
+fn VecLoop(values: Vec[int]) void { for value in values {} }
+fn RefVecLoop(values: ref Vec[int]) void { for value in values {} }
+fn SetLoop(values: Set[int]) void { for value in values {} }
+fn RefSetLoop(values: ref Set[int]) void { for value in values {} }
+fn MapLoop(values: Map[int, int]) void { for key, value in values {} }
+fn RefMapLoop(values: ref Map[int, int]) void { for key, value in values {} }
+
+type Pretender struct {}
+impl Pretender {
+    fn Next() Option[int] { return None() }
+    fn Len() uint { return 0 }
+}
+fn PretenderLoop(values: Pretender) void { for value in values {} }

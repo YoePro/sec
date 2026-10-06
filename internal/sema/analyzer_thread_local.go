@@ -37,7 +37,7 @@ func (a *Analyzer) inferThreadLocalCall(
 		if argumentType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, result, true
 		}
-		if !canInitialize(payload, argumentType, expr.Arguments[0]) {
+		if !a.canInitialize(payload, argumentType, expr.Arguments[0]) {
 			a.addErrorAtToken(
 				expressionToken(expr.Arguments[0]),
 				"ThreadLocal.Replace value must be %s, got %s",

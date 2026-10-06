@@ -494,6 +494,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyLoopRecords(fn, blocks); err != nil {
 		return err
 	}
+	if err := verifyNoPanicContradiction(fn, blocks); err != nil {
+		return err
+	}
 	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
@@ -893,6 +896,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	case OpArrayReplace:
 		if err := verifyArrayReplace(module, op, values); err != nil {
+			return err
+		}
+	case OpPanic:
+		if err := verifyPanicOperation(op); err != nil {
 			return err
 		}
 	case OpBoolNot:

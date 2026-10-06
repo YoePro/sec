@@ -22,3 +22,25 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/join.sec
+
+fn Join(values: Iterator[string], separator: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Join(values: ref string[], separator: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Concat(values: Iterator[string]) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Concat(values: ref string[]) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn AppendJoin(builder: ref mut Builder, values: Iterator[string], separator: string) Result[void, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

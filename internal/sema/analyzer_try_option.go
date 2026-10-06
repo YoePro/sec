@@ -37,7 +37,7 @@ func (a *Analyzer) inferNakedOptionTryExpression(expr *ast.TryExpression, option
 		)
 		return successType, result
 	}
-	if !canInitialize(returnType, optionType, expr.Expression) {
+	if !a.canInitialize(returnType, optionType, expr.Expression) {
 		a.addBodylessTryError(
 			expr.Token,
 			"bodyless %s try cannot propagate None through incompatible return %s; change the return type or add a local None handler",
@@ -140,7 +140,7 @@ func (a *Analyzer) checkOptionResidualPropagation(expr *ast.TryExpression, optio
 	case !a.inFunctionBody:
 		a.addErrorAtToken(expr.Token, "try handlers leave None unhandled, and it cannot propagate outside a function; add an unguarded None => ... handler")
 		return false
-	case returnType.Kind != UnionType || returnType.Name != "Option" || len(returnType.TypeArgs) != 1 || !canInitialize(returnType, optionType, expr.Expression):
+	case returnType.Kind != UnionType || returnType.Name != "Option" || len(returnType.TypeArgs) != 1 || !a.canInitialize(returnType, optionType, expr.Expression):
 		a.addErrorAtToken(expr.Token, "try handlers leave None unhandled; it propagates only through an Option return, but this function returns %s; add an unguarded None => ... handler", typeDisplayName(returnType))
 		return false
 	}

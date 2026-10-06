@@ -24,6 +24,8 @@ module str
  * stdlib/str/stdlib_str.md
  */
 
+// TODO: Implementera stdlib/str/builder.sec
+
 @noCopy
 type Builder struct {
     // private storage

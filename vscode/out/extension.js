@@ -60,6 +60,12 @@ function activate(context) {
             configurationSection: "sec"
         },
         initializationOptions: {
+            analysis: {
+                parameters: {
+                    hover: vscode.workspace.getConfiguration("sec.analysis.parameters").get("hover", "off"),
+                    advisories: vscode.workspace.getConfiguration("sec.analysis.parameters").get("advisories", "off")
+                }
+            },
             inlayHints: {
                 types: vscode.workspace.getConfiguration("sec.inlayHints").get("types", true),
                 parameters: vscode.workspace.getConfiguration("sec.inlayHints").get("parameters", true),

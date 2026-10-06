@@ -268,39 +268,11 @@ func unitScaleRatio(source, target UnitSemantics) *big.Rat {
 	return new(big.Rat).Quo(sourceScale, targetScale)
 }
 
+// exactImplicitUnitConversion reports a value-independent exact implicit
+// fixed conversion; see staticUnitConversionPlan.
 func exactImplicitUnitConversion(source, target UnitSemantics, carrier TypeKind) bool {
-	if source.Transform == LogarithmicUnitTransform || target.Transform == LogarithmicUnitTransform {
-		return source.Identity == target.Identity && source.Named == target.Named
-	}
-	ratio := unitScaleRatio(source, target)
-	if source.Role == UnitPointRolePoint || target.Role == UnitPointRolePoint {
-		if !unitOriginCompatible(source, target) {
-			return false
-		}
-		sourceOffset := source.Offset
-		if sourceOffset == nil {
-			sourceOffset = big.NewRat(0, 1)
-		}
-		targetOffset := target.Offset
-		if targetOffset == nil {
-			targetOffset = big.NewRat(0, 1)
-		}
-		// target coordinate = (source*sourceScale + sourceOffset-targetOffset)/targetScale
-		offset := new(big.Rat).Quo(new(big.Rat).Sub(sourceOffset, targetOffset), target.Scale)
-		if carrier != DecimalType && offset.Sign() != 0 {
-			return false
-		}
-	}
-	switch carrier {
-	case DecimalType:
-		return finiteDecimalRat(ratio)
-	case FloatType, IntType, UintType:
-		// Without a value range/proof, only an identity coordinate conversion
-		// can promise no rounding, truncation, precision loss, or overflow.
-		return ratio.Cmp(big.NewRat(1, 1)) == 0
-	default:
-		return false
-	}
+	_, ok := staticUnitConversionPlan(source, target, Type{Kind: carrier})
+	return ok
 }
 
 func finiteDecimalRat(value *big.Rat) bool {

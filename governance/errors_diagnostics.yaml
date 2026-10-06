@@ -73,7 +73,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: 2026-10-02
+    revised: 2026-10-06
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-30
     replaces:
@@ -191,6 +191,10 @@ integrations:
       - internal/parser/errors.go
       - internal/parser/recovery.go
       - internal/sema/errors.go
+      - internal/sema/scalar_literals.go
+      - internal/sema/scalar_literals_test.go
+      - testdata/sema/unicode_scalar_literals_valid.sec
+      - testdata/sema/unicode_scalar_literals_invalid.sec
       - internal/sema/analyzer_match_ownership.go
       - internal/sema/analyzer_struct_layout.go
       - internal/sema/analyzer_lifetime.go
@@ -224,6 +228,25 @@ integrations:
           emit an empty list; human output is byte-for-byte unchanged and
           logically equivalent to the JSON occurrences. The catalog exports
           the matching `emitted_occurrence_fields` schema.
+      - id: diagnostics.s1120-unicode-scalar-literal
+        description: >-
+          Numeric t/r literals outside U+0000..U+10FFFF or within surrogate
+          code points U+D800..U+DFFF emit mandatory S1120
+          literal.invalid-unicode-scalar with the literal source span,
+          explicit valid-domain explanation and integer-codepoint help.
+          Trusted core provenance does not bypass scalar validation. Source
+          regressions cover decimal and hexadecimal surrogates, out-of-range
+          literals, range endpoint rejection, valid boundary scalars and
+          noncharacters, and integer-domain surrogate checks from uint or rune.
+      - id: diagnostics.stack-budget-identities
+        description: >-
+          The registry allocates mandatory Error identities S1121
+          stack.budget-exceeded, S1122 stack.budget-proof-unavailable and S1123
+          stack.budget-unbounded-demand, distinguishing proven finite excess,
+          failure to establish sufficiency and proven unbounded demand.
+          Diagnostic production and verification are owned by
+          sema.stack-analysis in governance/analysis.yaml; shared CLI/LSP
+          transports retain the registered identities and explanatory help.
       - id: diagnostics.emitted-occurrence-migration-fallback
         description: >-
           Temporary fallback under rules/tooling/diagnostics.md § 32(2): an
@@ -542,6 +565,16 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -count=1
+        result: passed on 2026-10-06 after scalar-literal diagnostic migration, with S1120 metadata, explicit surrogate/domain explanation, integer-codepoint help, literal spans and identical validation under trusted core provenance
+      - command: go test ./cmd/compiler -run 'Test.*Diagnostic.*' -count=1
+        result: passed on 2026-10-06 with registry-backed catalog and emitted occurrence transport
+      - command: go vet ./...
+        result: passed on 2026-10-06 after S1120 migration
+      - command: go run ./cmd/compiler diagnostics S1120
+        result: passed on 2026-10-06 with active mandatory error definition literal.invalid-unicode-scalar
+      - command: go run ./cmd/compiler sema testdata/sema/unicode_scalar_literals_invalid.sec --diagnostic-format json
+        result: expected semantic rejection on 2026-10-06; registered S1120 identity, literal span, scalar-domain message and help appear in structured output for both the negative fixture and the current working-tree sec/core/rune.sec surrogate literal
       - command: go test ./cmd/compiler -run 'Test(ExtractDiagnosticFormat|SemaEmitsStructuredOccurrenceDocument|ParseAndLexEmitStructuredOccurrences|OccurrenceDocumentForSuccessAndToolErrors|DiagnosticCatalog)' -count=1
         result: passed on 2026-10-02 with option parsing, one deterministic document per invocation, registered and unregistered occurrences, related locations, lexer/parser stage identity, span files, empty success documents, tool errors without spans, catalog schema reflection, and human/JSON logical equivalence
       - command: go test ./internal/diagnostics ./internal/sema ./cmd/compiler -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|SwitchPatternBindingDiagnosticIsRegistered|SwitchPattern|DiagnosticCatalog)' -count=1

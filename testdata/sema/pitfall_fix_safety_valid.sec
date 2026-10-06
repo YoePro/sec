@@ -1,0 +1,45 @@
+module main
+let FLOOR := 1
+let LIMIT := 9
+fn Probe() bool { return true }
+fn EqTrue() bool { return Probe() == true }
+fn EqFalse() bool { return Probe() == false }
+fn NeTrue() bool { return Probe() != true }
+fn NeFalse() bool { return Probe() != false }
+fn TrueEq() bool { return true == Probe() }
+fn FalseEq() bool { return false == Probe() }
+fn TrueNe() bool { return true != Probe() }
+fn FalseNe() bool { return false != Probe() }
+fn ShortCircuit() bool { return (Probe() && Probe()) == true }
+fn OuterConversion() bool { return bool(Probe() == false) }
+@noCopy
+type Token struct { id: int, }
+fn OwningProbe(-> token: Token) bool { discard token
+ return true }
+fn Consuming(-> token: Token) bool { return OwningProbe(<-token) == true }
+type Reading struct { value: int, }
+impl Reading {
+    property Level: int { get { return self.value } }
+    fn BareGetter() bool { return Level >= FLOOR && Level <= LIMIT }
+}
+fn Getter(reading: Reading) bool { return reading.Level >= FLOOR && reading.Level <= LIMIT }
+fn Stored(reading: Reading) bool { return reading.value >= FLOOR && reading.value <= LIMIT }
+fn Inclusive(value: int) bool { return value >= FLOOR && value <= LIMIT }
+fn Exclusive(value: int) bool { return value >= FLOOR && value < LIMIT }
+fn Stable(values: ref int[]) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..values.Len - 1 { discard i }
+}
+fn Unproven(values: ref int[]) void {
+    for i in uint(0)..values.Len - 1 { discard i }
+}
+fn ResetStart(values: ref mut list[int]) uint { values.Clear()
+ return uint(0) }
+fn ChangedAtStart(values: ref mut list[int]) void {
+    if values.Len == 0 { return }
+    for i in ResetStart(values)..values.Len - 1 { discard i }
+}
+type Device register[8] { Level: bit[8], }
+@address(0x40021000)
+let device: Device
+fn Physical() bool { return device.Level >= 1 && device.Level <= 9 }

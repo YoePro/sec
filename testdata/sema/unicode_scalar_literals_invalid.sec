@@ -1,0 +1,7 @@
+module core
+
+fn DecimalSurrogate() rune { return 55296r }
+fn HexSurrogateEnd() rune { return 0xDFFFr }
+fn TooLarge() rune { return 0x110000r }
+fn CharSurrogate() char { return 55296t }
+fn SurrogateRange(value: rune) bool { return value in 0xD800r..0xDFFFr }

@@ -1,0 +1,180 @@
+module main
+fn Negated(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if !(i < values.Len) { continue }
+        discard values[i]
+    }
+}
+fn Disjunction(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len || stop { break }
+        discard values[i]
+    }
+}
+fn ConditionalConjunction(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len && stop { break }
+        discard values[i]
+    }
+}
+fn NestedEndpoint(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { if i >= values.Len { continue } }
+        discard values[i]
+    }
+}
+fn BothNestedArms(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { if stop { return } else { continue } }
+        discard values[i]
+    }
+}
+fn SplitPaths(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if stop { if i == values.Len { continue } } else { if values.Len == i { break } }
+        discard values[i]
+    }
+}
+fn BranchLocal(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if stop { if i == values.Len { continue }
+        discard values[i] }
+        discard values[i]
+    }
+}
+fn GuardOwnAccess(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { discard values[i]
+        continue }
+        discard values[i]
+    }
+}
+fn InnerBreak(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { for j in 0..<2 { break } }
+        discard values[i]
+    }
+}
+fn AssertGuard(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        assert i < values.Len
+        discard values[i]
+    }
+}
+fn PanicGuard(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { panic }
+        discard values[i]
+    }
+}
+fn UnreachableGuard(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { unreachable }
+        discard values[i]
+    }
+}
+fn ShortCircuitSafe(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        discard i < values.Len && values[i] > 0
+    }
+}
+fn ShortCircuitUnsafe(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        discard i == values.Len && values[i] > 0
+    }
+}
+fn ShortCircuitOrSafe(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        discard i == values.Len || values[i] > 0
+    }
+}
+fn OppositeBranch(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { discard i } else { discard values[i] }
+    }
+}
+fn WrongCollection(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if i == other.Len { continue }
+        discard values[i]
+    }
+}
+fn OtherBinding(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if stop { let otherIndex := uint(0)
+        discard values[otherIndex] }
+        if i == values.Len { continue }
+        discard values[i]
+    }
+}
+fn WhileInnerBreak(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        while stop { if i == values.Len { break }
+        discard values[i] }
+        discard values[i]
+    }
+}
+fn Mutate(values: int[]) void {
+    for i in uint(0)..values.Len {
+        values.Clear()
+        if i == values.Len { continue }
+        discard values[i]
+    }
+}
+type Box struct { items: int[], }
+fn Touch(box: ref mut Box) bool {
+    box.items.Clear()
+    return true
+}
+fn MutableCall(box: ref mut Box) void {
+    for i in uint(0)..box.items.Len {
+        discard Touch(box)
+        if i == box.items.Len { continue }
+        discard box.items[i]
+    }
+}
+fn MutationOnEarlierIteration(values: int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if stop { values.Clear()
+        continue }
+        if i == values.Len { break }
+        discard values[i]
+    }
+}
+fn ElementWrite(values: ref mut int[]) void {
+    for i in uint(0)..values.Len {
+        values[0] = 1
+        if i >= values.Len { continue }
+        discard values[i]
+    }
+}
+fn Growing(values: int[]) Result[void, CollectionError] {
+    for i in uint(0)..values.Len {
+        try values.Append(1)
+        discard values[i]
+    }
+    return Ok()
+}
+fn WhileEndpointReturn(values: ref int[]) void {
+    for i in uint(0)..values.Len {
+        while i == values.Len { return }
+        discard values[i]
+    }
+}
+fn WhileEndpointBreak(values: ref int[]) void {
+    for i in uint(0)..values.Len {
+        while i == values.Len { break }
+        discard values[i]
+    }
+}
+fn UnitStep(values: ref int[]) void {
+    for i in uint(0)..values.Len step uint(1) {
+        if i == values.Len { continue }
+        discard values[i]
+    }
+}
+fn Strided(values: ref int[]) void {
+    for i in uint(0)..values.Len step uint(2) {
+        discard values[i]
+    }
+}

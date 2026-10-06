@@ -24,3 +24,37 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/transform.sec
+
+fn Map(value: string, mapping: fn(rune) rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn MapIndexed(value: string, mapping: fn(uint, rune) rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Filter(value: string, keep: fn(rune) bool) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn FilterIndexed(value: string, keep: fn(uint, rune) bool) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Collect(value: string, mapping: fn(rune) string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn CollectIndexed(value: string, mapping: fn(uint, rune) string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Repeat(value: string, count: uint) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Reverse(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

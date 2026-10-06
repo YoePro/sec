@@ -107,6 +107,7 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 		return err
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
+	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
 	b.module.Functions = append(b.module.Functions, fn)
 	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1}
 	for i, parameter := range resolved.Parameters {
@@ -539,6 +540,22 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 				return fb.unsupported("while loop", stmt.Token)
 			}
 			if err := fb.buildWhile(stmt); err != nil {
+				return err
+			}
+		case *ast.PanicStatement, *ast.UnreachableStatement, *ast.AssertStatement:
+			if fb.owner.maxPackage < 13 {
+				return fb.unsupported(fmt.Sprintf("%T", statement), statementToken(statement))
+			}
+			var err error
+			switch stmt := stmt.(type) {
+			case *ast.PanicStatement:
+				err = fb.buildExplicitPanic(stmt)
+			case *ast.UnreachableStatement:
+				err = fb.buildCheckedUnreachable(stmt)
+			case *ast.AssertStatement:
+				err = fb.buildAssertion(stmt)
+			}
+			if err != nil {
 				return err
 			}
 		case *ast.BreakStatement:
@@ -1189,13 +1206,16 @@ func (fb *functionBuilder) buildIf(stmt *ast.IfStatement) error {
 		return err
 	}
 	thenEnd := fb.current
+	// Without an else branch the false edge already targets merge; only an
+	// explicit alternative has its own end block to join.
+	elseEnd := merge
 	if stmt.Alternative != nil {
 		fb.current = elseBlock
 		if err := fb.buildStatements(stmt.Alternative.Statements); err != nil {
 			return err
 		}
+		elseEnd = fb.current
 	}
-	elseEnd := fb.current
 	if merge == nil && (thenEnd != nil || elseEnd != nil) {
 		merge = fb.newBlock()
 	}
@@ -2203,7 +2223,7 @@ func (fb *functionBuilder) markMatchArmTerminators(blocks []*Block, arm sema.Res
 			continue
 		}
 		terminator := &block.Operations[len(block.Operations)-1]
-		if terminator.MatchID != 0 || (terminator.Kind != OpReturn && terminator.Kind != OpUnreachable && terminator.Kind != OpArithmeticFailure) {
+		if terminator.MatchID != 0 || (terminator.Kind != OpReturn && terminator.Kind != OpUnreachable && terminator.Kind != OpArithmeticFailure && terminator.Kind != OpPanic) {
 			continue
 		}
 		terminator.MatchID = matchID

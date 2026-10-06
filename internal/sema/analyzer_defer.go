@@ -12,6 +12,7 @@ import (
 // Dependencies retain field/index/slice precision when overlap is provable.
 //
 // Rules:
+//   - rules/analysis/call_graph.md — "`defer` bodies", "Recursive `defer`"
 //   - rules/control-flow/defer.md — §§8–11 and §29
 //   - rules/memory/lifetime_analysis.md — §17 "Defer and delayed lifetime dependencies"
 //   - rules/memory/borrowing.md — §21 "Defer and delayed use"
@@ -34,6 +35,8 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	if a.loopDepth > 0 {
 		a.addWarningAtToken(stmt.Token, "defer inside loop registers once per execution and runs at function exit")
 	}
+	previousCallable := a.currentCallable
+	a.currentCallable = a.recordDeferCallable(stmt)
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
@@ -68,6 +71,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 			capture := a.deferCaptures[key]
 			previousBorrows[capture.Root] = append(previousBorrows[capture.Root], capture)
 		}
+		a.currentCallable = previousCallable
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned

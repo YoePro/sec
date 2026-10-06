@@ -9,60 +9,60 @@ enum CodePages {
     UTF32,
 
     // --- ISO-8859 Series (Complete) ---
-    ISO8859_1,     // Latin-1 (Western Europe)
-    ISO8859_2,     // Latin-2 (Central Europe)
-    ISO8859_3,     // Latin-3 (Southern Europe, Maltese, Esperanto)
-    ISO8859_4,     // Latin-4 (Northern Europe, Baltic languages)
-    ISO8859_5,     // Cyrillic alphabet
-    ISO8859_6,     // Arabic
-    ISO8859_7,     // Greek
-    ISO8859_8,     // Hebrew
-    ISO8859_9,     // Latin-5 (Turkish)
-    ISO8859_10,    // Latin-6 (Nordic/Sami languages)
-    ISO8859_11,    // Thai
-    ISO8859_13,    // Latin-7 (Baltic languages)
-    ISO8859_14,    // Latin-8 (Celtic languages)
-    ISO8859_15,    // Latin-9 (Updated Western Europe with Euro symbol)
-    ISO8859_16,    // Latin-10 (South-Eastern Europe)
+    ISO8859_1,  // Latin-1 (Western Europe)
+    ISO8859_2,  // Latin-2 (Central Europe)
+    ISO8859_3,  // Latin-3 (Southern Europe, Maltese, Esperanto)
+    ISO8859_4,  // Latin-4 (Northern Europe, Baltic languages)
+    ISO8859_5,  // Cyrillic alphabet
+    ISO8859_6,  // Arabic
+    ISO8859_7,  // Greek
+    ISO8859_8,  // Hebrew
+    ISO8859_9,  // Latin-5 (Turkish)
+    ISO8859_10, // Latin-6 (Nordic/Sami languages)
+    ISO8859_11, // Thai
+    ISO8859_13, // Latin-7 (Baltic languages)
+    ISO8859_14, // Latin-8 (Celtic languages)
+    ISO8859_15, // Latin-9 (Updated Western Europe with Euro symbol)
+    ISO8859_16, // Latin-10 (South-Eastern Europe)
 
     // --- Windows Code Pages (ANSI - Complete Primary Series) ---
-    CP1250,    // Central Europe
-    CP1251,    // Cyrillic alphabet
-    CP1252,    // Western Europe
-    CP1253,    // Greek
-    CP1254,    // Turkish
-    CP1255,    // Hebrew
-    CP1256,    // Arabic
-    CP1257,    // Baltic languages
-    CP1258,    // Vietnamese
+    CP1250, // Central Europe
+    CP1251, // Cyrillic alphabet
+    CP1252, // Western Europe
+    CP1253, // Greek
+    CP1254, // Turkish
+    CP1255, // Hebrew
+    CP1256, // Arabic
+    CP1257, // Baltic languages
+    CP1258, // Vietnamese
 
     // --- IBM/DOS Code Pages (OEM - Most Common) ---
-    CP437,    // Original IBM-PC (USA)
-    CP737,    // Greek DOS
-    CP775,    // Baltic DOS
-    CP850,    // Western European DOS
-    CP852,    // Central European DOS
-    CP855,    // Cyrillic DOS
-    CP857,    // Turkish DOS
-    CP860,    // Portuguese DOS
-    CP861,    // Icelandic DOS
-    CP862,    // Hebrew DOS
-    CP863,    // Canadian-French DOS
-    CP864,    // Arabic DOS
-    CP865,    // Nordic/Northern European DOS
-    CP866,    // Russian DOS
-    CP869,    // Modern Greek DOS
-    CP874,    // Thai DOS
+    CP437, // Original IBM-PC (USA)
+    CP737, // Greek DOS
+    CP775, // Baltic DOS
+    CP850, // Western European DOS
+    CP852, // Central European DOS
+    CP855, // Cyrillic DOS
+    CP857, // Turkish DOS
+    CP860, // Portuguese DOS
+    CP861, // Icelandic DOS
+    CP862, // Hebrew DOS
+    CP863, // Canadian-French DOS
+    CP864, // Arabic DOS
+    CP865, // Nordic/Northern European DOS
+    CP866, // Russian DOS
+    CP869, // Modern Greek DOS
+    CP874, // Thai DOS
 
     // --- East Asian Encodings (Multi-byte) ---
-    CP932,    // Shift-JIS (Japanese)
-    CP936,    // GBK (Simplified Chinese)
-    CP949,    // EUC-KR (Korean)
-    CP950,    // Big5 (Traditional Chinese)
+    CP932, // Shift-JIS (Japanese)
+    CP936, // GBK (Simplified Chinese)
+    CP949, // EUC-KR (Korean)
+    CP950, // Big5 (Traditional Chinese)
 
     // --- Macintosh Code Pages ---
-    MAC_ROMAN,      // Legacy Apple Western Europe
-    MAC_CYRILLIC    // Legacy Apple Russia/Eastern Europe
+    MAC_ROMAN,   // Legacy Apple Western Europe
+    MAC_CYRILLIC // Legacy Apple Russia/Eastern Europe
 }
 
 impl char {
@@ -84,15 +84,72 @@ impl char {
         }
     }
 
+    /** Reports whether this char is a letter according to the specified codepage. */
+    fn IsLetterCP(codePage: CodePages) bool {
+        switch codePage {
+            case CodePages.ISO8859_1, CodePages.ISO8859_15, CodePages.CP1252, CodePages.MAC_ROMAN:
+                // Western European & Scandinavian extensions
+                fallthrough
+            case CodePages.ISO8859_9, CodePages.CP1254:
+                // Turkish (Latin-5) - Shares most with Latin-1 but replaces Icelandic characters
+                return self.IsLetter || (self in 192t..214t) || (self in 216t..246t) || (self in 248t..255t)
+
+            case CodePages.ISO8859_2, CodePages.CP1250:
+                // Central/Eastern European (Latin-2)
+                return self.IsLetter || (self in 161t..175t) || (self in 192t..255t && self != 215t && self != 247t)
+
+            case CodePages.ISO8859_5, CodePages.CP1251, CodePages.CP866:
+                // Cyrillic alphabets
+                if codePage == CodePages.CP866 {
+                    return self.IsLetter || (self in 128t..175t) || (self in 224t..241t)
+                }
+                if codePage == CodePages.CP1251 {
+                    return self.IsLetter || (self in 192t..255t) || self == 168t || self == 184t
+                }
+                return self.IsLetter || (self in 176t..255t)
+
+            case CodePages.ISO8859_7, CodePages.CP1253:
+                // Greek alphabet
+                return self.IsLetter || (self in 186t..255t && self != 170t && self != 210t)
+
+            case CodePages.CP437, CodePages.CP850:
+                // IBM PC / DOS OEM
+                return self.IsLetter || (self in 128t..154t) || (self in 160t..165t) || self == 181t || self == 224t
+
+            default:
+                return self.IsLetter
+        }
+    }
+
+    /** Reports whether this char is a lowercase letter according to the specified codepage. */
+    fn IsLowerCaseCP(codePage: CodePages) bool {
+        switch codePage {
+            case CodePages.ISO8859_1, CodePages.ISO8859_15, CodePages.CP1252:
+                return (self in 97t..122t) || (self in 224t..246t) || (self in 248t..255t)
+
+            case CodePages.CP1251: // Cyrillic Windows
+                return (self in 97t..122t) || (self in 224t..255t) || self == 184t // 184t is gement 'ё'
+
+            case CodePages.CP866: // Cyrillic DOS
+                return (self in 97t..122t) || (self in 160t..175t) || (self in 224t..239t) || self == 241t
+
+            case CodePages.ISO8859_7: // Greek ISO
+                return (self in 97t..122t) || (self in 224t..249t)
+
+            default:
+                return self.IsLowerCase
+        }
+    }
+
     /** Reports whether this char is a lowcase ASCII letter */
-    property IsLowerLetter: bool {
+    property IsLowerCase: bool {
         get {
             return self in 97t..122t
         }
     }
 
     /** Reports whether this char is an uppercase ASCII letter */
-    property IsUpperLetter: bool {
+    property IsUpperCase: bool {
         get {
             return self in 65t..90t
         }
@@ -151,10 +208,57 @@ impl char {
         return self
     }
 
-    /** Returns the lowercase variant of a letter when possible, using the specified codepage */
+    /** Returns the lowercase variant of a letter using the specified codepage. */
     fn ToLower(codePage: CodePages) char {
-        // TODO: Implement codepage specific lowercasing
-        return self.ToLower()
+        switch codePage {
+            case CodePages.ISO8859_1, CodePages.ISO8859_15, CodePages.CP1252:
+                if self in 65t..90t {
+                    return char(int(self) | 0x20)
+                }
+                if (self in 192t..214t) || (self in 216t..222t) {
+                    return char(int(self) + 32)
+                }
+                return self
+
+            case CodePages.CP1251: // Cyrillic Windows (Perfect 32 offset for main blocks)
+                if self in 65t..90t {
+                    return char(int(self) | 0x20)
+                }
+                if self in 192t..223t {
+                    return char(int(self) + 32)
+                }
+                if self == 168t {
+                    return char(184)
+                } // Ё -> ё
+                return self
+
+            case CodePages.CP866: // Cyrillic DOS (Split blocks)
+                if self in 65t..90t {
+                    return char(int(self) | 0x20)
+                }
+                if self in 128t..143t {
+                    return char(int(self) + 32)
+                }  // А..П -> а..п
+                if self in 144t..159t {
+                    return char(int(self) + 80)
+                }  // Р..Я -> р..я
+                if self == 240t {
+                    return char(241)
+                } // Ё -> ё
+                return self
+
+            case CodePages.ISO8859_7: // Greek
+                if self in 65t..90t {
+                    return char(int(self) | 0x20)
+                }
+                if self in 193t..217t {
+                    return char(int(self) + 32)
+                } // Greek uppercase to lowercase offset
+                return self
+
+            default:
+                return self.ToLower()
+        }
     }
 
     /** Returns the ASCII only uppercase variant of a letter when possible */
@@ -166,9 +270,56 @@ impl char {
         return self
     }
 
-    /** Returns the uppercase variant of a letter when possible, using the specified codepage */
+    /** Returns the uppercase variant of a letter using the specified codepage. */
     fn ToUpper(codePage: CodePages) char {
-        // TODO: Implement codepage specific uppercasing
-        return self.ToUpper()
+        switch codePage {
+            case CodePages.ISO8859_1, CodePages.ISO8859_15, CodePages.CP1252:
+                if self in 97t..122t {
+                    return char(int(self) & 0xDF)
+                }
+                if (self in 224t..246t) || (self in 248t..254t) {
+                    return char(int(self) - 32)
+                }
+                return self
+
+            case CodePages.CP1251: // Cyrillic Windows
+                if self in 97t..122t {
+                    return char(int(self) & 0xDF)
+                }
+                if self in 224t..255t {
+                    return char(int(self) - 32)
+                }
+                if self == 184t {
+                    return char(168)
+                } // ё -> Ё
+                return self
+
+            case CodePages.CP866: // Cyrillic DOS
+                if self in 97t..122t {
+                    return char(int(self) & 0xDF)
+                }
+                if self in 160t..175t {
+                    return char(int(self) - 32)
+                } // а..п -> А..П
+                if self in 224t..239t {
+                    return char(int(self) - 80)
+                } // р..я -> Р..Я
+                if self == 241t {
+                    return char(240)
+                } // ё -> Ё
+                return self
+
+            case CodePages.ISO8859_7: // Greek
+                if self in 97t..122t {
+                    return char(int(self) & 0xDF)
+                }
+                if self in 225t..249t {
+                    return char(int(self) - 32)
+                }
+                return self
+
+            default:
+                return self.ToUpper()
+        }
     }
 }

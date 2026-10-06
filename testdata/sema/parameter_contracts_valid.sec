@@ -1,0 +1,16 @@
+module main
+
+type Frame struct { a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int }
+impl Frame { free { Release(self.a) } }
+fn Release(value: int) void {}
+type Holder struct { value: Frame }
+type BorrowedHolder struct { value: ref Frame, a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int }
+@noCopy
+type Token struct { a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int }
+fn Read(frame: Frame) int { return frame.a }
+fn Nested(holder: Holder) int { return holder.value.a }
+fn Elements(frames: Frame[2]) int { return frames[0].a }
+fn Borrowed(holder: BorrowedHolder) int { return holder.a }
+fn ReadToken(value: Token) int { return value.a }
+fn Consume(-> value: Token) int { return value.a }
+fn Fixed(values: int[100]) int { return values[0] }

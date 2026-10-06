@@ -30,6 +30,8 @@ type AbstractClosureEnvironmentID string
 type CallableBodyKind string
 
 const (
+	CallableBodyTest               CallableBodyKind = "test-body"
+	CallableBodyDefer              CallableBodyKind = "defer-body"
 	CallableBodyNamedFunction      CallableBodyKind = "named-function"
 	CallableBodyNonCapturingLambda CallableBodyKind = "non-capturing-lambda"
 	CallableBodyCapturingLambda    CallableBodyKind = "capturing-lambda"
@@ -149,7 +151,7 @@ func (a *Analyzer) recordLambdaCallableIdentity(lambda *ast.LambdaExpression) {
 //   - rules/analysis/closure_analysis.md — "Callable-flow analysis"
 //   - rules/analysis/closure_analysis.md — "Soundness of target sets"
 func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression) {
-	if a == nil || call == nil || a.summaryPass || a.currentCallable == "" {
+	if a == nil || call == nil || a.summaryPass || a.currentCallable == "" || !a.callGraphPathReachable {
 		return
 	}
 	identity, ok := a.callableIdentityForExpression(call.Callee)
@@ -200,14 +202,15 @@ func (a *Analyzer) recordClosureCreationSummary(lambda *ast.LambdaExpression, id
 	}
 }
 
-// callableIdentityKey creates deterministic snapshot-local source identity
-// without treating it as runtime object identity.
+// callableIdentityKey uses lexical syntax ownership and the enclosing semantic
+// callable, keeping current coordinates and runtime instances out of identity.
 //
 // Rules:
 //   - rules/analysis/closure_analysis.md — "Callable body"
+//   - rules/analysis/call_graph.md — "Callable node identity", "Incremental tests"
 //   - rules/analysis/closure_analysis.md — "Closure creation in loops and recursion"
 func (a *Analyzer) callableIdentityKey(kind string, source lexer.Token) string {
-	return fmt.Sprintf("%s|%s|%s|%s:%d:%d", kind, a.currentModule, a.currentCallable, source.File, source.Line, source.Column)
+	return fmt.Sprintf("%s|%s|%s|%s", kind, a.currentModule, a.currentCallable, a.callGraph.syntaxOrigin(source))
 }
 
 // explicitCaptureCount counts unique syntactic captures while retaining a

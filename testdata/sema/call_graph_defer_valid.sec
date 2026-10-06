@@ -1,0 +1,25 @@
+module main
+
+fn Cleanup(value: int) int { return value + 1 }
+fn Work(value: int) void {
+    defer { }
+    defer { discard Cleanup(value) }
+}
+fn Recursive() void {
+    defer { Recursive() }
+}
+fn Repeated(flag: bool) void {
+    while flag {
+        defer { discard Cleanup(1) }
+        flag = false
+    }
+}
+fn main() void { Work(1) }
+fn After(value: int) void {
+    defer { }
+    discard Cleanup(value)
+}
+fn Lambda() void {
+    let operation := fn() void { defer { discard Cleanup(1) } }
+    operation()
+}

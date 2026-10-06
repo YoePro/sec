@@ -3412,8 +3412,8 @@ fn Different(letter: char, codepoint: rune) bool {
 	errors := analyzeSource(t, input)
 	expected := []string{
 		"array length must be a compile-time integer at 8:22",
-		"value 1114112r is not a valid Unicode scalar value at 4:19",
-		"value 55296t is not a valid Unicode scalar value at 5:24",
+		"value 1114112r is not a valid Unicode scalar value; allowed values are U+0000..U+10FFFF excluding surrogates U+D800..U+DFFF at 4:19",
+		"value 55296t is not a valid Unicode scalar value; allowed values are U+0000..U+10FFFF excluding surrogates U+D800..U+DFFF at 5:24",
 		"cannot initialize char with rune at 6:20",
 		"cannot compare char and rune at 12:16",
 	}

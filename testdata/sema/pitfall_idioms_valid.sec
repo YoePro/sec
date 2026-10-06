@@ -1,0 +1,21 @@
+module main
+fn Within(value: int) bool { return value >= 1 && value < 9 }
+fn AlreadyMembership(value: int) bool { return value in 1..<9 }
+fn Stable(values: ref int[]) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..values.Len - 1 { discard i }
+}
+fn Fragile(values: ref int[]) void {
+    for i in uint(1)..values.Len - 1 { discard i }
+}
+fn Shortened(values: ref int[]) void {
+    for i in uint(0)..<values.Len - 1 { discard values[i] }
+}
+fn AlreadyTraversal(values: ref int[]) void {
+    for i in uint(0)..<values.Len { discard values[i] }
+}
+type Reading struct { value: int, }
+impl Reading {
+    property Level: int { get { return self.value } }
+}
+fn Getter(reading: Reading) bool { return reading.Level >= 1 && reading.Level < 9 }

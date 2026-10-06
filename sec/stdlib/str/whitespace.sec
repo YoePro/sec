@@ -23,3 +23,45 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/whitespace.sec
+
+fn CollapseWhitespace(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn NormalizeWhitespace(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Indent(value: string, prefix: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Dedent(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn PadLeft(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn PadLeft(value: string, targetRuneCount: uint) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn PadRight(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn PadRight(value: string, targetRuneCount: uint) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Center(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Center(value: string, targetRuneCount: uint) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

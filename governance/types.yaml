@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-18"
     audited: "2026-08-27"
-    revised: "2026-09-25"
+    revised: "2026-10-06"
     document_revision: "2.0"
     repository_baseline: "20b3606"
     replaces: rules/types/units.txt
@@ -17,9 +17,12 @@ integrations:
       compiler-owned tooling facts defined by units revision 2.0. The frontend now
       retains a structural unit AST and resolved quantity descriptor, applies Kind,
       point, logarithmic, exact fixed-conversion, currency, factor-conversion, and
-      structural-result rules, and exposes the facts through hover and formatting;
-      specialized transform conversion, standard-library migration, and Semantic IR
-      propagation remain partial.
+      structural-result rules, proves implicit fixed conversions exact by decimal
+      representation or by compiler-proven integer value ranges, records each
+      conversion plan, and exposes the facts through hover and formatting;
+      specialized transform conversion, binary-floating and rounding-policy
+      conversion, standard-library migration, and Semantic IR propagation remain
+      partial.
     rules:
       - rules/types/units.md
       - rules/foundations/grammar.md
@@ -34,6 +37,7 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/types.go
       - internal/sema/units.go
+      - internal/sema/unit_conversion_plan.go
       - internal/sema/analyzer.go
       - internal/cst/roles.go
       - internal/formatter/formatter.go
@@ -43,6 +47,7 @@ integrations:
       - internal/parser/parser_test.go
       - internal/cst/roles_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/unit_conversion_plan_test.go
       - internal/formatter/formatter_test.go
       - testdata/units_valid.sec
       - testdata/units_advanced_valid.sec
@@ -73,13 +78,19 @@ integrations:
       - LSP hover presents compiler-owned identity, source expression, Kind, categories, transform, point role, origin, and exact scale facts
       - "LSP derivation view (2026-10-03): Analyzer.UnitDerivationOf exposes each normalized unit factor with its declared dimension and scale, the canonical resulting dimension, and the exact combined scale from Sema's unit definitions, and binding/type hover presents it as a dimension derivation (TestHoverShowsUnitDimensionDerivation)"
       - "safe unit-conversion code action (2026-10-03): when a value of another named unit of the same quantity is rejected, Sema proves the explicit conversion Target(value) (equal dimension, role, origin, non-logarithmic across identities, no currency, unchanged carrier, binding or field-chain value), adds help naming it, and records a UnitConversionSuggestion; the LSP quick fix applies exactly that replacement and never invents a factor, exchange rate, or rounding policy (TestUnitConversionCodeActionAppliesProvenConversion)"
+      - "value-aware fixed conversion planning (2026-10-06): Sema records a UnitConversionPlan (source and target semantics, unchanged carrier, exact factor and offset, proof) for every implicit fixed conversion between unit coordinates at storage, assignment, return, field, element, call-argument (after overload selection), arithmetic, and comparison boundaries, exposed by Analyzer.UnitConversionPlanOf; decimal carriers are proven by finite-decimal factor and offset, and bounded integer carriers by the operand's compiler-proven value interval (constants, type ranges narrowed by range contracts and dominating comparisons) scaled into the carrier's admitted range, with a non-integral factor proven only for a single known value it divides (TestUnitConversionPlanProvesIntegerValueRanges)"
+      - "overflow and truncation are never hidden: unproven integer conversions are rejected and the explicit-conversion help names the failing value range, the single known value, or the non-dividing factor (TestUnitConversionPlanRejectsUnprovenIntegerConversions)"
+      - "a comparison takes the exact conversion path in either direction because it has no result unit; arithmetic converts the right operand into the left operand's unit"
+      - "a unit annotation no longer makes a carrier change valid (2026-10-06): initialization and unit arithmetic/comparison require the same compiler-known numeric carrier (int64<m> to int8<m>, int8<m> to int32<m>, int64<m> to int<m>, float32<m> to float64<m>, and mixed-width operands were previously accepted although the plain carriers reject them); unit arithmetic results keep their carrier name instead of the bare Kind (TestUnitQuantitiesKeepPlainCarrierRules)"
       - formatter compacts structural unit operators while preserving named factors, grouping, and source factor order
       - formatter canonicalizes accepted legacy case and underscore variants of unit metadata names to PascalCase from parser-scoped CST roles and exact byte spans only inside parsed unit impl blocks, leaves ordinary impl members untouched, and is idempotent
       - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
     remaining:
       - migrate safety-relevant standard-library Kind metadata, especially frequency versus rotational frequency and energy versus torque
       - validate affine and logarithmic Reference compatibility and implement their specialized explicit conversion plans
-      - complete value-aware fixed conversion planning for bounded integer and binary-floating carriers, including overflow proofs and explicit rounding policy integration
+      - value-aware fixed conversion planning for binary-floating carriers (requires floating value-range facts; floating carriers keep the identity-coordinate policy)
+      - explicit rounding policy integration for inexact unit conversions; the rounding modes, source spelling, and checked-policy error type are undecided (MD-047)
+      - observed value type and write representability of `bit[N]<unit>` register fields; writes of unbounded unit values are still accepted pending MD-046
       - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
       - extend unit code actions to declared conversion functions, in-scope factor-provided conversions, exact carrier changes, and the import action for units not yet imported
       - complete Semantic IR, MLIR, runtime, standard-library, and end-to-end unit coverage
@@ -106,6 +117,8 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'Test.*Unit|TestUnitsV2|TestStructuralUnit|FunctionOverloadsIncludeNumericKindAndUnits' -count=1
         result: passed
+      - command: go test ./internal/sema -run 'UnitConversionPlan|UnitQuantitiesKeepPlainCarrierRules' -count=1
+        result: passed on 2026-10-06 with integer value-range, constant, division, operand, argument, and comparison plans, rejected unproven conversions with explaining help, and plain carrier rules for unit quantities
       - command: go test ./internal/formatter -run UnitExpression -count=1
         result: passed
       - command: go test ./cmd/lsp -run UnitQuantityFacts -count=1

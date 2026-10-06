@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-05"
+    updated: "2026-10-06"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -32,13 +32,18 @@ integrations:
       - rules/collections/collections.md
       - rules/platform/ffi.md
     code:
+      - internal/sema/pitfall_idioms.go
+      - internal/sema/pitfall_nonempty_traversal.go
+      - internal/sema/pitfall_final_element.go
+      - internal/sema/pitfall_fix_safety.go
+      - internal/sema/pitfall_length_endpoint.go
+      - internal/sema/pitfall_endpoint_flow.go
       - internal/sema/pitfall_budget.go
       - internal/sema/analysis_budget.go
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/pitfall_analysis.go
       - internal/sema/pitfall_bounds_guards.go
-      - internal/sema/pitfall_final_element.go
       - internal/sema/pitfall_neighbor_bounds.go
       - internal/sema/pitfall_skipped_first.go
       - internal/sema/pitfall_intervals.go
@@ -46,6 +51,17 @@ integrations:
       - internal/sema/pitfall_guard_subject.go
       - cmd/compiler/analyse.go
     tests:
+      - internal/sema/pitfall_idioms_test.go
+      - cmd/compiler/analyse_idioms_test.go
+      - testdata/sema/pitfall_idioms_valid.sec
+      - internal/sema/pitfall_false_positive_corpus_test.go
+      - testdata/sema/pitfall_false_positive_corpus_valid.sec
+      - internal/sema/pitfall_fix_safety_test.go
+      - testdata/sema/pitfall_fix_safety_valid.sec
+      - testdata/sema/pitfall_fix_safety_invalid.sec
+      - internal/sema/pitfall_endpoint_flow_test.go
+      - testdata/sema/pitfall_endpoint_flow_valid.sec
+      - testdata/sema/pitfall_endpoint_flow_unreachable_invalid.sec
       - internal/sema/pitfall_budget_test.go
       - cmd/compiler/analyse_budget_test.go
       - testdata/sema/pitfall_budget_valid.sec
@@ -57,6 +73,17 @@ integrations:
       - internal/sema/pitfall_guard_subject_test.go
       - cmd/compiler/analyse_test.go
     implemented:
+      - canonical idiom suggestions are a shared value-only action contract distinguishing range membership with in and half-open traversal with ..<; publication prefers supported canonical replacements over explanation-only actions without changing confidence, severity, validity, analysis depth or automatic-fix proof requirements, and suppressed findings carry no preferred idiom
+      - interval membership, inclusive-length endpoint, fragile inclusive Len-1 and omitted-last-element producers publish their canonical suggestions through the same preference gate; omitted-last-element suggestions now include the complete half-open replacement, while behavior-changing intent edits remain SuggestedEdit and certified equivalent rewrites remain ProvenFix
+      - sec analyse and sec analyse --all show canonical idiom identity and actual replacement text; real-source regressions cover both canonical constructs, already-canonical negative cases, getter suppression, valid rewritten declarations, every analysis depth with unchanged rule gating, detached deterministic action metadata, proof downgrades and successful CLI exit without a strict language mode
+      - a real-source false-positive corpus covers successor/predecessor neighbors, explicit first sentinels and manual prefixes, separately handled final elements, equal-length parallel collections, fixed-ring modulo indexes, capacity bookkeeping and proven live capacity traversal, protocol-defined ranges, explicit fixed extents and byte-buffer/raw-capacity FFI calls without guessing pointer/extent contracts from names
+      - sixteen intentional cases and eleven nearby positive controls run at Interactive, Standard and Deep with complete coverage, rule-depth-aware detector checks, required suppressing evidence, source-case existence checks and deterministic reanalysis; absent FFI metadata is only negative heuristic coverage, not implemented foreign-contract analysis
+      - final-element nonempty evidence survives one immediately following canonical shortened zero-based traversal that only reads/discards scalar elements of the same resolved collection; exact collection identity, pure resolved receivers and the preceding empty-exit guard are required, while calls, writes, borrows, nested execution and cleanup-bearing values remain unsupported stability boundaries
+      - all current automatic fix families (bool literal equality/conversion, constant interval membership and guarded inclusive Len-1 traversal) publish value-only PitfallFixSafety evidence covering evaluation order/count, effects, panic/error behavior, ownership/move, borrowing and control flow; the common publication gate downgrades missing, incomplete, mismatched or unsupported-family certificates to SuggestedEdit, independently of finding confidence
+      - canonical property access and stored-field plans exclude qualified and unqualified getters, unresolved reads, addressed/volatile storage and register fields from repeated-read elimination; a nonempty entry proof authorizes the Len-1 automatic fix only when start and Len receiver evaluation cannot invalidate it, otherwise equivalence remains unproven with a SuggestedEdit and contrary evidence
+      - source regressions verify each emitted automatic replacement remains valid in its original declaration context, bool truth/effect order/count/short-circuit/failure traces and explicit consuming-call moves are preserved, interval endpoints and named bounds retain truth, and guarded range endpoints retain ascending unit-step iteration counts including empty traversal and maximum representable bounds; invalid bool/integer intent retains its owning error and no safety certificate at every analysis depth
+      - inclusive-length endpoint reachability follows nested if/else paths and joins, negated and compound boolean guards, reversed resolved binding/Len comparisons, short-circuit RHS evaluation, asserts, panic, checked unreachable and branch-local break/continue/return; each access retains its own endpoint reachability, guards do not retroactively protect their own accesses, nested loop exits do not terminate the outer continuation, deferred/lambda bodies are separate execution domains, and Sema-proven dead if paths produce no endpoint finding
+      - saved endpoint/live Len equality is withheld when collection replacement, structural mutation, mutable call authority or unknown calls may invalidate it across iterations; unsupported changed-length and non-unit-stride accesses mark the rule evaluation Incomplete/NotEvaluated instead of asserting invalidity or inventing a suppression, including growth that can make the old endpoint valid, while element writes retain the narrower structural-stability fact and supported half-open edits remain SuggestedEdit
       - deterministic depth-specific pitfall syntax-search budgets admit complete function/accessor bodies or module statements before contextual rule evaluation; Interactive allows 4096 AST records and nesting 64, Standard 32768/128, and Deep 262144/256, with compiler API overrides through SetPitfallBudget and no new source or CLI syntax
       - immutable Coverage metadata exposes search limits, inspected AST records and skipped units; enabled rule evaluations carry Incomplete coverage after any skipped unit and never claim NoFinding for a partial search, while findings and suppressions from completely admitted units remain available; sec analyse explains incomplete coverage without introducing a validity error
       - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
@@ -101,16 +128,14 @@ integrations:
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
-      - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break, continue, or return in the endpoint branch
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
-      - generalize final-element non-empty proof consumption beyond the implemented adjacent exit and first-statement branch facts to contracts, non-empty types, and mutation-aware dominating control flow
+      - generalize final-element non-empty proof consumption beyond the implemented adjacent exit, first-statement branch and read-only scalar traversal facts to contracts, non-empty types, and mutation-aware dominating control flow
       - generalize skipped-first-element suppression beyond the implemented predecessor and same-block dominating element-zero facts to explicit suffix-traversal contracts, mutation-aware dominance, and other canonical intent evidence
       - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
       - extend collection bound-source correlation to inclusive and offset bounds, bounds held in locals, while loops with manual indexes, and length relations proven by contracts or transitive chains
       - extend length-versus-capacity reasoning to bounds held in locals, while loops, proofs from contracts, and proofs established in an enclosing block outside an if condition
       - extend structural-mutation-during-indexed-iteration reasoning to while loops with manual indexes, reverse traversal, bounds held in local bindings, mutations through aliases or callees, and user-declared structural operations
       - correlate wrong-guard and check-without-transfer findings through nested control flow, later statements, and mutation-aware guard invalidation instead of the implemented straight-line and directly-following slices
-      - add canonical-idiom suggestion support without inventing a new strict compilation mode
       - add Option/Result/state-check subject-correlation support when canonical state facts are available
       - add canonical FFI buffer/extent relationship consumption without inferring pointer/length semantics from parameter names
       - add FFI pointer/extent provenance mismatch detection when canonical contracts prove argument relationships
@@ -118,13 +143,37 @@ integrations:
       - support explicit Sec FFI contracts, trusted imported metadata, generated binding metadata, and compiler-known platform/library metadata through one canonical FFI fact representation
       - coalesce pitfall findings with owning normative diagnostics so one root cause does not generate duplicate errors and warnings
       - extend the implemented ProvenFix versus SuggestedEdit distinction to further pitfall families
-      - verify automatic fixes preserve evaluation count/order, effects, ownership/move behavior, and relevant failure semantics
       - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
       - expose configurable LSP diagnostics/code actions and refresh affected findings when project analysis configuration changes
       - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
-      - add false-positive regression corpus for neighbor traversal, sentinels, separately handled endpoints, equal-length parallel collections, ring buffers, capacity-level storage manipulation, protocol ranges, and byte-buffer FFI APIs
     verification:
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after canonical idiom suggestion integration and CLI replacement presentation
+      - command: go vet ./...
+        result: passed on 2026-10-06 after canonical idiom suggestions
+      - command: go test ./internal/sema ./cmd/compiler -run TestPitfallCanonicalIdiom -count=1
+        result: passed on 2026-10-06 together with TestAnalyseCanonicalIdiomGuidance; source replacements remain valid, rule-depth gating and fix-safety downgrades are preserved, and default/--all CLI runs retain zero errors
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with registry/file parity, unique integration ownership, existing unique pitfall references and removal of the entire canonical-idiom remaining post from 22 to 21
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after the false-positive corpus and read-only scalar traversal proof
+      - command: go vet ./...
+        result: passed on 2026-10-06 after the false-positive corpus and read-only scalar traversal proof
+      - command: go test ./internal/sema -run TestPitfall -count=1
+        result: passed on 2026-10-06 with the false-positive corpus, all three depths, supported suppression evidence, neighboring active detector controls, wrong-collection proof rejection and mutation/opaque-call stability boundaries
+      - command: "go test ./internal/sema -run 'TestPitfall(FixSafety|BooleanFix|LengthFix|ProvenFix|MembershipFix)' -count=1"
+        result: passed on 2026-10-06 with all current automatic families, complete and defensive safety snapshots, every missing obligation, replacement/family mismatch, qualified/unqualified getter and physical register suppression, start-induced mutation withholding, source-valid rewrites, eight bool truth forms, short circuit, opaque failure traces, explicit moves, interval/range boundaries and invalidity at all depths
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after introducing the common automatic-fix safety gate
+      - command: go vet ./...
+        result: passed on 2026-10-06
+      - command: "go test ./internal/sema -run 'TestPitfallEndpointFlow|TestPitfallAnalysis' -count=1"
+        result: passed on 2026-10-06 with nested and split-path endpoint exits, boolean composition/negation, branch-local protection, guard-local access ordering, nested for/while break scope, endpoint-specific while return versus break continuation, assert/panic/unreachable guards, safe and unsafe short-circuit indexes, different collections/bindings, mutable-call and earlier-iteration invalidation, growth and non-unit strides without false invalidity, explicit unit-step guards, element-write stability and Sema-owned unreachable errors at all three depths
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after generalizing endpoint reachability
+      - command: go vet ./...
+        result: passed on 2026-10-06
       - command: "go test ./internal/sema ./cmd/compiler -run 'TestPitfall|TestAnalyzerAnalysisDepth|TestAnalyse' -count=1"
         result: passed on 2026-10-05 with deterministic node and nesting exhaustion, complete-unit suppression safety, partial findings and explicit incomplete coverage, disabled zero-budget search, unchanged normative type errors at all depths, defensive coverage snapshots, analyzer reuse, increasing depth defaults, rejected negative overrides and Deep report classification
       - command: go test ./... -count=1
@@ -181,7 +230,7 @@ integrations:
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-10-05"
+    revised: "2026-10-06"
     summary: >-
       Implements immutable post-Sema ParameterDemand summaries from resolved
       bindings, canonical Places, calls, escape facts, and interprocedural fixed
@@ -204,6 +253,17 @@ integrations:
       - rules/platform/ffi.md
       - rules/analysis/effect_analysis.md
     code:
+      - internal/sema/parameter_usage_contracts.go
+      - internal/sema/parameter_usage_place.go
+      - internal/sema/parameter_usage_capture.go
+      - internal/sema/analyzer_function_value_binding.go
+      - internal/sema/analyzer_inference.go
+      - cmd/lsp/parameter_insight.go
+      - cmd/lsp/hover.go
+      - cmd/lsp/diagnostics_batch.go
+      - vscode/package.json
+      - vscode/src/extension.ts
+      - vscode/README.md
       - internal/sema/parameter_usage_shape.go
       - internal/sema/parameter_usage_recommendations.go
       - internal/sema/analyzer.go
@@ -211,10 +271,19 @@ integrations:
       - internal/sema/parameter_usage.go
       - internal/sema/parameter_usage_collections.go
       - internal/sema/parameter_usage_flow.go
+      - internal/sema/parameter_usage_propagation.go
       - internal/sema/escape_analysis.go
       - internal/sema/semantic_snapshot.go
       - cmd/compiler/analyse.go
     tests:
+      - internal/sema/parameter_usage_contracts_test.go
+      - testdata/sema/parameter_contracts_valid.sec
+      - internal/sema/parameter_usage_regression_test.go
+      - testdata/sema/parameter_regression_matrix_valid.sec
+      - testdata/sema/parameter_regression_matrix_invalid.sec
+      - cmd/lsp/parameter_insight_test.go
+      - testdata/sema/parameter_insight_valid.sec
+      - testdata/sema/parameter_insight_invalid.sec
       - internal/sema/parameter_usage_shape_test.go
       - testdata/sema/parameter_shape_demands_valid.sec
       - testdata/sema/parameter_shape_unreachable_invalid.sec
@@ -224,6 +293,15 @@ integrations:
       - internal/sema/copy_move_test.go
       - cmd/compiler/analyse_test.go
     implemented:
+      - shared-reference advice preserves explicit free lifecycle ownership independently of inferred body demand and size; custom cleanup in owned fields, fixed/dynamic array elements, Result/union payloads and canonical list/map/set elements blocks the candidate, while reference/pointer/view referents, phantom generic arguments and noCopy alone do not imply cleanup ownership
+      - immutable semantic type snapshots retain CustomFree so post-Sema contract checks cannot lose explicit lifecycle requirements; A2001 array messages now offer only the verified same-type reference candidate that preserves fixed extent and nominal contracts, withholding unverified slice alternatives
+      - six-category regression matrix covers integrated shared-reference narrowing, fixed-extent/ownership/address intent, recursive projection widening and registration-order independence, unknown foreign pointer/callback contracts, policy/cost/depth isolation, and resolved binding identity; it guards current supported behavior and conservative absence of specialized candidates without claiming the remaining view, FFI-contract or persisted-summary producers are implemented
+      - parameter Place projection is owned by a focused sibling file and matches canonical binding IDs; same-spelled parameters from a nested callable never inherit an enclosing parameter's demand, with name fallback limited to the compiler-owned implicit receiver
+      - optimized function-value call lookup now publishes the lexical callee declaration identity for shared analysis/tooling consumption; invocation records a read/call use of that parameter independently of conservative unknown argument demand
+      - validated copy/move capture creation records source reads and explicit consumption in the enclosing callable without walking the separate lambda body as caller-local execution; capture-related demand remains Partial and blocks positive advice until closure target/environment summaries are integrated
+      - optional LSP parameter hover and A2001 advisory presentation use canonical immutable Sema demand and recommendation snapshots; sec.analysis.parameters.hover selects off/concise/detailed and sec.analysis.parameters.advisories selects off/info/warning/error, both default off, with VS Code settings and initialization wiring
+      - declaration/use hover resolves canonical definition identity rather than parameter spelling; concise insight avoids the full lattice, detailed insight exposes capability/precision/candidate confidence/reasons/blockers, incomplete summaries retain uncertainty, and project lsp_depth continues to control semantic precision
+      - common configuration notifications preserve absent/invalid presentation fields, immediately affect hover and republish open-document diagnostics without restart; synchronized settings filter only optional A2001 and always retain normative diagnostics, with compiler validity and semantic demand independent of presentation severity
       - fixed-array ExactExtent demand is recorded for reachable returned values and borrows, projected array fields, explicit move returns, and array values materialized inside returned struct/array/Result carriers; direct-call summary propagation preserves it, while declarations, element reads, Len, ordinary iteration, read-only forwarding, and Sema-proven dead returns do not establish it
       - canonical CKM-PTR-VALUE facts establish AddressRequired on the receiver Place rather than a fictitious Ptr field; array, slice, list, and string element-pointer formation adds ContiguousSequence plus Contiguous storage demand, scalar/struct address formation does not gain sequence shape, direct-call propagation preserves the demand, and address-dependent large values no longer receive unsound A2001 narrowing advice
       - structured recommendation confidence, reasons, and blocked-candidate reporting for the existing explicit by-value shared-reference candidate; immutable deterministic Recommendations snapshots expose callable/binding/source identity, candidate type, recommended/blocked/not-preferred status, Strong confidence for supported API opportunities, AvoidCopyCost plus demand evidence, all failed critical capability checks, and separate estimated size cost evidence
@@ -262,13 +340,33 @@ integrations:
       - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
       - derive capability-preserving narrowing candidates for fixed arrays, owning sequences, mutable references, and unnecessary mutability or ownership beyond the guarded A2001 shared-reference slice
       - replace approximate size estimation with ResolvedLayout and separate target-specific recommendation cache invalidation
-      - respect explicit fixed-extent, ownership, hardware, FFI, storage, and representation contracts as narrowing blockers
+      - complete explicit hardware, FFI, storage and representation contract producers and capability checks for future view/extent candidates; the current same-type reference preserves nominal/fixed-extent identity and blocks consumption, custom cleanup, and represented demand constraints, while source syntax for explicit layout remains blocked by missing-decisions.yaml MD-019
       - add versioned persisted demand summaries for separate compilation
       - extend the current Interactive summary-iteration budget to depth-specific Standard and Deep recommendation and persistence work
-      - expose configurable LSP hover/advisory information without making optional insight mandatory
       - support explicit parameter-usage-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
-      - add narrowing, projection-widening recursion, FFI, recommendation-policy, shadowing, and false-positive regression tests
     verification:
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after preserving custom-free contract metadata and removing unverified array-to-slice advice
+      - command: go vet ./...
+        result: passed on 2026-10-06 after contract-policy changes
+      - command: "go test ./internal/sema -run 'TestParameterContract|TestParameterRecommend|TestLargeByValueArrayParameterWarns' -count=1"
+        result: passed on 2026-10-06 with direct and nested cleanup contracts, owned carriers, borrowed and phantom boundaries, noCopy independence, consuming declarations, fixed extent and immutable lifecycle snapshots
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after completing the regression matrix and binding/callee/capture corrections
+      - command: go vet ./...
+        result: passed on 2026-10-06
+      - command: "go test ./internal/sema -run 'TestParameterRegression|TestParameterUsage|TestParameterRecommend|TestCallGraph|TestResolvedCallable' -count=1"
+        result: passed on 2026-10-06 with current narrowing candidates and blockers, cryptographic/protocol fixed arrays, ownership-signaling and constrained aggregates, bounded recursive Place evidence, declaration-order independence, Interactive widening, unknown foreign/callback contracts retaining known contiguous facts, independent policy/cost/depth, same-named lambda parameters, capture creation reads/moves and invalid lexical redeclarations
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after integrating optional LSP parameter insight and extracting hover routing from main.go
+      - command: go test -race ./cmd/lsp -run 'TestParameterInsight|TestModuleDiagnosticsCoalesce' -count=1
+        result: passed on 2026-10-06 with live protocol hover mode changes and synchronized diagnostic publication
+      - command: go vet ./...
+        result: passed on 2026-10-06
+      - command: npm run compile -- --noEmit
+        result: passed in vscode on 2026-10-06
+      - command: go test ./cmd/lsp -run TestParameterInsight -count=1
+        result: passed on 2026-10-06 with default-off/concise/detailed demand, declaration and use identity, transitive demand, blocked and confident candidates, initialization, partial/invalid settings, live off/info/warning/error publication and mandatory error retention
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-05 after adding fixed-array exact-extent and contiguous-sequence demand
       - command: go vet ./...
@@ -304,29 +402,90 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-10-01"
+    revised: "2026-10-06"
     summary: >-
       Provides the compiler-owned semantic call-graph slice consumed by Sema
       analysis and standard LSP call hierarchy without constructing a second
-      tooling-owned graph.
+      tooling-owned graph. The common domain-summary view now consumes all nine
+      canonical may-effect capabilities with detached direct/transitive causes,
+      independent unknown-domain evidence and synchronous context propagation.
+      A workspace graph-index service now persists committed graph checkpoints,
+      validates exact module/plan/compiler-model and dependency compatibility,
+      invalidates affected graph units and rejects superseded analysis publication.
+      Validated defer bodies now have explicit synthetic nodes and deferred same-stack
+      edges consumed by reachability, effects, recursion, stack composition and checkpoints.
+      Declaration signatures and lexical syntax origins now preserve callable and call-site
+      identities across snapshots while navigation follows current source positions.
+      Concrete plan/model binding namespaces all graph records and references together.
+      Test bodies now retain internal callable nodes, with explicit selected test roots
+      qualified by compilation-plan scope and isolated from production entry roots.
     rules:
       - rules/analysis/call_graph.md
+      - rules/control-flow/defer.md
+      - rules/tooling/testing.md
+      - rules/analysis/effect_analysis.md
+      - rules/compiler/incremental_compilation.md
     code:
+      - internal/sema/call_graph_identity.go
+      - internal/sema/call_graph_plan_identity.go
+      - internal/sema/call_graph_tests.go
+      - internal/sema/analyzer_test_bodies.go
+      - internal/sema/call_graph_defer.go
+      - internal/sema/analyzer_defer.go
+      - internal/sema/analyzer_closure.go
+      - internal/sema/stack_callable_targets.go
+      - internal/sema/call_graph_workspace.go
+      - internal/sema/call_graph_checkpoint.go
+      - internal/sema/call_graph_effect_domains.go
       - internal/sema/call_graph.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_control_flow.go
       - internal/sema/analyzer_while_flow.go
       - cmd/lsp/main.go
     tests:
+      - internal/sema/call_graph_identity_test.go
+      - testdata/sema/call_graph_identity_valid.sec
+      - testdata/sema/call_graph_identity_unreachable_invalid.sec
+      - internal/sema/call_graph_tests_test.go
+      - testdata/sema/call_graph_tests_valid_test.sec
+      - testdata/sema/call_graph_tests_invalid_test.sec
+      - internal/sema/call_graph_defer_test.go
+      - testdata/sema/call_graph_defer_valid.sec
+      - testdata/sema/call_graph_defer_invalid.sec
+      - internal/sema/call_graph_workspace_test.go
+      - testdata/sema/call_graph_workspace_valid.sec
+      - testdata/sema/call_graph_workspace_invalid.sec
+      - internal/sema/call_graph_effect_domains_test.go
+      - testdata/sema/call_graph_effect_domains_valid.sec
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_closure_test.go
       - internal/sema/analyzer_while_flow_test.go
       - internal/sema/allocation_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - declaration identities use resolved nominal/reference/unit/overload signatures, implementation receivers and foreign linkage independently of physical source positions, parameter labels and inferred body metadata; lexical source origins keep calls, lambda and defer bodies stable across formatting, comments and unrelated declaration insertion or reordering while navigation refreshes
+      - ForCompilationPlan binds an already selected semantic source universe to an explicit complete module/plan/model scope, atomically namespaces callable/body/site/root/contract identities and every target/effect reference, preserves reachability and rejects relabelling an already concrete graph; CallableInScope resolves unbound declaration IDs into the detached plan view
+      - workspace publication and selected test-plan views now bind the entire canonical graph, including closure and defer nodes; checkpoint schema 2 preserves and validates graph scope alongside compatibility fingerprints, with old incompatible schemas rejected as cache errors
+      - regressions cover stable nodes/sites/roots/SCCs across unrelated edits, overload and nested nominal/reference/unit signature separation, refreshed navigation, changed callee effects under stable IDs, disjoint plan identities, different active-source reachability, detached binding, scoped workspace/checkpoint equivalence and exclusion of unreachable closed function-value edges despite retained Sema errors
+      - validated top-level tests have internal test-body callable nodes keyed by structured module/path identity without a source-visible Function or function value; ordinary body calls, direct effects, lambdas and deferred cleanup retain their actual test invocation caller, and the existing Sema test-body responsibility is extracted into a focused sibling file
+      - CallGraphForTestPlan produces a detached canonical view rooted in exactly the explicit selected validated tests, removes production entry roots, sorts selection deterministically, treats empty selection as empty and rejects unknown, duplicate or malformed identities, incomplete plan scope and failed Sema; each selected test root carries module/CompilationPlan/compiler-model scope rather than inferring target behavior from the host
+      - selected-test reachability consumes shared helpers, lambdas, defer and worker entries through existing canonical graph consumers, keeps unselected tests and production-only helpers unreachable, retains empty test entries, and propagates effects; checkpoints preserve test roots and reject publication or restoration under another plan/model, with caller-supplied selection dependencies driving invalidation
+      - real-source regressions cover exact first/second/empty/worker selection, lambda and cleanup ownership, effects, production-root isolation, deterministic order, detached snapshots, invalid selection/Sema, plan separation and checkpoint equivalence; source discovery, generated harness/setup/runtime roots, driver selection/linking and runtime test execution remain owned by tooling.language-testing
+      - every validated defer body, including an empty or statically dead body, receives an explicit defer-body callable kind and stable lexical source identity scoped by its enclosing function or lambda; reachable registration adds a closed compiler-generated Deferred edge, while body calls and direct effects belong to the synthetic body and the enclosing caller is restored afterward
+      - Deferred participates in root reachability, same-stack and complete-execution SCCs, panic/allocation/blocking and common domain summaries, closed-target stack composition and workspace checkpoint validation; loop registrations share one source may-graph node, dead registration paths contribute no cleanup edge or body effects, and invalid nested defer creates no nested node
+      - source regressions cover empty bodies, lambda invocation ownership, restored callers, repeated loop registration, recursive cleanup, detached effect cause paths, allocation/blocking consumer propagation, stack composition and checkpoint round trips; ordered cleanup schedules, dynamic registration counts, Semantic IR and runtime lowering remain owned by their existing pending integrations
+      - WorkspaceCallGraphIndex keeps detached canonical graph snapshots across analyses under explicit module, CompilationPlan and compatible compiler/semantic/verifier-model scopes; reuse requires an exact complete normalized fingerprint set, including caller-supplied source, imported-contract, membership/negative-probe and configuration dependencies, rather than unchanged callable IDs alone
+      - dependency edits or newly observed changed fingerprints evict every affected cached or pending graph unit, including its transitive callers, SCC and derived-view facts, while preserving unrelated units/plans; opaque single-publication generations reject older completion, invalidated work, wrong-index leases and repeated publication
+      - versioned committed checkpoints bind graph and compatibility metadata with SHA-256 integrity, preserve canonical body targets, call sites, roots and direct panic/Arena/blocking facts, and validate source dependencies, identities and target coverage before transactional restore; stale or wrong-plan/model fingerprints become misses, while corruption, truncation, trailing data, incompatible schema and malformed graphs are cache rejection errors rather than language errors
+      - AnalyzeIndexed explicitly connects successful ordinary Sema to the graph service, keeping cache infrastructure errors distinct from Sec errors and refusing error/recovery or obsolete graph publication; callers own complete dependency discovery and atomic storage of checkpoint bytes, and no default CLI/LSP cache policy is activated
+      - real-source regressions verify cold/warm graph and derived-view equivalence, actual callee-body edits changing transitive panic facts under stable IDs, plan/model isolation, source/contract/membership invalidation, invalid intermediate snapshots followed by corrected analysis, detached graph/dependency ownership, deterministic checkpointing and controlled stale publication; concurrent read/invalidate/publish paths are exercised under the race detector
+      - DomainSummary consumes canonical may-effects for panic, allocation, blocking, suspension, spawn, I/O, volatile access, external mutation and nondeterministic input as an idempotent set, independently retaining unknown domains and detached direct/transitive introducing facts; existing panic, Arena, blocking, raw-pointer volatile and clock producers feed the same view, with explicit runtime producer fact kinds for the other domains
+      - a finite visited-node worklist unions every known synchronous alternative and terminates over recursive SCCs, retaining a shortest deterministic call-site path per introducing callable with caller/target, source, dispatch and execution metadata; spawn creation contributes MaySpawn to the caller while spawned-body effects stay in their own execution context
+      - foreign bodies, open/incomplete target coverage, opaque effects and unsupported execution or future effect kinds retain conservative uncertainty without erasing known contributions; missing producer/graph coverage cannot be treated as an effect-freedom guarantee, and ordered Arena reset/release events are not flattened into allocation effects
+      - real-source and explicit-producer regressions cover nested panic/volatile/clock facts, recursive paths, folded-dead short-circuit calls, spawn context isolation, all nine domain capabilities, repeated-fact idempotence, closed/open target unions, foreign and opaque uncertainty, detached nested path/target facts and registration-order independence
       - parser and Sema support for spawn and await with recorded task, thread, and process execution kinds
       - immutable compiler-owned graph snapshots from each completed Sema analysis
-      - deterministic callable and call-site identities within one analyzed source snapshot
+      - stable callable and call-site identities across analyzed source snapshots and explicit concrete plan/model views
       - validated synchronous direct, static-method, and foreign-direct call sites
       - exact selected-overload and resolved-method targets
       - incoming and outgoing call-site queries with source locations
@@ -351,6 +510,48 @@ integrations:
       - function-value calls inside lambdas are attributed to the lambda callable rather than the enclosing declaration
       - unknown function-value parameters create no unsound empty-target graph edge while open callable contracts remain unavailable
     verification:
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after stable snapshot identities, complete graph plan binding and unreachable function-value pruning
+      - command: go test ./internal/sema -race -run 'TestCallGraph' -count=1
+        result: passed on 2026-10-06 with stable identity, active-source plan variants, scoped publication/checkpointing and concurrent index regressions
+      - command: go vet ./...
+        result: passed on 2026-10-06 after stable call-graph identity and plan integration
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with fragment registry parity, unique integration ownership and existing unique call-graph references; the complete stable-identity remaining post was removed
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after selected test-root graphs and focused test-body extraction
+      - command: go test ./internal/sema -race -run TestCallGraphSelectedTestRoots
+        result: passed on 2026-10-06 together with TestCallGraphTestPlanRejectsInvalidAnalysis and TestCallGraphWorkspaceIndex
+      - command: go vet ./...
+        result: passed on 2026-10-06 after test-root graph integration
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with registry/file parity, unique integration ownership and existing unique call-graph rule/code/test references
+      - command: go test ./internal/sema -run TestCallGraphDefer -count=1
+        result: passed on 2026-10-06 for empty bodies, lambda ownership, caller restoration, dead registration, invalid nested defer, loop source identity, cleanup recursion, effect paths, stack composition and workspace checkpoint round trips
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after synthetic defer nodes and deferred same-stack graph consumers; final expanded defer regressions also passed separately
+      - command: go test ./internal/sema -race -run TestCallGraphDefer
+        result: passed on 2026-10-06 together with TestCallGraphWorkspaceIndex
+      - command: go vet ./...
+        result: passed on 2026-10-06 after defer graph integration
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with registry/file parity, unique integration ownership and existing unique call-graph rule/code/test references
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after workspace graph indexing and explicit Sema publication
+      - command: go test ./internal/sema -race -run TestCallGraphWorkspaceIndex -count=1
+        result: passed on 2026-10-06 after final warm/cold changed-callee equivalence, latest-generation and cancellation guards, dependency/plan/model isolation, checkpoint rejection and concurrent read/invalidate/publish regressions
+      - command: go vet ./...
+        result: passed on 2026-10-06 after workspace graph indexing and explicit Sema publication
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with registry/file parity, unique integration IDs and unique existing call-graph rule/code/test references
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after common call-graph effect domains
+      - command: go vet ./...
+        result: passed on 2026-10-06 after common call-graph effect domains
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with registry/file parity, unique integration IDs and unique existing call-graph rule/code/test references
+      - command: go test ./internal/sema -run 'TestCallGraph|TestEffect|TestCompilerKnownRawPointerVolatileAccess' -count=1
+        result: passed on 2026-10-06 with common effect domains, recursive/synchronous propagation, spawn isolation, source and explicit producer facts, open/foreign uncertainty, immutable evidence and deterministic paths
       - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestEscapeAnalysisRecordsCaptureWithoutLambdaReturnLeakage|TestCallGraph' -count=1
         result: passed; exact indirect targets, distinct lambda callers, capture-creation ownership, execution-specific SCC views, and existing call-graph behavior are covered
       - command: go test ./internal/sema -run 'TestFoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects' -count=1
@@ -364,15 +565,14 @@ integrations:
       - command: validate implementation-status.yaml
         result: passed
     remaining:
-      - callable and call-site identity and reachability stable across snapshots and concrete CompilationPlan variants
-      - generic-specialization, defer, destructor, and compiler-generated callable nodes plus CompilationPlan-qualified closure nodes
+      - generic-specialization, destructor, and compiler-generated callable nodes
       - joined/open function-value and interface target sets with sound open callable contracts
-      - target, initialization, test, benchmark, interrupt, foreign-export, generated, and open-world roots
+      - target, initialization, benchmark, interrupt, foreign-export, generated, and open-world roots
       - complete semantic path pruning beyond literal branches and the current folded integer/boolean if/while subset
-      - process, interrupt, callback, await, join, defer, and destruction execution relations
-      - effect domains beyond the initial Arena allocation summary
-      - path-aware ordered effect merging and general diagnostic cause paths
-      - persistent workspace graph indexing, incremental invalidation, and stale-result suppression
+      - process, interrupt, callback, await, join, and destruction execution relations
+      - path-aware ordered effect merging and root/CompilationPlan-qualified general diagnostic cause paths beyond the new per-callable synchronous domain witnesses
+      - integrate remaining semantic/runtime domain producers and imported guarantee/trust facts with full graph coverage; the shared domain consumer does not define new source attributes or foreign metadata imports
+      - wire complete dependency producers and default compiler/LSP request lifecycles to the explicit workspace graph-index service; choose cache storage/eviction policy and atomic checkpoint installation in the owning driver
   - id: analysis.arena-allocation
     area: frontend-analysis
     status: partial
@@ -478,7 +678,7 @@ integrations:
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-03
     remaining:
-      - migrate sec/stdlib ToString declarations, StringError.AllocationFailed matches, and callers to Result[string, StringError] (owned by library source migration)
+      - (take this last) migrate sec/stdlib ToString declarations, StringError.AllocationFailed matches, and callers to Result[string, StringError] (owned by library source migration)
       - runtime format validation for ToString(format) overloads once the format grammar exists
       - Semantic IR and lowering of fallible compiler-known ToString materialization
   - id: analysis.arena-reset-release-dependency-legality
@@ -677,11 +877,39 @@ integrations:
     area: analysis-coordination-and-fact-ownership
     status: partial
     repository_baseline: 998d8d1
+    updated: "2026-10-06"
+    rules:
+    - rules/compiler/compiler_analysis.md
+    - rules/memory/lifetime_analysis.md
+    - rules/analysis/parameter_usage_analysis.md
+    implemented:
+    - explicit producer dependency graph schedules reference summaries, final module/callable bodies, materialization diagnostics, noPanic/noAlloc/noBlock validators, parameter demand/advice, and pitfalls after foundational declaration/conformance facts; the complete graph is validated before callbacks run, and deterministic priority/identity topological ordering preserves existing diagnostic presentation independently of registration/map order
+    - a shared finite fixed-point driver coordinates existing reference-return and parameter-call-demand solvers while preserving their domains, canonical call-graph SCC ordering, iteration limits and widening; mutually dependent domains are contained in a coordinated pass, uncoordinated pass cycles are rejected, and a producer that publishes neither convergence nor conservative widening cannot release consumers
+    - immutable per-Analyze AnalysisSchedule snapshots expose producer identity, sorted dependencies, iteration count, convergence and conservative-widening provenance; records are execution metadata rather than source-validity, positive semantic proof, cache compatibility or lowering-readiness claims, and analyzer reuse resets them
+    - implementation scheduling documentation records the declaration phase boundary, producer dependencies, existing domain-owned loop/effect solvers and conservative budget behavior without redefining language semantics
+    code:
+    - internal/sema/analysis_schedule.go
+    - internal/sema/analyzer_analysis_pipeline.go
+    - internal/sema/analyzer_reference_summaries.go
+    - internal/sema/parameter_usage_propagation.go
+    - internal/sema/analyzer.go
+    - internal/sema/analysis-scheduling.md
+    tests:
+    - internal/sema/analysis_schedule_test.go
+    - internal/sema/parameter_usage_test.go
+    - testdata/sema/analysis_schedule_valid.sec
+    - testdata/sema/analysis_schedule_invalid.sec
+    verification:
+    - command: "go test ./internal/sema -run 'TestAnalysisSchedule|TestAnalysisFixedPoint|TestAnalyzerPublishes|TestParameterUsage' -count=1"
+      result: passed on 2026-10-06 with all 120 registrations of a dependency graph, priority/identity scheduling, complete pre-execution validation of missing/duplicate producers and dependencies, self/mutual cycle rejection, grouped cyclic convergence, conservative exhaustion before consumers, unfinished-producer rejection, immutable schedule snapshots, analyzer reuse, recursive parameter demand and reference-origin widening at every analysis depth, and normative source errors preserved
+    - command: go test ./... -count=1
+      result: passed across all packages on 2026-10-06
+    - command: go vet ./...
+      result: passed on 2026-10-06
     remaining:
     - formalize a shared analysis fact/provenance API across existing analyzers
     - establish canonical semantic IDs for every shared Place/storage/execution fact
     - make Invalid/Valid/Unproven coordination explicit across cross-analysis validators
-    - document/implement deterministic dependency and fixed-point scheduling
     - prevent duplicated fact derivation between older Sema paths and newer analysis modules
     - integrate all analysis summaries with CompilationPlan dependency identity
   - id: analysis.iterator
@@ -981,14 +1209,41 @@ integrations:
       - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/analysis/escape_analysis.md
   - id: sema.stack-analysis
     area: frontend-analysis-and-lowering
-    status: planned
+    status: partial
+    integrated: "2026-10-06"
+    revised: "2026-10-06"
     audited: "2026-08-11"
     summary: >-
-      Adds canonical semantic and machine stack-resource analysis: materialized
-      frame accounting, call-path composition, recursive SCC and finite-depth
-      reasoning, indirect and foreign stack contracts, execution-root stack
-      domains, stack-budget proofs, incremental summaries, and LSP/tooling
-      integration without changing storage origin or performing hidden promotion.
+      Implements the canonical immutable StackBound result representation with
+      Exact, UpperBound, Unknown and Unbounded classifications, validated
+      nonnegative arbitrary-precision byte counts, defensive count access and
+      Unknown as the zero value. Separate semantic and machine per-callable
+      summary models retain own-frame, transitive maximum and supplied cause
+      evidence in independent callable/CompilationPlan namespaces with detached
+      deterministic snapshots. Direct and closed-target acyclic same-stack call paths compose
+      supplied verified frame facts through the canonical call graph, preserving
+      conservative unknown boundaries and upper-bound precision. Immutable
+      stack budgets identify physical domain, authoritative measurement level
+      and arbitrary-precision availability; explicit comparisons preserve
+      satisfied, exact-excess, upper-bound-unproven, unknown and unbounded facts.
+      A separate immutable RecursionDepthBound model distinguishes exact,
+      finite upper-bound, unknown and proven unbounded depth facts without
+      inferring depth or converting counts into stack bytes.
+      Detached partial stack evidence retains representative known prefixes,
+      independent frame contributors and deterministic paths to every distinct
+      uncertainty boundary without turning them into overall budget proofs.
+      Open callable composition consumes explicit verified contract bounds and
+      no-reentry guarantees under canonical contract/level/plan identities,
+      retaining Unknown for absent or incompatible facts and preserving known targets.
+      Explicit foreign, runtime and compiler-known platform whole-call and
+      runtime-effect contracts now compose at exact site/level/plan identities,
+      including panic paths and verified no-reentry boundaries.
+      Frame producers, recursive solving, contract producers/import,
+      budget policy integration,
+      other diagnostics and tooling remain unimplemented; explicit active-budget
+      diagnostics distinguish proven excess, unavailable budget proofs and
+      proven unbounded demand through registered S1121-S1123 identities.
+      No default CLI stack pass or byte-layout estimator is introduced.
     rules:
       - rules/analysis/stack_analysis.md
       - rules/analysis/call_graph.md
@@ -1009,30 +1264,183 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/projects/projects.md
       - rules/tooling/lsp.md
+    code:
+      - internal/sema/stack_external_contracts.go
+      - internal/sema/stack_callable_contracts.go
+      - internal/sema/stack_evidence.go
+      - internal/sema/stack_budget_diagnostics.go
+      - internal/sema/stack_recursion_depth.go
+      - internal/sema/stack_budget.go
+      - internal/sema/stack_callable_targets.go
+      - internal/sema/stack_composition.go
+      - internal/sema/stack_summary.go
+      - internal/sema/stack_bound.go
+    tests:
+      - internal/sema/stack_external_contracts_test.go
+      - testdata/sema/stack_external_contracts_valid.sec
+      - internal/sema/stack_callable_contracts_test.go
+      - testdata/sema/stack_open_callable_contracts_valid.sec
+      - internal/sema/stack_evidence_test.go
+      - internal/sema/stack_budget_diagnostics_test.go
+      - cmd/compiler/stack_budget_diagnostics_test.go
+      - cmd/lsp/stack_budget_diagnostics_test.go
+      - testdata/sema/stack_partial_evidence_valid.sec
+      - internal/sema/stack_recursion_depth_test.go
+      - internal/sema/stack_budget_test.go
+      - internal/sema/stack_callable_targets_test.go
+      - testdata/sema/stack_callable_targets_valid.sec
+      - internal/sema/stack_composition_test.go
+      - testdata/sema/stack_composition_valid.sec
+      - testdata/sema/stack_composition_unreachable_invalid.sec
+      - internal/sema/stack_summary_test.go
+      - internal/sema/stack_bound_test.go
+    implemented:
+      - StackExternalContractStore retains explicit producer-verified foreign/runtime/platform whole-call guarantees bound to canonical invocation, caller, resolved target and source, and runtime-path guarantees bound to canonical caller/effect/source; both levels require an exact CompilationPlan and usable finite bounds with verified NoReentry
+      - semantic and machine boundary-composition APIs consume external guarantees without requiring foreign body frames or inferring trust from callable names; whole-call bounds cover only their matching foreign/opaque panic-effect marker, while independent runtime effects require separate guarantees and cannot stand in for opaque callee bodies
+      - normal calls and runtime paths take their maximum above the caller frame, sequential calls do not sum, and nested callers add live frames; absent or mismatched bindings, open or incomplete targets, unsupported execution/dispatch, nonfinite bounds and unknown reentry preserve Unknown and known frame evidence without mutating canonical panic facts
+      - real-source regressions cover foreign/runtime/platform contributions, mixed normal and panic paths, multiple runtime operations, nested and sequential calls, independent machine facts, wrong plan/level/source/caller/target, missing coverage/reentry, zero and arbitrary-precision contributions, unchanged graph/frame facts and deterministic registration order; producer syntax/import and trust obligations remain pending under MD-045
+      - StackCallableContractStore retains producer-verified whole-call stack guarantees, including cleanup/panic paths, and independent NoReentry facts under canonical CallableContractID, measurement level and exact CompilationPlan identity; machine publication requires a plan and lookup never substitutes another level, plan or callable name
+      - explicit semantic and machine composition APIs consume canonical open call sites and verified finite no-reentry contracts while preserving all known concrete targets through the closed-target coverage consumer; absent, Unknown, Unbounded, mismatched or reentry-unknown contracts retain Unknown, as do inconsistent target mappings and known exact demand contradicting the open guarantee
+      - only an exactly matching canonical open invocation with a usable guarantee covers its legacy opaque-callee panic-effect marker; unrelated panic paths and other opaque invocations remain Unknown, sequential open calls take a maximum, nested calls add caller frames, and independent known target/contributor evidence remains available even when the open guarantee is unusable
+      - source graphs enriched with explicit producer facts verify semantic/machine isolation, nested and sequential composition, known-plus-open targets, missing contracts and reentry proof, zero and arbitrary-precision bounds, malformed coverage, foreign/execution rejection, detached graph/frame/count ownership and deterministic graph registration order; source/import syntax and ordinary opaque-call contract production remain pending under MD-045
+      - DiagnoseStackBudget consumes explicitly active finite contracts and verified same-domain/same-level requirements, emitting mandatory S1121 stack.budget-exceeded for exact excess, S1122 stack.budget-proof-unavailable for Unknown or an insufficient upper bound, and S1123 stack.budget-unbounded-demand for proven unbounded demand; absent or satisfied contracts emit nothing, and invalid scope/contract inputs remain API errors
+      - budget diagnostics retain physical domain, authoritative measurement level, arbitrary-precision availability and finite requirement values where applicable; explanatory help never presents an unknown result or upper bound above availability as inevitable overflow, and deterministic uncertainty evidence can supply a related stack-proof boundary without becoming an unbounded-proof cause
+      - source-span, immutable-evidence, exact/upper inclusive-boundary, inactive-policy, large-count and semantic/machine mismatch regressions verify budget diagnostic behavior; shared CLI occurrence and LSP adapters preserve S1121-S1123 identity, mandatory error severity and help without adding project syntax or automatic budget activation
+      - semantic and machine summaries retain detached StackEvidence with representative known prefixes, independently verified finite frame contributors, every distinct unknown cause and representative frame paths to those boundaries; unknown frame gaps remain visible instead of erasing later known contributions
+      - direct and closed-target composition collects evidence from all covered alternatives even after an opaque or runtime-panic boundary makes the total Unknown; missing own-frame facts preserve known callee contributors, canonical recursive SCC boundaries preserve known member frames, and a proven unbounded own demand retains both its stronger result and independent uncertainty evidence
+      - sorted, deduplicated contributors and boundary-keyed representative paths preserve deterministic evidence for shared DAG paths without enumerating all routes; publication, lookup and list snapshots detach nested paths at both measurement levels, and partial frame data never substitutes for the unknown total in budget comparison
+      - immutable RecursionDepthBound facts distinguish ExactDepth, UpperBoundDepth, UnknownDepth and UnboundedDepth independently of StackBound byte requirements; zero-value Unknown has no count, explicit exact/upper zero retain distinct proof quality, and producer proofs remain responsible for scope, initial inputs and all relevant recursive transitions
+      - finite depth constructors reject nil and negative counts, preserve arbitrary precision and detach mutable input/output integers; regression tests cover all classifications, positive and zero counts, counts exceeding uint64 and stable comparable identity without inferring unbounded depth merely from recursion
+      - immutable StackBudget contracts retain explicit physical-stack domain, semantic or machine measurement level and nonnegative arbitrary-precision MaximumBytes; constructors reject absent domain, unsupported level, nil and negative availability, explicit zero is valid, and absent contracts never become zero-byte budgets
+      - explicit budget comparison requires matching physical domain and authoritative measurement level; exact and upper requirements at or below availability satisfy the contract, exact excess remains distinct from an upper bound that cannot prove sufficiency, and Unknown and Unbounded remain separate results without automatically introducing build policy or diagnostics
+      - defensive input/output count ownership and comparable budget identity preserve immutable facts; regressions cover inclusive boundaries, zero availability, counts larger than uint64, absent and mismatched scopes, semantic-upper 4608 B versus machine-exact 4384 B authority, and final machine excess despite a smaller semantic estimate
+      - closed synchronous callable target sets now contribute the maximum over every permitted canonical body for named function values, joined branch assignments, lambdas and capturing closures; the same composition API preserves separate semantic and machine frame/plan facts and supports nested direct/indirect paths
+      - closed-target body-to-callable identity coverage is validated without discarding unknown targets; one missing/non-finite target, recursive target, unresolved body mapping, incomplete or inconsistent call-site target list, open contract or execution boundary prevents a finite maximum rather than treating the remaining known subset as complete
+      - sorted target identities select stable maximum and uncertainty causes including equal-cost targets, and input frame/graph facts remain detached; source regressions verify branch-joined, nested, lambda and capturing targets, opaque fallback and recursive uncertainty at both measurement levels
+      - direct acyclic call-path composition consumes producer-supplied own-frame summaries and the canonical Sema call graph separately at semantic and machine levels; nested calls sum live frames, while sequential calls and alternative reachable branches take their maximum, with arbitrary-precision byte arithmetic and conservative UpperBound results for non-leaves; proof producers must supply a graph covering the reported scope, including cleanup/runtime calls
+      - canonical same-stack SCCs block unsupported recursive-depth proofs without constructing a parallel recursion graph; absent or wrong-plan frame facts, foreign bodies, open indirect calls and execution boundaries retain Unknown, including opaque invocations represented by legacy canonical unknown-callee effect sites without outgoing edges and runtime panic paths lacking stack contracts
+      - detached composed summaries preserve independently known frames and deterministic representative source causes; dead calls excluded by Sema do not contribute, normative unreachable errors remain intact, and reversing node, call-site and effect registration order leaves results stable
+      - distinct SemanticStackSummary and MachineStackSummary types carry OwnFrame, TransitiveMaximum, bound proof quality and producer-supplied MaximumCause evidence; the canonical semantic-upper 8192 B / machine-exact 7344 B pair is retained without imposing a cross-level numeric ordering
+      - zero-value StackSummaryStore publishes detached results in separate semantic and machine namespaces keyed by callable and CompilationPlan identity; machine publication requires a plan, target-independent semantic facts use an explicit empty plan key, and refreshing either level or plan leaves the others intact
+      - exact-identity lookups never substitute another plan or measurement level; missing entries return absence and unknown bounds, independently known frames survive unknown transitive maxima, and stable callable/plan-ordered snapshots detach input and output cause slices
+      - canonical StackBoundKind and opaque immutable StackBound distinguish Exact(bytes), UpperBound(bytes), Unknown and Unbounded without conflating uncertainty with zero or with proven unbounded demand
+      - finite constructors validate nonnegative byte counts and preserve arbitrary precision without host-integer overflow; immutable decimal storage detaches input integers and Bytes returns fresh integers only for finite bounds
+      - zero-value and explicit Unknown agree, exact zero remains distinct from unknown and an upper bound of zero retains its classification; stable comparable value identity and display preserve proof quality
+    verification:
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-06 after final external stack-contract regressions, including exact runtime-operation binding, absent no-reentry proof and runtime-handler facts that cannot bound a foreign body
+      - command: go vet ./internal/sema
+        result: passed on 2026-10-06 after final external stack-contract regressions
+      - command: Python YAML validation and git diff --check
+        result: passed on 2026-10-06 with registry/file parity, unique integration and decision IDs, and existing unique stack code/test paths
+      - command: go test ./... -count=1
+        result: >-
+          Failed on 2026-10-06 only in cmd/compiler because current working-tree
+          sec/core/char.sec line 102 reports S3001 unreachable statement.
+          All other packages, including Sema and LSP, pass. Core edits were
+          preserved outside this external stack-contract consumer task.
+      - command: go vet ./...
+        result: passed on 2026-10-06 after external stack-contract consumption
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after adding canonical open-callable stack contract consumption
+      - command: go vet ./...
+        result: passed on 2026-10-06 after open callable stack contracts
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-06 after strengthening per-target exact-demand compatibility checks, including a loose upper target that could otherwise hide another target's exact contract violation
+      - command: go vet ./internal/sema
+        result: passed on 2026-10-06 after the final open-contract compatibility check
+      - command: go test ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-06 with known-plus-open targets, opaque and nested contract paths, sequential maxima, independent semantic/machine bounds, exact identity isolation, missing and nonfinite guarantees, unsupported reentry, unrelated panic paths, explicit zero, arbitrary-precision sums, graph/frame/count detachment and deterministic registration order
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'TestStack|TestRegistry|TestKnownDiagnostic|TestDiagnosticCatalog' -count=1
+        result: passed on 2026-10-06 with distinct mandatory S1121-S1123 outcomes, exact/upper inclusive boundaries, inactive budgets, domain/measurement mismatches, arbitrary-precision counts, deterministic related uncertainty sources, immutable evidence and shared CLI/LSP identity, severity and help transport
+      - command: go vet ./...
+        result: passed on 2026-10-06 after stack budget proof diagnostics
+      - command: go run ./cmd/compiler diagnostics S1121
+        result: passed on 2026-10-06 with active mandatory Error stack.budget-exceeded
+      - command: go run ./cmd/compiler diagnostics S1122
+        result: passed on 2026-10-06 with active mandatory Error stack.budget-proof-unavailable
+      - command: go run ./cmd/compiler diagnostics S1123
+        result: passed on 2026-10-06 with active mandatory Error stack.budget-unbounded-demand
+      - command: go test ./... -count=1
+        result: >-
+          Failed on 2026-10-06 in cmd/compiler because current working-tree
+          sec/core/char.sec line 176 declares method IsLetter conflicting with
+          property IsLetter. All other packages, including Sema, the diagnostic
+          registry and LSP, pass. The new targeted compiler diagnostic tests
+          also pass; core edits were preserved outside this task.
+      - command: go test ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-06 with preserved 1536 B opaque-call prefixes, nested paths, multiple unknown boundaries, known alternatives, missing-frame gaps, closed targets and recursive SCC contributors, shared-DAG path compaction, semantic/machine isolation, detached nested evidence, unchanged Unknown budget outcomes and stronger unbounded own facts
+      - command: go vet ./...
+        result: passed on 2026-10-06 after partial stack evidence composition
+      - command: go test ./... -count=1
+        result: >-
+          Failed on 2026-10-06 in cmd/compiler because current working-tree
+          sec/core/char.sec line 176 declares method IsLetter conflicting with
+          property IsLetter. All other packages, including internal/sema and
+          the new partial-evidence regressions, pass. Core edits were preserved
+          outside this stack-analysis task.
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-06 after adding the separate recursion-depth fact model
+      - command: go vet ./internal/sema
+        result: passed on 2026-10-06 after recursion-depth facts
+      - command: go test ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-06 with all four depth classifications, unknown versus exact/upper zero, nil and negative rejection, positive and arbitrary-precision counts, detached ownership and stable value identity
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after adding physical-domain and measurement-level stack budgets and explicit requirement comparison
+      - command: go vet ./...
+        result: passed on 2026-10-06 after stack budget contracts
+      - command: go test ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-06 with immutable arbitrary-precision budgets, constructor rejection, explicit versus absent zero, inclusive boundaries, exact excess versus unproven upper bound, Unknown and Unbounded, domain/level mismatches and independent semantic/machine authority
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after adding closed callable-target stack composition
+      - command: go vet ./...
+        result: passed on 2026-10-06 after closed callable-target stack composition
+      - command: go test ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-06 with closed named/joined/nested/lambda/capturing targets, recursive and opaque Unknown, per-target frame gaps, independent semantic/machine results, target-order and equal-cost cause stability, open/empty/incomplete/mismatched coverage and execution boundaries
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-06 after adding direct acyclic stack composition and conservative opaque/runtime-panic boundary handling
+      - command: go vet ./...
+        result: passed on 2026-10-06 after direct stack composition
+      - command: go test ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-06 with sequential and branch 900 B maxima, nested 1400 B contribution, method calls, tied-cause stability, recursive/foreign/opaque/runtime-panic Unknown boundaries, unreachable-call pruning with mandatory source error, plan and analysis-level isolation, immutable inputs and byte sums exceeding uint64
+      - command: go vet ./...
+        result: passed on 2026-10-06 after adding separate stack summary models
+      - command: go test ./... -count=1
+        result: >-
+          Failed on 2026-10-06 in cmd/compiler due to working-tree core source
+          errors at sec/core/rune.sec line 349 (invalid Unicode scalar literals
+          55296r and 57343r) and line 355 (operator & requires integer operands).
+          internal/sema and the new stack summary tests pass; core changes were
+          preserved outside this task.
+      - command: "go test ./internal/sema -run 'TestStackBound|TestStackSummary' -count=1"
+        result: passed on 2026-10-06 with independent semantic/machine results, multiple plans, per-level refresh, known frame with unknown maximum, absent evidence, mandatory machine plan identity, deterministic publication order and defensive producer/consumer snapshots
+      - command: go vet ./...
+        result: passed on 2026-10-06
+      - command: go test ./... -count=1
+        result: >-
+          Failed on 2026-10-06 in cmd/compiler because the current working-tree
+          sec/core/rune.sec line 349 contains invalid Unicode scalar literals
+          55296r and 57343r. The stack-bound tests pass; core source changes
+          are outside this implementation and were preserved.
+      - command: go test ./internal/sema -run TestStackBound -count=1
+        result: passed on 2026-10-06 for all four classifications, exact and upper zero, nil and negative rejection, byte counts larger than uint64, defensive input/output ownership and stable immutable value identity
     remaining:
-      - add canonical stack-bound representation distinguishing Exact, UpperBound, Unknown, and Unbounded results
-      - add separate semantic and machine stack summary models without overwriting one analysis level with the other
       - derive semantic own-frame demand from maximum simultaneously live materialized automatic storage rather than summing all declarations
       - consume ResolvedLayout as the authoritative size, alignment, stride, aggregate, array, union, pointer, and descriptor layout source
       - integrate canonical lifetime, escape, destruction, defer, addressability, pinning, partial-move, and storage facts to constrain stack-slot reuse
       - distinguish inline fixed-array and embedded aggregate storage from descriptors, views, arena-backed storage, and allocator-backed backing memory
       - model materialized semantic temporaries, return storage, direct construction, cleanup state, destruction, error paths, and panic paths without double-counting storage
-      - compose direct acyclic call paths so nested calls sum simultaneously live frames while sequential and mutually exclusive calls contribute their maximum
       - consume canonical call-graph SCCs for direct, mutual, indirect, callback, and reentrant recursion rather than constructing a parallel call graph
-      - add recursion-depth facts distinguishing exact depth, finite upper-bound depth, unknown depth, and proven unbounded depth
       - support simple finite recursion-depth proofs from canonical constant, range, constrained-type, root-contract, and call-argument transformation facts
       - ensure a recursion progress proof applies to every relevant recursive transition before using it for a finite SCC stack bound
       - add deterministic recursive SCC stack composition that accounts for different frame costs across different cycles
-      - consume closed callable target sets by taking the maximum permitted target stack contribution
-      - consume open callable stack contracts and preserve Unknown when an open target set has no verified finite stack bound
+      - produce/import trusted open callable stack and no-reentry guarantees and attach canonical contract identities to ordinary opaque calls; declaration/import syntax, verification obligations and trust provenance require a normative decision (MD-045)
       - model callable, foreign, runtime, and platform reentry so permitted callback paths can participate in recursive SCCs
-      - consume explicit foreign, runtime, and compiler-known platform stack contracts without defining their import mechanism in stack analysis
+      - produce/import verified foreign, runtime and compiler-known platform stack/no-reentry contracts and bind them to canonical invocation or runtime-effect identities; metadata schema, verification obligations and trust provenance remain pending under MD-045
       - add per-execution-root and per-physical-stack-domain maximum stack analysis for program, thread, task, ISR, platform, and runtime-defined roots
       - compose nested execution contributions when the active runtime or CompilationPlan places logical execution contexts on the same physical stack
-      - add stack budgets that identify stack domain, semantic or machine measurement level, and maximum bytes without inventing stack-specific project syntax
-      - distinguish proven budget excess, failure to prove a required finite bound, and proven unbounded stack demand in diagnostics
+      - integrate project/platform budget producers and build policy with the canonical budget model; project manifest syntax, domain binding and profile precedence need a normative decision (MD-044), and callable summaries must not be relabeled as physical-domain proofs before root/nesting composition is implemented
       - revalidate hard machine-stack budgets after target ABI, backend frame layout, spills, saved registers, and outgoing call areas are known
-      - preserve known stack prefixes, contributors, and unknown causes when an overall finite upper bound is unavailable
       - add deterministic maximum-cause paths, recursive SCC explanations, depth-source reporting, and major frame-contributor reporting
       - add versioned persisted semantic and CompilationPlan-specific machine stack summaries for separate compilation
       - add dependency-driven invalidation for body, callee summary, target-set, SCC, layout, lifetime/storage, cleanup, specialization, foreign-contract, CompilationPlan, ABI, and schema changes

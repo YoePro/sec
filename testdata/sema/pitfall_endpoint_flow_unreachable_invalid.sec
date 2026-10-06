@@ -1,0 +1,13 @@
+module main
+fn Dead(values: ref int[]) void {
+    for i in uint(0)..values.Len {
+        if false { discard values[i] }
+    }
+}
+fn DeadLoop(values: ref int[]) void {
+    if false {
+        for i in uint(0)..values.Len {
+            discard values[i]
+        }
+    }
+}

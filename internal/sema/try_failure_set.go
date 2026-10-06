@@ -320,7 +320,7 @@ func (a *Analyzer) checkFailureSetPropagation(expr *ast.TryExpression, points []
 	valid := true
 	reported := []Type{}
 	for _, point := range points {
-		if canInitialize(channel, point.ErrorType, expr.Expression) {
+		if a.canInitialize(channel, point.ErrorType, expr.Expression) {
 			continue
 		}
 		already := false

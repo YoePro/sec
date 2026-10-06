@@ -62,7 +62,7 @@ func (a *Analyzer) analyzeTryHandlerBlockValue(handler *ast.TryHandler, value as
 	if valueType.Kind == InvalidType {
 		return TryHandlerInvalidFlow
 	}
-	if !canInitialize(successType, valueType, value) {
+	if !a.canInitialize(successType, valueType, value) {
 		a.addErrorAtToken(expressionToken(value), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(valueType))
 		return TryHandlerInvalidFlow
 	}

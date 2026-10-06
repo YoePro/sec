@@ -1,0 +1,50 @@
+module main
+type Frame struct { a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, }
+type Node struct { next: ref Node, value: int, }
+type Percent int range 0..100
+type Domain struct { value: Percent, }
+fn Read(frame: Frame) int { return frame.a }
+fn Mutation(frame: ref mut Frame) void { frame.a = 3 }
+fn CryptoBlock(block: int[16]) int[16] { return block }
+fn ProtocolHeader(header: int[8]) int[8] { return header }
+fn Snapshot(frame: Frame) Frame { return frame }
+fn Owning(-> frame: Frame) void { discard frame }
+fn Cheap(value: int) int { return value }
+fn Constrained(domain: Domain) Percent { return domain.value }
+fn Prefix(values: int[100]) int { return values[3] }
+fn MutableElements(values: ref mut int[]) void { values[0] = 1 }
+fn BorrowedElements(values: ref int[]) int { return values[0] }
+fn OwningSequence(values: int[]) uint { return values.Len }
+fn MutableSequence(values: list[int]) void { values.Clear() }
+fn Identity(values: int[100]) void { unsafe { discard values.Ptr } }
+fn Recursive(node: ref Node, again: bool) int {
+    if again { return Recursive(node.next, false) }
+    return node.value
+}
+fn Alpha(node: ref Node, again: bool) int {
+    if again { return Beta(node.next, false) }
+    return node.value
+}
+fn Beta(node: ref Node, again: bool) int {
+    if again { return Alpha(node.next, false) }
+    return node.value
+}
+fn NestedParameter(frame: Frame) void {
+    let operation := fn(frame: Frame) int { return frame.a }
+    discard operation
+}
+extern "C" fn Native(value: int32) int32
+fn Foreign(value: int32) int32 { return Native(value) }
+extern "C" fn NativeBuffer(value: RawPtr[int32], count: uint) int32
+fn ForeignBuffer(values: int32[100]) int32 {
+    unsafe { return NativeBuffer(values.Ptr, values.Len) }
+}
+fn ForeignCallback(operation: fn(int32) int32, value: int32) int32 { return operation(value) }
+fn CopyCapture(frame: Frame) void {
+    let operation := capture(frame) fn() int { return 0 }
+    discard operation
+}
+fn MoveCapture(frame: Frame) void {
+    let operation := capture(<-frame) fn() int { return 0 }
+    discard operation
+}

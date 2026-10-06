@@ -24,3 +24,33 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/split.sec
+
+fn Split(value: string, separator: string) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn SplitAfter(value: string, separator: string) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn SplitLines(value: string) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Fields(value: string) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn FieldsBy(value: string, separator: fn(rune) bool) Result[string[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

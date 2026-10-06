@@ -56,7 +56,7 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 		return
 	}
 	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
-	if !canInitialize(functionErrorType, errorType, stmt.Assignment.Value) {
+	if !a.canInitialize(functionErrorType, errorType, stmt.Assignment.Value) {
 		a.addErrorAtToken(stmt.Token, "naked try assignment propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(errorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType), typeDisplayName(functionErrorType))
 		return
 	}

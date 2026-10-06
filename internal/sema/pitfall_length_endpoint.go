@@ -25,7 +25,7 @@ func (b *pitfallBuilder) lengthMinusOne(expression ast.Expression) (string, ast.
 //     access to `X[X.Len - 1]` in the same block is intent evidence that
 //     suppresses it.
 //   - "Avoiding fragile `0..len - 1` workarounds": an inclusive loop ending at
-//     `X.Len - 1` underflows on an empty collection. With a non-empty proof on
+//     `X.Len - 1` underflows on an empty collection. With a stable non-empty proof on
 //     the path it is equivalent to the canonical `start..<X.Len`, offered as a
 //     proven fix; without one it is a likely mistake whose suggested edit
 //     changes behavior for the empty collection.
@@ -64,8 +64,12 @@ func (b *pitfallBuilder) inspectLengthEndpointIntent(loop *ast.ForStatement, blo
 	if proof, proven := nonEmpty[collection]; proven {
 		finding.Classification = PitfallSuspiciousIntent
 		finding.Confidence = PitfallConfidenceProven
-		finding.EvidenceFor = append(finding.EvidenceFor, PitfallEvidence{Strength: PitfallEvidenceProof, Fact: "control flow proves the collection is non-empty, so the half-open range is equivalent", Source: proof})
-		finding.Actions = []PitfallSuggestedAction{{Kind: PitfallProvenFix, Title: "use the canonical half-open traversal", Replacement: canonical, Source: rangeExpression.Token}}
+		finding.EvidenceFor = append(finding.EvidenceFor, PitfallEvidence{Strength: PitfallEvidenceProof, Fact: "control flow proves the collection is non-empty on entry to the loop", Source: proof})
+		finding.Actions = []PitfallSuggestedAction{{Kind: PitfallProvenFix, Safety: b.lengthEndpointFixSafety(rangeExpression, lengthExpression, canonical), Title: "use the canonical half-open traversal", Replacement: canonical, Source: rangeExpression.Token}}
+		if !finding.Actions[0].Safety.verifiedFor(finding.Rule, canonical) {
+			finding.Confidence = PitfallConfidenceHigh
+			finding.EvidenceAgainst = append(finding.EvidenceAgainst, PitfallEvidence{Strength: PitfallEvidenceContradicting, Fact: "start or Len receiver evaluation may invalidate the entry proof or have observable effects; equivalence is unproven", Source: rangeExpression.Token})
+		}
 	} else {
 		finding.Classification = PitfallLikelyMistake
 		finding.Confidence = PitfallConfidenceHigh
@@ -75,6 +79,11 @@ func (b *pitfallBuilder) inspectLengthEndpointIntent(loop *ast.ForStatement, blo
 	b.add(finding)
 }
 
+// inspectOmittedLastElement recommends the canonical full half-open traversal
+// when source facts show an unexplained shortened domain. This is an intent edit,
+// not an equivalence proof, and explicit neighbor/final handling suppresses it.
+// Rules: rules/analysis/pitfall_analysis.md — "Omitted-last-element advisory",
+// "Canonical idiom guidance", "Fix safety".
 func (b *pitfallBuilder) inspectOmittedLastElement(loop *ast.ForStatement, rangeExpression *ast.RangeExpression, collection string, lengthToken lexer.Token, block []ast.Statement, position int) {
 	if len(loop.Bindings) != 1 || loop.Bindings[0].Discard || !b.pitfallIntegerEquals(rangeExpression.Start, 0) {
 		return
@@ -98,6 +107,10 @@ func (b *pitfallBuilder) inspectOmittedLastElement(loop *ast.ForStatement, range
 	if direct == nil {
 		return
 	}
+	_, length, _, resolved := b.lengthMinusOne(rangeExpression.End)
+	if !resolved {
+		return
+	}
 	finding := PitfallFinding{
 		Rule:           PitfallOmittedLastElement,
 		Family:         PitfallBoundsAndRanges,
@@ -110,7 +123,8 @@ func (b *pitfallBuilder) inspectOmittedLastElement(loop *ast.ForStatement, range
 		},
 		OwningRule: "range-and-collection-intent",
 		Actions: []PitfallSuggestedAction{{
-			Kind: PitfallSuggestedEdit, Title: "traverse every element with ..<Len", Source: rangeExpression.Token,
+			Kind: PitfallSuggestedEdit, Title: "traverse every element with ..<Len",
+			Replacement: rangeExpression.Start.String() + "..<" + length.String(), Source: rangeExpression.Token,
 		}},
 	}
 	suppress := func(reason string, source lexer.Token) {

@@ -28,6 +28,12 @@ export function activate(context: vscode.ExtensionContext) {
       configurationSection: "sec"
     },
     initializationOptions: {
+      analysis: {
+        parameters: {
+          hover: vscode.workspace.getConfiguration("sec.analysis.parameters").get<string>("hover", "off"),
+          advisories: vscode.workspace.getConfiguration("sec.analysis.parameters").get<string>("advisories", "off")
+        }
+      },
       inlayHints: {
         types: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("types", true),
         parameters: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("parameters", true),

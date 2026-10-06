@@ -8,9 +8,9 @@ import (
 	"sec/internal/lexer"
 )
 
-// CallableID identifies one callable declaration within an analyzed source
-// snapshot. Compilation-plan and specialization identity will extend this key
-// when those compiler services become available.
+// CallableID identifies a semantic declaration or lexical callable body,
+// independently of current source coordinates. Concrete graph views qualify
+// these identities by their explicit compilation scope.
 type CallableID string
 
 // CallableBodyID identifies one executable callable body in an analysis
@@ -60,6 +60,7 @@ type CallRootID string
 type CallRootKind string
 
 const (
+	CallRootTestEntry    CallRootKind = "test-entry"
 	CallRootProgramEntry CallRootKind = "program-entry"
 	CallRootTaskEntry    CallRootKind = "task-entry"
 	CallRootThreadEntry  CallRootKind = "thread-entry"
@@ -68,6 +69,7 @@ const (
 type CallDispatchKind string
 
 const (
+	CallDispatchGenerated     CallDispatchKind = "compiler-generated"
 	CallDispatchDirect        CallDispatchKind = "direct"
 	CallDispatchStaticMethod  CallDispatchKind = "static-method"
 	CallDispatchClosure       CallDispatchKind = "closure"
@@ -78,6 +80,7 @@ const (
 type CallExecutionRelation string
 
 const (
+	CallExecutionDeferred     CallExecutionRelation = "deferred"
 	CallExecutionSynchronous  CallExecutionRelation = "synchronous"
 	CallExecutionSpawnTask    CallExecutionRelation = "spawn-task"
 	CallExecutionSpawnThread  CallExecutionRelation = "spawn-thread"
@@ -161,6 +164,7 @@ type CallableEffectSummary struct {
 }
 
 type CallableNode struct {
+	Kind        CallableBodyKind
 	ID          CallableID
 	Name        string
 	Module      string
@@ -180,6 +184,8 @@ type CallSite struct {
 }
 
 type CallRoot struct {
+	// Scope qualifies concrete plan roots; unbound Sema roots have zero scope.
+	Scope      CallGraphScope
 	ID         CallRootID
 	Kind       CallRootKind
 	Node       CallableID
@@ -188,18 +194,21 @@ type CallRoot struct {
 }
 
 // CallGraph is the compiler-owned semantic call graph for one Analyzer run.
-// This initial graph records closed, validated direct and static-method calls.
+// It retains canonical targets and execution relationships; a concrete view is
+// bound to exactly one explicit CompilationPlan.
 type CallGraph struct {
-	nodes        map[CallableID]CallableNode
-	nodeOrder    []CallableID
-	bodyNodes    map[CallableBodyID]CallableID
-	sites        []CallSite
-	siteIDs      map[CallSiteID]bool
-	roots        map[CallRootID]CallRoot
-	rootOrder    []CallRootID
-	arenaEffects map[CallableID][]ArenaEffectSite
-	effects      map[CallableID][]EffectSite
-	blockEffects map[CallableID][]BlockEffectSite
+	scope         CallGraphScope
+	syntaxOrigins map[sourceTokenKey]string
+	nodes         map[CallableID]CallableNode
+	nodeOrder     []CallableID
+	bodyNodes     map[CallableBodyID]CallableID
+	sites         []CallSite
+	siteIDs       map[CallSiteID]bool
+	roots         map[CallRootID]CallRoot
+	rootOrder     []CallRootID
+	arenaEffects  map[CallableID][]ArenaEffectSite
+	effects       map[CallableID][]EffectSite
+	blockEffects  map[CallableID][]BlockEffectSite
 }
 
 func newCallGraph() *CallGraph {
@@ -254,11 +263,6 @@ func (g *CallGraph) addRoot(kind CallRootKind, node CallableID, source lexer.Tok
 	return id
 }
 
-func callableID(function Function) CallableID {
-	token := function.Token
-	return CallableID(fmt.Sprintf("%s|%s|%s:%d:%d", function.Module, function.Name, token.File, token.Line, token.Column))
-}
-
 // callableBodyID maps a resolved named declaration to the body identity shared
 // by callable creation facts and direct call-graph target sets.
 //
@@ -268,6 +272,8 @@ func callableBodyID(function Function) CallableBodyID {
 	return CallableBodyID("callable-body|" + string(callableID(function)))
 }
 
+// addCallable registers a resolved named declaration and its concrete body.
+// Rules: rules/analysis/call_graph.md — "Callable node", "Callable node identity".
 func (g *CallGraph) addCallable(function Function) CallableID {
 	if g == nil {
 		return ""
@@ -276,6 +282,7 @@ func (g *CallGraph) addCallable(function Function) CallableID {
 	if _, exists := g.nodes[id]; !exists {
 		g.nodes[id] = CallableNode{
 			ID:          id,
+			Kind:        CallableBodyNamedFunction,
 			Name:        function.Name,
 			Module:      function.Module,
 			ImplTarget:  function.ImplTarget,
@@ -303,7 +310,7 @@ func (g *CallGraph) addClosureCallable(identity ResolvedCallableIdentity, module
 	}
 	id := CallableID(identity.Body)
 	g.nodes[id] = CallableNode{
-		ID: id, Name: "lambda", Module: module, Declaration: identity.Source,
+		ID: id, Kind: identity.Kind, Name: "lambda", Module: module, Declaration: identity.Source,
 	}
 	g.nodeOrder = append(g.nodeOrder, id)
 	g.bodyNodes[identity.Body] = id
@@ -332,7 +339,7 @@ func (g *CallGraph) addTargetSetCall(caller CallableID, targets CallableTargetSe
 	if targets.IsClosed && len(resolved) != len(targets.KnownTargets) {
 		return
 	}
-	id := CallSiteID(fmt.Sprintf("%s|%s:%d:%d|%s|%s", caller, source.File, source.Line, source.Column, dispatch, execution))
+	id := g.semanticCallSiteID(caller, source, dispatch, execution)
 	if g.siteIDs[id] {
 		return
 	}
@@ -348,7 +355,7 @@ func (g *CallGraph) addCall(caller CallableID, target Function, source lexer.Tok
 		return
 	}
 	targetID := g.addCallable(target)
-	id := CallSiteID(fmt.Sprintf("%s|%s:%d:%d|%s|%s", caller, source.File, source.Line, source.Column, dispatch, execution))
+	id := g.semanticCallSiteID(caller, source, dispatch, execution)
 	if g.siteIDs[id] {
 		return
 	}
@@ -368,6 +375,13 @@ func (g *CallGraph) clone() *CallGraph {
 	copyGraph := newCallGraph()
 	if g == nil {
 		return copyGraph
+	}
+	copyGraph.scope = g.scope
+	if g.syntaxOrigins != nil {
+		copyGraph.syntaxOrigins = map[sourceTokenKey]string{}
+		for key, origin := range g.syntaxOrigins {
+			copyGraph.syntaxOrigins[key] = origin
+		}
 	}
 	for _, id := range g.nodeOrder {
 		copyGraph.nodes[id] = g.nodes[id]
@@ -486,6 +500,7 @@ func (g *CallGraph) Roots() []CallRoot {
 		for _, target := range site.Targets {
 			roots = append(roots, CallRoot{
 				ID:         CallRootID(fmt.Sprintf("%s|%s|%s", kind, site.ID, target)),
+				Scope:      g.scope,
 				Kind:       kind,
 				Node:       target,
 				Source:     site.Source,
@@ -579,9 +594,12 @@ func (g *CallGraph) reachabilityTargets(id CallableID) []CallableID {
 	return targets
 }
 
+// executionContributesReachability includes same-stack cleanup and represented
+// worker entry relationships in the root reachability view.
+// Rules: rules/analysis/call_graph.md — "Same-stack execution", "Reachability".
 func executionContributesReachability(execution CallExecutionRelation) bool {
 	switch execution {
-	case CallExecutionSynchronous, CallExecutionSpawnTask, CallExecutionSpawnThread:
+	case CallExecutionSynchronous, CallExecutionDeferred, CallExecutionSpawnTask, CallExecutionSpawnThread:
 		return true
 	default:
 		return false
@@ -918,7 +936,7 @@ func (g *CallGraph) targetsForExecution(id CallableID, execution CallExecutionRe
 func (g *CallGraph) completeExecutionTargets(id CallableID) []CallableID {
 	return g.filteredTargets(id, func(site CallSite) bool {
 		switch site.Execution {
-		case CallExecutionSynchronous, CallExecutionSpawnTask, CallExecutionSpawnThread, CallExecutionSpawnProcess:
+		case CallExecutionSynchronous, CallExecutionDeferred, CallExecutionSpawnTask, CallExecutionSpawnThread, CallExecutionSpawnProcess:
 			return true
 		default:
 			return false
@@ -926,9 +944,12 @@ func (g *CallGraph) completeExecutionTargets(id CallableID) []CallableID {
 	})
 }
 
+// sameStackTargets retains ordinary and deferred edges for effect, recursion
+// and stack consumers without flattening their execution metadata.
+// Rules: rules/analysis/call_graph.md — "Same-stack execution", "Recursive `defer`".
 func (g *CallGraph) sameStackTargets(id CallableID) []CallableID {
 	return g.filteredTargets(id, func(site CallSite) bool {
-		return site.Execution == CallExecutionSynchronous
+		return sameStackExecution(site.Execution)
 	})
 }
 

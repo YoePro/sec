@@ -473,7 +473,7 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.
 		if stepType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, false
 		}
-		if !canInitialize(startType, stepType, step) {
+		if !a.canInitialize(startType, stepType, step) {
 			a.addErrorAtToken(expressionToken(step), "for range step must be %s, got %s", typeDisplayName(startType), typeDisplayName(stepType))
 			return Type{Kind: InvalidType}, false
 		}

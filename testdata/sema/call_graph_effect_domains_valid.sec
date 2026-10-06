@@ -1,0 +1,33 @@
+module core
+
+fn Pure() void {}
+fn PanicLeaf(value: int) int { return value + 1 }
+fn VolatileLeaf(pointer: RawPtr[int], value: int) int {
+    unsafe {
+        pointer.VolatileWrite(value)
+        return pointer.VolatileRead()
+    }
+}
+fn ClockLeaf() datetime { return _now }
+fn Nested(pointer: RawPtr[int], value: int) void {
+    discard PanicLeaf(value)
+    discard VolatileLeaf(pointer, value)
+    discard ClockLeaf()
+}
+fn Top(pointer: RawPtr[int], value: int) void { Nested(pointer, value) }
+fn Worker() void { discard ClockLeaf() }
+fn Spawner() void {
+    let child := spawn task Worker()
+    detach child
+}
+fn RecursiveA(pointer: RawPtr[int]) void { RecursiveB(pointer) }
+fn RecursiveB(pointer: RawPtr[int]) void {
+    RecursiveA(pointer)
+    discard VolatileLeaf(pointer, 1)
+}
+fn ReadFlag() bool { discard ClockLeaf()
+    return true }
+fn DeadBranch() bool { return false && ReadFlag() }
+fn Opaque(operation: fn() void) void { operation() }
+extern "C" fn Foreign() void
+fn ForeignCaller() void { Foreign() }

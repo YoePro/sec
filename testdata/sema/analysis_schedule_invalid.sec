@@ -1,0 +1,2 @@
+module main
+fn Invalid(value: bool) int { return value }

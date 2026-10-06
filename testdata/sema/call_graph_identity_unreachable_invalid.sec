@@ -1,0 +1,6 @@
+module main
+fn Recursive() void { Recursive() }
+fn main() void {
+    let operation := fn() void { Recursive() }
+    if false { operation() }
+}

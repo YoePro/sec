@@ -310,8 +310,10 @@ func pitfallReportClass(finding sema.PitfallFinding) analyseReportClass {
 }
 
 // addPitfalls reports findings, suppressed findings with reasons, proven
-// fixes versus suggested edits, and rules that were not evaluated.
-// Rule: rules/analysis/pitfall_analysis.md — sec analyse Deep output.
+// fixes versus suggested edits, preferred canonical idioms and replacement text,
+// and rules that were not evaluated.
+// Rules: rules/analysis/pitfall_analysis.md — sec analyse Deep output,
+// "Canonical idiom guidance", "Fix safety".
 func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection func(lexer.Token) bool) {
 	section := r.section("pitfalls")
 	if coverage := pitfalls.Coverage(); coverage.SkippedUnits > 0 {
@@ -341,6 +343,12 @@ func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection 
 		}
 		for _, action := range finding.Actions {
 			section.add("  %s: %s", action.Kind, action.Title)
+			if action.Idiom != "" {
+				section.add("    canonical idiom: %s", action.Idiom)
+			}
+			if action.Replacement != "" {
+				section.add("    replacement: %s", action.Replacement)
+			}
 		}
 	}
 	notEvaluated := []string{}

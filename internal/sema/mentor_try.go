@@ -50,7 +50,7 @@ func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual
 	if suggestion, ok := a.unitConversionSuggestion(expected, actual, expr); ok {
 		a.unitConversionSuggestions = append(a.unitConversionSuggestions, suggestion)
 		a.addErrorAtTokenWithMetadata(token, "",
-			"convert explicitly with `"+suggestion.Replacement+"`; Sec never converts between unit identities implicitly",
+			"convert explicitly with `"+suggestion.Replacement+"`; "+a.implicitUnitConversionRejection(expected, actual, expr),
 			format, args...)
 		return
 	}

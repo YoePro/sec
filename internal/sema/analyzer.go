@@ -17,6 +17,7 @@ import (
 type Analyzer struct {
 	analysisDepth              AnalysisDepth
 	analysisBudget             AnalysisBudget
+	analysisSchedule           []AnalysisPassRecord
 	targetUintWidthBits        uint16
 	legacyDefaultAST           bool
 	types                      map[string]Type
@@ -70,6 +71,9 @@ type Analyzer struct {
 	resolvedCompoundAssignments map[*ast.AssignmentStatement]ResolvedOperator
 	resolvedRangeMemberships    map[*ast.InfixExpression]ResolvedRangeMembership
 	resolvedRangeAppends        map[*ast.CallExpression]ResolvedArrayLiteralEntry
+	// unitConversionPlans records each implicit fixed unit conversion Sema
+	// proved exact (rules/types/units.md, "Exact fixed conversions").
+	unitConversionPlans map[ast.Expression]UnitConversionPlan
 	// comparisonConstantOperands records, per comparison operand, the integer
 	// value of a named compile-time constant (an immutable, non-transient
 	// binding) resolved in the operand's own scope, so later analyses never
@@ -341,6 +345,7 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
+	a.analysisSchedule = nil
 	a.trustedCoreSources = map[string]bool{}
 	if program != nil {
 		for file, provenance := range program.SourceProvenance {
@@ -380,6 +385,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedCompoundAssignments = map[*ast.AssignmentStatement]ResolvedOperator{}
 	a.resolvedRangeMemberships = map[*ast.InfixExpression]ResolvedRangeMembership{}
 	a.resolvedRangeAppends = map[*ast.CallExpression]ResolvedArrayLiteralEntry{}
+	a.unitConversionPlans = map[ast.Expression]UnitConversionPlan{}
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
@@ -407,6 +413,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
+	a.callGraph.syntaxOrigins = prepareGraphSyntaxOrigins(program)
 	a.escapeAnalysis = newEscapeAnalysis()
 	a.parameterUsageAnalysis = newParameterUsageAnalysis()
 	a.pitfallAnalysis = newPitfallAnalysis()
@@ -493,32 +500,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerFunctionDeclarations(program)
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
-	a.inferFunctionReferenceSummaries(program)
-	a.expressionTypes = map[ast.Expression]Type{}
-	a.expressionReferenceOrigins = map[ast.Expression]localReferenceOrigin{}
-
-	a.withProgramModules(program, func(stmt ast.Statement) {
-		switch stmt.(type) {
-		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.InterfaceDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration, *ast.TestDeclaration:
-			return
-		}
-		if !isAllowedModuleStatement(stmt) {
-			a.addTopLevelStatementError(stmt)
-			return
-		}
-		a.analyzeStatement(stmt)
-	})
-
-	a.analyzeFunctionBodies(program)
-	a.analyzeImplBodies(program)
-	a.analyzeTestBodies(program)
-	a.reportStringMaterializations()
-	a.validateNoPanicGuarantees(program)
-	a.validateNoAllocGuarantees(program)
-	a.validateNoBlockGuarantees(program)
-	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
-	a.emitLargeValueParameterAdvisories()
-	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
+	a.runSemanticAnalysisPipeline(program)
 
 	return a.errors
 }
@@ -766,9 +748,13 @@ func (a *Analyzer) CompilerKnownMemberAt(file string, line int, column int) (Com
 }
 
 // CallGraph returns an immutable snapshot of the graph produced by the most
-// recent analysis.
+// recent analysis, with stable declaration/lexical identities and current
+// navigation positions. Concrete plan binding is explicit.
+// Rules: rules/analysis/call_graph.md — "Callable node identity", "Call-site identity".
 func (a *Analyzer) CallGraph() *CallGraph {
-	return a.callGraph.clone()
+	graph := a.callGraph.clone()
+	graph.syntaxOrigins = nil // Traversal lookup is not a retained semantic fact.
+	return graph
 }
 
 // EscapeAnalysis returns an immutable snapshot of escape facts and callable
@@ -4334,145 +4320,6 @@ func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
 	})
 }
 
-// analyzeTestBodies applies ordinary Sec statement, scope, ownership, and
-// cleanup analysis to every retained test body while preserving the test
-// declaration itself as the semantic context and keeping it non-callable.
-//
-// Rules:
-//   - rules/tooling/testing.md — §9.1 "Ordinary body semantics"
-//   - rules/tooling/testing.md — §§9.2–9.4 test completion and return
-//   - rules/tooling/testing.md — §21 "Cleanup and controlled termination"
-func (a *Analyzer) analyzeTestBodies(program *ast.Program) {
-	a.withProgramModules(program, func(statement ast.Statement) {
-		declaration, ok := statement.(*ast.TestDeclaration)
-		if !ok || declaration == nil || declaration.Body == nil {
-			return
-		}
-		a.analyzeTestBody(declaration)
-	})
-}
-
-// analyzeTestBody establishes an invocation-local Sema scope for a source
-// test. It intentionally creates neither a Function nor a source-callable name.
-//
-// Rules:
-//   - rules/tooling/testing.md — §5.7 "Not callable as an ordinary function"
-//   - rules/tooling/testing.md — §9 "Test body execution"
-func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousFunctionName := a.currentFunctionName
-	previousCallable := a.currentCallable
-	previousFunctionReturn := a.currentFunctionReturn
-	previousFunctionToken := a.currentFunctionToken
-	previousFunctionMetadata := a.currentFunctionMetadata
-	previousFunctionSummary := a.currentFunctionSummary
-	previousHasFunctionSummary := a.hasCurrentFunctionSummary
-	previousInFunctionBody := a.inFunctionBody
-	previousTest := a.currentTest
-	previousScopeDepth := a.scopeDepth
-
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = map[string]lexer.Token{}
-	a.moveReasons = map[string]string{}
-	a.closedResources = map[string]lexer.Token{}
-	a.borrows = map[string][]borrowRecord{}
-	a.localRefContainers = map[string]localReferenceOrigin{}
-	a.arenaGenerations = map[string]int{}
-	a.currentFunctionName = ""
-	a.currentCallable = ""
-	a.currentFunctionReturn = Type{Name: "void", Kind: VoidType}
-	a.currentFunctionToken = declaration.Token
-	a.currentFunctionMetadata = Function{}
-	a.currentFunctionSummary = localReferenceOrigin{}
-	a.hasCurrentFunctionSummary = false
-	a.inFunctionBody = true
-	a.currentTest = declaration
-	a.scopeDepth = 0
-	defer func() {
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
-		a.closedResources = previousClosedResources
-		a.borrows = previousBorrows
-		a.localRefContainers = previousLocalRefContainers
-		a.arenaGenerations = previousArenaGenerations
-		a.currentFunctionName = previousFunctionName
-		a.currentCallable = previousCallable
-		a.currentFunctionReturn = previousFunctionReturn
-		a.currentFunctionToken = previousFunctionToken
-		a.currentFunctionMetadata = previousFunctionMetadata
-		a.currentFunctionSummary = previousFunctionSummary
-		a.hasCurrentFunctionSummary = previousHasFunctionSummary
-		a.inFunctionBody = previousInFunctionBody
-		a.currentTest = previousTest
-		a.scopeDepth = previousScopeDepth
-	}()
-
-	a.analyzeBlockStatements(declaration.Body)
-}
-
-// widenFunctionReferenceSummaries preserves soundness when an interactive
-// resource limit is reached: unresolved reference-returning calls become
-// unknown rather than retaining a potentially incomplete proof.
-func (a *Analyzer) widenFunctionReferenceSummaries() {
-	for name, overloads := range a.functions {
-		for index := range overloads {
-			if !typeContainsReference(overloads[index].ReturnType, map[string]bool{}) {
-				continue
-			}
-			overloads[index].HasReturnOrigin = true
-			overloads[index].ReturnOrigin = localReferenceOrigin{Unknown: true, Ambiguous: true}
-		}
-		a.functions[name] = overloads
-	}
-}
-
-func copyFunctionReferenceSummaries(functions map[string][]Function) map[string][]Function {
-	out := make(map[string][]Function, len(functions))
-	for name, overloads := range functions {
-		out[name] = make([]Function, len(overloads))
-		for index, function := range overloads {
-			function.ReturnOrigin = cloneLocalReferenceOrigin(function.ReturnOrigin)
-			out[name][index] = function
-		}
-	}
-	return out
-}
-
-func functionReferenceSummariesEqual(left, right map[string][]Function) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for name, leftOverloads := range left {
-		rightOverloads, ok := right[name]
-		if !ok || len(leftOverloads) != len(rightOverloads) {
-			return false
-		}
-		for index, leftFunction := range leftOverloads {
-			rightFunction := rightOverloads[index]
-			if leftFunction.HasReturnOrigin != rightFunction.HasReturnOrigin {
-				return false
-			}
-			if leftFunction.HasReturnOrigin && !sameReferenceOrigin(leftFunction.ReturnOrigin, rightFunction.ReturnOrigin) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 	a.analyzeFunctionBodyNamed(fn, fn.Name.Value)
 }
@@ -5623,7 +5470,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		return
 	}
 
-	if !canInitialize(returnType, valueType, stmt.Value) && !a.isExplicitUnitConversionReturn(returnType, valueType) {
+	if !a.canInitialize(returnType, valueType, stmt.Value) && !a.isExplicitUnitConversionReturn(returnType, valueType) {
 		if functionName == "lambda" {
 			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return %s, got %s", typeDisplayName(returnType), typeDisplayName(valueType))
 			return
@@ -6814,7 +6661,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		if a.validateTerminalReturnConstruction(expr.Value) {
 			return
 		}
-		if !canInitialize(expected, valueType, expr.Value) {
+		if !a.canInitialize(expected, valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 			return
 		}
@@ -6843,7 +6690,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 			return
 		}
 		expected := returnType.TypeArgs[1]
-		if !canInitialize(expected, valueType, expr.Value) {
+		if !a.canInitialize(expected, valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Err(%s), got Err(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 			return
 		}
@@ -6867,7 +6714,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		//   - rules/errors/errorhandling.md — §7 "Result is must-use"
 		//   - rules/memory/copy_move.md — §9 "Return boundaries"
 		if valueType.Kind == ResultType {
-			if !canInitialize(returnType, valueType, stmt.Value) {
+			if !a.canInitialize(returnType, valueType, stmt.Value) {
 				a.addTypeMismatchError(expressionToken(stmt.Value), returnType, valueType, stmt.Value, "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
 				return
 			}
@@ -6920,7 +6767,7 @@ func (a *Analyzer) analyzeReturnTryResultForwarding(functionName string, returnT
 		a.addErrorAtToken(expr.Token, "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
 		return
 	}
-	if !canInitialize(returnType.TypeArgs[1], resolved.ErrorType, expr.Expression) {
+	if !a.canInitialize(returnType.TypeArgs[1], resolved.ErrorType, expr.Expression) {
 		// inferTryExpression has already emitted the focused incompatible-
 		// propagation diagnostic. Do not bless an invalid try with a forwarding
 		// fact that lowering could consume.
@@ -6928,7 +6775,7 @@ func (a *Analyzer) analyzeReturnTryResultForwarding(functionName string, returnT
 	}
 
 	expected := returnType.TypeArgs[0]
-	if !canInitialize(expected, successType, expr) {
+	if !a.canInitialize(expected, successType, expr) {
 		a.addErrorAtToken(expr.Token, "function %s uses return try with success type %s, but %s requires Ok(%s)", functionName, typeDisplayName(successType), typeDisplayName(returnType), typeDisplayName(expected))
 		return
 	}
@@ -9332,7 +9179,7 @@ func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStat
 	}
 	if stmt.Value != nil && stmt.Type != nil {
 		valueType, _ := a.inferExpressionWithExpected(stmt.Value, declaredType)
-		if valueType.Kind != InvalidType && !canInitialize(declaredType, valueType, stmt.Value) {
+		if valueType.Kind != InvalidType && !a.canInitialize(declaredType, valueType, stmt.Value) {
 			a.addTypeMismatchError(expressionToken(stmt.Value), declaredType, valueType, stmt.Value, "cannot initialize %s with %s", typeDisplayName(declaredType), typeDisplayName(valueType))
 			return
 		}
@@ -10109,13 +9956,13 @@ func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expre
 	switch expr := expr.(type) {
 	case *ast.OkExpression:
 		valueType, _ := a.inferExpression(expr.Value)
-		if valueType.Kind != InvalidType && !canInitialize(resultType.TypeArgs[0], valueType, expr.Value) {
+		if valueType.Kind != InvalidType && !a.canInitialize(resultType.TypeArgs[0], valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "cannot initialize %s with Ok(%s)", typeDisplayName(resultType), typeDisplayName(valueType))
 		}
 		return resultType, true
 	case *ast.ErrExpression:
 		valueType, _ := a.inferExpression(expr.Value)
-		if valueType.Kind != InvalidType && !canInitialize(resultType.TypeArgs[1], valueType, expr.Value) {
+		if valueType.Kind != InvalidType && !a.canInitialize(resultType.TypeArgs[1], valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "cannot initialize %s with Err(%s)", typeDisplayName(resultType), typeDisplayName(valueType))
 		}
 		return resultType, true
@@ -11109,7 +10956,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.recordResolvedCompoundAssignment(stmt, targetType, valueType)
 	}
 
-	if !canInitialize(targetType, assignmentType, stmt.Value) {
+	if !a.canInitialize(targetType, assignmentType, stmt.Value) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return
 	}
@@ -12015,15 +11862,6 @@ func (a *Analyzer) exactUserToStringReplacement(typ Type) (Function, bool) {
 	return matches[0], true
 }
 
-func (a *Analyzer) validUnicodeScalarLiteral(expr *ast.IntegerLiteral) bool {
-	value, ok := ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
-	if !ok || value.Sign() < 0 || value.Cmp(big.NewInt(0x10FFFF)) > 0 || (value.Cmp(big.NewInt(0xD800)) >= 0 && value.Cmp(big.NewInt(0xDFFF)) <= 0) {
-		a.addErrorAtToken(expr.Token, "value %s is not a valid Unicode scalar value", expr.Token.Lexeme)
-		return false
-	}
-	return true
-}
-
 func spawnExecutionRelation(kind string) (CallExecutionRelation, bool) {
 	switch kind {
 	case "", "task":
@@ -12177,7 +12015,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 		}
 
 		valueType, _ := a.inferOwningConstructionValue(field.Value, expectedField.Type)
-		if valueType.Kind != InvalidType && !canInitialize(expectedField.Type, valueType, field.Value) {
+		if valueType.Kind != InvalidType && !a.canInitialize(expectedField.Type, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
 			continue
 		}
@@ -13724,7 +13562,7 @@ func (a *Analyzer) checkAtomicValueArgument(expr *ast.CallExpression, expected T
 		return
 	}
 	argType, _ := a.inferExpression(expr.Arguments[index])
-	if argType.Kind != InvalidType && !canInitialize(expected, argType, expr.Arguments[index]) {
+	if argType.Kind != InvalidType && !a.canInitialize(expected, argType, expr.Arguments[index]) {
 		a.addErrorAtToken(expressionToken(expr.Arguments[index]), "atomic argument %d must be %s, got %s", index+1, typeDisplayName(expected), typeDisplayName(argType))
 	}
 }
@@ -14749,7 +14587,7 @@ func (a *Analyzer) checkTryResidualPropagation(expr *ast.TryExpression, errorTyp
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... to handle the remaining errors locally or return Result[%s, %s]",
 			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType))
 		return false
-	case !canInitialize(a.currentFunctionReturn.TypeArgs[1], errorType, expr.Expression):
+	case !a.canInitialize(a.currentFunctionReturn.TypeArgs[1], errorType, expr.Expression):
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... or map %s to %s",
 			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType), typeDisplayName(a.currentFunctionReturn.TypeArgs[1]))
 		return false
@@ -15001,7 +14839,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	if bodyType.Kind == InvalidType {
 		return TryHandlerInvalidFlow
 	}
-	if !canInitialize(successType, bodyType, handler.Body) {
+	if !a.canInitialize(successType, bodyType, handler.Body) {
 		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
 	}
 	return TryHandlerProducesValue
@@ -15129,7 +14967,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			hasResultType = true
 			return
 		}
-		if !canInitialize(resultType, armType, arm.Body) && !canInitialize(armType, resultType, arm.Body) {
+		if !a.canInitializeUnrecorded(resultType, armType, arm.Body) && !a.canInitializeUnrecorded(armType, resultType, arm.Body) {
 			a.addErrorAtToken(expressionToken(arm.Body), "match arms must produce compatible types, got %s and %s", typeDisplayName(resultType), typeDisplayName(armType))
 		}
 	}
@@ -16200,7 +16038,7 @@ func appendStringConcatSegments(target []StringConcatSegment, segments ...String
 }
 
 func (a *Analyzer) contextualNumericLiteralType(expr ast.Expression, actual Type, target Type) (Type, bool) {
-	if !isUntypedNumericExpression(expr) || !isNumericType(target) || !canInitialize(target, actual, expr) {
+	if !isUntypedNumericExpression(expr) || !isNumericType(target) || !a.canInitialize(target, actual, expr) {
 		return actual, true
 	}
 	if isIntegerType(target) {
@@ -16279,8 +16117,13 @@ func compatiblePlainNumericAlias(left Type, right Type) bool {
 // applying rules/types/units.md unit algebra.
 func unitArithmeticCarrier(left, right Type, operator string) (Type, bool) {
 	if left.Kind == right.Kind {
+		// rules/types/units.md: a unit annotation never makes a mixed-carrier
+		// operation valid that the plain carriers reject.
+		if !sameConcreteType(left, right) && !sameNumericCarrier(left, right) {
+			return Type{}, false
+		}
 		result := left
-		result.Name, result.Named, result.Declared, result.Underlying = string(left.Kind), false, false, ""
+		result.Name, result.Named, result.Declared, result.Underlying = numericCarrierName(left), false, false, ""
 		return result, true
 	}
 	if ((left.Kind == DecimalType || left.Kind == FloatType) && (right.Kind == IntType || right.Kind == UintType)) ||
@@ -16316,7 +16159,11 @@ func (a *Analyzer) validateUnitComparison(expr *ast.InfixExpression, leftType, r
 		return true
 	}
 	carrier, ok := unitArithmeticCarrier(leftType, rightType, "+")
-	if !ok || (!sameConcreteType(leftType, rightType) && !exactImplicitUnitConversion(right, left, carrier.Kind)) {
+	// A comparison has no result unit, so either operand may take the exact
+	// conversion path into the other's unit.
+	if !ok || (!sameConcreteType(leftType, rightType) &&
+		!a.implicitUnitOperandConversion(expr.Right, right, left, carrier) &&
+		!a.implicitUnitOperandConversion(expr.Left, left, right, carrier)) {
 		a.addErrorAtToken(expr.Token, "cannot compare %s and %s without a lossless unit conversion", typeDisplayName(leftType), typeDisplayName(rightType))
 		return false
 	}
@@ -16330,7 +16177,7 @@ func (a *Analyzer) validateUnitComparison(expr *ast.InfixExpression, leftType, r
 // Rules:
 //   - rules/foundations/operators.md — "Range membership": compatible ordered values
 func (a *Analyzer) contextualRangeBoundType(bound ast.Expression, boundType Type, value Type) {
-	if isUntypedNumericExpression(bound) && isNumericType(value) && !sameConcreteType(boundType, value) && canInitialize(value, boundType, bound) {
+	if isUntypedNumericExpression(bound) && isNumericType(value) && !sameConcreteType(boundType, value) && a.canInitialize(value, boundType, bound) {
 		a.expressionTypes[bound] = value
 	}
 }
@@ -16361,7 +16208,7 @@ func (a *Analyzer) contextualMembershipValueType(expr ast.Expression, actual Typ
 		a.expressionTypes[expr] = actual
 		return actual
 	}
-	if isUntypedNumericExpression(expr) && isNumericType(element) && canInitialize(element, actual, expr) {
+	if isUntypedNumericExpression(expr) && isNumericType(element) && a.canInitialize(element, actual, expr) {
 		a.expressionTypes[expr] = element
 		return element
 	}
@@ -16791,7 +16638,7 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 }
 
 func (a *Analyzer) checkInitializerType(target Type, value Type, expr ast.Expression) bool {
-	if canInitialize(target, value, expr) {
+	if a.canInitialize(target, value, expr) {
 		return true
 	}
 
@@ -16925,15 +16772,19 @@ func canInitializeUnitQuantity(target Type, value Type, expr ast.Expression) boo
 			(target.Kind == DecimalType && (value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType)) ||
 			(target.Kind == FloatType && (value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType))
 	}
-	if !isNumericType(target) || !isNumericType(value) || target.Kind != value.Kind || !target.Dimension.Equal(value.Dimension) {
+	if !isNumericType(target) || !isNumericType(value) {
+		return false
+	}
+	// rules/types/units.md, "Same named unit": no unit conversion is needed.
+	if sameConcreteType(target, value) {
+		return true
+	}
+	if !sameNumericCarrier(target, value) || !target.Dimension.Equal(value.Dimension) {
 		return false
 	}
 	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(value)
 	if !unitKindCompatible(to, from) || !unitOriginCompatible(to, from) || to.Role != from.Role {
 		return false
-	}
-	if sameConcreteType(target, value) {
-		return true
 	}
 	return exactImplicitUnitConversion(from, to, target.Kind)
 }

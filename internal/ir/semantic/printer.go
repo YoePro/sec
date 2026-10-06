@@ -114,6 +114,9 @@ func formatFunction(out *strings.Builder, fn *Function) {
 		fmt.Fprintf(out, " extern abi=%q link=%q %s\n", fn.ABI, fn.LinkName, formatLocation(fn.Location))
 		return
 	}
+	if fn.NoPanic {
+		fmt.Fprintf(out, " noPanic(%s)", fn.NoPanicSource)
+	}
 	fmt.Fprintf(out, " %s {\n", formatLocation(fn.Location))
 	if len(fn.Storages) > 0 {
 		out.WriteString("    storage {\n")
@@ -188,6 +191,11 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpUnreachable:
 		fmt.Fprintf(out, " synthesized=%t reason=%q", op.Synthesized, op.Reason)
+	case OpPanic:
+		fmt.Fprintf(out, " reason=%s#%d", op.PanicReason, op.PanicReasonID)
+		if op.PanicHasMessage {
+			fmt.Fprintf(out, " message=%q", op.PanicMessage)
+		}
 	case OpDirectCall, OpForeignCall:
 		fmt.Fprintf(out, " %q(", op.Callee)
 		for i, id := range op.Operands {
@@ -200,6 +208,9 @@ func formatOperation(out *strings.Builder, op Operation) {
 	case OpBranch:
 		formatTarget(out, op.Successors[0])
 	case OpCondBranch:
+		if op.AssertCheck {
+			out.WriteString(" assert")
+		}
 		fmt.Fprintf(out, " %%%d,", op.Operands[0])
 		formatTarget(out, op.Successors[0])
 		out.WriteString(",")

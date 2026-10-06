@@ -23,3 +23,45 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/edit.sec
+
+type EditError union error {
+    /**
+     * A byte position or range lies outside the source string.
+     */
+    OutOfBounds(uint),
+
+    /**
+     * The requested range begins after it ends.
+     */
+    StartAfterEnd,
+
+    /**
+     * A byte position lies inside a UTF-8 encoded rune.
+     */
+    NotRuneBoundary(uint),
+
+    /**
+     * Result storage could not be allocated.
+     */
+    Allocation(CollectionError),
+
+    /** Just for implementation */
+    NotImplemented,
+}
+
+fn Insert(value: string, byteIndex: uint, insertion: string) Result[string, EditError] {
+    return Err(EditError.NotImplemented)
+}
+fn Insert(value: string, byteIndex: uint, insertion: rune) Result[string, EditError] {
+    return Err(EditError.NotImplemented)
+}
+
+fn RemoveRange(value: string, startByte: uint, endByte: uint) Result[string, EditError] {
+    return Err(EditError.NotImplemented)
+}
+
+fn ReplaceRange(value: string, startByte: uint, endByte: uint, replacement: string) Result[string, EditError] {
+    return Err(EditError.NotImplemented)
+}

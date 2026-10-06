@@ -26,3 +26,47 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/normalize.sec
+
+enum NormalizationForm {
+    /**
+     * Canonical decomposition followed by canonical composition.
+     */
+    NFC
+
+    /**
+     * Canonical decomposition.
+     */
+    NFD
+
+    /**
+     * Compatibility decomposition followed by canonical composition.
+     */
+    NFKC
+
+    /**
+     * Compatibility decomposition.
+     */
+    NFKD
+}
+
+fn Normalize(value: string, form: NormalizationForm) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn NormalizeNFC(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn NormalizeNFD(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn NormalizeNFKC(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn NormalizeNFKD(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

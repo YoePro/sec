@@ -1,0 +1,10 @@
+module main
+fn Alpha(values: ref int[], descend: bool) int {
+    return Beta(values, descend)
+}
+fn Beta(values: ref int[], descend: bool) int {
+    if descend { return Alpha(values, false) }
+    return values[6]
+}
+fn Forward(value: ref int) ref int { return Identity(value) }
+fn Identity(value: ref int) ref int { return value }

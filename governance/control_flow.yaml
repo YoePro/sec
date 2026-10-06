@@ -475,6 +475,7 @@ integrations:
       - testdata/sema/union_state_tests_valid.sec
       - testdata/basic_types_valid.sec
     implemented:
+      - "Semantic IR if join (2026-10-06): an if without else whose body continues now branches to the merge block exactly once; the former code reused the then-branch end as the else end and emitted a second branch, so every such if produced invalid Semantic IR (TestIfWithoutElseJoinsOnce)"
       - if, else-if, and else syntax with mandatory braces
       - bool-only conditions without implicit truthiness
       - logical !, &&, and || expressions with left-to-right short-circuit backend lowering; frontend runtime-state effects remain partial

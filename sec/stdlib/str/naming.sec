@@ -23,3 +23,33 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/naming.sec
+
+fn ToCamelCase(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToPascalCase(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToSnakeCase(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToScreamingSnakeCase(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToKebabCase(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToScreamingKebabCase(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToDelimiterCase(value: string, delimiter: rune, uppercase: bool) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

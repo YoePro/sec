@@ -126,6 +126,7 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 		if crossTarget, ok := s.crossTargetResultFor(snapshot.URI, snapshot.Text); ok {
 			published = mergeCrossTargetDiagnostics(published, crossTarget)
 		}
+		published = parameterInsightDiagnostics(published, s.parameterInsight)
 		if err := s.notify("textDocument/publishDiagnostics", map[string]any{
 			"uri": snapshot.URI, "version": snapshot.Version, "diagnostics": published,
 		}); err != nil {

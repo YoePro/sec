@@ -54,7 +54,7 @@ func (a *Analyzer) resolveRangeSegment(segment *ast.RangeExpression, expected Ty
 			expr ast.Expression
 			typ  Type
 		}{{segment.Start, lowerType}, {segment.End, upperType}} {
-			if !canInitialize(expected, bound.typ, bound.expr) {
+			if !a.canInitialize(expected, bound.typ, bound.expr) {
 				return invalid("range segment bound must be %s, got %s", typeDisplayName(expected), typeDisplayName(bound.typ))
 			}
 		}

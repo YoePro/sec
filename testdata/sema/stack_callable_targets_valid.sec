@@ -1,0 +1,36 @@
+module main
+
+fn Small() void {}
+fn Large() void {}
+fn Nested() void { Large() }
+fn Recursive() void { Recursive() }
+
+fn Named() void {
+    let operation := Large
+    operation()
+}
+fn Joined(enabled: bool) void {
+    let mut operation := Small
+    if enabled { operation = Large }
+    operation()
+}
+fn JoinedNested(enabled: bool) void {
+    let mut operation := Small
+    if enabled { operation = Nested }
+    operation()
+}
+fn JoinedRecursive(enabled: bool) void {
+    let mut operation := Small
+    if enabled { operation = Recursive }
+    operation()
+}
+fn Lambda() void {
+    let operation := fn() void { Large() }
+    operation()
+}
+fn Capturing() int {
+    let value := 7
+    let operation := capture(value) fn() int { return value }
+    return operation()
+}
+fn Open(operation: fn() void) void { operation() }

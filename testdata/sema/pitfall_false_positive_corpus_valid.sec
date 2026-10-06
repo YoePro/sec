@@ -1,0 +1,121 @@
+module main
+
+fn Consume(value: int) void {}
+fn Pair(left: int, right: int) void {}
+
+// Adjacent pairs explain both the shortened upper domain and start at one.
+fn NeighborSuccessor(values: ref int[]) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..<values.Len - 1 { Pair(values[i], values[i + 1]) }
+}
+fn NeighborPredecessor(values: ref int[]) void {
+    for i in uint(1)..<values.Len { Pair(values[i - 1], values[i]) }
+}
+// A sentinel is explicitly consumed; its spelling alone proves no intent.
+fn SentinelFirst(values: ref int[]) void {
+    if values.Len == 0 { return }
+    let sentinel := values[0]
+    Consume(sentinel)
+    for i in uint(1)..<values.Len { Consume(values[i]) }
+}
+fn ManualPrefix(values: ref int[]) void {
+    if values.Len == 0 { return }
+    Consume(values[0])
+    for i in uint(1)..<values.Len { Consume(values[i]) }
+}
+fn SeparateFinal(values: ref int[]) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..<values.Len - 1 { discard values[i] }
+    Consume(values[values.Len - 1])
+}
+fn ParallelEqual(left: ref list[int], right: ref list[int]) void {
+    assert left.Len == right.Len
+    for i in uint(0)..<left.Len { Consume(right[i]) }
+}
+fn ParallelBoth(left: ref int[], right: ref int[]) void {
+    if left.Len != right.Len { return }
+    for i in uint(0)..<left.Len { Pair(left[i], right[i]) }
+}
+// Logical indexes wrap into a nonempty, fixed physical ring.
+fn RingBuffer(values: ref int[8], head: uint) void {
+    let cursor := head % uint(8)
+    for i in uint(0)..<uint(8) { Consume(values[(cursor + i) % uint(8)]) }
+}
+// Capacity bookkeeping touches no non-live elements.
+fn CapacityBookkeeping(values: ref list[int]) uint {
+    let mut available: uint := 0
+    for slot in values.Len..<values.Capacity {
+        discard slot
+        available += 1
+    }
+    return available
+}
+fn CapacityLiveStorage(values: ref list[int]) void {
+    assert values.Len == values.Capacity
+    for i in uint(0)..<values.Capacity { Consume(values[i]) }
+}
+// Protocol endpoints are closed numeric domains, not collection lengths.
+fn ProtocolRange(code: uint8) bool { return code in uint8(1)..uint8(31) }
+fn ProtocolPositions() void {
+    for code in uint(1)..uint(31) { discard code }
+}
+// All 16 positions are deliberately part of the fixed-size contract.
+fn FixedExtent(values: ref int[16]) void {
+    for i in uint(0)..<uint(16) { Consume(values[i]) }
+}
+// No pointer/extent relationship may be guessed from these parameter names.
+extern "C" fn ByteBuffer(data: RawPtr[uint8], byteCount: uint) void
+extern "C" fn CapacityStorage(data: RawPtr[int], slots: uint) void
+fn ByteBufferFFI(values: ref uint8[16]) void {
+    unsafe { ByteBuffer(values.Ptr, values.Len) }
+}
+fn ByteBufferRenamed(data: RawPtr[uint8], elementCount: uint) void {
+    unsafe { ByteBuffer(data, elementCount) }
+}
+fn CapacityStorageFFI(storage: RawPtr[int], capacity: uint) void {
+    unsafe { CapacityStorage(storage, capacity) }
+}
+
+// Near misses ensure the corpus cannot pass by turning off the detectors.
+fn MistakeUpper(values: ref int[]) void {
+    for i in uint(0)..<values.Len { Consume(values[i + 1]) }
+}
+fn MistakeLower(values: ref int[]) void {
+    for i in uint(0)..<values.Len { Consume(values[i - 1]) }
+}
+fn MistakeSentinelName(values: ref int[], sentinel: int) void {
+    Consume(sentinel)
+    for i in uint(1)..<values.Len { Consume(values[i]) }
+}
+fn MistakeConditionalPrefix(values: ref int[], enabled: bool) void {
+    if enabled { Consume(values[0]) }
+    for i in uint(1)..<values.Len { Consume(values[i]) }
+}
+fn MistakeFinal(values: ref int[]) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..<values.Len - 1 { Consume(values[i]) }
+}
+fn MistakeParallel(left: ref int[], right: ref int[]) void {
+    for i in uint(0)..<left.Len { Consume(right[i]) }
+}
+fn MistakeCapacity(values: ref list[int]) void {
+    for i in uint(0)..<values.Capacity { Consume(values[i]) }
+}
+fn MistakeEndpoint(values: ref int[]) void {
+    for i in uint(0)..values.Len { Consume(values[i]) }
+}
+fn MistakeChangedTraversal(values: ref mut list[int]) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..<values.Len - 1 { values.Clear() }
+    Consume(values[values.Len - 1])
+}
+fn MistakeOpaqueTraversal(values: ref int[], operation: fn(int) void) void {
+    if values.Len == 0 { return }
+    for i in uint(0)..<values.Len - 1 { operation(values[i]) }
+    Consume(values[values.Len - 1])
+}
+fn MistakeOtherProof(values: ref int[], other: ref int[]) void {
+    if other.Len == 0 { return }
+    for i in uint(0)..<values.Len - 1 { discard values[i] }
+    Consume(values[values.Len - 1])
+}

@@ -103,6 +103,8 @@ type PitfallSuppression struct {
 }
 
 type PitfallSuggestedAction struct {
+	Idiom       PitfallCanonicalIdiom
+	Safety      PitfallFixSafety
 	Kind        PitfallActionKind
 	Title       string
 	Replacement string
@@ -365,7 +367,12 @@ func (b *pitfallBuilder) finish() {
 	}
 }
 
+// add publishes a supported finding after requiring explicit automatic-fix safety
+// and preferring supported canonical idiom suggestions.
+// Rules: rules/analysis/pitfall_analysis.md — "Fix safety", "Analysis states", "Canonical idiom guidance".
 func (b *pitfallBuilder) add(finding PitfallFinding) {
+	requirePitfallFixSafety(&finding)
+	preferPitfallCanonicalIdioms(&finding)
 	evaluation := b.counts[finding.Rule]
 	if evaluation == nil || evaluation.State == PitfallStateNotEvaluated {
 		return
@@ -796,6 +803,7 @@ func (b *pitfallBuilder) inspectBooleanLiteralComparison(comparison *ast.InfixEx
 		OwningRule:     "equality-type-compatibility",
 		Actions: []PitfallSuggestedAction{{
 			Kind:        actionKind,
+			Safety:      booleanFixSafety(intent),
 			Title:       "use the boolean value directly",
 			Replacement: intent.replacement,
 			Source:      expressionToken(subject),
@@ -860,93 +868,6 @@ func (b *pitfallBuilder) inspectDirectIndexAtLength(index *ast.IndexExpression) 
 	})
 }
 
-func (b *pitfallBuilder) inspectInclusiveLengthLoop(loop *ast.ForStatement) {
-	rangeExpression, ok := loop.Iterable.(*ast.RangeExpression)
-	if !ok || rangeExpression == nil || loop.Body == nil || rangeExpression.Exclusive || len(loop.Bindings) != 1 || loop.Bindings[0].Discard {
-		return
-	}
-	collection, lengthToken, ok := b.lengthReceiver(rangeExpression.End)
-	if !ok {
-		return
-	}
-	binding := loop.Bindings[0]
-	guarded := false
-	for _, statement := range loop.Body.Statements {
-		for _, index := range indexesInStatement(statement) {
-			indexedCollection, sameCollection := b.expressionIdentity(index.Left)
-			if !sameCollection || indexedCollection != collection || !b.expressionUsesBinding(index.Index, binding.Token) {
-				continue
-			}
-			finding := PitfallFinding{
-				Rule: PitfallInclusiveLengthIndex, Family: PitfallBoundsAndRanges,
-				Classification: PitfallProvenInvalid, Confidence: PitfallConfidenceProven,
-				Subject: PitfallSubject{Expression: index.String(), Source: index.Token},
-				EvidenceFor: []PitfallEvidence{
-					{Strength: PitfallEvidenceProof, Fact: "the inclusive range reaches the collection Len", Source: rangeExpression.Token},
-					{Strength: PitfallEvidenceProof, Fact: "the same loop binding indexes the same collection", Source: index.Token},
-				},
-				OwningRule: "bounds",
-				Actions: []PitfallSuggestedAction{{
-					Kind: PitfallSuggestedEdit, Title: "use the canonical half-open range", Replacement: "..<", Source: rangeExpression.Token,
-				}},
-			}
-			if guarded {
-				evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: "a preceding endpoint guard exits before the indexed access", Source: lengthToken}
-				finding.State = PitfallStateSuppressed
-				finding.EvidenceAgainst = []PitfallEvidence{evidence}
-				finding.Suppression = &PitfallSuppression{Reason: "the indexed access is unreachable when the loop binding equals Len", Evidence: []PitfallEvidence{evidence}}
-			}
-			b.add(finding)
-		}
-		// An exit guard protects only later statements. Indexing inside the
-		// guard itself may happen before its break, continue, or return.
-		if b.endpointExitGuard(statement, binding.Token, collection) {
-			guarded = true
-		}
-	}
-}
-
-// endpointExitGuard recognizes a preceding conditional whose selected branch
-// exits when the loop binding reaches the inclusive collection-length endpoint.
-// The comparison must use the same resolved binding and collection as the index.
-//
-// Rules: rules/analysis/pitfall_analysis.md — "Guards participate in pitfall
-// reasoning" and "Inclusive upper bound against collection length";
-// rules/control-flow/flowcontrol_while.md — §14 "continue".
-func (b *pitfallBuilder) endpointExitGuard(statement ast.Statement, binding lexer.Token, collection string) bool {
-	conditional, ok := statement.(*ast.IfStatement)
-	if !ok {
-		return false
-	}
-	comparison, ok := conditional.Condition.(*ast.InfixExpression)
-	if !ok {
-		return false
-	}
-	if pitfallBlockDefinitelyExits(conditional.Consequence) {
-		switch comparison.Operator {
-		case "==":
-			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection) ||
-				b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
-		case ">=":
-			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection)
-		case "<=":
-			return b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
-		}
-	}
-	if pitfallBlockDefinitelyExits(conditional.Alternative) {
-		switch comparison.Operator {
-		case "!=":
-			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection) ||
-				b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
-		case "<":
-			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection)
-		case ">":
-			return b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
-		}
-	}
-	return false
-}
-
 // pitfallBlockDefinitelyExits recognizes an unconditional transfer away from
 // the current loop-body remainder, including continue to the next iteration.
 // Nested conditionals count only when both arms transfer.
@@ -968,14 +889,6 @@ func pitfallBlockDefinitelyExits(block *ast.BlockStatement) bool {
 		}
 	}
 	return false
-}
-
-func (b *pitfallBuilder) bindingAndLengthComparison(bindingExpression ast.Expression, lengthExpression ast.Expression, binding lexer.Token, collection string) bool {
-	if !b.expressionUsesBinding(bindingExpression, binding) {
-		return false
-	}
-	lengthCollection, _, ok := b.lengthReceiver(lengthExpression)
-	return ok && lengthCollection == collection
 }
 
 func (b *pitfallBuilder) lengthReceiver(expression ast.Expression) (string, lexer.Token, bool) {

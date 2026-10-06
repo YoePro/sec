@@ -110,6 +110,9 @@ func sharedReferenceCandidateBlockers(parameter ParameterUsageParameterSummary) 
 	if parameter.Consuming {
 		blockers = append(blockers, "declared consumption is not preserved")
 	}
+	if parameterTypeHasCustomCleanup(parameter.DeclaredType, map[string]bool{}) {
+		blockers = append(blockers, "explicit free lifecycle ownership is not preserved")
+	}
 	if demand.Precision != ParameterDemandExact {
 		blockers = append(blockers, "demand precision is "+string(demand.Precision))
 	}
@@ -184,11 +187,7 @@ func (a *Analyzer) emitLargeValueParameterAdvisory(parameter ParameterUsageParam
 	}
 	help := "Pass the parameter by shared reference when the function does not need to own or copy the whole value."
 	if typ.Kind == ArrayType {
-		if parameterDemandHasShape(parameter.Demand, ParameterShapeExactExtent) || parameterDemandHasShape(parameter.Demand, ParameterShapeUnknown) {
-			a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
-			return
-		}
-		a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s or ref %s[]", parameter.Name, typeDisplayName(typ), typeDisplayName(typ), arrayElementDisplayName(typ))
+		a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
 		return
 	}
 	a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large value %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))

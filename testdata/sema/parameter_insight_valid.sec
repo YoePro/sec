@@ -1,0 +1,15 @@
+module main
+
+type Frame struct {
+    a: int, b: int, c: int, d: int,
+    e: int, f: int, g: int, h: int,
+}
+
+fn Read(frame: Frame) int { return frame.a }
+fn ForwardRead(frame: Frame) int { return Read(frame) }
+fn Sink(-> frame: Frame) void { discard frame }
+fn ForwardSink(frame: Frame) void { Sink(<-frame) }
+fn Small(value: int) int { return value + 1 }
+fn Borrowed(frame: ref Frame) int { return frame.a }
+fn First(values: int[100]) int { return values[0] }
+fn Unused(frame: Frame) void {}

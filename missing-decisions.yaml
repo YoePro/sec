@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-05"
+updated: "2026-10-06"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -158,6 +158,7 @@ decisions:
       - rules/memory/layout.md
       - rules/memory/arena.md
       - rules/platform/ffi.md
+      - rules/analysis/parameter_usage_analysis.md
     description: >-
       layout.md § 4.3 defines explicit layout contracts, § 8(5) rejects
       alignment requests stricter than the target supports, and arena.md
@@ -169,7 +170,11 @@ decisions:
       diagnostics cannot be implemented. Decisions needed: the syntax (an
       attribute, a type contract, or something else) for explicit alignment,
       packing, field offsets, endianness, and representation, and which
-      rulebook owns it.
+      rulebook owns it. Parameter-usage analysis likewise cannot produce
+      source-declared alignment, packing, endian or representation blockers
+      until these contracts have a normative source form and canonical
+      resolved facts; it must preserve currently represented constraints and
+      withhold incompatible advice rather than invent annotations.
     classification: blocking
     status: open
   - id: MD-020
@@ -633,4 +638,101 @@ decisions:
       ASCII character literals and values 0..255 as char bounds, and give no
       proof otherwise.
     classification: constraining
+    status: open
+
+
+  - id: MD-044
+    area: stack-budget-project-contracts
+    rulebooks:
+      - rules/analysis/stack_analysis.md
+      - rules/projects/projects.md
+    description: >-
+      stack_analysis.md headings "Stack budgets" and "Budget validation"
+      define physical Domain, MeasurementLevel and MaximumBytes but explicitly
+      do not define configuration syntax. projects.md section 23 defines only
+      the analysis lsp_depth setting, with no stack-budget declaration. The
+      project-supplied contract producer needs an owning manifest section and
+      key syntax, byte-value representation, binding to canonical physical
+      stack domains (rather than logical roots), authoritative measurement
+      level and profile/target override precedence. The immutable compiler
+      budget model and explicit same-domain/same-level comparisons are
+      implemented independently; project parsing and activation of hard budget
+      policy must wait for this decision instead of accepting invented keys.
+    classification: localized
+    status: open
+
+
+  - id: MD-045
+    area: callable-and-external-stack-contract-producers
+    rulebooks:
+      - rules/analysis/stack_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/analysis/closure_analysis.md
+      - rules/platform/ffi.md
+    description: >-
+      stack_analysis.md headings "Open callable contracts" and "Reentry
+      through callable and foreign boundaries" define consumption of verified
+      stack bounds and NoReentry-equivalent guarantees but explicitly leave
+      source/metadata syntax outside that rulebook. call_graph.md headings
+      "Callable contract", "Open callable contract" and "Reentry contracts"
+      define the canonical identity and guarantee model without a declaration
+      or import spelling for these optional properties. The ordinary source
+      and imported-contract producer needs syntax or a metadata schema for
+      stack bytes, measurement level, CompilationPlan compatibility and
+      no-reentry guarantees, binding to CallableContractID, verification
+      obligations and trusted provenance. The stack rulebook heading
+      "Foreign, runtime, and platform calls" likewise leaves FFI tooling and
+      metadata import outside its scope. External producers need a defined
+      metadata schema and trust/verification obligations for whole-call
+      contributions (including ABI, cleanup and panic), no-reentry proof and
+      canonical call-site/target or runtime-effect binding at an exact level
+      and CompilationPlan. Canonical callable and external compiler fact
+      consumers and conservative Unknown fallback are implemented independently;
+      they do not create new attributes, import keys or trust rules.
+    classification: localized
+    status: open
+
+  - id: MD-046
+    area: unit-annotated-register-field-values
+    rulebooks:
+      - rules/types/units.md
+      - rules/platform/hardware-register-access.md
+      - rules/foundations/grammar.md
+    description: >-
+      grammar.md (BitFieldType) admits `bit[N]<unit>` register fields and
+      units.md "Interaction with registers and FFI" keeps field width and unit
+      semantics separate, but no rulebook defines the value type of a field
+      observation or the representability rule for a field write. The
+      frontend gives the field the unit's own type (for example `rpm`, carried
+      in `uint`) narrowed to 0..2^N-1, so `let s: rpm := r.Speed` and
+      `r.Speed = s` with an arbitrary `s: rpm` are both accepted, while an
+      unannotated `bit[N]` field rejects both directions without an explicit
+      conversion. The accepted write can hide overflow, which units.md "No
+      hidden precision loss" forbids for unit conversions and which plain
+      fields reject. Decide the observed value type and carrier, whether a
+      write requires a compile-time-proven range (constant or value interval)
+      or an explicit conversion, and the explicit spelling of that conversion.
+      The current acceptance is kept unchanged until the decision so that
+      existing register fixtures are not reinterpreted.
+    classification: constraining
+    status: open
+
+  - id: MD-047
+    area: unit-conversion-rounding-policy
+    rulebooks:
+      - rules/types/units.md
+      - rules/foundations/grammar.md
+    description: >-
+      units.md "No hidden precision loss" lets the programmer choose "an
+      explicit rounding policy" when a unit conversion is not exactly
+      representable in the target carrier, and "Interaction with try" lists an
+      "explicit checked rounding policy" whose failure uses Result. No rulebook
+      defines the rounding modes, the source spelling that selects one for a
+      unit conversion, whether a rounding conversion is a call, a conversion
+      function argument, or an attribute, or which Result error type a checked
+      policy reports. The frontend now proves exact implicit conversions for
+      decimal carriers and, by compiler-proven value ranges, for bounded
+      integer carriers; inexact conversions are rejected and the help offers
+      only the explicit unit conversion, never an invented rounding policy.
+    classification: localized
     status: open

@@ -28,3 +28,20 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/case.sec
+
+fn ToLower(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+fn ToUpper(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ToTitle(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn CaseFold(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

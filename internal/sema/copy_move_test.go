@@ -2218,7 +2218,7 @@ fn Process(values: int[16]) int {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	assertSemaErrors(t, errors, nil)
 	warnings := analyzer.Warnings()
-	expected := `parameter "values" passes large array int[16] by value; consider ref int[16] or ref int[] at 4:12`
+	expected := `parameter "values" passes large array int[16] by value; consider ref int[16] at 4:12`
 	if len(warnings) != 1 {
 		t.Fatalf("wrong warning count. got=%d warnings=%v", len(warnings), warnings)
 	}

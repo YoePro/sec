@@ -717,7 +717,7 @@ func (b *parameterUsageBuilder) walkExpressionChildren(expression ast.Expression
 	case *ast.MatchExpression:
 		b.walkMatch(expression)
 	case *ast.LambdaExpression:
-		b.walkBlock(expression.Body)
+		b.recordCaptureCreationDemand(expression)
 	case *ast.SpawnExpression:
 		b.walkExpression(expression.Value)
 		b.walkBlock(expression.Body)
@@ -732,7 +732,7 @@ func (b *parameterUsageBuilder) walkExpressionChildren(expression ast.Expression
 //
 // Rules:
 //   - rules/analysis/parameter_usage_analysis.md — "Calls propagate demand"
-//   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations"
+//   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations", "Inputs from other analyses"
 func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 	if b.walkCompilerKnownStructuralCollectionCall(call) {
 		return
@@ -746,6 +746,11 @@ func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 		return
 	}
 	if !ok || resolved.Kind == ResolvedForeignCall {
+		// Invocation reads a function-value parameter even when its target
+		// contract is unavailable; that is separate from unknown argument demand.
+		if _, identifierCall := call.Callee.(*ast.Identifier); identifierCall {
+			b.markExpression(call.Callee, ParameterUseCall, false, ParameterBorrowSufficient, ParameterValueOnly)
+		}
 		if member, memberCall := call.Callee.(*ast.MemberExpression); memberCall {
 			b.markUnknownCallArgument(member.Object)
 		}
@@ -814,171 +819,6 @@ func parameterUsageTransferSource(expression ast.Expression) ast.Expression {
 		return prefix.Right
 	}
 	return expression
-}
-
-const parameterUsageProjectionLimit = 8
-
-func (b *parameterUsageBuilder) propagateDirectCalls() {
-	if len(b.callSites) == 0 {
-		return
-	}
-	sites := b.orderedCallSites()
-	limit := len(sites)*24 + len(b.result.summaries) + 1
-	if configured := b.analyzer.analysisBudget.MaxSummaryIterations; configured > 0 && configured < limit {
-		limit = configured
-	}
-	b.result.converged = false
-	for iteration := 1; iteration <= limit; iteration++ {
-		changed := false
-		for index := range sites {
-			if b.propagateCallSite(&sites[index]) {
-				changed = true
-			}
-		}
-		b.result.iterations = iteration
-		if !changed {
-			b.result.converged = true
-			return
-		}
-	}
-	for index := range sites {
-		for _, argument := range sites[index].arguments {
-			widenParameterDemand(&argument.callerParameter.Demand)
-		}
-	}
-}
-
-func (b *parameterUsageBuilder) orderedCallSites() []parameterUsageCallSite {
-	sites := append([]parameterUsageCallSite(nil), b.callSites...)
-	componentByCallable := map[CallableID]int{}
-	if b.analyzer.callGraph != nil {
-		for index, component := range b.analyzer.callGraph.sameStackComponents() {
-			for id := range component {
-				componentByCallable[id] = index
-			}
-		}
-	}
-	sort.SliceStable(sites, func(i, j int) bool {
-		leftComponent, leftOK := componentByCallable[sites[i].caller]
-		rightComponent, rightOK := componentByCallable[sites[j].caller]
-		if leftOK != rightOK {
-			return leftOK
-		}
-		if leftComponent != rightComponent {
-			return leftComponent < rightComponent
-		}
-		left := sourceTokenLocation(sites[i].source)
-		right := sourceTokenLocation(sites[j].source)
-		if left.File != right.File {
-			return left.File < right.File
-		}
-		if left.Line != right.Line {
-			return left.Line < right.Line
-		}
-		return left.Column < right.Column
-	})
-	return sites
-}
-
-func (b *parameterUsageBuilder) propagateCallSite(site *parameterUsageCallSite) bool {
-	target := b.result.summaries[site.target]
-	changed := false
-	for _, argument := range site.arguments {
-		var callee *ParameterUsageParameterSummary
-		if target != nil {
-			if argument.receiver {
-				callee = target.Receiver
-			} else if argument.calleeIndex >= 0 && argument.calleeIndex < len(target.Parameters) {
-				callee = &target.Parameters[argument.calleeIndex]
-			}
-		}
-		if callee == nil {
-			changed = widenParameterDemand(&argument.callerParameter.Demand) || changed
-			continue
-		}
-		changed = joinParameterDemand(&argument.callerParameter.Demand, callee.Demand) || changed
-		for _, use := range callee.Uses {
-			place, widened := instantiateParameterUsePlace(argument.callerPlace, use.Place)
-			if widened {
-				changed = setDemandPrecision(&argument.callerParameter.Demand, ParameterDemandPartial) || changed
-			}
-			propagated := ParameterUse{Kind: ParameterUseCall, Source: site.source, Place: place}
-			if appendUniqueParameterUse(argument.callerParameter, propagated) {
-				changed = true
-			}
-		}
-	}
-	return changed
-}
-
-func instantiateParameterUsePlace(base Place, callee Place) (Place, bool) {
-	result := cloneEscapePlace(base)
-	widened := false
-	for _, projection := range callee.Projections {
-		if len(result.Projections) >= parameterUsageProjectionLimit {
-			widened = true
-			break
-		}
-		result = appendPlaceProjection(result, projection)
-	}
-	return result, widened
-}
-
-func appendUniqueParameterUse(parameter *ParameterUsageParameterSummary, candidate ParameterUse) bool {
-	for _, existing := range parameter.Uses {
-		if existing.Kind == candidate.Kind && sameSourceToken(existing.Source, candidate.Source) && existing.Place.String() == candidate.Place.String() {
-			return false
-		}
-	}
-	parameter.Uses = append(parameter.Uses, candidate)
-	return true
-}
-
-func joinParameterDemand(target *ParameterDemand, source ParameterDemand) bool {
-	changed := false
-	changed = setAccessDemand(target, strongerAccess(target.Access, source.Access)) || changed
-	changed = setMutationDemand(target, strongerMutation(target.Mutation, source.Mutation)) || changed
-	changed = setOwnershipDemand(target, strongerOwnership(target.Ownership, source.Ownership)) || changed
-	changed = setLifetimeDemand(target, strongerLifetime(target.Lifetime, source.Lifetime)) || changed
-	changed = setIdentityDemand(target, strongerIdentity(target.Identity, source.Identity)) || changed
-	for _, shape := range source.Shapes {
-		before := len(target.Shapes)
-		target.Shapes = appendUniqueShape(target.Shapes, shape)
-		changed = len(target.Shapes) != before || changed
-	}
-	if source.MinimumExtent > target.MinimumExtent {
-		target.MinimumExtent = source.MinimumExtent
-		changed = true
-	}
-	for _, storage := range source.Storage {
-		if storage == ParameterStorageNone && hasSpecialParameterStorage(target.Storage) {
-			continue
-		}
-		if storage != ParameterStorageNone {
-			target.Storage = removeParameterStorage(target.Storage, ParameterStorageNone)
-		}
-		before := len(target.Storage)
-		target.Storage = appendUniqueParameterStorage(target.Storage, storage)
-		changed = len(target.Storage) != before || changed
-	}
-	changed = setRepresentationDemand(target, strongerRepresentation(target.Representation, source.Representation)) || changed
-	changed = setDemandPrecision(target, strongerPrecision(target.Precision, source.Precision)) || changed
-	return changed
-}
-
-func widenParameterDemand(demand *ParameterDemand) bool {
-	before := cloneParameterDemand(*demand)
-	demand.Access = ParameterAccessUnknown
-	demand.Mutation = ParameterUnknownMutation
-	demand.Ownership = ParameterUnknownOwnership
-	demand.Lifetime = ParameterLifetimeUnknown
-	demand.Identity = ParameterUnknownIdentity
-	demand.Shapes = appendUniqueShape(demand.Shapes, ParameterShapeUnknown)
-	demand.Storage = removeParameterStorage(demand.Storage, ParameterStorageNone)
-	demand.Storage = appendUniqueParameterStorage(demand.Storage, ParameterStorageUnknown)
-	demand.Representation = ParameterRepresentationUnknown
-	demand.Precision = ParameterDemandUnknown
-	return !parameterDemandsEqual(before, *demand)
 }
 
 func cloneParameterDemand(demand ParameterDemand) ParameterDemand {
@@ -1116,70 +956,6 @@ func (b *parameterUsageBuilder) markExpression(expression ast.Expression, kind P
 	parameter.Demand.Identity = strongerIdentity(parameter.Demand.Identity, identity)
 	parameter.Uses = append(parameter.Uses, ParameterUse{Kind: kind, Source: expressionToken(expression), Place: cloneEscapePlace(place)})
 	return true
-}
-
-// parameterPlace projects a callable parameter into the shared canonical Place
-// model, preserving exact constant indexes in interprocedural summaries.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
-//   - rules/memory/references.md — §28(4) provenance/projection tests
-func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*ParameterUsageParameterSummary, Place, bool) {
-	switch expression := expression.(type) {
-	case *ast.Identifier:
-		if resolved, ok := b.analyzer.ResolvedBindingOf(expression); ok {
-			if parameter := b.byBinding[resolved.ID]; parameter != nil {
-				return parameter, Place{Root: parameter.Name, RootToken: resolvedToken(b.analyzer, resolved.ID), Type: semanticSnapshotType(resolved.Type)}, true
-			}
-			if resolved.Kind == BindingParameter {
-				if parameter := b.byName[resolved.Name]; parameter != nil {
-					return parameter, Place{Root: parameter.Name, RootToken: expression.Token, Type: semanticSnapshotType(resolved.Type)}, true
-				}
-			}
-		}
-		if parameter := b.byName[expression.Value]; parameter != nil {
-			return parameter, Place{Root: parameter.Name, RootToken: expression.Token, Type: parameter.DeclaredType}, true
-		}
-		return nil, Place{}, false
-	case *ast.MemberExpression:
-		parameter, place, ok := b.parameterPlace(expression.Object)
-		if !ok || expression.Property == nil {
-			return nil, Place{}, false
-		}
-		place = appendPlaceProjection(place, PlaceProjection{Kind: PlaceField, Name: expression.Property.Value, Token: expression.Property.Token})
-		return parameter, place, true
-	case *ast.IndexExpression:
-		parameter, place, ok := b.parameterPlace(expression.Left)
-		if !ok {
-			return nil, Place{}, false
-		}
-		projection := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expressionToken(expression.Index)}
-		if value, constant := b.analyzer.integerConstantValue(expression.Index); constant {
-			projection.ConstantIndex = clonePlaceConstantIndex(value)
-			projection.DynamicIndex = false
-		}
-		return parameter, appendPlaceProjection(place, projection), true
-	case *ast.SliceExpression:
-		parameter, place, ok := b.parameterPlace(expression.Left)
-		if !ok {
-			return nil, Place{}, false
-		}
-		projection := PlaceProjection{Kind: PlaceSlice, SliceStartKnown: expression.Start == nil, Token: expression.Token}
-		if value, constant := constantIntegerValue(expression.Start); constant && value.IsInt64() {
-			projection.SliceStart, projection.SliceStartKnown = value.Int64(), true
-		}
-		if value, constant := constantIntegerValue(expression.End); constant && value.IsInt64() {
-			projection.SliceEnd, projection.SliceEndKnown = value.Int64(), true
-			if !expression.Exclusive {
-				projection.SliceEnd++
-			}
-		}
-		return parameter, appendPlaceProjection(place, projection), true
-	case *ast.RefExpression:
-		return b.parameterPlace(expression.Value)
-	default:
-		return nil, Place{}, false
-	}
 }
 
 func resolvedToken(analyzer *Analyzer, id BindingID) lexer.Token {

@@ -1,0 +1,34 @@
+module main
+
+fn Small() void {}
+fn Large() void {}
+fn Twin() void {}
+type Counter struct { value: int }
+impl Counter {
+    fn Read() int { return self.value }
+}
+fn Method(counter: Counter) int { return counter.Read() }
+fn Sequential() void {
+    Small()
+    Large()
+}
+fn Equal() void {
+    Small()
+    Twin()
+}
+fn Middle() void { Large() }
+fn Nested() void { Middle() }
+fn Branch(enabled: bool) void {
+    if enabled { Small() } else { Large() }
+}
+fn Recursive() void { Recursive() }
+fn MutualA() void { MutualB() }
+fn MutualB() void { MutualA() }
+fn CallsRecursive() void { Recursive() }
+extern "C" fn Foreign() void
+fn CallsForeign() void { Foreign() }
+fn Arithmetic(value: int) int { return value + 1 }
+fn Indirect(operation: fn() void) void {
+    operation()
+    operation()
+}

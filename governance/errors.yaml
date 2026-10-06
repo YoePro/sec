@@ -417,7 +417,7 @@ integrations:
       - extend assertion proof to multiplication and division on refined intervals, relations mixing pure values and constants in one chain, and per-binding invalidation instead of the conservative any-assignment epoch (the proof covers implied symbolic relations between the same two values, transitive chains of relations through other pure values since 2026-10-04, constant-refined intervals, and + / - on refined intervals)
       - "invalid-reference generation has a registered reason (PanicReasonInvalidReferenceGeneration) but no frontend source yet: references.md § 14(6)–(7) makes runtime generation checks profile-selected, and no frontend operation currently selects one, so attaching the reason waits for the first generation-checked operation"
       - extend @noPanic to init, property accessors, lambdas, and free once their attribute placement is decided (MD-030); extern declarations now accept @noPanic as a trusted foreign contract
-      - lower explicit panic through canonical Semantic IR, PanicInfo construction, and the selected non-returning endpoint
+      - "lower explicit panic through PanicInfo construction and the selected non-returning endpoint (the Semantic IR panic operation exists since 2026-10-06, semantic-ir.panic)"
     required_tests:
       - assert condition parses
       - assert condition, message-literal parses
@@ -517,14 +517,11 @@ integrations:
     implemented:
       - typed arithmetic failure reasons and panic-related effect metadata exist in the maintained checked-arithmetic Semantic IR and Sec MLIR vertical
       - fixed-array ordinary failure is represented by terminating fail.bounds with fixed-array-index provenance while fallible bounds flow remains typed IndexError
+      - "explicit panic, assertions, and checked unreachable (2026-10-06, semantic_ir.md §§ 55–57): a terminating `panic` operation carries the registered panic reason (ID and name), the static literal message when the source wrote one, and the source location; explicit panic is built from ResolvedExplicitPanic without reading AST spelling; an unproven assertion evaluates its bool condition once and branches (marked as an assertion check, never an assume) to a failure block that panics with AssertionFailed and its static message, while a proven assertion (ResolvedAssertion.Proven) emits no check; checked `unreachable` panics with UnreachableReached instead of becoming backend undefined behavior (TestPanicAssertionAndUnreachableLowerToExplicitPanic)"
+      - "noPanic facts (2026-10-06): each function carries Sema's verified effective @noPanic guarantee and its source (written, implied by @isr/@interruptSafe, or trusted foreign contract); the verifier rejects an unregistered panic reason, a message without a source message, and a @noPanic function that still reaches a panic operation (TestVerifierRejectsInvalidPanicFacts)"
     remaining:
-      - consume ResolvedExplicitPanic directly instead of reconstructing reason, message, or provenance from AST spelling
-      - add canonical assertion check representation with AssertionFailed reason and static message or ID metadata
-      - add checked-unreachable representation that remains defined until proven or lowered through panic endpoint
-      - represent canonical panic reason, source provenance, and relevant execution-domain facts
-      - represent panic and noPanic verification facts needed by later stages
-      - represent cleanup and containment relationships where required
-      - verify contradictory panic/noPanic facts before lowering
+      - represent execution-domain, containment-boundary, and cleanup-policy relationships of panic sites once Semantic IR represents tasks, threads, and cleanup regions
+      - extend the noPanic contradiction check to checked-arithmetic and bounds failure paths once Semantic IR carries Sema's arithmetic and index proofs for every accepted @noPanic operation
     required_tests:
       - unproven assertion emits explicit Semantic IR check
       - proven assertion emits no panic operation but keeps required refinement

@@ -12,7 +12,7 @@ summary and incremental-analysis requirements, diagnostics, tests, and completio
 criteria for Sec stack analysis.
 
 Mutable implementation status does not belong in this rulebook. It is governed
-by the repository-level `implementation-status.yaml` ledger.
+by the canonical `governance/analysis.yaml` ledger fragment.
 
 The canonical ledger integration identifier is:
 

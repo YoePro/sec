@@ -8,8 +8,8 @@ import (
 // inspectFinalElementAccess recognizes collection[collection.Len - 1] through
 // resolved collection identity and canonical integer facts. A directly
 // preceding empty-check that exits the current path is retained as suppression
-// evidence; without it, the expression lacks the non-empty proof required by
-// checked arithmetic and bounds semantics.
+// evidence, including across a proven read-only scalar traversal. Without a
+// supported proof, the final-element requirement remains unproven.
 //
 // Rules:
 //   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof"
@@ -46,7 +46,11 @@ func (b *pitfallBuilder) inspectFinalElementAccess(index *ast.IndexExpression) {
 			Kind: PitfallSuggestedEdit, Title: "prove the collection is non-empty before indexing", Source: index.Token,
 		}},
 	}
-	if proof, proven := b.activeNonEmptyProofs[lengthCollection]; proven {
+	proof, proven := b.activeNonEmptyProofs[lengthCollection]
+	if !proven {
+		proof, proven = b.nonEmptyAcrossScalarTraversal(lengthCollection, index.Left)
+	}
+	if proven {
 		evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: "control flow proves the collection is non-empty before the final-element access", Source: proof}
 		finding.State = PitfallStateSuppressed
 		finding.EvidenceAgainst = []PitfallEvidence{evidence}
@@ -65,16 +69,24 @@ func (b *pitfallBuilder) inspectFinalElementAccess(index *ast.IndexExpression) {
 //
 // Rules:
 //   - rules/analysis/pitfall_analysis.md — "Guards participate in pitfall reasoning"
-//   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof"
+//   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof", "Reachability"
+//   - rules/control-flow/flowcontrol_if.md — §27 "Sema and flow-analysis requirements"
 func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	if statement == nil {
 		return
 	}
-	b.inspectIneffectiveUpperBoundsGuard(statement)
+	flow, resolved := b.analyzer.ResolvedIfFlowOf(statement)
+	trueReachable := !resolved || flow.TruePathExecution != ResolvedIfPathNever
+	falseReachable := !resolved || flow.FalsePathExecution != ResolvedIfPathNever
+	if trueReachable {
+		b.inspectIneffectiveUpperBoundsGuard(statement)
+	}
 	b.walkExpression(statement.Condition)
 
 	guards := b.strictIndexGuards(statement.Condition)
-	b.inspectWrongGuardSubject(statement, guards)
+	if trueReachable {
+		b.inspectWrongGuardSubject(statement, guards)
+	}
 
 	outerProofs := b.activeNonEmptyProofs
 	outerCapacityEqualities := b.activeCapacityEqualities
@@ -91,11 +103,15 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, true)
 	outerLengthConditions := b.activeLengthConditions
 	b.activeLengthConditions = append(append([]ast.Expression(nil), outerLengthConditions...), statement.Condition)
-	b.withIndexGuards(guards, func() { b.walkBlock(statement.Consequence) })
+	if trueReachable {
+		b.withIndexGuards(guards, func() { b.walkBlock(statement.Consequence) })
+	}
 	b.activeLengthConditions = outerLengthConditions
 	b.activeCapacityEqualities = outerCapacityEqualities
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, false)
-	b.walkBlock(statement.Alternative)
+	if falseReachable {
+		b.walkBlock(statement.Alternative)
+	}
 	b.activeNonEmptyProofs = outerProofs
 }
 

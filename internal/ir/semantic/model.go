@@ -276,7 +276,11 @@ type Function struct {
 	Storages   []Storage
 	Matches    []MatchRecord
 	Loops      []LoopRecord
-	Location   Location
+	// NoPanic records Sema's verified @noPanic guarantee (written or implied)
+	// so later stages need not re-derive it; NoPanicSource names its origin.
+	NoPanic       bool
+	NoPanicSource string
+	Location      Location
 }
 
 type MatchID uint32
@@ -439,6 +443,12 @@ const (
 	OpArrayReplace                    OpKind = "array.replace"
 	OpBoundsFailure                   OpKind = "fail.bounds"
 	OpBoolNot                         OpKind = "bool.not"
+	// OpPanic is the explicit, non-returning panic of an explicit panic
+	// statement, a failed assertion, or a reached checked unreachable. It
+	// carries the registered panic reason, the static message when the
+	// source wrote one, and its source location as provenance
+	// (rules/compiler/semantic_ir.md §§ 55–57).
+	OpPanic OpKind = "panic"
 )
 
 type IntegerCheckedBinaryKind string
@@ -644,8 +654,17 @@ type Operation struct {
 	MatchPatternKind      string
 	LoopID                LoopID
 	LoopEdge              LoopEdge
+	// PanicReasonID and PanicReason identify the registered panic reason of
+	// an OpPanic; PanicMessage is its static literal message when
+	// PanicHasMessage is set.
+	PanicReasonID   uint16
+	PanicReason     string
+	PanicMessage    string
+	PanicHasMessage bool
+	// AssertCheck marks the conditional branch of an unproven assertion.
+	AssertCheck bool
 }
 
 func (o Operation) IsTerminator() bool {
-	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable
+	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable || o.Kind == OpPanic
 }

@@ -93,3 +93,24 @@ Initial LSP features should be:
 ## Contributing
 
 Contributions are welcome. Please open issues or pull requests for grammar improvements, support for additional SEC syntax, or language server integration.
+
+### Optional parameter analysis
+
+`sec.analysis.parameters.hover` selects `off` (default), `concise`, or
+`detailed`. Concise hover reports the resolved parameter's access, lifetime,
+ownership demand, or incomplete analysis. Detailed hover includes capability
+requirements, precision, and the compiler's narrowing candidates and blockers.
+This information is available on parameter declarations/uses and callable
+hovers; it comes from Sema, including transitive call demand.
+
+`sec.analysis.parameters.advisories` selects `off` (default), `info`, `warning`,
+or `error` for A2001 large-value parameter advice. This setting affects LSP
+presentation only. Language-safety errors remain visible and compiler validity
+is unchanged. Changes take effect without restarting the language server and
+refresh diagnostics on open documents. The analysis depth continues to follow
+`[analysis].lsp_depth` in `.sec/sec.toml` (`interactive`, `standard`, or `deep`).
+
+Other LSP clients can send the same settings at initialization as
+`{"analysis":{"parameters":{"hover":"concise","advisories":"info"}}}`,
+or in `workspace/didChangeConfiguration` under `settings.sec`. Partial updates
+preserve unspecified choices; unsupported values preserve previous choices.

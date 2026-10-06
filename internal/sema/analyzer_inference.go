@@ -104,7 +104,7 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 		if !parameterOK {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if !canInitialize(expected, argType, arg) {
+		if !a.canInitialize(expected, argType, arg) {
 			a.addErrorAtToken(expressionToken(arg), "argument %d must be %s, got %s", i+1, typeDisplayName(expected), typeDisplayName(argType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -139,35 +139,6 @@ func (a *Analyzer) inferAvailabilityExpression(expr *ast.AvailabilityExpression)
 		Place: place, Negated: expr.Negated, StaticallyKnown: known, Value: value,
 	}
 	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
-}
-
-func (a *Analyzer) inferFunctionReferenceSummaries(program *ast.Program) {
-	functionCount := 0
-	for _, overloads := range a.functions {
-		functionCount += len(overloads)
-	}
-	if functionCount == 0 {
-		return
-	}
-	a.summaryPass = true
-	defer func() { a.summaryPass = false }()
-	iterationLimit := functionCount + 1
-	if configured := a.analysisBudget.MaxSummaryIterations; configured > 0 && configured < iterationLimit {
-		iterationLimit = configured
-	}
-	converged := false
-	for iteration := 0; iteration < iterationLimit; iteration++ {
-		before := copyFunctionReferenceSummaries(a.functions)
-		a.analyzeFunctionBodies(program)
-		a.analyzeImplBodies(program)
-		if functionReferenceSummariesEqual(before, a.functions) {
-			converged = true
-			break
-		}
-	}
-	if !converged {
-		a.widenFunctionReferenceSummaries()
-	}
 }
 
 func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) {
@@ -669,7 +640,7 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 		}
 		payloadType := *variant.Payload
 		valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
-		if valueType.Kind != InvalidType && !canInitialize(payloadType, valueType, expr.Arguments[0]) {
+		if valueType.Kind != InvalidType && !a.canInitialize(payloadType, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -773,7 +744,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		// fields provide the expected union type, allowing canonical contextual
 		// constructors such as None or None() for Option[T].
 		valueType, _ := a.inferOwningConstructionValue(field.Value, fieldType)
-		if valueType.Kind != InvalidType && !canInitialize(fieldType, valueType, field.Value) {
+		if valueType.Kind != InvalidType && !a.canInitialize(fieldType, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
 			planValid = false
 			continue
@@ -1311,7 +1282,7 @@ func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expecte
 			elementIndex.Add(elementIndex, entry.Length)
 			continue
 		}
-		if !canInitialize(*expected.Element, elementType, source) {
+		if !a.canInitialize(*expected.Element, elementType, source) {
 			a.addErrorAtToken(expressionToken(source), "array element %s must be %s, got %s", new(big.Int).Add(elementIndex, big.NewInt(1)).String(), typeDisplayName(*expected.Element), typeDisplayName(elementType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -1803,7 +1774,7 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 		if messageType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, display, true
 		}
-		if !canInitialize(stringType, messageType, message) {
+		if !a.canInitialize(stringType, messageType, message) {
 			a.addErrorAtTokenWithID(
 				expressionToken(message),
 				diagnosticID,
@@ -1844,7 +1815,7 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 			messageType, _ := a.inferExpressionWithExpected(message, stringType)
 			if messageType.Kind == InvalidType {
 				valid = false
-			} else if !canInitialize(stringType, messageType, message) {
+			} else if !a.canInitialize(stringType, messageType, message) {
 				a.addErrorAtTokenWithID(expressionToken(message), diagnosticID,
 					"testing.%s message must be string, got %s", member.Property.Value, typeDisplayName(messageType))
 				valid = false
@@ -1875,7 +1846,7 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 	boolType := a.types["bool"]
 	conditionType, _ := a.inferExpressionWithExpected(expr.Arguments[0], boolType)
 	valid := true
-	if conditionType.Kind != InvalidType && !canInitialize(boolType, conditionType, expr.Arguments[0]) {
+	if conditionType.Kind != InvalidType && !a.canInitialize(boolType, conditionType, expr.Arguments[0]) {
 		a.addErrorAtTokenWithID(
 			expressionToken(expr.Arguments[0]),
 			diagnosticID,
@@ -1891,7 +1862,7 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 		message = expr.Arguments[1]
 		stringType := a.types["string"]
 		messageType, _ := a.inferExpressionWithExpected(message, stringType)
-		if messageType.Kind != InvalidType && !canInitialize(stringType, messageType, message) {
+		if messageType.Kind != InvalidType && !a.canInitialize(stringType, messageType, message) {
 			a.addErrorAtTokenWithID(
 				expressionToken(message),
 				diagnosticID,
@@ -2016,7 +1987,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			// rules/declarations/lambda-functions.md: retain the callable value's
 			// resolved capability on the callee expression so LSP and later
 			// compiler stages do not reconstruct it from source spelling.
-			a.expressionTypes[expr.Callee] = symbol.Type
+			a.recordFunctionValueCalleeBinding(expr.Callee, symbol)
 			return a.inferFunctionValueCall(expr, symbol.Type)
 		}
 		if typ, value, ok := a.inferCallAsUnionVariantConstructor(expr, nil); ok {
@@ -2127,7 +2098,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				break
 			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], parameter.Type)
-			if !canInitialize(parameter.Type, argType, arg) {
+			if !a.canInitializeUnrecorded(parameter.Type, argType, arg) {
 				matchesArguments = false
 				break
 			}
@@ -2157,6 +2128,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if !a.validateCallArgumentBorrows(best[0].Function, sourceArgs, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		a.recordCallArgumentUnitConversions(best[0].Function, sourceArgs, a.callArgumentTypesForFunction(best[0].Function, sourceArgTypes, methodReceiver, isMethodCall))
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
 		dispatch := CallDispatchDirect
 		if isMethodCall {
@@ -2268,7 +2240,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				break
 			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], param.Type)
-			if !canInitialize(param.Type, argType, arg) {
+			if !a.canInitialize(param.Type, argType, arg) {
 				a.addTypeMismatchError(expressionToken(arg), param.Type, argType, arg, "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
 			}
 		}
@@ -2334,7 +2306,7 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 	valid := true
 	for index, parameter := range known.Parameters {
 		actual, _ := a.inferExpressionWithExpected(expr.Arguments[index], parameter.Type)
-		if !canInitialize(parameter.Type, actual, expr.Arguments[index]) {
+		if !a.canInitialize(parameter.Type, actual, expr.Arguments[index]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[index]), "argument %d to %s must be %s, got %s", index+1, known.Name, typeDisplayName(parameter.Type), typeDisplayName(actual))
 			valid = false
 		}
@@ -2361,7 +2333,7 @@ func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Typ
 				return Type{Kind: InvalidType}, result, true
 			}
 			valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], *expected.Element)
-			if !canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
+			if !a.canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
 				a.addErrorAtToken(expressionToken(expr.Arguments[0]), "fill value must be %s, got %s", typeDisplayName(*expected.Element), typeDisplayName(valueType))
 				return Type{Kind: InvalidType}, result, true
 			}
@@ -2371,7 +2343,7 @@ func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Typ
 			return Type{Kind: InvalidType}, result, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], *expected.Element)
-		if !canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
+		if !a.canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "fill value must be %s, got %s", typeDisplayName(*expected.Element), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, result, true
 		}
@@ -2517,7 +2489,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			return member.Result, expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], elementType)
-		if !canInitialize(elementType, valueType, expr.Arguments[0]) {
+		if !a.canInitialize(elementType, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s value must be %s, got %s", member.Name, typeDisplayName(elementType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2547,7 +2519,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[1], elementType)
-		if !canInitialize(elementType, valueType, expr.Arguments[1]) {
+		if !a.canInitialize(elementType, valueType, expr.Arguments[1]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[1]), "Insert value must be %s, got %s", typeDisplayName(elementType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2564,7 +2536,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], argumentType)
-		if !canInitialize(argumentType, valueType, expr.Arguments[0]) {
+		if !a.canInitialize(argumentType, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s argument must be %s, got %s", member.Name, typeDisplayName(argumentType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2578,7 +2550,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		}
 		keyType := lookupType.TypeArgs[0]
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], keyType)
-		if !canInitialize(keyType, valueType, expr.Arguments[0]) {
+		if !a.canInitialize(keyType, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "ContainsKey argument must be %s, got %s", typeDisplayName(keyType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2661,7 +2633,7 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 		arena.ArenaDomainID = a.newArenaDomainID()
 		return arena, expressionValue{Display: expr.String()}, true
 	}
-	if !canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
+	if !a.canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.%s capacity must be uint, got %s", member.Name, typeDisplayName(argumentType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
@@ -2732,7 +2704,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)
-		if !canInitialize(element, valueType, expr.Arguments[0]) {
+		if !a.canInitialize(element, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.Write value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2768,7 +2740,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)
-		if !canInitialize(element, valueType, expr.Arguments[0]) {
+		if !a.canInitialize(element, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.VolatileWrite value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2891,7 +2863,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		countType, _ := a.inferExpressionWithExpected(expr.Arguments[0], a.types["uint"])
-		if countType.Kind != InvalidType && !canInitialize(a.types["uint"], countType, expr.Arguments[0]) {
+		if countType.Kind != InvalidType && !a.canInitialize(a.types["uint"], countType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.Alloc count must be uint, got %s", typeDisplayName(countType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3082,7 +3054,7 @@ func (a *Analyzer) inferEventCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		argType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payload)
-		if argType.Kind != InvalidType && !canInitialize(payload, argType, expr.Arguments[0]) {
+		if argType.Kind != InvalidType && !a.canInitialize(payload, argType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Event.Publish payload must be %s, got %s", typeDisplayName(payload), typeDisplayName(argType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3162,7 +3134,7 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 		}
 		a.recordBlockingOperation("Sender.Send", member.Property.Token)
 		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
-		if messageArgType.Kind != InvalidType && !canInitialize(messageType, messageArgType, expr.Arguments[0]) {
+		if messageArgType.Kind != InvalidType && !a.canInitialize(messageType, messageArgType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.Send message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3181,7 +3153,7 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 		}
 		a.recordBlockingOperation("Sender.SendRevocable", member.Property.Token)
 		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
-		if messageArgType.Kind != InvalidType && !canInitialize(messageType, messageArgType, expr.Arguments[0]) {
+		if messageArgType.Kind != InvalidType && !a.canInitialize(messageType, messageArgType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.SendRevocable message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3199,7 +3171,7 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
-		if messageArgType.Kind != InvalidType && !canInitialize(messageType, messageArgType, expr.Arguments[0]) {
+		if messageArgType.Kind != InvalidType && !a.canInitialize(messageType, messageArgType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.TrySend message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3385,7 +3357,7 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 
 	payloadType := *concreteVariant.Payload
 	valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
-	if valueType.Kind != InvalidType && !canInitialize(payloadType, valueType, expr.Arguments[0]) {
+	if valueType.Kind != InvalidType && !a.canInitialize(payloadType, valueType, expr.Arguments[0]) {
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
@@ -3497,7 +3469,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		rank := 0
 		for i, arg := range args {
 			parameter, parameterOK := functionParameterForArgument(instantiated, i)
-			if !parameterOK || !canInitialize(parameter.Type, argTypes[i], arg) {
+			if !parameterOK || !a.canInitializeUnrecorded(parameter.Type, argTypes[i], arg) {
 				matchesArguments = false
 				break
 			}
@@ -3513,6 +3485,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		if a.checkCompileTimeCallArgumentContracts(best[0].Function, args) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		a.recordCallArgumentUnitConversions(best[0].Function, args, argTypes)
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
 		a.setCallReferenceOrigin(expr, best[0].Function, args, false)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}, true
@@ -3784,7 +3757,7 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 
 	valueErrorType := valueType.TypeArgs[1]
 	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
-	if !canInitialize(functionErrorType, valueErrorType, expr.Expression) {
+	if !a.canInitialize(functionErrorType, valueErrorType, expr.Expression) {
 		a.addBodylessTryError(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(valueErrorType), typeDisplayName(functionErrorType))
 	}
 	a.resolvedTries[expr] = ResolvedTry{
@@ -3828,7 +3801,7 @@ func (a *Analyzer) inferBoundsTryExpression(expr *ast.TryExpression, index *ast.
 		return plan.ElementType, result
 	}
 	functionError := a.currentFunctionReturn.TypeArgs[1]
-	if !canInitialize(functionError, errorType, expr.Expression) {
+	if !a.canInitialize(functionError, errorType, expr.Expression) {
 		a.addBodylessTryError(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
 		return plan.ElementType, result
 	}
@@ -3865,7 +3838,7 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 		return operator.ResultType, result
 	}
 	functionError := a.currentFunctionReturn.TypeArgs[1]
-	if !canInitialize(functionError, arithmeticError, expr.Expression) {
+	if !a.canInitialize(functionError, arithmeticError, expr.Expression) {
 		a.addBodylessTryError(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or map ArithmeticError to %s", typeDisplayName(a.currentFunctionReturn), typeDisplayName(functionError))
 		return operator.ResultType, result
 	}
@@ -4091,14 +4064,14 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
-	if isNumericLiteral(expr.Right) && canInitialize(leftType, rightType, expr.Right) {
+	if isNumericLiteral(expr.Right) && a.canInitialize(leftType, rightType, expr.Right) {
 		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
-	if isNumericLiteral(expr.Left) && canInitialize(rightType, leftType, expr.Left) {
+	if isNumericLiteral(expr.Left) && a.canInitialize(rightType, leftType, expr.Left) {
 		if !a.validateCompileTimeIntegerArithmetic(expr, rightType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -4127,7 +4100,7 @@ func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, val
 		return Type{Kind: InvalidType}, false
 	}
 
-	if !canInitialize(target, value, expr) {
+	if !a.canInitialize(target, value, expr) {
 		a.addErrorAtToken(
 			expressionToken(expr),
 			"cannot %s %s to %s",
@@ -4238,15 +4211,18 @@ func (a *Analyzer) inferNumericUnitInfixExpression(expr *ast.InfixExpression, le
 		if expr.Operator == "%" && (left.Role == UnitPointRolePoint || right.Role == UnitPointRolePoint) {
 			return invalid("remainder is not defined for unit points")
 		}
-		exactConversion := exactImplicitUnitConversion(right, left, carrier.Kind)
+		// rules/types/units.md, "Exact fixed conversions": the right operand
+		// converts into the left operand's unit, statically or by its proven
+		// value range.
+		from, to := right, left
 		if (left.Role == UnitPointRolePoint) != (right.Role == UnitPointRolePoint) {
 			leftCoordinate, rightCoordinate := left, right
 			leftCoordinate.Role, rightCoordinate.Role = UnitVectorRole, UnitVectorRole
 			leftCoordinate.Origin, rightCoordinate.Origin = "", ""
 			leftCoordinate.Offset, rightCoordinate.Offset = big.NewRat(0, 1), big.NewRat(0, 1)
-			exactConversion = exactImplicitUnitConversion(rightCoordinate, leftCoordinate, carrier.Kind)
+			from, to = rightCoordinate, leftCoordinate
 		}
-		if !sameConcreteType(leftType, rightType) && !exactConversion {
+		if !sameConcreteType(leftType, rightType) && !a.implicitUnitOperandConversion(expr.Right, from, to, carrier) {
 			return invalid("cannot implicitly convert %s to %s without loss", typeDisplayName(rightType), typeDisplayName(leftType))
 		}
 

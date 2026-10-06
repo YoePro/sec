@@ -1,0 +1,37 @@
+module main
+
+fn Leaf() void {}
+extern "C" fn Foreign() void
+fn Opaque(operation: fn() void) void {
+    operation()
+    operation()
+}
+fn Middle(operation: fn() void) void {
+    Opaque(operation)
+    Leaf()
+}
+fn Root(operation: fn() void) void {
+    Middle(operation)
+    Leaf()
+    Foreign()
+}
+fn Runtime(value: int, operation: fn() void) int {
+    Leaf()
+    operation()
+    return value + 1
+}
+fn Missing() void { Leaf() }
+fn Gap(operation: fn() void) void { Opaque(operation) }
+fn DiamondLeft(operation: fn() void) void { Opaque(operation) }
+fn DiamondRight(operation: fn() void) void { Opaque(operation) }
+fn Diamond(operation: fn() void) void {
+    DiamondLeft(operation)
+    DiamondRight(operation)
+}
+fn RecursiveA() void { RecursiveB() }
+fn RecursiveB() void { RecursiveA() }
+fn Joined(enabled: bool) void {
+    let mut operation := Leaf
+    if enabled { operation = RecursiveA }
+    operation()
+}

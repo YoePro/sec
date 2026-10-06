@@ -1,0 +1,6 @@
+module main
+type Frame struct { a: int, }
+fn Invalid(frame: Frame) int {
+    let frame := 3
+    return frame
+}

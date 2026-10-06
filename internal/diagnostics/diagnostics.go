@@ -197,6 +197,10 @@ const (
 	AttributeConflict                             = "S1117"
 	AttributeArgumentNotCompileTime               = "S1118"
 	ArrayRangeSegmentInvalid                      = "S1119"
+	InvalidUnicodeScalarLiteral                   = "S1120"
+	StackBudgetExceeded                           = "S1121"
+	StackBudgetProofUnavailable                   = "S1122"
+	StackBudgetUnboundedDemand                    = "S1123"
 	UnreachableStatement                          = "S3001"
 	UseAfterDiscard                               = "S4001"
 	LargeValueParameter                           = "A2001"
@@ -205,6 +209,10 @@ const (
 )
 
 var registry = map[string]Definition{
+	StackBudgetExceeded:                           {ID: StackBudgetExceeded, Name: "stack.budget-exceeded", Family: "stack", DefaultSeverity: SeverityError, Mandatory: true},
+	StackBudgetProofUnavailable:                   {ID: StackBudgetProofUnavailable, Name: "stack.budget-proof-unavailable", Family: "stack", DefaultSeverity: SeverityError, Mandatory: true},
+	StackBudgetUnboundedDemand:                    {ID: StackBudgetUnboundedDemand, Name: "stack.budget-unbounded-demand", Family: "stack", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidUnicodeScalarLiteral:                   {ID: InvalidUnicodeScalarLiteral, Name: "literal.invalid-unicode-scalar", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidGenericParameterName:                   {ID: InvalidGenericParameterName, Name: "names.invalid-generic-type-parameter", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidNominalTypeName:                        {ID: InvalidNominalTypeName, Name: "names.invalid-nominal-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	GenericParameterShadowsType:                   {ID: GenericParameterShadowsType, Name: "names.generic-parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},

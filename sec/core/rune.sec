@@ -253,19 +253,194 @@ impl rune {
         }
     }
 
-    /** Returns the intvalue of a rune or None() */
-    fn ToNumericValue() Option[int] {
-        if self >= 48r && self <= 57r {
-            return Some(int(self) - 48)
-        }
-        return None()
-    }
-
     /** Reports whether this rune belongs to the ASCII range. */
     property IsAscii: bool {
         get {
             return self <= 127r
         }
+    }
+
+    /** Reports whether this rune is an ASCII letter (A-Z, a-z). */
+    property IsAsciiLetter: bool {
+        get {
+            return (self in 65r..90r) || (self in 97r..122r)
+        }
+    }
+
+    /** Reports whether this rune is a newline character. */
+    property IsNewline: bool {
+        get {
+            return self == 10r || self == 13r || self == 8232r || self == 8233r
+        }
+    }
+
+    /** Reports whether this rune is a letter, digit, or underscore. */
+    property IsLetterOrDigitOrUnderscore: bool {
+        get {
+            return self.IsLetterOrDigit || self == 95r
+        }
+    }
+
+    /** Reports whether this rune is a symbol character according to Unicode. */
+    property IsSymbol: bool {
+        get {
+            // Fast path: ASCII symbols
+            if self <= 127r {
+                return self == 36r || self == 43r || self == 60r || self == 61r || self == 62r || self == 94r || self == 124r || self == 126r
+            }
+
+            // Compile-time constant array containing Unicode symbol ranges
+            let r := [
+                162r,         // Cent Sign
+                163r,         // Pound Sign
+                164r,         // Currency Sign
+                165r,         // Yen Sign
+                166r,         // Broken Bar
+                167r,         // Section Sign
+                168r,         // Diaeresis
+                169r,         // Copyright Sign
+                170r,         // Feminine Ordinal Indicator
+                171r,         // Left-Pointing Double Angle Quotation Mark
+                172r,         // Not Sign
+                173r,         // Soft Hyphen
+                174r,         // Registered Sign
+                175r,         // Macron
+                176r..191r,   // Miscellaneous Symbols and Punctuation
+                8943r..8959r, // Miscellaneous Technical Symbols and Punctuation
+                11840r..11871r, // Supplemental Punctuation
+                12289r..12319r,  // CJK Symbols and Punctuation (Asian quotes/brackets)
+                65072r..65103r,  // Halfwidth and Fullwidth Forms (Fullwidth punctuation)
+            ]
+
+            return self in r
+        }
+    }
+
+    /** Reports whether this rune is a titlecase letter according to Unicode. */
+    property IsTitleLetter: bool {
+        get {
+            // Fast path: ASCII titlecase letters are the same as uppercase letters
+            if self <= 127r {
+                return self in 65r..90r
+            }
+
+            // Compile-time constant array containing Unicode titlecase letters
+            let r := [
+                453r,         // Latin Capital Letter D with Stroke (titlecase)
+                456r,         // Latin Capital Letter L with Stroke (titlecase)
+                459r,         // Latin Capital Letter T with Stroke (titlecase)
+                498r,         // Latin Capital Letter G with Stroke (titlecase)
+                500r,         // Latin Capital Letter K with Stroke (titlecase)
+                502r,         // Latin Capital Letter N with Stroke (titlecase)
+                504r,         // Latin Capital Letter O with Stroke (titlecase)
+                506r,         // Latin Capital Letter R with Stroke (titlecase)
+                508r,         // Latin Capital Letter S with Stroke (titlecase)
+                510r,         // Latin Capital Letter T with Stroke (titlecase)
+                512r..575r,   // Latin Extended-A titlecase letters
+                7680r..7935r, // Latin Extended-B titlecase letters
+                11360r..11391r, // Glagolitic titlecase letters
+            ]
+
+            return self in r
+        }
+    }
+
+    /** Reports whether this rune is a noncharacter according to Unicode. */
+    property IsNoncharacter: bool {
+        get {
+            // TODO: Determine if this is the correct way to check for noncharacters in Unicode. Are emojis considered noncharacters? Should we include the range 0xFDD0..0xFDEF?
+            // TODO: Validate this as it seems to be a compiler issue
+            return (self in 0xFDD0r..0xFDEFr) // || (int(self) & 0xFFFE == 0xFFFE)
+        }
+    }
+
+    /** Reports whether this rune is a valid Unicode code point. */
+    property IsValid: bool {
+        get {
+            return self <= 0x10FFFFr && !self.IsNoncharacter
+        }
+    }
+
+    /** Reports whether this rune is a combining mark according to Unicode. */
+    property IsCombiningMark: bool {
+        get {
+            // Fast path: ASCII has no combining marks
+            if self <= 127r {
+                return false
+            }
+
+            // Compile-time constant array containing Unicode combining mark ranges
+            let r := [
+                768r..879r,     // Combining Diacritical Marks
+                1155r..1159r,   // Combining Diacritical Marks Supplement
+                1425r..1479r,   // Combining Diacritical Marks Extended
+                65056r..65071r, // Combining Half Marks
+                917760r..917999r, // Combining Diacritical Marks for Symbols
+            ]
+
+            return self in r
+        }
+    }
+
+    /** Returns the maximum valid rune value (0x10FFFF) */
+    static property MaxValue: rune {
+        get {
+            return 0x10FFFFr
+        }
+    }
+
+    /** Return the minimum valid rune value (0) */
+    static property MinValue: rune {
+        get {
+            return 0r
+        }
+    }
+
+    /** Returns the Unicode replacement character (U+FFFD) */
+    static property ReplacementCharacter: rune {
+        get {
+            return 0xFFFDr
+        }
+    }
+
+    /** Returns the titlecase variant of a letter when possible. */
+    fn ToTitle() rune {
+        switch {
+            case self == 454r:
+                return 453r
+            case self == 457r:
+                return 456r
+            case self == 460r:
+                return 459r
+            case self == 499r:
+                return 498r
+            case self.IsLowerLetter:
+                return self.ToUpper()
+        }
+
+        return self
+    }
+
+    /** Returns the int value of a numeric rune or None(). */
+    fn ToNumericValue() Option[decimal] {
+        switch {
+            case self.IsDigit: // ASCII digits
+                return Some(decimal(int(self) - 48))
+            case self.IsUnicodeDigit: // Unicode digits (0-9 in other scripts)
+                return Some(decimal(int(self) % 10))
+            case self.IsLetter: // Check for Roman numeral letters
+                if self in [73r, 86r, 88r, 76r, 67r, 68r, 77r, 105r, 118r, 120r, 108r, 99r, 100r, 109r] {
+                    return Some(self._toRomanValue())
+                }
+            case self in 8544r..8575r: // Unicode Roman Numerals block (Ⅰ to ⅿ)
+                return Some(self._toRomanValue())
+            case self in 188r..190r || self in 8531r..8542r: // Unicode fractions (¼, ½, ¾, ⅓, ⅔, etc.)
+                return Some(self._toFractionValue())
+            case self in [8730r, 8731r, 8732r, 8733r, 120645r]: // Unicode mathematical constants (√2, √3, π, e)
+                return Some(self._toConstantValue())
+        }
+
+        return None()
     }
 
     /** Returns the number of UTF-8 bytes needed to encode this rune. */
@@ -381,5 +556,80 @@ impl rune {
 
         // Return unchanged if no uppercase variant exists
         return self
+    }
+
+    /** Returns the integer value of a Roman numeral rune. */
+    fn _toRomanValue() decimal {
+        switch {
+            case self in [73r, 105r]:
+                return 1
+            case self in [86r, 118r]:
+                return 5
+            case self in [88r, 120r]:
+                return 10
+            case self in [76r, 108r]:
+                return 50
+            case self in [67r, 99r]:
+                return 100
+            case self in [68r, 100r]:
+                return 500
+            case self in [77r, 109r]:
+                return 1000
+            case self in 8544r..8555r: // Ⅰ to Ⅻ
+                return decimal(int(self) - 8543) // Map to 1-12
+            case self in 8560r..8571r: // ⅰ to ⅻ
+                return decimal(int(self) - 8559) // Map to 1-12
+            case self in [8556r, 8572r]: // Ⅼ and ⅾ
+                return 50
+            case self in [8557r, 8573r]: // Ⅽ and
+                return 100
+            case self in [8558r, 8574r]: // Ⅾ and
+                return 500
+            case self in [8559r, 8575r]: // Ⅿ and
+                return 1000
+        }
+        return 0
+    }
+
+    /** Returns the float value of a Unicode fraction rune. */
+    fn _toFractionValue() decimal {
+        switch {
+            case self == 188r: return 0.25 // ¼
+            case self == 189r: return 0.5  // ½
+            case self == 190r: return 0.75 // ¾
+            case self == 8531r: return 1.0 / 3.0 // ⅓
+            case self == 8532r: return 2.0 / 3.0 // ⅔
+            case self == 8533r: return 1.0 / 5.0 // ⅕
+            case self == 8534r: return 2.0 / 5.0 // ⅖
+            case self == 8535r: return 3.0 / 5.0 // ⅗
+            case self == 8536r: return 4.0 / 5.0 // ⅘
+            case self == 8537r: return 1.0 / 6.0 // ⅙
+            case self == 8538r: return 5.0 / 6.0 // ⅚
+            case self == 8539r: return 1.0 / 8.0 // ⅛
+            case self == 8540r: return 3.0 / 8.0 // ⅜
+            case self == 8541r: return 5.0 / 8.0 // ⅝
+            case self == 8542r: return 7.0 / 8.0 // ⅞
+        }
+        return 0.0
+    }
+
+    fn _toConstantValue() decimal {
+        switch {
+            case self == 8730r:// √2
+                return 1.4142135623730951
+            case self == 8731r:// √3
+                return 1.7320508075688772
+            case self in [960r, 120645r, 120715r]:// π
+                return 3.141592653589793
+            case self == 8733r:// e
+                return 2.718281828459045
+            case self in [966r, 120659r, 120729r]: // Golden ratio 'phi' (𝜙, 𝝓)
+                return 1.618033988749895
+            case self in [947r, 8485r, 120640r]: // Euler-Mascheroni constant 'gamma' (γ, ℽ)
+                return 0.5772156649015328
+            case self == 8463r:// Reduced Planck constant 'h-bar' (ℏ)
+                return 1.054571817e-34
+        }
+        return 0.0
     }
 }

@@ -1,0 +1,9 @@
+module core
+
+fn Zero() rune { return 0r }
+fn BeforeSurrogates() rune { return 0xD7FFr }
+fn AfterSurrogates() rune { return 0xE000r }
+fn LastScalar() rune { return 0x10FFFFr }
+fn Noncharacter() rune { return 0xFDD0r }
+fn IsSurrogateCodepoint(value: uint) bool { return value in 0xD800u..0xDFFFu }
+fn IsSurrogateRune(value: rune) bool { return uint(value) in 0xD800u..0xDFFFu }

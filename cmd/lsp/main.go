@@ -296,6 +296,7 @@ type server struct {
 	shutdown             bool          //
 	workspaceRoots       []string
 	workspaceSymbols     *workspaceSymbolIndex
+	parameterInsight     parameterInsightSettings
 	inlayHints           *inlayHintSettings
 	crossTarget          *crossTargetStore
 }
@@ -385,6 +386,7 @@ func (s *server) handle(message rpcMessage) error {
 			s.workspaceRoots = workspaceRootsFromInitialize(params)
 			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.InitializationOptions)
 			s.inlayHints = &settings
+			s.updateParameterInsight(params.InitializationOptions)
 		}
 		return s.respond(message.ID, map[string]any{
 			"capabilities": map[string]any{
@@ -466,6 +468,7 @@ func (s *server) handle(message rpcMessage) error {
 		if json.Unmarshal(message.Params, &params) == nil {
 			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.Settings)
 			s.inlayHints = &settings
+			s.updateParameterInsight(params.Settings)
 		}
 		return s.republishOpenDiagnostics()
 	case "textDocument/codeLens":
@@ -635,7 +638,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
-		result, ok := hoverForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		result, ok := hoverForSourceWithParameterInsight(params.TextDocument.URI, snapshot.Text, params.Position, s.parameterInsightSettings(), s.sourceOverlay())
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
@@ -1972,104 +1975,6 @@ func semanticTokenType(token lexer.Token, classification map[string]string) stri
 	default:
 		return "keyword"
 	}
-}
-
-func hoverForSource(uri string, text string, pos position, overlays ...sourceOverlay) (hoverResult, bool) {
-	program := parseProgramForLSP(uri, text)
-	if program == nil {
-		return hoverResult{}, false
-	}
-	offset := lineCharToOffset(text, pos.Line, pos.Character)
-	if offset < 0 {
-		return hoverResult{}, false
-	}
-
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
-	analyzer.Analyze(program)
-	if token, found := sourceTokenAtPosition(uri, text, pos); found {
-		if hover, ok := attributeHover(text, program, analyzer, token); ok {
-			return hover, true
-		}
-		if hover, ok := tryExpressionHover(text, program, analyzer, token); ok {
-			return hover, true
-		}
-		if hover, ok := tryAssignmentHover(text, program, analyzer, token); ok {
-			return hover, true
-		}
-		if hover, ok := assertionHover(text, program, analyzer, token); ok {
-			return hover, true
-		}
-		if hover, ok := contextualOperatorHover(text, program, analyzer, sourceTokens(uri, text), token); ok {
-			return hover, true
-		}
-	}
-
-	name, nameStart, nameEnd, ok := identifierAtOffset(text, offset)
-	if !ok {
-		return hoverResult{}, false
-	}
-	nameRange := offsetsRange(text, nameStart, nameEnd)
-	if construction, openOffset, _, found := constructionAtOffset(program, path, text, offset); found && offset <= openOffset {
-		if resolved, ok := analyzer.ResolvedConstructionOf(construction); ok {
-			return hoverResult{Contents: markupContent{Kind: "markdown", Value: initializerHoverContents(resolved)}, Range: nameRange}, true
-		}
-	}
-	if token, found := sourceTokenAtPosition(uri, text, pos); found {
-		if initializer, ok := initializerForToken(analyzer, token); ok {
-			resolved := sema.ResolvedConstruction{
-				Initializer: initializer,
-				Implicit:    false,
-			}
-			if initializer.ConstructionType != nil {
-				resolved.Target = *initializer.ConstructionType
-			}
-			resolved.ErrorType = initializer.ConstructionError
-			return hoverResult{Contents: markupContent{Kind: "markdown", Value: initializerHoverContents(resolved)}, Range: nameRange}, true
-		}
-	}
-
-	if target, ok := implTargetAtOffset(program, analyzer, text, path, offset); ok {
-		if name == "self" {
-			return typedHover(nameRange, "self", target), true
-		}
-		if isSelfMemberSelector(text, nameStart) {
-			if contents, ok := selfMemberHoverContents(target, name, analyzer.Functions(), program, path); ok {
-				contents += callGraphHoverSuffix(analyzer, uri, text, pos)
-				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
-			}
-		}
-	}
-	if token, found := sourceTokenAtPosition(uri, text, pos); found {
-		if member, resolved := analyzer.CompilerKnownMemberAt(token.File, token.Line, token.Column); resolved {
-			return compilerKnownMemberHover(nameRange, member), true
-		}
-		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
-		if len(definitions) == 1 {
-			if contents, found := memberHoverContentsForDefinition(analyzer, definitions[0]); found {
-				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
-			}
-		}
-	}
-
-	if functions := analyzer.Functions()[name]; len(functions) > 0 && !internalCompilerOverloads(functions) {
-		contents := functionHoverContents(functions, program, path)
-		contents += callGraphHoverSuffix(analyzer, uri, text, pos)
-		return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
-	}
-	if symbol, ok := analyzer.Symbols()[name]; ok {
-		hover := typedHover(nameRange, symbol.Name, symbol.Type)
-		hover.Contents.Value += unitDerivationHoverSuffix(analyzer, symbol.Type)
-		return hover, true
-	}
-	if typ, ok := analyzer.Types()[name]; ok {
-		hover := typedHover(nameRange, "type "+name+genericHeaderDisplay(typ.GenericParameters, typ.GenericConstraints), typ)
-		hover.Contents.Value += unitDerivationHoverSuffix(analyzer, typ)
-		return hover, true
-	}
-
-	return hoverResult{}, false
 }
 
 // contextualOperatorHover presents parser identity and Sema-resolved operand

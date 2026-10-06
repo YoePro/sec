@@ -61,10 +61,7 @@ func (a *Analyzer) unitConversionSuggestion(expected Type, actual Type, expr ast
 
 // unitCarrierName is the numeric carrier of a quantity type without its unit.
 func unitCarrierName(typ Type) string {
-	if typ.Underlying != "" && typ.Named {
-		return typ.Underlying
-	}
-	return string(typ.Kind) + ":" + typ.Name
+	return string(typ.Kind) + ":" + numericCarrierName(typ)
 }
 
 // simpleValueSpelling spells a binding or a chain of member reads.

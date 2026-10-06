@@ -23,3 +23,21 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/replace.sec
+
+fn ReplaceAll(value: string, search: string, replacement: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ReplaceN(value: string, search: string, replacement: string, count: uint) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ReplaceFirst(value: string, search: string, replacement: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn ReplaceLast(value: string, search: string, replacement: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

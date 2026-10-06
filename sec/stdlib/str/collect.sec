@@ -22,3 +22,20 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/collect.sec
+
+fn ToRuneArray(value: string) Result[rune[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+fn ToByteArray(value: string) Result[byte[], CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn FromRunes(values: Iterator[rune]) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn FromRunes(values: ref rune[]) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}

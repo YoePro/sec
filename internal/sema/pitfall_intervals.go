@@ -283,30 +283,6 @@ func rangeMembership(subject ast.Expression, lower, upper intervalBound) (string
 	return "", false
 }
 
-// pitfallPureOperand reports whether evaluating expression twice or once is
-// indistinguishable: resolved bindings and chains of stored struct fields.
-// Properties may run user getters and are not pure for rewriting.
-func (b *pitfallBuilder) pitfallPureOperand(expression ast.Expression) bool {
-	switch expression := expression.(type) {
-	case *ast.Identifier:
-		return true
-	case *ast.MemberExpression:
-		if expression.Property == nil || !b.pitfallPureOperand(expression.Object) {
-			return false
-		}
-		objectType, ok := b.analyzer.expressionTypes[expression.Object]
-		if !ok {
-			return false
-		}
-		for _, field := range dereferenceType(objectType).Fields {
-			if field.Name == expression.Property.Value {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func intervalEvidence(lower, upper intervalBound) []PitfallEvidence {
 	evidence := []PitfallEvidence{
 		{Strength: PitfallEvidenceProof, Fact: "both comparisons test the same resolved, totally ordered value", Source: expressionToken(lower.Subject)},
@@ -373,6 +349,9 @@ func (b *pitfallBuilder) reportImpossibleInterval(condition *ast.InfixExpression
 	})
 }
 
+// reportRangeMembershipIdiom offers a canonical interval rewrite only with
+// complete observable-equivalence evidence; effectful/unknown reads suppress it.
+// Rules: rules/analysis/pitfall_analysis.md — "Canonical idiom guidance", "Fix safety".
 func (b *pitfallBuilder) reportRangeMembershipIdiom(condition *ast.InfixExpression, lower, upper intervalBound) {
 	replacement, ok := rangeMembership(lower.Subject, lower, upper)
 	if !ok {
@@ -392,6 +371,7 @@ func (b *pitfallBuilder) reportRangeMembershipIdiom(condition *ast.InfixExpressi
 		OwningRule: "canonical-range-membership",
 		Actions: []PitfallSuggestedAction{{
 			Kind:        PitfallProvenFix,
+			Safety:      b.membershipFixSafety(lower, upper, replacement),
 			Title:       "use canonical range membership",
 			Replacement: replacement,
 			Source:      condition.Token,
@@ -402,14 +382,14 @@ func (b *pitfallBuilder) reportRangeMembershipIdiom(condition *ast.InfixExpressi
 	if !b.pitfallPureOperand(lower.Subject) || !b.pitfallPureOperand(upper.Subject) {
 		against := []PitfallEvidence{{
 			Strength: PitfallEvidenceSuppressing,
-			Fact:     "the subject is not a binding or a chain of stored fields",
+			Fact:     "the subject lacks a proven non-observable stored-value read (getters, volatile/register access and unresolved reads are excluded)",
 			Source:   expressionToken(lower.Subject),
 		}}
 		finding.State = PitfallStateSuppressed
 		finding.Actions = nil
 		finding.EvidenceAgainst = against
 		finding.Suppression = &PitfallSuppression{
-			Reason:   "the compared value may have side effects, so rewriting two evaluations into one is not semantics-preserving",
+			Reason:   "the compared value may have observable effects or failures, so rewriting two evaluations into one is not proven semantics-preserving",
 			Evidence: against,
 		}
 	}

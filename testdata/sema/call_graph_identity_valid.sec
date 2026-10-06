@@ -1,0 +1,13 @@
+module main
+fn Choose(value: int) int { return value }
+fn Choose(value: bool) bool { return value }
+fn Work(value: int) void {
+    let operation := capture(value) fn() int { return Choose(value) }
+    defer { discard operation() }
+    discard Choose(value)
+    let local := fn() bool { return Choose(true) }
+    discard local()
+}
+fn RecursiveA() void { RecursiveB() }
+fn RecursiveB() void { RecursiveA() }
+fn main() void { Work(1) }

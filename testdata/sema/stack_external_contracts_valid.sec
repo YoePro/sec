@@ -1,0 +1,20 @@
+module main
+
+extern "C" fn Foreign() void
+extern "C" fn Platform() void
+extern "C" fn Runtime() void
+fn ForeignOnce() void { Foreign() }
+fn ForeignTwice() void {
+    Foreign()
+    Foreign()
+}
+fn Nested() void { ForeignOnce() }
+fn PlatformCaller() void { Platform() }
+fn RuntimeCaller() void { Runtime() }
+fn Arithmetic(value: int) int { return value + 1 }
+fn TwoEffects(value: int) int { return (value + 1) + (value + 2) }
+fn Mixed(value: int) int {
+    Foreign()
+    return value + 1
+}
+fn Opaque(operation: fn() void) void { operation() }

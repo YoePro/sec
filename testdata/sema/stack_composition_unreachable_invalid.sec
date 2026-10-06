@@ -1,0 +1,3 @@
+module main
+fn Large() void {}
+fn Dead() void { if false { Large() } }

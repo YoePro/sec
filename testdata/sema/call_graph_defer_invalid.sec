@@ -1,0 +1,8 @@
+module main
+fn Cleanup() void { }
+fn main() void {
+    if false {
+        defer { Cleanup() }
+    }
+    defer { defer { Cleanup() } }
+}

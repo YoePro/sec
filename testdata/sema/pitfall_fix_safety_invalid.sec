@@ -1,0 +1,3 @@
+module main
+fn Probe() bool { return true }
+fn NumericIntent() bool { return Probe() == 1 }

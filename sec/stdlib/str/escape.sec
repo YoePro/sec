@@ -25,3 +25,56 @@ module str
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
+
+// TODO: Implement stdlib/str/escape.sec
+
+type UnescapeError union error {
+    /**
+     * An escape begins but is incomplete.
+     */
+    Truncated(uint),
+
+    /**
+     * The escape introducer is not legal in Sec string literals.
+     */
+    InvalidEscape(uint),
+
+    /**
+     * A hexadecimal digit required by an escape is invalid.
+     */
+    InvalidHexDigit(uint),
+
+    /**
+     * A Unicode escape denotes no valid Unicode scalar value.
+     */
+    InvalidUnicodeScalar(uint),
+
+    /**
+     * Quoted input is missing the required opening or closing delimiter.
+     */
+    InvalidQuotes,
+
+    /**
+     * Result storage could not be allocated.
+     */
+    Allocation(CollectionError),
+
+    /** Temporary during implementation */
+    NotImplemented,
+}
+
+fn EscapeLiteral(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn Quote(value: string) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
+    return Err(UnescapeError.NotImplemented)
+}
+
+fn Unquote(value: string) Result[string, UnescapeError] {
+    return Err(UnescapeError.NotImplemented)
+}

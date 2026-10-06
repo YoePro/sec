@@ -1,0 +1,19 @@
+module main
+
+fn Small() void {}
+fn Large() void {}
+fn Joined(enabled: bool) void {
+    let mut operation := Small
+    if enabled { operation = Large }
+    operation()
+}
+fn Open(operation: fn() void) void { operation() }
+fn Outer(operation: fn() void) void { Open(operation) }
+fn TwoOpen(first: fn() void, second: fn() void) void {
+    first()
+    second()
+}
+fn Panic(operation: fn() void, value: int) int {
+    operation()
+    return value + 1
+}

@@ -1,0 +1,21 @@
+module main
+fn Shared(value: int) int { return value + 1 }
+fn OnlyProduction() void { }
+fn OnlySecond() void { }
+fn Worker() void { OnlySecond() }
+fn main() void { OnlyProduction() }
+
+test "first" {
+    defer { discard Shared(1) }
+    discard Shared(2)
+}
+test "second" {
+    OnlySecond()
+    let operation := fn() void { OnlySecond() }
+    operation()
+}
+test "worker" {
+    let pending := spawn Worker()
+    discard await pending
+}
+test "empty" { }

@@ -175,6 +175,18 @@
           "default": "",
           "markdownDescription": "Absolute path to the SEC language server. Leave empty to use `bin/lsp-sec` or `bin/lsp-sec.exe` inside the extension. Windows example: `C:\\\\Users\\\\Accountname\\\\.vscode\\\\extensions\\\\sec-lang.sec-syntax\\\\bin\\\\lsp-sec.exe`."
         },
+        "sec.analysis.parameters.hover": {
+          "type": "string",
+          "enum": ["off", "concise", "detailed"],
+          "default": "off",
+          "markdownDescription": "Optional compiler-owned parameter demand in hover. Concise shows access/lifetime; detailed adds capabilities, precision, candidates and blockers. Analysis depth follows the project's `[analysis].lsp_depth`."
+        },
+        "sec.analysis.parameters.advisories": {
+          "type": "string",
+          "enum": ["off", "info", "warning", "error"],
+          "default": "off",
+          "markdownDescription": "Presentation severity for optional A2001 large-value parameter advice. Does not change compiler validity or hide language-safety errors."
+        },
         "sec.inlayHints.types": {
           "type": "boolean",
           "default": true,

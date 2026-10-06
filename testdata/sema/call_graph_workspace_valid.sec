@@ -1,0 +1,7 @@
+module main
+
+fn Leaf(value: int) int { return value + 1 }
+fn Middle(value: int) int { return Leaf(value) }
+fn main() int { return Middle(1) }
+fn RecursiveA() void { RecursiveB() }
+fn RecursiveB() void { RecursiveA() }

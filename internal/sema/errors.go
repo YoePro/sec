@@ -10,6 +10,7 @@ import (
 type Error struct {
 	ID             string
 	Severity       diagnostics.Severity
+	ProofState     diagnostics.ProofState
 	Help           string
 	Message        string
 	File           string
@@ -23,6 +24,10 @@ type Error struct {
 	// RelatedLabel names the related location; empty means "previous
 	// declaration".
 	RelatedLabel string
+	// EscapeCauses explains the existing owning error using canonical provenance.
+	EscapeCauses []EscapeCausePath
+	// AllocationCause is the canonical navigable witness of an allocation-policy violation.
+	AllocationCause *AllocationCausePath
 }
 
 // RelatedLocationLabel is the human label of the related location.
@@ -48,21 +53,34 @@ func (e Error) WithHelp(help string) Error {
 	return e
 }
 
+// DisplayMessage preserves an explicit proof classification in human and
+// editor output without changing the producer's underlying explanation.
+// Rules: rules/compiler/compiler_analysis.md — §7(4–8), §58(3).
+func (e Error) DisplayMessage() string {
+	if e.ProofState != "" {
+		return string(e.ProofState) + ": " + e.Message
+	}
+	return e.Message
+}
+
+// Error renders the same proof outcome with source and related locations.
+// Rules: rules/compiler/compiler_analysis.md — §58(3);
+// rules/tooling/diagnostics.md — §9.
 func (e Error) Error() string {
 	if e.Line > 0 && e.Column > 0 {
 		if e.PreviousLine > 0 && e.PreviousColumn > 0 {
 			return fmt.Sprintf(
 				"%s at %s, %s at %s",
-				e.Message,
+				e.DisplayMessage(),
 				formatLocation(e.File, e.Line, e.Column),
 				e.RelatedLocationLabel(),
 				formatLocation(e.PreviousFile, e.PreviousLine, e.PreviousColumn),
 			)
 		}
-		return fmt.Sprintf("%s at %s", e.Message, formatLocation(e.File, e.Line, e.Column))
+		return fmt.Sprintf("%s at %s", e.DisplayMessage(), formatLocation(e.File, e.Line, e.Column))
 	}
 
-	return e.Message
+	return e.DisplayMessage()
 }
 
 // addErrorAtTokenWithPreviousMetadata emits one registered semantic diagnostic

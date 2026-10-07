@@ -1,0 +1,16 @@
+module state_proof
+
+type Failure union error { Abandoned(Task[int]), }
+type Other enum error { Ok, }
+fn Load() Result[int, Failure] { return Ok(1) }
+
+fn InvalidCheckedSubject() void {
+    let first := Load()
+    let second := Load()
+    if first is Other.Ok { discard second.Ok() }
+}
+
+fn InvalidOwnProof() void {
+    let result := Load()
+    if result is Other.Ok { discard result.Ok() }
+}

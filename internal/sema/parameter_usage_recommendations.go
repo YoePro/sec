@@ -30,20 +30,35 @@ type ParameterRecommendation struct {
 // Rules: rules/analysis/parameter_usage_analysis.md — "Large value to reference",
 // "Recommendation confidence", "Candidate blockers", and "Blocked narrowing advisory".
 func (p *ParameterUsageAnalysis) Recommendations() []ParameterRecommendation {
+	results, _ := p.RecommendationsWithCoverage()
+	return results
+}
+
+// RecommendationsWithCoverage admits complete candidates under a snapshot's
+// optional work/depth limits. Skipped candidates have no recommendation or
+// confidence claim; semantic demand remains available and unchanged.
+// Rules: rules/compiler/compiler_analysis.md — §15(3–5);
+// rules/analysis/parameter_usage_analysis.md — "Analysis budgets",
+// "Interactive analysis", "Standard analysis", "Deep analysis".
+func (p *ParameterUsageAnalysis) RecommendationsWithCoverage() ([]ParameterRecommendation, ParameterRecommendationCoverage) {
 	if p == nil {
-		return nil
+		return nil, ParameterRecommendationCoverage{}
 	}
+	coverage := ParameterRecommendationCoverage{MaxWork: p.budget.MaxRecommendationWork, MaxTypeDepth: p.budget.MaxTypeDepth}
+	work := parameterWorkBudget{remaining: coverage.MaxWork, maxDepth: coverage.MaxTypeDepth}
 	var results []ParameterRecommendation
-	for _, id := range p.summaryOrder {
-		summary := p.summaries[id]
-		if summary == nil {
-			continue
-		}
+	for _, summary := range p.orderedRecommendationSummaries() {
+		id := summary.Callable
 		for _, parameter := range summary.Parameters {
 			typ := parameter.DeclaredType
 			if parameter.DeclaredRef || typ.Kind == ReferenceType || typ.Kind == SliceType || typ.Kind == VoidType || typ.Kind == InvalidType {
 				continue
 			}
+			if work.maxDepth == 0 || !work.take(1) || !work.typeFits(typ, 1, false, map[*Type]bool{}) {
+				coverage.SkippedCandidates++
+				continue
+			}
+			coverage.EvaluatedCandidates++
 			result := sharedReferenceRecommendation(parameter)
 			if summary.Precision != ParameterDemandExact {
 				result.Status = "blocked"
@@ -58,7 +73,8 @@ func (p *ParameterUsageAnalysis) Recommendations() []ParameterRecommendation {
 			results = append(results, result)
 		}
 	}
-	return results
+	coverage.VisitedWork = work.visited
+	return results, coverage
 }
 
 // sharedReferenceRecommendation applies cost policy only after capability
@@ -159,13 +175,19 @@ func (a *Analyzer) emitLargeValueParameterAdvisories() {
 	if a == nil || a.parameterUsageAnalysis == nil {
 		return
 	}
+	parameters := map[sourceTokenKey]ParameterUsageParameterSummary{}
 	for _, id := range a.parameterUsageAnalysis.summaryOrder {
 		summary := a.parameterUsageAnalysis.summaries[id]
 		if summary == nil || summary.Precision != ParameterDemandExact {
 			continue
 		}
 		for _, parameter := range summary.Parameters {
-			a.emitLargeValueParameterAdvisory(parameter)
+			parameters[sourceTokenLocation(parameter.Declaration)] = parameter
+		}
+	}
+	for _, recommendation := range a.parameterUsageAnalysis.Recommendations() {
+		if recommendation.Status == "recommended" {
+			a.emitLargeValueParameterAdvisory(parameters[sourceTokenLocation(recommendation.Source)], recommendation)
 		}
 	}
 }
@@ -177,12 +199,12 @@ func (a *Analyzer) emitLargeValueParameterAdvisories() {
 //   - rules/analysis/parameter_usage_analysis.md — "Large value to reference"
 //   - rules/analysis/parameter_usage_analysis.md — "Semantic demand and recommendation policy are separate"
 //   - rules/analysis/parameter_usage_analysis.md — "ResolvedLayout as cost input"
-func (a *Analyzer) emitLargeValueParameterAdvisory(parameter ParameterUsageParameterSummary) {
+func (a *Analyzer) emitLargeValueParameterAdvisory(parameter ParameterUsageParameterSummary, recommendation ParameterRecommendation) {
 	typ := parameter.DeclaredType
 	if parameter.DeclaredRef || typ.Kind == ReferenceType || typ.Kind == SliceType || typ.Kind == VoidType || typ.Kind == InvalidType {
 		return
 	}
-	if sharedReferenceRecommendation(parameter).Status != "recommended" {
+	if recommendation.Status != "recommended" {
 		return
 	}
 	help := "Pass the parameter by shared reference when the function does not need to own or copy the whole value."

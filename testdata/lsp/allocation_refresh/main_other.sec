@@ -1,0 +1,5 @@
+module main
+import "other"
+@noAlloc
+fn Root() void { other.Work() }
+fn main() void { Root() }

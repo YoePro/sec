@@ -1,0 +1,39 @@
+module main
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+type Buffered struct { pending: int[] }
+impl Buffered implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+fn MakeBuffered() Buffered { return Buffered{} }
+fn Reusable() void {
+    let mut counter := Counter{}
+    for value in counter { discard value }
+}
+fn Temporary() void { for value in MakeBuffered() { discard value } }
+fn Discard() void {
+    let mut counter := Counter{}
+    for _ in counter { break }
+}
+fn Borrowed(counter: ref mut Counter) void {
+    for value in counter { discard value }
+}
+fn Nested() void {
+    let mut left := Counter{}
+    let mut right := Counter{}
+    for _ in left { for _ in right { break } }
+}
+fn Lambda() void {
+    let operation := fn() void {
+        let mut counter := Counter{}
+        for _ in counter { break }
+    }
+    operation()
+}
+fn Builtin(values: int[]) void {
+    for value in values { discard value }
+    for value in 0..<3 { discard value }
+}
+fn Advisory(values: int[100]) int { return values[0] }

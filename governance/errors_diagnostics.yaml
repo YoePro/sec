@@ -73,7 +73,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: 2026-10-06
+    revised: 2026-10-07
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-30
     replaces:
@@ -209,6 +209,28 @@ integrations:
       - cmd/compiler/module_sources.go
       - testdata/diagnostics/emitted_occurrences_invalid.sec
     implemented:
+      - id: diagnostics.escape-ids
+        description: >-
+          Mandatory central S1128–S1133 escape category IDs preserve sink/origin
+          locations and actionable help through CLI human/JSON and LSP. Unknown
+          provenance remains distinct from proven local-storage escape. The
+          producer migration and tests are owned by sema.escape-analysis in
+          governance/analysis.yaml; future retention/transfer producers remain
+          governed by that integration.
+      - id: diagnostics.arena-operation-point-ids
+        description: >-
+          Mandatory S1126 arena.reset-live-dependency and S1127
+          arena.release-live-dependency retain Invalid proof state, exact
+          operation spans, live dependency related locations and distinct help
+          through CLI/JSON and LSP; implementation and verification are owned by
+          analysis.arena-reset-release-dependency-legality in governance/analysis.yaml.
+      - id: diagnostics.pipeline-proof-transport
+        description: >-
+          Explicit semantic proof states survive CLI, JSON named arguments and
+          LSP rendering independently of error severity. Registered S1124/S1125
+          pipeline proof failures, wrapper/join transport and distinct
+          unsupported-lowering capability output are owned by
+          analysis.compiler-pipeline in governance/analysis.yaml.
       - id: diagnostics.emitted-occurrence-json
         description: >-
           Every diagnostic-producing CLI command (lex, token, parse, ast, sema,
@@ -254,11 +276,14 @@ integrations:
           parser warning, an ILLEGAL token without a structured cause, and a
           project/build/target/tool error (for example `semantic IR error`) are
           emitted as occurrences with null id and name and `unregistered: true`
-          instead of an invented identity; tool errors carry no primary span
-          (§ 9(6)). Message and help keys are `<name>.message`/`<name>.help`
+          instead of an invented identity; tool errors without source evidence
+          carry no primary span (§ 9(6)), while typed unsupported-lowering
+          failures retain a source position when the producer supplies one. Message and help keys are `<name>.message`/`<name>.help`
           (or `unregistered.*`) until localization catalogs exist. Arguments
-          are empty until definitions declare argument schemas
-          (diagnostics.registry-definition-v2) and fixes are empty until the
+          retain explicit proof_state and pipeline_stage for classified analysis
+          failures, and category for typed unsupported-lowering failures;
+          complete definition-owned argument schemas remain pending
+          (diagnostics.registry-definition-v2). Fixes are empty until the
           fix schema exists (diagnostics.complete-fix-schema).
       - id: diagnostics.registry-core
         description: >-
@@ -431,6 +456,13 @@ integrations:
         description: >-
           A2001/performance.large-value-parameter is registered as configurable
           Information.
+      - id: diagnostics.a2004-pitfall
+        description: >-
+          A2004/suspicious.pitfall is registered as configurable Information for
+          optional compiler pitfall findings; analysis rule identity remains
+          separate and mandatory invalidity retains its underlying owner.
+          LSP presentation and policy reload are owned by
+          tooling.lsp-pitfall-presentation.
       - id: diagnostics.a2002-a2003
         description: >-
           A2002/operators.redundant-state-test-comparison and

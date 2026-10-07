@@ -1,0 +1,9 @@
+module main
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+fn Loop() void {
+    let mut counter := Counter{}
+    for _ in counter { break }
+}

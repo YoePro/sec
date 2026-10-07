@@ -2,6 +2,45 @@ schema_version: 1
 area: tooling-lsp
 purpose: Language-server behavior, protocol integration, and editor actions.
 integrations:
+  - id: tooling.lsp-pitfall-presentation
+    area: tooling
+    status: implemented
+    integrated: "2026-10-07"
+    summary: >-
+      Presents canonical optional pitfall findings and certified or explicitly
+      suggested actions using live diagnostic policy and project analysis depth.
+    rules:
+      - rules/analysis/pitfall_analysis.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.md
+      - rules/projects/projects.md
+    code:
+      - cmd/lsp/pitfall_diagnostics.go
+      - cmd/lsp/pitfall_actions.go
+      - cmd/lsp/analysis_configuration.go
+      - cmd/lsp/diagnostics_batch.go
+      - cmd/lsp/main.go
+      - internal/fixes/pitfall.go
+    tests:
+      - cmd/lsp/pitfall_configuration_test.go
+      - internal/fixes/pitfall_test.go
+      - testdata/sema/pitfall_lsp_valid.sec
+    implemented:
+      - compiler-produced findings, confidence, supporting evidence and source navigation become optional A2004 diagnostics; suppressed findings and coalesced mandatory owners never produce another primary diagnostic
+      - common diagnostics.rules client choices from initialization and configuration notifications use off/info/warning/error for A2004 or suspicious.pitfall, with the existing project diagnostics.rules section overriding user fallback; mandatory owners retain their severity and identity
+      - project lsp_depth and diagnostic-rule edits are reread without restart after configuration or watched-file notifications, all queued generations are invalidated before refresh, and batched open-document diagnostics retain source routing and document versions
+      - code-action requests resolve fresh compiler findings under current text, plan, depth and policy rather than trusting stale client diagnostics; optional off withdraws optional actions while mandatory-owner guidance remains available
+      - shared compiler fix materialization admits only complete ProvenFix certificates with one matching current source expression and a reparsed exact delimiter-balanced source span; applied edits preserve parentheses and UTF-16 positions, while SuggestedEdit or unverified spans remain disabled manual guidance without an executable edit
+      - active documents receive priority within the unchanged optional search budget, preventing included core bodies from starving Interactive presentation; project and user policy do not change semantic validity or mandatory analysis
+      - analysis configuration is extracted from the large protocol file into a focused sibling with rule traceability
+    verification:
+      - command: go test ./... -count=1
+        result: passed on 2026-10-07 after full pitfall LSP presentation integration
+      - command: go vet ./...
+        result: passed on 2026-10-07
+      - command: go test ./cmd/lsp ./internal/sema ./internal/fixes ./internal/diagnostics -race -run 'TestPitfall(LSP|Edit|Advisory|SourcePriority)|TestDiagnosticBatch|TestParameterInsightConfiguration' -count=1
+        result: passed on 2026-10-07, covering policy levels, initialization, mandatory owners, executable versus suggested actions, applied source-context rewrites, Unicode/grouping, stale diagnostics/jobs, project depth and policy refresh, source routing and admission ordering
+
   - id: tooling.lsp-import-resolution
     area: tooling
     status: partial

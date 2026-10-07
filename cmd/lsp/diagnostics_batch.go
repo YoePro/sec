@@ -17,6 +17,18 @@ import (
 // rules/projects/modules.md — "Source directory and module membership";
 // rules/platform/platform_model.md — source selection by target.
 func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverlay) map[string][]diagnostic {
+	return analyzeDiagnosticBatchWithPolicy(snapshots, overlay, pitfallDiagnosticSettings{})
+}
+
+// analyzeDiagnosticBatchWithPolicy applies one immutable optional diagnostic policy
+// to a compiler batch. Rules: rules/analysis/pitfall_analysis.md — "LSP configuration reload".
+func analyzeDiagnosticBatchWithPolicy(snapshots []lspserver.Snapshot, overlay sourceOverlay, policy pitfallDiagnosticSettings) map[string][]diagnostic {
+	return analyzeDiagnosticBatchWithDependencies(snapshots, overlay, policy, nil)
+}
+
+// analyzeDiagnosticBatchWithDependencies returns compiler source dependencies alongside current diagnostics.
+// Rules: rules/memory/allocation.md — §29(5); rules/tooling/lsp.md — "Snapshots", "Incremental analysis".
+func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, overlay sourceOverlay, policy pitfallDiagnosticSettings, dependencies map[string]map[string]bool) map[string][]diagnostic {
 	results := make(map[string][]diagnostic, len(snapshots))
 	type document struct {
 		snapshot lspserver.Snapshot
@@ -56,7 +68,21 @@ func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverla
 		sort.Slice(docs, func(i, j int) bool { return docs[i].snapshot.URI < docs[j].snapshot.URI })
 		first := docs[0]
 		importErrors := prepareProgramForLSP(first.program, pathFromURI(first.snapshot.URI), overlay)
-		analyzer := newLSPAnalyzer(first.snapshot.URI)
+		if dependencies != nil {
+			for _, doc := range docs {
+				if len(importErrors) == 0 {
+					dependencies[doc.snapshot.URI] = diagnosticSourceDependencies(first.program, pathFromURI(doc.snapshot.URI))
+				} else {
+					dependencies[doc.snapshot.URI] = nil // unresolved source closure requires conservative refresh
+				}
+			}
+		}
+		analyzer := newLSPAnalyzer(first.snapshot.URI, first.program)
+		paths := make([]string, 0, len(docs))
+		for _, doc := range docs {
+			paths = append(paths, pathFromURI(doc.snapshot.URI))
+		}
+		analyzer.SetPitfallSourcePriority(paths)
 		errors := append(importErrors, analyzer.Analyze(first.program)...)
 		errors = append(errors, lspProgramEntryErrors(analyzer, first.program, pathFromURI(first.snapshot.URI), first.snapshot.Text, overlay)...)
 		for _, doc := range docs {
@@ -66,6 +92,7 @@ func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverla
 					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnosticWithSources(err, 1, doc.snapshot.URI, doc.snapshot.Text, overlay))
 				}
 			}
+			results[doc.snapshot.URI] = append(results[doc.snapshot.URI], pitfallDiagnostics(analyzer, doc.snapshot.URI, doc.snapshot.Text, overlay, policy)...)
 			for _, warning := range analyzer.Warnings() {
 				if diagnosticBelongsToSource(warning, path) {
 					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnosticWithSources(warning, 2, doc.snapshot.URI, doc.snapshot.Text, overlay))
@@ -105,7 +132,8 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 	if len(selected) == 0 {
 		return nil
 	}
-	results := analyzeDiagnosticBatch(selected, overlay)
+	dependencies := map[string]map[string]bool{}
+	results := analyzeDiagnosticBatchWithDependencies(selected, overlay, s.pitfallSettingsSnapshot(), dependencies)
 	s.timerMu.Lock()
 	defer s.timerMu.Unlock()
 	if !current() {
@@ -113,13 +141,33 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 	}
 	latest := s.documentSnapshots.Snapshots()
 	if len(latest) != len(all) {
+		s.scheduleDiagnosticJobLocked(dir)
 		return nil
 	}
 	for _, snapshot := range all {
 		now, ok := s.documentSnapshots.Snapshot(snapshot.URI)
 		if !ok || now != snapshot {
+			s.scheduleDiagnosticJobLocked(dir)
 			return nil
 		}
+	}
+	if s.diagnosticDependencies == nil {
+		s.diagnosticDependencies = map[string]map[string]bool{}
+	}
+	files := map[string]bool{}
+	complete := true
+	for _, snapshot := range selected {
+		if dependencies[snapshot.URI] == nil {
+			complete = false
+		}
+		for file := range dependencies[snapshot.URI] {
+			files[file] = true
+		}
+	}
+	if complete {
+		s.diagnosticDependencies[dir] = files
+	} else {
+		delete(s.diagnosticDependencies, dir)
 	}
 	for _, snapshot := range selected {
 		published := results[snapshot.URI]

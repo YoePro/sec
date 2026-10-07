@@ -1,0 +1,46 @@
+module main
+
+type View struct { value: ref int }
+type Choice union { Some(int), None }
+
+fn Local() ref int {
+    let value := 10
+    return ref value
+}
+fn Aggregate() View {
+    let value := 10
+    return View { value: ref value }
+}
+fn Identity(ref value: int) ref int { return value }
+fn ThroughCall() ref int {
+    let value := 10
+    return Identity(ref value)
+}
+fn Slice() ref byte[] {
+    let local: byte[4] := [1, 2, 3, 4]
+    return ref local[..]
+}
+fn Store(target: ref mut View) void {
+    let value := 10
+    target.value = ref value
+}
+fn MatchReturn(choice: Choice, ref fallback: int) View {
+    match choice {
+        Some(ref value) => { return View { value: value } }
+        None => { return View { value: fallback } }
+    }
+}
+fn MatchStore(choice: Choice, ref fallback: int) void {
+    let mut holder := fallback
+    match choice {
+        Some(ref value) => { holder = value }
+        None => {}
+    }
+    discard holder
+}
+fn Closure() fn() int {
+    let value := 10
+    let view := ref value
+    return capture(view) fn() int { return value }
+}
+fn Pack(values: ...int) int { return values }

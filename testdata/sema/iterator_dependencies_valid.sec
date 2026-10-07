@@ -1,0 +1,82 @@
+module main
+
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+type Buffered struct { pending: int[] }
+impl Buffered implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+fn MakeBuffered() Buffered { return Buffered{} }
+fn Reusable() void {
+    let mut counter := Counter{current:0}
+    for value in counter {
+        let observation := ref counter.current
+        discard observation
+        let yielded := ref value
+        discard yielded
+    }
+}
+fn Temporary() void {
+    for value in MakeBuffered() {
+        let yielded := ref value
+        discard yielded
+    }
+}
+fn Shared(values: int[]) void {
+    let before := ref values[0]
+    for ref value in values {
+        let local := ref values[1]
+        discard local
+        discard before
+        discard value
+    }
+}
+fn Nested(left: int[], right: int[]) void {
+    for value in left {
+        for other in right {
+            let fromLeft := ref left[0]
+            discard fromLeft
+            let fromRight := ref right[0]
+            discard fromRight
+            discard other
+        }
+        discard value
+    }
+}
+fn Range() void { for value in 0..3 { discard value } }
+fn String() void { for value in "text" { discard value } }
+fn Carried(values: int[], other: int[]) void {
+    let mut kept := ref other[0]
+    for value in values {
+        kept = ref values[0]
+        discard value
+    }
+    discard kept
+}
+fn Early() void {
+    for value in MakeBuffered() {
+        let yielded := ref value
+        discard yielded
+        break
+    }
+}
+type View struct { backing: ref int[] }
+impl View implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+fn Backed(view: View) void {
+    for value in view { discard value }
+}
+fn LambdaOnly(values: int[]) void {
+    for value in values {
+        let operation := fn() void {
+            let inner := 1
+            let view := ref inner
+            discard view
+        }
+        operation()
+        discard value
+    }
+}

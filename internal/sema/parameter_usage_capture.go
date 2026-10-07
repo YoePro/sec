@@ -5,8 +5,9 @@ import "sec/internal/ast"
 // recordCaptureCreationDemand consumes validated capture transfer facts at
 // closure creation, which executes in the enclosing callable. Lambda bodies
 // execute in a separate callable and cannot contribute local demand by name.
-// Until closure target/environment summaries are integrated, capture-related
-// demand remains partial and cannot authorize positive narrowing advice.
+// Capture/environment dependency demand remains partial and cannot authorize
+// positive narrowing advice; separate lambda parameter summaries describe only
+// the arguments of an invocation, not captured environment storage.
 // Rules: rules/analysis/parameter_usage_analysis.md — "Inputs from other analyses",
 // "Unknown critical dimensions block narrowing";
 // rules/analysis/closure_analysis.md — "Capture record", "Callable creation".

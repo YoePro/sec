@@ -151,14 +151,16 @@ type ParameterUsageCallableSummary struct {
 }
 
 type ParameterUsageAnalysis struct {
-	summaries    map[CallableID]*ParameterUsageCallableSummary
-	summaryOrder []CallableID
-	iterations   int
-	converged    bool
+	summaries      map[CallableID]*ParameterUsageCallableSummary
+	summaryOrder   []CallableID
+	iterations     int
+	converged      bool
+	budget         ParameterUsageBudget
+	importCoverage ParameterImportCoverage
 }
 
 func newParameterUsageAnalysis() *ParameterUsageAnalysis {
-	return &ParameterUsageAnalysis{summaries: map[CallableID]*ParameterUsageCallableSummary{}, converged: true}
+	return &ParameterUsageAnalysis{summaries: map[CallableID]*ParameterUsageCallableSummary{}, converged: true, budget: parameterUsageBudget(AnalysisStandard)}
 }
 
 func (p *ParameterUsageAnalysis) clone() *ParameterUsageAnalysis {
@@ -169,6 +171,8 @@ func (p *ParameterUsageAnalysis) clone() *ParameterUsageAnalysis {
 	result.summaryOrder = append([]CallableID(nil), p.summaryOrder...)
 	result.iterations = p.iterations
 	result.converged = p.converged
+	result.budget = p.budget
+	result.importCoverage = p.importCoverage
 	for id, summary := range p.summaries {
 		copySummary := cloneParameterUsageCallableSummary(*summary)
 		result.summaries[id] = &copySummary
@@ -214,17 +218,20 @@ func (p *ParameterUsageAnalysis) SummariesForDeclaration(token lexer.Token) []Pa
 }
 
 type parameterUsageBuilder struct {
-	analyzer  *Analyzer
-	result    *ParameterUsageAnalysis
-	summary   *ParameterUsageCallableSummary
-	byBinding map[BindingID]*ParameterUsageParameterSummary
-	byName    map[string]*ParameterUsageParameterSummary
-	callSites []parameterUsageCallSite
+	analyzer           *Analyzer
+	result             *ParameterUsageAnalysis
+	summary            *ParameterUsageCallableSummary
+	byBinding          map[BindingID]*ParameterUsageParameterSummary
+	byName             map[string]*ParameterUsageParameterSummary
+	callSites          []parameterUsageCallSite
+	functionValueCalls map[parameterUsageInvocation]CallSite
 }
 
 type parameterUsageCallSite struct {
 	caller    CallableID
-	target    CallableID
+	targets   []CallableID
+	open      bool
+	contract  *OpenCallableContract
 	source    lexer.Token
 	arguments []parameterUsageCallArgument
 }
@@ -236,11 +243,16 @@ type parameterUsageCallArgument struct {
 	receiver        bool
 }
 
+// buildParameterUsageAnalysis gathers local callable demand before joining
+// direct, closure and function-value boundaries in one finite fixed point.
+// Rules: rules/analysis/parameter_usage_analysis.md — "Inputs from other analyses",
+// "Calls propagate demand", "Function-value calls", "Recursive functions".
 func buildParameterUsageAnalysis(program *ast.Program, analyzer *Analyzer) *ParameterUsageAnalysis {
 	builder := &parameterUsageBuilder{analyzer: analyzer, result: newParameterUsageAnalysis()}
 	if program == nil || analyzer == nil {
 		return builder.result
 	}
+	builder.result.budget = analyzer.parameterBudget
 	for _, statement := range program.Statements {
 		switch statement := statement.(type) {
 		case *ast.FunctionDeclaration:
@@ -256,7 +268,9 @@ func buildParameterUsageAnalysis(program *ast.Program, analyzer *Analyzer) *Para
 			}
 		}
 	}
-	builder.propagateDirectCalls()
+	builder.analyzeLambdaParameters()
+	builder.installImportedDemands()
+	builder.propagateCalls()
 	for _, id := range builder.result.summaryOrder {
 		builder.finishSummary(builder.result.summaries[id])
 	}
@@ -366,6 +380,10 @@ func maxParameterSize(left int64, right int64) int64 {
 	return right
 }
 
+// analyzeFunction derives local demand for resolved parameters and the implicit
+// instance receiver. Static members have no receiver demand to export.
+// Rules: rules/analysis/parameter_usage_analysis.md — "Receiver demand",
+// "Function summaries"; rules/declarations/static.md — static members.
 func (b *parameterUsageBuilder) analyzeFunction(declaration *ast.FunctionDeclaration, implTarget string) {
 	if declaration == nil || declaration.Name == nil || declaration.Body == nil {
 		return
@@ -401,7 +419,7 @@ func (b *parameterUsageBuilder) analyzeFunction(declaration *ast.FunctionDeclara
 			b.byBinding[stored.Binding] = stored
 		}
 	}
-	if implTarget != "" {
+	if implTarget != "" && !function.Static {
 		receiverType := semanticSnapshotType(b.analyzer.types[implTarget])
 		summary.Receiver = &ParameterUsageParameterSummary{
 			Index: -1, Name: "self", DeclaredType: receiverType, Receiver: true, Demand: defaultParameterDemand(),
@@ -726,12 +744,13 @@ func (b *parameterUsageBuilder) walkExpressionChildren(expression ast.Expression
 	}
 }
 
-// walkCall derives local operation demand and records direct-call boundaries
+// walkCall derives local operation demand and records resolved call boundaries
 // for interprocedural fixed-point propagation. Compiler-known collection
 // operations are consumed through their canonical registry contracts first.
 //
 // Rules:
 //   - rules/analysis/parameter_usage_analysis.md — "Calls propagate demand"
+//   - rules/analysis/parameter_usage_analysis.md — "Function-value calls"
 //   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations", "Inputs from other analyses"
 func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 	if b.walkCompilerKnownStructuralCollectionCall(call) {
@@ -743,6 +762,9 @@ func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 			b.walkExpression(argument)
 			b.addShape(argument, ParameterShapeSequence, 0)
 		}
+		return
+	}
+	if b.walkFunctionValueCall(call) {
 		return
 	}
 	if !ok || resolved.Kind == ResolvedForeignCall {
@@ -761,7 +783,7 @@ func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 	}
 
 	site := parameterUsageCallSite{
-		caller: b.summary.Callable, target: callableID(resolved.Function), source: expressionToken(call),
+		caller: b.summary.Callable, targets: []CallableID{callableID(resolved.Function)}, source: expressionToken(call),
 	}
 	if member, memberCall := call.Callee.(*ast.MemberExpression); memberCall {
 		mutable := resolved.Function.ReceiverMutable

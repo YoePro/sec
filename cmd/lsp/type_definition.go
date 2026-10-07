@@ -27,7 +27,7 @@ func typeDefinitionsForSource(uri string, text string, pos position, overlays ..
 	path := pathFromURI(uri)
 	overlay := firstSourceOverlay(overlays)
 	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)

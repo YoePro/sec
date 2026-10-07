@@ -1,0 +1,16 @@
+module main
+extern "Sec" fn Foreign() void
+fn Allocate() void { discard Arena.WithCapacity(64u) }
+@noAlloc
+fn AllocA(value: int) void {
+    if value == 0 { Allocate() } else { AllocB(value - 1) }
+}
+fn AllocB(value: int) void { AllocC(value) }
+fn AllocC(value: int) void { AllocA(value) }
+@noAlloc
+fn UnknownA(value: int) void {
+    if value == 0 { Foreign() } else { UnknownB(value - 1) }
+}
+fn UnknownB(value: int) void { UnknownA(value) }
+fn main() void { AllocB(1)
+    UnknownB(1) }

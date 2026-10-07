@@ -1,3 +1,8 @@
+// Expression inference consumes resolved type/member and storage facts.
+// Compiler-known Arena operations are owned by analyzer_arena.go, with their
+// allocation, domain, dependency and epoch rules documented at each operation.
+// Rules: rules/compiler/compiler_analysis.md — §2(3–8);
+// rules/corrections/applied/correction25-20260823.md — Part II traceability.
 package sema
 
 import (
@@ -109,7 +114,7 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
-	a.recordFunctionValueCall(expr)
+	a.recordFunctionValueCall(expr, calleeType)
 
 	return *calleeType.FunctionReturnType, expressionValue{Display: expr.String()}
 }
@@ -661,7 +666,12 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		return unionType, value
 	}
 
-	typ, ok := a.resolveType(expr.Type)
+	// rules/types/default_values.md: a materialized default already carries
+	// its exact (possibly generic-instance) struct type.
+	typ, ok := a.synthesizedStructTypes[expr]
+	if !ok {
+		typ, ok = a.resolveType(expr.Type)
+	}
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -846,7 +856,10 @@ func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Ty
 		return Type{}, expressionValue{}, false
 	}
 	unionName = a.resolveTypeName(unionName)
-	unionType, ok := a.types[unionName]
+	unionType, ok := a.synthesizedStructTypes[expr]
+	if !ok {
+		unionType, ok = a.types[unionName]
+	}
 	if !ok || unionType.Kind != UnionType {
 		return Type{}, expressionValue{}, false
 	}
@@ -2137,9 +2150,14 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			dispatch = CallDispatchForeign
 		}
 		a.resolvedCalls[expr] = ResolvedCall{Function: best[0].Function, Kind: resolvedCallKind(dispatch)}
+		a.recordForeignBufferExtents(expr, a.resolvedCalls[expr])
 		execution, recordCall := a.callGraphExecutionForCall(expr)
 		if !a.summaryPass && a.callGraphPathReachable && recordCall {
-			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
+			if isMethodCall && dereferenceType(methodReceiver.Type).Kind == InterfaceType {
+				a.recordInterfaceGraphCall(methodReceiver.Type, best[0].Function, callCalleeDefinitionToken(expr), execution)
+			} else {
+				a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
+			}
 			a.recordForeignAbortEffect(best[0].Function, callCalleeDefinitionToken(expr))
 			a.recordForeignAllocationEffect(best[0].Function, callCalleeDefinitionToken(expr))
 			a.recordForeignBlockingEffect(best[0].Function, callCalleeDefinitionToken(expr))
@@ -2603,50 +2621,6 @@ func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression,
 	return member.Result, expressionValue{Display: expr.String()}, true
 }
 
-func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member CompilerKnownMember) (Type, expressionValue, bool) {
-	if !a.checkCompilerKnownCallArity(expr, "Arena."+member.Name, 1, 1) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	argumentType, _ := a.inferExpression(expr.Arguments[0])
-	if argumentType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if member.Name == "FromBuffer" {
-		if argumentType.Kind != ReferenceType || !argumentType.ReferenceMutable || argumentType.Element == nil || argumentType.Element.Kind != SliceType || argumentType.Element.Element == nil || argumentType.Element.Element.Name != "byte" {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.FromBuffer requires ref mut byte[], got %s", typeDisplayName(argumentType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if origin, ok := a.directReferenceOrigin(expr.Arguments[0]); ok {
-			origin.Mutable = true
-			a.expressionReferenceOrigins[expr] = origin
-		}
-		if place, ok := a.resolvePlace(expr.Arguments[0]); ok {
-			holder := arenaConstructorBorrowHolder(expr)
-			for _, alternative := range placeOriginAlternatives(place) {
-				a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
-					Root: alternative.Root, Place: alternative, Holder: holder, Kind: mutableBorrow, Token: expr.Token,
-				})
-			}
-		}
-		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", callCalleeDefinitionToken(expr), false)
-		arena := a.types["Arena"]
-		arena.ArenaDomainID = a.newArenaDomainID()
-		return arena, expressionValue{Display: expr.String()}, true
-	}
-	if !a.canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.%s capacity must be uint, got %s", member.Name, typeDisplayName(argumentType))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	effect := ArenaEffectCreateOwned
-	if member.Name == "Growable" {
-		effect = ArenaEffectCreateGrowable
-	}
-	a.recordArenaEffect(effect, "", callCalleeDefinitionToken(expr), true)
-	arena := a.types["Arena"]
-	arena.ArenaDomainID = a.newArenaDomainID()
-	return arenaResultType(arena, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
-}
-
 // inferRawPointerCall validates compiler-known raw-address operations. Unsafe
 // authorizes the operation class but does not manufacture a pointee type for
 // RawPtr[void] or waive the operation's concrete element requirements.
@@ -2801,141 +2775,6 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return a.types["int"], expressionValue{Display: expr.String()}, true
-	default:
-		return Type{}, expressionValue{}, false
-	}
-}
-
-func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok || member.Property == nil {
-		return Type{}, expressionValue{}, false
-	}
-	receiver, ok := member.Object.(*ast.Identifier)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-	symbol, ok := a.symbols[receiver.Value]
-	if !ok || symbol.Type.Name != "Arena" {
-		return Type{}, expressionValue{}, false
-	}
-	domain := symbol.Type.ArenaDomainID
-	if domain == "" {
-		domain = a.newArenaDomainID()
-		symbol.Type.ArenaDomainID = domain
-		a.symbols[receiver.Value] = symbol
-	}
-	switch member.Property.Value {
-	case "New":
-		if len(expr.GenericArguments) != 1 {
-			a.addErrorAtToken(expr.Token, "Arena.New requires exactly 1 type argument, got %d", len(expr.GenericArguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Arena.New expects 0 arguments, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.New requires mutable arena %s", receiver.Value)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		elementType, resolved := a.resolveType(expr.GenericArguments[0])
-		if !resolved {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.validateArenaAllocationElement("New", expr.GenericArguments[0], elementType) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
-		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
-		return arenaResultType(refType, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
-	case "Alloc":
-		if len(expr.GenericArguments) != 1 {
-			a.addErrorAtToken(expr.Token, "Arena.Alloc requires exactly 1 type argument, got %d", len(expr.GenericArguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "Arena.Alloc expects 1 argument, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.Alloc requires mutable arena %s", receiver.Value)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		countType, _ := a.inferExpressionWithExpected(expr.Arguments[0], a.types["uint"])
-		if countType.Kind != InvalidType && !a.canInitialize(a.types["uint"], countType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.Alloc count must be uint, got %s", typeDisplayName(countType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		elementType, ok := a.resolveType(expr.GenericArguments[0])
-		if !ok || !a.validateArenaAllocationElement("Alloc", expr.GenericArguments[0], elementType) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		sliceType := Type{
-			Name:    typeDisplayName(elementType) + "[]",
-			Kind:    SliceType,
-			Element: &elementType,
-		}
-		refSliceType := Type{
-			Name:                       "ref mut " + typeDisplayName(sliceType),
-			Kind:                       ReferenceType,
-			Element:                    &sliceType,
-			ReferenceMutable:           true,
-			ReferenceOriginName:        domain,
-			ReferenceOriginDisplayName: receiver.Value,
-			ReferenceOriginToken:       receiver.Token,
-			ReferenceOriginLocal:       symbol.Local,
-			ReferenceOriginStorage:     StorageOriginArena,
-			ReferenceOriginGeneration:  a.arenaGenerations[domain],
-		}
-		errType := a.types["AllocationError"]
-		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
-		return Type{
-			Name:     "Result[" + typeDisplayName(refSliceType) + ", AllocationError]",
-			Kind:     ResultType,
-			TypeArgs: []Type{refSliceType, errType},
-		}, expressionValue{Display: expr.String()}, true
-	case "Reset":
-		if len(expr.GenericArguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Arena.Reset does not take type arguments")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Arena.Reset expects 0 arguments, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.Reset requires mutable arena %s", receiver.Value)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if a.checkArenaInvalidationDependencies(domain, receiver.Value, member.Property.Token) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.arenaGenerations[domain]++
-		a.recordArenaEffect(ArenaEffectReset, receiver.Value, member.Property.Token, false)
-		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
-	case "Release":
-		if len(expr.GenericArguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Arena.Release does not take type arguments")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Arena.Release expects 0 arguments, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.Release requires mutable arena %s", receiver.Value)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if a.checkArenaInvalidationDependencies(domain, receiver.Value, member.Property.Token) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.arenaGenerations[domain]++
-		a.moved[receiver.Value] = expr.Token
-		a.moveReasons[receiver.Value] = "released"
-		a.endBorrowsHeldBy(receiver.Value)
-		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, member.Property.Token, false)
-		return a.types["void"], expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
 	}
@@ -3937,6 +3776,7 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 					intent.replacement,
 				)
 			}
+			before := len(a.errors)
 			a.addErrorAtTokenWithMetadata(
 				expr.Token,
 				diagnostics.OperatorNonComparable,
@@ -3945,6 +3785,7 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 				typeDisplayName(leftType),
 				typeDisplayName(rightType),
 			)
+			a.recordPitfallDiagnosticOwner(expr, "equality-type-compatibility", before)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}

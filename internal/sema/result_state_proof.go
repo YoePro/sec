@@ -1,6 +1,9 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+	"sec/internal/lexer"
+)
 
 // provesResultProjectionSafe reports that the alternate state forgotten by a
 // consuming projection is unreachable on the current path: the immutable
@@ -9,12 +12,14 @@ import "sec/internal/ast"
 // Ok() (and the mirrored tests for Err()), or a path-recorded state fact holds:
 // the else branch of such a test, the code after a branch that exits, an
 // `is Some(binding)` test, or a match arm on `result.OkRef`/`result.ErrRef`.
-// The Result must be an immutable binding so no later operation can change
-// its state.
+// Direct Result variant tests, their negations and proven conjunctions use the
+// same canonical state domain. The Result must be an immutable binding so no
+// later operation can change its state.
 //
 // Rules:
 //   - rules/errors/errorhandling.md — §6.1 "Consuming projections", §6.2 borrowed projections, §28
 //   - rules/control-flow/discard.md — "Recursive discardability": a union is discardable when the active variant is proven
+//   - rules/declarations/unions.md — §§8.1–8.3 active variant tests and refinement
 func (a *Analyzer) provesResultProjectionSafe(object ast.Expression, projection string) bool {
 	identifier, ok := object.(*ast.Identifier)
 	if !ok {
@@ -39,19 +44,18 @@ func (a *Analyzer) provesResultProjectionSafe(object ast.Expression, projection 
 			}
 			continue
 		}
-		property, isNone, ok := optionStateTest(active.fact.Condition, identifier.Value)
-		if !ok {
+
+		if active.fact.Kind == ConditionFactLogicalRHSFalse {
 			continue
 		}
-		switch projection {
-		case "Ok":
-			if property == "ErrRef" && isNone || property == "OkRef" && !isNone {
-				return true
+		proven := false
+		a.collectConditionResultStateChecks(active.fact.Condition, func(binding, state string, _ lexer.Token) {
+			if binding == identifier.Value && state == projection {
+				proven = true
 			}
-		case "Err":
-			if property == "OkRef" && isNone || property == "ErrRef" && !isNone {
-				return true
-			}
+		})
+		if proven {
+			return true
 		}
 	}
 	return false
@@ -124,11 +128,11 @@ func (a *Analyzer) recordResultConstruction(stmt *ast.LetStatement) {
 //
 // Rules:
 //   - rules/errors/errorhandling.md — §6.1 "Consuming projections" (state proven unreachable by control flow)
-func (a *Analyzer) recordResultStateFact(binding string, state string) {
+func (a *Analyzer) recordResultStateFact(binding string, state string, source lexer.Token) {
 	if symbol, exists := a.symbols[binding]; !exists || symbol.Mutable {
 		return
 	}
-	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{epoch: a.arrayIndexMutationEpoch, resultBinding: binding, resultState: state})
+	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{epoch: a.arrayIndexMutationEpoch, resultBinding: binding, resultState: state, resultSource: source})
 }
 
 func oppositeResultState(state string) string {

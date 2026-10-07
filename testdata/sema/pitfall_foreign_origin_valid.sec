@@ -1,0 +1,46 @@
+module foreign_origin
+extern "C" fn Ship(pointer: RawPtr[int32], count: uint) void
+extern "C" fn Conventional(pointer: RawPtr[int32], length: uint) void
+fn Mismatch(first: int32[4], second: int32[8]) void {
+    unsafe { Ship(first.Ptr, second.Len) }
+}
+fn Matching(first: int32[4]) void {
+    unsafe { Ship(first.Ptr, first.Len) }
+}
+fn SizeMismatch(first: int32[4], second: int32[8]) void {
+    unsafe { Ship(first.Ptr, second.SizeOf) }
+}
+fn Unknown(pointer: RawPtr[int32], second: int32[8]) void {
+    Ship(pointer, second.Len)
+}
+fn Names(first: int32[4], second: int32[8]) void {
+    unsafe { Conventional(first.Ptr, second.Len) }
+}
+fn ReferenceAliases(first: int32[4], second: int32[8]) void {
+    let alias := ref first
+    let other := ref second
+    unsafe { Ship(alias.Ptr, other.Len) }
+}
+fn SameReference(first: int32[4]) void {
+    let alias := ref first
+    unsafe { Ship(alias.Ptr, first.Len) }
+}
+fn Opaque(first: ref int32[4], second: ref int32[8]) void {
+    unsafe { Ship(first.Ptr, second.Len) }
+}
+type Pair struct { first: int32[4], second: int32[8] }
+fn Fields(pair: Pair) void {
+    unsafe { Ship(pair.first.Ptr, pair.second.Len) }
+}
+type Counter struct { value: uint }
+impl Counter { property Len: uint { get { return self.value } } }
+fn UserGetter(first: int32[4], counter: Counter) void {
+    unsafe { Ship(first.Ptr, counter.Len) }
+}
+extern "C" fn ShipBytes(pointer: RawPtr[byte], count: uint) void
+fn StringViews(first: string, second: string) void {
+    unsafe { ShipBytes(first.Ptr, second.Len) }
+}
+fn SliceViews(first: ref int32[], second: ref int32[]) void {
+    unsafe { Ship(first.Ptr, second.Len) }
+}

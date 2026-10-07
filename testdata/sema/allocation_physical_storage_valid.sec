@@ -1,0 +1,44 @@
+module main
+type Device register[8] {
+    Ready: bit,
+    _: bit[7],
+}
+@address(0x40021000)
+let mut device: Device
+@address(0x40021004)
+let mut local: Device
+@noAlloc
+fn Read() bool { return device.Ready }
+@noAlloc
+fn Write(ready: bool) void { device.Ready = ready }
+@noAlloc
+fn Bind() void {
+    local.Ready = true
+    discard local.Ready
+}
+@noAlloc
+fn Volatile(pointer: RawPtr[int], value: int) int {
+    unsafe {
+        pointer.VolatileWrite(value)
+        return pointer.VolatileRead()
+    }
+}
+@noAlloc
+fn Forward(pointer: RawPtr[int]) int { return Volatile(pointer, 1) }
+fn Mixed(pointer: RawPtr[int]) void {
+    discard Forward(pointer)
+    discard Arena.WithCapacity(64u)
+}
+type Lookalike struct {}
+impl Lookalike {
+    fn VolatileRead() void { discard Arena.WithCapacity(64u) }
+}
+fn UserMember(value: ref Lookalike) void { value.VolatileRead() }
+extern "Sec" fn MapRegion() void
+fn UnknownMapping() void { MapRegion() }
+@noAlloc
+fn main() void {
+    Bind()
+    Write(true)
+    discard Read()
+}

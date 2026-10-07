@@ -62,6 +62,13 @@ func TestStackBudgetDiagnostics(t *testing.T) {
 			if got == nil || got.ID != test.id || got.Severity != diagnostics.SeverityError || got.Help == "" || !strings.Contains(got.Message, test.message) || !strings.Contains(got.Message, string(level)) || !strings.Contains(got.Message, "worker-stack") {
 				t.Fatal("incorrect proof diagnostic", got)
 			}
+			expectedState := diagnostics.ProofInvalid
+			if test.kind == StackBoundUpperBound || test.kind == StackBoundUnknown {
+				expectedState = diagnostics.ProofUnproven
+			}
+			if got.ProofState != expectedState || !strings.HasPrefix(got.Error(), string(expectedState)+": ") {
+				t.Fatal("proof outcome lost", got)
+			}
 			if got.File != source.File || got.Line != source.Line || got.Column != source.Column || got.EndLine != source.EndLine || got.EndColumn != source.EndColumn {
 				t.Fatal("contract/root source span lost", got)
 			}

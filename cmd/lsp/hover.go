@@ -8,9 +8,10 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	return hoverForSourceWithParameterInsight(uri, text, pos, parameterInsightSettings{}, overlays...)
 }
 
-// hoverForSourceWithParameterInsight appends optional compiler-owned demand facts.
+// hoverForSourceWithParameterInsight appends canonical allocation context and
+// optional compiler-owned demand facts.
 // Rules: rules/analysis/parameter_usage_analysis.md — "LSP presentation";
-// rules/tooling/lsp.md — "Hover".
+// rules/tooling/lsp.md — "Hover"; rules/memory/allocation.md — §29(1),(3).
 func hoverForSourceWithParameterInsight(uri string, text string, pos position, insight parameterInsightSettings, overlays ...sourceOverlay) (result hoverResult, found bool) {
 	program := parseProgramForLSP(uri, text)
 	if program == nil {
@@ -23,9 +24,18 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 	defer func() {
+		if token, ok := sourceTokenAtPosition(uri, text, pos); ok {
+			if suffix := allocationOperationHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Allocation"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+		}
 		if insight.Hover != "" && insight.Hover != "off" {
 			if token, ok := sourceTokenAtPosition(uri, text, pos); ok {
 				suffix := parameterInsightHover(analyzer, token, insight.Hover)

@@ -1,0 +1,20 @@
+module main
+
+type View struct { value: ref int }
+fn Identity(ref value: int) ref int { return value }
+fn ThroughCall() ref int {
+    let backing := 10
+    return Identity(ref backing)
+}
+fn Projection() ref int {
+    let backing := 10
+    let carrier := View { value: ref backing }
+    return carrier.value
+}
+fn Rebound() ref int {
+    let old := 10
+    let current := 20
+    let mut carrier := ref old
+    carrier = ref current
+    return carrier
+}

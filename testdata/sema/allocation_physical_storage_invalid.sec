@@ -1,0 +1,2 @@
+module main
+fn MissingUnsafe(pointer: RawPtr[int]) int { return pointer.VolatileRead() }

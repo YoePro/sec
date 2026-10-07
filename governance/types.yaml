@@ -132,7 +132,15 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-18"
-    revised: "2026-10-02"
+    revised: "2026-10-07"
+    governance_reconciliation:
+      - "types-default-values-v2-governance-sync.yaml (fragment audited 2026-09-25) was merged and re-audited against current code on 2026-10-07; rules/types/default_values.md itself declares document revision 1.2, so the fragment's revision-2.0 claim was not adopted"
+      - "types.default-values-v2.numeric-zero, .bool-false, .string-empty, .rune-zero, .named-explicit, .enum, .union, .struct, .fixed-array, .mutable-declaration, .immutable-declaration, .no-universal-default: confirmed implemented as recorded below"
+      - "types.default-values-v2.range-derived (fragment: float remaining): stale; float32/float64 range-derived defaults are implemented; exclusive decimal upper bounds remain"
+      - "types.default-values-v2.bug.inherited-membership-not-revalidated: not reproducible; inherited members are revalidated with S1011, also when an explicit inherited default exists"
+      - "types.default-values-v2.callable: function values are NonDefaultable and require an initializer (S1009), including inside generic instances"
+      - "types.default-values-v2.generics: the re-audit found that every defaultable generic struct or struct-like union-variant instance was rejected because its synthesized default literal was re-resolved from the bare declaration name; fixed on 2026-10-07 (see implemented)"
+      - "types.default-values-v2.semantic-ir-lowering: unchanged remaining work below"
     summary: >-
       Tracks the compiler-owned, allocation-free default resolver required by
       default_values.md and its synchronized type, contract, aggregate, and
@@ -171,6 +179,7 @@ integrations:
       - internal/sema/default_diagnostics_test.go
       - internal/sema/collection_literal_test.go
       - internal/sema/default_fixtures_test.go
+      - internal/sema/generic_defaults_test.go
       - testdata/defaults/
       - internal/parser/collection_literal_test.go
       - internal/diagnostics/diagnostics_test.go
@@ -215,6 +224,7 @@ integrations:
       - 'omitted owning dynamic-array fields, including inside omitted nested struct fields, receive typed empty defaults: materialized default expressions record their canonical DefaultValueOf types, and contextually typed array literals (including explicit `[]` field values) record their type, so provenance analysis no longer re-infers a context-free empty literal (previously failed with "cannot infer element type of empty array literal")'
       - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): the explicit default is an ordinary Expression evaluated in a SemanticCompileTimeRequiredContext through Analyzer.semanticCompileTimeConstant, which reads literals and operators, immutable module bindings through the shared compile-time integer evaluator, and immutable bindings of other primitive constants; a compile-time-established default is validated against representability and every contract, including argumentless contracts"
       - "MD-014 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 6, 2026-10-03): plain float carries the platform width (FloatBits from ResolvedScalarPlan.PointerWidthBits, 64 by default), so range-constrained plain float derives its nearest-valid default like float32/float64 and the former no-default fallback is removed (testdata/defaults fixtures moved accordingly)"
+      - "generic instance defaults (2026-10-07): synthesized default struct literals and struct-like union-variant literals carry their exact instantiated type, so `let mut b: Box[int]`, nested generic fields, and `Cell[int]` default variants are accepted instead of failing with \"Box requires 1 generic arguments, got 0\"; an unconstrained T and instances over NonDefaultable arguments stay rejected (TestGenericInstanceDefaultsUseExactInstantiatedType)"
     remaining:
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
       - lower synthesized mutable, struct, fixed-array, owning dynamic-array, and list defaults through the maintained Semantic IR and Sec MLIR pipelines
@@ -228,6 +238,8 @@ integrations:
       - add LSP code actions that explicitly expand omitted defaults or declare an explicit type default without changing ordinary formatting
       - verify maintained LLVM and Sec MLIR backends in addition to the legacy MLIR generator
     verification:
+      - command: go test ./internal/sema -run TestGenericInstanceDefaultsUseExactInstantiatedType -count=1
+        result: passed on 2026-10-07 with generic struct, fixed-array argument, nested generic field, payload-less and struct-like generic union defaults, and rejected unconstrained T and function-valued instances
       - command: go test ./internal/sema -run 'TestDefaultValueFixtureSuite' -count=1
         result: passed on 2026-10-02 for 12 fixtures
       - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'Test(ParseEmptyListCollectionLiterals|ParseNonEmptyListLiteralRecovers|EmptyListLiteralsAndListDefaults|EmptyListLiteralCapacityChecks|FormatEmptyListLiterals)' -count=1
@@ -510,12 +522,9 @@ integrations:
     status: partial
     updated: '2026-09-29'
     audited: '2026-09-29'
-    revised: '2026-10-02'
+    revised: '2026-10-07'
     repository_baseline: 314233c
-    document_revision: inferred 2.0
-    document_revision_note: rules/types/contracts.md has no explicit revision metadata. Repository history places
-      the canonical rewrite on 2026-08-12 to 2026-08-13, inside the revision-2 rulebook period. Later specialized
-      rulebooks take precedence on conflicts.
+    document_revision: "2.0"
     summary: Tracks canonical named-type contracts. Integer ranges, ordered primitive membership, odd/even/multipleOf,
       finite/notEmpty/unique marker parsing, minLen/maxLen/exactLen parsing and compile-time consistency, compile-time
       primitive checks, contract inheritance, and explicit/default integration have substantial frontend support. The full canonical contract inventory, complete compile-time
@@ -578,6 +587,7 @@ integrations:
     - cmd/lsp/main_test.go
     - testdata/contracts/regex_contract_invalid.sec
     - testdata/parser/regex_contract_recovery_invalid.sec
+    - internal/sema/contract_conjunction_order_test.go
     implemented:
     - contracts are represented on named semantic types and inherited contracts are copied into derived named types
     - sequential contract syntax is represented as an ordered ContractList
@@ -668,6 +678,14 @@ integrations:
       validation as known work; those are not new bugs from this audit.
     - regex now has parser, AST, tooling, reservation, and Sema applicability support but no validation semantics (MD-010); the broader compile-time-equality membership domain remains incomplete; the length-contract family now
       has frontend parsing, applicability, consistency, fixed-array, and explicit-string-default coverage while runtime validation remains incomplete.
+    - "types-contracts-v2-governance-sync.yaml (fragment audited 2026-09-25) was merged and re-audited against current code on 2026-10-07; its stable IDs map onto this integration as follows"
+    - "types.contracts-v2.range, .odd_even, .multipleOf, .finite, .notEmpty, .unique: parsed and checked as recorded under implemented; the fragment's implemented status is confirmed"
+    - "types.contracts-v2.minLen, .maxLen, .exactLen (fragment: unimplemented): stale; parsing, compile-time validation and consistency are implemented, runtime validation remains below"
+    - "types.contracts-v2.regex (fragment: unimplemented): stale; parsed and retained, rejected with S1058 until the regex language decision MD-010"
+    - "types.contracts-v2.bug.inline-contract-acceptance: not reproducible; variable- and field-level inline contracts are rejected by the parser and Sema (S1050)"
+    - "types.contracts-v2.bug.repeated-range-overwrite and .bug.repeated-multipleof-overwrite: not reproducible; all ranges intersect and all divisors combine through exact LCM independent of declaration order, including exclusive upper bounds (TestRepeatedIntegerContractsAreOrderIndependentConjunctions)"
+    - "types.contracts-v2.bug.membership-domain-too-narrow and types.contracts-v2.membership: a known coverage gap rather than a defect; tracked under partial and remaining (membership beyond primitive scalars and enum members)"
+    - "types.contracts-v2.unsatisfiable and .conjunction: implemented for integer and length conjunctions; general proofs for other families stay in remaining"
     required_tests:
     - regex contract parses in sequential contract order and recovers from a missing pattern
     - regex on a non-string named type and a non-string pattern are rejected
@@ -686,6 +704,8 @@ integrations:
     - constrained assignment outside try rejected
     - constrained assignment inside try leaves destination unchanged on failure
     verification:
+    - command: go test ./internal/sema -run TestRepeatedIntegerContractsAreOrderIndependentConjunctions -count=1
+      result: passed on 2026-10-07 with disjoint ranges in both orders, an exclusive-bound gap, interleaved and impossible multipleOf LCMs, a reachable LCM, and a zero-only fixed-width LCM
     - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/diagnostics ./cmd/lsp -run 'Regex|ContractCompletion' -count=1
       result: passed on 2026-10-02; regex contract word role, AST retention, missing-pattern recovery, identifier use, S1058, applicability, decoded pattern retention, completion, and semantic tokens
     - command: go test ./internal/sema ./internal/diagnostics -run 'Test(ContractDiagnosticsUseStableIdentities|DefaultAndContractDiagnosticsAreRegistered)' -count=1

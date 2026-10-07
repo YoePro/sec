@@ -43,18 +43,12 @@ type stringMaterializationSite struct {
 // Rules:
 //   - rules/memory/allocation.md — § 5 "Default allocation model", § 22 "Target and build profiles"
 func (a *Analyzer) activeAllocationContext() AllocationContext {
-	profile := a.targetProfile
-	switch profile {
-	case "", "hosted":
-		if profile == "" {
-			profile = "hosted"
-		}
-		return AllocationContext{Available: true, Origin: StorageOriginArena, Profile: profile}
-	case "embedded-arena":
-		return AllocationContext{Available: true, Origin: StorageOriginArena, Profile: profile}
-	default:
-		return AllocationContext{Available: false, Origin: StorageOriginUnknown, Profile: profile}
+	facts := a.AllocationCapabilities()
+	origin := StorageOriginUnknown
+	if facts.HasActiveArenaContext() {
+		origin = StorageOriginArena
 	}
+	return AllocationContext{Available: facts.HasActiveArenaContext(), Origin: origin, Profile: facts.Profile}
 }
 
 // storeStringConcatPlan records a maximal plan and classifies it: a plan whose
@@ -144,6 +138,16 @@ func (a *Analyzer) reportStringMaterializations() {
 			a.callGraph.addArenaEffect(site.callable, ArenaEffectSite{Kind: ArenaEffectAllocate, Source: site.token, MayAllocate: true})
 		}
 		if !plan.Allocation.Context.Available {
+			if !a.AllocationCapabilities().ProfileKnown {
+				profile := plan.Allocation.Context.Profile
+				if profile == "" {
+					profile = "unresolved"
+				}
+				a.addErrorAtTokenWithMetadata(site.token, diagnostics.StringMaterializationWithoutAllocationContext,
+					"Select a resolved allocation profile with a valid Arena context, or use compile-time text so no runtime allocation is required.",
+					"runtime string materialization needs an allocation context, but allocation capabilities for target profile %q are unresolved", profile)
+				continue
+			}
 			a.addErrorAtTokenWithMetadata(site.token, diagnostics.StringMaterializationWithoutAllocationContext,
 				"Build the text from compile-time constants so it folds to static data, or select a target profile that provides an allocation context.",
 				"runtime string materialization needs an allocation context, but target profile %q provides none", plan.Allocation.Context.Profile)

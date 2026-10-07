@@ -1,0 +1,2 @@
+module other
+fn Work() void { let arena := Arena.WithCapacity(64u) }

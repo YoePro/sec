@@ -35,6 +35,9 @@ const (
 	PitfallFragileInclusiveLength     PitfallRuleID = "pitfall.range.fragile-inclusive-length"
 	PitfallWrongBoundSource           PitfallRuleID = "pitfall.collection.wrong-bound-source"
 	PitfallMeaninglessComparison      PitfallRuleID = "pitfall.range.meaningless-comparison"
+	PitfallForeignExtentUnit          PitfallRuleID = "pitfall.ffi.extent-unit-mismatch"
+	PitfallForeignExtentOrigin        PitfallRuleID = "pitfall.ffi.pointer-extent-origin-mismatch"
+	PitfallWrongStateSubject          PitfallRuleID = "pitfall.state.wrong-checked-subject"
 )
 
 type PitfallFamily string
@@ -46,6 +49,8 @@ const (
 	PitfallControlFlow         PitfallFamily = "control-flow"
 	PitfallIterationMutation   PitfallFamily = "iteration-and-mutation"
 	PitfallCollectionRelations PitfallFamily = "collection-relations"
+	PitfallForeignContracts    PitfallFamily = "ffi-contracts"
+	PitfallOptionResultFlow    PitfallFamily = "option-result-error-flow"
 )
 
 type PitfallClassification string
@@ -117,7 +122,9 @@ type PitfallSubject struct {
 }
 
 type PitfallFinding struct {
-	Rule            PitfallRuleID
+	Rule PitfallRuleID
+	// DiagnosticID identifies the coalesced mandatory owner, independently of analysis rule identity.
+	DiagnosticID    string
 	Family          PitfallFamily
 	Classification  PitfallClassification
 	Confidence      PitfallConfidence
@@ -248,6 +255,9 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
 	},
+	{ID: PitfallWrongStateSubject, Family: PitfallOptionResultFlow, RequiredFacts: []string{"resolved-bindings", "state-requirements", "control-flow", "option-result-projections"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
+	{ID: PitfallForeignExtentOrigin, Family: PitfallForeignContracts, RequiredFacts: []string{"foreign-buffer-extent-contracts", "place-provenance", "compiler-known-members"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
+	{ID: PitfallForeignExtentUnit, Family: PitfallForeignContracts, RequiredFacts: []string{"foreign-buffer-extent-contracts", "extent-quantities", "resolved-element-layout"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
 }
 
 // PitfallRules returns a defensive, deterministic snapshot of the canonical
@@ -263,9 +273,10 @@ func PitfallRules() []PitfallRuleDefinition {
 
 // PitfallAnalysis is immutable when returned by Analyzer.
 type PitfallAnalysis struct {
-	results     []PitfallFinding
-	evaluations []PitfallRuleEvaluation
-	coverage    PitfallCoverage
+	results             []PitfallFinding
+	evaluations         []PitfallRuleEvaluation
+	coverage            PitfallCoverage
+	foreignExtentInputs []ResolvedForeignBufferExtent
 }
 
 func newPitfallAnalysis() *PitfallAnalysis { return &PitfallAnalysis{} }
@@ -281,6 +292,7 @@ func (p *PitfallAnalysis) clone() *PitfallAnalysis {
 	}
 	result.evaluations = append([]PitfallRuleEvaluation(nil), p.evaluations...)
 	result.coverage = p.coverage
+	result.foreignExtentInputs = p.ForeignExtentInputs()
 	return result
 }
 
@@ -324,6 +336,7 @@ func clonePitfallFinding(finding PitfallFinding) PitfallFinding {
 
 type pitfallBuilder struct {
 	analyzer                  *Analyzer
+	boundsOnly                bool
 	result                    *PitfallAnalysis
 	counts                    map[PitfallRuleID]*PitfallRuleEvaluation
 	handledBooleanComparisons map[*ast.InfixExpression]bool
@@ -383,15 +396,26 @@ func (b *pitfallBuilder) add(finding PitfallFinding) {
 		finding.State = PitfallStateFinding
 		evaluation.FindingCount++
 	}
+	if b.boundsOnly {
+		b.analyzer.attachLengthBoundsDiagnostic(&finding)
+	} else {
+		b.analyzer.coalescePitfallDiagnostic(&finding, finding.Subject.Source)
+	}
 	b.result.results = append(b.result.results, finding)
 }
 
+// walkStatement consumes canonical body facts in required-bounds or optional
+// insight mode; required bounds never run optional operation recognizers.
+// Rules: rules/analysis/pitfall_analysis.md — "Canonical facts consumed by pitfall analysis",
+// "Proven invalidity is not a warning", "Reachability".
 func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 	if parameterUsageNodeIsNil(statement) {
 		return
 	}
 	switch statement := statement.(type) {
 	case *ast.FunctionDeclaration:
+		b.walkBlock(statement.Body)
+	case *ast.TestDeclaration:
 		b.walkBlock(statement.Body)
 	case *ast.ImplStatement:
 		for _, member := range statement.Members {
@@ -444,20 +468,27 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 		}
 	case *ast.ForStatement:
 		b.inspectInclusiveLengthLoop(statement)
-		b.inspectNeighborIndexes(statement)
-		b.inspectIndexedStructuralMutation(statement)
+		if !b.boundsOnly {
+			b.inspectNeighborIndexes(statement)
+			b.inspectIndexedStructuralMutation(statement)
+		}
 		b.walkExpression(statement.Iterable)
 		b.walkExpression(statement.Step)
 		var guards []pitfallIndexGuard
-		if guard, ok := b.loopIndexGuard(statement); ok {
+		if guard, ok := b.loopIndexGuard(statement); ok && b.guardSurvivesStatement(guard, statement) {
 			guards = append(guards, guard)
 		}
-		b.withIndexGuards(guards, func() { b.walkBlock(statement.Body) })
+		b.withLoopIndexGuards(statement, guards, func() { b.walkBlock(statement.Body) })
 	case *ast.WhileStatement:
 		b.walkExpression(statement.Condition)
-		b.withIndexGuards(b.strictIndexGuards(statement.Condition), func() { b.walkBlock(statement.Body) })
+		if b.boundsOnly {
+			if flow, ok := b.analyzer.ResolvedWhileFlowOf(statement); ok && flow.ConditionKnown && !flow.ConditionValue {
+				return
+			}
+		}
+		b.withLoopIndexGuards(statement, b.conditionIndexGuards(statement.Condition), func() { b.walkBlock(statement.Body) })
 	case *ast.DeferStatement:
-		b.walkBlock(statement.Body)
+		b.walkIndependentGuardBody(statement.Body)
 	case *ast.UnsafeStatement:
 		b.walkBlock(statement.Body)
 	case *ast.MatchStatement:
@@ -465,14 +496,28 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 	}
 }
 
+// walkBlock preserves owning reachability for bounds proofs while retaining
+// contextual guard and intent witnesses for optional pitfall findings.
+// Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Evidence model",
+// "Guards participate in pitfall reasoning".
 func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 	if block == nil {
+		return
+	}
+	if b.boundsOnly {
+		for _, statement := range block.Statements {
+			b.walkStatement(statement)
+			if !b.analyzer.statementCanFallThrough(statement) {
+				break
+			}
+		}
 		return
 	}
 	b.inspectIneffectiveRejectionGuards(block)
 	b.inspectCheckWithoutTransfer(block)
 	inheritedProofs := b.activeNonEmptyProofs
 	inheritedPreceding := b.activePreceding
+	inheritedGuards := b.activeIndexGuards
 	for index, statement := range block.Statements {
 		b.activeNonEmptyProofs = nil
 		// The proof that holds on entry to this statement: inherited by the
@@ -495,7 +540,13 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 		}
 		b.activePreceding = block.Statements[:index]
 		b.walkStatement(statement)
+		b.activeIndexGuards = b.survivingIndexGuards(b.activeIndexGuards, statement)
+		b.activeIndexGuards = append(b.activeIndexGuards, b.continuationIndexGuards(statement)...)
+		if !b.analyzer.statementCanFallThrough(statement) {
+			break
+		}
 	}
+	b.activeIndexGuards = inheritedGuards
 	b.activeNonEmptyProofs = inheritedProofs
 	b.activePreceding = inheritedPreceding
 }
@@ -530,37 +581,52 @@ func (b *pitfallBuilder) walkSwitchCase(item *ast.SwitchCase) {
 	b.walkBlock(item.Body)
 }
 
+// walkExpression follows evaluated operations, sharing owning bounds facts
+// with optional consumers and honoring constant short-circuit paths for proofs.
+// Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Diagnostic ownership and coalescing";
+// rules/foundations/operators.md — "Logical operators".
 func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	if parameterUsageNodeIsNil(expression) {
 		return
 	}
 	if index, ok := expression.(*ast.IndexExpression); ok {
 		b.inspectDirectIndexAtLength(index)
-		b.inspectFinalElementAccess(index)
-		b.inspectDirectCapacityIndex(index)
+		if !b.boundsOnly {
+			b.inspectFinalElementAccess(index)
+			b.inspectDirectCapacityIndex(index)
+		}
 	}
-	if conversion, ok := expression.(*ast.ConversionExpression); ok {
-		b.inspectBooleanConversion(conversion, conversion.Value, conversion.Type != nil && conversion.Type.Name == "bool")
-	}
-	if call, ok := expression.(*ast.CallExpression); ok {
-		callee, isIdentifier := call.Callee.(*ast.Identifier)
-		b.inspectBooleanConversion(call, firstPitfallArgument(call.Arguments), isIdentifier && callee.Value == "bool" && len(call.Arguments) == 1)
-		b.inspectExplicitSelfMethodArgument(call)
-	}
-	if comparison, ok := expression.(*ast.InfixExpression); ok && !b.handledBooleanComparisons[comparison] {
-		b.inspectBooleanLiteralComparison(comparison, comparison)
-	}
-	if condition, ok := expression.(*ast.InfixExpression); ok {
-		b.inspectIntervalCondition(condition)
-	}
-	if comparison, ok := expression.(*ast.InfixExpression); ok {
-		b.inspectMeaninglessComparison(comparison)
+	if !b.boundsOnly {
+		b.inspectStateCorrelation(expression)
+		if conversion, ok := expression.(*ast.ConversionExpression); ok {
+			b.inspectBooleanConversion(conversion, conversion.Value, conversion.Type != nil && conversion.Type.Name == "bool")
+		}
+		if call, ok := expression.(*ast.CallExpression); ok {
+			callee, isIdentifier := call.Callee.(*ast.Identifier)
+			b.inspectBooleanConversion(call, firstPitfallArgument(call.Arguments), isIdentifier && callee.Value == "bool" && len(call.Arguments) == 1)
+			b.inspectExplicitSelfMethodArgument(call)
+			b.consumeForeignBufferExtents(call)
+		}
+		if comparison, ok := expression.(*ast.InfixExpression); ok && !b.handledBooleanComparisons[comparison] {
+			b.inspectBooleanLiteralComparison(comparison, comparison)
+		}
+		if condition, ok := expression.(*ast.InfixExpression); ok {
+			b.inspectIntervalCondition(condition)
+		}
+		if comparison, ok := expression.(*ast.InfixExpression); ok {
+			b.inspectMeaninglessComparison(comparison)
+		}
 	}
 	switch expression := expression.(type) {
 	case *ast.PrefixExpression:
 		b.walkExpression(expression.Right)
 	case *ast.InfixExpression:
 		b.walkExpression(expression.Left)
+		if b.boundsOnly {
+			if value, known := b.analyzer.constantBooleanValue(expression.Left); known && (expression.Operator == "&&" && !value || expression.Operator == "||" && value) {
+				return
+			}
+		}
 		b.walkExpression(expression.Right)
 	case *ast.RangeExpression:
 		b.walkExpression(expression.Start)
@@ -613,10 +679,10 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	case *ast.MatchExpression:
 		b.walkMatch(expression)
 	case *ast.LambdaExpression:
-		b.walkBlock(expression.Body)
+		b.walkIndependentGuardBody(expression.Body)
 	case *ast.SpawnExpression:
 		b.walkExpression(expression.Value)
-		b.walkBlock(expression.Body)
+		b.walkIndependentGuardBody(expression.Body)
 	case *ast.AwaitExpression:
 		b.walkExpression(expression.Value)
 	}
@@ -793,7 +859,7 @@ func (b *pitfallBuilder) inspectBooleanLiteralComparison(comparison *ast.InfixEx
 		})
 	}
 
-	b.add(PitfallFinding{
+	b.addForDiagnosticRoot(PitfallFinding{
 		Rule:           PitfallBooleanLiteralComparison,
 		Family:         PitfallBooleanIntent,
 		Classification: classification,
@@ -808,7 +874,7 @@ func (b *pitfallBuilder) inspectBooleanLiteralComparison(comparison *ast.InfixEx
 			Replacement: intent.replacement,
 			Source:      expressionToken(subject),
 		}},
-	})
+	}, comparison)
 	return true
 }
 
@@ -844,7 +910,19 @@ func (b *pitfallBuilder) walkMatch(expression *ast.MatchExpression) {
 	}
 }
 
+// inspectDirectIndexAtLength produces one canonical bounds proof or consumes
+// that same proof as insight; repeated getters cannot establish collection identity.
+// Rules: rules/analysis/pitfall_analysis.md — "Direct index at length",
+// "Semantic correlation, not spelling heuristics", "Diagnostic ownership and coalescing".
 func (b *pitfallBuilder) inspectDirectIndexAtLength(index *ast.IndexExpression) {
+	if !b.boundsOnly {
+		b.consumeLengthBoundsFacts(index.Token)
+		return
+	}
+	before := len(b.result.results)
+	defer func() {
+		b.analyzer.boundsFindings[sourceTokenLocation(index.Token)] = append([]PitfallFinding(nil), b.result.results[before:]...)
+	}()
 	lengthCollection, lengthToken, ok := b.lengthReceiver(index.Index)
 	if !ok {
 		return
@@ -891,9 +969,16 @@ func pitfallBlockDefinitelyExits(block *ast.BlockStatement) bool {
 	return false
 }
 
+// lengthReceiver requires compiler-owned Len and stable stored collection
+// reads for owning proofs; a property getter spelling cannot prove identity.
+// Rules: rules/analysis/pitfall_analysis.md — "Semantic recognition, not syntax matching",
+// "Canonical facts consumed by pitfall analysis", "Direct index at length".
 func (b *pitfallBuilder) lengthReceiver(expression ast.Expression) (string, lexer.Token, bool) {
 	member, ok := expression.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
+		return "", lexer.Token{}, false
+	}
+	if b.boundsOnly && !b.pitfallPureOperand(member.Object) {
 		return "", lexer.Token{}, false
 	}
 	known, resolved := b.analyzer.compilerKnownMemberFacts[sourceTokenLocation(member.Property.Token)]

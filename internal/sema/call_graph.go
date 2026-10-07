@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"sort"
+	"sync"
 
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
@@ -37,6 +38,7 @@ type CallableContractID string
 //   - rules/analysis/closure_analysis.md — "Callable target sets"
 //   - rules/analysis/closure_analysis.md — "Soundness of target sets"
 type CallableTargetSet struct {
+	Contract        *OpenCallableContract
 	KnownTargets    []CallableBodyID
 	IsClosed        bool
 	OpenContract    CallableContractID
@@ -69,6 +71,7 @@ const (
 type CallDispatchKind string
 
 const (
+	CallDispatchInterface     CallDispatchKind = "interface-dispatch"
 	CallDispatchGenerated     CallDispatchKind = "compiler-generated"
 	CallDispatchDirect        CallDispatchKind = "direct"
 	CallDispatchStaticMethod  CallDispatchKind = "static-method"
@@ -197,18 +200,20 @@ type CallRoot struct {
 // It retains canonical targets and execution relationships; a concrete view is
 // bound to exactly one explicit CompilationPlan.
 type CallGraph struct {
-	scope         CallGraphScope
-	syntaxOrigins map[sourceTokenKey]string
-	nodes         map[CallableID]CallableNode
-	nodeOrder     []CallableID
-	bodyNodes     map[CallableBodyID]CallableID
-	sites         []CallSite
-	siteIDs       map[CallSiteID]bool
-	roots         map[CallRootID]CallRoot
-	rootOrder     []CallRootID
-	arenaEffects  map[CallableID][]ArenaEffectSite
-	effects       map[CallableID][]EffectSite
-	blockEffects  map[CallableID][]BlockEffectSite
+	allocationMu         sync.Mutex // protects the derived cache on immutable graph snapshots
+	allocationFixedPoint *arenaAllocationFixedPoint
+	scope                CallGraphScope
+	syntaxOrigins        map[sourceTokenKey]string
+	nodes                map[CallableID]CallableNode
+	nodeOrder            []CallableID
+	bodyNodes            map[CallableBodyID]CallableID
+	sites                []CallSite
+	siteIDs              map[CallSiteID]bool
+	roots                map[CallRootID]CallRoot
+	rootOrder            []CallRootID
+	arenaEffects         map[CallableID][]ArenaEffectSite
+	effects              map[CallableID][]EffectSite
+	blockEffects         map[CallableID][]BlockEffectSite
 }
 
 func newCallGraph() *CallGraph {
@@ -244,11 +249,16 @@ func (g *CallGraph) removeEffect(caller CallableID, kind EffectKind, source lexe
 	}
 }
 
+// addArenaEffect appends a represented direct event under its owning callable
+// in source visitation order; events are not reduced to an unordered boolean.
+// Rules: rules/memory/arena.md — §76(1–4), §77(1–6);
+// rules/analysis/call_graph.md — "Effect-analysis integration".
 func (g *CallGraph) addArenaEffect(caller CallableID, effect ArenaEffectSite) {
 	if g == nil || caller == "" || effect.Source.Line <= 0 || effect.Source.Column <= 0 {
 		return
 	}
 	g.arenaEffects[caller] = append(g.arenaEffects[caller], effect)
+	g.invalidateAllocationFixedPoint()
 }
 
 func (g *CallGraph) addRoot(kind CallRootKind, node CallableID, source lexer.Token) CallRootID {
@@ -344,6 +354,7 @@ func (g *CallGraph) addTargetSetCall(caller CallableID, targets CallableTargetSe
 		return
 	}
 	g.siteIDs[id] = true
+	g.invalidateAllocationFixedPoint()
 	g.sites = append(g.sites, CallSite{
 		ID: id, Caller: caller, Targets: resolved, TargetSet: cloneCallableTargetSet(targets),
 		Source: source, Dispatch: dispatch, Execution: execution,
@@ -360,6 +371,7 @@ func (g *CallGraph) addCall(caller CallableID, target Function, source lexer.Tok
 		return
 	}
 	g.siteIDs[id] = true
+	g.invalidateAllocationFixedPoint()
 	g.sites = append(g.sites, CallSite{
 		ID:        id,
 		Caller:    caller,
@@ -752,34 +764,6 @@ func (g *CallGraph) IsSameStackRecursive(id CallableID) bool {
 		}
 	}
 	return false
-}
-
-func (g *CallGraph) ArenaSummary(id CallableID) ArenaCallableSummary {
-	if g == nil {
-		return ArenaCallableSummary{}
-	}
-	summary := ArenaCallableSummary{
-		DirectEffects: append([]ArenaEffectSite(nil), g.arenaEffects[id]...),
-	}
-	summary.AllocationPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
-		for _, effect := range g.arenaEffects[candidate] {
-			if effect.MayAllocate {
-				return true
-			}
-		}
-		return false
-	})
-	summary.MayAllocate = len(summary.AllocationPath) > 0
-	summary.UnknownAllocationPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
-		for _, effect := range g.arenaEffects[candidate] {
-			if effect.UnknownAllocation {
-				return true
-			}
-		}
-		return false
-	})
-	summary.AllocationUnknown = len(summary.UnknownAllocationPath) > 0
-	return summary
 }
 
 // EffectSummary returns direct semantic effects and a deterministic shortest

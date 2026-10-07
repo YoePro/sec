@@ -491,9 +491,24 @@ func sameSourceToken(left, right lexer.Token) bool {
 	return left.File == right.File && left.Line == right.Line && left.Column == right.Column
 }
 
+// ownedReturnEscapeOrigins resolves the Place an owned return transfers. The
+// optional `return <-value` marker names the same Place as `return value`.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Returning a parameter by value", "Ownership-transfer syntax boundary"
 func (a *Analyzer) ownedReturnEscapeOrigins(expr ast.Expression) (localReferenceOrigin, localReferenceOrigin) {
+	if move, ok := explicitMoveArgument(expr); ok {
+		expr = move.Right
+	}
 	place, ok := a.resolvePlace(expr)
 	if !ok {
+		return localReferenceOrigin{}, localReferenceOrigin{}
+	}
+	// A value read through a borrowed parameter can only be copied out; the
+	// owned result is a fresh value with no dependency on the parameter.
+	// rules/analysis/escape_analysis.md, "Call-boundary semantic
+	// classification": a borrow is never reinterpreted as a transfer.
+	if a.borrowedParameterRoot(place.Root) {
 		return localReferenceOrigin{}, localReferenceOrigin{}
 	}
 	raw := localOriginWithPlaces(localReferenceOrigin{Name: place.Root, Token: place.RootToken}, []Place{place})
@@ -510,6 +525,17 @@ func (a *Analyzer) ownedReturnEscapeOrigins(expr ast.Expression) (localReference
 	// Returning a local owned value is a fresh value transfer, not an unknown
 	// retained dependency on the callee's automatic storage.
 	return raw, localReferenceOrigin{}
+}
+
+// borrowedParameterRoot reports that root names a `ref`/`ref mut` parameter
+// of the current function.
+func (a *Analyzer) borrowedParameterRoot(root string) bool {
+	for _, param := range a.currentFunctionMetadata.Parameters {
+		if param.Name == root {
+			return param.Ref || param.Type.Kind == ReferenceType
+		}
+	}
+	return false
 }
 
 func (a *Analyzer) recordReturnEscapeFact(returnType Type, expr ast.Expression, raw localReferenceOrigin, symbolic localReferenceOrigin) {

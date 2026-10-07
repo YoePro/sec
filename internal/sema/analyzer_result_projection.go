@@ -68,7 +68,13 @@ func (a *Analyzer) inferConsumingResultProjection(
 	if member.Name == "Err" {
 		discardedPayload = resultType.TypeArgs[0]
 	}
-	if !a.isDiscardable(discardedPayload) && !a.provesResultProjectionSafe(memberExpr.Object, member.Name) {
+	stateSensitive := !a.isDiscardable(discardedPayload)
+	proven := !stateSensitive || a.provesResultProjectionSafe(memberExpr.Object, member.Name)
+	if stateSensitive {
+		a.recordResultStateRequirement(expr, memberExpr.Object, member.Name, proven)
+	}
+	if !proven {
+		before := len(a.errors)
 		a.addErrorAtTokenWithMetadata(
 			memberExpr.Property.Token,
 			diagnostics.NonDiscardableValue,
@@ -77,6 +83,7 @@ func (a *Analyzer) inferConsumingResultProjection(
 			member.Name,
 			a.nonDiscardableSubject(discardedPayload),
 		)
+		a.recordPitfallDiagnosticOwner(expr, "state-projection", before)
 		return Type{Kind: InvalidType}, value, true
 	}
 

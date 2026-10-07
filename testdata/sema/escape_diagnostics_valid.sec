@@ -1,0 +1,16 @@
+module main
+
+type View struct { value: ref int }
+fn Identity(ref value: int) ref int { return value }
+fn ThroughCall(ref value: int) ref int { return Identity(value) }
+fn Aggregate(ref value: int) View { return View { value: value } }
+fn Owned() int {
+    let value := 10
+    return value
+}
+fn PackElement(values: ...int) int { return values[0] }
+fn LocalStore() void {
+    let value := 10
+    let view := View { value: ref value }
+    discard view
+}

@@ -201,14 +201,39 @@ const (
 	StackBudgetExceeded                           = "S1121"
 	StackBudgetProofUnavailable                   = "S1122"
 	StackBudgetUnboundedDemand                    = "S1123"
+	RequiredAnalysisInvalid                       = "S1124"
+	RequiredProofUnavailable                      = "S1125"
+	ArenaResetLiveDependency                      = "S1126"
+	ArenaReleaseLiveDependency                    = "S1127"
+	EscapeLocalStorage                            = "S1128"
+	EscapeOuterPlace                              = "S1129"
+	EscapeMatchPayload                            = "S1130"
+	EscapeClosureCapture                          = "S1131"
+	EscapeProvenanceUnknown                       = "S1132"
+	EscapeVariadicPack                            = "S1133"
+	IndexOutOfBounds                              = "S1134"
 	UnreachableStatement                          = "S3001"
 	UseAfterDiscard                               = "S4001"
 	LargeValueParameter                           = "A2001"
 	RedundantStateTestComparison                  = "A2002"
 	NegatedStateTest                              = "A2003"
+	PitfallAdvisory                               = "A2004"
 )
 
 var registry = map[string]Definition{
+	PitfallAdvisory:         {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
+	IndexOutOfBounds:        {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeLocalStorage:      {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeOuterPlace:        {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeMatchPayload:      {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeClosureCapture:    {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeProvenanceUnknown: {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeVariadicPack:      {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+
+	ArenaResetLiveDependency:                      {ID: ArenaResetLiveDependency, Name: "arena.reset-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
+	ArenaReleaseLiveDependency:                    {ID: ArenaReleaseLiveDependency, Name: "arena.release-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
+	RequiredAnalysisInvalid:                       {ID: RequiredAnalysisInvalid, Name: "pipeline.required-analysis-invalid", Family: "pipeline", DefaultSeverity: SeverityError, Mandatory: true},
+	RequiredProofUnavailable:                      {ID: RequiredProofUnavailable, Name: "pipeline.required-proof-unavailable", Family: "pipeline", DefaultSeverity: SeverityError, Mandatory: true},
 	StackBudgetExceeded:                           {ID: StackBudgetExceeded, Name: "stack.budget-exceeded", Family: "stack", DefaultSeverity: SeverityError, Mandatory: true},
 	StackBudgetProofUnavailable:                   {ID: StackBudgetProofUnavailable, Name: "stack.budget-proof-unavailable", Family: "stack", DefaultSeverity: SeverityError, Mandatory: true},
 	StackBudgetUnboundedDemand:                    {ID: StackBudgetUnboundedDemand, Name: "stack.budget-unbounded-demand", Family: "stack", DefaultSeverity: SeverityError, Mandatory: true},

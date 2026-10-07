@@ -414,14 +414,14 @@ func unionPayloadPlace(subject Place, variant string, payloadType Type, token le
 	return subject
 }
 
-// resolvePlace derives a canonical frontend storage path and retains exact
+// resolvePlacePath derives a canonical frontend storage path and retains exact
 // constant array indexes without host-width truncation.
 //
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §11 "Canonical Place" and §13 "Constant index representation"
 //   - rules/memory/references.md — §28(4) provenance/projection tests
 //   - rules/collections/collections.md — §8 "Indexing"
-func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
+func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
 		return a.rootPlace(expr.Value)

@@ -1,3 +1,9 @@
+// Frontend semantic validation coordinates declaration, ownership, borrow and
+// continuing control-flow facts. Arena-specific domain/epoch owners live in
+// analyzer_arena.go and analyzer_arena_flow.go; individual functions retain
+// precise normative references where the represented domains meet.
+// Rules: rules/compiler/compiler_analysis.md — §2(3–8);
+// rules/corrections/applied/correction25-20260823.md — Part II traceability.
 package sema
 
 import (
@@ -15,51 +21,63 @@ import (
 )
 
 type Analyzer struct {
-	analysisDepth              AnalysisDepth
-	analysisBudget             AnalysisBudget
-	analysisSchedule           []AnalysisPassRecord
-	targetUintWidthBits        uint16
-	legacyDefaultAST           bool
-	types                      map[string]Type
-	units                      map[string]UnitDefinition
-	unitTypeNames              map[string]bool             // type-table entries a unit declaration owns
-	shadowedUnitTypes          map[string]Type             // unit entries hidden by a same-spelled ordinary type of another module (rules/types/units.md)
-	shadowedUnitImpls          map[*ast.ImplStatement]bool // impl blocks that target a shadowed unit
-	implementsClauseTokens     map[string]lexer.Token      // type\x00interface -> its implements reference
-	functions                  map[string][]Function
-	externSymbols              map[string]Function
-	implBlocks                 map[string]lexer.Token
-	implBlockModules           map[string]string
-	validImplStatements        map[*ast.ImplStatement]bool
-	currentImplTarget          string
-	currentModule              string
-	genericTypes               map[string]Type
-	genericTypeInstances       map[genericInstanceKey]Type
-	genericFuncInstances       map[genericInstanceKey]Function
-	symbols                    map[string]Symbol
-	completionSymbols          map[string]Symbol
-	predeclaredStatic          map[sourceTokenKey]bool
-	expressionTypes            map[ast.Expression]Type
-	expectedExpressionTypes    map[ast.Expression]Type
-	bindingIDs                 map[sourceTokenKey]BindingID
-	bindingFacts               map[sourceTokenKey]ResolvedBinding
-	compilerKnownMemberFacts   map[sourceTokenKey]CompilerKnownMember
-	compilerKnownValueFacts    map[sourceTokenKey]CompilerKnownValue
-	resolvedTestMetadata       map[*ast.TestDeclaration]ResolvedTestMetadata
-	resolvedTests              []ResolvedTestMetadata
-	resolvedCalls              map[*ast.CallExpression]ResolvedCall
-	resolvedTestingOperations  map[*ast.CallExpression]ResolvedTestingOperation
-	resolvedInterpolationPlans map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
-	stringConcatPlans          map[ast.Expression]StringConcatPlan
-	// targetProfile is the selected target profile from the authoritative
-	// scalar plan; empty when no target plan was supplied (hosted default).
-	targetProfile string
+	analysisDepth                AnalysisDepth
+	analysisBudget               AnalysisBudget
+	pitfallPrioritySources       map[string]bool
+	pitfallCacheRun              *pitfallCacheRun
+	parameterBudget              ParameterUsageBudget
+	analysisSchedule             []AnalysisPassRecord
+	targetUintWidthBits          uint16
+	legacyDefaultAST             bool
+	types                        map[string]Type
+	units                        map[string]UnitDefinition
+	unitTypeNames                map[string]bool             // type-table entries a unit declaration owns
+	shadowedUnitTypes            map[string]Type             // unit entries hidden by a same-spelled ordinary type of another module (rules/types/units.md)
+	shadowedUnitImpls            map[*ast.ImplStatement]bool // impl blocks that target a shadowed unit
+	implementsClauseTokens       map[string]lexer.Token      // type\x00interface -> its implements reference
+	functions                    map[string][]Function
+	externSymbols                map[string]Function
+	implBlocks                   map[string]lexer.Token
+	implBlockModules             map[string]string
+	validImplStatements          map[*ast.ImplStatement]bool
+	currentImplTarget            string
+	currentModule                string
+	genericTypes                 map[string]Type
+	genericTypeInstances         map[genericInstanceKey]Type
+	genericFuncInstances         map[genericInstanceKey]Function
+	symbols                      map[string]Symbol
+	completionSymbols            map[string]Symbol
+	predeclaredStatic            map[sourceTokenKey]bool
+	expressionTypes              map[ast.Expression]Type
+	expectedExpressionTypes      map[ast.Expression]Type
+	bindingIDs                   map[sourceTokenKey]BindingID
+	bindingFacts                 map[sourceTokenKey]ResolvedBinding
+	compilerKnownMemberFacts     map[sourceTokenKey]CompilerKnownMember
+	compilerKnownValueFacts      map[sourceTokenKey]CompilerKnownValue
+	resolvedTestMetadata         map[*ast.TestDeclaration]ResolvedTestMetadata
+	resolvedTests                []ResolvedTestMetadata
+	resolvedCalls                map[*ast.CallExpression]ResolvedCall
+	foreignExtentContracts       *ForeignBufferExtentContractStore
+	resolvedForeignBufferExtents map[*ast.CallExpression][]ResolvedForeignBufferExtent
+	resolvedTestingOperations    map[*ast.CallExpression]ResolvedTestingOperation
+	resolvedInterpolationPlans   map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
+	stringConcatPlans            map[ast.Expression]StringConcatPlan
+	// targetProfile records the explicitly selected allocation profile. The
+	// selection flag distinguishes unresolved input from the unbound source-
+	// analysis hosted default; scalar width does not select a profile.
+	targetProfile             string
+	allocationProfileSelected bool
 	// stringMaterializationSites and protectedStringMaterializations track
 	// runtime string materializations and the try that protects each (MD-004).
 	stringMaterializationSites      map[ast.Expression]stringMaterializationSite
 	protectedStringMaterializations map[ast.Expression]bool
 	resolvedForIterations           map[*ast.ForStatement]ResolvedForIteration
+	iteratorLoweringRequirements    map[*ast.ForStatement]*iteratorLoweringRequirement
+	iteratorLoweringProgram         *ast.Program
 	activeCollectionIterations      []activeCollectionIteration
+	iterationDependencies           map[*ast.ForStatement]ForIterationDependencies
+	activeIterationDependencies     []activeIterationDependency
+	iterationDependencyProbe        bool
 	// cABIModel is the active target's C ABI data model; empty when the
 	// analyzer has no target plan or the target defines no C ABI.
 	cABIModel                   layout.CABIModel
@@ -74,6 +92,10 @@ type Analyzer struct {
 	// unitConversionPlans records each implicit fixed unit conversion Sema
 	// proved exact (rules/types/units.md, "Exact fixed conversions").
 	unitConversionPlans map[ast.Expression]UnitConversionPlan
+	// synthesizedStructTypes holds the exact struct or union type of each
+	// struct-shaped literal that Sema materialized as a default, so a generic
+	// instance such as Box[int] is not re-resolved from its bare name.
+	synthesizedStructTypes map[*ast.StructLiteral]Type
 	// comparisonConstantOperands records, per comparison operand, the integer
 	// value of a named compile-time constant (an immutable, non-transient
 	// binding) resolved in the operand's own scope, so later analyses never
@@ -104,6 +126,8 @@ type Analyzer struct {
 	resolvedListIndexPlans    map[*ast.IndexExpression]ResolvedListIndexPlan
 	activeConditionFacts      []activeConditionFact
 	placeRootIDs              map[sourceTokenKey]PlaceRootID // deterministic Place root identities
+	synchronizationResources  map[ast.Expression]SynchronizationResourceFact
+	resourceIdentityDomain    *SynchronizationResourceSnapshot
 	// nestedCallableWrites logs, per function-value binding declaration, the
 	// identities assigned in scopes nested below the declaration, and
 	// loopWrittenNames the bindings the current function assigns inside a
@@ -120,7 +144,13 @@ type Analyzer struct {
 	callGraph                  *CallGraph
 	escapeAnalysis             *EscapeAnalysis
 	parameterUsageAnalysis     *ParameterUsageAnalysis
+	importedParameterDemands   map[CallableID]persistedParameterDemand
 	pitfallAnalysis            *PitfallAnalysis
+	resolvedStateRequirements  map[ast.Expression]ResolvedStateRequirement
+	pitfallDiagnosticOwners    map[pitfallRootCause]int
+	boundsDiagnostics          map[sourceTokenKey]int
+	boundsFindings             map[sourceTokenKey][]PitfallFinding
+	boundsIncomplete           map[sourceTokenKey]bool
 	currentCallable            CallableID
 	callGraphPathReachable     bool
 	nextArenaDomainID          uint64
@@ -282,6 +312,7 @@ func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
 	return &Analyzer{
 		analysisDepth:       depth,
 		analysisBudget:      analysisBudget(depth),
+		parameterBudget:     parameterUsageBudget(depth),
 		targetUintWidthBits: 64,
 		legacyDefaultAST:    true,
 		types:               builtinTypes(),
@@ -305,44 +336,14 @@ func (a *Analyzer) SetLegacyASTDefaultMaterialization(enabled bool) {
 	}
 }
 
-// NewAnalyzerWithScalarPlan derives target-sized source integer bounds from the
-// authoritative plan defined by rules/types/types.md and rules/memory/layout.md.
-// correction5.md forbids Sema from guessing widths from architecture strings.
-func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
-	return NewAnalyzerWithScalarPlanAndDepth(plan, AnalysisStandard)
-}
-
-// NewAnalyzerWithScalarPlanAndDepth combines the authoritative target scalar
-// plan with an analysis budget. Depth selects resources only; the language and
-// every mandatory proof stay identical at each depth.
-//
-// Rules:
-//   - rules/compiler/compiler_pipeline.md — § 65(2) analysis-only mode uses the same plan/Sema facts
-//   - rules/compiler/compiler_analysis.md — § 62 analysis modes
-func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth AnalysisDepth) *Analyzer {
-	analyzer := NewAnalyzerWithDepth(depth)
-	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {
-		return analyzer
-	}
-	analyzer.types["int"] = targetSignedIntegerType("int", plan.PointerWidthBits)
-	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
-	// MD-014: plain float follows the platform width exactly like int and
-	// uint; there is no separate float-width policy.
-	// Rules: rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 6.3–6.9
-	platformFloat := analyzer.types["float"]
-	platformFloat.FloatBits = int(plan.PointerWidthBits)
-	analyzer.types["float"] = platformFloat
-	analyzer.types["ProcessID"] = processIDType(plan.PointerWidthBits)
-	analyzer.targetUintWidthBits = plan.PointerWidthBits
-	analyzer.targetProfile = plan.Profile
-	analyzer.registerCFundamentalTypes(plan.CABI)
-	return analyzer
-}
-
 func (a *Analyzer) AnalysisDepth() AnalysisDepth { return a.analysisDepth }
 
 func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 
+// Analyze completes declaration and body producers for one program snapshot,
+// then publishes the iterator-specific lowering prerequisite for that snapshot.
+// Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
+// rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
 	a.analysisSchedule = nil
@@ -368,6 +369,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTestMetadata = map[*ast.TestDeclaration]ResolvedTestMetadata{}
 	a.resolvedTests = nil
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.resolvedForeignBufferExtents = map[*ast.CallExpression][]ResolvedForeignBufferExtent{}
 	a.resolvedTestingOperations = map[*ast.CallExpression]ResolvedTestingOperation{}
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
 	a.stringConcatPlans = map[ast.Expression]StringConcatPlan{}
@@ -376,7 +378,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.stringMaterializationSites = map[ast.Expression]stringMaterializationSite{}
 	a.protectedStringMaterializations = map[ast.Expression]bool{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
+	a.iteratorLoweringRequirements = map[*ast.ForStatement]*iteratorLoweringRequirement{}
+	a.iteratorLoweringProgram = nil
 	a.activeCollectionIterations = nil
+	a.iterationDependencies = map[*ast.ForStatement]ForIterationDependencies{}
+	a.activeIterationDependencies = nil
+	a.iterationDependencyProbe = false
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}
@@ -386,12 +393,15 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedRangeMemberships = map[*ast.InfixExpression]ResolvedRangeMembership{}
 	a.resolvedRangeAppends = map[*ast.CallExpression]ResolvedArrayLiteralEntry{}
 	a.unitConversionPlans = map[ast.Expression]UnitConversionPlan{}
+	a.synthesizedStructTypes = map[*ast.StructLiteral]Type{}
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
 	a.placeRootIDs = map[sourceTokenKey]PlaceRootID{}
+	a.synchronizationResources = map[ast.Expression]SynchronizationResourceFact{}
+	a.resourceIdentityDomain = NewSynchronizationResourceSnapshot()
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedTryAssignments = map[*ast.TryAssignmentStatement]ResolvedTryAssignment{}
@@ -417,6 +427,11 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.escapeAnalysis = newEscapeAnalysis()
 	a.parameterUsageAnalysis = newParameterUsageAnalysis()
 	a.pitfallAnalysis = newPitfallAnalysis()
+	a.resolvedStateRequirements = map[ast.Expression]ResolvedStateRequirement{}
+	a.pitfallDiagnosticOwners = map[pitfallRootCause]int{}
+	a.boundsDiagnostics = map[sourceTokenKey]int{}
+	a.boundsFindings = map[sourceTokenKey][]PitfallFinding{}
+	a.boundsIncomplete = map[sourceTokenKey]bool{}
 	a.currentCallable = ""
 	a.callGraphPathReachable = true
 	a.spawnCallExpression = nil
@@ -501,8 +516,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
+	a.iteratorLoweringProgram = program
 
-	return a.errors
+	return cloneSemanticErrors(a.errors)
 }
 
 // validateTestDeclarations validates the source-level portion of canonical
@@ -711,7 +727,7 @@ func structContainsInvalidFieldType(typ Type) bool {
 }
 
 func (a *Analyzer) Warnings() []Error {
-	return a.warnings
+	return cloneSemanticErrors(a.warnings)
 }
 
 func (a *Analyzer) TypeOf(expr ast.Expression) (Type, bool) {
@@ -773,18 +789,6 @@ func (a *Analyzer) ParameterUsageAnalysis() *ParameterUsageAnalysis {
 // produced from facts recorded by the most recent completed semantic analysis.
 func (a *Analyzer) PitfallAnalysis() *PitfallAnalysis {
 	return a.pitfallAnalysis.clone()
-}
-
-func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source lexer.Token, mayAllocate bool) {
-	if a.summaryPass || !a.callGraphPathReachable {
-		return
-	}
-	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{
-		Kind:        kind,
-		Arena:       arena,
-		Source:      source,
-		MayAllocate: mayAllocate,
-	})
 }
 
 // recordCompilerKnownEffects publishes effects owned by the canonical member
@@ -2417,6 +2421,11 @@ func (a *Analyzer) withImplTarget(target string, fn func()) {
 }
 
 func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
+	// rules/compiler/compiler_analysis.md §18(2): observe live body borrows
+	// before block cleanup removes lexical holders.
+	if len(a.activeIterationDependencies) != 0 {
+		defer a.recordIterationBorrowDependencies("body")
+	}
 	switch stmt := stmt.(type) {
 	case *ast.TypeDeclStatement:
 		a.analyzeTypeDeclaration(stmt)
@@ -2940,178 +2949,6 @@ func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
 	a.addErrorAtToken(stmt.Token, "cancel is not valid outside a task or explicit thread context")
 }
 
-func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
-	var optionBinding matchPatternInfo
-	optionBindingValid := false
-	var availabilityTest *ResolvedAvailabilityTest
-	var stateTest *ResolvedStateTest
-	constantCondition := false
-	constantConditionKnown := false
-	if stmt.OptionBinding != nil {
-		optionBinding, optionBindingValid = a.resolveOptionIfBinding(stmt)
-	} else if stmt.Condition != nil {
-		conditionType, _ := a.inferExpression(stmt.Condition)
-		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-			a.addErrorAtToken(expressionToken(stmt.Condition), "%s", nonBoolConditionMessage(stmt.Condition, "if", conditionType))
-		}
-		if conditionType.Kind == BoolType {
-			constantCondition, constantConditionKnown = a.constantBooleanValue(stmt.Condition)
-		}
-		if availabilityExpr, ok := stmt.Condition.(*ast.AvailabilityExpression); ok {
-			if fact, resolved := a.resolvedAvailabilityTests[availabilityExpr]; resolved {
-				availabilityTest = &fact
-			}
-		}
-		if stateExpr, ok := stmt.Condition.(*ast.StateTestExpression); ok {
-			if fact, resolved := a.resolvedStateTests[stateExpr]; resolved {
-				stateTest = &fact
-			}
-		}
-	}
-
-	before := copyAssigned(a.assigned)
-	beforeMoved := copyMoved(a.moved)
-	beforeMoveReasons := copyMoveReasons(a.moveReasons)
-	beforeClosedResources := copyMoved(a.closedResources)
-	beforeBorrows := copyBorrows(a.borrows)
-	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
-	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
-	thenReachable := true
-	elseReachable := true
-	if constantConditionKnown && constantCondition {
-		elseReachable = false
-		a.diagnoseConstantConditionUnreachableBlock(stmt.Alternative, "branch")
-	} else if constantConditionKnown {
-		thenReachable = false
-		a.diagnoseConstantConditionUnreachableBlock(stmt.Consequence, "branch")
-	} else if availabilityTest != nil && availabilityTest.StaticallyKnown {
-		thenReachable = availabilityTest.Value
-		elseReachable = !availabilityTest.Value
-	} else if stateTest != nil && stateTest.StaticallyKnown {
-		thenReachable = stateTest.Value
-		elseReachable = !stateTest.Value
-		switch {
-		case stateTest.Empty && !stateTest.Value:
-			a.diagnoseImpossibleStateTestBlock(stmt.Consequence, stateTest.Binding)
-		case !stateTest.Empty && !stateTest.Value:
-			a.diagnoseKnownVariantBlock(stmt.Consequence, *stateTest)
-		case !stateTest.Empty:
-			a.diagnoseKnownVariantBlock(stmt.Alternative, *stateTest)
-		}
-	} else if stmt.OptionBinding == nil {
-		if value, known := a.relationalConditionValue(stmt.Condition); known {
-			thenReachable = value
-			elseReachable = !value
-			if value {
-				a.diagnoseRelationallyUnreachableBlock(stmt.Alternative, true, "branch")
-			} else {
-				a.diagnoseRelationallyUnreachableBlock(stmt.Consequence, false, "branch")
-			}
-		}
-	}
-	refinementCount := len(a.activeConditionFacts)
-	if stmt.OptionBinding == nil && stmt.Condition != nil && thenReachable {
-		a.recordConditionFact(stmt.Condition, ConditionFactBranchTrue, stmt.Token)
-	}
-	resultBinding, resultTrueState, resultStateKnown := ifResultStateTest(stmt)
-	if resultStateKnown && thenReachable {
-		a.recordResultStateFact(resultBinding, resultTrueState)
-	}
-	var thenBranch branchAnalysis
-	if optionBindingValid {
-		thenBranch = a.analyzeOptionBindingBranchWithCallGraphReachability(stmt, optionBinding, thenReachable)
-	} else if availabilityTest != nil {
-		thenBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Consequence, *availabilityTest, !availabilityTest.Negated, thenReachable)
-	} else if stateTest != nil {
-		thenBranch = a.analyzeStateTestBranch(stmt.Consequence, *stateTest, true, thenReachable)
-	} else {
-		thenBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
-	}
-	a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
-	if !thenReachable {
-		thenBranch.continues = false
-	}
-	if stmt.Alternative != nil {
-		var elseBranch branchAnalysis
-		elseRefinementCount := len(a.activeConditionFacts)
-		if stmt.OptionBinding == nil && elseReachable {
-			a.recordPathConditionFact(stmt.Condition, false)
-		}
-		if resultStateKnown {
-			a.recordResultStateFact(resultBinding, oppositeResultState(resultTrueState))
-		}
-		if availabilityTest != nil {
-			elseBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Alternative, *availabilityTest, availabilityTest.Negated, elseReachable)
-		} else if stateTest != nil {
-			elseBranch = a.analyzeStateTestBranch(stmt.Alternative, *stateTest, false, elseReachable)
-		} else {
-			elseBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
-		}
-		a.activeConditionFacts = a.activeConditionFacts[:elseRefinementCount]
-		if !elseReachable {
-			elseBranch.continues = false
-		}
-		if stmt.OptionBinding == nil && thenBranch.continues != elseBranch.continues {
-			// Only one branch reaches the code after the if, so its
-			// condition value holds there until the enclosing block ends.
-			a.recordPathConditionFact(stmt.Condition, thenBranch.continues)
-		}
-		if resultStateKnown && thenBranch.continues != elseBranch.continues {
-			// Only one branch reaches the code after the if, so its state
-			// holds there until the enclosing block ends.
-			state := resultTrueState
-			if elseBranch.continues {
-				state = oppositeResultState(resultTrueState)
-			}
-			a.recordResultStateFact(resultBinding, state)
-		}
-		a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, elseBranch)
-		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
-		a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, elseBranch)
-		a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, elseBranch)
-		a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, elseBranch)
-		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, elseBranch)
-		a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, elseBranch)
-		return
-	}
-
-	fallthroughBranch := branchAnalysis{
-		assigned:           before,
-		moved:              beforeMoved,
-		moveReasons:        beforeMoveReasons,
-		closedResources:    beforeClosedResources,
-		borrows:            beforeBorrows,
-		localRefContainers: beforeLocalRefContainers,
-		arenaGenerations:   beforeArenaGenerations,
-		continues:          elseReachable,
-	}
-	if availabilityTest != nil {
-		fallthroughBranch = a.refinedAvailabilityFallthrough(fallthroughBranch, *availabilityTest, availabilityTest.Negated)
-		fallthroughBranch.continues = elseReachable
-	}
-	if stateTest != nil {
-		if binding, refined := stateTestRefinement(*stateTest, false); refined {
-			fallthroughBranch.assigned = copyAssigned(fallthroughBranch.assigned)
-			fallthroughBranch.assigned[binding] = true
-		}
-	}
-	if stmt.OptionBinding == nil && !thenBranch.continues && elseReachable {
-		a.recordPathConditionFact(stmt.Condition, false)
-	}
-	if resultStateKnown && !thenBranch.continues && elseReachable {
-		// The true branch exits, so the code after the if sees the opposite
-		// state until the enclosing block ends.
-		a.recordResultStateFact(resultBinding, oppositeResultState(resultTrueState))
-	}
-	a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, fallthroughBranch)
-	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
-	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)
-	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, fallthroughBranch)
-	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
-	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)
-	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, fallthroughBranch)
-}
-
 func (a *Analyzer) bindAvailabilityPlaceRoot(expr ast.Expression) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -3292,6 +3129,7 @@ type activeConditionFact struct {
 	// binding, or a match arm on a borrowed projection.
 	resultBinding string
 	resultState   string
+	resultSource  lexer.Token
 }
 
 type loopIterationAnalysisState struct {
@@ -3534,21 +3372,6 @@ func mergeContinuingLocalRefContainers(before map[string]localReferenceOrigin, b
 		return copyLocalRefContainers(before)
 	}
 	return mergeReferenceOriginStates(states...)
-}
-
-func mergeContinuingArenaGenerations(before map[string]int, branches ...branchAnalysis) map[string]int {
-	merged := copyArenaGenerations(before)
-	for _, branch := range branches {
-		if !branch.continues {
-			continue
-		}
-		for name, generation := range branch.arenaGenerations {
-			if generation > merged[name] {
-				merged[name] = generation
-			}
-		}
-	}
-	return merged
 }
 
 func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
@@ -5398,6 +5221,7 @@ func switchCoversBoolLiterals(stmt *ast.SwitchStatement) bool {
 //   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
 //   - rules/memory/ownership.md — §17 "Function return boundary"
 //   - rules/memory/copy_move.md — §9 "Return boundaries"
+//   - rules/declarations/functions.md — §32 "Variadic pack cannot escape"
 func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
 	// A return is terminal even when reached through a match/try arm. Keeping
 	// this as analyzer context lets aggregate and union inference apply the same
@@ -5454,7 +5278,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	if variadicPackValue(valueType) {
 		// rules/declarations/functions.md section 32: a pack may not escape
 		// the invocation through the function result.
-		a.addErrorAtToken(expressionToken(stmt.Value), "variadic parameter pack cannot escape this call")
+		a.reportEscapeExpressionDiagnostic(stmt.Value, lexer.Token{}, diagnostics.EscapeVariadicPack, "variadic parameter pack cannot escape this call")
 		return
 	}
 	if a.validateTerminalReturnConstruction(stmt.Value) {
@@ -5790,133 +5614,6 @@ func containsCapturedLambdaExpression(expr ast.Expression) bool {
 		return containsCapturedLambdaExpression(expr.Value)
 	}
 	return false
-}
-
-func (a *Analyzer) checkReturningReferenceToLocal(functionName string, returnType Type, valueType Type, expr ast.Expression) bool {
-	if !typeCarriesReferenceOrigin(returnType) || !typeCarriesReferenceOrigin(valueType) {
-		return false
-	}
-	if call, ok := expr.(*ast.CallExpression); ok {
-		if origin, tracked := a.expressionReferenceOrigins[call]; tracked {
-			return a.checkTrackedReturnedReferenceOrigin(functionName, expr, origin)
-		}
-	}
-	if origin, ok := a.containedOriginForAccess(expr); ok {
-		return a.checkTrackedReturnedReferenceOrigin(functionName, expr, origin)
-	}
-	if valueType.ReferenceOriginMatchScoped {
-		a.addErrorAtTokenWithPrevious(expressionToken(expr), valueType.ReferenceOriginToken, "function %s cannot return a branch-scoped union payload reference", functionName)
-		return true
-	}
-	if !valueType.ReferenceOriginLocal {
-		return false
-	}
-	originName := valueType.ReferenceOriginName
-	if originName == "" {
-		originName = "local value"
-	}
-	if functionName == "lambda" {
-		a.addErrorAtTokenWithPrevious(expressionToken(expr), valueType.ReferenceOriginToken, "lambda cannot return reference to local variable %s", originName)
-		return true
-	}
-	a.addErrorAtTokenWithPrevious(expressionToken(expr), valueType.ReferenceOriginToken, "function %s cannot return reference to local variable %s", functionName, originName)
-	return true
-}
-
-func (a *Analyzer) checkTrackedReturnedReferenceOrigin(functionName string, expr ast.Expression, origin localReferenceOrigin) bool {
-	if origin.Unknown {
-		a.addErrorAtToken(expressionToken(expr), "function %s cannot return reference with unknown control-flow provenance", functionName)
-		return true
-	}
-	if origin.MatchScoped {
-		a.addErrorAtTokenWithPrevious(expressionToken(expr), origin.Token, "function %s cannot return a branch-scoped union payload reference", functionName)
-		return true
-	}
-	if !origin.Local {
-		// The aggregate/call result can be local while the referenced storage
-		// is exclusively caller-owned.
-		return false
-	}
-	originName := origin.Name
-	if originName == "" {
-		originName = "local value"
-	}
-	if functionName == "lambda" {
-		a.addErrorAtTokenWithPrevious(expressionToken(expr), origin.Token, "lambda cannot return reference to local variable %s", originName)
-		return true
-	}
-	a.addErrorAtTokenWithPrevious(expressionToken(expr), origin.Token, "function %s cannot return reference to local variable %s", functionName, originName)
-	return true
-}
-
-func (a *Analyzer) checkExpressionEscapesLocalReference(functionName string, expr ast.Expression) bool {
-	originName, originToken, ok := a.localReferenceOriginInExpression(expr)
-	if !ok {
-		return false
-	}
-	if originName == "" {
-		originName = "local value"
-	}
-	if functionName == "lambda" {
-		a.addErrorAtTokenWithPrevious(expressionToken(expr), originToken, "lambda cannot return value containing reference to local variable %s", originName)
-		return true
-	}
-	a.addErrorAtTokenWithPrevious(expressionToken(expr), originToken, "function %s cannot return value containing reference to local variable %s", functionName, originName)
-	return true
-}
-
-func (a *Analyzer) checkExpressionEscapesMatchPayload(functionName string, expr ast.Expression) bool {
-	_, originToken, ok := a.matchScopedReferenceOriginInExpression(expr)
-	if !ok {
-		return false
-	}
-	a.addErrorAtTokenWithPrevious(expressionToken(expr), originToken, "function %s cannot return a value containing a branch-scoped union payload reference", functionName)
-	return true
-}
-
-func (a *Analyzer) checkAssignmentEscapesLocalReference(target ast.Expression, value ast.Expression) bool {
-	if a.checkAssignmentEscapesMatchPayload(target, value) {
-		return true
-	}
-	originName, originToken, ok := a.localReferenceOriginInExpression(value)
-	if !ok {
-		return false
-	}
-	targetRoot, ok := borrowRootName(target)
-	if !ok {
-		return false
-	}
-	targetSymbol, ok := a.symbols[targetRoot]
-	if !ok {
-		return false
-	}
-	// A reference parameter is a local binding over caller-owned storage. Writes
-	// through its projected Place therefore cross the function boundary even
-	// though the parameter symbol itself is local.
-	if targetSymbol.Local && targetSymbol.Type.Kind != ReferenceType {
-		return false
-	}
-	if originName == "" {
-		originName = "local value"
-	}
-	a.recordOuterPlaceEscapeFact(value, originName, originToken)
-	a.addErrorAtTokenWithPrevious(expressionToken(value), originToken, "cannot store reference to local variable %s into %s", originName, targetRoot)
-	return true
-}
-
-func (a *Analyzer) checkAssignmentEscapesMatchPayload(target ast.Expression, value ast.Expression) bool {
-	_, originToken, ok := a.matchScopedReferenceOriginInExpression(value)
-	if !ok {
-		return false
-	}
-	targetRoot, rootOK := borrowRootName(target)
-	if rootOK {
-		if symbol, symbolOK := a.symbols[targetRoot]; symbolOK && symbol.Local && symbol.ScopeDepth >= a.scopeDepth {
-			return false
-		}
-	}
-	a.addErrorAtTokenWithPrevious(expressionToken(value), originToken, "cannot store branch-scoped union payload reference outside its match arm")
-	return true
 }
 
 func (a *Analyzer) markLocalRefContainerFromValue(holder string, value ast.Expression) {
@@ -6481,33 +6178,6 @@ func uniquePlaces(places []Place) []Place {
 	return unique
 }
 
-func (a *Analyzer) checkReturningLambdaCapturingLocalReference(functionName string, expr ast.Expression) bool {
-	lambda, ok := expr.(*ast.LambdaExpression)
-	if !ok {
-		return false
-	}
-	for _, capture := range lambda.Captures {
-		if capture.Name == nil {
-			continue
-		}
-		symbol, ok := a.symbols[capture.Name.Value]
-		if !ok || symbol.Type.Kind != ReferenceType || !symbol.Type.ReferenceOriginLocal {
-			continue
-		}
-		originName := symbol.Type.ReferenceOriginName
-		if originName == "" {
-			originName = "local value"
-		}
-		if functionName == "lambda" {
-			a.addErrorAtTokenWithPrevious(capture.Name.Token, symbol.Type.ReferenceOriginToken, "lambda cannot return lambda capturing reference to local variable %s", originName)
-			return true
-		}
-		a.addErrorAtTokenWithPrevious(capture.Name.Token, symbol.Type.ReferenceOriginToken, "function %s cannot return lambda capturing reference to local variable %s", functionName, originName)
-		return true
-	}
-	return false
-}
-
 func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string, lexer.Token, bool) {
 	switch expr := expr.(type) {
 	case *ast.RefExpression:
@@ -6927,14 +6597,6 @@ func clonePlaces(places []Place) []Place {
 	return cloned
 }
 
-func copyArenaGenerations(in map[string]int) map[string]int {
-	out := make(map[string]int, len(in))
-	for name, generation := range in {
-		out[name] = generation
-	}
-	return out
-}
-
 func (a *Analyzer) endBorrowsHeldBy(holder string) {
 	for root, records := range a.borrows {
 		out := records[:0]
@@ -6965,6 +6627,11 @@ func (a *Analyzer) popLoopBreakFrame(frame int) loopBreakFrame {
 	return breaks
 }
 
+// recordLoopBreak snapshots all represented flow domains, including Arena epochs,
+// at a break of the nearest active loop for that loop's exit merge.
+// Rules: rules/control-flow/flowcontrol_while.md — §§28–29;
+// rules/control-flow/flowcontrol_for.md — §§30–31, 42;
+// rules/corrections/applied/correction25-20260823.md — Part I, corrections 1–5.
 func (a *Analyzer) recordLoopBreak() {
 	if len(a.loopBreakFrames) == 0 {
 		return
@@ -6979,6 +6646,11 @@ func (a *Analyzer) recordLoopBreak() {
 	a.loopBreakFrames[top].arenaGenerations = append(a.loopBreakFrames[top].arenaGenerations, copyArenaGenerations(a.arenaGenerations))
 }
 
+// recordLoopContinue snapshots all represented flow domains, including Arena
+// epochs, at a continue edge of the nearest loop for next-iteration checking.
+// Rules: rules/control-flow/flowcontrol_while.md — §§28–29;
+// rules/control-flow/flowcontrol_for.md — §§30–31, 42;
+// rules/corrections/applied/correction25-20260823.md — Part I, corrections 1–5.
 func (a *Analyzer) recordLoopContinue() {
 	if len(a.loopBreakFrames) == 0 {
 		return
@@ -7125,20 +6797,6 @@ func loopBackedgeReferenceState(entry map[string]localReferenceOrigin, loop map[
 	}
 	states = append(states, frame.continueLocalRefContainers...)
 	return mergeReferenceOriginStates(states...)
-}
-
-func loopBackedgeArenaGenerationState(entry, loop map[string]int, frame loopBreakFrame, bodyFallsThrough bool) map[string]int {
-	// rules/control-flow/flowcontrol_while.md and flowcontrol_for.md;
-	// correction25.md: the next iteration sees the greatest epoch reachable
-	// through entry, normal fallthrough, or any continue edge.
-	header := copyArenaGenerations(entry)
-	if bodyFallsThrough {
-		mergeArenaGenerationMaxInto(header, loop)
-	}
-	for _, generations := range frame.continueArenaGenerations {
-		mergeArenaGenerationMaxInto(header, generations)
-	}
-	return header
 }
 
 func mergeLoopReferenceState(entry map[string]localReferenceOrigin, loop map[string]localReferenceOrigin, frame loopBreakFrame) map[string]localReferenceOrigin {
@@ -7289,6 +6947,12 @@ func samePlaceIdentity(left, right Place) bool {
 	return true
 }
 
+// checkLoopBackedgeFixedPoint rechecks the next condition/body using reachable
+// header ownership, borrow, origin and Arena-epoch facts. An epoch-only change
+// is sufficient to trigger replay; speculative dependency facts are not published.
+// Rules: rules/control-flow/flowcontrol_while.md — §§28–29;
+// rules/control-flow/flowcontrol_for.md — §§30–31, 42;
+// rules/corrections/applied/correction25-20260823.md — Part I, corrections 1–5.
 func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	condition ast.Expression,
 	body *ast.BlockStatement,
@@ -7300,6 +6964,9 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	headerLocalRefContainers map[string]localReferenceOrigin,
 	headerArenaGenerations map[string]int,
 ) {
+	previousDependencyProbe := a.iterationDependencyProbe
+	a.iterationDependencyProbe = true
+	defer func() { a.iterationDependencyProbe = previousDependencyProbe }()
 	backedgePlaces := map[string]bool{}
 	for place := range headerMoved {
 		if _, existedAtEntry := entry.moved[place]; !existedAtEntry {
@@ -7414,18 +7081,6 @@ func referenceOriginStatesEqual(left, right map[string]localReferenceOrigin) boo
 	return true
 }
 
-func arenaGenerationStatesEqual(left, right map[string]int) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for name, generation := range left {
-		if right[name] != generation {
-			return false
-		}
-	}
-	return true
-}
-
 func mergeBreakAssigned(before map[string]bool, breaks []map[string]bool) map[string]bool {
 	merged := copyAssigned(before)
 	if len(breaks) == 0 {
@@ -7443,23 +7098,6 @@ func mergeBreakAssigned(before map[string]bool, breaks []map[string]bool) map[st
 		merged[name] = assigned
 	}
 	return merged
-}
-
-func mergeLoopArenaGenerations(before, loop map[string]int, breaks []map[string]int) map[string]int {
-	merged := copyArenaGenerations(before)
-	mergeArenaGenerationMaxInto(merged, loop)
-	for _, breakGenerations := range breaks {
-		mergeArenaGenerationMaxInto(merged, breakGenerations)
-	}
-	return merged
-}
-
-func mergeArenaGenerationMaxInto(merged, next map[string]int) {
-	for name, generation := range next {
-		if current, ok := merged[name]; !ok || generation > current {
-			merged[name] = generation
-		}
-	}
 }
 
 func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
@@ -9777,6 +9415,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		resolution := DefaultValueOf(declaredType)
 		stmt.Value = defaultExpression(resolution, declaredType, stmt.Name.Token)
 		stmt.SynthesizedDefault = stmt.Value != nil
+		a.recordSynthesizedDefaultTypes(stmt.Value, declaredType)
 		if stmt.Value == nil {
 			if declaredType.Kind != UnionType {
 				// rules/types/default_values.md, "Diagnostics": an ambiguous
@@ -10498,54 +10137,6 @@ func (a *Analyzer) transferBorrowHolderFromExpression(expr ast.Expression, holde
 	a.transferBorrowHolder(ident.Value, holder)
 }
 
-// bindArenaDomainFromExpression implements the stable ArenaDomain ownership
-// identity from rules/memory/arena.md (correction29.md). Domain identity lives
-// on the semantic Arena value and therefore follows owner moves independently
-// of the current source binding name.
-func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Expression) {
-	if holder == "" {
-		return
-	}
-	symbol, ok := a.symbols[holder]
-	if !ok || symbol.Type.Name != "Arena" {
-		return
-	}
-	domain := ""
-	if inferred, ok := a.expressionTypes[expr]; ok && inferred.Name == "Arena" {
-		domain = inferred.ArenaDomainID
-	}
-	if domain == "" {
-		if source, ok := expr.(*ast.Identifier); ok {
-			if sourceSymbol, exists := a.symbols[source.Value]; exists && sourceSymbol.Type.Name == "Arena" {
-				domain = sourceSymbol.Type.ArenaDomainID
-				a.transferBorrowHolder(source.Value, holder)
-			}
-		}
-	}
-	if call, ok := expr.(*ast.CallExpression); ok {
-		if member, memberOK := call.Callee.(*ast.MemberExpression); memberOK && member.Property != nil && member.Property.Value == "FromBuffer" && len(call.Arguments) == 1 {
-			a.transferBorrowHolder(arenaConstructorBorrowHolder(call), holder)
-			if place, placeOK := a.resolvePlace(call.Arguments[0]); placeOK {
-				for _, alternative := range placeOriginAlternatives(place) {
-					a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
-						Root: alternative.Root, Place: alternative, Holder: holder, Kind: mutableBorrow, Token: call.Token,
-					})
-				}
-			}
-		}
-	}
-	if domain == "" {
-		domain = a.newArenaDomainID()
-	}
-	symbol.Type.ArenaDomainID = domain
-	a.symbols[holder] = symbol
-}
-
-func (a *Analyzer) newArenaDomainID() string {
-	a.nextArenaDomainID++
-	return fmt.Sprintf("$arena-domain-%d", a.nextArenaDomainID)
-}
-
 func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
 	if holder == "" || expr == nil {
 		return
@@ -10657,22 +10248,6 @@ func typeCarriesReferenceOrigin(typ Type) bool {
 	return typ.Kind == ReferenceType || typ.Kind == SliceType
 }
 
-func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bool {
-	if !typeCarriesReferenceOrigin(symbol.Type) || symbol.Type.ReferenceOriginStorage != StorageOriginArena || symbol.Type.ReferenceOriginName == "" {
-		return false
-	}
-	current := a.arenaGenerations[symbol.Type.ReferenceOriginName]
-	if symbol.Type.ReferenceOriginGeneration == current {
-		return false
-	}
-	display := symbol.Type.ReferenceOriginDisplayName
-	if display == "" {
-		display = symbol.Type.ReferenceOriginName
-	}
-	a.addErrorAtTokenWithPrevious(token, symbol.Type.ReferenceOriginToken, "cannot use %s after arena %s was reset", symbol.Name, display)
-	return true
-}
-
 // variadicPackSymbol identifies a callee-local pack binding for the pack
 // escape restrictions in rules/declarations/functions.md sections 32 and 34.
 func (a *Analyzer) variadicPackSymbol(name string) bool {
@@ -10708,21 +10283,6 @@ func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
 		return false
 	}
 	return a.checkBorrowedReadPlace(place, token)
-}
-
-func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) bool {
-	for _, record := range a.borrows[name] {
-		if record.Kind != mutableBorrow {
-			continue
-		}
-		holder, ok := a.symbols[record.Holder]
-		if !ok || holder.Type.Name != "Arena" {
-			continue
-		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s while its backing is exclusively borrowed by arena %s", name, record.Holder)
-		return true
-	}
-	return false
 }
 
 func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
@@ -11932,11 +11492,25 @@ func (a *Analyzer) recordSynthesizedDefaultTypes(expr ast.Expression, typ Type) 
 			}
 		}
 	case *ast.StructLiteral:
+		if typ.Kind == StructType || typ.Kind == UnionType {
+			a.synthesizedStructTypes[expr] = typ
+		}
+		var variant UnionVariant
+		variantOK := false
+		if typ.Kind == UnionType && expr.Type != nil {
+			if _, variantName, split := splitUnionVariantTypeName(expr.Type.Name); split {
+				variant, variantOK = lookupUnionVariant(typ, variantName)
+			}
+		}
 		for _, field := range expr.Fields {
 			if field == nil || field.Name == nil {
 				continue
 			}
-			if fieldType, ok := lookupStructField(typ, field.Name.Value); ok {
+			if variantOK {
+				if fieldType, ok := unionPayloadFieldType(variant, field.Name.Value); ok {
+					a.recordSynthesizedDefaultTypes(field.Value, fieldType)
+				}
+			} else if fieldType, ok := lookupStructField(typ, field.Name.Value); ok {
 				a.recordSynthesizedDefaultTypes(field.Value, fieldType)
 			}
 		}
@@ -12262,28 +11836,6 @@ func isCompilerKnownListType(typ Type) bool {
 	return typ.Name == "list" && len(typ.TypeArgs) == 1
 }
 
-// checkConstantListIndexBounds rejects bounds failures provable without
-// runtime Len: negative indexes and indexes outside a declared capacity.
-// Every other list access retains its mandatory runtime Len check.
-//
-// Rules:
-//   - rules/collections/collections.md — §8.2 "Valid index types" and §8.3 "Bounds"
-func (a *Analyzer) checkConstantListIndexBounds(expr *ast.IndexExpression, typ Type) bool {
-	index, ok := a.integerConstantValue(expr.Index)
-	if !ok {
-		return true
-	}
-	invalid := index.Sign() < 0
-	if !invalid && len(typ.ConstArgs) == 1 {
-		invalid = index.Cmp(big.NewInt(typ.ConstArgs[0])) >= 0
-	}
-	if !invalid {
-		return true
-	}
-	a.addErrorAtToken(expressionToken(expr.Index), "list index %s is out of bounds for %s", index.String(), typeDisplayName(typ))
-	return false
-}
-
 // recordListIndexPlan publishes the runtime-checked frontend decision for a
 // list element Place. It deliberately does not create an array-index fact:
 // Semantic IR must reject list lowering until it has dedicated operations.
@@ -12307,21 +11859,6 @@ func (a *Analyzer) recordListIndexPlan(expr *ast.IndexExpression, listType, elem
 	}
 	a.recordResolvedListIndexPlan(expr, plan)
 	a.recordListIndexEffect(expr, plan)
-}
-
-// checkConstantIndexBounds enforces the exact I >= 0 && I < N rule from
-// SEC-MLIR Package 14 section 35 without narrowing either operand.
-func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) bool {
-	index, ok := a.integerConstantValue(expr.Index)
-	length, fixed := exactFixedArrayLength(typ)
-	if !ok || typ.Kind != ArrayType || !fixed {
-		return true
-	}
-	if index.Sign() < 0 || index.Cmp(length) >= 0 {
-		a.addErrorAtToken(expressionToken(expr.Index), "array index %s is out of bounds for %s", index.String(), typeDisplayName(typ))
-		return false
-	}
-	return true
 }
 
 // recordFixedArrayIndexPlan publishes the already-resolved index decision
@@ -13361,17 +12898,6 @@ func compilerKnownReceiverRoot(expr ast.Expression) *ast.Identifier {
 	}
 }
 
-func arenaResultType(value Type, err Type) Type {
-	return Type{Name: "Result[" + typeDisplayName(value) + ", " + typeDisplayName(err) + "]", Kind: ResultType, TypeArgs: []Type{value, err}}
-}
-
-func arenaConstructorBorrowHolder(expr *ast.CallExpression) string {
-	if expr == nil {
-		return "$arena-backing"
-	}
-	return fmt.Sprintf("$arena-backing:%s:%d:%d", expr.Token.File, expr.Token.Line, expr.Token.Column)
-}
-
 func (a *Analyzer) rawPointerCallMayHaveValueReceiver(expr ast.Expression) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -13410,88 +12936,6 @@ func (a *Analyzer) rawPointerArgumentIsInt(expr ast.Expression, operation string
 
 func isRawBytePointer(typ Type) bool {
 	return typ.Kind == RawPtrType && len(typ.TypeArgs) == 1 && typ.TypeArgs[0].Name == "byte"
-}
-
-// validateArenaAllocationElement enforces the safe typed-allocation type
-// requirements shared by Arena.New[T] and Arena.Alloc[T]: sized T, a valid
-// infallible compiler-defined default, and trivial destruction. Each failure
-// is a distinct required error family. An unresolved generic parameter is not
-// rejected here because its layout, default, and destruction facts exist only
-// per instantiation.
-//
-// Rules:
-//   - rules/memory/arena.md — § 19(1)-(4) "Type requirements"
-//   - rules/memory/arena.md — § 20(2) and § 21(2) validate T before allocation
-//   - rules/memory/arena.md — § 120(1) incomplete/unsized T, missing default, non-trivially-destructible T
-//   - rules/memory/layout.md — § 2(7) sized layout before by-value storage
-//   - rules/types/default_values.md — canonical default resolution
-func (a *Analyzer) validateArenaAllocationElement(method string, reference *ast.TypeReference, element Type) bool {
-	token := reference.Token
-	if element.Kind == GenericType {
-		return true
-	}
-	display := typeDisplayName(element)
-	if !compilerKnownSizedType(element) {
-		a.addErrorAtTokenWithMetadata(token, diagnostics.ArenaUnsizedAllocationType,
-			"Allocate a concrete type with complete sized layout.",
-			"Arena.%s requires a sized type with complete layout, got %s", method, display)
-		return false
-	}
-	if !IsDefaultable(element) {
-		a.addErrorAtTokenWithMetadata(token, diagnostics.ArenaAllocationMissingDefault,
-			"Safe Arena allocation fully initializes every value with its compiler-defined default; give the type a valid default.",
-			"Arena.%s requires a type with a valid infallible default, but %s has no default", method, display)
-		return false
-	}
-	if !TriviallyDestructible(element) {
-		a.addErrorAtTokenWithMetadata(token, diagnostics.ArenaNonTrivialDestructionType,
-			"Safe Arena allocation never runs destructors; allocate only trivially destructible types.",
-			"Arena.%s cannot allocate %s because it requires destruction", method, display)
-		return false
-	}
-	return true
-}
-
-// checkArenaInvalidationDependencies enforces the Reset/Release dependency
-// boundary from rules/memory/arena.md and rules/memory/allocation.md (correction28.md).
-// The current lexical frontend is conservative: any still-available local
-// carrying the current domain epoch blocks invalidation.
-func (a *Analyzer) checkArenaInvalidationDependencies(domain, owner string, token lexer.Token) bool {
-	current := a.arenaGenerations[domain]
-	for name, symbol := range a.symbols {
-		if name == owner {
-			continue
-		}
-		if _, unavailable := a.moved[name]; unavailable {
-			continue
-		}
-		if !typeCarriesReferenceOrigin(symbol.Type) || symbol.Type.ReferenceOriginStorage != StorageOriginArena ||
-			symbol.Type.ReferenceOriginName != domain || symbol.Type.ReferenceOriginGeneration != current {
-			continue
-		}
-		if !a.arenaDependencyEscapesImmediateLocal(name, owner) {
-			continue
-		}
-		a.addErrorAtTokenWithPrevious(token, symbol.Token, "cannot invalidate arena %s while dependency %s is still live", owner, name)
-		return true
-	}
-	return false
-}
-
-func (a *Analyzer) arenaDependencyEscapesImmediateLocal(name, owner string) bool {
-	for _, records := range a.borrows {
-		for _, record := range records {
-			if isDeferredUseKind(record.Kind) && record.Root == name || record.Holder != "" && record.Holder != name && record.Holder != owner && record.Root == name {
-				return true
-			}
-		}
-	}
-	for holder, origin := range a.localRefContainers {
-		if holder != name && holder != owner && origin.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 type eventReceiverInfo struct {
@@ -15085,7 +14529,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 		armRefinementCount := len(a.activeConditionFacts)
 		if binding, state, known := matchArmResultState(expr.Subject, arm); known {
-			a.recordResultStateFact(binding, state)
+			a.recordResultStateFact(binding, state, arm.Pattern.Token)
 		}
 		armType, branch := a.analyzeMatchArmBody(arm, info)
 		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]

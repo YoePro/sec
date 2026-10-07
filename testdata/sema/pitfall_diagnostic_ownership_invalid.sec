@@ -1,0 +1,13 @@
+module pitfall_ownership
+
+fn Direct(flag: bool) bool {
+    return flag == 1
+}
+
+fn Converted(flag: bool) bool {
+    return bool(flag == 0)
+}
+
+fn Bounds(values: int[3]) int {
+    return values[values.Len]
+}

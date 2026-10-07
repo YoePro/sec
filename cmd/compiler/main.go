@@ -533,6 +533,9 @@ func runSemaInputs(inputs []string, target CompilerTarget) {
 	fmt.Println("OK")
 }
 
+// runEmitLLVMCommand validates the iterator prerequisite before the legacy
+// LLVM backend and publishes output only after successful generation.
+// Rules: rules/compiler/compiler_pipeline.md — §§32–34.
 func runEmitLLVMCommand(args []string) {
 	inputFile, outputFile, target, ok := parseEmitLLVMCommandArgs(args, hostCompilerTarget())
 	if !ok {
@@ -546,10 +549,10 @@ func runEmitLLVMCommand(args []string) {
 		exitCLI(1)
 	}
 
-	program := parseAndAnalyzeFileForTarget(inputFile, target)
-	ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
+	analyzed := parseAndAnalyzeFileForLowering(inputFile, target)
+	ir, err := llvmcodegen.GenerateWithTriple(analyzed.Program, targetDefinition.LLVMTriple)
 	if err != nil {
-		reportToolError("codegen", "%v", err)
+		reportPipelineError("codegen", err)
 		exitCLI(4)
 	}
 
@@ -559,6 +562,10 @@ func runEmitLLVMCommand(args []string) {
 	}
 }
 
+// runEmitIRCommand publishes verified Semantic IR while preserving structured
+// source-proof and compiler-capability failures at the requested boundary.
+// Rules: rules/compiler/compiler_pipeline.md — §§2(8–9), 32–34;
+// rules/compiler/compiler_analysis.md — §58(3).
 func runEmitIRCommand(args []string) {
 	inputFile, outputFile, target, ok := parseEmitIRCommandArgs(args, hostCompilerTarget())
 	if !ok {
@@ -573,11 +580,11 @@ func runEmitIRCommand(args []string) {
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), inputFile, target, false)
 	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}})
 	if err != nil {
-		reportToolError("semantic IR", "%v", err)
+		reportPipelineError("semantic IR", err)
 		exitCLI(4)
 	}
 	if err := semantic.Verify(module); err != nil {
-		reportToolError("semantic IR verification", "%v", err)
+		reportPipelineError("semantic IR verification", err)
 		exitCLI(4)
 	}
 	if err := writeCompilerOutput(outputFile, []byte(semantic.Format(module))); err != nil {
@@ -624,6 +631,10 @@ type emitSecMLIROptions struct {
 	Target     CompilerTarget
 }
 
+// runEmitSecMLIRCommand lowers resolved Semantic IR under the selected scalar
+// plan and preserves proof/capability failures before publishing Sec MLIR.
+// Rules: rules/compiler/compiler_pipeline.md — §§2(8–9), 32–34;
+// rules/compiler/compiler_analysis.md — §58(3).
 func runEmitSecMLIRCommand(args []string) {
 	options, ok := parseEmitSecMLIRCommandArgs(args, hostCompilerTarget())
 	if !ok {
@@ -638,7 +649,7 @@ func runEmitSecMLIRCommand(args []string) {
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
 	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{options.InputFile}, MaxPackage: 12})
 	if err != nil {
-		reportToolError("semantic IR", "%v", err)
+		reportPipelineError("semantic IR", err)
 		exitCLI(4)
 	}
 	targetDefinition, ok := findTargetDefinition(options.Target)
@@ -653,7 +664,7 @@ func runEmitSecMLIRCommand(args []string) {
 	}
 	mlirText, err := secmlirlowering.Emit(module, scalarPlan)
 	if err != nil {
-		reportToolError("Sec MLIR lowering", "%v", err)
+		reportPipelineError("Sec MLIR lowering", err)
 		exitCLI(4)
 	}
 	verifyPath, removeVerifyPath, err := createTempOutputPath(".sec.mlir")
@@ -669,7 +680,7 @@ func runEmitSecMLIRCommand(args []string) {
 		exitCLI(1)
 	}
 	if err := mlirtoolchain.NewToolchain(options.MLIRBin).VerifySec(verifyPath); err != nil {
-		reportToolError("Sec MLIR verification", "%v", err)
+		reportPipelineError("Sec MLIR verification", err)
 		exitCLI(4)
 	}
 	if err := writeCompilerOutput(options.OutputFile, mlirText); err != nil {
@@ -720,6 +731,9 @@ func parseEmitSecMLIRCommandArgs(args []string, defaultTarget CompilerTarget) (e
 	return options, options.InputFile != ""
 }
 
+// runEmitMLIRCommand validates the iterator prerequisite before the legacy
+// MLIR backend, independently of backend implementation support.
+// Rules: rules/compiler/compiler_pipeline.md — §§32–34.
 func runEmitMLIRCommand(args []string) {
 	options, ok := parseEmitMLIRCommandArgs(args, hostCompilerTarget())
 	if !ok {
@@ -739,10 +753,11 @@ func runEmitMLIRCommand(args []string) {
 		exitCLI(1)
 	}
 
-	program := parseAndAnalyzeSourceForTarget(string(input), options.InputFile, options.Target)
-	mlirText, err := mlircodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
+	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzer(string(input), options.InputFile, options.Target)
+	requireIteratorReadiness(analyzed, options.InputFile)
+	mlirText, err := mlircodegen.GenerateWithTriple(analyzed.Program, targetDefinition.LLVMTriple)
 	if err != nil {
-		reportToolError("codegen", "%v", err)
+		reportPipelineError("codegen", err)
 		exitCLI(4)
 	}
 
@@ -772,7 +787,7 @@ func runEmitMLIRCommand(args []string) {
 			}
 		}
 		if err := toolchain.Verify(verifyPath); err != nil {
-			reportToolError("mlir", "%v", err)
+			reportPipelineError("mlir", err)
 			exitCLI(4)
 		}
 	}
@@ -793,6 +808,10 @@ func writeCompilerOutput(outputFile string, data []byte) error {
 	return os.WriteFile(outputFile, data, 0644)
 }
 
+// runBuildCommand validates entry and iterator prerequisites before selecting
+// a backend and producing target artifacts.
+// Rules: rules/compiler/compiler_pipeline.md — §§32–34;
+// rules/compiler/initialization.md — §20 Target entry contracts.
 func runBuildCommand(args []string) {
 	options, ok := parseBuildCommandOptions(args, hostCompilerTarget())
 	if !ok {
@@ -822,12 +841,13 @@ func runBuildCommand(args []string) {
 	if len(entryErrors) > 0 {
 		exitCLI(3)
 	}
+	requireIteratorReadiness(analyzed, options.InputFile)
 	llvmPath := ""
 	switch options.Pipeline {
 	case "llvm":
 		ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 		if err != nil {
-			reportToolError("codegen", "%v", err)
+			reportPipelineError("codegen", err)
 			exitCLI(4)
 		}
 		llvmPath = options.LLVMOutputFile
@@ -874,6 +894,10 @@ func runBuildCommand(args []string) {
 	}
 }
 
+// runMLIRBuildPipeline generates and verifies target MLIR before LLVM
+// translation, preserving structured analysis failures through build reporting.
+// Rules: rules/compiler/compiler_pipeline.md — §§2(8–9), 32–34;
+// rules/compiler/compiler_analysis.md — §58(3).
 func runMLIRBuildPipeline(program *ast.Program, triple string, options buildCommandOptions) (string, func()) {
 	cleanupPaths := []string{}
 	cleanup := func() {
@@ -884,7 +908,7 @@ func runMLIRBuildPipeline(program *ast.Program, triple string, options buildComm
 
 	mlirText, err := mlircodegen.GenerateWithTriple(program, triple)
 	if err != nil {
-		reportToolError("codegen", "%v", err)
+		reportPipelineError("codegen", err)
 		exitCLI(4)
 	}
 
@@ -920,11 +944,11 @@ func runMLIRBuildPipeline(program *ast.Program, triple string, options buildComm
 
 	toolchain := mlirtoolchain.NewToolchain(options.MLIRBin)
 	if err := toolchain.Verify(mlirPath); err != nil {
-		reportToolError("mlir", "%v", err)
+		reportPipelineError("mlir", err)
 		exitCLI(4)
 	}
 	if err := toolchain.TranslateToLLVMIR(mlirPath, llvmPath); err != nil {
-		reportToolError("mlir", "%v", err)
+		reportPipelineError("mlir", err)
 		exitCLI(4)
 	}
 	return llvmPath, cleanup

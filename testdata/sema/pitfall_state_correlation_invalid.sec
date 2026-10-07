@@ -1,0 +1,151 @@
+module state_correlation
+
+type Failure union error {
+    Abandoned(Task[int]),
+}
+
+fn Load() Result[int, Failure] { return Ok(1) }
+
+fn WrongBorrowed() void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None {
+        discard second.Ok()
+    }
+}
+
+fn WrongSome() void {
+    let first := Load()
+    let second := Load()
+    if first.OkRef is Some(value) {
+        discard second.Ok()
+    }
+}
+
+fn WrongElse() void {
+    let first := Load()
+    let second := Load()
+    if first.OkRef is None {} else {
+        discard second.Ok()
+    }
+}
+
+fn WrongExit() void {
+    let first := Load()
+    let second := Load()
+    if first.OkRef is None { return }
+    discard second.Ok()
+}
+
+fn WrongMatch() void {
+    let first := Load()
+    let second := Load()
+    match first.OkRef {
+        Some(value) => { discard second.Ok() }
+        None => {}
+    }
+}
+
+fn WrongVariant() void {
+    let first := Load()
+    let second := Load()
+    if first is Ok {
+        discard second.Ok()
+    }
+}
+
+fn WrongNegatedVariant() void {
+    let first := Load()
+    let second := Load()
+    if first is not Err {
+        discard second.Ok()
+    }
+}
+
+fn WrongErr(firstInput: Result[Task[int], Failure], secondInput: Result[Task[int], Failure]) void {
+    let first :<- firstInput
+    let second :<- secondInput
+    if first.OkRef is None {
+        discard second.Err()
+    }
+}
+
+fn ExpiredCheck(flag: bool) void {
+    let first := Load()
+    let second := Load()
+    let mut changed := flag
+    if first.ErrRef is None {
+        changed = false
+        discard second.Ok()
+    }
+}
+
+fn OppositeState() void {
+    let first := Load()
+    let second := Load()
+    if first.OkRef is None {
+        discard second.Ok()
+    }
+}
+
+fn UnrelatedOption(option: Option[int]) void {
+    let second := Load()
+    if option is Some(value) {
+        discard second.Ok()
+    }
+}
+
+fn MutableCheck() void {
+    let mut first := Load()
+    let second := Load()
+    if first.ErrRef is None {
+        discard second.Ok()
+    }
+}
+
+fn Disjunction(flag: bool) void {
+    let first := Load()
+    let second := Load()
+    if first is Ok || flag {
+        discard second.Ok()
+    }
+}
+
+fn Conjunction(flag: bool) void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None && flag { discard second.Ok() }
+}
+
+fn ConsumedCheck() void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None {
+        discard first.Ok()
+        discard second.Ok()
+    }
+}
+
+fn ScopeEnded() void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None {}
+    discard second.Ok()
+}
+
+fn WrongWhile() void {
+    let first := Load()
+    let second := Load()
+    while first.OkRef is not None {
+        discard second.Ok()
+        break
+    }
+}
+
+fn WrongRepeated() void {
+    let first := Load()
+    for i in 0..<2 {
+        let second := Load()
+        if first is Ok { discard second.Ok() }
+    }
+}

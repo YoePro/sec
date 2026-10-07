@@ -1,0 +1,7 @@
+module main
+fn Dead(values: ref int[]) void {
+    if false { discard values[values.Len] }
+    while false { discard values[values.Len] }
+    return
+    discard values[values.Len]
+}

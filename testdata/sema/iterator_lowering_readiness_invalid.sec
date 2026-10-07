@@ -1,0 +1,27 @@
+module main
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+fn Immutable() void {
+    let counter := Counter{}
+    for value in counter { discard value }
+}
+fn ReferenceBinding() void {
+    let mut counter := Counter{}
+    for ref value in counter { discard value }
+}
+fn InvalidBody() void {
+    let mut counter := Counter{}
+    for value in counter { missing() }
+}
+type Broken struct {}
+impl Broken implements Iterator[int] {}
+fn InvalidConformance() void {
+    let mut broken := Broken{}
+    for _ in broken { break }
+}
+fn Dead() void {
+    let mut counter := Counter{}
+    if false { for _ in counter { break } }
+}

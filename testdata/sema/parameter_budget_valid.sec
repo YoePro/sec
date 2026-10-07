@@ -1,0 +1,13 @@
+module main
+
+fn First(values: int[100]) int {
+    return values[0]
+}
+
+fn Second(values: int[100]) int {
+    return values[1]
+}
+
+fn Third(values: int[100]) int {
+    return values[2]
+}

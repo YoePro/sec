@@ -37,16 +37,19 @@ func DiagnoseStackBudget(budget *StackBudget, domain string, level StackMeasurem
 		File: source.File, Line: source.Line, Column: source.Column, EndLine: endLine, EndColumn: endColumn}
 	switch result {
 	case StackBudgetExactExcess:
+		diagnostic.ProofState = diagnostics.ProofInvalid
 		diagnostic.ID = diagnostics.StackBudgetExceeded
 		bytes, _ := required.Bytes()
 		diagnostic.Message = fmt.Sprintf("%s stack budget exceeded for domain %q: required %s B, available %s B", level, domain, bytes, available)
 		diagnostic.Help = "Reduce simultaneously live stack demand or revise the explicit stack budget under the applicable target/project contract."
 	case StackBudgetUpperUnproven:
+		diagnostic.ProofState = diagnostics.ProofUnproven
 		diagnostic.ID = diagnostics.StackBudgetProofUnavailable
 		bytes, _ := required.Bytes()
 		diagnostic.Message = fmt.Sprintf("cannot prove %s stack fits budget for domain %q: verified upper bound %s B, available %s B", level, domain, bytes, available)
 		diagnostic.Help = "An upper bound above the budget does not prove actual excess or inevitable overflow. Establish a tighter verified bound at the budget's authoritative measurement level or revise the explicit contract."
 	case StackBudgetUnknown:
+		diagnostic.ProofState = diagnostics.ProofUnproven
 		diagnostic.ID = diagnostics.StackBudgetProofUnavailable
 		diagnostic.Message = fmt.Sprintf("finite %s stack bound could not be proven for domain %q: required budget <= %s B", level, domain, available)
 		diagnostic.Help = "The active budget requires a verified finite bound. Unknown does not prove stack overflow; supply the missing frame, depth or callable/runtime contract evidence."
@@ -60,6 +63,7 @@ func DiagnoseStackBudget(budget *StackBudget, domain string, level StackMeasurem
 			}
 		}
 	case StackBudgetUnbounded:
+		diagnostic.ProofState = diagnostics.ProofInvalid
 		diagnostic.ID = diagnostics.StackBudgetUnboundedDemand
 		diagnostic.Message = fmt.Sprintf("proven unbounded %s stack demand cannot satisfy finite budget for domain %q: available %s B", level, domain, available)
 		diagnostic.Help = "Establish a finite bound on the reachable execution structure under the active execution model. Increasing a finite byte budget cannot satisfy proven unbounded demand."

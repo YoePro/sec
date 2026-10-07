@@ -303,7 +303,8 @@ func intervalEvidence(lower, upper intervalBound) []PitfallEvidence {
 
 // reportTautologicalInterval reports a chain proven true. suggestMembership is set only
 // when the whole condition is the one bound pair, so the replacement covers
-// exactly the written condition.
+// exactly the written condition. Constant simplification carries separate safety proof.
+// Rules: rules/analysis/pitfall_analysis.md — "Tautological interval conditions", "Fix safety".
 func (b *pitfallBuilder) reportTautologicalInterval(condition *ast.InfixExpression, lower, upper intervalBound, suggestMembership bool) {
 	finding := PitfallFinding{
 		Rule:           PitfallTautologicalInterval,
@@ -330,9 +331,13 @@ func (b *pitfallBuilder) reportTautologicalInterval(condition *ast.InfixExpressi
 			}}
 		}
 	}
+	finding.Actions = append(finding.Actions, b.constantBooleanAction(condition, PitfallTautologicalInterval, "true"))
 	b.add(finding)
 }
 
+// reportImpossibleInterval preserves its boolean proof while requiring independent
+// evaluation-safety evidence before offering an automatic constant replacement.
+// Rules: rules/analysis/pitfall_analysis.md — "Tautological interval conditions", "Fix safety".
 func (b *pitfallBuilder) reportImpossibleInterval(condition *ast.InfixExpression, lower, upper intervalBound) {
 	b.add(PitfallFinding{
 		Rule:           PitfallImpossibleInterval,
@@ -346,6 +351,7 @@ func (b *pitfallBuilder) reportImpossibleInterval(condition *ast.InfixExpression
 			Source:   condition.Token,
 		}),
 		OwningRule: "impossible-interval-condition",
+		Actions:    []PitfallSuggestedAction{b.constantBooleanAction(condition, PitfallImpossibleInterval, "false")},
 	})
 }
 

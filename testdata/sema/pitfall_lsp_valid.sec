@@ -1,0 +1,12 @@
+module main
+fn Direct(flag: bool) bool { return flag == true }
+fn Tautology(value: int) bool { return value >= 0 || value <= 10 }
+fn Grouped(value: int) bool { return (value > 10) && (value < 0) }
+fn Unicode(värde𐐀: int) bool { return värde𐐀 > 10 && värde𐐀 < 0 }
+fn Intent(items: ref int[]) void {
+    for i in 1u..<items.Len { discard items[i] }
+}
+fn Width(count: uint) bool { return count >= 0 }
+fn Read(flag: bool) bool { return flag }
+fn Call(flag: bool) bool { return Read(flag) == true }
+fn Converted(flag: bool) bool { return bool(flag == true) }

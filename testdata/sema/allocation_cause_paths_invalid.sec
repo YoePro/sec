@@ -1,0 +1,20 @@
+module main
+extern "Sec" fn Foreign() void
+fn Allocate() void { let arena := Arena.WithCapacity(64u) }
+fn Middle() void { Allocate() }
+@noAlloc
+fn Root() void { Middle() }
+@noAlloc
+fn UnknownRoot() void { Foreign() }
+@noAlloc
+fn DeferredRoot() void { defer { Middle() } }
+@noAlloc
+fn RecursiveRoot(value: int) void {
+    if value > 0 { RecursiveRoot(value - 1) } else { Middle() }
+}
+@noAlloc
+fn Spawner() void {
+    let worker := spawn Allocate()
+    detach worker
+}
+fn main() void { Root() }

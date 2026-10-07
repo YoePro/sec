@@ -65,15 +65,6 @@ func (b *pitfallBuilder) withIndexGuards(guards []pitfallIndexGuard, walk func()
 	b.activeIndexGuards = outer
 }
 
-func (b *pitfallBuilder) indexGuarded(indexIdentity, collectionIdentity string) bool {
-	for _, guard := range b.activeIndexGuards {
-		if guard.indexIdentity == indexIdentity && guard.collectionIdentity == collectionIdentity {
-			return true
-		}
-	}
-	return false
-}
-
 // pitfallResolvedIndex is one `collection[index]` access whose collection and
 // index both resolve to canonical identities.
 type pitfallResolvedIndex struct {
@@ -82,31 +73,9 @@ type pitfallResolvedIndex struct {
 	collectionIdentity string
 }
 
-// straightLineIndexes returns the resolved index accesses executed directly by
-// the block, without descending into nested control flow whose own guards
-// would have to be correlated separately.
-func (b *pitfallBuilder) straightLineIndexes(block *ast.BlockStatement) []pitfallResolvedIndex {
-	result := []pitfallResolvedIndex{}
-	if block == nil {
-		return result
-	}
-	for _, statement := range block.Statements {
-		if !pitfallStraightLineStatement(statement) {
-			continue
-		}
-		for _, access := range indexesInStatement(statement) {
-			collection, collectionOK := b.expressionIdentity(access.Left)
-			index, indexOK := b.expressionIdentity(access.Index)
-			if collectionOK && indexOK {
-				result = append(result, pitfallResolvedIndex{access: access, indexIdentity: index, collectionIdentity: collection})
-			}
-		}
-	}
-	return result
-}
-
 // inspectWrongGuardSubject correlates a strict `a < X.Len` guard with the
-// accesses it encloses. When no access in the guarded block uses the guarded
+// reachable accesses it encloses, including nested control flow. When no
+// access in the guarded block uses the guarded
 // pair, while another resolved access `Y[b]` is protected by neither this
 // guard nor any enclosing one, the check most likely tests the wrong value,
 // the copy/paste shape of `if leftIndex < left.Len { right[rightIndex] }`.
@@ -121,7 +90,7 @@ func (b *pitfallBuilder) inspectWrongGuardSubject(statement *ast.IfStatement, gu
 	if statement == nil || len(guards) == 0 {
 		return
 	}
-	accesses := b.straightLineIndexes(statement.Consequence)
+	accesses := b.guardedAccesses(statement.Consequence, append(append([]pitfallIndexGuard(nil), b.activeIndexGuards...), guards...), guards)
 	for _, access := range accesses {
 		for _, guard := range guards {
 			if access.indexIdentity == guard.indexIdentity && access.collectionIdentity == guard.collectionIdentity {
@@ -130,7 +99,7 @@ func (b *pitfallBuilder) inspectWrongGuardSubject(statement *ast.IfStatement, gu
 		}
 	}
 	for _, access := range accesses {
-		if b.indexGuarded(access.indexIdentity, access.collectionIdentity) {
+		if len(access.witnesses) == 0 || guardCoversAccess(access.guards, access.pitfallResolvedIndex) {
 			continue
 		}
 		covered := false
@@ -142,7 +111,7 @@ func (b *pitfallBuilder) inspectWrongGuardSubject(statement *ast.IfStatement, gu
 		if covered {
 			continue
 		}
-		guard := guards[0]
+		guard := access.witnesses[0]
 		b.add(PitfallFinding{
 			Rule:           PitfallWrongGuardSubject,
 			Family:         PitfallControlFlow,
@@ -165,7 +134,8 @@ func (b *pitfallBuilder) inspectWrongGuardSubject(statement *ast.IfStatement, gu
 
 // inspectCheckWithoutTransfer recognizes `if index >= X.Len { ... }` (or a
 // strict `>` rejection) whose branch neither leaves the path nor assigns the
-// index, directly followed by `X[index]`. The apparent safety check does not
+// index, followed on a reachable unchanged path by `X[index]`. The apparent
+// safety check does not
 // protect the access. The owning bounds analysis decides validity; no control
 // transfer is suggested because the intended one cannot be inferred.
 //
@@ -175,12 +145,25 @@ func (b *pitfallBuilder) inspectCheckWithoutTransfer(block *ast.BlockStatement) 
 	if block == nil {
 		return
 	}
+	entryGuards := append([]pitfallIndexGuard(nil), b.activeIndexGuards...)
 	for statementIndex := 0; statementIndex+1 < len(block.Statements); statementIndex++ {
+		if statementIndex > 0 {
+			previous := block.Statements[statementIndex-1]
+			if !b.analyzer.statementCanFallThrough(previous) {
+				break
+			}
+			entryGuards = b.survivingIndexGuards(entryGuards, previous)
+			entryGuards = append(entryGuards, b.continuationIndexGuards(previous)...)
+		}
 		conditional, ok := block.Statements[statementIndex].(*ast.IfStatement)
 		if !ok || conditional.Alternative != nil || conditional.Consequence == nil || len(conditional.Consequence.Statements) == 0 {
 			continue
 		}
-		if pitfallBlockDefinitelyExits(conditional.Consequence) || pitfallBlockTerminates(conditional.Consequence) {
+		flow, resolved := b.analyzer.ResolvedIfFlowOf(conditional)
+		if resolved && flow.TruePathExecution == ResolvedIfPathNever {
+			continue
+		}
+		if !b.analyzer.blockCanFallThrough(conditional.Consequence) {
 			continue
 		}
 		comparison, ok := conditional.Condition.(*ast.InfixExpression)
@@ -199,14 +182,13 @@ func (b *pitfallBuilder) inspectCheckWithoutTransfer(block *ast.BlockStatement) 
 		if !ok || b.blockAssignsIdentity(conditional.Consequence, boundary.indexIdentity) {
 			continue
 		}
-		next := block.Statements[statementIndex+1]
-		if !pitfallStraightLineStatement(next) {
+		witness := pitfallIndexGuard{indexIdentity: boundary.indexIdentity, collectionIdentity: boundary.collectionIdentity, source: comparison.Token}
+		if !b.guardSurvivesStatement(witness, conditional) {
 			continue
 		}
-		for _, access := range indexesInStatement(next) {
-			collection, collectionOK := b.expressionIdentity(access.Left)
-			index, indexOK := b.expressionIdentity(access.Index)
-			if !collectionOK || !indexOK || collection != boundary.collectionIdentity || index != boundary.indexIdentity {
+		suffix := &ast.BlockStatement{Statements: block.Statements[statementIndex+1:]}
+		for _, access := range b.guardedAccesses(suffix, entryGuards, []pitfallIndexGuard{witness}) {
+			if len(access.witnesses) == 0 || guardCoversAccess(access.guards, access.pitfallResolvedIndex) || access.collectionIdentity != boundary.collectionIdentity || access.indexIdentity != boundary.indexIdentity {
 				continue
 			}
 			b.add(PitfallFinding{
@@ -214,30 +196,16 @@ func (b *pitfallBuilder) inspectCheckWithoutTransfer(block *ast.BlockStatement) 
 				Family:         PitfallControlFlow,
 				Classification: PitfallLikelyMistake,
 				Confidence:     PitfallConfidenceHigh,
-				Subject:        PitfallSubject{Expression: access.String(), Source: access.Token},
+				Subject:        PitfallSubject{Expression: access.access.String(), Source: access.access.Token},
 				EvidenceFor: []PitfallEvidence{
 					{Strength: PitfallEvidenceStrong, Fact: "the check " + comparison.String() + " detects an out-of-range index", Source: comparison.Token},
 					{Strength: PitfallEvidenceProof, Fact: "the checking branch neither leaves the path nor assigns the index", Source: conditional.Token},
-					{Strength: PitfallEvidenceProof, Fact: "the following statement indexes the same collection with the same index", Source: access.Token},
+					{Strength: PitfallEvidenceProof, Fact: "a later reachable access uses the same unchanged collection and index without a protecting guard", Source: access.access.Token},
 				},
 				OwningRule: "bounds",
 			})
 		}
 	}
-}
-
-// pitfallBlockTerminates recognizes a direct panic or checked unreachable.
-func pitfallBlockTerminates(block *ast.BlockStatement) bool {
-	if block == nil {
-		return false
-	}
-	for _, statement := range block.Statements {
-		switch statement.(type) {
-		case *ast.PanicStatement, *ast.UnreachableStatement:
-			return true
-		}
-	}
-	return false
 }
 
 // blockAssignsIdentity reports whether block may establish a new value for

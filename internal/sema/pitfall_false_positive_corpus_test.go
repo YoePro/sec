@@ -17,7 +17,7 @@ import (
 // "Required bounds and range tests", "Required collection-relation tests",
 // "Evidence against a finding", "FFI pitfall analysis", and "Analysis states".
 func TestPitfallFalsePositiveCorpus(t *testing.T) {
-	source, err := os.ReadFile("../../testdata/sema/pitfall_false_positive_corpus_valid.sec")
+	source, err := os.ReadFile("../../testdata/sema/pitfall_false_positive_corpus_invalid.sec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,9 +60,7 @@ func TestPitfallFalsePositiveCorpus(t *testing.T) {
 				t.Fatal(errs)
 			}
 			analyzer := NewAnalyzerWithDepth(depth)
-			if errs := analyzer.Analyze(program); len(errs) != 0 {
-				t.Fatal(errs)
-			}
+			assertPitfallBoundsErrorCount(t, analyzer.Analyze(program), 1)
 			analysis := analyzer.PitfallAnalysis()
 			if analysis.Coverage().SkippedUnits != 0 {
 				t.Fatal("corpus not fully inspected", analysis.Coverage())
@@ -147,9 +145,7 @@ func TestPitfallFalsePositiveCorpus(t *testing.T) {
 			}
 			// Reuse must not retain a prior suppression or publication order.
 			before := analysis.Results()
-			if errs := analyzer.Analyze(program); len(errs) != 0 {
-				t.Fatal(errs)
-			}
+			assertPitfallBoundsErrorCount(t, analyzer.Analyze(program), 1)
 			if !reflect.DeepEqual(before, analyzer.PitfallAnalysis().Results()) {
 				t.Fatal("corpus results changed on reanalysis")
 			}

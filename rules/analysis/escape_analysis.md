@@ -1,15 +1,31 @@
 # Escape Analysis
 
-## Status
+- **Status:** Normative
+- **Created:** Legacy rulebook; exact original creation date not established
+- **Last updated:** 2026-10-07
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/analysis/escape_analysis.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-10-07`
+- **Implementation governance:** `governance/analysis.yaml` (`sema.escape-analysis`)
+- **Related rulebooks:** `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/copy_move.md`, `rules/memory/reference_model.md`, `rules/memory/storage.md`, `rules/memory/layout.md`, `rules/memory/destruction.md`, `rules/declarations/functions.md`, `rules/declarations/lambda-functions.md`, `rules/analysis/closure_analysis.md`, `rules/analysis/parameter_usage_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/effect_analysis.md`, `rules/analysis/stack_analysis.md`, `rules/platform/ffi.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/incremental_compilation.md`
 
-Normative compiler-analysis rulebook for Sec 0.1.
+---
+
+## Status and authority
+
+This is the normative compiler-analysis rulebook for Sec 0.1 escape analysis.
 
 This rulebook defines the semantic purpose, analysis domain, dataflow model,
-interprocedural summaries, conservative behavior, consumers, diagnostics
+interprocedural summaries, conservative behavior, consumers, diagnostic
 requirements, and completion criteria of Sec escape analysis.
 
-Mutable implementation status does not belong in this rulebook. It is governed
-by the repository-level `implementation-status.yaml` ledger.
+Mutable implementation status belongs to `sema.escape-analysis` in
+`governance/analysis.yaml`.
+
+Escape analysis consumes canonical ownership, borrowing, storage, reference,
+callable, and FFI facts. It does not redefine their source syntax or legality.
 
 ---
 
@@ -166,6 +182,19 @@ elision, or another semantics-preserving lowering.
 Escape analysis must not reinterpret such a transfer as implicit storage
 promotion.
 
+A non-reference return is already an ownership/result boundary under the
+canonical copy/move rules. Therefore `return value` may transfer a move-only
+owned local to the caller. The equivalent explicit documentation form
+`return <-value` is permitted but not required.
+
+Escape analysis must classify the resolved return as `ValueTransfer` regardless
+of whether the optional return marker was written.
+
+The source local's `Automatic` storage does not thereby become caller storage.
+The returned value may be lowered through caller result storage, move elision,
+SSA forwarding, or another semantics-preserving mechanism. This preserves the
+distinction between owned-value escape and physical source-storage escape.
+
 ---
 
 # No implicit escape promotion
@@ -261,6 +290,9 @@ Owned-value escape may be ordinary and valid.
 
 It does not imply that source storage must escape.
 
+A non-reference return is already an ownership/result boundary, so
+`return value` and the optional `return <-value` are the same `ValueTransfer`.
+
 ## SafeReference
 
 A safe reference becomes usable outside the context in which its current
@@ -302,7 +334,7 @@ Raw-pointer escape facts remain relevant to:
 A capturing callable may carry an environment whose dependencies escape with the
 callable value.
 
-The exact capture model is refined by `closure_analysis.md`.
+The exact capture model is refined by `rules/analysis/closure_analysis.md`.
 
 Escape analysis must nevertheless be able to represent environment dependencies
 and their movement.
@@ -373,6 +405,10 @@ local value.
 
 Lifetime/storage validation determines that the origin cannot satisfy caller
 use.
+
+`int value := 10` is valid Sec 0.1 declaration syntax and is preserved here.
+Any Sec 0.2 declaration-syntax migration belongs to the rulebooks that define
+Sec 0.2.
 
 ## AddressEscape
 
@@ -497,20 +533,38 @@ A lexical scope boundary does not by itself define all escape behavior.
 For example:
 
 ```sec
-Inspect(ref value)
+fn Inspect(value: ref Value) void {
+    ...
+}
+
+Inspect(value)
 ```
 
 with a proven non-retaining call contract represents call-duration use, not
-retention beyond the call.
+retention beyond the call: a call-bounded shared borrow with no escape beyond
+the call.
 
 Conversely:
 
 ```sec
-Register(ref value)
+fn Register(value: ref Value) void {
+    ...
+}
+
+Register(value)
 ```
 
 with a retaining contract may create an escape even though the source and call
-occur in the same lexical scope.
+occur in the same lexical scope: the borrowed dependency may escape beyond call
+return.
+
+Sec 0.1 borrowed parameters create the required call-bounded borrow from a
+compatible caller Place without a separate `ref` or `ref mut` marker at the
+call site.
+
+Escape analysis therefore consumes the resolved parameter borrow mode and
+retention contract. It must not infer borrow mode from obsolete call-site
+syntax.
 
 Escape is determined by future usability and retention requirements, not merely
 by syntax nesting.
@@ -553,6 +607,77 @@ Retention behavior is unresolved or unavailable.
 
 Unknown retention is conservative for reference-like/address-like/callable
 arguments unless another explicit contract supplies stronger guarantees.
+
+---
+
+# Call-boundary semantic classification
+
+Escape analysis consumes the resolved call contract.
+
+For a borrowed parameter:
+
+```sec
+fn Inspect(value: ref Buffer) void {
+    ...
+}
+
+Inspect(buffer)
+```
+
+the call establishes borrowed authority without transferring ownership.
+
+For a mutable borrowed parameter:
+
+```sec
+fn Modify(value: ref mut Buffer) void {
+    ...
+}
+
+Modify(buffer)
+```
+
+the call establishes temporary exclusive borrowed authority without transferring
+ownership.
+
+For an ordinary by-value parameter, copy or ownership transfer follows the
+concrete type's canonical copy/move classification.
+
+For a reusable move-only caller Place, transfer is explicit:
+
+```sec
+Process(<-resource)
+```
+
+For an explicit consuming parameter:
+
+```sec
+fn Transform(-> data: BigArray) BigArray {
+    ...
+}
+
+Transform(<-data)
+```
+
+the resolved call contract is ownership transfer even when the concrete type
+would otherwise be copyable.
+
+Fresh temporaries may satisfy consuming transfer without a redundant `<-`
+marker.
+
+Escape analysis must record the resolved semantic relation:
+
+```text
+borrow
+mutable borrow
+copy
+ownership transfer
+retention
+```
+
+rather than using source-token presence as the escape model.
+
+The escape summary must remain valid after source-level syntax has been lowered
+to Semantic IR.
 
 ---
 
@@ -848,6 +973,17 @@ Escape analysis must not infer copy versus move merely from assignment syntax.
 
 It consumes ownership/copy-move classification.
 
+Escape analysis must never decide that a value is movable merely because a flow
+would be easier to represent as `ValueTransfer`.
+
+Likewise, it must not reinterpret an ordinary by-value call as a borrow or
+reinterpret a borrow as ownership transfer to avoid an escape/lifetime failure.
+
+When ownership or borrow legality rejects the operation, escape facts may still
+be retained for diagnostics, but escape analysis must not repair the operation
+through hidden copy, heap promotion, storage substitution, or contract
+weakening.
+
 ## Copy
 
 Copy creates a new value according to the type's copy semantics.
@@ -963,6 +1099,11 @@ or an equivalent symbolic result.
 
 It must not claim that the caller receives a borrow into the callee's local
 storage merely because the source variable was local.
+
+A non-reference return is already an ownership/result boundary under the
+canonical copy/move rules. `return buffer` may transfer a move-only owned local;
+the explicit `return <-buffer` is permitted but not required, and both are
+classified as `ValueTransfer`.
 
 ---
 
@@ -1183,7 +1324,7 @@ summaries of `A` and `B`.
 When the target set is unknown, the compiler uses the function/call contract if
 one exists and otherwise falls back conservatively.
 
-The full callable-target/capture model is refined by `closure_analysis.md`.
+The full callable-target/capture model is refined by `rules/analysis/closure_analysis.md`.
 
 Escape analysis must remain sound before that additional precision exists.
 
@@ -1211,7 +1352,7 @@ If the closure is returned, retained, stored into an escaping carrier, or
 transferred to another execution context, its contained dependencies escape
 transitively.
 
-`closure_analysis.md` owns detailed capture mode and callable-flow precision.
+`rules/analysis/closure_analysis.md` owns detailed capture mode and callable-flow precision.
 
 Escape analysis owns the movement/retention facts once those dependencies are
 known.
@@ -1272,6 +1413,12 @@ Unknown
 The exact source syntax and FFI declaration format are defined by `rules/platform/ffi.md`.
 
 Unknown foreign retention is conservative.
+
+Escape analysis consumes the canonical resolved FFI retention/ownership
+contract.
+
+It must not infer foreign retention from parameter names, pointer type alone,
+foreign symbol name, library name, or calling convention alone.
 
 Safe borrowed values must not rely on an unknown foreign lifetime.
 
@@ -1646,6 +1793,19 @@ selection/invalidation.
 A compiler must not reuse a summary across plans when the relevant escape
 behavior differs.
 
+Escape analysis runs for the resolved `CompilationPlan`.
+
+Project, Target, Variant, and project-configuration precedence are owned by
+`rules/projects/projects.md`. Escape analysis must not invent a second
+project-configuration syntax.
+
+A persisted escape summary may be reused only when its schema, semantic
+dependencies, and CompilationPlan-sensitive compatibility requirements remain
+valid under the incremental-compilation rules.
+
+Missing or incompatible metadata falls back conservatively rather than being
+accepted as proof of non-escape.
+
 ---
 
 # Summary invalidation
@@ -1769,9 +1929,21 @@ escape.unknown-retention
 escape.analysis-precision-exhausted
 ```
 
-Exact stable diagnostic IDs follow the central diagnostics governance.
+These strings are stable escape-analysis categories unless and until a
+registered diagnostic definition explicitly uses one as its symbolic diagnostic
+name.
 
-An existing ID must not be reused for a different semantic meaning.
+Every emitted primary compiler diagnostic must use a stable registered
+diagnostic ID governed by `rules/tooling/diagnostics.md`.
+
+Escape-analysis categories are not automatically diagnostic IDs.
+
+Diagnostic severity, configurability, notes, help, related locations, structured
+fixes, CLI transport, JSON transport, and LSP diagnostic identity are owned by
+`rules/tooling/diagnostics.md`.
+
+An existing published diagnostic ID must never be repurposed merely because an
+escape category appears similar.
 
 Precision-exhaustion reporting is normally informational/debug-oriented rather
 than a default user warning.
@@ -1800,6 +1972,27 @@ reference escapes
 ```
 
 when the compiler knows the dependency chain.
+
+When the escape depends on an earlier borrow, transfer, capture, storage
+placement, or retaining call, that source location should be transported as a
+related location when available.
+
+Escape diagnostics should expose semantic facts such as:
+
+```text
+origin Place
+origin storage domain
+escape sink
+escape mode
+retention contract
+backing-storage dependency
+cause path
+```
+
+rather than forcing the renderer or LSP to reconstruct them from English text.
+
+The analysis must not emit a misleading concrete lifetime claim when the actual
+reason for rejection is conservative UnknownEscape or UnknownRetention.
 
 ---
 
@@ -1864,7 +2057,7 @@ The analysis contract must not prevent them.
 
 # Parameter-usage analysis consumer
 
-`parameter_usage_analysis.md` consumes escape facts.
+`rules/analysis/parameter_usage_analysis.md` consumes escape facts.
 
 For example, facts such as:
 
@@ -1881,11 +2074,29 @@ place of an unnecessarily large by-value parameter.
 Escape analysis must not itself rewrite function signatures or issue those
 higher-level ergonomic recommendations.
 
+Revision 2.0 parameter-usage analysis consumes semantic ownership-transfer facts
+rather than source move-token presence.
+
+Escape summaries therefore expose semantic facts such as:
+
+```text
+NoEscape
+NoRetention
+Returned
+Retained
+OwnershipTransferred
+```
+
+and must not encode `caller wrote <-` as the inter-analysis contract.
+
+Source syntax remains available separately for diagnostics and code actions when
+needed.
+
 ---
 
 # Closure-analysis consumer
 
-`closure_analysis.md` consumes:
+`rules/analysis/closure_analysis.md` consumes:
 
 - callable-environment dependencies;
 - whether the closure escapes;
@@ -1980,40 +2191,84 @@ architecture.
 
 # Governance
 
-Normative behavior remains in this rulebook.
+Normative escape-analysis behavior remains in this rulebook.
 
-Mutable implementation state belongs in:
+Mutable implementation status belongs to:
 
 ```text
-implementation-status.yaml
+governance/analysis.yaml
 ```
 
-The implementation ledger should track an integration entry for escape analysis,
-for example an identifier equivalent to:
+under:
 
 ```text
 sema.escape-analysis
 ```
 
-The ledger may record:
+That integration should track granular implementation capabilities including at
+least:
 
 ```text
-status
-integrated date
-summary
-rules
-code
-tests
-implemented
-remaining
-verification
+escape subject classification
+escape destination classification
+escape mode classification
+canonical Place provenance
+disjoint projection precision
+view/backing-storage dependencies
+aggregate/container propagation
+current versus historical provenance
+direct-call summaries
+recursive summary fixed points
+callable-target integration
+closure-environment integration
+borrow retention
+ownership-transfer escape
+return transfer
+task/thread transfer
+FFI retention
+static/TLS storage escape
+separate-compilation summaries
+incremental invalidation
+diagnostic evidence
+LSP integration
 ```
 
-This rulebook must not contain a quickly aging `Current implementation status`
-section.
+Implementation state owned by another subsystem remains in that subsystem's
+governance entry.
 
-Stable implementation requirements and completion criteria remain normative
-here.
+In particular:
+
+```text
+ownership and copy/move legality
+    owning memory/declaration governance integration
+
+borrowing legality
+    owning memory governance integration
+
+diagnostic registry and transport
+    governance/errors_diagnostics.yaml
+
+closure capture/callable-flow implementation
+    sema.closure-analysis
+
+parameter-demand implementation
+    sema.parameter-usage-analysis
+
+call graph implementation
+    analysis.call-graph or its current canonical integration
+
+FFI contract implementation
+    owning FFI governance integration
+
+LSP presentation
+    governance/tooling_lsp.yaml
+
+incremental summary compatibility/invalidation
+    owning incremental-compilation governance integration
+```
+
+`sema.escape-analysis` may depend on those integrations but must not duplicate
+their mutable implementation state.
 
 ---
 
@@ -2057,7 +2312,7 @@ function-value calls conservatively
 ```
 
 The detailed callable-flow precision of function values may be provided later by
-`closure_analysis.md`, but escape behavior must remain conservative and sound
+`rules/analysis/closure_analysis.md`, but escape behavior must remain conservative and sound
 without it.
 
 ---
@@ -2245,6 +2500,28 @@ integration tests.
 
 ---
 
+# Revision 2.0 ownership and borrow-call test requirements
+
+The test suite must include at least:
+
+```text
+shared borrowed parameter called without explicit call-site ref
+mutable borrowed parameter called without explicit call-site ref mut
+borrowed non-retaining call remains call-local
+borrowed retaining call produces retention escape
+reusable move-only caller Place transfer uses canonical <-
+fresh temporary consumption remains marker-free
+explicit -> consuming parameter yields ownership-transfer escape
+return value yields ValueTransfer without requiring <-
+return <-value yields equivalent escape facts when legal
+owned return does not imply physical source-storage escape
+escape summary stores semantic ownership transfer rather than source-token presence
+escape category identity remains distinct from registered diagnostic ID
+unknown retention diagnostic reports uncertainty rather than invented concrete lifetime
+```
+
+---
+
 # Completion criteria
 
 Escape analysis is complete for Sec 0.1 when all applicable conditions below are
@@ -2372,6 +2649,6 @@ another's semantic models.
 Normative Sec escape analysis runs on Semantic IR before Sec MLIR lowering.
 Later backend escape/alias analyses do not replace it.
 
-Mutable implementation status is governed by implementation-status.yaml rather
-than this normative rulebook.
+Mutable implementation status is governed by `sema.escape-analysis` in
+`governance/analysis.yaml` rather than by this normative rulebook.
 ```

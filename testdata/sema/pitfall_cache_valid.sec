@@ -1,0 +1,7 @@
+module pitfall_cache
+fn Stable(flag: bool) bool { return flag == true }
+fn Loop(items: ref int[]) void { for i in 0u..<items.Len { discard items[i] } }
+fn Final(items: ref int[], flag: bool) int { if items.Len > 0u { return items[items.Len - 1u] }
+    return 0
+}
+fn Other(flag: bool) bool { return flag == false }

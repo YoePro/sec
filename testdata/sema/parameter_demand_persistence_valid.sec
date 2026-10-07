@@ -1,0 +1,48 @@
+module main
+
+type Pair struct {
+    first: int,
+    second: int,
+}
+
+fn First(pair: ref Pair) void {
+    discard pair.first
+}
+
+fn Write(pair: ref mut Pair, value: int) void {
+    pair.second = value
+}
+
+fn Forward(pair: ref Pair) void {
+    First(pair)
+}
+
+fn ForwardWrite(pair: ref mut Pair, value: int) void {
+    Write(pair, value)
+}
+
+impl Pair {
+    static fn Scalar(value: int) void {
+        let field := value
+    }
+
+    fn Read() void {
+        let field := self.first
+    }
+}
+
+fn ForwardReceiver(pair: ref Pair) void {
+    pair.Read()
+}
+
+fn ForwardStatic(value: int) void {
+    Pair.Scalar(value)
+}
+
+fn Indexed(values: ref int[], index: uint) void {
+    let value := values[index]
+}
+
+fn ForwardIndexed(values: ref int[], index: uint) void {
+    Indexed(values, index)
+}

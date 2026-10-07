@@ -84,7 +84,7 @@ func TestAnalyseCLI(t *testing.T) {
 		{name: "explicit all", args: []string{"--all", advisory}, code: 0, want: []string{"results: 0 errors, 0 unproven, 0 warnings, 1 advisory"}},
 		{
 			name: "proven invalidity stays an error", args: []string{invalid}, code: 3,
-			want: []string{"error pitfall.bounds.inclusive-length-index at " + invalid + ":5:", "(proven-invalid, proven, owning rule bounds)", "results: 1 errors,"},
+			want: []string{"S1134", "Invalid:", "pitfall.bounds.inclusive-length-index (proven-invalid)", "Suggested edit: use the canonical half-open range"},
 		},
 		{name: "explicit target", args: []string{"--target", "linux-arm64", advisory}, code: 0, want: []string{"target linux-arm64)"}},
 		{name: "no inputs", args: []string{"--all"}, code: 1, want: []string{"analyse requires at least one"}},

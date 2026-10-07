@@ -11,7 +11,7 @@ import (
 	"sec/internal/lexer"
 )
 
-const callGraphCheckpointVersion = 2
+const callGraphCheckpointVersion = 3
 
 type graphCheckpoint struct {
 	Format  string
@@ -228,7 +228,7 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 			return false
 		}
 		switch site.Dispatch {
-		case CallDispatchGenerated, CallDispatchDirect, CallDispatchStaticMethod, CallDispatchFunctionValue, CallDispatchClosure, CallDispatchForeign:
+		case CallDispatchInterface, CallDispatchGenerated, CallDispatchDirect, CallDispatchStaticMethod, CallDispatchFunctionValue, CallDispatchClosure, CallDispatchForeign:
 		default:
 			return false
 		}
@@ -259,6 +259,16 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 		}
 		if len(covered) != len(targets) {
 			return false
+		}
+		if contract := site.TargetSet.Contract; contract != nil {
+			if !site.TargetSet.HasOpenContract || site.TargetSet.IsClosed || contract.ID != site.TargetSet.OpenContract || !validGraphCallableContract(contract, graph.scope) {
+				return false
+			}
+			for _, parameter := range contract.Parameters {
+				if parameter.TypeIdentity == "" {
+					return false
+				}
+			}
 		}
 		if site.TargetSet.IsClosed && (len(targets) == 0 || site.TargetSet.HasOpenContract || site.TargetSet.OpenContract != "") {
 			return false

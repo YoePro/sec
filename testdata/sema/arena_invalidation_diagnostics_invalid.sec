@@ -1,0 +1,58 @@
+module main
+
+fn ResetDeferred() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](16u)
+    defer { discard values[0] }
+    mem.Reset()
+    discard values[0]
+    return Ok()
+}
+
+fn ReleaseDeferred() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](16u)
+    defer { discard values[0] }
+    mem.Release()
+    let later := try mem.Alloc[byte](1u)
+    discard values[0]
+    return Ok()
+}
+
+fn ResetBorrow() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](16u)
+    let dependent := ref values
+    mem.Reset()
+    discard dependent
+    return Ok()
+}
+
+fn ReleaseAfterMove() Result[void, AllocationError] {
+    let mut original: Arena := Arena {}
+    let values := try original.Alloc[byte](16u)
+    defer { discard values[0] }
+    let mut moved :<- original
+    moved.Release()
+    return Ok()
+}
+
+fn MultipleDependencies() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let first := try mem.Alloc[byte](16u)
+    let second := try mem.Alloc[byte](16u)
+    defer { discard first[0] }
+    defer { discard second[0] }
+    mem.Reset()
+    return Ok()
+}
+
+fn ResetAfterMove() Result[void, AllocationError] {
+    let mut original: Arena := Arena {}
+    let values := try original.Alloc[byte](16u)
+    let dependent := ref values
+    let mut moved :<- original
+    moved.Reset()
+    discard dependent
+    return Ok()
+}

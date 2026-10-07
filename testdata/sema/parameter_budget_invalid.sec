@@ -1,0 +1,6 @@
+module main
+
+fn Invalid(values: int[100]) int {
+    let flag: bool := 5
+    return values[0]
+}

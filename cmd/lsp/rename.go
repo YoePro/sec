@@ -48,7 +48,7 @@ func resolveRenameTarget(uri string, text string, pos position, overlay sourceOv
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 	if _, compilerKnown := analyzer.CompilerKnownMemberAt(use.File, use.Line, use.Column); compilerKnown {
 		return renameTarget{}, fmt.Errorf("%s is a compiler-known member and cannot be renamed", use.Lexeme)

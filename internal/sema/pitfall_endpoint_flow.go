@@ -84,6 +84,17 @@ func (s *pitfallEndpointScan) callMayChangeLength(call *ast.CallExpression) bool
 // collection length", "Reachability", "Guards participate in pitfall reasoning";
 // rules/control-flow/flowcontrol_for.md — §§12, 23, 25–26, 30–31.
 func (b *pitfallBuilder) inspectInclusiveLengthLoop(loop *ast.ForStatement) {
+	if !b.boundsOnly {
+		b.consumeLengthBoundsFacts(loop.Token)
+		return
+	}
+	before := len(b.result.results)
+	b.counts[PitfallInclusiveLengthIndex] = &PitfallRuleEvaluation{Rule: PitfallInclusiveLengthIndex, State: PitfallStateNoFinding}
+	defer func() {
+		key := sourceTokenLocation(loop.Token)
+		b.analyzer.boundsFindings[key] = append([]PitfallFinding(nil), b.result.results[before:]...)
+		b.analyzer.boundsIncomplete[key] = b.counts[PitfallInclusiveLengthIndex].Incomplete
+	}()
 	domain, ok := loop.Iterable.(*ast.RangeExpression)
 	if !ok || domain == nil || loop.Body == nil || domain.Exclusive || len(loop.Bindings) != 1 || loop.Bindings[0].Discard {
 		return

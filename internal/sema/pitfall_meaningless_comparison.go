@@ -68,6 +68,7 @@ func (b *pitfallBuilder) inspectMeaninglessComparison(comparison *ast.InfixExpre
 			{Strength: PitfallEvidenceProof, Fact: "so comparing it with " + spelling + " is always " + outcome, Source: comparison.Token},
 		},
 		OwningRule: "meaningless-comparison",
+		Actions:    []PitfallSuggestedAction{b.constantBooleanAction(comparison, PitfallMeaninglessComparison, outcome)},
 	})
 }
 

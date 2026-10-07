@@ -26,6 +26,7 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 				a.analyzeFunctionBodies(program)
 				a.analyzeImplBodies(program)
 				a.analyzeTestBodies(program)
+				a.validateLengthIndexBounds(program)
 			})},
 		{id: "string-materializations", dependencies: []string{"callable-bodies"}, priority: 40,
 			run: once(a.reportStringMaterializations)},

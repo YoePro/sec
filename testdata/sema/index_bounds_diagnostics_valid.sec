@@ -1,0 +1,23 @@
+module main
+fn HalfOpen(values: ref int[]) void {
+    for i in uint(0)..<values.Len { discard values[i] }
+}
+fn Guarded(values: ref int[]) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len { break }
+        discard values[i]
+    }
+}
+fn Other(values: ref int[], other: ref int[]) int { return other[values.Len] }
+fn ShortCircuit(values: ref int[]) void {
+    discard false && values[values.Len] == 1
+    discard true || values[values.Len] == 1
+}
+type Source struct { values: ref int[] }
+impl Source {
+    property Values: ref int[] { get { return self.values } }
+}
+fn Getter(source: Source) int { return source.Values[source.Values.Len] }
+fn Stored(source: Source) void {
+    for i in uint(0)..<source.values.Len { discard source.values[i] }
+}

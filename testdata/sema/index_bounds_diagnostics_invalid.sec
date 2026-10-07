@@ -1,0 +1,13 @@
+module main
+fn Direct(values: ref int[]) int { return values[values.Len] }
+fn Inclusive(values: ref int[]) void {
+    for i in uint(0)..values.Len { discard values[i] }
+}
+fn Fixed() int {
+    let values: int[2] := [1, 2]
+    return values[values.Len]
+}
+fn UnknownFirst(values: ref int[]) void {
+    for i in uint(0)..values.Len step 2 { discard values[i] }
+    for j in uint(0)..values.Len { discard values[j] }
+}

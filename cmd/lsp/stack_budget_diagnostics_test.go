@@ -23,10 +23,11 @@ func TestStackBudgetDiagnosticTransport(t *testing.T) {
 	for _, test := range []struct {
 		bound sema.StackBound
 		id    string
+		state diagnostics.ProofState
 	}{
-		{exact, diagnostics.StackBudgetExceeded},
-		{sema.UnknownStackBound(), diagnostics.StackBudgetProofUnavailable},
-		{sema.UnboundedStackBound(), diagnostics.StackBudgetUnboundedDemand},
+		{exact, diagnostics.StackBudgetExceeded, diagnostics.ProofInvalid},
+		{sema.UnknownStackBound(), diagnostics.StackBudgetProofUnavailable, diagnostics.ProofUnproven},
+		{sema.UnboundedStackBound(), diagnostics.StackBudgetUnboundedDemand, diagnostics.ProofInvalid},
 	} {
 		value, err := sema.DiagnoseStackBudget(&budget, "thread", sema.StackMeasurementMachine, test.bound,
 			lexer.Token{File: "worker.sec", Line: 1, Column: 1, EndLine: 1, EndColumn: 7}, sema.StackEvidence{})
@@ -34,7 +35,7 @@ func TestStackBudgetDiagnosticTransport(t *testing.T) {
 			t.Fatal(value, err)
 		}
 		got := semaDiagnostic(*value, 3, "Worker")
-		if got.Code != test.id || got.Severity != 1 || got.Range.Start.Character != 0 || got.Range.End.Character != 6 || !strings.Contains(got.Message, value.Help) {
+		if got.Code != test.id || got.Severity != 1 || got.Range.Start.Character != 0 || got.Range.End.Character != 6 || !strings.Contains(got.Message, value.Help) || !strings.HasPrefix(got.Message, string(test.state)+": ") {
 			t.Fatal("stack budget diagnostic lost in LSP transport", got)
 		}
 	}

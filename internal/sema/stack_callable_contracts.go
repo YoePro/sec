@@ -64,13 +64,13 @@ func (store *StackCallableContractStore) Lookup(id CallableContractID, level Sta
 	return contract, exists
 }
 
-// usableOpenStackContract requires an explicitly open synchronous function-value
-// or closure call and a verified finite bound excluding unsupported reentry.
+// usableOpenStackContract requires an explicitly open synchronous function-value,
+// closure or interface call and a verified finite bound excluding unsupported reentry.
 // A contract must cover runtime/cleanup/panic paths as well as ordinary return.
 // Rules: rules/analysis/stack_analysis.md — "Open callable contracts",
 // "Open calls without stack contracts", and "Reentry through callable and foreign boundaries".
 func usableOpenStackContract(site CallSite, store *StackCallableContractStore, level StackMeasurementLevel, plan string) (StackCallableContract, bool) {
-	if site.Execution != CallExecutionSynchronous || site.TargetSet.IsClosed || !site.TargetSet.HasOpenContract || site.TargetSet.OpenContract == "" || (site.Dispatch != CallDispatchFunctionValue && site.Dispatch != CallDispatchClosure) {
+	if site.Execution != CallExecutionSynchronous || site.TargetSet.IsClosed || !site.TargetSet.HasOpenContract || site.TargetSet.OpenContract == "" || (site.Dispatch != CallDispatchFunctionValue && site.Dispatch != CallDispatchClosure && site.Dispatch != CallDispatchInterface) {
 		return StackCallableContract{}, false
 	}
 	contract, exists := store.Lookup(site.TargetSet.OpenContract, level, plan)
@@ -106,7 +106,7 @@ func openStackCallContribution(graph *CallGraph, site CallSite, visit func(Calla
 	}
 	contract, usable := usableOpenStackContract(site, store, level, plan)
 	if !usable {
-		result := unknownStackCall(site.Source, "verified finite open-callable stack bound and no-reentry guarantee unavailable")
+		result := unknownStackInvocation(site, "verified finite open-callable stack bound and no-reentry guarantee unavailable")
 		result.evidence = mergeStackEvidence(result.evidence, known.evidence)
 		return result
 	}
@@ -114,7 +114,7 @@ func openStackCallContribution(graph *CallGraph, site CallSite, visit func(Calla
 	if knownExact.Kind() == StackBoundExact {
 		knownBytes, _ := knownExact.Bytes()
 		if knownBytes.Cmp(bytes) > 0 {
-			result := unknownStackCall(site.Source, "known exact target demand exceeds the open callable contract guarantee")
+			result := unknownStackInvocation(site, "known exact target demand exceeds the open callable contract guarantee")
 			result.evidence = mergeStackEvidence(result.evidence, known.evidence)
 			return result
 		}
@@ -127,4 +127,12 @@ func openStackCallContribution(graph *CallGraph, site CallSite, visit func(Calla
 		result.evidence.KnownPrefix = append([]StackFrameContribution(nil), known.evidence.KnownPrefix...)
 	}
 	return result
+}
+
+// unknownStackInvocation keeps the canonical caller/site boundary when an open
+// invocation cannot be bounded, avoiding a second legacy opaque-effect cause.
+// Rules: rules/analysis/stack_analysis.md — "Stack cause paths", "Open calls without stack contracts".
+func unknownStackInvocation(site CallSite, detail string) stackCompositionValue {
+	boundary := StackCauseStep{Callable: site.Caller, Source: site.Source, Detail: detail}
+	return stackCompositionValue{bound: UnknownStackBound(), cause: []StackCauseStep{boundary}, evidence: stackBoundaryEvidence(nil, boundary)}
 }

@@ -2,6 +2,7 @@ package sema
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 
 	"sec/internal/ast"
@@ -35,6 +36,18 @@ func (a *Analyzer) SetPitfallBudget(maxNodes, maxDepth int) error {
 	a.analysisBudget.MaxPitfallNodes = maxNodes
 	a.analysisBudget.MaxPitfallDepth = maxDepth
 	return nil
+}
+
+// SetPitfallSourcePriority gives requested documents first access to the optional
+// whole-body budget. It changes scheduling only: mandatory proofs always cover
+// all sources, and unvisited optional bodies retain incomplete coverage.
+// Rules: rules/analysis/pitfall_analysis.md — "Interactive analysis", "Analysis states";
+// rules/tooling/lsp.md — "Responsiveness model".
+func (a *Analyzer) SetPitfallSourcePriority(paths []string) {
+	a.pitfallPrioritySources = map[string]bool{}
+	for _, path := range paths {
+		a.pitfallPrioritySources[filepath.Clean(path)] = true
+	}
 }
 
 // walkBudgetedStatement admits complete units so an omitted guard or intent
@@ -72,7 +85,7 @@ func (b *pitfallBuilder) walkBudgetedStatement(statement ast.Statement) {
 // Rule: rules/analysis/pitfall_analysis.md — "Evidence model", "Analysis states".
 func (b *pitfallBuilder) walkBudgetedBlock(block *ast.BlockStatement) {
 	if block != nil && b.admitPitfallUnit(block) {
-		b.walkBlock(block)
+		b.walkPitfallBody(block)
 	}
 }
 
@@ -164,8 +177,12 @@ func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnal
 	}
 	builder.result.coverage = PitfallCoverage{MaxNodes: analyzer.analysisBudget.MaxPitfallNodes, MaxDepth: analyzer.analysisBudget.MaxPitfallDepth}
 	if program != nil {
-		for _, statement := range program.Statements {
-			builder.walkBudgetedStatement(statement)
+		for _, priority := range []bool{true, false} {
+			for _, statement := range program.Statements {
+				if analyzer.pitfallPrioritySources[filepath.Clean(statementToken(statement).File)] == priority {
+					builder.walkBudgetedStatement(statement)
+				}
+			}
 		}
 	}
 	builder.finishBudgetCoverage()

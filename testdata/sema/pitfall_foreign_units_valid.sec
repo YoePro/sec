@@ -1,0 +1,23 @@
+module foreign_units
+extern "Sec" fn Bytes(pointer: RawPtr[int32], extent: uint) void
+extern "Sec" fn Elements(pointer: RawPtr[int32], extent: uint) void
+extern "Sec" fn ByteData(pointer: RawPtr[byte], extent: uint) void
+extern "Sec" fn Native(pointer: RawPtr[int], extent: uint) void
+extern "Sec" fn NativeFloat(pointer: RawPtr[float], extent: uint) void
+fn CountAsBytes(values: int32[4]) void { unsafe { Bytes(values.Ptr, values.Len) } }
+fn BytesAsCount(values: int32[4]) void { unsafe { Elements(values.Ptr, values.SizeOf) } }
+fn CorrectBytes(values: int32[4]) void { unsafe { Bytes(values.Ptr, values.SizeOf) } }
+fn CorrectElements(values: int32[4]) void { unsafe { Elements(values.Ptr, values.Len) } }
+fn ByteWidth(values: byte[4]) void { unsafe { ByteData(values.Ptr, values.Len) } }
+fn Zero(values: int32[0]) void { unsafe { Bytes(values.Ptr, values.Len) } }
+fn ZeroSize(values: int32[0]) void { unsafe { Elements(values.Ptr, values.SizeOf) } }
+fn Caller(values: ref int32[]) void { unsafe { Bytes(values.Ptr, values.Len) } }
+fn NativeWidth(values: int[4]) void { unsafe { Native(values.Ptr, values.Len) } }
+fn FloatWidth(values: float[4]) void { unsafe { NativeFloat(values.Ptr, values.Len) } }
+fn CorrectScaled(values: int32[4]) void { unsafe { Bytes(values.Ptr, values.Len * int32.SizeOf) } }
+fn Literal(values: int32[4]) void { unsafe { Bytes(values.Ptr, 4) } }
+fn UnknownPointer(pointer: RawPtr[int32], values: int32[4]) void { Bytes(pointer, values.Len) }
+fn Different(first: int32[4], second: int32[8]) void { unsafe { Bytes(first.Ptr, second.Len) } }
+type Packet struct { value: int32 }
+extern "Sec" fn Packets(pointer: RawPtr[Packet], extent: uint) void
+fn UnknownLayout(values: Packet[4]) void { unsafe { Packets(values.Ptr, values.Len) } }

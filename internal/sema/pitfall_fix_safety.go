@@ -23,7 +23,8 @@ type PitfallFixSafety struct {
 // Rules: rules/analysis/pitfall_analysis.md — "Fix safety".
 func (proof PitfallFixSafety) verifiedFor(rule PitfallRuleID, replacement string) bool {
 	switch rule {
-	case PitfallBooleanLiteralComparison, PitfallRangeMembershipIdiom, PitfallFragileInclusiveLength:
+	case PitfallBooleanLiteralComparison, PitfallRangeMembershipIdiom, PitfallFragileInclusiveLength,
+		PitfallTautologicalInterval, PitfallImpossibleInterval, PitfallMeaninglessComparison:
 	default:
 		return false
 	}

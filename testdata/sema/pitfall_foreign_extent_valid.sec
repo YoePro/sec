@@ -1,0 +1,24 @@
+module foreign_extent
+
+extern "C" fn Transfer(x: RawPtr[byte], y: uint64) void
+extern "C" fn Transfer(x: RawPtr[byte], y: uint32) void
+extern "C" fn Copy(a: RawPtr[byte], b: RawPtr[byte], c: uint64) void
+extern "C" fn Conventional(buffer: RawPtr[byte], length: uint64) void
+extern "C" fn Borrowed(buffer: ref byte, length: uint64) void
+
+fn Calls(first: RawPtr[byte], second: RawPtr[byte], count: uint64, small: uint32, borrowed: ref byte) void {
+    Transfer(first, count)
+    Transfer(second, small)
+    Copy(first, second, count)
+    Conventional(first, count)
+    Borrowed(borrowed, count)
+}
+
+fn Nested(pointer: RawPtr[byte], count: uint64, enabled: bool) void {
+    if enabled { Transfer(pointer, count) }
+    for i in uint(0)..<uint(2) { Transfer(pointer, count) }
+}
+
+fn Indirect(operation: fn(RawPtr[byte], uint64) void, pointer: RawPtr[byte], count: uint64) void {
+    operation(pointer, count)
+}

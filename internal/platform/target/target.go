@@ -463,7 +463,16 @@ func NormalizeArch(arch string) string {
 	}
 }
 
+// Parse resolves registered OS/architecture spellings before the generic
+// separator fallback, preserving hyphens inside architectures such as cortex-m3.
+// Rules: rules/platform/platform_model.md — target registry and target selection;
+// rules/memory/allocation.md — §§22,29(1).
 func Parse(value string) (Target, bool) {
+	for _, definition := range definitions {
+		if osName, found := strings.CutSuffix(value, "-"+definition.Arch); found && NormalizeOS(osName) == definition.OS {
+			return Target{OS: definition.OS, Arch: definition.Arch}, true
+		}
+	}
 	separator := strings.LastIndex(value, "-")
 	if separator <= 0 || separator == len(value)-1 {
 		return Target{}, false

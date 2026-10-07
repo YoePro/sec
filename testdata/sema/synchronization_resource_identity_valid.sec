@@ -1,0 +1,19 @@
+module resource_identity
+
+type State struct {
+    First: Mutex[int],
+    Second: Mutex[int],
+}
+
+fn Observe(first: ref Mutex[int], second: ref Mutex[int]) void {
+    let firstAlias := first
+    let secondAlias := second
+}
+
+fn Stored() void {
+    let state := State { First: Mutex(1), Second: Mutex(2) }
+    let first := ref state.First
+    let alias := ref state.First
+    let second := ref state.Second
+    Observe(first, second)
+}

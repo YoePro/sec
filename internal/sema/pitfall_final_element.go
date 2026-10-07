@@ -78,12 +78,22 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	flow, resolved := b.analyzer.ResolvedIfFlowOf(statement)
 	trueReachable := !resolved || flow.TruePathExecution != ResolvedIfPathNever
 	falseReachable := !resolved || flow.FalsePathExecution != ResolvedIfPathNever
+	if b.boundsOnly {
+		b.walkExpression(statement.Condition)
+		if trueReachable {
+			b.walkBlock(statement.Consequence)
+		}
+		if falseReachable {
+			b.walkBlock(statement.Alternative)
+		}
+		return
+	}
 	if trueReachable {
 		b.inspectIneffectiveUpperBoundsGuard(statement)
 	}
 	b.walkExpression(statement.Condition)
 
-	guards := b.strictIndexGuards(statement.Condition)
+	guards := b.conditionIndexGuards(statement.Condition)
 	if trueReachable {
 		b.inspectWrongGuardSubject(statement, guards)
 	}
@@ -110,7 +120,7 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	b.activeCapacityEqualities = outerCapacityEqualities
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, false)
 	if falseReachable {
-		b.walkBlock(statement.Alternative)
+		b.withIndexGuards(b.falseIndexGuards(statement.Condition), func() { b.walkBlock(statement.Alternative) })
 	}
 	b.activeNonEmptyProofs = outerProofs
 }

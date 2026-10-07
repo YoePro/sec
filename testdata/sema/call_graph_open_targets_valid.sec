@@ -1,0 +1,48 @@
+module main
+fn Safe(value: int) int { return value }
+fn Other(value: int) int { return value }
+fn Risky(value: int) int { assert value > 0
+    return value }
+fn Closed(flag: bool, value: int) int {
+    let mut operation: fn(int) int := Safe
+    if flag { operation = Risky }
+    return operation(value)
+}
+fn Open(operation: fn(int) int, value: int) int { return operation(value) }
+fn Mixed(flag: bool, unknown: fn(int) int, value: int) int {
+    let mut operation: fn(int) int := Safe
+    if flag { operation = Risky } else { operation = unknown }
+    return operation(value)
+}
+fn Rebound(unknown: fn(int) int, value: int) int {
+    let mut operation: fn(int) int := unknown
+    operation = Safe
+    return operation(value)
+}
+interface Reader { fn Read(value: int) int }
+type First struct { }
+impl First implements Reader {
+    fn Read(value: int) int { return value }
+}
+type Second struct { }
+impl Second implements Reader {
+    fn Read(value: int) int { assert value > 0
+    return value }
+}
+type Unrelated struct { }
+impl Unrelated {
+    fn Read(value: int) int { return value }
+}
+fn Dynamic(reader: ref Reader, value: int) int { return reader.Read(value) }
+fn main() void { discard Closed(false, 1) }
+fn Loop(limit: int, value: int) int {
+    let mut operation: fn(int) int := Safe
+    let mut index := 0
+    let mut result := 0
+    while index < limit {
+        result = operation(value)
+        operation = Other
+        index += 1
+    }
+    return result
+}

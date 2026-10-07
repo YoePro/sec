@@ -29,6 +29,10 @@ type CompilerKnownMember struct {
 	Documentation string
 	Unsafe        bool
 	Effects       []EffectKind
+	// AllocationBehavior is an explicit operation contract, independent from
+	// volatile/panic effects. Empty means no allocation-freedom proof.
+	// Rules: rules/memory/allocation.md — §§20(5),24(3),(6).
+	AllocationBehavior AllocationKnowledge
 	// StructuralMutation is an operation-contract fact consumed by parameter
 	// usage analysis; it is not inferred from the source-level member name.
 	StructuralMutation bool
@@ -331,17 +335,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		)
 	}
 	if typ.Kind == RawPtrType {
-		members = append(members,
-			CompilerKnownMember{ID: "CKM-RAWPTR-READ", Name: "Read", Kind: CompilerKnownMethod, Result: compilerKnownRawPointerElement(typ), Unsafe: true},
-			CompilerKnownMember{ID: "CKM-RAWPTR-WRITE", Name: "Write", Kind: CompilerKnownMethod, Result: builtinType("void"), Unsafe: true},
-			// rules/platform/volatile.md sections 9-11: volatile access is a
-			// distinct unsafe, effectful operation, not an alias for Read/Write.
-			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-READ", Name: "VolatileRead", Kind: CompilerKnownMethod, Result: compilerKnownRawPointerElement(typ), Unsafe: true, Effects: []EffectKind{EffectVolatileRead}},
-			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-WRITE", Name: "VolatileWrite", Kind: CompilerKnownMethod, Result: builtinType("void"), Unsafe: true, Effects: []EffectKind{EffectVolatileWrite}},
-			CompilerKnownMember{ID: "CKM-RAWPTR-OFFSET", Name: "Offset", Kind: CompilerKnownMethod, Result: typ, Unsafe: true},
-			CompilerKnownMember{ID: "CKM-RAWPTR-ADDBYTES", Name: "AddBytes", Kind: CompilerKnownMethod, Result: typ, Unsafe: true},
-			CompilerKnownMember{ID: "CKM-RAWPTR-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: builtinType("int"), Unsafe: true},
-		)
+		members = append(members, compilerKnownRawPointerMembers(typ)...)
 	}
 	if typ.Name == "Arena" {
 		members = append(members,

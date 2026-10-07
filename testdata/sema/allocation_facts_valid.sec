@@ -1,0 +1,34 @@
+module main
+extern "Sec" fn Foreign() void
+@noAlloc
+extern "Sec" fn Trusted() void
+fn Free(value: int) int {
+    let copy := value
+    let view := ref copy
+    return copy
+}
+fn FreeForward(value: int) int { return Free(value) }
+fn Allocate() void { let arena := Arena.WithCapacity(64u) }
+fn Forward() void { Allocate() }
+fn Unresolved() void { Foreign() }
+fn Mixed() void {
+    Allocate()
+    Foreign()
+}
+fn TrustedCaller() void { Trusted() }
+fn Recursive(value: int) int {
+    if value == 0 { return 0 }
+    return Recursive(value - 1)
+}
+fn RecursiveUnknown(value: int) void {
+    if value == 0 { Foreign() } else { RecursiveUnknown(value - 1) }
+}
+fn Spawner() void {
+    let worker := spawn Allocate()
+    detach worker
+}
+fn Open(operation: fn(int) int, value: int) int { return operation(value) }
+fn main() void { discard FreeForward(1) }
+fn Creator() void {
+    let operation := fn(arena: Arena) void { }
+}

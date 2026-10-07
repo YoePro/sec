@@ -1,0 +1,198 @@
+module guard_flow
+fn Process(value: int) void {}
+fn Log(message: string) void {}
+fn Reset(index: ref mut uint) void {}
+
+fn WrongNested(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { if enabled { Process(right[rightIndex]) } }
+}
+
+fn WrongLater(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { Log("later")
+ if enabled { Process(right[rightIndex]) } }
+}
+
+fn ProtectedNested(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { if rightIndex < right.Len { Process(right[rightIndex]) } }
+}
+
+fn ProtectedElse(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if rightIndex >= right.Len { Log("bad") } else { if leftIndex < left.Len { Process(right[rightIndex]) } }
+}
+
+fn ProtectedExit(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if rightIndex >= right.Len { return }
+ if leftIndex < left.Len { Process(right[rightIndex]) }
+}
+
+fn InvalidatedOuter(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index < right.Len { index = rightIndex
+ if leftIndex < left.Len { Process(right[index]) } }
+}
+
+fn ExpiredWitness(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index < left.Len { index = rightIndex
+ if enabled { Process(right[rightIndex]) } }
+}
+
+fn BranchSibling(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { if enabled { index = 0 } else { Process(right[rightIndex]) } }
+}
+
+fn CheckLater(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ Log("later")
+ Process(left[index])
+}
+
+fn CheckNested(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ if enabled { Process(left[index]) }
+}
+
+fn CheckProtected(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ if index < left.Len { Process(left[index]) }
+}
+
+fn CheckLaterExit(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ if index >= left.Len { return }
+ Process(left[index])
+}
+
+fn CheckChanged(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ index = 0
+ Process(left[index])
+}
+
+fn CheckChangedBranch(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ if enabled { index = 0 }
+ Process(left[index])
+}
+
+fn CheckMutableCall(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ Reset(ref mut index)
+ Process(left[index])
+}
+
+fn CheckSibling(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ if enabled { index = 0 } else { Process(left[index]) }
+}
+
+fn WrongWhile(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { while enabled { Process(right[rightIndex])
+ break } }
+}
+
+fn WrongFor(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { for j in uint(0)..<right.Len { Process(right[rightIndex]) } }
+}
+
+fn ProtectedFor(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { for j in uint(0)..<right.Len { Process(right[j]) } }
+}
+
+fn WrongUnsafe(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { unsafe { Process(right[rightIndex]) } }
+}
+
+fn CheckWhile(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ while enabled { Process(left[index])
+ break }
+}
+
+fn CheckReturn(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { if enabled { return } else { return } }
+ Process(left[index])
+}
+
+fn WrongSwitch(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if leftIndex < left.Len { switch enabled {
+ case true:
+ Process(right[rightIndex])
+ default:
+ } }
+}
+
+fn CheckSwitch(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ switch enabled {
+ case true:
+ Process(left[index])
+ default:
+ }
+}
+
+fn WrongMatch(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ let value: Option[int] := Some(1)
+ if leftIndex < left.Len { match value { Some(item) => { Process(right[rightIndex]) } None => {} } }
+}
+
+fn CheckMatch(left: ref int[], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ let value: Option[int] := Some(1)
+ if index >= left.Len { Log("bad") }
+ match value { Some(item) => { Process(left[index]) } None => {} }
+}
+
+fn ExpiredLength(left: ref mut list[int], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index < left.Len { left.Clear()
+ if enabled { Process(right[rightIndex]) } }
+}
+
+fn CheckChangedLength(left: ref mut list[int], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index >= left.Len { Log("bad") }
+ left.Clear()
+ Process(left[index])
+}
+
+fn InvalidatedLengthGuard(left: ref mut list[int], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index < left.Len { left.Clear()
+ if rightIndex < right.Len { Process(left[index]) } }
+}
+
+fn LoopChangedLength(left: ref mut list[int], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if rightIndex < right.Len { for j in uint(0)..<left.Len { if rightIndex < right.Len { Process(left[j]) }
+ left.Clear() } }
+}
+
+fn ElementWritePreservesLength(left: ref mut list[int], right: ref int[], leftIndex: uint, rightIndex: uint, enabled: bool) void {
+ let mut index: uint := leftIndex
+ if index < left.Len { left[index] = 1
+ if rightIndex < right.Len { Process(left[index]) } }
+}

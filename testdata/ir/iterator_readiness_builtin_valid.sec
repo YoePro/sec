@@ -1,0 +1,2 @@
+module main
+fn Loop() void { for _ in 0..<3 { break } }

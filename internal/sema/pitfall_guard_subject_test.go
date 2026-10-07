@@ -59,7 +59,7 @@ func TestPitfallWrongGuardSubject(t *testing.T) {
 		{name: "enclosing loop covers access", body: "for j in uint(0)..<right.Len {\n if leftIndex < left.Len {\n Process(right[j])\n }\n }"},
 		{name: "enclosing while covers access", body: "while rightIndex < right.Len {\n if leftIndex < left.Len {\n Process(right[rightIndex])\n }\n break\n }"},
 		{name: "guard misses equality boundary is another rule", body: "if leftIndex <= left.Len {\n Process(right[rightIndex])\n }"},
-		{name: "nested control flow is not correlated", body: "if leftIndex < left.Len {\n if enabled {\n Process(right[rightIndex])\n }\n }"},
+		{name: "nested control flow is correlated", body: "if leftIndex < left.Len {\n if enabled {\n Process(right[rightIndex])\n }\n }", want: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestPitfallCheckWithoutTransfer(t *testing.T) {
 		{name: "nested re-establishment", body: "if index >= left.Len {\n if enabled {\n index = 0\n }\n }\n Process(left[index])"},
 		{name: "mutable reference may re-establish", body: "if index >= left.Len {\n Reset(ref mut index)\n }\n Process(left[index])"},
 		{name: "different collection accessed", body: "if index >= left.Len {\n Log(\"bad index\")\n }\n Process(right[index])"},
-		{name: "access not directly after", body: "if index >= left.Len {\n Log(\"bad index\")\n }\n if enabled {\n Process(left[index])\n }"},
+		{name: "access not directly after", body: "if index >= left.Len {\n Log(\"bad index\")\n }\n if enabled {\n Process(left[index])\n }", want: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

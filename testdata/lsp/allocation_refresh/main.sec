@@ -1,0 +1,5 @@
+module main
+import "helper"
+@noAlloc
+fn Root() void { helper.Work() }
+fn main() void { Root() }

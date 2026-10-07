@@ -36,6 +36,8 @@ func (a *Analyzer) validateNoAllocGuarantees(program *ast.Program) {
 	})
 }
 
+// validateFunctionNoAllocGuarantee emits one owning violation with canonical navigable evidence.
+// Rules: rules/foundations/attributes.md — "@noAlloc verification"; rules/memory/allocation.md — §§28(4),29(4).
 func (a *Analyzer) validateFunctionNoAllocGuarantee(fn *ast.FunctionDeclaration, name string) {
 	if fn.Extern || fn.Name == nil {
 		return
@@ -79,15 +81,24 @@ func (a *Analyzer) validateFunctionNoAllocGuarantee(fn *ast.FunctionDeclaration,
 	if len(chain) > 1 {
 		help = "It comes from " + chain[len(chain)-1] + ", which " + name + " calls. " + help
 	}
+	before := len(a.errors)
 	if found {
 		a.addErrorAtTokenWithMetadataAndPrevious(attribute.Token, site.Source, diagnostics.NoAllocViolation, help, "%s", message)
-		return
+	} else {
+		a.addErrorAtTokenWithMetadata(attribute.Token, diagnostics.NoAllocViolation, help, "%s", message)
 	}
-	a.addErrorAtTokenWithMetadata(attribute.Token, diagnostics.NoAllocViolation, help, "%s", message)
+	if len(a.errors) > before {
+		cause := a.callGraph.AllocationCause(callableID(function))
+		a.errors[len(a.errors)-1].AllocationCause = &cause
+		if found {
+			a.errors[len(a.errors)-1].RelatedLabel = "allocation effect introduced here"
+		}
+	}
 }
 
 // introducingAllocationSite picks the first direct site of the requested
 // class: a definite allocation, or an unknown allocation behavior.
+// Rules: rules/memory/allocation.md — §§24(6),28(4),29(4).
 func introducingAllocationSite(effects []ArenaEffectSite, unknown bool) (ArenaEffectSite, bool) {
 	for _, effect := range effects {
 		if (!unknown && effect.MayAllocate || unknown && effect.UnknownAllocation) && effect.Source.Line > 0 {

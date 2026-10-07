@@ -1,0 +1,4 @@
+module helper
+@noAlloc
+extern "Sec" fn Foreign() void
+fn Work() void { Foreign() }

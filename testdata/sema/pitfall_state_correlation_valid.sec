@@ -1,0 +1,69 @@
+module state_correlation
+
+type Failure union error { Abandoned(Task[int]), }
+type SimpleFailure enum error { Failed, }
+fn Load() Result[int, Failure] { return Ok(1) }
+
+fn SameSubject() void {
+    let result := Load()
+    if result.ErrRef is None { discard result.Ok() }
+}
+
+fn IndependentCheck() void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None {
+        if second.ErrRef is None { discard second.Ok() }
+    }
+}
+
+fn ConstructedState() void {
+    let first := Load()
+    let second: Result[int, Failure] := Ok(2)
+    if first.ErrRef is None { discard second.Ok() }
+}
+
+fn DiscardableAlternate(first: Result[int, SimpleFailure], second: Result[int, SimpleFailure]) void {
+    if first.ErrRef is None { discard second.Ok() }
+}
+
+fn OwnVariant() void {
+    let result := Load()
+    if result is Ok { discard result.Ok() }
+}
+
+fn OwnNegatedVariant() void {
+    let result := Load()
+    if result is not Err { discard result.Ok() }
+}
+
+fn OwnElseVariant() void {
+    let result := Load()
+    if result is Err {} else { discard result.Ok() }
+}
+
+fn UnrelatedOption(first: Option[int], second: Option[int]) void {
+    if first is Some(value) {
+        match second {
+            Some(other) => { discard other }
+            None => {}
+        }
+    }
+}
+
+fn BorrowedUses() void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None { discard second.OkRef }
+}
+
+fn OwnConjunction(flag: bool) void {
+    let result := Load()
+    if result.ErrRef is None && flag { discard result.Ok() }
+}
+
+fn IndependentConjunction() void {
+    let first := Load()
+    let second := Load()
+    if first.ErrRef is None && second.ErrRef is None { discard second.Ok() }
+}

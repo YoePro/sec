@@ -151,6 +151,7 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 	}
 	report.addCallGraph(graph, nodes, names, inSelection)
 	report.addEffects(graph, nodes, names)
+	report.addAllocationFacts(analyzer, nodes, names)
 	report.addEscape(analyzer.EscapeAnalysis(), inSelection)
 	report.addParameterUsage(analyzer.ParameterUsageAnalysis(), inSelection)
 	report.addPitfalls(analyzer.PitfallAnalysis(), inSelection)
@@ -261,6 +262,12 @@ func analyseEscapeDispositions(dispositions []sema.EscapeParameterDisposition) s
 //   - rules/analysis/parameter_usage_analysis.md — "Recommendation confidence", "Recommendation reasons", "Blocked narrowing advisory"
 func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, inSelection func(lexer.Token) bool) {
 	section := r.section("parameter usage")
+	if iterations, converged := usage.InterproceduralStatus(); !converged {
+		section.add("incomplete demand refinement after %d iteration(s); unresolved call demand is conservative", iterations)
+	}
+	if coverage := usage.ImportCoverage(); coverage.SkippedCallables > 0 {
+		section.add("incomplete imported signature coverage: %d callable(s) skipped; work %d/%d, type depth limit %d", coverage.SkippedCallables, coverage.VisitedWork, coverage.MaxWork, coverage.MaxTypeDepth)
+	}
 	for _, summary := range usage.Summaries() {
 		if !inSelection(summary.Declaration) {
 			continue
@@ -279,7 +286,11 @@ func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, in
 				summary.Name, parameter.Name, sema.TypeDisplayName(parameter.DeclaredType), demand.Access, demand.Mutation, demand.Ownership, demand.Lifetime, demand.Identity, strings.Join(shapes, ", "), demand.Precision)
 		}
 	}
-	for _, recommendation := range usage.Recommendations() {
+	recommendations, coverage := usage.RecommendationsWithCoverage()
+	if coverage.SkippedCandidates > 0 {
+		section.add("incomplete recommendation coverage: %d candidate(s) skipped; work %d/%d, type depth limit %d", coverage.SkippedCandidates, coverage.VisitedWork, coverage.MaxWork, coverage.MaxTypeDepth)
+	}
+	for _, recommendation := range recommendations {
 		if !inSelection(recommendation.Source) {
 			continue
 		}
@@ -330,6 +341,10 @@ func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection 
 				reason = ": " + finding.Suppression.Reason
 			}
 			section.add("suppressed %s at %s%s", finding.Rule, position, reason)
+			continue
+		}
+		if finding.DiagnosticID != "" {
+			section.add("owned by %s: %s at %s (supporting semantic evidence; not a second diagnostic)", finding.DiagnosticID, finding.Rule, position)
 			continue
 		}
 		class := pitfallReportClass(finding)

@@ -1,0 +1,68 @@
+module main
+type Pair struct { first: int, second: int, }
+type Node struct { next: ref Node, value: int, }
+fn First(pair: ref Pair) int { return pair.first }
+fn Second(pair: ref Pair) int { return pair.second }
+fn Named(pair: ref Pair) int {
+    let operation := First
+    return operation(pair)
+}
+fn Joined(flag: bool, pair: ref Pair) int {
+    let mut operation: fn(ref Pair) int := First
+    if flag { operation = Second }
+    return operation(pair)
+}
+fn JoinedLambda(flag: bool, pair: Pair) int {
+    let mut operation: fn(Pair) int := fn(pair: Pair) int { return pair.first }
+    if flag { operation = fn(pair: Pair) int { return pair.second } }
+    return operation(pair)
+}
+fn Open(operation: fn(ref Pair) int, pair: ref Pair) int { return operation(pair) }
+fn Mixed(flag: bool, unknown: fn(ref Pair) int, pair: ref Pair) int {
+    let mut operation: fn(ref Pair) int := First
+    if flag { operation = Second } else { operation = unknown }
+    return operation(pair)
+}
+fn Set(pair: ref mut Pair) void { pair.second = 2 }
+fn Mutable(pair: ref mut Pair) void {
+    let operation := Set
+    operation(pair)
+}
+fn OpenMutable(operation: fn(ref mut Pair) void, pair: ref mut Pair) void { operation(pair) }
+fn OpenSequence(operation: fn(ref int[]) int, values: ref int[]) int {
+    discard values[3]
+    return operation(values)
+}
+fn Lambda(pair: Pair) int {
+    let operation := fn(pair: Pair) int { return pair.second }
+    return operation(pair)
+}
+fn ScalarLambda(value: int) int {
+    let operation := fn(value: int) int { return value + 1 }
+    return operation(value)
+}
+fn Capturing(pair: Pair, bias: int) int {
+    let operation := capture(bias) fn(pair: Pair) int { return pair.first + bias }
+    return operation(pair)
+}
+fn Nested(pair: Pair) int {
+    let operation := fn(pair: Pair) int {
+        let inner := fn(pair: Pair) int { return pair.second }
+        return inner(pair)
+    }
+    return operation(pair)
+}
+fn LambdaBorrow(pair: ref Pair) int {
+    let operation := fn(pair: ref Pair) int { return pair.first }
+    return operation(pair)
+}
+fn Recursive(node: ref Node, again: bool) int {
+    let operation := Recursive
+    if again { return operation(node.next, false) }
+    return node.value
+}
+fn Rebound(unknown: fn(ref Pair) int, pair: ref Pair) int {
+    let mut operation: fn(ref Pair) int := unknown
+    operation = First
+    return operation(pair)
+}

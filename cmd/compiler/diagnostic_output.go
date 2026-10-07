@@ -10,7 +10,6 @@ import (
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
-	"sec/internal/sema"
 )
 
 // diagnosticOutputFormat selects how diagnostic-producing commands emit
@@ -287,39 +286,6 @@ func (r *diagnosticReporter) parserWarnings(file string, warnings []string) {
 		occurrence := newOccurrence("", diagnostics.SeverityWarning, "parser", warning)
 		r.record(occurrence, fmt.Sprintf("%sWarning: %s\n", prefix, warning))
 	}
-}
-
-// semaDiagnostic records one semantic diagnostic, including its related
-// earlier location and help.
-func (r *diagnosticReporter) semaDiagnostic(diagnostic sema.Error, human string) {
-	severity := diagnostic.Severity
-	if severity == "" {
-		severity = diagnostics.SeverityError
-	}
-	occurrence := newOccurrence(diagnostic.ID, severity, "sema", diagnostic.Message)
-	if diagnostic.Line > 0 && diagnostic.Column > 0 {
-		endLine, endColumn := diagnostic.EndLine, diagnostic.EndColumn
-		if endLine == 0 {
-			endLine, endColumn = diagnostic.Line, diagnostic.Column
-		}
-		occurrence.Primary = &occurrenceLocation{Span: occurrenceSpan{
-			File:  diagnostic.File,
-			Start: occurrencePosition{Line: diagnostic.Line, Column: diagnostic.Column},
-			End:   occurrencePosition{Line: endLine, Column: endColumn},
-		}}
-	}
-	if diagnostic.PreviousLine > 0 && diagnostic.PreviousColumn > 0 {
-		position := occurrencePosition{Line: diagnostic.PreviousLine, Column: diagnostic.PreviousColumn}
-		related := occurrenceRelated{
-			Span: occurrenceSpan{File: diagnostic.PreviousFile, Start: position, End: position},
-		}
-		if diagnostic.RelatedLabel != "" {
-			related.Message = &occurrenceMessage{Key: "related", Arguments: map[string]string{}, Text: diagnostic.RelatedLabel}
-		}
-		occurrence.Related = append(occurrence.Related, related)
-	}
-	occurrence.addHelp(diagnostic.Help)
-	r.record(occurrence, human)
 }
 
 // sortedOccurrences orders occurrences by source location and then stable

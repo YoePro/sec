@@ -94,6 +94,9 @@ func (g *CallGraph) ForCompilationPlan(scope CallGraphScope) (*CallGraph, error)
 		}
 		if site.TargetSet.OpenContract != "" {
 			site.TargetSet.OpenContract = CallableContractID(scopedGraphIdentity(scope, "contract", string(site.TargetSet.OpenContract)))
+			if site.TargetSet.Contract != nil {
+				site.TargetSet.Contract.ID = site.TargetSet.OpenContract
+			}
 		}
 		result.sites = append(result.sites, site)
 		result.siteIDs[site.ID] = true

@@ -1,0 +1,30 @@
+module main
+let FLOOR := 0
+let LIMIT := 10
+type Reading struct { value: uint }
+impl Reading {
+    property Level: uint { get { return self.value } }
+}
+fn Observe() bool { return true }
+fn Next() uint { return uint(0) }
+@noCopy
+type Token struct { id: int }
+fn Take(-> token: Token) bool { discard token
+    return true
+}
+fn Tautology(value: int) bool { return value >= FLOOR || value <= LIMIT }
+fn Impossible(value: int) bool { return value > LIMIT && value < FLOOR }
+fn Chain(value: int, flag: bool) bool { return value > LIMIT && flag && value < FLOOR }
+fn Unsigned(count: uint) bool { return count >= 0 }
+fn Mirrored(count: uint) bool { return 0 > count }
+fn Stored(reading: Reading) bool { return reading.value >= 0 }
+fn Getter(reading: Reading) bool { return reading.Level >= 0 }
+fn Call() bool { return Next() >= 0 }
+fn Effect(value: int) bool { return value >= FLOOR || Observe() || value <= LIMIT }
+fn Failure(value: int, items: ref int[]) bool { return value > LIMIT && items[0] == 0 && value < FLOOR }
+fn Consume(value: int, -> token: Token) bool { return value > LIMIT && Take(<-token) && value < FLOOR }
+type Device register[8] { Level: bit[8] }
+@address(0x40021000)
+let device: Device
+fn Physical() bool { return device.Level > 10 && device.Level < 5 }
+fn Index(items: ref uint[]) bool { return items[0] >= 0 }

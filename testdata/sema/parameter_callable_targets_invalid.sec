@@ -1,0 +1,12 @@
+module main
+fn Invalid(value: int) int {
+    let operation := fn(value: string) int { return 0 }
+    return operation(value)
+}
+type Pair struct { first: int, }
+fn First(pair: ref Pair) int { return pair.first }
+fn Dead(pair: ref Pair, unknown: fn(ref Pair) int) int {
+    if false { return unknown(pair) }
+    let operation := First
+    return operation(pair)
+}

@@ -16,7 +16,10 @@ import (
 // Rules:
 //   - rules/control-flow/flowcontrol_for.md — §2 "Core forms", §4 "Loop bindings", §10 "Loop-binding immutability", §11 "Scope and shadowing"
 //   - rules/control-flow/flowcontrol_for.md — §30 "`break`", §31 "`continue`", §33 "Definite assignment after finite loops"
+//   - rules/compiler/compiler_pipeline.md — §33(1,3) iterator lowering obligations
 func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
+	finishReadiness := a.beginIteratorLoweringRequirement(stmt)
+	defer finishReadiness()
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
@@ -40,8 +43,13 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
 
+	iterableErrors := len(a.errors)
 	if len(stmt.Bindings) > 0 || stmt.Iterable != nil {
 		a.analyzeForIterable(stmt)
+	}
+	dependencyBoundary := a.beginIterationDependencies(stmt, len(a.errors) == iterableErrors)
+	if dependencyBoundary {
+		defer a.finishIterationDependencies(stmt)
 	}
 	iterationEntry := a.captureLoopIterationAnalysisState()
 
@@ -95,6 +103,9 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
 	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
 	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
+	if dependencyBoundary {
+		a.recordIterationBorrowState("backedge", headerBorrows)
+	}
 	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
 	breakFrame := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
@@ -300,11 +311,13 @@ func (a *Analyzer) checkForReferenceSource(iterable ast.Expression, binding ast.
 }
 
 // inferForIterableBindingTypes resolves the yielded binding types for each
-// iterable category and validates the number of bindings.
+// iterable category, records protocol lowering obligations and validates the
+// number of bindings.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_for.md — §13 "Sec 0.1 iterable categories", §14–§21 per-category iteration
 //   - rules/control-flow/flowcontrol_for.md — §37 "Compiler-known `Iterator[T]`"
+//   - rules/compiler/compiler_pipeline.md — §§23(3–4), 33(1,3)
 func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type, bool) {
 	switch iterable := stmt.Iterable.(type) {
 	case *ast.RangeExpression:
@@ -323,6 +336,12 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			return nil, false
 		}
 		if elementType, next, conformance, ok := a.compilerKnownIterator(iterableType); ok {
+			if requirement := a.iteratorLoweringRequirements[stmt]; requirement != nil && !a.summaryPass && !a.iterationDependencyProbe {
+				requirement.required = true
+				requirement.conformanceValid = a.hasValidExplicitInterfaceConformance(dereferenceType(iterableType), conformance)
+				requirement.conformance = graphTypeIdentity(conformance)
+				requirement.next = callableID(next)
+			}
 			if len(stmt.Bindings) != 1 {
 				token := expressionToken(iterable)
 				if len(stmt.Bindings) > 0 {

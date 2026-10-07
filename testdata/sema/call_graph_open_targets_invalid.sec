@@ -1,0 +1,4 @@
+module main
+@noPanic
+fn Open(operation: fn(int) int, value: int) int { return operation(value) }
+fn Invalid(operation: int) void { operation() }

@@ -63,9 +63,7 @@ fn Direct(values: ref int[]) int {
     return values[values.Len]
 }
 `)
-	if len(errors) != 0 {
-		t.Fatalf("analysis errors: %v", errors)
-	}
+	assertPitfallBoundsErrorCount(t, errors, 1)
 	findings := analyzer.PitfallAnalysis().Findings()
 	if len(findings) != 1 {
 		t.Fatalf("findings = %+v, want one", findings)
@@ -357,9 +355,7 @@ fn Visit(values: ref int[]) void {
     }
 }
 `)
-	if len(errors) != 0 {
-		t.Fatalf("analysis errors: %v", errors)
-	}
+	assertPitfallBoundsErrorCount(t, errors, 1)
 	findings := analyzer.PitfallAnalysis().Findings()
 	if len(findings) != 1 || findings[0].Rule != PitfallInclusiveLengthIndex {
 		t.Fatalf("findings = %+v, want inclusive-length finding", findings)
@@ -459,9 +455,11 @@ fn Visit(values: ref int[], other: ref int[]) void {
 }
 `, test.condition)
 			analyzer, errors := analyzeSourceWithAnalyzer(t, source)
-			if len(errors) != 0 {
-				t.Fatalf("analysis errors: %v", errors)
+			wantErrors := 1
+			if test.suppressed {
+				wantErrors = 0
 			}
+			assertPitfallBoundsErrorCount(t, errors, wantErrors)
 			results := analyzer.PitfallAnalysis().Results()
 			inclusive, found := pitfallResultForRule(results, PitfallInclusiveLengthIndex)
 			if !found {
@@ -505,9 +503,11 @@ fn Visit(values: ref int[], other: ref int[], stop: bool) void {
 }
 `, test.condition, test.exit)
 			analyzer, errors := analyzeSourceWithAnalyzer(t, source)
-			if len(errors) != 0 {
-				t.Fatalf("analysis errors: %v", errors)
+			wantErrors := 1
+			if test.suppressed {
+				wantErrors = 0
 			}
+			assertPitfallBoundsErrorCount(t, errors, wantErrors)
 			results := analyzer.PitfallAnalysis().Results()
 			if len(results) != 1 || results[0].Rule != PitfallInclusiveLengthIndex {
 				t.Fatalf("results = %+v, want one inclusive-length result", results)
@@ -548,9 +548,11 @@ fn Visit(values: ref int[], stop: bool) void {
 }
 `, test.guard)
 			analyzer, errors := analyzeSourceWithAnalyzer(t, source)
-			if len(errors) != 0 {
-				t.Fatalf("analysis errors: %v", errors)
+			wantErrors := 1
+			if test.suppressed {
+				wantErrors = 0
 			}
+			assertPitfallBoundsErrorCount(t, errors, wantErrors)
 			results := analyzer.PitfallAnalysis().Results()
 			inclusive, found := pitfallResultForRule(results, PitfallInclusiveLengthIndex)
 			if !found {
@@ -590,9 +592,7 @@ fn Visit(values: ref int[]) void {
     }
 }
 `)
-	if len(errors) != 0 {
-		t.Fatalf("analysis errors: %v", errors)
-	}
+	assertPitfallBoundsErrorCount(t, errors, 1)
 	results := analyzer.PitfallAnalysis().Results()
 	if len(results) != 2 || results[0].State != PitfallStateFinding || results[1].State != PitfallStateSuppressed {
 		t.Fatalf("guard-local index must remain a finding and later index be suppressed: %+v", results)
@@ -611,9 +611,7 @@ fn Visit(values: ref int[]) void {
     }
 }
 `)
-	if len(errors) != 0 {
-		t.Fatalf("analysis errors: %v", errors)
-	}
+	assertPitfallBoundsErrorCount(t, errors, 1)
 	results := analyzer.PitfallAnalysis().Results()
 	if len(results) != 2 || results[0].State != PitfallStateFinding || results[1].State != PitfallStateSuppressed {
 		t.Fatalf("guard-local index must remain a finding and later index be suppressed: %+v", results)
@@ -726,9 +724,7 @@ fn Visit(values: ref int[], stop: bool) void {
     }
 }
 `)
-	if len(errors) != 0 {
-		t.Fatalf("analysis errors: %v", errors)
-	}
+	assertPitfallBoundsErrorCount(t, errors, 1)
 	findings := analyzer.PitfallAnalysis().Findings()
 	if len(findings) != 1 || findings[0].Rule != PitfallInclusiveLengthIndex {
 		t.Fatalf("conditional break unsoundly suppressed endpoint finding: %+v", findings)
@@ -742,14 +738,27 @@ fn Direct(values: ref int[]) int {
     return values[values.Len]
 }
 `)
-	if len(errors) != 0 {
-		t.Fatalf("analysis errors: %v", errors)
-	}
+	assertPitfallBoundsErrorCount(t, errors, 1)
 	first := analyzer.PitfallAnalysis()
 	first.results[0].EvidenceFor[0].Fact = "mutated"
 	first.evaluations[0].FindingCount = 99
 	again := analyzer.PitfallAnalysis()
 	if again.Results()[0].EvidenceFor[0].Fact == "mutated" || again.Evaluations()[0].FindingCount == 99 {
 		t.Fatal("PitfallAnalysis returned mutable analyzer storage")
+	}
+}
+
+// assertPitfallBoundsErrorCount verifies the new normative owner without
+// weakening existing pattern, guard, suppression or action assertions.
+// Rules: rules/analysis/pitfall_analysis.md — "Proven invalidity is not a warning", "Diagnostic ownership and coalescing".
+func assertPitfallBoundsErrorCount(t *testing.T, errs []Error, want int) {
+	t.Helper()
+	if len(errs) != want {
+		t.Fatalf("bounds errors: %v, want %d", errs, want)
+	}
+	for _, e := range errs {
+		if e.ID != diagnostics.IndexOutOfBounds || e.Severity != diagnostics.SeverityError || e.ProofState != diagnostics.ProofInvalid {
+			t.Fatal(e)
+		}
 	}
 }

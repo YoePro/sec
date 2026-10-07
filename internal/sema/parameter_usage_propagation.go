@@ -4,16 +4,20 @@ import "sort"
 
 const parameterUsageProjectionLimit = 8
 
-// propagateDirectCalls joins demand in stable call-graph SCC order, then
-// widens caller dimensions if the finite iteration budget is exhausted.
+// propagateCalls joins direct and function-value demand in stable call-graph
+// SCC order, then widens caller dimensions if the finite budget is exhausted.
 // Rules: rules/analysis/parameter_usage_analysis.md — "Calls propagate demand",
-// "Recursive functions"; rules/compiler/compiler_analysis.md — §14(1–3).
-func (b *parameterUsageBuilder) propagateDirectCalls() {
+// "Function-value calls", "Recursive functions";
+// rules/compiler/compiler_analysis.md — §14(1–3).
+func (b *parameterUsageBuilder) propagateCalls() {
 	if len(b.callSites) == 0 {
 		return
 	}
 	sites := b.orderedCallSites()
 	limit := len(sites)*24 + len(b.result.summaries) + 1
+	if configured := b.result.budget.MaxSummaryIterations; configured > 0 && configured < limit {
+		limit = configured
+	}
 	if configured := b.analyzer.analysisBudget.MaxSummaryIterations; configured > 0 && configured < limit {
 		limit = configured
 	}
@@ -70,34 +74,44 @@ func (b *parameterUsageBuilder) orderedCallSites() []parameterUsageCallSite {
 	return sites
 }
 
-// propagateCallSite joins callee demands and projected evidence into the caller,
-// widening dimensions whose resolved callee summary is unavailable.
-// Rules: rules/analysis/parameter_usage_analysis.md — "Calls propagate demand", "Dimension-specific unknown".
+// propagateCallSite joins all known callee demands and projected evidence,
+// including the public contract for omitted targets at an open boundary.
+// Missing body summaries widen rather than proving absence of demand.
+// Rules: rules/analysis/parameter_usage_analysis.md — "Calls propagate demand",
+// "Function-value calls", "Dimension-specific unknown".
 func (b *parameterUsageBuilder) propagateCallSite(site *parameterUsageCallSite) bool {
-	target := b.result.summaries[site.target]
 	changed := false
 	for _, argument := range site.arguments {
-		var callee *ParameterUsageParameterSummary
-		if target != nil {
-			if argument.receiver {
-				callee = target.Receiver
-			} else if argument.calleeIndex >= 0 && argument.calleeIndex < len(target.Parameters) {
-				callee = &target.Parameters[argument.calleeIndex]
-			}
+		if site.open {
+			changed = joinParameterDemand(&argument.callerParameter.Demand, openCallableParameterDemand(site.contract, argument.calleeIndex)) || changed
 		}
-		if callee == nil {
+		if len(site.targets) == 0 && !site.open {
 			changed = widenParameterDemand(&argument.callerParameter.Demand) || changed
-			continue
 		}
-		changed = joinParameterDemand(&argument.callerParameter.Demand, callee.Demand) || changed
-		for _, use := range callee.Uses {
-			place, widened := instantiateParameterUsePlace(argument.callerPlace, use.Place)
-			if widened {
-				changed = setDemandPrecision(&argument.callerParameter.Demand, ParameterDemandPartial) || changed
+		for _, id := range site.targets {
+			target := b.result.summaries[id]
+			var callee *ParameterUsageParameterSummary
+			if target != nil {
+				if argument.receiver {
+					callee = target.Receiver
+				} else if argument.calleeIndex >= 0 && argument.calleeIndex < len(target.Parameters) {
+					callee = &target.Parameters[argument.calleeIndex]
+				}
 			}
-			propagated := ParameterUse{Kind: ParameterUseCall, Source: site.source, Place: place}
-			if appendUniqueParameterUse(argument.callerParameter, propagated) {
-				changed = true
+			if callee == nil {
+				changed = widenParameterDemand(&argument.callerParameter.Demand) || changed
+				continue
+			}
+			changed = joinParameterDemand(&argument.callerParameter.Demand, callee.Demand) || changed
+			for _, use := range callee.Uses {
+				place, widened := instantiateParameterUsePlace(argument.callerPlace, use.Place)
+				if widened {
+					changed = setDemandPrecision(&argument.callerParameter.Demand, ParameterDemandPartial) || changed
+				}
+				propagated := ParameterUse{Kind: ParameterUseCall, Source: site.source, Place: place}
+				if appendUniqueParameterUse(argument.callerParameter, propagated) {
+					changed = true
+				}
 			}
 		}
 	}

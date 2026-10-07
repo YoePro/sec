@@ -421,26 +421,41 @@ impl rune {
         return self
     }
 
-    /** Returns the int value of a numeric rune or None(). */
+    /**
+     * Returns the numeric value represented by this rune, or None().
+     *
+     * Description:
+     * Returns the Unicode Numeric_Value of the rune when one is defined.
+     * In addition, Sec recognizes the Latin letters I, V, X, L, C, D, and M,
+     * in either case, as Roman numeral values.
+     *
+     * Returns:
+     * Some(value) containing the numeric value represented by the rune,
+     * or None() when the rune has no recognized numeric value.
+     *
+     * Standards:
+     * - Unicode Character Database: Numeric_Value
+     */
     fn ToNumericValue() Option[decimal] {
         switch {
-            case self.IsDigit: // ASCII digits
+            case self.IsDigit:
                 return Some(decimal(int(self) - 48))
             case self.IsUnicodeDigit: // Unicode digits (0-9 in other scripts)
                 return Some(decimal(int(self) % 10))
-            case self.IsLetter: // Check for Roman numeral letters
-                if self in [73r, 86r, 88r, 76r, 67r, 68r, 77r, 105r, 118r, 120r, 108r, 99r, 100r, 109r] {
-                    return Some(self._toRomanValue())
-                }
+            case self in [73r, 86r, 88r, 76r, 67r, 68r, 77r, 105r, 118r, 120r, 108r, 99r, 100r, 109r]:
+                return Some(self._toRomanValue()) // Sec extension: Latin letters used as Roman numerals.
             case self in 8544r..8575r: // Unicode Roman Numerals block (Ⅰ to ⅿ)
                 return Some(self._toRomanValue())
             case self in 188r..190r || self in 8531r..8542r: // Unicode fractions (¼, ½, ¾, ⅓, ⅔, etc.)
                 return Some(self._toFractionValue())
-            case self in [8730r, 8731r, 8732r, 8733r, 120645r]: // Unicode mathematical constants (√2, √3, π, e)
-                return Some(self._toConstantValue())
         }
 
-        return None()
+        return None
+    }
+
+    /** Returns the decimal value of constants */
+    fn ToConstantValue() Option[decimal] {
+        return self._toConstantValue()
     }
 
     /** Returns the number of UTF-8 bytes needed to encode this rune. */
@@ -558,6 +573,783 @@ impl rune {
         return self
     }
 
+    /**
+     * Returns the Unicode 15.0.0 Numeric_Value of this rune, or None().
+     *
+     * Description:
+     * This table is complete for Unicode 15.0.0 and is generated from the UCD
+     * Numeric_Value data. Values represented by rational fractions are evaluated
+     * as decimal division so recurring fractions use the precision available to
+     * Sec's decimal type.
+     *
+     * Returns:
+     * Some(value) when Unicode 15.0.0 defines Numeric_Value for the rune,
+     * otherwise None().
+     *
+     * Standards:
+     * - Unicode Character Database 15.0.0: Numeric_Value
+     * - UAX #44: Unicode Character Database
+     */
+    fn _unicodeNumericValue() Option[decimal] {
+        switch {
+            // Unicode Numeric_Value = -1/2.
+            case self == 0xF33r:
+                return Some(-1.0 / 2.0)
+                // Unicode Numeric_Value = 0.
+            case self in [
+                    0x660r, 0x6F0r, 0x7C0r, 0x966r, 0x9E6r, 0xA66r, 0xAE6r, 0xB66r, 0xBE6r, 0xC66r, 0xC78r,
+                    0xCE6r, 0xD66r, 0xDE6r, 0xE50r, 0xED0r, 0xF20r, 0x1040r, 0x1090r, 0x17E0r, 0x17F0r,
+                    0x1810r, 0x1946r, 0x19D0r, 0x1A80r, 0x1A90r, 0x1B50r, 0x1BB0r, 0x1C40r, 0x1C50r,
+                    0x2070r, 0x2080r, 0x2189r, 0x24EAr, 0x24FFr, 0x3007r, 0x6D1Er, 0x96F6r, 0xA620r,
+                    0xA6EFr, 0xA8D0r, 0xA900r, 0xA9D0r, 0xA9F0r, 0xAA50r, 0xABF0r, 0xF9B2r, 0xFF10r,
+                    0x1018Ar, 0x104A0r, 0x10D30r, 0x11066r, 0x110F0r, 0x11136r, 0x111D0r, 0x112F0r,
+                    0x11450r, 0x114D0r, 0x11650r, 0x116C0r, 0x11730r, 0x118E0r, 0x11950r, 0x11C50r,
+                    0x11D50r, 0x11DA0r, 0x11F50r, 0x16A60r, 0x16AC0r, 0x16B50r, 0x16E80r, 0x1D2C0r,
+                    0x1D2E0r, 0x1D7CEr, 0x1D7D8r, 0x1D7E2r, 0x1D7ECr, 0x1D7F6r, 0x1E140r, 0x1E2F0r,
+                    0x1E4F0r, 0x1E950r, 0x1F100r..0x1F101r, 0x1F10Br..0x1F10Cr, 0x1FBF0r,
+                ]:
+                return Some(decimal(0))
+                // Unicode Numeric_Value = 1/320.
+            case self in [
+                    0x11FC0r, 0x11FD4r,
+                ]:
+                return Some(1.0 / 320.0)
+                // Unicode Numeric_Value = 1/160.
+            case self in [
+                    0xD58r, 0x11FC1r,
+                ]:
+                return Some(1.0 / 160.0)
+                // Unicode Numeric_Value = 1/80.
+            case self == 0x11FC2r:
+                return Some(1.0 / 80.0)
+                // Unicode Numeric_Value = 1/64.
+            case self == 0x11FC3r:
+                return Some(1.0 / 64.0)
+                // Unicode Numeric_Value = 1/40.
+            case self in [
+                    0xD59r, 0x11FC4r,
+                ]:
+                return Some(1.0 / 40.0)
+                // Unicode Numeric_Value = 1/32.
+            case self == 0x11FC5r:
+                return Some(1.0 / 32.0)
+                // Unicode Numeric_Value = 3/80.
+            case self in [
+                    0xD5Ar, 0x11FC6r,
+                ]:
+                return Some(3.0 / 80.0)
+                // Unicode Numeric_Value = 3/64.
+            case self == 0x11FC7r:
+                return Some(3.0 / 64.0)
+                // Unicode Numeric_Value = 1/20.
+            case self in [
+                    0xD5Br, 0x11FC8r,
+                ]:
+                return Some(1.0 / 20.0)
+                // Unicode Numeric_Value = 1/16.
+            case self in [
+                    0x9F4r, 0xB75r, 0xD76r, 0xA833r, 0x11FC9r..0x11FCAr,
+                ]:
+                return Some(1.0 / 16.0)
+                // Unicode Numeric_Value = 1/12.
+            case self == 0x109F6r:
+                return Some(1.0 / 12.0)
+                // Unicode Numeric_Value = 1/10.
+            case self in [
+                    0xD5Cr, 0x2152r, 0x11FCBr,
+                ]:
+                return Some(1.0 / 10.0)
+                // Unicode Numeric_Value = 1/9.
+            case self == 0x2151r:
+                return Some(1.0 / 9.0)
+                // Unicode Numeric_Value = 1/8.
+            case self in [
+                    0x9F5r, 0xB76r, 0xD77r, 0x215Br, 0xA834r, 0x11FCCr, 0x1245Fr,
+                ]:
+                return Some(1.0 / 8.0)
+                // Unicode Numeric_Value = 1/7.
+            case self == 0x2150r:
+                return Some(1.0 / 7.0)
+                // Unicode Numeric_Value = 3/20.
+            case self in [
+                    0xD5Dr, 0x11FCDr,
+                ]:
+                return Some(3.0 / 20.0)
+                // Unicode Numeric_Value = 1/6.
+            case self in [
+                    0x2159r, 0x109F7r, 0x12461r, 0x1ED3Dr,
+                ]:
+                return Some(1.0 / 6.0)
+                // Unicode Numeric_Value = 3/16.
+            case self in [
+                    0x9F6r, 0xB77r, 0xD78r, 0xA835r, 0x11FCEr,
+                ]:
+                return Some(3.0 / 16.0)
+                // Unicode Numeric_Value = 1/5.
+            case self in [
+                    0xD5Er, 0x2155r, 0x11FCFr,
+                ]:
+                return Some(1.0 / 5.0)
+                // Unicode Numeric_Value = 1/4.
+            case self in [
+                    0xBCr, 0x9F7r, 0xB72r, 0xD73r, 0xA830r, 0x10140r, 0x1018Br, 0x109F8r, 0x10E7Cr,
+                    0x11FD0r, 0x12460r, 0x12462r..0x12463r, 0x1ECADr,
+                ]:
+                return Some(1.0 / 4.0)
+                // Unicode Numeric_Value = 1/3.
+            case self in [
+                    0x2153r, 0x109F9r, 0x10E7Dr, 0x1245Ar, 0x1245Dr, 0x12465r,
+                ]:
+                return Some(1.0 / 3.0)
+                // Unicode Numeric_Value = 3/8.
+            case self == 0x215Cr:
+                return Some(3.0 / 8.0)
+                // Unicode Numeric_Value = 2/5.
+            case self == 0x2156r:
+                return Some(2.0 / 5.0)
+                // Unicode Numeric_Value = 5/12.
+            case self == 0x109FAr:
+                return Some(5.0 / 12.0)
+                // Unicode Numeric_Value = 1/2.
+            case self in [
+                    0xBDr, 0xB73r, 0xD74r, 0xF2Ar, 0x2CFDr, 0xA831r, 0x10141r, 0x10175r..0x10176r,
+                    0x109BDr, 0x109FBr, 0x10A48r, 0x10E7Br, 0x10F26r, 0x11FD1r..0x11FD2r, 0x12464r,
+                    0x1ECAEr, 0x1ED3Cr,
+                ]:
+                return Some(1.0 / 2.0)
+                // Unicode Numeric_Value = 7/12.
+            case self == 0x109FCr:
+                return Some(7.0 / 12.0)
+                // Unicode Numeric_Value = 3/5.
+            case self == 0x2157r:
+                return Some(3.0 / 5.0)
+                // Unicode Numeric_Value = 5/8.
+            case self == 0x215Dr:
+                return Some(5.0 / 8.0)
+                // Unicode Numeric_Value = 2/3.
+            case self in [
+                    0x2154r, 0x10177r, 0x109FDr, 0x10E7Er, 0x1245Br, 0x1245Er, 0x12466r,
+                ]:
+                return Some(2.0 / 3.0)
+                // Unicode Numeric_Value = 3/4.
+            case self in [
+                    0xBEr, 0x9F8r, 0xB74r, 0xD75r, 0xA832r, 0x10178r, 0x109FEr, 0x11FD3r, 0x1ECAFr,
+                ]:
+                return Some(3.0 / 4.0)
+                // Unicode Numeric_Value = 4/5.
+            case self == 0x2158r:
+                return Some(4.0 / 5.0)
+                // Unicode Numeric_Value = 5/6.
+            case self in [
+                    0x215Ar, 0x109FFr, 0x1245Cr,
+                ]:
+                return Some(5.0 / 6.0)
+                // Unicode Numeric_Value = 7/8.
+            case self == 0x215Er:
+                return Some(7.0 / 8.0)
+                // Unicode Numeric_Value = 11/12.
+            case self == 0x109BCr:
+                return Some(11.0 / 12.0)
+                // Unicode Numeric_Value = 1.
+            case self in [
+                    0xB9r, 0x661r, 0x6F1r, 0x7C1r, 0x967r, 0x9E7r, 0xA67r, 0xAE7r, 0xB67r, 0xBE7r, 0xC67r,
+                    0xC79r, 0xC7Cr, 0xCE7r, 0xD67r, 0xDE7r, 0xE51r, 0xED1r, 0xF21r, 0x1041r, 0x1091r,
+                    0x1369r, 0x17E1r, 0x17F1r, 0x1811r, 0x1947r, 0x19D1r, 0x19DAr, 0x1A81r, 0x1A91r,
+                    0x1B51r, 0x1BB1r, 0x1C41r, 0x1C51r, 0x2081r, 0x215Fr..0x2160r, 0x2170r, 0x2460r,
+                    0x2474r, 0x2488r, 0x24F5r, 0x2776r, 0x2780r, 0x278Ar, 0x3021r, 0x3192r, 0x3220r,
+                    0x3280r, 0x4E00r, 0x58F1r, 0x58F9r, 0x5E7Ar, 0x5F0Cr, 0xA621r, 0xA6E6r, 0xA8D1r,
+                    0xA901r, 0xA9D1r, 0xA9F1r, 0xAA51r, 0xABF1r, 0xFF11r, 0x10107r, 0x10142r,
+                    0x10158r..0x1015Ar, 0x102E1r, 0x10320r, 0x103D1r, 0x104A1r, 0x10858r, 0x10879r,
+                    0x108A7r, 0x108FBr, 0x10916r, 0x109C0r, 0x10A40r, 0x10A7Dr, 0x10A9Dr, 0x10AEBr,
+                    0x10B58r, 0x10B78r, 0x10BA9r, 0x10CFAr, 0x10D31r, 0x10E60r, 0x10F1Dr, 0x10F51r,
+                    0x10FC5r, 0x11052r, 0x11067r, 0x110F1r, 0x11137r, 0x111D1r, 0x111E1r, 0x112F1r,
+                    0x11451r, 0x114D1r, 0x11651r, 0x116C1r, 0x11731r, 0x118E1r, 0x11951r, 0x11C51r,
+                    0x11C5Ar, 0x11D51r, 0x11DA1r, 0x11F51r, 0x12415r, 0x1241Er, 0x1242Cr, 0x12434r,
+                    0x1244Fr, 0x12458r, 0x16A61r, 0x16AC1r, 0x16B51r, 0x16E81r, 0x16E94r, 0x1D2C1r,
+                    0x1D2E1r, 0x1D360r, 0x1D372r, 0x1D377r, 0x1D7CFr, 0x1D7D9r, 0x1D7E3r, 0x1D7EDr,
+                    0x1D7F7r, 0x1E141r, 0x1E2F1r, 0x1E4F1r, 0x1E8C7r, 0x1E951r, 0x1EC71r, 0x1ECA3r,
+                    0x1ECB1r, 0x1ED01r, 0x1F102r, 0x1FBF1r, 0x2092Ar,
+                ]:
+                return Some(decimal(1))
+                // Unicode Numeric_Value = 3/2.
+            case self == 0xF2Br:
+                return Some(3.0 / 2.0)
+                // Unicode Numeric_Value = 2.
+            case self in [
+                    0xB2r, 0x662r, 0x6F2r, 0x7C2r, 0x968r, 0x9E8r, 0xA68r, 0xAE8r, 0xB68r, 0xBE8r, 0xC68r,
+                    0xC7Ar, 0xC7Dr, 0xCE8r, 0xD68r, 0xDE8r, 0xE52r, 0xED2r, 0xF22r, 0x1042r, 0x1092r,
+                    0x136Ar, 0x17E2r, 0x17F2r, 0x1812r, 0x1948r, 0x19D2r, 0x1A82r, 0x1A92r, 0x1B52r,
+                    0x1BB2r, 0x1C42r, 0x1C52r, 0x2082r, 0x2161r, 0x2171r, 0x2461r, 0x2475r, 0x2489r,
+                    0x24F6r, 0x2777r, 0x2781r, 0x278Br, 0x3022r, 0x3193r, 0x3221r, 0x3281r, 0x3483r,
+                    0x4E24r, 0x4E8Cr, 0x4FE9r, 0x5006r, 0x5169r, 0x5F0Dr, 0x5F10r, 0x8CAEr, 0x8CB3r,
+                    0x8D30r, 0xA622r, 0xA6E7r, 0xA8D2r, 0xA902r, 0xA9D2r, 0xA9F2r, 0xAA52r, 0xABF2r,
+                    0xF978r, 0xFF12r, 0x10108r, 0x1015Br..0x1015Er, 0x102E2r, 0x103D2r, 0x104A2r, 0x10859r,
+                    0x1087Ar, 0x108A8r, 0x1091Ar, 0x109C1r, 0x10A41r, 0x10B59r, 0x10B79r, 0x10BAAr,
+                    0x10D32r, 0x10E61r, 0x10F1Er, 0x10FC6r, 0x11053r, 0x11068r, 0x110F2r, 0x11138r,
+                    0x111D2r, 0x111E2r, 0x112F2r, 0x11452r, 0x114D2r, 0x11652r, 0x116C2r, 0x11732r,
+                    0x118E2r, 0x11952r, 0x11C52r, 0x11C5Br, 0x11D52r, 0x11DA2r, 0x11F52r, 0x12400r,
+                    0x12416r, 0x1241Fr, 0x12423r, 0x1242Dr, 0x12435r, 0x1244Ar, 0x12450r, 0x12456r,
+                    0x12459r, 0x16A62r, 0x16AC2r, 0x16B52r, 0x16E82r, 0x16E95r, 0x1D2C2r, 0x1D2E2r,
+                    0x1D361r, 0x1D373r, 0x1D7D0r, 0x1D7DAr, 0x1D7E4r, 0x1D7EEr, 0x1D7F8r, 0x1E142r,
+                    0x1E2F2r, 0x1E4F2r, 0x1E8C8r, 0x1E952r, 0x1EC72r, 0x1ECA4r, 0x1ECB2r, 0x1ED02r,
+                    0x1ED2Fr, 0x1F103r, 0x1FBF2r, 0x22390r,
+                ]:
+                return Some(decimal(2))
+                // Unicode Numeric_Value = 5/2.
+            case self == 0xF2Cr:
+                return Some(5.0 / 2.0)
+                // Unicode Numeric_Value = 3.
+            case self in [
+                    0xB3r, 0x663r, 0x6F3r, 0x7C3r, 0x969r, 0x9E9r, 0xA69r, 0xAE9r, 0xB69r, 0xBE9r, 0xC69r,
+                    0xC7Br, 0xC7Er, 0xCE9r, 0xD69r, 0xDE9r, 0xE53r, 0xED3r, 0xF23r, 0x1043r, 0x1093r,
+                    0x136Br, 0x17E3r, 0x17F3r, 0x1813r, 0x1949r, 0x19D3r, 0x1A83r, 0x1A93r, 0x1B53r,
+                    0x1BB3r, 0x1C43r, 0x1C53r, 0x2083r, 0x2162r, 0x2172r, 0x2462r, 0x2476r, 0x248Ar,
+                    0x24F7r, 0x2778r, 0x2782r, 0x278Cr, 0x3023r, 0x3194r, 0x3222r, 0x3282r, 0x4E09r,
+                    0x4EE8r, 0x53C1r..0x53C4r, 0x5F0Er, 0xA623r, 0xA6E8r, 0xA8D3r, 0xA903r, 0xA9D3r,
+                    0xA9F3r, 0xAA53r, 0xABF3r, 0xF96Br, 0xFF13r, 0x10109r, 0x102E3r, 0x104A3r, 0x1085Ar,
+                    0x1087Br, 0x108A9r, 0x1091Br, 0x109C2r, 0x10A42r, 0x10B5Ar, 0x10B7Ar, 0x10BABr,
+                    0x10D33r, 0x10E62r, 0x10F1Fr, 0x10FC7r, 0x11054r, 0x11069r, 0x110F3r, 0x11139r,
+                    0x111D3r, 0x111E3r, 0x112F3r, 0x11453r, 0x114D3r, 0x11653r, 0x116C3r, 0x11733r,
+                    0x118E3r, 0x11953r, 0x11C53r, 0x11C5Cr, 0x11D53r, 0x11DA3r, 0x11F53r, 0x12401r,
+                    0x12408r, 0x12417r, 0x12420r, 0x12424r..0x12425r, 0x1242Er..0x1242Fr,
+                    0x12436r..0x12437r, 0x1243Ar..0x1243Br, 0x1244Br, 0x12451r, 0x12457r, 0x16A63r,
+                    0x16AC3r, 0x16B53r, 0x16E83r, 0x16E96r, 0x1D2C3r, 0x1D2E3r, 0x1D362r, 0x1D374r,
+                    0x1D7D1r, 0x1D7DBr, 0x1D7E5r, 0x1D7EFr, 0x1D7F9r, 0x1E143r, 0x1E2F3r, 0x1E4F3r,
+                    0x1E8C9r, 0x1E953r, 0x1EC73r, 0x1ECA5r, 0x1ED03r, 0x1ED30r, 0x1F104r, 0x1FBF3r,
+                    0x20AFDr, 0x20B19r, 0x22998r, 0x23B1Br,
+                ]:
+                return Some(decimal(3))
+                // Unicode Numeric_Value = 7/2.
+            case self == 0xF2Dr:
+                return Some(7.0 / 2.0)
+                // Unicode Numeric_Value = 4.
+            case self in [
+                    0x664r, 0x6F4r, 0x7C4r, 0x96Ar, 0x9EAr, 0xA6Ar, 0xAEAr, 0xB6Ar, 0xBEAr, 0xC6Ar, 0xCEAr,
+                    0xD6Ar, 0xDEAr, 0xE54r, 0xED4r, 0xF24r, 0x1044r, 0x1094r, 0x136Cr, 0x17E4r, 0x17F4r,
+                    0x1814r, 0x194Ar, 0x19D4r, 0x1A84r, 0x1A94r, 0x1B54r, 0x1BB4r, 0x1C44r, 0x1C54r,
+                    0x2074r, 0x2084r, 0x2163r, 0x2173r, 0x2463r, 0x2477r, 0x248Br, 0x24F8r, 0x2779r,
+                    0x2783r, 0x278Dr, 0x3024r, 0x3195r, 0x3223r, 0x3283r, 0x4E96r, 0x56DBr, 0x8086r,
+                    0xA624r, 0xA6E9r, 0xA8D4r, 0xA904r, 0xA9D4r, 0xA9F4r, 0xAA54r, 0xABF4r, 0xFF14r,
+                    0x1010Ar, 0x102E4r, 0x104A4r, 0x1087Cr, 0x108AAr..0x108ABr, 0x109C3r, 0x10A43r,
+                    0x10B5Br, 0x10B7Br, 0x10BACr, 0x10D34r, 0x10E63r, 0x10F20r, 0x10FC8r, 0x11055r,
+                    0x1106Ar, 0x110F4r, 0x1113Ar, 0x111D4r, 0x111E4r, 0x112F4r, 0x11454r, 0x114D4r,
+                    0x11654r, 0x116C4r, 0x11734r, 0x118E4r, 0x11954r, 0x11C54r, 0x11C5Dr, 0x11D54r,
+                    0x11DA4r, 0x11F54r, 0x12402r, 0x12409r, 0x1240Fr, 0x12418r, 0x12421r, 0x12426r,
+                    0x12430r, 0x12438r, 0x1243Cr..0x1243Fr, 0x1244Cr, 0x12452r..0x12453r, 0x12469r,
+                    0x16A64r, 0x16AC4r, 0x16B54r, 0x16E84r, 0x1D2C4r, 0x1D2E4r, 0x1D363r, 0x1D375r,
+                    0x1D7D2r, 0x1D7DCr, 0x1D7E6r, 0x1D7F0r, 0x1D7FAr, 0x1E144r, 0x1E2F4r, 0x1E4F4r,
+                    0x1E8CAr, 0x1E954r, 0x1EC74r, 0x1ECA6r, 0x1ED04r, 0x1ED31r, 0x1F105r, 0x1FBF4r,
+                    0x20064r, 0x200E2r, 0x2626Dr,
+                ]:
+                return Some(decimal(4))
+                // Unicode Numeric_Value = 9/2.
+            case self == 0xF2Er:
+                return Some(9.0 / 2.0)
+                // Unicode Numeric_Value = 5.
+            case self in [
+                    0x665r, 0x6F5r, 0x7C5r, 0x96Br, 0x9EBr, 0xA6Br, 0xAEBr, 0xB6Br, 0xBEBr, 0xC6Br, 0xCEBr,
+                    0xD6Br, 0xDEBr, 0xE55r, 0xED5r, 0xF25r, 0x1045r, 0x1095r, 0x136Dr, 0x17E5r, 0x17F5r,
+                    0x1815r, 0x194Br, 0x19D5r, 0x1A85r, 0x1A95r, 0x1B55r, 0x1BB5r, 0x1C45r, 0x1C55r,
+                    0x2075r, 0x2085r, 0x2164r, 0x2174r, 0x2464r, 0x2478r, 0x248Cr, 0x24F9r, 0x277Ar,
+                    0x2784r, 0x278Er, 0x3025r, 0x3224r, 0x3284r, 0x3405r, 0x382Ar, 0x4E94r, 0x4F0Dr,
+                    0xA625r, 0xA6EAr, 0xA8D5r, 0xA905r, 0xA9D5r, 0xA9F5r, 0xAA55r, 0xABF5r, 0xFF15r,
+                    0x1010Br, 0x10143r, 0x10148r, 0x1014Fr, 0x1015Fr, 0x10173r, 0x102E5r, 0x10321r,
+                    0x104A5r, 0x1087Dr, 0x108ACr, 0x108FCr, 0x109C4r, 0x10AECr, 0x10CFBr, 0x10D35r,
+                    0x10E64r, 0x10F21r, 0x11056r, 0x1106Br, 0x110F5r, 0x1113Br, 0x111D5r, 0x111E5r,
+                    0x112F5r, 0x11455r, 0x114D5r, 0x11655r, 0x116C5r, 0x11735r, 0x118E5r, 0x11955r,
+                    0x11C55r, 0x11C5Er, 0x11D55r, 0x11DA5r, 0x11F55r, 0x12403r, 0x1240Ar, 0x12410r,
+                    0x12419r, 0x12422r, 0x12427r, 0x12431r, 0x12439r, 0x1244Dr, 0x12454r..0x12455r,
+                    0x1246Ar, 0x16A65r, 0x16AC5r, 0x16B55r, 0x16E85r, 0x1D2C5r, 0x1D2E5r, 0x1D364r,
+                    0x1D376r, 0x1D378r, 0x1D7D3r, 0x1D7DDr, 0x1D7E7r, 0x1D7F1r, 0x1D7FBr, 0x1E145r,
+                    0x1E2F5r, 0x1E4F5r, 0x1E8CBr, 0x1E955r, 0x1EC75r, 0x1ECA7r, 0x1ED05r, 0x1ED32r,
+                    0x1F106r, 0x1FBF5r, 0x20121r,
+                ]:
+                return Some(decimal(5))
+                // Unicode Numeric_Value = 11/2.
+            case self == 0xF2Fr:
+                return Some(11.0 / 2.0)
+                // Unicode Numeric_Value = 6.
+            case self in [
+                    0x666r, 0x6F6r, 0x7C6r, 0x96Cr, 0x9ECr, 0xA6Cr, 0xAECr, 0xB6Cr, 0xBECr, 0xC6Cr, 0xCECr,
+                    0xD6Cr, 0xDECr, 0xE56r, 0xED6r, 0xF26r, 0x1046r, 0x1096r, 0x136Er, 0x17E6r, 0x17F6r,
+                    0x1816r, 0x194Cr, 0x19D6r, 0x1A86r, 0x1A96r, 0x1B56r, 0x1BB6r, 0x1C46r, 0x1C56r,
+                    0x2076r, 0x2086r, 0x2165r, 0x2175r, 0x2185r, 0x2465r, 0x2479r, 0x248Dr, 0x24FAr,
+                    0x277Br, 0x2785r, 0x278Fr, 0x3026r, 0x3225r, 0x3285r, 0x516Dr, 0x9646r, 0x9678r,
+                    0xA626r, 0xA6EBr, 0xA8D6r, 0xA906r, 0xA9D6r, 0xA9F6r, 0xAA56r, 0xABF6r, 0xF9D1r,
+                    0xF9D3r, 0xFF16r, 0x1010Cr, 0x102E6r, 0x104A6r, 0x109C5r, 0x10D36r, 0x10E65r, 0x11057r,
+                    0x1106Cr, 0x110F6r, 0x1113Cr, 0x111D6r, 0x111E6r, 0x112F6r, 0x11456r, 0x114D6r,
+                    0x11656r, 0x116C6r, 0x11736r, 0x118E6r, 0x11956r, 0x11C56r, 0x11C5Fr, 0x11D56r,
+                    0x11DA6r, 0x11F56r, 0x12404r, 0x1240Br, 0x12411r, 0x1241Ar, 0x12428r, 0x12440r,
+                    0x1244Er, 0x1246Br, 0x16A66r, 0x16AC6r, 0x16B56r, 0x16E86r, 0x1D2C6r, 0x1D2E6r,
+                    0x1D365r, 0x1D7D4r, 0x1D7DEr, 0x1D7E8r, 0x1D7F2r, 0x1D7FCr, 0x1E146r, 0x1E2F6r,
+                    0x1E4F6r, 0x1E8CCr, 0x1E956r, 0x1EC76r, 0x1ECA8r, 0x1ED06r, 0x1ED33r, 0x1F107r,
+                    0x1FBF6r, 0x20AEAr,
+                ]:
+                return Some(decimal(6))
+                // Unicode Numeric_Value = 13/2.
+            case self == 0xF30r:
+                return Some(13.0 / 2.0)
+                // Unicode Numeric_Value = 7.
+            case self in [
+                    0x667r, 0x6F7r, 0x7C7r, 0x96Dr, 0x9EDr, 0xA6Dr, 0xAEDr, 0xB6Dr, 0xBEDr, 0xC6Dr, 0xCEDr,
+                    0xD6Dr, 0xDEDr, 0xE57r, 0xED7r, 0xF27r, 0x1047r, 0x1097r, 0x136Fr, 0x17E7r, 0x17F7r,
+                    0x1817r, 0x194Dr, 0x19D7r, 0x1A87r, 0x1A97r, 0x1B57r, 0x1BB7r, 0x1C47r, 0x1C57r,
+                    0x2077r, 0x2087r, 0x2166r, 0x2176r, 0x2466r, 0x247Ar, 0x248Er, 0x24FBr, 0x277Cr,
+                    0x2786r, 0x2790r, 0x3027r, 0x3226r, 0x3286r, 0x3B4Dr, 0x4E03r, 0x62D0r, 0x67D2r,
+                    0x6F06r, 0xA627r, 0xA6ECr, 0xA8D7r, 0xA907r, 0xA9D7r, 0xA9F7r, 0xAA57r, 0xABF7r,
+                    0xFF17r, 0x1010Dr, 0x102E7r, 0x104A7r, 0x109C6r, 0x10D37r, 0x10E66r, 0x11058r,
+                    0x1106Dr, 0x110F7r, 0x1113Dr, 0x111D7r, 0x111E7r, 0x112F7r, 0x11457r, 0x114D7r,
+                    0x11657r, 0x116C7r, 0x11737r, 0x118E7r, 0x11957r, 0x11C57r, 0x11C60r, 0x11D57r,
+                    0x11DA7r, 0x11F57r, 0x12405r, 0x1240Cr, 0x12412r, 0x1241Br, 0x12429r,
+                    0x12441r..0x12443r, 0x1246Cr, 0x16A67r, 0x16AC7r, 0x16B57r, 0x16E87r, 0x1D2C7r,
+                    0x1D2E7r, 0x1D366r, 0x1D7D5r, 0x1D7DFr, 0x1D7E9r, 0x1D7F3r, 0x1D7FDr, 0x1E147r,
+                    0x1E2F7r, 0x1E4F7r, 0x1E8CDr, 0x1E957r, 0x1EC77r, 0x1ECA9r, 0x1ED07r, 0x1ED34r,
+                    0x1F108r, 0x1FBF7r, 0x20001r,
+                ]:
+                return Some(decimal(7))
+                // Unicode Numeric_Value = 15/2.
+            case self == 0xF31r:
+                return Some(15.0 / 2.0)
+                // Unicode Numeric_Value = 8.
+            case self in [
+                    0x668r, 0x6F8r, 0x7C8r, 0x96Er, 0x9EEr, 0xA6Er, 0xAEEr, 0xB6Er, 0xBEEr, 0xC6Er, 0xCEEr,
+                    0xD6Er, 0xDEEr, 0xE58r, 0xED8r, 0xF28r, 0x1048r, 0x1098r, 0x1370r, 0x17E8r, 0x17F8r,
+                    0x1818r, 0x194Er, 0x19D8r, 0x1A88r, 0x1A98r, 0x1B58r, 0x1BB8r, 0x1C48r, 0x1C58r,
+                    0x2078r, 0x2088r, 0x2167r, 0x2177r, 0x2467r, 0x247Br, 0x248Fr, 0x24FCr, 0x277Dr,
+                    0x2787r, 0x2791r, 0x3028r, 0x3227r, 0x3287r, 0x516Br, 0x634Cr, 0xA628r, 0xA6EDr,
+                    0xA8D8r, 0xA908r, 0xA9D8r, 0xA9F8r, 0xAA58r, 0xABF8r, 0xFF18r, 0x1010Er, 0x102E8r,
+                    0x104A8r, 0x109C7r, 0x10D38r, 0x10E67r, 0x11059r, 0x1106Er, 0x110F8r, 0x1113Er,
+                    0x111D8r, 0x111E8r, 0x112F8r, 0x11458r, 0x114D8r, 0x11658r, 0x116C8r, 0x11738r,
+                    0x118E8r, 0x11958r, 0x11C58r, 0x11C61r, 0x11D58r, 0x11DA8r, 0x11F58r, 0x12406r,
+                    0x1240Dr, 0x12413r, 0x1241Cr, 0x1242Ar, 0x12444r..0x12445r, 0x1246Dr, 0x16A68r,
+                    0x16AC8r, 0x16B58r, 0x16E88r, 0x1D2C8r, 0x1D2E8r, 0x1D367r, 0x1D7D6r, 0x1D7E0r,
+                    0x1D7EAr, 0x1D7F4r, 0x1D7FEr, 0x1E148r, 0x1E2F8r, 0x1E4F8r, 0x1E8CEr, 0x1E958r,
+                    0x1EC78r, 0x1ECAAr, 0x1ED08r, 0x1ED35r, 0x1F109r, 0x1FBF8r,
+                ]:
+                return Some(decimal(8))
+                // Unicode Numeric_Value = 17/2.
+            case self == 0xF32r:
+                return Some(17.0 / 2.0)
+                // Unicode Numeric_Value = 9.
+            case self in [
+                    0x669r, 0x6F9r, 0x7C9r, 0x96Fr, 0x9EFr, 0xA6Fr, 0xAEFr, 0xB6Fr, 0xBEFr, 0xC6Fr, 0xCEFr,
+                    0xD6Fr, 0xDEFr, 0xE59r, 0xED9r, 0xF29r, 0x1049r, 0x1099r, 0x1371r, 0x17E9r, 0x17F9r,
+                    0x1819r, 0x194Fr, 0x19D9r, 0x1A89r, 0x1A99r, 0x1B59r, 0x1BB9r, 0x1C49r, 0x1C59r,
+                    0x2079r, 0x2089r, 0x2168r, 0x2178r, 0x2468r, 0x247Cr, 0x2490r, 0x24FDr, 0x277Er,
+                    0x2788r, 0x2792r, 0x3029r, 0x3228r, 0x3288r, 0x4E5Dr, 0x5EFEr, 0x7396r, 0x920Er,
+                    0x94A9r, 0xA629r, 0xA6EEr, 0xA8D9r, 0xA909r, 0xA9D9r, 0xA9F9r, 0xAA59r, 0xABF9r,
+                    0xFF19r, 0x1010Fr, 0x102E9r, 0x104A9r, 0x109C8r, 0x10D39r, 0x10E68r, 0x1105Ar,
+                    0x1106Fr, 0x110F9r, 0x1113Fr, 0x111D9r, 0x111E9r, 0x112F9r, 0x11459r, 0x114D9r,
+                    0x11659r, 0x116C9r, 0x11739r, 0x118E9r, 0x11959r, 0x11C59r, 0x11C62r, 0x11D59r,
+                    0x11DA9r, 0x11F59r, 0x12407r, 0x1240Er, 0x12414r, 0x1241Dr, 0x1242Br,
+                    0x12446r..0x12449r, 0x1246Er, 0x16A69r, 0x16AC9r, 0x16B59r, 0x16E89r, 0x1D2C9r,
+                    0x1D2E9r, 0x1D368r, 0x1D7D7r, 0x1D7E1r, 0x1D7EBr, 0x1D7F5r, 0x1D7FFr, 0x1E149r,
+                    0x1E2F9r, 0x1E4F9r, 0x1E8CFr, 0x1E959r, 0x1EC79r, 0x1ECABr, 0x1ED09r, 0x1ED36r,
+                    0x1F10Ar, 0x1FBF9r, 0x2F890r,
+                ]:
+                return Some(decimal(9))
+                // Unicode Numeric_Value = 10.
+            case self in [
+                    0xBF0r, 0xD70r, 0x1372r, 0x2169r, 0x2179r, 0x2469r, 0x247Dr, 0x2491r, 0x24FEr, 0x277Fr,
+                    0x2789r, 0x2793r, 0x3038r, 0x3229r, 0x3248r, 0x3289r, 0x4EC0r, 0x5341r, 0x62FEr,
+                    0xF973r, 0xF9FDr, 0x10110r, 0x10149r, 0x10150r, 0x10157r, 0x10160r..0x10164r, 0x102EAr,
+                    0x10322r, 0x103D3r, 0x1085Br, 0x1087Er, 0x108ADr, 0x108FDr, 0x10917r, 0x109C9r,
+                    0x10A44r, 0x10A9Er, 0x10AEDr, 0x10B5Cr, 0x10B7Cr, 0x10BADr, 0x10CFCr, 0x10E69r,
+                    0x10F22r, 0x10F52r, 0x10FC9r, 0x1105Br, 0x111EAr, 0x1173Ar, 0x118EAr, 0x11C63r,
+                    0x16B5Br, 0x16E8Ar, 0x1D2CAr, 0x1D2EAr, 0x1D369r, 0x1EC7Ar, 0x1ED0Ar, 0x1ED37r,
+                ]:
+                return Some(decimal(10))
+                // Unicode Numeric_Value = 11.
+            case self in [
+                    0x216Ar, 0x217Ar, 0x246Ar, 0x247Er, 0x2492r, 0x24EBr, 0x16E8Br, 0x1D2CBr, 0x1D2EBr,
+                ]:
+                return Some(decimal(11))
+                // Unicode Numeric_Value = 12.
+            case self in [
+                    0x216Br, 0x217Br, 0x246Br, 0x247Fr, 0x2493r, 0x24ECr, 0x16E8Cr, 0x1D2CCr, 0x1D2ECr,
+                ]:
+                return Some(decimal(12))
+                // Unicode Numeric_Value = 13.
+            case self in [
+                    0x246Cr, 0x2480r, 0x2494r, 0x24EDr, 0x16E8Dr, 0x1D2CDr, 0x1D2EDr,
+                ]:
+                return Some(decimal(13))
+                // Unicode Numeric_Value = 14.
+            case self in [
+                    0x246Dr, 0x2481r, 0x2495r, 0x24EEr, 0x16E8Er, 0x1D2CEr, 0x1D2EEr,
+                ]:
+                return Some(decimal(14))
+                // Unicode Numeric_Value = 15.
+            case self in [
+                    0x246Er, 0x2482r, 0x2496r, 0x24EFr, 0x16E8Fr, 0x1D2CFr, 0x1D2EFr,
+                ]:
+                return Some(decimal(15))
+                // Unicode Numeric_Value = 16.
+            case self in [
+                    0x9F9r, 0x246Fr, 0x2483r, 0x2497r, 0x24F0r, 0x16E90r, 0x1D2D0r, 0x1D2F0r,
+                ]:
+                return Some(decimal(16))
+                // Unicode Numeric_Value = 17.
+            case self in [
+                    0x16EEr, 0x2470r, 0x2484r, 0x2498r, 0x24F1r, 0x16E91r, 0x1D2D1r, 0x1D2F1r,
+                ]:
+                return Some(decimal(17))
+                // Unicode Numeric_Value = 18.
+            case self in [
+                    0x16EFr, 0x2471r, 0x2485r, 0x2499r, 0x24F2r, 0x16E92r, 0x1D2D2r, 0x1D2F2r,
+                ]:
+                return Some(decimal(18))
+                // Unicode Numeric_Value = 19.
+            case self in [
+                    0x16F0r, 0x2472r, 0x2486r, 0x249Ar, 0x24F3r, 0x16E93r, 0x1D2D3r, 0x1D2F3r,
+                ]:
+                return Some(decimal(19))
+                // Unicode Numeric_Value = 20.
+            case self in [
+                    0x1373r, 0x2473r, 0x2487r, 0x249Br, 0x24F4r, 0x3039r, 0x3249r, 0x5344r, 0x5EFFr,
+                    0x10111r, 0x102EBr, 0x103D4r, 0x1085Cr, 0x1087Fr, 0x108AEr, 0x108FEr, 0x10918r,
+                    0x109CAr, 0x10A45r, 0x10A9Fr, 0x10AEEr, 0x10B5Dr, 0x10B7Dr, 0x10BAEr, 0x10E6Ar,
+                    0x10F23r, 0x10F53r, 0x10FCAr, 0x1105Cr, 0x111EBr, 0x1173Br, 0x118EBr, 0x11C64r,
+                    0x1D36Ar, 0x1EC7Br, 0x1ED0Br,
+                ]:
+                return Some(decimal(20))
+                // Unicode Numeric_Value = 21.
+            case self == 0x3251r:
+                return Some(decimal(21))
+                // Unicode Numeric_Value = 22.
+            case self == 0x3252r:
+                return Some(decimal(22))
+                // Unicode Numeric_Value = 23.
+            case self == 0x3253r:
+                return Some(decimal(23))
+                // Unicode Numeric_Value = 24.
+            case self == 0x3254r:
+                return Some(decimal(24))
+                // Unicode Numeric_Value = 25.
+            case self == 0x3255r:
+                return Some(decimal(25))
+                // Unicode Numeric_Value = 26.
+            case self == 0x3256r:
+                return Some(decimal(26))
+                // Unicode Numeric_Value = 27.
+            case self == 0x3257r:
+                return Some(decimal(27))
+                // Unicode Numeric_Value = 28.
+            case self == 0x3258r:
+                return Some(decimal(28))
+                // Unicode Numeric_Value = 29.
+            case self == 0x3259r:
+                return Some(decimal(29))
+                // Unicode Numeric_Value = 30.
+            case self in [
+                    0x1374r, 0x303Ar, 0x324Ar, 0x325Ar, 0x5345r, 0x10112r, 0x10165r, 0x102ECr, 0x109CBr,
+                    0x10E6Br, 0x10F24r, 0x1105Dr, 0x111ECr, 0x118ECr, 0x11C65r, 0x1D36Br, 0x1EC7Cr,
+                    0x1ED0Cr, 0x20983r,
+                ]:
+                return Some(decimal(30))
+                // Unicode Numeric_Value = 31.
+            case self == 0x325Br:
+                return Some(decimal(31))
+                // Unicode Numeric_Value = 32.
+            case self == 0x325Cr:
+                return Some(decimal(32))
+                // Unicode Numeric_Value = 33.
+            case self == 0x325Dr:
+                return Some(decimal(33))
+                // Unicode Numeric_Value = 34.
+            case self == 0x325Er:
+                return Some(decimal(34))
+                // Unicode Numeric_Value = 35.
+            case self == 0x325Fr:
+                return Some(decimal(35))
+                // Unicode Numeric_Value = 36.
+            case self == 0x32B1r:
+                return Some(decimal(36))
+                // Unicode Numeric_Value = 37.
+            case self == 0x32B2r:
+                return Some(decimal(37))
+                // Unicode Numeric_Value = 38.
+            case self == 0x32B3r:
+                return Some(decimal(38))
+                // Unicode Numeric_Value = 39.
+            case self == 0x32B4r:
+                return Some(decimal(39))
+                // Unicode Numeric_Value = 40.
+            case self in [
+                    0x1375r, 0x324Br, 0x32B5r, 0x534Cr, 0x10113r, 0x102EDr, 0x109CCr, 0x10E6Cr, 0x1105Er,
+                    0x111EDr, 0x118EDr, 0x11C66r, 0x12467r, 0x1D36Cr, 0x1EC7Dr, 0x1ED0Dr, 0x2098Cr,
+                    0x2099Cr,
+                ]:
+                return Some(decimal(40))
+                // Unicode Numeric_Value = 41.
+            case self == 0x32B6r:
+                return Some(decimal(41))
+                // Unicode Numeric_Value = 42.
+            case self == 0x32B7r:
+                return Some(decimal(42))
+                // Unicode Numeric_Value = 43.
+            case self == 0x32B8r:
+                return Some(decimal(43))
+                // Unicode Numeric_Value = 44.
+            case self == 0x32B9r:
+                return Some(decimal(44))
+                // Unicode Numeric_Value = 45.
+            case self == 0x32BAr:
+                return Some(decimal(45))
+                // Unicode Numeric_Value = 46.
+            case self == 0x32BBr:
+                return Some(decimal(46))
+                // Unicode Numeric_Value = 47.
+            case self == 0x32BCr:
+                return Some(decimal(47))
+                // Unicode Numeric_Value = 48.
+            case self == 0x32BDr:
+                return Some(decimal(48))
+                // Unicode Numeric_Value = 49.
+            case self == 0x32BEr:
+                return Some(decimal(49))
+                // Unicode Numeric_Value = 50.
+            case self in [
+                    0x1376r, 0x216Cr, 0x217Cr, 0x2186r, 0x324Cr, 0x32BFr, 0x10114r, 0x10144r, 0x1014Ar,
+                    0x10151r, 0x10166r..0x10169r, 0x10174r, 0x102EEr, 0x10323r, 0x109CDr, 0x10A7Er,
+                    0x10CFDr, 0x10E6Dr, 0x1105Fr, 0x111EEr, 0x118EEr, 0x11C67r, 0x12468r, 0x1D36Dr,
+                    0x1EC7Er, 0x1ED0Er,
+                ]:
+                return Some(decimal(50))
+                // Unicode Numeric_Value = 60.
+            case self in [
+                    0x1377r, 0x324Dr, 0x10115r, 0x102EFr, 0x109CEr, 0x10E6Er, 0x11060r, 0x111EFr, 0x118EFr,
+                    0x11C68r, 0x1D36Er, 0x1EC7Fr, 0x1ED0Fr,
+                ]:
+                return Some(decimal(60))
+                // Unicode Numeric_Value = 70.
+            case self in [
+                    0x1378r, 0x324Er, 0x10116r, 0x102F0r, 0x109CFr, 0x10E6Fr, 0x11061r, 0x111F0r, 0x118F0r,
+                    0x11C69r, 0x1D36Fr, 0x1EC80r, 0x1ED10r,
+                ]:
+                return Some(decimal(70))
+                // Unicode Numeric_Value = 80.
+            case self in [
+                    0x1379r, 0x324Fr, 0x10117r, 0x102F1r, 0x10E70r, 0x11062r, 0x111F1r, 0x118F1r, 0x11C6Ar,
+                    0x1D370r, 0x1EC81r, 0x1ED11r,
+                ]:
+                return Some(decimal(80))
+                // Unicode Numeric_Value = 90.
+            case self in [
+                    0x137Ar, 0x10118r, 0x102F2r, 0x10341r, 0x10E71r, 0x11063r, 0x111F2r, 0x118F2r,
+                    0x11C6Br, 0x1D371r, 0x1EC82r, 0x1ED12r,
+                ]:
+                return Some(decimal(90))
+                // Unicode Numeric_Value = 100.
+            case self in [
+                    0xBF1r, 0xD71r, 0x137Br, 0x216Dr, 0x217Dr, 0x4F70r, 0x767Er, 0x964Cr, 0x10119r,
+                    0x1014Br, 0x10152r, 0x1016Ar, 0x102F3r, 0x103D5r, 0x1085Dr, 0x108AFr, 0x108FFr,
+                    0x10919r, 0x109D2r, 0x10A46r, 0x10AEFr, 0x10B5Er, 0x10B7Er, 0x10BAFr, 0x10CFEr,
+                    0x10E72r, 0x10F25r, 0x10F54r, 0x10FCBr, 0x11064r, 0x111F3r, 0x11C6Cr, 0x16B5Cr,
+                    0x1EC83r, 0x1ED13r,
+                ]:
+                return Some(decimal(100))
+                // Unicode Numeric_Value = 200.
+            case self in [
+                    0x7695r, 0x1011Ar, 0x102F4r, 0x109D3r, 0x10E73r, 0x1EC84r, 0x1ED14r,
+                ]:
+                return Some(decimal(200))
+                // Unicode Numeric_Value = 300.
+            case self in [
+                    0x1011Br, 0x1016Br, 0x102F5r, 0x109D4r, 0x10E74r, 0x1EC85r, 0x1ED15r,
+                ]:
+                return Some(decimal(300))
+                // Unicode Numeric_Value = 400.
+            case self in [
+                    0x1011Cr, 0x102F6r, 0x109D5r, 0x10E75r, 0x1EC86r, 0x1ED16r, 0x1ED38r,
+                ]:
+                return Some(decimal(400))
+                // Unicode Numeric_Value = 500.
+            case self in [
+                    0x216Er, 0x217Er, 0x1011Dr, 0x10145r, 0x1014Cr, 0x10153r, 0x1016Cr..0x10170r, 0x102F7r,
+                    0x109D6r, 0x10E76r, 0x1EC87r, 0x1ED17r,
+                ]:
+                return Some(decimal(500))
+                // Unicode Numeric_Value = 600.
+            case self in [
+                    0x1011Er, 0x102F8r, 0x109D7r, 0x10E77r, 0x1EC88r, 0x1ED18r, 0x1ED39r,
+                ]:
+                return Some(decimal(600))
+                // Unicode Numeric_Value = 700.
+            case self in [
+                    0x1011Fr, 0x102F9r, 0x109D8r, 0x10E78r, 0x1EC89r, 0x1ED19r,
+                ]:
+                return Some(decimal(700))
+                // Unicode Numeric_Value = 800.
+            case self in [
+                    0x10120r, 0x102FAr, 0x109D9r, 0x10E79r, 0x1EC8Ar, 0x1ED1Ar,
+                ]:
+                return Some(decimal(800))
+                // Unicode Numeric_Value = 900.
+            case self in [
+                    0x10121r, 0x102FBr, 0x1034Ar, 0x109DAr, 0x10E7Ar, 0x1EC8Br, 0x1ED1Br,
+                ]:
+                return Some(decimal(900))
+                // Unicode Numeric_Value = 1000.
+            case self in [
+                    0xBF2r, 0xD72r, 0x216Fr, 0x217Fr..0x2180r, 0x4EDFr, 0x5343r, 0x9621r, 0x10122r,
+                    0x1014Dr, 0x10154r, 0x10171r, 0x1085Er, 0x109DBr, 0x10A47r, 0x10B5Fr, 0x10B7Fr,
+                    0x10CFFr, 0x11065r, 0x111F4r, 0x1EC8Cr, 0x1ED1Cr,
+                ]:
+                return Some(decimal(1000))
+                // Unicode Numeric_Value = 2000.
+            case self in [
+                    0x10123r, 0x109DCr, 0x1EC8Dr, 0x1ED1Dr, 0x1ED3Ar,
+                ]:
+                return Some(decimal(2000))
+                // Unicode Numeric_Value = 3000.
+            case self in [
+                    0x10124r, 0x109DDr, 0x1EC8Er, 0x1ED1Er,
+                ]:
+                return Some(decimal(3000))
+                // Unicode Numeric_Value = 4000.
+            case self in [
+                    0x10125r, 0x109DEr, 0x1EC8Fr, 0x1ED1Fr,
+                ]:
+                return Some(decimal(4000))
+                // Unicode Numeric_Value = 5000.
+            case self in [
+                    0x2181r, 0x10126r, 0x10146r, 0x1014Er, 0x10172r, 0x109DFr, 0x1EC90r, 0x1ED20r,
+                ]:
+                return Some(decimal(5000))
+                // Unicode Numeric_Value = 6000.
+            case self in [
+                    0x10127r, 0x109E0r, 0x1EC91r, 0x1ED21r,
+                ]:
+                return Some(decimal(6000))
+                // Unicode Numeric_Value = 7000.
+            case self in [
+                    0x10128r, 0x109E1r, 0x1EC92r, 0x1ED22r,
+                ]:
+                return Some(decimal(7000))
+                // Unicode Numeric_Value = 8000.
+            case self in [
+                    0x10129r, 0x109E2r, 0x1EC93r, 0x1ED23r,
+                ]:
+                return Some(decimal(8000))
+                // Unicode Numeric_Value = 9000.
+            case self in [
+                    0x1012Ar, 0x109E3r, 0x1EC94r, 0x1ED24r,
+                ]:
+                return Some(decimal(9000))
+                // Unicode Numeric_Value = 10000.
+            case self in [
+                    0x137Cr, 0x2182r, 0x4E07r, 0x842Cr, 0x1012Br, 0x10155r, 0x1085Fr, 0x109E4r, 0x16B5Dr,
+                    0x1EC95r, 0x1ECB3r, 0x1ED25r, 0x1ED3Br,
+                ]:
+                return Some(decimal(10000))
+                // Unicode Numeric_Value = 20000.
+            case self in [
+                    0x1012Cr, 0x109E5r, 0x1EC96r, 0x1ED26r,
+                ]:
+                return Some(decimal(20000))
+                // Unicode Numeric_Value = 30000.
+            case self in [
+                    0x1012Dr, 0x109E6r, 0x1EC97r, 0x1ED27r,
+                ]:
+                return Some(decimal(30000))
+                // Unicode Numeric_Value = 40000.
+            case self in [
+                    0x1012Er, 0x109E7r, 0x1EC98r, 0x1ED28r,
+                ]:
+                return Some(decimal(40000))
+                // Unicode Numeric_Value = 50000.
+            case self in [
+                    0x2187r, 0x1012Fr, 0x10147r, 0x10156r, 0x109E8r, 0x1EC99r, 0x1ED29r,
+                ]:
+                return Some(decimal(50000))
+                // Unicode Numeric_Value = 60000.
+            case self in [
+                    0x10130r, 0x109E9r, 0x1EC9Ar, 0x1ED2Ar,
+                ]:
+                return Some(decimal(60000))
+                // Unicode Numeric_Value = 70000.
+            case self in [
+                    0x10131r, 0x109EAr, 0x1EC9Br, 0x1ED2Br,
+                ]:
+                return Some(decimal(70000))
+                // Unicode Numeric_Value = 80000.
+            case self in [
+                    0x10132r, 0x109EBr, 0x1EC9Cr, 0x1ED2Cr,
+                ]:
+                return Some(decimal(80000))
+                // Unicode Numeric_Value = 90000.
+            case self in [
+                    0x10133r, 0x109ECr, 0x1EC9Dr, 0x1ED2Dr,
+                ]:
+                return Some(decimal(90000))
+                // Unicode Numeric_Value = 100000.
+            case self in [
+                    0x2188r, 0x109EDr, 0x1EC9Er, 0x1ECA0r, 0x1ECB4r,
+                ]:
+                return Some(decimal(100000))
+                // Unicode Numeric_Value = 200000.
+            case self in [
+                    0x109EEr, 0x1EC9Fr,
+                ]:
+                return Some(decimal(200000))
+                // Unicode Numeric_Value = 216000.
+            case self == 0x12432r:
+                return Some(decimal(216000))
+                // Unicode Numeric_Value = 300000.
+            case self == 0x109EFr:
+                return Some(decimal(300000))
+                // Unicode Numeric_Value = 400000.
+            case self == 0x109F0r:
+                return Some(decimal(400000))
+                // Unicode Numeric_Value = 432000.
+            case self == 0x12433r:
+                return Some(decimal(432000))
+                // Unicode Numeric_Value = 500000.
+            case self == 0x109F1r:
+                return Some(decimal(500000))
+                // Unicode Numeric_Value = 600000.
+            case self == 0x109F2r:
+                return Some(decimal(600000))
+                // Unicode Numeric_Value = 700000.
+            case self == 0x109F3r:
+                return Some(decimal(700000))
+                // Unicode Numeric_Value = 800000.
+            case self == 0x109F4r:
+                return Some(decimal(800000))
+                // Unicode Numeric_Value = 900000.
+            case self == 0x109F5r:
+                return Some(decimal(900000))
+                // Unicode Numeric_Value = 1000000.
+            case self == 0x16B5Er:
+                return Some(decimal(1000000))
+                // Unicode Numeric_Value = 10000000.
+            case self == 0x1ECA1r:
+                return Some(decimal(10000000))
+                // Unicode Numeric_Value = 20000000.
+            case self == 0x1ECA2r:
+                return Some(decimal(20000000))
+                // Unicode Numeric_Value = 100000000.
+            case self in [
+                    0x4EBFr, 0x5104r, 0x16B5Fr,
+                ]:
+                return Some(decimal(100000000))
+                // Unicode Numeric_Value = 1000000000.
+            case self == 0x79EDr:
+                return Some(decimal(1000000000))
+                // Unicode Numeric_Value = 10000000000.
+            case self == 0x16B60r:
+                return Some(decimal(10000000000))
+                // Unicode Numeric_Value = 1000000000000.
+            case self in [
+                    0x5146r, 0x16B61r,
+                ]:
+                return Some(decimal(1000000000000))
+        }
+
+        return None()
+    }
+
     /** Returns the integer value of a Roman numeral rune. */
     fn _toRomanValue() decimal {
         switch {
@@ -613,23 +1405,64 @@ impl rune {
         return 0.0
     }
 
-    fn _toConstantValue() decimal {
+    fn _toConstantValue() Option[decimal] {
         switch {
-            case self == 8730r:// √2
-                return 1.4142135623730951
-            case self == 8731r:// √3
-                return 1.7320508075688772
-            case self in [960r, 120645r, 120715r]:// π
-                return 3.141592653589793
-            case self == 8733r:// e
-                return 2.718281828459045
-            case self in [966r, 120659r, 120729r]: // Golden ratio 'phi' (𝜙, 𝝓)
-                return 1.618033988749895
-            case self in [947r, 8485r, 120640r]: // Euler-Mascheroni constant 'gamma' (γ, ℽ)
-                return 0.5772156649015328
-            case self == 8463r:// Reduced Planck constant 'h-bar' (ℏ)
-                return 1.054571817e-34
+            // Pi (π)
+            case self in [
+                    960r,       // U+03C0 GREEK SMALL LETTER PI
+                    982r,       // U+03D6 GREEK PI SYMBOL
+                    8508r,      // U+213C DOUBLE-STRUCK SMALL PI
+                    120529r,    // U+1D6D1 MATHEMATICAL BOLD SMALL PI
+                    120545r,    // U+1D6E1 MATHEMATICAL BOLD PI SYMBOL
+                    120587r,    // U+1D70B MATHEMATICAL ITALIC SMALL PI
+                    120603r,    // U+1D71B MATHEMATICAL ITALIC PI SYMBOL
+                    120645r,    // U+1D745 MATHEMATICAL BOLD ITALIC SMALL PI
+                    120661r,    // U+1D755 MATHEMATICAL BOLD ITALIC PI SYMBOL
+                    120703r,    // U+1D77F MATHEMATICAL SANS-SERIF BOLD SMALL PI
+                    120719r,    // U+1D78F MATHEMATICAL SANS-SERIF BOLD PI SYMBOL
+                    120761r,    // U+1D7B9 MATHEMATICAL SANS-SERIF BOLD ITALIC SMALL PI
+                    120777r,    // U+1D7C9 MATHEMATICAL SANS-SERIF BOLD ITALIC PI SYMBOL
+                ]:
+                return Some(3.141592653589793)
+
+                // Euler's number e
+            case self == 8519r: // U+2147 DOUBLE-STRUCK ITALIC SMALL E
+                return Some(2.718281828459045)
+
+                // Golden ratio φ
+            case self in [
+                    966r,       // U+03C6 GREEK SMALL LETTER PHI
+                    981r,       // U+03D5 GREEK PHI SYMBOL
+                    120535r,    // U+1D6D7 MATHEMATICAL BOLD SMALL PHI
+                    120543r,    // U+1D6DF MATHEMATICAL BOLD PHI SYMBOL
+                    120593r,    // U+1D711 MATHEMATICAL ITALIC SMALL PHI
+                    120601r,    // U+1D719 MATHEMATICAL ITALIC PHI SYMBOL
+                    120651r,    // U+1D74B MATHEMATICAL BOLD ITALIC SMALL PHI
+                    120659r,    // U+1D753 MATHEMATICAL BOLD ITALIC PHI SYMBOL
+                    120709r,    // U+1D785 MATHEMATICAL SANS-SERIF BOLD SMALL PHI
+                    120717r,    // U+1D78D MATHEMATICAL SANS-SERIF BOLD PHI SYMBOL
+                    120767r,    // U+1D7BF MATHEMATICAL SANS-SERIF BOLD ITALIC SMALL PHI
+                    120775r,    // U+1D7C7 MATHEMATICAL SANS-SERIF BOLD ITALIC PHI SYMBOL
+                ]:
+                return Some(1.618033988749895)
+
+                // Euler-Mascheroni constant γ
+            case self in [
+                    947r,       // U+03B3 GREEK SMALL LETTER GAMMA
+                    8509r,      // U+213D DOUBLE-STRUCK SMALL GAMMA
+                    120516r,    // U+1D6C4 MATHEMATICAL BOLD SMALL GAMMA
+                    120574r,    // U+1D6FE MATHEMATICAL ITALIC SMALL GAMMA
+                    120632r,    // U+1D738 MATHEMATICAL BOLD ITALIC SMALL GAMMA
+                    120690r,    // U+1D772 MATHEMATICAL SANS-SERIF BOLD SMALL GAMMA
+                    120748r,    // U+1D7AC MATHEMATICAL SANS-SERIF BOLD ITALIC SMALL GAMMA
+                ]:
+                return Some(0.5772156649015328)
+
+                // Reduced Planck constant ℏ, numerical value in J·s.
+            case self == 8463r: // U+210F PLANCK CONSTANT OVER TWO PI
+                return Some(1.054571817e-34)
         }
-        return 0.0
+
+        return None
     }
 }

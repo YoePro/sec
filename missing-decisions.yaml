@@ -157,6 +157,7 @@ decisions:
     rulebooks:
       - rules/memory/layout.md
       - rules/memory/arena.md
+      - rules/memory/allocation.md
       - rules/platform/ffi.md
       - rules/analysis/parameter_usage_analysis.md
     description: >-
@@ -175,6 +176,11 @@ decisions:
       until these contracts have a normative source form and canonical
       resolved facts; it must preserve currently represented constraints and
       withhold incompatible advice rather than invent annotations.
+      The alignment/layout portion of tooling.allocation mentor diagnostics
+      in governance/allocation.yaml is blocked by the same missing syntax
+      and resolved facts; it cannot be completed by inventing attributes.
+      Static capacity and ISR diagnostics have separate implementation
+      dependencies in analysis.allocation and sema.isr-analysis.
     classification: blocking
     status: open
   - id: MD-020
@@ -501,7 +507,11 @@ decisions:
       therefore treat freestanding targets as providing no positive
       allocation context and are rejected there. Decide the allocation
       profile of freestanding targets, or how a freestanding project selects
-      embedded-arena or noalloc.
+      embedded-arena or noalloc. Canonical allocation capability facts now
+      preserve freestanding availability, activation and context provider as
+      unresolved; S1098 reports this missing positive context without claiming
+      the target physically lacks an allocator. Full profile-family resolution
+      remains owned by platform.target-profiles.
     classification: constraining
     status: open
 

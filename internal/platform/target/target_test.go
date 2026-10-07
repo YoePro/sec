@@ -41,3 +41,16 @@ func TestRegistryResolvesLinuxRISCV64AndFreeBSDARMv7(t *testing.T) {
 		})
 	}
 }
+
+// TestRegisteredTargetSpellingsRoundTrip preserves whole architecture names,
+// including hyphenated embedded targets, through CLI target parsing.
+// Rules: rules/platform/platform_model.md — target registry and target selection.
+func TestRegisteredTargetSpellingsRoundTrip(t *testing.T) {
+	for _, definition := range Definitions() {
+		want := Target{OS: definition.OS, Arch: definition.Arch}
+		got, ok := Parse(want.String())
+		if !ok || got != want {
+			t.Fatalf("Parse(%q) = %+v, %v; want %+v", want.String(), got, ok, want)
+		}
+	}
+}

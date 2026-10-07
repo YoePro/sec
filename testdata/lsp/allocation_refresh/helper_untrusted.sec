@@ -1,0 +1,3 @@
+module helper
+extern "Sec" fn Foreign() void
+fn Work() void { Foreign() }

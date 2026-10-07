@@ -1,0 +1,48 @@
+module main
+extern "Sec" fn Foreign() void
+fn Render(name: string) Result[string, StringError] {
+    return Ok(try "Hello " + name)
+}
+fn Interpolate(name: string) Result[string, StringError] {
+    return Ok(try $"Hello {name}")
+}
+fn Folded() string { return "Hello " + "world" }
+fn Allocate() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    if true {
+        let value := try mem.New[byte]()
+        discard value
+    }
+    mem.Reset()
+    let mut moved :<- mem
+    if true {
+        let values := try moved.Alloc[byte](2u)
+        discard values
+    }
+    return Ok()
+}
+fn OtherDomain() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    discard try mem.New[byte]()
+    return Ok()
+}
+fn Created() Result[void, AllocationError] {
+    let mem := try Arena.WithCapacity(64u)
+    return Ok()
+}
+fn Forward(name: string) Result[string, StringError] { return Render(name) }
+fn Combined(name: string) void {
+    discard Render(name)
+    discard Allocate()
+    Foreign()
+}
+fn Recursive(name: string, depth: int) Result[string, StringError] {
+    if depth == 0 { return Render(name) }
+    return Recursive(name, depth - 1)
+}
+fn Deferred(name: string) void { defer { discard Render(name) } }
+fn Spawner() void {
+    let worker := spawn Deferred("world")
+    detach worker
+}
+fn main() void { Combined("world") }

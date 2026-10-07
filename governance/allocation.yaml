@@ -68,17 +68,44 @@ integrations:
     area: allocation-effects-context-capacity-analysis
     status: partial
     repository_baseline: 57cd774
-    revised: "2026-10-04"
+    revised: "2026-10-07"
+    rules:
+    - rules/memory/allocation.md
+    - rules/analysis/effect_analysis.md
+    - rules/analysis/call_graph.md
+    code:
+    - internal/sema/call_graph.go
+    - internal/sema/call_graph_allocation_fixed_point.go
+    - internal/sema/allocation_facts.go
+    - internal/sema/analyzer_noalloc.go
+    tests:
+    - internal/sema/allocation_fixed_point_test.go
+    - internal/sema/allocation_invalidation_test.go
+    - cmd/lsp/allocation_parity_test.go
+    - testdata/sema/allocation_recursive_fixed_point_valid.sec
+    - testdata/sema/allocation_recursive_fixed_point_invalid.sec
     implemented:
     - synchronous MayAllocate summaries with a deterministic shortest allocation path (ArenaSummary.AllocationPath)
     - separate unknown-allocation summaries (ArenaSummary.AllocationUnknown, UnknownAllocationPath) so unknown behavior is conservative under @noAlloc without being reported as allocation
     - source-ordered direct Arena and string-materialization allocation sites
     - initial allocation-context facts
     - transitive @noAlloc verification over the synchronous call graph (frontend.allocation)
+    - "ArenaSummary consumes a graph-wide cached least fixed point of independent definite/unknown allocation effects over canonical same-stack edges; the reverse monotone worklist converges through recursive and mutually recursive components without analysis-depth cutoffs, while seed-free cycles stay effect-free in this represented model"
+    - "converged shortest distances reconstruct deterministic source-edge-ordered allocation and unknown witnesses without repeated per-callable path searches; defer effects propagate, spawned bodies remain separate, direct events and returned paths are detached, and incomplete operation/body coverage remains conservative in AllocationFacts"
+    - "new direct allocation facts and canonical call edges invalidate the derived fixed point; graph cloning, plan binding and checkpoint reconstruction start with fresh derived state; immutable snapshot consumers may query summaries concurrently"
+    - "all analysis depths, free/allocating/unknown/mixed/trusted-foreign mutual recursion, recursive defer, spawn exclusion, a 256-node cycle, effect/edge additions after queries, detached prior snapshots, deterministic shortest witnesses and real compiler/analyse/LSP owning diagnostics and presentation are verified"
+    verification:
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after graph-wide allocation fixed points and recursive compiler/analyse/LSP parity cases
+    - command: go vet ./...
+      result: passed on 2026-10-07 after cached immutable-view allocation summaries
+    - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAllocation|TestNoAlloc|TestCallGraph.*(Workspace|Checkpoint|Defer|Effect)' -count=1
+      result: passed on 2026-10-07 with recursive convergence, independent unknown facts, query invalidation, detached snapshots, concurrent immutable readers and actual compiler/analyse/LSP parity at all depths
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with 46-fragment registry parity and 304 unique IDs; analysis.allocation remaining reduced from 7 to 6, allocation total from 38 to 37
     remaining:
     - infer allocation effects through every callable form (closure targets, deferred and destruction relations, generic specializations)
     - persist/import validated allocation-effect summaries
-    - support recursive/mutually recursive fixed points beyond the current path search
     - propagate allocation contexts without forcing source-level Arena threading
     - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
     - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
@@ -124,15 +151,72 @@ integrations:
     - proven static placement removes allocation without semantic change
   - id: target-policy.allocation
     area: allocation-target-profile-policy
-    status: planned
+    status: partial
     repository_baseline: 57cd774
+    revised: "2026-10-07"
+    rules:
+    - rules/memory/allocation.md
+    - rules/platform/target_profiles.md
+    - rules/platform/fixed-address-bindings.md
+    - rules/platform/volatile.md
+    - rules/memory/raw_pointers.md
+    - rules/compiler/compiler_known_members.md
+    - rules/tooling/lsp.md
+    code:
+    - internal/sema/compiler_known_physical_storage.go
+    - internal/sema/compiler_known_members.go
+    - internal/sema/allocation_facts.go
+    - internal/layout/allocation_capabilities.go
+    - internal/layout/scalar_plan.go
+    - internal/sema/allocation_capabilities.go
+    - internal/sema/analyzer_target_plan.go
+    - internal/sema/string_materialization.go
+    - internal/sema/allocation_context_description.go
+    - cmd/lsp/allocation_profile_resolution.go
+    - cmd/lsp/analysis_configuration.go
+    tests:
+    - internal/sema/allocation_physical_storage_test.go
+    - testdata/sema/allocation_physical_storage_valid.sec
+    - testdata/sema/allocation_physical_storage_invalid.sec
+    - internal/layout/allocation_capabilities_test.go
+    - internal/sema/allocation_capabilities_test.go
+    - cmd/lsp/allocation_profile_resolution_test.go
+    - cmd/lsp/allocation_parity_test.go
+    - testdata/sema/allocation_context_facts_valid.sec
+    - testdata/sema/allocation_profiles_static_valid.sec
+    implemented:
+    - "ResolveAllocationCapabilities and ResolvedScalarPlan.AllocationCapabilities expose canonical allocation-profile facts shared by Sema and tooling: availability is separate from activation, hosted has a compiler-managed Arena context, embedded-arena has a fixed/program/platform-supplied Arena context, and noalloc disables dynamic allocation without claiming the physical allocator is unsupported"
+    - "unknown/absent/derived/unmapped allocation profiles preserve unknown capabilities and provider rather than inferring support from OS, architecture, scalar width or target-family spelling; fixed/provided Arena context is positively identified only where specified, and capacity, allocator growth, ISR legality and layout guarantees remain separate proof obligations"
+    - "Sema materialization consumes the canonical facts, keeping ordinary static/copy/borrow/folded operations legal under disabled or unresolved allocation; explicit incomplete/unknown profile inputs cannot inherit the unbound hosted analysis default; S1098 distinguishes known unavailable context from unresolved allocation capabilities"
+    - "LSP resolves allocation profiles independently of scalar width: same-profile variants retain common facts without guessing width, mixed/invalid variants remain unresolved, standalone sources use registered host facts, and unsaved explicit targets still override the manifest without borrowing capabilities from unrelated dependencies"
+    - "canonical profiles, disabled-but-supported and enabled-but-unsupported combinations, zero/unknown facts, all analysis depths, profile reanalysis, static operations, mixed/common variants, standalone and unknown explicit targets and real compiler/analyse/LSP parity are verified"
+    - "fixed-address/register views remain non-owning physical storage without an Arena domain; canonical RawPtr.VolatileRead/VolatileWrite contracts prove allocation freedom independently from volatile effects, including transitive wrappers at all analysis depths and allocation profiles"
+    - "raw-pointer cleanup never inherits pointee destruction or allocation; invalid unsafe access retains unknown coverage, similarly named user methods retain actual Arena effects, and foreign mapping without a trusted contract stays unknown; real compiler/analyse/LSP parity covers fixed storage, volatile access, mixed Arena allocation and opaque mapping"
+    verification:
+    - command: go test ./internal/sema ./cmd/lsp -race -run 'TestAllocation|TestCompilerKnownRawPointer|TestNoAlloc' -count=1
+      result: passed on 2026-10-07 with canonical volatile contracts, physical/owned storage separation, conservative unknown cleanup/foreign coverage and consumer parity
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after physical-storage allocation separation, explicit volatile access contracts and raw-pointer cleanup coverage; includes real compiler/analyse/LSP parity
+    - command: go vet ./...
+      result: passed on 2026-10-07 after extraction of compiler-known physical-storage members
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with 46-fragment registry parity, 304 unique IDs and existing MD-019 updated; target-policy.allocation remaining reduced from 6 to 5, allocation total from 36 to 35; tooling mentor diagnostics remain incomplete
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after canonical allocation capability facts, Sema/plan projection and LSP profile resolution
+    - command: go vet ./...
+      result: passed on 2026-10-07 after allocation capability integration and target-plan constructor extraction
+    - command: go test ./internal/layout ./internal/sema ./cmd/lsp -race -run 'TestAllocation|TestLSPAllocation|TestLSP.*Plan|TestNoAlloc|TestStringMaterialization|TestCrossTarget|TestDiagnosticBatch' -count=1
+      result: passed on 2026-10-07 with availability/activation separation, canonical and unknown profiles, reanalysis, static operations, common/mixed variants, context diagnostics and real compiler/analyse/LSP parity
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with 46-fragment registry parity, 304 unique IDs and parsed missing-decisions.yaml; target-policy.allocation remaining reduced from 7 to 6, allocation total from 37 to 36
+    cross_references:
+    - platform.target-profiles owns complete profile-family resolution, runtime/physical constraints, overrides and frozen ResolvedTargetProfile identity; these allocation-subset facts do not complete that integration
+    - missing-decisions.yaml MD-034 keeps freestanding allocation-profile/context mapping unresolved; no runtime allocator or fixed storage is invented
     remaining:
-    - define canonical capability facts for dynamic allocation, fixed/preallocated Arena and noalloc builds
     - enforce noalloc over complete reachable call graphs
     - enforce ISR restrictions from shared allocation-effect facts
     - support runtime-free bare-metal with static/fixed/preallocated storage
     - permit statically eliminated allocation-capable operations only after complete proof
-    - keep MMIO/fixed-address storage separate from Arena allocation
     - integrate capacity/alignment/layout guarantees supplied by target profiles
     required_tests:
     - hosted allocation accepted
@@ -143,16 +227,128 @@ integrations:
     - runtime-free bare-metal allocation-free build has no allocator dependency
   - id: tooling.allocation
     area: allocation-diagnostics-lsp-tooling
-    status: planned
+    status: partial
     repository_baseline: 57cd774
+    revised: "2026-10-07"
+    rules:
+    - rules/memory/allocation.md
+    - rules/analysis/call_graph.md
+    - rules/compiler/compiler_analysis.md
+    - rules/tooling/lsp.md
+    code:
+    - internal/sema/allocation_facts.go
+    - internal/sema/allocation_cause_paths.go
+    - internal/sema/analyzer_noalloc.go
+    - internal/sema/errors.go
+    - internal/sema/allocation_context_facts.go
+    - internal/sema/allocation_context_description.go
+    - cmd/compiler/analyse_allocation.go
+    - cmd/compiler/analyse.go
+    - cmd/compiler/allocation_cause_paths.go
+    - cmd/compiler/sema_diagnostic.go
+    - cmd/compiler/diagnostic_catalog.go
+    - cmd/lsp/analysis_configuration.go
+    - internal/platform/target/target.go
+    - cmd/lsp/allocation_hover.go
+    - cmd/lsp/allocation_operation_hover.go
+    - cmd/lsp/hover.go
+    - cmd/lsp/call_graph_hover.go
+    - cmd/lsp/allocation_cause_paths.go
+    - cmd/lsp/sema_diagnostic.go
+    - cmd/lsp/analysis_dependencies.go
+    - cmd/lsp/diagnostics_batch.go
+    - cmd/lsp/diagnostics_schedule.go
+    - cmd/lsp/cross_target_invalidation.go
+    tests:
+    - internal/sema/allocation_facts_test.go
+    - internal/sema/allocation_invalidation_test.go
+    - internal/sema/allocation_cause_paths_test.go
+    - internal/sema/allocation_context_facts_test.go
+    - cmd/compiler/analyse_allocation_test.go
+    - cmd/compiler/allocation_cause_paths_test.go
+    - cmd/compiler/analyse_allocation_context_test.go
+    - cmd/lsp/allocation_parity_test.go
+    - internal/platform/target/target_test.go
+    - cmd/lsp/allocation_hover_test.go
+    - cmd/lsp/allocation_invalidation_test.go
+    - cmd/lsp/allocation_cause_paths_test.go
+    - cmd/lsp/allocation_context_hover_test.go
+    - testdata/sema/allocation_facts_valid.sec
+    - testdata/lsp/allocation_refresh/main.sec
+    - testdata/lsp/allocation_refresh/main_other.sec
+    - testdata/lsp/allocation_refresh/helper_free.sec
+    - testdata/lsp/allocation_refresh/helper_allocating.sec
+    - testdata/lsp/allocation_refresh/helper_trusted.sec
+    - testdata/lsp/allocation_refresh/helper_untrusted.sec
+    - testdata/lsp/allocation_refresh/other_free.sec
+    - testdata/lsp/allocation_refresh/other_allocating.sec
+    - testdata/sema/allocation_cause_paths_invalid.sec
+    - testdata/sema/allocation_context_facts_valid.sec
+    implemented:
+    - "AllocationFacts/AllocationFact expose deterministic detached allocation-free/may-allocate/unknown facts for represented callables from canonical synchronous graph effects, resolved types/bindings and trusted foreign contracts; known allocating paths remain visible independently of unresolved evidence"
+    - "allocation-free requires valid completed semantic analysis and covered bodies/cleanup; missing bodies/contracts, unresolved calls, generic templates and incompletely modeled construction, closure, spawn/await, owning collection or nontrivial cleanup coverage remain unknown rather than being inferred free from empty effect lists"
+    - "sec analyse's allocation section and callable LSP hover consume the same canonical facts, preserving positive and unknown cause paths; source selection and advisory/validity counts are unchanged"
+    - "all analysis depths, trusted/untrusted externs, ordinary scalar copy/reference operations, synchronous recursion, mixed effects, detached evidence, fresh body snapshots, invalid source and real compiler/LSP presentation parity are verified; spawned execution is excluded from synchronous allocation paths while unmodeled spawn control storage remains unknown"
+    - "AllocationContextFacts/AllocationContexts expose source-qualified canonical context/domain evidence for represented allocation sites: runtime string plans preserve actual implicit profile/availability/origin; typed Arena allocation results preserve the explicitly selected analysis-local domain and receiver; Arena constructors expose their created domain separately from unresolved backing selection"
+    - "sec analyse and LSP share context descriptions for every synchronously reachable allocation site, with shortest canonical paths through recursion/defer and no spawned-context leakage; LSP also appends exact operation-point context hover to string operators and compiler-known Arena members"
+    - "unavailable noalloc/freestanding contexts, unknown foreign/indirect selection, missing result types and conflicting source metadata remain explicit rather than acquiring guessed ambient contexts or domain identities; folded strings have no runtime context site; full general context propagation and target/profile semantics remain owned by frontend/analysis/target-policy allocation"
+    - "CallGraph.AllocationCause reconstructs a deterministic detached source witness for the canonical @noAlloc allocation/unknown path: policy root, every same-stack call site, introducing callee declaration and terminal operation; source gaps stay incomplete and spawned execution is excluded"
+    - "S1108 carries AllocationCause without changing validity or emitting extra diagnoses; compiler human/JSON output adds ordered allocation.cause notes and deduplicated related source links, while LSP consumes the same witness with cross-file unsaved UTF-16 navigation and accurate introducing-operation labels"
+    - "ordinary, deferred and recursive transitive violations, unknown foreign behavior, immutable witnesses, owning terminal-location parity, single diagnostic identity, duplicate-link suppression and overlay/source-gap handling are verified; broader operation coverage and ISR/target-policy diagnostics remain owned by their existing integrations"
+    - "published LSP module facts retain the compiler-assembled transitive source dependency closure; open/change/save/close invalidates the edited module and open dependent modules, replacing import dependencies after reanalysis and conservatively refreshing unknown/unresolved closures"
+    - "allocation effects/context/cause facts are recomputed from each current Sema snapshot and target plan; manifest/watched-file/configuration refresh invalidates queued active-plan work and retained/in-flight cross-target diagnostics, preventing old imported contracts or profile facts from being merged into current results"
+    - "snapshot changes during an otherwise current batch discard the result and requeue analysis rather than stranding prior diagnostics; source dependency metadata is published only with a current batch; unrelated analyzed modules retain their generations and cross-target results"
+    - "body and trusted extern-contract edits, import replacement/removal, closed-file changes, closing allocating overlays, hosted/freestanding/hosted profile reloads, obsolete job rejection, cross-target eviction and reused-Sema summary replacement at all depths are verified; cross-target recomputation retains the existing open/save scheduling policy"
+    - "compiler, sec analyse and LSP consume canonical Sema allocation facts and mandatory S1098/S1108 occurrences under the same selected target; every LSP analysis entry supplies the current AST so active source target directives, including unsaved edits, select the registry plan before manifest defaults while dependency directives do not replace the active profile"
+    - "shared target parsing round-trips every registered OS/architecture pair, including hyphenated cortex-m3 architectures; subprocess compiler emit-ir and sec analyse JSON match standalone/batched LSP allocation IDs, owning counts, severity, primary locations and related cause links at interactive/standard/deep depth for hosted/freestanding targets, with valid analyse allocation knowledge, independent unknown evidence, paths and context/domain descriptions matching real callable hovers"
+    - "mandatory errors continue to stop CLI report generation and lowering; partial editor facts remain conservative; parity covers the represented allocation model and does not complete operation coverage, general profile selection or mentor diagnostics owned by remaining work"
+    verification:
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after active-source target alignment and registered target parsing; real compiler/analyse subprocess parity against standalone/batched LSP is included
+    - command: go vet ./...
+      result: passed on 2026-10-07 after allocation consumer parity integration
+    - command: go test ./cmd/lsp ./internal/platform/target -race -run 'TestAllocationConsumerParity|TestAllocationTarget|TestRegisteredTargetSpellingsRoundTrip|TestLSP.*Plan|TestAllocation.*Invalidation|TestModuleDiagnostics|TestDiagnosticBatch|TestCrossTarget' -count=1
+      result: passed on 2026-10-07 with both allocation profiles, all analysis depths, unsaved directives, dependency directive isolation, registry round trips and existing invalidation/cross-target behavior
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with 46-fragment registry parity and 304 unique IDs; tooling.allocation remaining reduced from 2 to 1, allocation total from 39 to 38
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after source-closure allocation invalidation; complete LSP suite additionally rerun after canonical statement-token dependency collection
+    - command: go vet ./...
+      result: passed on 2026-10-07 after allocation invalidation integration
+    - command: go test ./cmd/lsp ./internal/sema -race -run 'TestAllocation.*Invalidation|TestAllocationSummaryReanalysis|TestModuleDiagnostics|TestDiagnosticBatch|TestCrossTarget|TestPitfallLSPProjectReload' -count=1
+      result: passed on 2026-10-07 with protocol body/contract/import/profile changes, closed imports and overlays, unrelated-module preservation, cross-plan eviction, obsolete-job rejection and reanalysis at all depths
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with registry parity and unique ownership; tooling.allocation remaining reduced from 3 to 2, allocation total from 40 to 39
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after allocation cause navigation and diagnostic catalog synchronization; compiler suite additionally rerun after missing-source link guards
+    - command: go vet ./...
+      result: passed on 2026-10-07 after allocation cause transport
+    - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAllocationCause|TestNoAlloc|TestEscapeCause' -count=1
+      result: passed on 2026-10-07 with definite/unknown witnesses, defer/recursion/spawn boundaries, compiler and sec analyse JSON/text, deduplicated links and cross-file UTF-16 overlays; compiler race cases additionally rerun after missing-source guards
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with registry parity and unique ownership; tooling.allocation remaining reduced from 4 to 3, allocation total from 41 to 40
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after context/domain facts and operation-point hover
+    - command: go vet ./...
+      result: passed on 2026-10-07 after context/domain presentation
+    - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAllocationContext|TestAllocationOperationHover|TestAnalyseAllocationContext|TestAllocationFacts|TestAllocationHoverCanonicalParity|TestHoverShowsArenaEffects' -count=1
+      result: passed on 2026-10-07 with profile availability, owner moves/Reset, distinct equally named domains, constructor/backing separation, complete synchronous site traversal, missing/ambiguous metadata and operation hover parity
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with registry parity and unique ownership; tooling.allocation remaining reduced from 5 to 4, allocation total from 42 to 41
+    - command: go test ./... -count=1
+      result: passed on 2026-10-07 after canonical allocation fact presentation
+    - command: go vet ./...
+      result: passed on 2026-10-07
+    - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAllocationFacts|TestAnalyseAllocationFacts|TestAllocationHoverCanonicalParity|TestHoverShowsArenaEffects' -count=1
+      result: passed on 2026-10-07 with independent positive/unknown evidence, detached snapshots, invalid source and real hover parity
+    - command: Python YAML validation and git diff --check
+      result: passed on 2026-10-07 with registry parity and unique ownership; tooling.allocation remaining reduced from 6 to 5, allocation total from 43 to 42
+    cross_references:
+    - frontend.allocation and analysis.allocation own completion of operation/cleanup coverage and effect propagation; these conservative presentation facts do not complete those remaining points
+    - "mentor diagnostics cannot yet be completed: MD-019 lacks normative explicit-layout/alignment syntax; analysis.allocation still owns static capacity/overflow/layout proof, and governance/analysis.yaml sema.isr-analysis owns ISR roots and context legality; the latter are implementation dependencies rather than missing language decisions"
     remaining:
-    - expose allocation-free/may-allocate/unknown callable facts from canonical analysis
-    - show allocation domain/context where useful
-    - trace transitive allocation violations to the operation/callee introducing allocation
     - provide mentor diagnostics for noalloc, ISR, capacity, overflow, alignment, unsupported context and hidden-allocation
       violations
-    - ensure compiler/LSP/sec analyse parity
-    - invalidate allocation summaries when bodies, profiles, imports or allocating API contracts change
     required_tests:
     - compiler/LSP may-allocate parity
     - noalloc diagnostic identifies transitive source

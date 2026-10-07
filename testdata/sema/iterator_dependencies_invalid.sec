@@ -1,0 +1,8 @@
+module main
+fn Mutation(values: int[]) void {
+    for value in values {
+        values.Clear()
+        discard value
+    }
+}
+fn NotIterable(value: int) void { for item in value {} }

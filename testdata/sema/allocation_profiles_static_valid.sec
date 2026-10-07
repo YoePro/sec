@@ -1,0 +1,15 @@
+module main
+@noAlloc
+fn Copy(value: int) int {
+    let copied := value
+    let borrowed := ref copied
+    discard borrowed
+    return copied
+}
+@noAlloc
+fn Folded() string { return "Hello " + "world" }
+@noAlloc
+fn main() void {
+    discard Copy(42)
+    discard Folded()
+}

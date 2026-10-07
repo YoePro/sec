@@ -54,8 +54,8 @@ impl AuthScheme {
     }
 
     // TODO: Validate http.AuthScheme.ToString()
-    fn ToString() string {
-        return string(self)
+    fn ToString() Result[string, StringError] {
+        return Ok(string(self))
     }
 
     // TODO: Implement http.AuthScheme.IsRegistered

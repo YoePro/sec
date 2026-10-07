@@ -14,7 +14,7 @@ import (
 // Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Guards participate
 // in pitfall reasoning", "Inclusive upper bound against collection length".
 func TestPitfallEndpointFlow(t *testing.T) {
-	source, err := os.ReadFile("../../testdata/sema/pitfall_endpoint_flow_valid.sec")
+	source, err := os.ReadFile("../../testdata/sema/pitfall_endpoint_flow_invalid.sec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestPitfallEndpointFlow(t *testing.T) {
 	var original map[string][]PitfallAnalysisState
 	for _, depth := range []AnalysisDepth{AnalysisInteractive, AnalysisStandard, AnalysisDeep} {
 		analyzer, errors := analyzeSourceWithAnalyzerAtDepth(t, string(source), depth)
-		assertSemaErrors(t, errors, nil)
+		assertPitfallBoundsErrorCount(t, errors, 8)
 		got := map[string][]PitfallAnalysisState{}
 		for _, result := range analyzer.PitfallAnalysis().Results() {
 			if result.Rule != PitfallInclusiveLengthIndex {

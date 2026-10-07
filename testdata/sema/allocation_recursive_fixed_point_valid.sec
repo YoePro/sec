@@ -1,0 +1,41 @@
+module main
+extern "Sec" fn Foreign() void
+@noAlloc
+extern "Sec" fn Trusted() void
+fn Allocate() void { discard Arena.WithCapacity(64u) }
+fn FreeA(value: int) int {
+    if value == 0 { return 0 }
+    return FreeB(value - 1)
+}
+fn FreeB(value: int) int { return FreeA(value) }
+fn AllocA(value: int) void {
+    if value == 0 { Allocate() } else { AllocB(value - 1) }
+}
+fn AllocB(value: int) void { AllocC(value) }
+fn AllocC(value: int) void { AllocA(value) }
+fn UnknownA(value: int) void {
+    if value == 0 { Foreign() } else { UnknownB(value - 1) }
+}
+fn UnknownB(value: int) void { UnknownA(value) }
+fn MixedA(value: int) void { AllocB(value)
+    MixedB(value) }
+fn MixedB(value: int) void { UnknownA(value)
+    MixedA(value) }
+fn DeferredA(value: int) void { defer { DeferredB(value) } }
+fn DeferredB(value: int) void {
+    if value == 0 { Allocate() } else { DeferredA(value - 1) }
+}
+fn TrustedA(value: int) void {
+    if value == 0 { Trusted() } else { TrustedB(value - 1) }
+}
+fn TrustedB(value: int) void { TrustedA(value) }
+fn SpawnA(value: int) void {
+    if value == 0 {
+        let worker := spawn AllocA(0)
+        detach worker
+    } else { SpawnB(value - 1) }
+}
+fn SpawnB(value: int) void { SpawnA(value) }
+@noAlloc
+fn FreeRoot(value: int) int { return FreeA(value) }
+fn main() void { discard FreeRoot(2) }

@@ -239,8 +239,12 @@ fn Alternate(value: int) int { return value - 1 }
 		t.Fatalf("outer closure calls = %#v", outerCalls)
 	}
 	unknownNodes := graph.NodesForDeclaration(unknownWrapper.Token)
-	if len(unknownNodes) != 1 || len(graph.Outgoing(unknownNodes[0].ID)) != 0 {
-		t.Fatalf("unknown callable acquired an unsound graph edge: nodes=%#v outgoing=%#v", unknownNodes, graph.Outgoing(unknownNodes[0].ID))
+	if len(unknownNodes) != 1 || len(graph.Outgoing(unknownNodes[0].ID)) != 1 {
+		t.Fatalf("unknown callable lost its open graph edge: nodes=%#v outgoing=%#v", unknownNodes, graph.Outgoing(unknownNodes[0].ID))
+	}
+	unknownCall := graph.Outgoing(unknownNodes[0].ID)[0]
+	if unknownCall.TargetSet.IsClosed || !unknownCall.TargetSet.HasOpenContract || unknownCall.TargetSet.Contract == nil || len(unknownCall.Targets) != 0 {
+		t.Fatal("unknown callable acquired a concrete target proof", unknownCall)
 	}
 }
 

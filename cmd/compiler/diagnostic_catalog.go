@@ -63,6 +63,7 @@ var diagnosticDefinitionFields = []diagnosticCatalogField{
 var semanticOccurrenceFields = []diagnosticCatalogField{
 	{Name: "ID", Type: "string", Required: false, Description: "Registered diagnostic identifier; empty on an unmigrated diagnostic."},
 	{Name: "Severity", Type: "Severity", Required: true, Description: "Effective severity for this occurrence."},
+	{Name: "ProofState", Type: "ProofState", Required: false, Description: "Explicit owner-supplied Valid, Invalid or Unproven; never inferred from severity or message."},
 	{Name: "Help", Type: "string", Required: false, Description: "Actionable correction or next step."},
 	{Name: "Message", Type: "string", Required: true, Description: "Rendered primary diagnostic message."},
 	{Name: "File", Type: "string", Required: false, Description: "Primary source file."},
@@ -74,6 +75,8 @@ var semanticOccurrenceFields = []diagnosticCatalogField{
 	{Name: "PreviousLine", Type: "int", Required: false, Description: "One-based related source line."},
 	{Name: "PreviousColumn", Type: "int", Required: false, Description: "One-based related source column."},
 	{Name: "RelatedLabel", Type: "string", Required: false, Description: "Label of the related location, such as interface requirement; empty means previous declaration."},
+	{Name: "EscapeCauses", Type: "[]EscapeCausePath", Required: false, Description: "Ordered canonical origin-to-sink escape explanations with mode, destination, source-mapped steps and explicit incomplete coverage; transported as notes and related locations."},
+	{Name: "AllocationCause", Type: "*AllocationCausePath", Required: false, Description: "Canonical synchronous allocation-policy witness with distinct definite/unknown evidence, root, call sites, introducing callee/operation and explicit incomplete source coverage; transported as ordered notes and navigable related locations."},
 }
 
 var parserOccurrenceFields = []diagnosticCatalogField{

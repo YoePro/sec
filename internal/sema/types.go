@@ -79,22 +79,28 @@ type Type struct {
 	ReferenceOriginLocal       bool
 	ReferenceOriginMatchScoped bool
 	ReferenceOriginStorage     StorageOrigin
+	// ReferenceOriginGeneration retains the expected epoch of a represented
+	// Arena-backed reference; it is separate from owner domain identity.
+	// Rules: rules/memory/arena.md — §4.5; rules/memory/reference_model.md — §30(2–6).
 	ReferenceOriginGeneration  int
 	ReferenceOriginDisplayName string
-	ArenaDomainID              string
-	MinInt                     *int64
-	MaxInt                     *int64
-	MinUint                    *uint64
-	MaxUint                    *uint64
-	MinInteger                 *big.Int
-	MaxInteger                 *big.Int
-	Contracts                  []Contract
-	ExplicitDefault            *DefaultConstant
-	InvalidExplicitDefault     bool
-	EnumValues                 []string
-	EnumConsts                 map[string]EnumValue
-	EnumDefault                string
-	BitWidth                   int64
+	// ArenaDomainID remains stable across owner moves and Reset; fresh Arena
+	// owners receive distinct logical identities even when backing is reused.
+	// Rules: rules/memory/arena.md — §§4.2(1–5), 7(6), 44(3–4).
+	ArenaDomainID          string
+	MinInt                 *int64
+	MaxInt                 *int64
+	MinUint                *uint64
+	MaxUint                *uint64
+	MinInteger             *big.Int
+	MaxInteger             *big.Int
+	Contracts              []Contract
+	ExplicitDefault        *DefaultConstant
+	InvalidExplicitDefault bool
+	EnumValues             []string
+	EnumConsts             map[string]EnumValue
+	EnumDefault            string
+	BitWidth               int64
 	// FloatBits is the IEEE binary width (32 or 64) of float32, float64, and
 	// plain float, and of named types over them. Plain float is platform-sized
 	// like int and uint: float32 on a 32-bit platform and float64 on a 64-bit

@@ -172,9 +172,10 @@ func runtimeStackEffectContribution(caller CallableID, effect EffectSite, store 
 	return stackCompositionValue{bound: bound, cause: []StackCauseStep{{Source: effect.Source, Detail: "verified runtime stack contract for " + string(effect.Kind) + ": " + bound.String()}}}, true
 }
 
-// stackCallEffectCovered recognizes only whole-call contracts for the very
-// invocation behind a legacy foreign/opaque effect marker. Other runtime effects
-// remain independent paths; guarantees never silently imply @noPanic.
+// stackCallEffectCovered delegates an opaque marker to its canonical open
+// invocation, which retains uncertainty unless a usable contract covers it.
+// Foreign markers require whole-call guarantees; unrelated runtime effects
+// remain independent and stack guarantees never imply @noPanic.
 // Rules: rules/analysis/stack_analysis.md — "Error and panic paths", "Open callable contracts", and "Foreign, runtime, and platform calls".
 func stackCallEffectCovered(graph *CallGraph, sites []CallSite, effect EffectSite, callables *StackCallableContractStore, external *StackExternalContractStore, level StackMeasurementLevel, plan string) bool {
 	if effect.Kind != EffectMayPanicUnknownCallee && effect.Kind != EffectMayPanicForeign {
@@ -185,7 +186,8 @@ func stackCallEffectCovered(graph *CallGraph, sites []CallSite, effect EffectSit
 			continue
 		}
 		if effect.Kind == EffectMayPanicUnknownCallee {
-			if _, usable := usableOpenStackContract(site, callables, level, plan); usable {
+			if site.Execution == CallExecutionSynchronous && !site.TargetSet.IsClosed && site.TargetSet.HasOpenContract && site.TargetSet.OpenContract != "" &&
+				(site.Dispatch == CallDispatchFunctionValue || site.Dispatch == CallDispatchClosure || site.Dispatch == CallDispatchInterface) {
 				return true
 			}
 		}

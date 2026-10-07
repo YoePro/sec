@@ -1,0 +1,29 @@
+module main
+
+fn IndependentDomains() Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let values := try first.Alloc[byte](16u)
+    defer { discard values[0] }
+    second.Reset()
+    second.Release()
+    return Ok()
+}
+
+fn EndedDependency() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](16u)
+    if true {
+        let dependent := ref values
+        discard dependent
+    }
+    mem.Reset()
+    mem.Release()
+    return Ok()
+}
+
+fn NoAllocationDependencies() void {
+    let mut mem: Arena := Arena {}
+    mem.Reset()
+    mem.Release()
+}

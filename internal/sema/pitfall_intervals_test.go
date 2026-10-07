@@ -97,13 +97,15 @@ func TestPitfallIntervalConditionsAreProvenTautologicalOrImpossible(t *testing.T
 					result.Confidence != PitfallConfidenceProven || len(result.EvidenceFor) != 4 {
 					t.Fatalf("%s result = %+v", rule, result)
 				}
+				assertIntervalConstantFix(t, *result)
+				intentActions := result.Actions[:len(result.Actions)-1]
 				if test.replacement == "" {
-					if len(result.Actions) != 0 {
+					if len(intentActions) != 0 {
 						t.Fatalf("actions = %+v, want none", result.Actions)
 					}
 					continue
 				}
-				if len(result.Actions) != 1 || result.Actions[0].Replacement != test.replacement || result.Actions[0].Kind != PitfallSuggestedEdit {
+				if len(intentActions) != 1 || intentActions[0].Replacement != test.replacement || intentActions[0].Kind != PitfallSuggestedEdit {
 					t.Fatalf("actions = %+v, want %q", result.Actions, test.replacement)
 				}
 			}
@@ -236,10 +238,12 @@ func TestPitfallIntervalConditionsUseConstantsCharsAndChains(t *testing.T) {
 				if result.State != PitfallStateFinding || result.Confidence != PitfallConfidenceProven || len(result.EvidenceFor) != test.evidence {
 					t.Fatalf("%s result = %+v, want %d evidence items", rule, result, test.evidence)
 				}
-				if test.replacement == "" && len(result.Actions) != 0 {
+				assertIntervalConstantFix(t, result)
+				intentActions := result.Actions[:len(result.Actions)-1]
+				if test.replacement == "" && len(intentActions) != 0 {
 					t.Fatalf("actions = %+v, want none", result.Actions)
 				}
-				if test.replacement != "" && (len(result.Actions) != 1 || result.Actions[0].Replacement != test.replacement) {
+				if test.replacement != "" && (len(intentActions) != 1 || intentActions[0].Replacement != test.replacement) {
 					t.Fatalf("actions = %+v, want %q", result.Actions, test.replacement)
 				}
 			}
@@ -303,5 +307,23 @@ func TestPitfallIntervalDomainBoundsAreRejectedBySema(t *testing.T) {
 		if errors := NewAnalyzerWithDepth(AnalysisDeep).Analyze(program); len(errors) == 0 {
 			t.Fatalf("%s: out-of-domain bound was accepted; interval proofs must then consult the type domain", condition)
 		}
+	}
+}
+
+// assertIntervalConstantFix distinguishes the equivalent constant simplification
+// from the independently suggested intent repair in the existing interval matrix.
+// Rules: rules/analysis/pitfall_analysis.md — "Corrective actions", "Fix safety".
+func assertIntervalConstantFix(t *testing.T, result PitfallFinding) {
+	t.Helper()
+	if len(result.Actions) == 0 {
+		t.Fatal("missing constant action", result)
+	}
+	action := result.Actions[len(result.Actions)-1]
+	want := "false"
+	if result.Rule == PitfallTautologicalInterval {
+		want = "true"
+	}
+	if action.Kind != PitfallProvenFix || action.Replacement != want || !action.Safety.verifiedFor(result.Rule, want) {
+		t.Fatal(action)
 	}
 }

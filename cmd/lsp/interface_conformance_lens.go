@@ -201,7 +201,7 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 		lspserver.AssembleModuleForTarget(program, path, overlay, target)
 		resolveCoreSources(program, path, overlay)
 		resolveSourceImportsForTarget(program, map[string]bool{}, path, target, overlay)
-		analyzer := newLSPAnalyzer(uri)
+		analyzer := newLSPAnalyzer(uri, program)
 		if definition, ok := platformtarget.Find(target); ok {
 			if plan, err := definition.ScalarPlan(); err == nil {
 				analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)

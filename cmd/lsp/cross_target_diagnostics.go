@@ -142,7 +142,7 @@ func semanticDiagnosticsForTarget(uri string, text string, overlay sourceOverlay
 	lspserver.AssembleModuleForTarget(parsed, path, overlay, target)
 	resolveCoreSources(parsed, path, overlay)
 	errors := resolveSourceImportsForTarget(parsed, map[string]bool{}, path, target, overlay)
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, parsed)
 	if definition, found := platformtarget.Find(target); found {
 		if plan, err := definition.ScalarPlan(); err == nil {
 			analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)

@@ -143,22 +143,31 @@ func (a *Analyzer) recordLambdaCallableIdentity(lambda *ast.LambdaExpression) {
 }
 
 // recordFunctionValueCall connects an indirect invocation to the canonical
-// callable target set already proven for its callee value. Unknown values are
-// deliberately omitted until a sound open callable contract exists.
+// callable target set proven for its callee value, or its validated open
+// invocation contract when concrete target identity is incomplete.
 //
 // Rules:
 //   - rules/analysis/call_graph.md — "Call-site record" and "Dispatch kinds"
 //   - rules/analysis/closure_analysis.md — "Callable-flow analysis"
 //   - rules/analysis/closure_analysis.md — "Soundness of target sets"
-func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression) {
+func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression, calleeType Type) {
 	if a == nil || call == nil || a.summaryPass || a.currentCallable == "" || !a.callGraphPathReachable {
+		return
+	}
+	execution, record := a.callGraphExecutionForCall(call)
+	if !record {
 		return
 	}
 	identity, ok := a.callableIdentityForExpression(call.Callee)
 	if !ok {
+		contract := functionTypeGraphContract(calleeType)
+		if contract == nil {
+			return
+		}
+		a.callGraph.addTargetSetCall(a.currentCallable, a.openFunctionValueTargets(call.Callee, contract), call.Token, CallDispatchFunctionValue, execution)
 		// rules/errors/panic.md § 21(3)–(4): an unknown target's panic
 		// behavior is unknown, which is never positive @noPanic proof.
-		if a.callGraphPathReachable {
+		if sameStackExecution(execution) {
 			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: call.Token})
 			// rules/memory/allocation.md § 24(6): its allocation behavior is
 			// unknown as well.
@@ -173,7 +182,7 @@ func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression) {
 	if identity.HasEnvironment {
 		dispatch = CallDispatchClosure
 	}
-	a.callGraph.addTargetSetCall(a.currentCallable, identity.Targets, call.Token, dispatch, CallExecutionSynchronous)
+	a.callGraph.addTargetSetCall(a.currentCallable, identity.Targets, call.Token, dispatch, execution)
 }
 
 // recordClosureCreationSummary joins already-validated identity, target, and
@@ -269,6 +278,7 @@ func cloneResolvedCallableIdentity(identity ResolvedCallableIdentity) ResolvedCa
 //   - rules/analysis/closure_analysis.md — "Callable target sets"
 func cloneCallableTargetSet(targets CallableTargetSet) CallableTargetSet {
 	targets.KnownTargets = append([]CallableBodyID(nil), targets.KnownTargets...)
+	targets.Contract = cloneOpenCallableContract(targets.Contract)
 	return targets
 }
 

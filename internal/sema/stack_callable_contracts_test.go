@@ -48,7 +48,17 @@ func TestStackOpenCallableContracts(t *testing.T) {
 			if node.Name == "TwoOpen" && index > 0 {
 				contract = "B"
 			}
-			graph.addTargetSetCall(node.ID, CallableTargetSet{HasOpenContract: true, OpenContract: contract}, effect.Source, CallDispatchFunctionValue, CallExecutionSynchronous)
+			// The ordinary producer now retains this invocation. Attach the
+			// test producer's verified guarantee identity to that same site.
+			for i := range graph.sites {
+				site := &graph.sites[i]
+				if site.Caller == node.ID && site.Source == effect.Source {
+					site.TargetSet.OpenContract = contract
+					if site.TargetSet.Contract != nil {
+						site.TargetSet.Contract.ID = contract
+					}
+				}
+			}
 			index++
 		}
 	}

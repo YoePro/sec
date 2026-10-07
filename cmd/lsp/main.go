@@ -251,11 +251,16 @@ type workspaceEdit struct {
 	Changes map[string][]textEdit `json:"changes"`
 }
 
+type codeActionDisabled struct {
+	Reason string `json:"reason"`
+}
+
 type codeAction struct {
-	Title       string        `json:"title"`
-	Kind        string        `json:"kind"`
-	Diagnostics []diagnostic  `json:"diagnostics,omitempty"`
-	Edit        workspaceEdit `json:"edit"`
+	Disabled    *codeActionDisabled `json:"disabled,omitempty"`
+	Title       string              `json:"title"`
+	Kind        string              `json:"kind"`
+	Diagnostics []diagnostic        `json:"diagnostics,omitempty"`
+	Edit        workspaceEdit       `json:"edit"`
 }
 
 type diagnostic struct {
@@ -283,22 +288,24 @@ type position struct {
 }
 
 type server struct {
-	in                   *bufio.Reader //
-	out                  io.Writer     //
-	documentSnapshots    *lspserver.Documents
-	diagnosticTimers     map[string]*time.Timer //
-	diagnosticGeneration map[string]uint64
-	diagnosticWorkMu     sync.Mutex
-	diagnosticsStopped   bool
-	diagnosticDelay      time.Duration //
-	writeMu              sync.Mutex    //
-	timerMu              sync.Mutex    //
-	shutdown             bool          //
-	workspaceRoots       []string
-	workspaceSymbols     *workspaceSymbolIndex
-	parameterInsight     parameterInsightSettings
-	inlayHints           *inlayHintSettings
-	crossTarget          *crossTargetStore
+	in                     *bufio.Reader //
+	out                    io.Writer     //
+	documentSnapshots      *lspserver.Documents
+	diagnosticTimers       map[string]*time.Timer //
+	diagnosticGeneration   map[string]uint64
+	diagnosticDependencies map[string]map[string]bool // timerMu protects the published module source universe
+	diagnosticWorkMu       sync.Mutex
+	diagnosticsStopped     bool
+	diagnosticDelay        time.Duration //
+	writeMu                sync.Mutex    //
+	timerMu                sync.Mutex    //
+	shutdown               bool          //
+	workspaceRoots         []string
+	workspaceSymbols       *workspaceSymbolIndex
+	parameterInsight       parameterInsightSettings
+	pitfallSettings        pitfallDiagnosticSettings
+	inlayHints             *inlayHintSettings
+	crossTarget            *crossTargetStore
 }
 
 func (s *server) inlayHintSettings() inlayHintSettings {
@@ -387,6 +394,7 @@ func (s *server) handle(message rpcMessage) error {
 			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.InitializationOptions)
 			s.inlayHints = &settings
 			s.updateParameterInsight(params.InitializationOptions)
+			s.updatePitfallSettings(params.InitializationOptions)
 		}
 		return s.respond(message.ID, map[string]any{
 			"capabilities": map[string]any{
@@ -469,6 +477,7 @@ func (s *server) handle(message rpcMessage) error {
 			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.Settings)
 			s.inlayHints = &settings
 			s.updateParameterInsight(params.Settings)
+			s.updatePitfallSettings(params.Settings)
 		}
 		return s.republishOpenDiagnostics()
 	case "textDocument/codeLens":
@@ -492,6 +501,7 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		return s.respond(message.ID, inlayHintsForSource(params.TextDocument.URI, snapshot.Text, params.Range, s.inlayHintSettings(), s.sourceOverlay()))
 	case "workspace/didChangeWatchedFiles":
+		s.updatePitfallSettings(nil)
 		// Analysis configuration is read from the project manifest for each
 		// analysis. Re-publishing open documents applies a changed depth without
 		// requiring a server restart and replaces facts computed at the old depth.
@@ -512,7 +522,7 @@ func (s *server) handle(message rpcMessage) error {
 			return err
 		}
 		s.documentSnapshots.Open(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
-		s.scheduleModuleDiagnostics(params.TextDocument.URI)
+		s.scheduleSourceDiagnostics(params.TextDocument.URI)
 		s.scheduleCrossTargetDiagnostics(params.TextDocument.URI)
 		return nil
 	case "textDocument/didChange":
@@ -527,7 +537,7 @@ func (s *server) handle(message rpcMessage) error {
 		if _, changed := s.documentSnapshots.Change(params.TextDocument.URI, params.TextDocument.Version, text); !changed {
 			return nil
 		}
-		s.scheduleModuleDiagnostics(params.TextDocument.URI)
+		s.scheduleSourceDiagnostics(params.TextDocument.URI)
 		return nil
 	case "textDocument/didClose":
 		var params didCloseParams
@@ -548,7 +558,7 @@ func (s *server) handle(message rpcMessage) error {
 		}); err != nil {
 			return err
 		}
-		s.scheduleModuleDiagnostics(params.TextDocument.URI)
+		s.scheduleSourceDiagnostics(params.TextDocument.URI)
 		return nil
 	case "textDocument/didSave":
 		var params didSaveParams
@@ -559,7 +569,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return nil
 		}
-		s.scheduleModuleDiagnostics(snapshot.URI)
+		s.scheduleSourceDiagnostics(snapshot.URI)
 		s.scheduleCrossTargetDiagnostics(snapshot.URI)
 		return nil
 	case "textDocument/willSave":
@@ -594,6 +604,7 @@ func (s *server) handle(message rpcMessage) error {
 		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
 		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
 		actions = append(actions, missingSeparatorCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
+		actions = append(actions, pitfallCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay(), s.pitfallSettingsSnapshot())...)
 		return s.respond(message.ID, actions)
 	case "textDocument/completion":
 		var params completionParams
@@ -924,7 +935,7 @@ func analyzeNavigationSource(uri string, text string, overlays ...sourceOverlay)
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 	return analyzer
 }
@@ -974,7 +985,7 @@ func documentHighlightsForSource(uri string, text string, pos position, overlays
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -1064,7 +1075,7 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -1109,7 +1120,7 @@ func referencesForSource(uri string, text string, pos position, includeDeclarati
 	path := pathFromURI(uri)
 	overlay := firstSourceOverlay(overlays)
 	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -1212,7 +1223,7 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		targetExpr = findSelectorLHS(fileAST, text, context.DotOffset)
 	}
 
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, fileAST)
 	analyzed := false
 	if fileAST != nil && !parseResult.Fatal {
 		prepareProgramForLSP(fileAST, pathFromURI(uri), firstSourceOverlay(overlays))
@@ -1566,7 +1577,7 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 	tokens := sourceTokens(uri, text)
 	for name := range analyzer.Types() {
@@ -2077,7 +2088,7 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 	construction, openOffset, closeOffset, found := constructionAtOffset(program, path, text, offset)
 	if !found || offset <= openOffset || offset > closeOffset {
@@ -2394,106 +2405,6 @@ func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.
 		}
 	}
 	return "", false
-}
-
-func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos position) string {
-	if analyzer == nil {
-		return ""
-	}
-	token, ok := sourceTokenAtPosition(uri, text, pos)
-	if !ok {
-		return ""
-	}
-	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
-	if len(definitions) != 1 {
-		return ""
-	}
-	graph := analyzer.CallGraph()
-	nodes := graph.NodesForDeclaration(definitions[0])
-	if len(nodes) != 1 {
-		return ""
-	}
-	node := nodes[0]
-	incoming := graph.Incoming(node.ID)
-	outgoing := graph.Outgoing(node.ID)
-	callerCount := distinctCallers(incoming)
-	calleeCount := distinctCallees(outgoing)
-
-	lines := []string{
-		"**Call graph**",
-		fmt.Sprintf("Incoming: `%d` call sites from `%d` callables", len(incoming), callerCount),
-		fmt.Sprintf("Outgoing: `%d` call sites to `%d` callables", len(outgoing), calleeCount),
-	}
-	roots := graph.RootsReaching(node.ID)
-	if len(roots) == 0 {
-		lines = append(lines, "Reachability: no active root in the current analysis")
-	} else {
-		rootNames := make([]string, 0, len(roots))
-		for _, root := range roots {
-			rootNames = append(rootNames, string(root.Kind))
-		}
-		lines = append(lines, "Reachable from: `"+strings.Join(rootNames, "`, `")+"`")
-	}
-	if graph.IsSameStackRecursive(node.ID) {
-		members := graph.SameStackSCC(node.ID)
-		lines = append(lines, callGraphComponentHoverLine("Same-stack recursion", members))
-	}
-	if graph.IsInTaskSpawnCycle(node.ID) {
-		lines = append(lines, callGraphComponentHoverLine("Task-spawn cycle", graph.TaskSpawnSCC(node.ID)))
-	}
-	if graph.IsInThreadStartCycle(node.ID) {
-		lines = append(lines, callGraphComponentHoverLine("Thread-start cycle", graph.ThreadStartSCC(node.ID)))
-	}
-	if graph.IsInProcessLaunchCycle(node.ID) {
-		lines = append(lines, callGraphComponentHoverLine("Process-launch cycle", graph.ProcessLaunchSCC(node.ID)))
-	}
-	spawnCounts := map[sema.CallExecutionRelation]int{}
-	for _, site := range outgoing {
-		switch site.Execution {
-		case sema.CallExecutionSpawnTask, sema.CallExecutionSpawnThread, sema.CallExecutionSpawnProcess:
-			spawnCounts[site.Execution]++
-		}
-	}
-	if len(spawnCounts) > 0 {
-		parts := make([]string, 0, len(spawnCounts))
-		for _, execution := range []sema.CallExecutionRelation{
-			sema.CallExecutionSpawnTask,
-			sema.CallExecutionSpawnThread,
-			sema.CallExecutionSpawnProcess,
-		} {
-			if count := spawnCounts[execution]; count > 0 {
-				parts = append(parts, fmt.Sprintf("%s: `%d`", strings.ReplaceAll(string(execution), "-", " "), count))
-			}
-		}
-		lines = append(lines, "Execution edges: "+strings.Join(parts, ", "))
-	}
-	arenaSummary := graph.ArenaSummary(node.ID)
-	if len(arenaSummary.DirectEffects) > 0 {
-		effects := make([]string, 0, len(arenaSummary.DirectEffects))
-		for _, effect := range arenaSummary.DirectEffects {
-			name := string(effect.Kind)
-			if effect.Arena != "" {
-				name += "(" + effect.Arena + ")"
-			}
-			effects = append(effects, name)
-		}
-		lines = append(lines, "Direct Arena effects: `"+strings.Join(effects, "`, `")+"`")
-	}
-	if arenaSummary.MayAllocate {
-		path := make([]string, 0, len(arenaSummary.AllocationPath))
-		for _, id := range arenaSummary.AllocationPath {
-			if member, ok := graph.Node(id); ok {
-				path = append(path, member.Name)
-			}
-		}
-		lines = append(lines, "May allocate: `yes`")
-		if len(path) > 0 {
-			lines = append(lines, "Allocation path: `"+strings.Join(path, "` -> `")+"`")
-		}
-	}
-	lines = append(lines, panicHoverLines(graph, node.ID)...)
-	lines = append(lines, blockingHoverLine(graph, node.ID))
-	return "\n\n" + strings.Join(lines, "\n\n")
 }
 
 // panicHoverLines presents the compiler-owned panic summary of a callable:
@@ -3834,86 +3745,6 @@ func sortCompletionItems(items []completionItem) {
 	})
 }
 
-// scheduleModuleDiagnostics coalesces all open siblings into one delayed job.
-// Rules: rules/tooling/lsp.md — "Responsiveness model".
-func (s *server) scheduleModuleDiagnostics(uri string) {
-	if s == nil || s.documentSnapshots == nil {
-		return
-	}
-	dir := normalizedSourcePath(filepath.Dir(pathFromURI(uri)))
-	s.timerMu.Lock()
-	defer s.timerMu.Unlock()
-	if s.diagnosticsStopped {
-		return
-	}
-	generation := s.invalidateDiagnosticJob(dir)
-	s.diagnosticTimers[dir] = time.AfterFunc(s.diagnosticDelay, func() {
-		if err := s.publishDiagnosticBatch(dir, generation); err != nil {
-			fmt.Fprintf(os.Stderr, "lsp diagnostics error: %v\n", err)
-		}
-		s.timerMu.Lock()
-		if s.diagnosticGeneration[dir] == generation {
-			delete(s.diagnosticTimers, dir)
-		}
-		s.timerMu.Unlock()
-	})
-}
-
-// invalidateDiagnosticJob requires timerMu and invalidates queued/running work.
-func (s *server) invalidateDiagnosticJob(dir string) uint64 {
-	if s.diagnosticTimers == nil {
-		s.diagnosticTimers = map[string]*time.Timer{}
-	}
-	if s.diagnosticGeneration == nil {
-		s.diagnosticGeneration = map[string]uint64{}
-	}
-	if timer := s.diagnosticTimers[dir]; timer != nil {
-		timer.Stop()
-		delete(s.diagnosticTimers, dir)
-	}
-	s.diagnosticGeneration[dir]++
-	return s.diagnosticGeneration[dir]
-}
-
-func (s *server) stopDiagnosticTimers() {
-	s.timerMu.Lock()
-	defer s.timerMu.Unlock()
-	s.diagnosticsStopped = true
-	for dir := range s.diagnosticGeneration {
-		s.invalidateDiagnosticJob(dir)
-	}
-}
-
-func (s *server) stopDiagnosticTimer(uri string) {
-	s.timerMu.Lock()
-	defer s.timerMu.Unlock()
-	s.invalidateDiagnosticJob(normalizedSourcePath(filepath.Dir(pathFromURI(uri))))
-}
-
-func (s *server) publishModuleDiagnostics(uri string) error {
-	if s == nil || s.documentSnapshots == nil {
-		return nil
-	}
-	dir := normalizedSourcePath(filepath.Dir(pathFromURI(uri)))
-	s.timerMu.Lock()
-	generation := s.invalidateDiagnosticJob(dir)
-	s.timerMu.Unlock()
-	return s.publishDiagnosticBatch(dir, generation)
-}
-
-func (s *server) republishOpenDiagnostics() error {
-	seen := map[string]bool{}
-	for _, snapshot := range s.documentSnapshots.Snapshots() {
-		dir := normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI)))
-		if seen[dir] {
-			continue
-		}
-		seen[dir] = true
-		s.scheduleModuleDiagnostics(snapshot.URI)
-	}
-	return nil
-}
-
 func (s *server) formatDocument(uri string) ([]textEdit, error) {
 	snapshot, ok := s.documentSnapshots.Snapshot(uri)
 	text := snapshot.Text
@@ -3981,7 +3812,7 @@ func unitConversionCodeActions(uri string, text string, reported []diagnostic, o
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	analyzer.Analyze(program)
 	actions := []codeAction{}
 	for _, suggestion := range analyzer.UnitConversionSuggestions() {
@@ -4611,7 +4442,7 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 		}
 	}
 
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, program)
 	for _, err := range analyzer.Analyze(program) {
 		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery, text) {
 			diagnostics = append(diagnostics, semaDiagnosticWithSources(err, 1, uri, text, firstSourceOverlay(overlays)))
@@ -4622,6 +4453,7 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 			diagnostics = append(diagnostics, semaDiagnosticWithSources(warning, 2, uri, text, firstSourceOverlay(overlays)))
 		}
 	}
+	diagnostics = append(diagnostics, pitfallDiagnostics(analyzer, uri, text, firstSourceOverlay(overlays), pitfallDiagnosticSettings{})...)
 	return diagnostics
 }
 
@@ -5075,69 +4907,6 @@ func findProjectRoot(path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Dir(filepath.Clean(path))
-}
-
-func newLSPAnalyzer(uri string) *sema.Analyzer {
-	sourcePath := pathFromURI(uri)
-	depth := lspAnalysisDepth(sourcePath)
-	if plan, err := lspScalarPlan(sourcePath); err == nil {
-		return sema.NewAnalyzerWithScalarPlanAndDepth(plan, depth)
-	}
-	return sema.NewAnalyzerWithDepth(depth)
-}
-
-func lspAnalysisDepth(sourcePath string) sema.AnalysisDepth {
-	depth := sema.AnalysisInteractive
-	if sourcePath == "" {
-		return depth
-	}
-	manifest := filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml")
-	configured, err := readLSPAnalysisDepth(manifest)
-	if err == nil {
-		return configured
-	}
-	return depth
-}
-
-func readLSPAnalysisDepth(manifest string) (sema.AnalysisDepth, error) {
-	file, err := os.Open(manifest)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	section := ""
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.TrimSpace(line[1 : len(line)-1])
-			continue
-		}
-		if section != "analysis" {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) != "lsp_depth" {
-			continue
-		}
-		value = strings.TrimSpace(value)
-		if comment := strings.Index(value, "#"); comment >= 0 {
-			value = strings.TrimSpace(value[:comment])
-		}
-		unquoted, err := strconv.Unquote(value)
-		if err != nil {
-			return "", fmt.Errorf("invalid analysis.lsp_depth in %s: %w", manifest, err)
-		}
-		return sema.ParseAnalysisDepth(unquoted)
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-	return sema.AnalysisInteractive, nil
 }
 
 // findSelectorLHS locates the receiver at the cursor's exact dot token in the
@@ -5962,60 +5731,6 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 //   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
 func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
 	return semaDiagnosticWithSources(err, severity, "", text, nil)
-}
-
-// semaDiagnosticWithSources is semaDiagnostic with the current document URI
-// and the open-document overlay, so a related location is converted to UTF-16
-// with the related file's own text: the current document, an unsaved open
-// document, or the file on disk. An unreadable related file keeps the scalar
-// column rather than dropping the link.
-//
-// Rules:
-//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
-func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text string, overlay sourceOverlay) diagnostic {
-	start := diagnosticTokenStart(text, lexer.Token{Line: err.Line, Column: err.Column})
-	end := start
-	end.Character++
-	if err.EndLine > 0 && err.EndColumn > 0 {
-		end = diagnosticTokenStart(text, lexer.Token{Line: err.EndLine, Column: err.EndColumn})
-	}
-	// The editor already places the diagnostic at its range, so the message
-	// carries only the related location rather than repeating the primary
-	// one; the related location is also attached as a navigable link.
-	message := err.Message
-	var related []diagnosticRelatedInformation
-	if err.PreviousLine > 0 && err.PreviousColumn > 0 {
-		previous := fmt.Sprintf("%d:%d", err.PreviousLine, err.PreviousColumn)
-		if err.PreviousFile != "" {
-			previous = err.PreviousFile + ":" + previous
-		}
-		message += "\n\n" + err.RelatedLocationLabel() + " at " + previous
-		if err.PreviousFile != "" {
-			relatedToken := lexer.Token{File: err.PreviousFile, Line: err.PreviousLine, Column: err.PreviousColumn}
-			point := position{Line: err.PreviousLine - 1, Character: err.PreviousColumn - 1}
-			if relatedText := sourceTextForToken(uri, text, overlay, relatedToken); relatedText != "" {
-				point = diagnosticTokenStart(relatedText, relatedToken)
-			}
-			related = append(related, diagnosticRelatedInformation{
-				Location: location{URI: uriFromPath(err.PreviousFile), Range: lspRange{Start: point, End: point}},
-				Message:  err.RelatedLocationLabel(),
-			})
-		}
-	}
-	if err.Help != "" {
-		message += "\n\nhelp: " + err.Help
-	}
-	return diagnostic{
-		Range: lspRange{
-			Start: start,
-			End:   end,
-		},
-		Severity:           lspSeverity(err.Severity, severity),
-		Code:               err.ID,
-		Source:             "sec",
-		Message:            message,
-		RelatedInformation: related,
-	}
 }
 
 func lspSeverity(severity diagnostics.Severity, fallback int) int {

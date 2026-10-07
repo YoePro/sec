@@ -111,7 +111,7 @@ func subjectCompletionItems(uri string, text string, offset int, context complet
 		return nil, false
 	}
 	prepareProgramForLSP(result.Program, pathFromURI(uri), overlay)
-	analyzer := newLSPAnalyzer(uri)
+	analyzer := newLSPAnalyzer(uri, result.Program)
 	analyzer.Analyze(result.Program)
 
 	var expected sema.Type

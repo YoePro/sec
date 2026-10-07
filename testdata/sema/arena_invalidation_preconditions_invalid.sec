@@ -1,0 +1,16 @@
+module main
+
+fn BadResetArity() void {
+    let mut mem: Arena := Arena {}
+    mem.Reset(1)
+}
+
+fn BadReleaseTypeArgument() void {
+    let mut mem: Arena := Arena {}
+    mem.Release[int]()
+}
+
+fn ImmutableReset() void {
+    let mem: Arena := Arena {}
+    mem.Reset()
+}

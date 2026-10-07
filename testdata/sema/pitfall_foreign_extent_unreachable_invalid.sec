@@ -1,0 +1,8 @@
+module foreign_extent_dead
+extern "C" fn Transfer(x: RawPtr[byte], y: uint64) void
+fn Dead(pointer: RawPtr[byte], count: uint64) void {
+    if false { Transfer(pointer, count) }
+    while false { Transfer(pointer, count) }
+    return
+    discard Transfer(pointer, count)
+}

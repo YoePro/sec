@@ -17,6 +17,11 @@ type BuildOptions struct {
 	MaxPackage      uint8
 }
 
+// Build consumes resolved semantics for the requested module, requiring its
+// canonical iterator plans before constructing any representation. Unsupported
+// implementation capabilities remain distinct from absent semantic proof.
+// Rules: rules/compiler/compiler_pipeline.md — §§32–34;
+// rules/compiler/semantic_ir.md — §§64(2–5), 65.
 func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) (*Module, error) {
 	if program == nil || analyzer == nil {
 		return nil, fmt.Errorf("program and completed analyzer are required")
@@ -29,6 +34,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	identity := options.RequestedModule
 	if identity == "" {
 		identity = requestedModule(program, options.SourceFiles)
+	}
+	if err := analyzer.ValidateIteratorLoweringReadiness(program, identity); err != nil {
+		return nil, err
 	}
 	if free, ok := firstCustomFreeDeclaration(program); ok {
 		// rules/memory/destruction.md §§15.5, 30–31: custom free must run

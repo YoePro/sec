@@ -1,0 +1,8 @@
+module main
+type Holder struct { value: TYPE }
+fn Operation(left: TYPE, right: TYPE) TYPE {
+    let mut holder := Holder { value: left }
+    holder.value += right
+    return holder.value
+}
+fn main() int { return 0 }

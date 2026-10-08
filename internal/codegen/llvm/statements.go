@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"sec/internal/codegen/readiness"
 	"strconv"
 
 	"sec/internal/ast"
@@ -73,10 +74,14 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 	}
 }
 
+// emitTryAssignment rejects fallible mutation until validation and Result
+// branches can be preserved. Rules: rules/types/contracts.md — Mutation;
+// rules/errors/errorhandling.md — try.
 func (g *Generator) emitTryAssignment(stmt *ast.TryAssignmentStatement) error {
-	// TODO: Lower fallible property assignment through the generated setter and
-	// branch on Result once the Result ABI is implemented.
-	return nil
+	// Fallible constrained/property assignments require validation and Result
+	// branches. Dropping the statement would discard both mutation and failure.
+	// Rules: rules/types/contracts.md — Mutation; rules/errors/errorhandling.md — try.
+	return unsupportedContract("fallible assignment validation", stmt.Token)
 }
 
 func (g *Generator) emitDefer(stmt *ast.DeferStatement) error {
@@ -409,37 +414,42 @@ func (g *Generator) coerceAsmInput(arg value) (value, error) {
 	return g.coerceValue(arg, "i64")
 }
 
+// coerceValue shapes integer constants in their destination width and preserves
+// signed/unsigned extension of runtime values. Target widths are already resolved.
+// Rules: rules/types/types.md — "Context shaping", "Explicit conversions";
+// rules/foundations/operators.md — integer operations.
 func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 	if arg.typ == targetType {
 		return arg, nil
+	}
+	if literal, ok := contextualIntegerConstant(arg, targetType); ok {
+		return literal, nil
 	}
 	if sourceWidth, sourceOK := llvmIntegerWidth(arg.typ); sourceOK {
 		if targetWidth, targetOK := llvmIntegerWidth(targetType); targetOK {
 			temp := g.nextTemp()
 			if sourceWidth > targetWidth {
 				g.write("  %s = trunc %s %s to %s\n", temp, arg.typ, arg.ref, targetType)
-				return value{typ: targetType, ref: temp}, nil
+				return value{typ: targetType, ref: temp, unsigned: arg.unsigned}, nil
 			}
 			if sourceWidth < targetWidth {
 				op := "sext"
-				if sourceWidth < 32 {
+				if arg.unsigned || sourceWidth == 1 {
 					op = "zext"
 				}
 				g.write("  %s = %s %s %s to %s\n", temp, op, arg.typ, arg.ref, targetType)
-				return value{typ: targetType, ref: temp}, nil
+				return value{typ: targetType, ref: temp, unsigned: arg.unsigned}, nil
 			}
 		}
 	}
-	if targetType == llvmDecimalType {
-		switch arg.typ {
-		case "i32":
-			temp := g.nextTemp()
-			g.write("  %s = sext i32 %s to i64\n", temp, arg.ref)
-			return g.emitDecimalFromI64(temp), nil
-		case "i64":
-			return g.emitDecimalFromI64(arg.ref), nil
+	if targetType == llvmDecimalType && (arg.typ == "i32" || arg.typ == "i64") {
+		widened, err := g.coerceValue(arg, "i64")
+		if err != nil {
+			return value{}, err
 		}
+		return g.emitDecimalFromI64(widened.ref), nil
 	}
+
 	switch arg.typ {
 	case "i32":
 		if targetType != "i64" {
@@ -456,12 +466,12 @@ func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 		g.write("  %s = trunc i64 %s to i32\n", temp, arg.ref)
 		return value{typ: "i32", ref: temp}, nil
 	case "ptr":
-		if targetType != "i64" {
+		if _, ok := llvmIntegerWidth(targetType); !ok {
 			break
 		}
 		temp := g.nextTemp()
-		g.write("  %s = ptrtoint ptr %s to i64\n", temp, arg.ref)
-		return value{typ: "i64", ref: temp}, nil
+		g.write("  %s = ptrtoint ptr %s to %s\n", temp, arg.ref, targetType)
+		return value{typ: targetType, ref: temp, unsigned: arg.unsigned}, nil
 	}
 	return value{}, fmt.Errorf("emit-llvm cannot convert %s to %s", arg.typ, targetType)
 }
@@ -483,6 +493,9 @@ func (g *Generator) emitDecimalFromI64(numberRef string) value {
 	return value{typ: llvmDecimalType, ref: result}
 }
 
+// emitLet retains explicit storage widths while shaping literal initializers in their destination carrier.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 	if stmt.Name == nil {
 		return fmt.Errorf("emit-llvm let missing name")
@@ -539,13 +552,20 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 
 	if initial != nil {
 		if initial.typ != typ {
-			return fmt.Errorf("emit-llvm cannot initialize %s with %s", typ, initial.typ)
+			coerced, ok := contextualIntegerConstant(*initial, typ)
+			if !ok {
+				return fmt.Errorf("emit-llvm cannot initialize %s with %s", typ, initial.typ)
+			}
+			initial = &coerced
 		}
 		g.write("  store %s %s, ptr %s\n", typ, initial.ref, ptr)
 	}
 	return nil
 }
 
+// emitAssignment keeps assignment and compound-assignment constants in the established storage carrier.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 	ident, ok := stmt.Target.(*ast.Identifier)
 	if !ok {
@@ -563,9 +583,16 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 		return err
 	}
 	if val.typ != slot.typ {
-		return fmt.Errorf("emit-llvm cannot assign %s to %s", val.typ, slot.typ)
+		coerced, ok := contextualIntegerConstant(val, slot.typ)
+		if !ok {
+			return fmt.Errorf("emit-llvm cannot assign %s to %s", val.typ, slot.typ)
+		}
+		val = coerced
 	}
 	if stmt.Operator != "=" {
+		if err := readiness.CheckWideOperation(slot.typ, stmt.Operator, stmt.Token); err != nil {
+			return err
+		}
 		current := g.nextTemp()
 		g.write("  %s = load %s, ptr %s\n", current, slot.typ, slot.ptr)
 		op := map[string]string{
@@ -1084,10 +1111,13 @@ func (g *Generator) matchExpressionResultType(expr *ast.MatchExpression) (string
 	return "", fmt.Errorf("emit-llvm match expression must produce a value")
 }
 
+// emitExpressionTypeOnly selects the target-native carrier for integer-valued match arms.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitExpressionTypeOnly(expr ast.Expression) (string, error) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
-		return "i32", nil
+		return g.nativeIntegerType(), nil
 	case *ast.BooleanLiteral:
 		return "i1", nil
 	case *ast.CharLiteral:
@@ -1202,9 +1232,12 @@ func (g *Generator) emitStringSliceUnchecked(expr *ast.CallExpression) (value, e
 	return value{typ: "string", ref: ptr, lenRef: length}, nil
 }
 
+// isCodegenBuiltinConversion recognizes active primitive integer conversion identities.
+// Rules: rules/types/types.md — Integer types and Explicit conversions.
 func isCodegenBuiltinConversion(name string) bool {
 	switch name {
-	case "int", "int64", "uint", "uint64", "byte", "bool", "decimal":
+	case "int", "int8", "int16", "int32", "int64", "int128", "int256",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uint128", "uint256", "byte", "bool", "decimal":
 		return true
 	default:
 		return false
@@ -1222,17 +1255,6 @@ func (g *Generator) isCodegenConversion(name string) bool {
 		return true
 	}
 	return false
-}
-
-func (g *Generator) emitBuiltinConversionCall(expr *ast.CallExpression, name string) (value, error) {
-	if len(expr.Arguments) != 1 {
-		return value{}, fmt.Errorf("conversion to %s expects 1 argument, got %d", name, len(expr.Arguments))
-	}
-	arg, err := g.emitExpression(expr.Arguments[0])
-	if err != nil {
-		return value{}, err
-	}
-	return g.coerceValue(arg, g.llvmType(&ast.TypeReference{Name: name}))
 }
 
 func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value, error) {

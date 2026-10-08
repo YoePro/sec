@@ -1,0 +1,4 @@
+module main // keep header comment
+import q "quantities"
+// preserve source comment
+fn Convert(value: decimal<LocalLength>) decimal<LocalLength> { return value }

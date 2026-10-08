@@ -7,22 +7,23 @@ integrations:
     status: partial
     integrated: "2026-08-07"
     audited: "2026-08-18"
+    revised: "2026-10-08"
     summary: >-
       Expands the units package into a documented, metadata-complete catalog of
-      155 physical units across SI and commonly used non-SI systems.
+      148 physical units across SI and commonly used non-SI systems.
     rules:
       - rules/types/units.md
     code:
-      - sec/stdlib/units/base.sec
-      - sec/stdlib/units/core_derived.sec
-      - sec/stdlib/units/electricity.sec
-      - sec/stdlib/units/imperial_us.sec
-      - sec/stdlib/units/light.sec
-      - sec/stdlib/units/mechanics.sec
-      - sec/stdlib/units/power_energy.sec
-      - sec/stdlib/units/scaled_derived.sec
-      - sec/stdlib/units/science.sec
-      - sec/stdlib/units/time_frequency.sec
+      - sec/stdlib/unit/base.sec
+      - sec/stdlib/unit/core_derived.sec
+      - sec/stdlib/unit/electricity.sec
+      - sec/stdlib/unit/imperial_us.sec
+      - sec/stdlib/unit/light.sec
+      - sec/stdlib/unit/mechanics.sec
+      - sec/stdlib/unit/power_energy.sec
+      - sec/stdlib/unit/scaled_derived.sec
+      - sec/stdlib/unit/science.sec
+      - sec/stdlib/unit/time_frequency.sec
     implemented:
       - documentation comments on every unit declaration
       - complete LongName, Symbol, BaseUnit, Status, Dimension, Scale, and System metadata
@@ -32,15 +33,14 @@ integrations:
       - radiation, chemistry, thermal, Imperial, US customary, and nautical units
       - exact rational scales where standardized exact relationships are available
       - semantically valid reciprocal helper naming for frequency and conductance formulas
+      - "33 units have explicit safety-relevant Kind metadata; frequency/rotational frequency, energy/torque and other equal-dimension families are semantically distinct (frontend.units-v2, 2026-10-08)"
+    tests:
+      - internal/sema/unit_catalog_test.go
     verification:
-      - command: parse sec/stdlib/units/*.sec
-        result: passed
-      - command: sema sec/stdlib/units/*.sec
-        result: passed
-      - command: validate documentation and required metadata for every catalog unit
-        result: passed
+      - command: go test ./internal/sema -run TestUnitCatalogKinds -count=1
+        result: passed on 2026-10-08; projects actual declaration/metadata lines from all ten files, validates all Kind families and conversion/arithmetic boundaries; legacy helper bodies remain outside this verification
     remaining:
-      - Kind metadata migration for safety-relevant same-dimension quantity families
+      - migrate legacy helper-function bracket-dimension annotations to revision-2 structural unit syntax and validate complete helper bodies
       - offset-temperature units after offset conversion support exists
       - scale-sensitive algebra and automatic fixed scale-path conversion
       - logarithmic conversion semantics for units such as decibel

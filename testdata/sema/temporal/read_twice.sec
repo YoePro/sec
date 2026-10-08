@@ -1,0 +1,6 @@
+module core
+
+fn ReadTwice() datetime {
+    let first: datetime := _now
+    return _now
+}

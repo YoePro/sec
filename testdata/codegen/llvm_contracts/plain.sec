@@ -1,0 +1,5 @@
+module main
+
+type Ordinary int32
+fn Identity(value: Ordinary) Ordinary { return value }
+fn main() int { return 0 }

@@ -1,0 +1,20 @@
+module main
+unit __UNIT__ physical
+impl __UNIT__ {
+    Dimension: [__AXIS__^1]
+    Kind: __AXIS__
+    Scale: __SCALE__
+}
+fn Lock(timeout: duration) duration { return timeout }
+fn WithTimeout(timeout: duration) duration { return timeout }
+fn Ordinary(timeout: duration) duration { return timeout }
+type Gate struct {}
+impl Gate {
+    fn Lock(timeout: duration) duration { return timeout }
+}
+fn Check(gate: Gate, value: __TYPE__) void {
+    discard Lock(value)
+    discard WithTimeout(value)
+    discard Ordinary(value)
+    discard gate.Lock(value)
+}

@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"math/big"
 	"strings"
 
 	"sec/internal/ast"
@@ -175,6 +176,13 @@ func (a *Analyzer) runtimeContractConversion(call *ast.CallExpression) bool {
 		return false
 	}
 	if _, constant := a.integerConstantValue(call.Arguments[0]); constant {
+		return false
+	}
+	// rules/types/types.md — "Explicit conversions": the empty list's
+	// complete shape is known, so a proved contract needs no runtime check.
+	if literal, ok := call.Arguments[0].(*ast.CollectionLiteral); ok &&
+		!literal.Invalid && isDefaultableEmptyListType(target) &&
+		collectionDefaultSatisfiesContracts(target, new(big.Int)) {
 		return false
 	}
 	switch call.Arguments[0].(type) {

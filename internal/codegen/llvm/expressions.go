@@ -2,6 +2,9 @@ package llvm
 
 import (
 	"fmt"
+	"math/big"
+	"sec/internal/codegen/readiness"
+	"sec/internal/lexer"
 	"strconv"
 	"strings"
 
@@ -16,6 +19,9 @@ type value struct {
 	unsigned bool
 }
 
+// emitExpression emits integer literals using the canonical target carrier; context may shape constants to an explicit destination.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -28,10 +34,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		if !ok {
 			return value{}, fmt.Errorf("emit-llvm could not parse integer %q", expr.Token.Lexeme)
 		}
-		typ := "i32"
-		if expr.Suffix() == "u" {
-			typ = "i64"
-		}
+		typ := g.nativeIntegerType()
 		return value{typ: typ, ref: parsed.String(), unsigned: expr.Suffix() == "u"}, nil
 	case *ast.FloatLiteral:
 		if expr.Suffix() == "g" {
@@ -111,6 +114,8 @@ func (g *Generator) emitTryExpression(expr *ast.TryExpression) (value, error) {
 	return g.emitExpression(expr.Expression)
 }
 
+// emitConversionExpression shares the checked scalar conversion path with calls.
+// Rules: rules/types/types.md — Explicit conversions; MD-012 correction §4.
 func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (value, error) {
 	if expr.Type == nil || expr.Value == nil {
 		return value{}, fmt.Errorf("emit-llvm requires complete conversion expression")
@@ -120,11 +125,7 @@ func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (va
 			return g.emitDecimalValue(decimal), nil
 		}
 	}
-	val, err := g.emitExpression(expr.Value)
-	if err != nil {
-		return value{}, err
-	}
-	return g.coerceValue(val, g.llvmType(expr.Type))
+	return g.emitBuiltinConversionCall(&ast.CallExpression{Token: expr.Token, Arguments: []ast.Expression{expr.Value}}, expr.Type.Name)
 }
 
 type decimalLiteral struct {
@@ -236,6 +237,9 @@ func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
 	return value{typ: slot.typ, ref: temp, fnType: slot.fnType, unsigned: slot.unsigned}, nil
 }
 
+// emitMemberExpression keeps enum carriers and string length uint values consistent with the selected scalar plan.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, error) {
 	if typeName, ok := expressionPath(expr.Object); ok {
 		if enum, exists := g.enums[typeName]; exists {
@@ -258,27 +262,42 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 	case "ptr":
 		return value{typ: "ptr", ref: object.ref}, nil
 	case "len":
-		return value{typ: "i64", ref: object.lenRef}, nil
+		return g.coerceValue(value{typ: "i64", ref: object.lenRef, unsigned: true}, g.nativeIntegerType())
 	default:
 		return value{}, fmt.Errorf("unknown string member %s", expr.Property.Value)
 	}
 }
 
+// emitPrefixExpression preserves the resolved operand width in integer negation.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, error) {
 	right, err := g.emitExpression(expr.Right)
 	if err != nil {
 		return value{}, err
 	}
+	if expr.Operator != "+" {
+		if err := readiness.CheckWideOperation(right.typ, expr.Operator, expr.Token); err != nil {
+			return value{}, err
+		}
+	}
 	switch expr.Operator {
 	case "+":
 		return right, nil
 	case "-":
-		if right.typ != "i32" {
+		// Preserve a signed literal minimum until its destination carrier is known;
+		// emitting negation in the native carrier could truncate a wider constant.
+		// Rules: rules/types/types.md — "Context shaping" and integer representability.
+		if integer, ok := new(big.Int).SetString(right.ref, 10); ok {
+			right.ref = integer.Neg(integer).String()
+			return right, nil
+		}
+		if right.typ != "i32" && right.typ != "i64" {
 			return value{}, fmt.Errorf("emit-llvm unary - currently expects int")
 		}
 		temp := g.nextTemp()
-		g.write("  %s = sub i32 0, %s\n", temp, right.ref)
-		return value{typ: "i32", ref: temp}, nil
+		g.write("  %s = sub %s 0, %s\n", temp, right.typ, right.ref)
+		return value{typ: right.typ, ref: temp}, nil
 	case "!":
 		if right.typ != "i1" {
 			return value{}, fmt.Errorf("emit-llvm unary ! currently expects bool")
@@ -296,6 +315,10 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 //
 // Rules:
 //   - rules/foundations/operators.md — canonical precedence and "Membership expression"
+//
+// emitInfixExpression shapes constant operands to an established integer carrier before emitting arithmetic and comparison.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error) {
 	switch expr.Operator {
 	case "&&":
@@ -324,6 +347,24 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	if left.typ == llvmDecimalType || right.typ == llvmDecimalType {
 		return g.emitDecimalInfixPlaceholder(expr.Operator, left, right)
 	}
+	if left.typ != right.typ {
+		if _, ok := llvmIntegerWidth(left.typ); ok {
+			if _, literal := new(big.Int).SetString(right.ref, 10); literal {
+				right, err = g.coerceValue(right, left.typ)
+			}
+		}
+		if left.typ != right.typ {
+			if _, ok := llvmIntegerWidth(right.typ); ok {
+				if _, literal := new(big.Int).SetString(left.ref, 10); literal {
+					left, err = g.coerceValue(left, right.typ)
+					left.unsigned = right.unsigned
+				}
+			}
+		}
+		if err != nil {
+			return value{}, err
+		}
+	}
 	if left.typ == "string" || right.typ == "string" {
 		// rules/foundations/operators.md, string comparison; correction2.md
 		// forbids the legacy backend from emitting invalid pointer-like icmp as a
@@ -331,6 +372,9 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 		return value{}, fmt.Errorf("emit-llvm string comparison requires semantic string-comparison lowering")
 	}
 
+	if err := readiness.CheckWideOperation(left.typ, expr.Operator, expr.Token); err != nil {
+		return value{}, err
+	}
 	switch expr.Operator {
 	case "+":
 		return g.emitIntegerBinary("add", left, right)
@@ -487,7 +531,12 @@ func (g *Generator) emitShortCircuitOr(expr *ast.InfixExpression) (value, error)
 	return value{typ: "i1", ref: result}, nil
 }
 
+// emitIntegerBinary rejects unchecked wide operations before instruction emission.
+// Rules: rules/types/types.md — explicit widths; operators.md — Runtime overflow.
 func (g *Generator) emitIntegerBinary(op string, left value, right value) (value, error) {
+	if err := readiness.CheckWideOperation(left.typ, op, lexer.Token{}); err != nil {
+		return value{}, err
+	}
 	if left.typ != right.typ {
 		return value{}, fmt.Errorf("emit-llvm binary operator requires matching operand types")
 	}

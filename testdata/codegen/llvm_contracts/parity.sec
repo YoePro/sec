@@ -1,0 +1,5 @@
+module main
+
+type Even int32 even
+type Odd int32 odd
+fn main() int { return 0 }

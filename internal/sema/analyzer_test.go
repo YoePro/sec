@@ -818,7 +818,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		`immutable binding "a" requires an initializer at 5:6`,
+		`immutable binding "a" requires an initializer at 5:6, declared type of uninitialized binding at 5:9`,
 	}
 	assertSemaErrors(t, errors, expected)
 	if errors[0].ID != diagnostics.ImmutableRequiresInitializer || errors[0].Help != "initialize the immutable binding explicitly" {
@@ -1125,9 +1125,9 @@ fn Test() void {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"value 101 violates range contract Percent 0..100 at 7:10",
-		"value 101 violates range contract Percent 0..100 at 9:13",
-		"value 130 violates range contract Percent 0..100 at 12:11",
+		"value 101 violates range contract Percent 0..100 at 7:10, contract declaration at 2:18",
+		"value 101 violates range contract Percent 0..100 at 9:13, contract declaration at 2:18",
+		"value 130 violates range contract Percent 0..100 at 12:11, contract declaration at 2:18",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1149,8 +1149,8 @@ fn Test() void {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"assigning variable p requires try because Percent has contracts at 6:2",
-		"assigning variable p requires try because Percent has contracts at 7:2",
+		"assigning variable p requires try because Percent has contracts at 6:2, contract requiring checked assignment at 2:18",
+		"assigning variable p requires try because Percent has contracts at 7:2, contract requiring checked assignment at 2:18",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1169,7 +1169,7 @@ let p3: Percent := x
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 
 	expected := []string{
-		"value 101 violates range contract Percent 0..100 at 5:20",
+		"value 101 violates range contract Percent 0..100 at 5:20, contract declaration at 2:18",
 		"cannot initialize Percent with int at 7:20",
 	}
 
@@ -1203,7 +1203,7 @@ fn Test() void {
 
 	expected := []string{
 		"cannot add int to Percent at 9:17",
-		"value 101 violates range contract Percent 0..100 at 11:24",
+		"value 101 violates range contract Percent 0..100 at 11:24, contract declaration at 2:18",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1295,14 +1295,14 @@ type BadEvenFloat float even
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"unique contract does not apply to string at 2:29",
-		"unique contract does not apply to int at 3:23",
-		"notEmpty contract does not apply to int at 4:25",
-		"finite contract does not apply to int at 5:23",
-		"multipleOf contract does not apply to string at 6:31",
-		"range contract does not apply to string at 7:28",
-		"odd contract does not apply to string at 8:26",
-		"even contract does not apply to float at 9:25",
+		"unique contract does not apply to string at 2:29, type declaration at 2:6",
+		"unique contract does not apply to int at 3:23, type declaration at 3:6",
+		"notEmpty contract does not apply to int at 4:25, type declaration at 4:6",
+		"finite contract does not apply to int at 5:23, type declaration at 5:6",
+		"multipleOf contract does not apply to string at 6:31, type declaration at 6:6",
+		"range contract does not apply to string at 7:28, type declaration at 7:6",
+		"odd contract does not apply to string at 8:26, type declaration at 8:6",
+		"even contract does not apply to float at 9:25, type declaration at 9:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -1321,9 +1321,9 @@ let evenBad: EvenNumber := 11
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"value 25 violates multipleOf contract PageSize 10 at 7:22",
-		"value 10 violates odd contract OddNumber at 8:26",
-		"value 11 violates even contract EvenNumber at 9:28",
+		"value 25 violates multipleOf contract PageSize 10 at 7:22, contract declaration at 2:33",
+		"value 10 violates odd contract OddNumber at 8:26, contract declaration at 3:20",
+		"value 11 violates even contract EvenNumber at 9:28, contract declaration at 4:21",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -1340,10 +1340,10 @@ type ValidEvenMultiple int range 10..20 multipleOf 10 even
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"contracts odd and even cannot be combined at 2:22",
-		"contracts multipleOf 10 and odd cannot be combined because every multiple is even at 3:46",
-		"contracts cannot be satisfied together for NoEven at 4:29",
-		"contracts cannot be satisfied together for NoMultiple at 5:34",
+		"contracts odd and even cannot be combined at 2:22, type declaration at 2:6",
+		"contracts multipleOf 10 and odd cannot be combined because every multiple is even at 3:46, type declaration at 3:6",
+		"contracts cannot be satisfied together for NoEven at 4:29, type declaration at 4:6",
+		"contracts cannot be satisfied together for NoMultiple at 5:34, type declaration at 5:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -3413,7 +3413,7 @@ fn Different(letter: char, codepoint: rune) bool {
 	expected := []string{
 		"array length must be a compile-time integer at 8:22",
 		"value 1114112r is not a valid Unicode scalar value; allowed values are U+0000..U+10FFFF excluding surrogates U+D800..U+DFFF at 4:19",
-		"value 55296t is not a valid Unicode scalar value; allowed values are U+0000..U+10FFFF excluding surrogates U+D800..U+DFFF at 5:24",
+		"value 55296t does not fit char; t-suffixed literals must be in 0..255 at 5:24",
 		"cannot initialize char with rune at 6:20",
 		"cannot compare char and rune at 12:16",
 	}
@@ -11095,7 +11095,7 @@ fn Invalid() void {
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
 		"cannot spread Resource into Resource; Resource is not implicitly copyable at 12:11",
-		"field \"view\" in struct Resource has no default value and must be initialized at 11:14",
+		"field \"view\" in struct Resource has no default value and must be initialized at 11:14, field requiring initialization at 5:2",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -11161,7 +11161,7 @@ fn Invalid(source: Source) Target {
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
 		"cannot spread Source into Target; spread source must have type Target at 15:9",
-		`field "view" in struct Target has no default value and must be initialized at 14:9`,
+		`field "view" in struct Target has no default value and must be initialized at 14:9, field requiring initialization at 10:2`,
 	}
 	assertSemaErrors(t, errors, expected)
 }

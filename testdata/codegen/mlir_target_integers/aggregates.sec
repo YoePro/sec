@@ -1,0 +1,19 @@
+let SignedTop := 7
+let UnsignedTop := 7u
+
+type Pair struct { signed: int, unsigned: uint, }
+type Nested struct { pair: Pair, values: int[2], }
+fn TopSigned() int { return SignedTop }
+fn TopUnsigned() uint { return UnsignedTop }
+fn DefaultPair() Pair { return Pair {} }
+fn PairIdentity(value: Pair) Pair { return value }
+fn ArrayLength(value: int[2]) uint { return value.len }
+fn Indexed() int {
+    let values: int[2] := [4, 5]
+    let mut total := 0
+    for index, value in values { total += index + value }
+    return total
+}
+fn DefaultNested() Nested { return Nested {} }
+fn NativeConvert(value: int32) int { return int(value) }
+fn NativeUnsignedConvert(value: uint32) uint { return uint(value) }

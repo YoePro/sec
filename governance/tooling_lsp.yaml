@@ -571,7 +571,7 @@ integrations:
     integrated: "2026-10-04"
     summary: >-
       Publishes diagnostics of a target-independent document for every target
-      its module's platform files select, recording each diagnostic's
+      its project variants or module's platform files select, recording each diagnostic's
       applicability as the rulebook requires.
     rules:
       - rules/tooling/lsp.md
@@ -581,8 +581,11 @@ integrations:
       - cmd/lsp/diagnostics_batch.go
       - cmd/lsp/main.go
     tests:
+      - cmd/lsp/target_selection_test.go
+      - testdata/lsp/target_selection/
       - cmd/lsp/cross_target_diagnostics_test.go
     implemented:
+      - "project variants and active selection (2026-10-08): diagnostics retain logical-target/output-variant identity for distinct scalar plans and duplicate platforms; target switches and watched project changes invalidate and recompute background comparisons; the canonical target selection implementation is owned by frontend.target-sized-integer-semantics in governance/types.yaml"
       - on didOpen and didSave a document without its own #target, in a module whose files select two or more targets, is analyzed once per target in the background with that target's module sources, imports, and registry scalar plan
       - results are stored per document text hash, invalidated by a newer request or a close, and dropped while the document has unsaved changes
       - publication merges them with the active diagnostics; every-target diagnostics are unchanged, some-target diagnostics state "applies to N of M targets", and diagnostics absent on the active target are added prefixed with their targets
@@ -590,7 +593,7 @@ integrations:
     remaining:
       - share the per-target analyses with the interface conformance lens
       - recompute while typing once incremental per-target analysis exists
-      - target selection, target status panel, and target comparison views
+      - dedicated target status panel and target comparison views beyond the implemented VS Code selector/status-bar indicator
     verification:
       - command: go test ./cmd/lsp -run CrossTargetDiagnostics -count=1
         result: passed on 2026-10-04 for a shared file calling a method that only the linux platform file provides, reported as windows-only with applicability, and no cross-target pass for a #target document

@@ -1,0 +1,3 @@
+module core
+
+let Snapshot: datetime := _now

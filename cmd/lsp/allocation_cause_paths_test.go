@@ -29,7 +29,7 @@ func TestAllocationCausePathsLSP(t *testing.T) {
 		t.Fatal(errs)
 	}
 	for _, e := range errs {
-		got := semaDiagnosticWithSources(e, 3, uriFromPath(file), string(data), nil)
+		got := semaDiagnosticWithSources(e, 3, uriFromPath(file), string(data), sourceOverlay{})
 		if got.Code != "S1108" || got.Severity != 1 || e.AllocationCause == nil || len(got.RelatedInformation) < 2 {
 			t.Fatal(got)
 		}
@@ -65,7 +65,7 @@ func TestAllocationCausePathsLSPOverlay(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "callee.sec")
 	root := filepath.Join(t.TempDir(), "root.sec")
 	e := sema.Error{ID: "S1108", File: root, Line: 1, Column: 1, Message: "allocation", AllocationCause: &sema.AllocationCausePath{Incomplete: true, Steps: []sema.AllocationCauseStep{{Kind: "call", Source: lexer.Token{File: file, Line: 1, Column: 4}, Message: "call"}, {Kind: "operation", Message: "missing source"}}}}
-	got := semaDiagnosticWithSources(e, 1, uriFromPath(root), "root", sourceOverlay{file: "😀abc"})
+	got := semaDiagnosticWithSources(e, 1, uriFromPath(root), "root", sourceOverlay{Sources: map[string]string{file: "😀abc"}})
 	if len(got.RelatedInformation) != 1 || got.RelatedInformation[0].Location.URI != uriFromPath(file) || got.RelatedInformation[0].Location.Range.Start.Character != 4 || !strings.Contains(got.Message, "allocation cause path is incomplete") {
 		t.Fatal(got)
 	}

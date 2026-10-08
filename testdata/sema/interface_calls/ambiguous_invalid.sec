@@ -1,0 +1,8 @@
+module main
+type First int
+type Second int
+interface Choice {
+    fn Select(value: First) int
+    fn Select(value: Second) int
+}
+fn Ambiguous(receiver: ref Choice) void { discard receiver.Select(1) }

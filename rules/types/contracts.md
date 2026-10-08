@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
+- **Last updated:** 2026-10-08
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/contracts.md`
@@ -11,7 +11,7 @@
 
 ---
 
-## Status
+## Scope and governance
 
 This is the canonical Sec rulebook for type contracts. Its canonical filename is
 `contracts.md`; the obsolete variable-contract rulebook is no longer canonical.
@@ -19,19 +19,14 @@ This is the canonical Sec rulebook for type contracts. Its canonical filename is
 Contracts belong only to named types. They do not attach to variables, mutable
 or immutable bindings, ordinary struct fields, or individual storage locations.
 
-Implementation is partial. Named integer contracts, compile-time literal checks,
-ordered membership values, duplicate detection and explicit type defaults are
-implemented. The parser retains obsolete variable- and field-contract nodes for
-recovery and migration tooling, while Sema rejects them with a stable focused
-diagnostic and does not apply them to the storage type. Every `in [...]` member is checked against
-the complete named-type contract set.
+Implementation progress is tracked by `frontend.type-contracts-v2` in
+[`governance/types.yaml`](../../governance/types.yaml).
 
 Static proof of a local contract fact is not by itself a required CTE context.
 The contract and default positions listed in "Compile-time-required contract
 positions" are explicitly classified as `SemanticCompileTimeRequiredContext`s.
 Otherwise canonical runtime contract behavior remains when the value is not
-statically established. Runtime validation paths for fallible conversions are
-not complete.
+statically established.
 
 ## Core rule
 
@@ -369,9 +364,56 @@ type SmallOdd int8
 ```
 
 A compile-time-known invalid value is diagnosed at compile time rather than
-lowered into a runtime failure. The public runtime error type or types, their
-variant names, and payloads remain undecided (MD-012); implementations must
-preserve the three layers before that decision (`rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 4).
+lowered into a runtime failure.
+
+### Public conversion and contract errors
+
+A runtime-dependent checked conversion reports failure through one public error
+channel, `ConversionError`. A declared contract failure is carried inside it as
+the independently meaningful `ContractError`. The canonical declarations of
+`ContractKind`, `ContractError`, and `ConversionError` are owned by
+`sec/core/error.sec` (`module core`) and are visible through normal core
+visibility without an import. They must not be redeclared by the compiler, the
+standard library, or another core source file, and this rulebook does not
+restate them as a competing source of truth.
+
+- An intrinsic target-domain failure produces the corresponding
+  `ConversionError` variant (`OutOfRange`, `InvalidScalar`, `PrecisionLoss`,
+  `ScaleOverflow`, or `NonFinite`) and takes precedence over declared
+  contracts.
+- After intrinsic validation succeeds, declared contracts are checked in source
+  order. The first violated contract yields
+  `ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex })`.
+- `Kind` is the `ContractKind` of the failed contract (`Range`, `In`, `Odd`,
+  `Even`, `MultipleOf`, `Finite`, `Regex`, `MinLen`, `MaxLen`, `ExactLen`,
+  `NotEmpty`, or `Unique`).
+- `DeclarationIndex` is the zero-based source-order index of the failing
+  contract within the named-type declaration. It is not promised stable across
+  edits that insert, remove, or reorder contracts, and it is not a pointer,
+  allocated message, or global identifier. Diagnostics use preserved source
+  locations instead.
+- A violated `finite` contract yields `ContractError.Violation` with
+  `Kind: ContractKind.Finite`; `ConversionError.NonFinite` is reserved for
+  intrinsic destination-domain restrictions.
+- A conversion proven infallible needs no `Result` merely because the
+  checked-conversion error family exists. These error types introduce no
+  implicit allocation, reflection, exception, or GC behavior.
+
+```sec
+type Percent int range 0..100
+
+fn Convert(value: int) Result[Percent, ConversionError] {
+    let percent := try Percent(value)
+    return Ok(percent)
+}
+```
+
+For a runtime value `150`, the `int` representation is valid but the range
+contract fails: the result is the `Contract` variant holding a `Violation` with
+`Kind: ContractKind.Range` and `DeclarationIndex: 0`. Payload construction and
+pattern syntax remain governed by the union and match rulebooks.
+
+(MD-012 resolved 2026-10-08; `rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` §§ 3–5.)
 
 ## Diagnostics
 

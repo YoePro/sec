@@ -1,0 +1,3 @@
+module main
+let value: float64<m> := 1g
+fn Convert() float32<m> { return value }

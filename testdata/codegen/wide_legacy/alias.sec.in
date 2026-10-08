@@ -1,0 +1,5 @@
+module main
+type Wide TYPE
+type Derived Wide
+fn Operation(value: Derived) Derived { return value }
+fn main() int { return 0 }

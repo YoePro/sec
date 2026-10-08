@@ -1099,9 +1099,13 @@ underlying primitive or scalar type, and a declared contract failure checked
 afterwards in source order. A missing conversion relation is never a runtime
 failure; it is a compile-time type diagnostic (`rules/types/types.md`,
 "Explicit conversions"; `rules/types/contracts.md`, "Conversion failure
-layers"). Whether these layers use separate public error types or a common
-typed wrapper, and their names, variants, and payloads, remain undecided
-(MD-012; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 4).
+layers"). Both runtime layers use the single public error channel
+`ConversionError` from `sec/core/error.sec`: intrinsic failures use its
+dedicated variants and a declared contract failure uses
+`ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex })`.
+The existing narrower core errors such as `OverflowError`, `RangeError`,
+`PrecisionError`, and `EncodingError` are not removed or aliased to it (MD-012;
+`rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` §§ 1, 3–4).
 
 ---
 

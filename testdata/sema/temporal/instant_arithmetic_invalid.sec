@@ -1,0 +1,2 @@
+module application
+fn Add(value: Instant, delay: duration) Instant { return value + delay }

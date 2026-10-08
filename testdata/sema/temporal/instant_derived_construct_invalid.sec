@@ -1,0 +1,4 @@
+module application
+type Point Instant
+type Further Point
+fn Forge() Further { return Further {} }

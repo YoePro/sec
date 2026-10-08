@@ -1,0 +1,7 @@
+module main
+unit ParameterLength physical
+fn Carrier[U](value: decimal<U>) void {}
+fn Only[U](value: <U>) void {}
+fn Structural[U](value: decimal<ParameterLength/(U^2)>) void {}
+type Container[U] struct { value: decimal<U> }
+fn Output[U](value: U) decimal<U> { return 1m }

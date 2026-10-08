@@ -1,0 +1,15 @@
+module core
+fn Echo(value: datetime) int {
+    discard value
+    return 1
+}
+type Lower int range __CLOCK__..9
+type Upper int range 0..__CLOCK__
+type FloatUpper float64 range 0.0..__CLOCK__
+type Membership int in [__CLOCK__]
+type Stepped int multipleOf __CLOCK__
+type Minimum string minLen __CLOCK__
+type Maximum string maxLen __CLOCK__
+type Exact string exactLen __CLOCK__
+type Pattern string regex __CLOCK__
+type Defaulted int default __CLOCK__

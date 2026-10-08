@@ -1,0 +1,3 @@
+module main
+fn Operation(value: TYPE) TYPE { return -value }
+fn main() int { return 0 }

@@ -1,0 +1,4 @@
+module main
+
+type Finite float64 finite
+fn main() int { return 0 }

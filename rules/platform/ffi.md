@@ -246,6 +246,51 @@ let count: C::int := 10
 
 is valid when the literal is representable.
 
+An untyped boolean literal `true` or `false` may be shaped to `C::bool` when the
+target type is known. This is literal shaping, not an implicit conversion of a
+previously typed `bool` value:
+
+```sec
+let b: C::bool := true
+let source: bool := true
+let invalid: C::bool := source    // invalid: different nominal scalar type
+let converted := C::bool(source)  // valid explicit conversion
+```
+
+A single-quoted character literal defaults to `rune`. In an explicit `C::char`,
+`C::schar`, or `C::uchar` target context the literal may instead be shaped to
+that C scalar when the decoded Unicode scalar's numeric value is representable
+by that target's C ABI integer range. Shaping performs no UTF-8, Latin-1,
+locale, platform-codepage, or other text encoding: the scalar's code-point
+number is the candidate integer value, and there is no first-byte-of-UTF-8
+fallback. The active ABI model determines `C::char` signedness and every C
+character scalar limit:
+
+```sec
+let a: C::char := 'A'     // valid where 65 is representable
+let c: C::uchar := 'é'    // valid where 233 is representable
+let d: C::char := 'é'     // invalid on a signed 8-bit C::char
+let e: C::uchar := 'π'    // invalid on an 8-bit C::uchar
+```
+
+Literal shaping is not a grant of general implicit scalar conversion. A typed
+`rune`, `char`, `bool`, or `C::` scalar never implicitly becomes another nominal
+`C::` scalar through assignment or argument passing, even when representations
+coincide:
+
+```sec
+let a: C::int := 42
+let invalid: C::long := a
+let b := C::long(a)   // explicit; checked if the source domain does not fit
+```
+
+Explicit C-to-C, C-to-Sec, and Sec-to-C conversions follow the whole-source-domain
+rule above; a runtime-dependent checked conversion uses `ConversionError`, and a
+compile-time-known nonrepresentable value is rejected during semantic analysis.
+The `char` integer-literal rule is unchanged: `let c: char := 65` is invalid and
+`65t` is the numeric `char` literal (MD-022 resolved 2026-10-08;
+`rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` § 2).
+
 ## 9. ABI-stable Sec numeric scalars in FFI
 
 Fixed-width Sec numeric scalars may appear directly in foreign signatures when they exactly describe the foreign ABI type and the active ABI model verifies compatibility.

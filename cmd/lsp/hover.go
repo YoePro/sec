@@ -24,7 +24,7 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 	defer func() {
 		if token, ok := sourceTokenAtPosition(uri, text, pos); ok {

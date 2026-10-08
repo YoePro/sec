@@ -23,6 +23,7 @@ func validateIteratorReadiness(analyzed analyzedProgram, inputFile string) error
 // valid but unimplemented iteration remains a later capability diagnostic.
 // Rules: rules/compiler/compiler_pipeline.md — §§32(2–5), 33(1,3).
 func requireIteratorReadiness(analyzed analyzedProgram, inputFile string) {
+
 	if err := validateIteratorReadiness(analyzed, inputFile); err != nil {
 		reportPipelineError("lowering-readiness", err)
 		exitCLI(4)
@@ -38,7 +39,7 @@ func parseAndAnalyzeFileForLowering(path string, target CompilerTarget) analyzed
 		reportToolError("read", "%v", err)
 		exitCLI(1)
 	}
-	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzer(string(input), path, target)
-	requireIteratorReadiness(analyzed, path)
+	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), path, target, false)
+	requireOutputLoweringReadiness(analyzed, path)
 	return analyzed
 }

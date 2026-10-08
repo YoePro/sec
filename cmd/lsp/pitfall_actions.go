@@ -25,7 +25,7 @@ func pitfallCodeActions(uri, text string, requested lspRange, overlay sourceOver
 		return result
 	}
 	prepareProgramForLSP(parsed.Program, path, overlay)
-	analyzer := newLSPAnalyzer(uri, parsed.Program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, overlay)
 	analyzer.Analyze(parsed.Program)
 	severity := pitfallLevel(uri, settings)
 	for _, finding := range analyzer.PitfallAnalysis().Findings() {

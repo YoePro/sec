@@ -55,6 +55,7 @@ impl week {
 /** Kilohertz */
 unit kHz physical
 impl kHz {
+    Kind: frequency
     LongName: "Kilohertz"
     Symbol: "kHz"
     BaseUnit: false
@@ -67,6 +68,7 @@ impl kHz {
 /** Megahertz */
 unit MHz physical
 impl MHz {
+    Kind: frequency
     LongName: "Megahertz"
     Symbol: "MHz"
     BaseUnit: false
@@ -79,6 +81,7 @@ impl MHz {
 /** Gigahertz */
 unit GHz physical
 impl GHz {
+    Kind: frequency
     LongName: "Gigahertz"
     Symbol: "GHz"
     BaseUnit: false
@@ -91,6 +94,7 @@ impl GHz {
 /** Revolution per minute */
 unit rpm physical
 impl rpm {
+    Kind: rotational_frequency
     LongName: "Revolution per Minute"
     Symbol: "rpm"
     BaseUnit: false
@@ -103,6 +107,7 @@ impl rpm {
 /** Radian */
 unit rad physical
 impl rad {
+    Kind: plane_angle
     LongName: "Radian"
     Symbol: "rad"
     BaseUnit: false
@@ -115,6 +120,7 @@ impl rad {
 /** Steradian */
 unit sr physical
 impl sr {
+    Kind: solid_angle
     LongName: "Steradian"
     Symbol: "sr"
     BaseUnit: false
@@ -127,6 +133,7 @@ impl sr {
 /** Degree of arc */
 unit deg physical
 impl deg {
+    Kind: plane_angle
     LongName: "Degree"
     Symbol: "°"
     BaseUnit: false
@@ -139,6 +146,7 @@ impl deg {
 /** Radian per second */
 unit radps physical
 impl radps {
+    Kind: angular_velocity
     LongName: "Radian per Second"
     Symbol: "rad/s"
     BaseUnit: false
@@ -151,6 +159,7 @@ impl radps {
 /** Radian per second squared */
 unit radps2 physical
 impl radps2 {
+    Kind: angular_acceleration
     LongName: "Radian per Second Squared"
     Symbol: "rad/s²"
     BaseUnit: false

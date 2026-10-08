@@ -503,13 +503,16 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerImplTypeDeclarations(program)
 	a.analyzeInterfaceDeclarations(program)
 	a.analyzeEarlyEnumDeclarations(program)
+	// Unit facts must be complete before named types and fields copy them.
+	// Rules: rules/types/units.md — Validation of metadata; Compiler semantic representation.
+	a.analyzeUnitMetadata(program)
 	a.analyzeTypeDeclarations(program)
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
 	a.refreshTypesResolvedThroughNestedImplDeclarations(program)
 	a.applyCustomFreeDeclarations()
+	a.refreshInterfaceSignatureTypes()
 	a.validateStructLayoutCycles(program)
-	a.analyzeUnitMetadata(program)
 	a.predeclareModuleStaticStorage(program)
 	a.registerImplDeclarations(program)
 	a.registerFunctionDeclarations(program)
@@ -1276,6 +1279,10 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				a.validateNominalTypeName(stmt.Name)
 			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
+			if a.registerInstantDeclaration(stmt) {
+				return
+			}
+
 			params := a.genericParameterNames(stmt.GenericParameters)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
 			origin := ""
@@ -1342,6 +1349,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
+				return
+			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
@@ -1356,6 +1366,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin, ErrorAssignable: stmt.ErrorType}
 		case *ast.InterfaceDeclaration:
 			if stmt.Name == nil {
+				return
+			}
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1460,26 +1473,6 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 	a.addErrorAtTokenWithID(token, diagnostics.ReservedDeclarationName, "type name %s is compiler-known and cannot be redeclared", name)
 	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
 	return true
-}
-
-func isCoreBuiltinDeclaration(name string) bool {
-	switch name {
-	case "IndexError", "FormatError", "StringError", "TaskOutcome", "TaskSpawnError", "TaskError",
-		"date", "time", "datetime", "duration":
-		return true
-	default:
-		return false
-	}
-}
-
-// isTrustedCoreBuiltinDeclaration identifies the narrow set of compiler-known
-// types whose fallback identity is refined by a real declaration in loader-
-// proven core source. The source declaration supplies storage/member shape; it
-// never transfers ownership of the language-reserved name to ordinary source.
-//
-// Rules: rules/library/core-library.md; rules/types/temporal.md §2.
-func (a *Analyzer) isTrustedCoreBuiltinDeclaration(name string, token lexer.Token) bool {
-	return isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token)
 }
 
 // displaceUnitTypeEntry lets an ordinary type declaration take a spelling
@@ -7611,6 +7604,10 @@ func isPlainUnitNumericCarrier(typ Type, ref *ast.TypeReference) bool {
 }
 
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
+	if stmt.Name.Value == "Instant" && a.isTrustedCoreBuiltinDeclaration("Instant", stmt.Name.Token) {
+		return // Opaque identity was validated and retained during registration.
+	}
+
 	if stmt.Union {
 		typ := a.typeFromUnionDeclaration(stmt.Name.Value, stmt)
 		typ.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
@@ -8771,22 +8768,6 @@ func (a *Analyzer) registerInitDeclaration(targetName string, target Type, initi
 	a.functions[key] = functions
 }
 
-// reportImmutableRequiresInitializer emits the shared semantic diagnostic for
-// an immutable binding whose explicit initializer is absent.
-//
-// Rules:
-//   - rules/types/default_values.md — "Immutable declarations without initializer"
-//   - rules/types/default_values.md — "Diagnostics", variables.immutable-requires-initializer
-func (a *Analyzer) reportImmutableRequiresInitializer(name *ast.Identifier) {
-	a.addErrorAtTokenWithMetadata(
-		name.Token,
-		diagnostics.ImmutableRequiresInitializer,
-		"initialize the immutable binding explicitly",
-		"immutable binding %q requires an initializer",
-		name.Value,
-	)
-}
-
 // analyzeImplAssociatedLet registers explicitly static impl storage only.
 // A bare let is instance-bound and must never enter this symbol category.
 //
@@ -8812,7 +8793,7 @@ func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStat
 		return
 	}
 	if stmt.Value == nil && !stmt.Mutable {
-		a.reportImmutableRequiresInitializer(stmt.Name)
+		a.reportImmutableRequiresInitializer(stmt.Name, stmt.Type)
 		return
 	}
 	if stmt.Value != nil && stmt.Type != nil {
@@ -9373,179 +9354,6 @@ func statementReturnsErr(stmt ast.Statement) bool {
 	return false
 }
 
-func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
-	if stmt != nil && stmt.Static && a.inFunctionBody {
-		a.validateStaticInitializerExpression(stmt.Name.Value, stmt.Value, stmt.Name.Token)
-	}
-	var declaredType Type
-	var ok bool
-	inlineContract := a.rejectStorageSiteContract(stmt.Contract, "variable", stmt.Name.Value)
-
-	if stmt.Type != nil && stmt.Type.UnitOnly && stmt.Value != nil {
-		declaredType, ok = a.resolveUnitOnlyType(stmt.Type)
-	} else if stmt.Type != nil {
-		declaredType, ok = a.resolveType(stmt.Type)
-	} else if stmt.Value != nil {
-		declaredType, _ = a.inferExpression(stmt.Value)
-		ok = declaredType.Kind != InvalidType
-		// rules/types/types.md "Unsuffixed literal inference": an untyped
-		// integer literal without context becomes int (or its suffix family),
-		// whose target-selected range it must fit.
-		if ok && (declaredType.Kind == IntType || declaredType.Kind == UintType) && isUntypedNumericExpression(stmt.Value) {
-			canonical := declaredType
-			if known, exists := a.types[declaredType.Name]; exists && !declaredType.Named {
-				canonical = known
-			}
-			a.checkIntegerExpressionRange(canonical, stmt.Value)
-		}
-	}
-	if ok && stmt.Contract != nil && !inlineContract {
-		a.checkContractLiteralBounds(declaredType, stmt.Contract)
-		declaredType = a.applyContracts(declaredType, stmt.Contract)
-	}
-	if ok && declaredType.Kind == VoidType {
-		token := stmt.Name.Token
-		if stmt.Type != nil {
-			token = stmt.Type.Token
-		}
-		a.addErrorAtToken(token, "variable %s cannot have type void; void is only valid as a function result or in an explicitly permitted type argument", stmt.Name.Value)
-		ok = false
-	}
-	if ok && stmt.Value == nil && stmt.Mutable && stmt.Address == nil {
-		resolution := DefaultValueOf(declaredType)
-		stmt.Value = defaultExpression(resolution, declaredType, stmt.Name.Token)
-		stmt.SynthesizedDefault = stmt.Value != nil
-		a.recordSynthesizedDefaultTypes(stmt.Value, declaredType)
-		if stmt.Value == nil {
-			if declaredType.Kind != UnionType {
-				// rules/types/default_values.md, "Diagnostics": an ambiguous
-				// nearest-to-zero tie keeps types.ambiguous-implicit-default.
-				if id, help, reason, ambiguous := noDefaultDiagnostic(declaredType); ambiguous {
-					a.addErrorAtTokenWithMetadata(stmt.Name.Token, id, "provide an explicit initializer or "+help, "mutable variable %s requires an initializer because %s", stmt.Name.Value, reason)
-				} else {
-					a.addErrorAtTokenWithMetadata(stmt.Name.Token, diagnostics.NoDefaultValue, "provide an explicit initializer", "mutable variable %s of type %s requires an initializer because the type has no default value", stmt.Name.Value, typeDisplayName(declaredType))
-				}
-				ok = false
-			}
-		}
-	}
-
-	defined := false
-	if ok {
-		if isBareSliceType(declaredType) {
-			token := stmt.Name.Token
-			if stmt.Type != nil {
-				token = stmt.Type.Token
-			} else if stmt.Value != nil {
-				token = expressionToken(stmt.Value)
-			}
-			a.addErrorAtToken(token, "bare slice type %s must be used behind ref", typeDisplayName(declaredType))
-			ok = false
-		}
-	}
-	if !ok && stmt.Name != nil {
-		// Keep a poisoned binding after an invalid initializer. Later references
-		// then retain the root diagnostic instead of becoming unrelated
-		// "undefined variable" errors.
-		defined = a.defineOrReuseStaticSymbol(stmt.Name.Value, Type{Kind: InvalidType}, stmt.Mutable, stmt.Name.Token)
-		if defined {
-			a.assigned[stmt.Name.Value] = true
-		}
-	}
-	if ok {
-		defined = a.defineOrReuseStaticSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
-		if defined {
-			if stmt.Static {
-				symbol := a.symbols[stmt.Name.Value]
-				symbol.Storage = StorageOriginStatic
-				symbol.Local = false
-				a.symbols[stmt.Name.Value] = symbol
-			}
-			a.assigned[stmt.Name.Value] = stmt.Value != nil
-			if stmt.Address != nil {
-				a.analyzeAddressedLetStatement(stmt, declaredType)
-			}
-		}
-	}
-
-	if ok && stmt.Value == nil && !stmt.Mutable && stmt.Address == nil {
-		a.reportImmutableRequiresInitializer(stmt.Name)
-		return
-	}
-
-	if !ok || stmt.Value == nil || stmt.Type == nil {
-		if defined && stmt.Value != nil {
-			referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
-			if !a.validateLetOwnership(stmt) {
-				return
-			}
-			if typeCarriesReferenceOrigin(declaredType) {
-				a.updateReferenceSymbolOrigin(stmt.Name.Value, declaredType)
-			}
-			a.applyLetOwnership(stmt)
-			a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
-			a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
-			if hasReferenceOrigin {
-				a.localRefContainers[stmt.Name.Value] = referenceOrigin
-			}
-			a.recordBoundCallableIdentity(stmt.Name.Value, stmt.Value)
-			a.recordResultConstruction(stmt)
-			a.setConstInt(stmt.Name.Value, stmt.Value)
-		}
-		return
-	}
-
-	var exprType Type
-	if stmt.SynthesizedDefault && declaredType.Kind == ArrayType && arrayShapeOf(declaredType) == ArrayShapeFixed {
-		// SEC-MLIR Package 14 sections 24-26: the compact DefaultResolution is
-		// authoritative. The bounded legacy ArrayLiteral may be empty for large N
-		// and must never be reinterpreted as a user-written zero-length literal.
-		exprType = declaredType
-		a.expressionTypes[stmt.Value] = declaredType
-	}
-	if exprType.Kind == "" && declaredType.Kind == FunctionType {
-		if fnType, resolved := a.resolveFunctionValueInitializer(declaredType, stmt.Value); resolved {
-			exprType = fnType
-		}
-	}
-	if exprType.Kind == "" && declaredType.Kind == ResultType {
-		if resultType, resolved := a.resolveResultValueInitializer(declaredType, stmt.Value); resolved {
-			exprType = resultType
-		}
-	}
-	if exprType.Kind == "" {
-		exprType, _ = a.inferExpressionWithExpected(stmt.Value, declaredType)
-	}
-	if exprType.Kind == InvalidType {
-		return
-	}
-
-	if defined && typeCarriesReferenceOrigin(declaredType) && typeCarriesReferenceOrigin(exprType) {
-		declaredType = referenceTypeWithOrigin(declaredType, exprType)
-		a.updateReferenceSymbolOrigin(stmt.Name.Value, declaredType)
-	}
-
-	if a.checkCompileTimeContractExpression(declaredType, stmt.Value) {
-		return
-	}
-
-	if a.checkInitializerType(declaredType, exprType, stmt.Value) && defined {
-		referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
-		if !a.validateLetOwnership(stmt) {
-			return
-		}
-		a.applyLetOwnership(stmt)
-		a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
-		a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
-		if hasReferenceOrigin {
-			a.localRefContainers[stmt.Name.Value] = referenceOrigin
-		}
-		a.recordBoundCallableIdentity(stmt.Name.Value, stmt.Value)
-		a.recordResultConstruction(stmt)
-		a.setConstInt(stmt.Name.Value, stmt.Value)
-	}
-}
-
 func (a *Analyzer) defineOrReuseStaticSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
 	key := sourceTokenLocation(token)
 	if a.predeclaredStatic[key] {
@@ -9688,7 +9496,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 
 	if hasContracts(symbol.Type) && !allowFallible {
+		start := len(a.errors)
 		a.addErrorAtTokenWithMetadata(target.Token, diagnostics.ConstrainedAssignmentRequiresTry, "use try assignment with an Err handler", "assigning variable %s requires try because %s has contracts", target.Value, typeDisplayName(symbol.Type))
+		a.relateConstrainedAssignment(start, symbol.Type)
 		return
 	}
 	if !a.validateMoveAssignmentTarget(stmt) {
@@ -10636,220 +10446,6 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	return typ, ok
 }
 
-func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
-	if ref == nil || ref.Invalid {
-		return Type{Kind: InvalidType}, false
-	}
-
-	if ref.UnitOnly {
-		return a.resolveUnitOnlyType(ref)
-	}
-
-	if ref.Ref {
-		if ref.Slice && ref.ElementType != nil {
-			element, ok := a.resolveType(ref.ElementType)
-			if !ok {
-				return Type{Kind: InvalidType}, false
-			}
-			if element.Kind == VoidType {
-				a.addErrorAtToken(ref.Token, "slice element type cannot be void")
-				return Type{Kind: InvalidType}, false
-			}
-			slice := Type{
-				Name:    typeDisplayName(element) + "[]",
-				Kind:    SliceType,
-				Element: &element,
-			}
-			name := "ref " + typeDisplayName(slice)
-			if ref.MutableRef {
-				name = "ref mut " + typeDisplayName(slice)
-			}
-			return Type{
-				Name:             name,
-				Kind:             ReferenceType,
-				Element:          &slice,
-				ReferenceMutable: ref.MutableRef,
-			}, true
-		}
-		innerRef := *ref
-		innerRef.Ref = false
-		innerRef.MutableRef = false
-		if innerRef.ReferentToken.Line > 0 {
-			innerRef.Token = innerRef.ReferentToken
-		}
-		inner, ok := a.resolveType(&innerRef)
-		if !ok {
-			return Type{Kind: InvalidType}, false
-		}
-		if inner.Kind == VoidType {
-			a.addErrorAtToken(ref.Token, "safe reference cannot target void; use RawPtr[void] for an opaque raw address")
-			return Type{Kind: InvalidType}, false
-		}
-		name := "ref " + typeDisplayName(inner)
-		if ref.MutableRef {
-			name = "ref mut " + typeDisplayName(inner)
-		}
-		return Type{
-			Name:             name,
-			Kind:             ReferenceType,
-			Element:          &inner,
-			ReferenceMutable: ref.MutableRef,
-		}, true
-	}
-
-	if ref.Name == "fn" || ref.FunctionReturnType != nil {
-		return a.resolveFunctionType(ref)
-	}
-
-	if ref.Name == "self" && a.currentImplTarget != "" {
-		target, ok := a.types[a.currentImplTarget]
-		if !ok {
-			a.addErrorAtToken(ref.Token, "unknown type self")
-			return Type{Kind: InvalidType}, false
-		}
-		if definition, exists := a.typeDefinitionTokens[a.currentImplTarget]; exists {
-			a.bindDefinition(ref.Token, definition)
-		}
-		return target, true
-	}
-
-	if ref.ElementType != nil {
-		element, ok := a.resolveType(ref.ElementType)
-		if !ok {
-			return Type{Kind: InvalidType}, false
-		}
-		if element.Kind == VoidType {
-			a.addErrorAtToken(ref.Token, "sequence element type cannot be void")
-			return Type{Kind: InvalidType}, false
-		}
-		if !ref.Slice {
-			length, ok := a.resolveArrayLength(ref)
-			if !ok {
-				return Type{Kind: InvalidType}, false
-			}
-			if !arrayLengthFitsUint(length, a.targetUintWidthBits) {
-				a.addErrorAtToken(ref.Token, "fixed-array length %s overflows target uint%d", length.String(), a.targetUintWidthBits)
-				return Type{Kind: InvalidType}, false
-			}
-			return NewFixedArrayType(element, length), true
-		}
-		return NewDynamicArrayType(element), true
-	}
-
-	if genericType, ok := a.genericTypes[ref.Name]; ok {
-		if len(ref.TypeArgs) > 0 {
-			a.addErrorAtToken(ref.Token, "generic parameter %s does not take type arguments", ref.Name)
-			return Type{Kind: InvalidType}, false
-		}
-		if definition, exists := a.genericTypeDefinitions[ref.Name]; exists {
-			a.bindDefinition(ref.Token, definition)
-		}
-		return genericType, true
-	}
-
-	typeArgs := make([]Type, 0, len(ref.TypeArgs))
-	for _, arg := range ref.TypeArgs {
-		argType, ok := a.resolveType(arg)
-		if ok {
-			typeArgs = append(typeArgs, argType)
-		}
-	}
-	constArgs := make([]int64, 0, len(ref.ConstArgs))
-	for _, arg := range ref.ConstArgs {
-		value, ok := a.integerConstantValue(arg)
-		if !ok {
-			a.addErrorAtToken(expressionToken(arg), "%s argument must be a compile-time integer", ref.Name)
-			continue
-		}
-		if !value.IsInt64() {
-			a.addErrorAtToken(expressionToken(arg), "%s argument cannot be represented by int64", ref.Name)
-			continue
-		}
-		constArgs = append(constArgs, value.Int64())
-	}
-
-	name := a.resolveTypeName(ref.Name)
-
-	typ, ok := a.types[name]
-	if !ok {
-		if !a.reportUnresolvedForeignType(ref.Name, ref.Token) {
-			a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
-		}
-		return Type{Kind: InvalidType}, false
-	}
-	if definition, exists := a.typeDefinitionTokens[name]; exists {
-		a.bindDefinition(ref.Token, definition)
-	}
-	if !a.canAccessDeclaredName(typ.Name, typ.Module) {
-		a.addErrorAtToken(ref.Token, "type %s is not accessible from module %s", ref.Name, a.currentModule)
-		return Type{Kind: InvalidType}, false
-	}
-
-	if typ.Kind == ResultType && len(ref.TypeArgs) != 2 {
-		a.addErrorAtToken(ref.Token, "Result requires exactly 2 type arguments, got %d", len(ref.TypeArgs))
-		return Type{Kind: InvalidType}, false
-	}
-	if typ.Kind != ResultType && len(typ.GenericParameters) == 0 && len(ref.TypeArgs) > 0 {
-		a.addErrorAtToken(ref.Token, "%s is not generic", ref.Name)
-		return Type{Kind: InvalidType}, false
-	}
-	if typ.Kind != ResultType && len(typ.GenericParameters) > 0 && len(ref.TypeArgs) == 0 {
-		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got 0", ref.Name, len(typ.GenericParameters))
-		return Type{Kind: InvalidType}, false
-	}
-	if len(typ.GenericParameters) > 0 && len(ref.TypeArgs) != len(typ.GenericParameters) &&
-		!acceptsExtendedCompilerKnownTypeArguments(typ, len(ref.TypeArgs)) {
-		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got %d", ref.Name, len(typ.GenericParameters), len(ref.TypeArgs))
-		return Type{Kind: InvalidType}, false
-	}
-	if len(typeArgs) != len(ref.TypeArgs) || len(constArgs) != len(ref.ConstArgs) {
-		return Type{Kind: InvalidType}, false
-	}
-
-	typ.TypeArgs = typeArgs
-	typ.ConstArgs = constArgs
-	if !a.validateVoidTypeArguments(ref.Token, typ) {
-		return Type{Kind: InvalidType}, false
-	}
-	if !a.validateResultErrorChannel(ref, typ) {
-		return Type{Kind: InvalidType}, false
-	}
-	if ref.EventCapacitySet {
-		value, ok := a.integerConstantValue(ref.EventCapacityExpression)
-		if !ok {
-			a.addErrorAtToken(expressionToken(ref.EventCapacityExpression), "%s capacity must be a compile-time integer", ref.Name)
-			return Type{Kind: InvalidType}, false
-		}
-		if !value.IsInt64() {
-			a.addErrorAtToken(expressionToken(ref.EventCapacityExpression), "%s capacity cannot be represented by int64", ref.Name)
-			return Type{Kind: InvalidType}, false
-		}
-		typ.EventCapacity = value.Int64()
-		typ.EventCapacitySet = true
-	}
-	if !a.validateCompilerKnownGenericType(ref.Token, &typ) {
-		return Type{Kind: InvalidType}, false
-	}
-	if ref.Unit != "" {
-		semantics, dimension, err := resolveUnitSemantics(ref.Unit, ref.UnitExpression, a.units)
-		if err != nil {
-			a.addErrorAtToken(ref.Token, "invalid unit expression %s: %s", ref.Unit, err)
-			return Type{Kind: InvalidType}, false
-		}
-		a.warnUnitStatus(ref.Token, ref.Unit)
-		typ.Unit = ref.Unit
-		typ.Dimension = dimension
-		typ.UnitSemantics = semantics
-	}
-	if len(typ.GenericParameters) > 0 && (typ.Declared || typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == EnumType || typ.Kind == InterfaceType) {
-		if !a.validateGenericTypeConstraintArguments(ref.Token, typ) {
-			return Type{Kind: InvalidType}, false
-		}
-		typ = a.instantiateGenericType(typ)
-	}
-	return typ, true
-}
-
 // validateResultErrorChannel enforces rules/errors/errorhandling.md section 4.
 // Result is not a general two-value union: its second argument is a declared
 // failure channel and therefore must inhabit the compiler-known error domain.
@@ -11079,6 +10675,9 @@ func arrayLengthFitsUint(length *big.Int, width uint16) bool {
 }
 
 func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference) (Type, bool) {
+	if !a.validateConcreteUnitParameters(ref) {
+		return Type{Kind: InvalidType}, false
+	}
 	unit, named := a.units[ref.Unit]
 	numeric := "decimal"
 	if named {
@@ -11610,6 +11209,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 		resolution := DefaultValueOf(field.Type)
 		value := defaultExpression(resolution, field.Type, token)
 		if value == nil {
+			start := len(a.errors)
 			// rules/types/default_values.md, "Diagnostics": types.no-default-value
 			// unless the cause is an ambiguous nearest-to-zero tie.
 			if id, help, reason, ambiguous := noDefaultDiagnostic(field.Type); ambiguous {
@@ -11617,6 +11217,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 			} else {
 				a.addErrorAtTokenWithMetadata(token, diagnostics.TypeNoDefaultValue, "initialize the payload field explicitly", "missing payload field %s for %s.%s because %s has no default value", field.Name, typeDisplayName(unionType), variant.Name, typeDisplayName(field.Type))
 			}
+			a.relateMissingDefault(start, field.Type, field.Token)
 			continue
 		}
 		expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
@@ -12774,13 +12375,11 @@ func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression
 // Rule: rules/tooling/testing.md — §18.5–18.6 "Ordinary Sec equality".
 func (a *Analyzer) validateTestingEquality(expected, actual ast.Expression, expectedType, actualType Type, token lexer.Token, diagnosticID string) bool {
 	comparison := &ast.InfixExpression{Token: token, Left: expected, Operator: "==", Right: actual}
-	if _, ok := actual.(*ast.CharLiteral); ok && expectedType.Kind == RuneType {
-		actualType = Type{Name: "rune", Kind: RuneType}
-		a.expressionTypes[actual] = actualType
+	if typ, shaped := a.shapeCharacterLiteral(actual, expectedType); shaped {
+		actualType = typ
 	}
-	if _, ok := expected.(*ast.CharLiteral); ok && actualType.Kind == RuneType {
-		expectedType = Type{Name: "rune", Kind: RuneType}
-		a.expressionTypes[expected] = expectedType
+	if typ, shaped := a.shapeCharacterLiteral(expected, actualType); shaped {
+		expectedType = typ
 	}
 	var valid bool
 	actualType, valid = a.contextualNumericLiteralType(actual, actualType, expectedType)
@@ -12842,10 +12441,8 @@ func functionDeclarationTokens(functions []Function) []lexer.Token {
 
 func (a *Analyzer) contextualCallArgumentType(arg ast.Expression, actual Type, expected Type) Type {
 	arg = explicitMoveSource(arg)
-	if _, ok := arg.(*ast.CharLiteral); ok && expected.Kind == RuneType {
-		runeType := Type{Name: "rune", Kind: RuneType}
-		a.expressionTypes[arg] = runeType
-		return runeType
+	if typ, shaped := a.shapeCharacterLiteral(arg, expected); shaped {
+		return typ
 	}
 	return actual
 }
@@ -13198,55 +12795,6 @@ func (a *Analyzer) expressionNamesType(expr ast.Expression) bool {
 	}
 	_, exists := a.types[a.resolveTypeName(typeName)]
 	return exists
-}
-
-func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver methodReceiverInfo) bool {
-	if function.ImplTarget == "" {
-		return true
-	}
-	if receiver.Type.Kind == InvalidType {
-		return false
-	}
-	exactReceiver := typeDisplayName(dereferenceType(receiver.Type)) == function.ImplTarget
-	inheritedCoreReceiver := false
-	if !exactReceiver && dereferenceType(receiver.Type).Kind == StringType && a.isTrustedCoreSourceToken(function.Token) {
-		for _, underlying := range a.relatedUnderlyingTypes(dereferenceType(receiver.Type)) {
-			if underlying.Name == function.ImplTarget {
-				inheritedCoreReceiver = true
-				break
-			}
-		}
-	}
-	if !exactReceiver && !inheritedCoreReceiver {
-		return false
-	}
-	if function.ReceiverConsuming {
-		return receiver.Type.Kind != ReferenceType && receiver.Symbol != nil
-	}
-	if function.ReceiverMutable {
-		if receiver.Type.Kind == ReferenceType {
-			return receiver.Type.ReferenceMutable
-		}
-		if receiver.Symbol != nil {
-			return a.canWriteThroughSymbol(*receiver.Symbol)
-		}
-		return false
-	}
-	return true
-}
-
-func (a *Analyzer) implicitMethodReceiverError(function Function, receiver methodReceiverInfo) string {
-	displayName := visibilityBaseName(function.Name)
-	if function.ReceiverConsuming && receiver.Type.Kind == ReferenceType {
-		return fmt.Sprintf("consuming method %s requires an owned receiver; %s does not transfer ownership", displayName, typeDisplayName(receiver.Type))
-	}
-	if receiver.Symbol != nil {
-		if receiver.Symbol.Addressed {
-			return fmt.Sprintf("method %s requires writable receiver storage", displayName)
-		}
-		return fmt.Sprintf("method %s requires mutable receiver", displayName)
-	}
-	return ""
 }
 
 func (a *Analyzer) canWriteThroughSymbol(symbol Symbol) bool {
@@ -15647,10 +15195,8 @@ func membershipElementType(collection Type) (Type, bool) {
 }
 
 func (a *Analyzer) contextualMembershipValueType(expr ast.Expression, actual Type, element Type) Type {
-	if _, ok := expr.(*ast.CharLiteral); ok && element.Kind == RuneType {
-		actual = Type{Name: "rune", Kind: RuneType}
-		a.expressionTypes[expr] = actual
-		return actual
+	if typ, shaped := a.shapeCharacterLiteral(expr, element); shaped {
+		return typ
 	}
 	if isUntypedNumericExpression(expr) && isNumericType(element) && a.canInitialize(element, actual, expr) {
 		a.expressionTypes[expr] = element
@@ -16259,6 +15805,7 @@ func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expres
 //   - rules/declarations/enums.md — "Conversions"
 //   - rules/types/types.md — explicit conversions
 func canExplicitConvert(target Type, value Type) bool {
+
 	if target.Kind == InvalidType || value.Kind == InvalidType {
 		return false
 	}
@@ -16267,6 +15814,12 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 	if value.Kind == AnyType {
 		return false
+	}
+
+	// rules/concurrency/mutex.md §13 and temporal.md §4: opaque monotonic
+	// points cannot be reinterpreted as wall-clock or other struct values.
+	if target.MonotonicPoint || value.MonotonicPoint {
+		return target.MonotonicPoint && value.MonotonicPoint
 	}
 
 	if target.Kind == EnumType && isIntegerType(value) {

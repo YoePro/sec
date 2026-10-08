@@ -1,0 +1,10 @@
+module main
+type Counter struct {}
+impl Counter {
+    static property Now: int { get { return 1 } }
+    static property Today: int { get { return 2 } }
+}
+fn Value() int { return 1 }
+type FromNow int default Counter.Now
+type FromToday int default Counter.Today
+type FromCall int default Value()

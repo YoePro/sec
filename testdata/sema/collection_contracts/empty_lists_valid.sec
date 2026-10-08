@@ -1,0 +1,42 @@
+module main
+type Handle struct { raw: RawPtr[byte], }
+type Empty list[int] exactLen 0 maxLen 0
+type Loose list[int] minLen 0 maxLen 4
+type Unique list[int] exactLen 0 unique
+type Required list[int] minLen 1
+type Bounded list[Handle, 4] exactLen 0
+type Inherited Empty minLen 0
+type Holder struct { values: Empty, handles: Bounded, }
+type Nested struct { holder: Holder, }
+type Zero struct { values: Required[0], }
+fn Accept(values: Empty) void { discard values }
+@noPanic
+fn Boundaries() void {
+    let explicit: Empty := Empty(list[int] {})
+    let loose: Loose := Loose(list[int] {})
+    let inherited: Inherited := Inherited(list[int] {})
+    let bounded: Bounded := Bounded(list[Handle, 4] {})
+    let converted := Empty(list[int] {})
+    let holder := Holder { values: Empty(list[int] {}) }
+    let nested := Nested {}
+    let zero := Zero {}
+    let mut emptyUnique: Unique
+    discard emptyUnique
+    let mut direct: Empty
+    let mut array: Holder[2]
+    let mut lists: Empty[2]
+    Accept(Empty(list[int] {}))
+    discard explicit
+    discard loose
+    discard inherited
+    discard bounded
+    discard converted
+    discard holder
+    discard nested
+    discard zero
+    discard direct
+    discard array
+    discard lists
+}
+@noPanic
+fn ReturnEmpty() Empty { return Empty(list[int] {}) }

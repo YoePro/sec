@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
 )
 
@@ -148,4 +149,24 @@ func ContractDisplays(typ Type) []string {
 		displays = append(displays, describeContract(contract))
 	}
 	return displays
+}
+
+// reportImmutableRequiresInitializer emits the shared semantic diagnostic for
+// an immutable binding whose explicit initializer is absent.
+//
+// Rules:
+//   - rules/types/default_values.md — "Immutable declarations without initializer"
+//   - rules/types/default_values.md — "Diagnostics", variables.immutable-requires-initializer
+func (a *Analyzer) reportImmutableRequiresInitializer(name *ast.Identifier, reference *ast.TypeReference) {
+	start := len(a.errors)
+	a.addErrorAtTokenWithMetadata(
+		name.Token,
+		diagnostics.ImmutableRequiresInitializer,
+		"initialize the immutable binding explicitly",
+		"immutable binding %q requires an initializer",
+		name.Value,
+	)
+	if reference != nil {
+		a.relateErrorsSince(start, reference.Token, "declared type of uninitialized binding")
+	}
 }

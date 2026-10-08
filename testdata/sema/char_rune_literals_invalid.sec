@@ -1,0 +1,22 @@
+module main
+
+fn TooLargeSuffix() char { return 256t }
+fn FarTooLargeSuffix() char { return 300t }
+fn OmegaAsChar() char { return 'Ω' }
+fn PlainInteger() char {
+    let incorrect: char := 65
+    return incorrect
+}
+fn ImplicitByteToChar(raw: byte) char {
+    let character: char := raw
+    return character
+}
+fn ImplicitCharToByte(value: char) byte {
+    let raw: byte := value
+    return raw
+}
+fn TypedRuneToChar() char {
+    let letter := 'a'
+    let character: char := letter
+    return character
+}

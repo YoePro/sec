@@ -35,7 +35,7 @@ func TestLSPReportsProgramEntryContract(t *testing.T) {
 		data, _ := os.ReadFile(path)
 		snapshots = append(snapshots, lspserver.Snapshot{URI: uriFromPath(path), Text: string(data), Version: 1})
 	}
-	results := analyzeDiagnosticBatch(snapshots, sourceOverlay{})
+	results := analyzeDiagnosticBatch(snapshots, sourceOverlay{Sources: map[string]string{}})
 	found := false
 	for _, item := range results[uriFromPath(command)] {
 		if item.Code == "S1110" && strings.Contains(item.Message, "command entry must be `fn main() int`; this main returns void") && item.Range.Start.Line == 2 {

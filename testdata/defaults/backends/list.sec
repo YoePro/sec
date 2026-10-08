@@ -1,0 +1,7 @@
+module main
+fn List() void {
+    let mut value: list[int]
+    discard value
+}
+
+fn main() int { return 0 }

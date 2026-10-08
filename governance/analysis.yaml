@@ -42,8 +42,6 @@ integrations:
       - rules/declarations/unions.md
     code:
       - internal/sema/pitfall_cache.go
-      - internal/sema/pitfall_cache_storage.go
-      - internal/sema/pitfall_cache_consumer.go
       - internal/sema/state_requirement_facts.go
       - internal/sema/pitfall_state_correlation.go
       - internal/sema/analyzer_result_projection.go
@@ -74,19 +72,16 @@ integrations:
       - internal/sema/pitfall_guard_flow.go
       - internal/sema/foreign_buffer_extent.go
       - internal/sema/foreign_extent_quantity.go
-      - internal/sema/pitfall_foreign_units.go
+      - internal/sema/pitfall_foreign.go
       - internal/sema/foreign_extent_provenance.go
-      - internal/sema/pitfall_foreign_origin.go
-      - internal/sema/pitfall_foreign_extent.go
       - cmd/compiler/analyse.go
     tests:
       - internal/sema/pitfall_cache_test.go
       - testdata/sema/pitfall_cache_valid.sec
       - internal/sema/pitfall_priority_test.go
-      - internal/sema/pitfall_foreign_units_test.go
+      - internal/sema/pitfall_foreign_test.go
       - cmd/compiler/analyse_foreign_units_test.go
       - testdata/sema/pitfall_foreign_units_valid.sec
-      - internal/sema/pitfall_foreign_origin_test.go
       - cmd/compiler/analyse_foreign_origin_test.go
       - testdata/sema/pitfall_foreign_origin_valid.sec
       - internal/sema/pitfall_state_correlation_test.go
@@ -178,7 +173,7 @@ integrations:
       - an inclusive tautology such as `value >= 0 || value <= 10` carries a SuggestedEdit to canonical `value in 0..10` rather than an operator swap
       - pitfall.range.membership-idiom (Deep, SuspiciousIntent, proven) offers a ProvenFix from a non-empty literal `x >= a && x <= b` or `x >= a && x < b` to `x in a..b` or `x in a..<b`; a property subject that may run a getter is retained as a suppressed result with evidence because collapsing two evaluations into one is not proven semantics-preserving
       - interval-condition proofs accept named compile-time constants as bounds; Sema records the value of each non-literal comparison operand that is an immutable, non-transient constant in the operand's own scope (comparisonConstantOperands), so sibling scopes reusing a name are resolved correctly, mutable or transient bindings are never bounds, comparisons of two constants stay with the unreachable-code rules, and membership rewrites keep the written names (`value in FLOOR..LIMIT`); the meaningless-comparison rule reads the same scope-correct fact instead of a post-hoc name lookup
-      - interval-condition proofs cover char subjects ordered by their one-byte value (bounds are ASCII character literals or values 0..255; a non-ASCII character literal names no single byte and yields no proof, see missing-decisions.yaml MD-043) and rune subjects ordered by Unicode scalar value, with character-literal and t/r-suffixed bounds and `in` rewrites such as `letter in 'a'..'z'`; enums have no ordered comparison in Sec 0.1 (rules/foundations/operators.md "Enum equality"), so no enum interval exists to prove
+      - interval-condition proofs cover char subjects ordered by their one-byte value (bounds are ASCII character literals or values 0..255; a char-shaped character literal is its code point in 0..255 per MD-043 (rules/corrections/applied/md043-char-rune-literal-correction-20261008.md), so Latin-1 bounds such as 'é' prove intervals, and larger scalars are rejected by Sema with S1138) and rune subjects ordered by Unicode scalar value, with character-literal and t/r-suffixed bounds and `in` rewrites such as `letter in 'a'..'z'`; enums have no ordered comparison in Sec 0.1 (rules/foundations/operators.md "Enum equality"), so no enum interval exists to prove
       - interval-condition proofs flatten `&&`/`||` chains of any length, group comparisons by resolved subject, and decide a conjunction by its tightest bounds and a disjunction by its loosest bounds while unrelated operands are ignored; each chain is reported once, and whole-condition membership rewrites are offered only when the chain is exactly the one bound pair
       - constrained-type domains need no separate interval proof, as shown by a proof plus a regression test: Sema rejects every constant bound outside the subject's domain [min, max], so an empty conjunction would need L = max+1 <= U and a covering disjunction would need U = max with L > max+1, and neither is expressible; TestPitfallIntervalDomainBoundsAreRejectedBySema guards that premise
       - path-sensitive strict index guards (`index < X.Len` or `X.Len > index` conjuncts of if and while conditions, and the binding of a half-open `start..<X.Len` for loop) are tracked as an active guard stack through the pitfall walk
@@ -225,6 +220,8 @@ integrations:
       - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
     verification:
+      - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-08 after consolidating pitfall_foreign_{extent,origin,units}.go into pitfall_foreign.go, their tests into pitfall_foreign_test.go, and pitfall_cache_{storage,consumer}.go into pitfall_cache.go without behavior or API changes
       - command: go test ./... -count=1
         result: passed on 2026-10-07 after dependency-qualified optional pitfall body caching
       - command: go vet ./...
@@ -430,8 +427,8 @@ integrations:
       - internal/sema/parameter_usage_callable.go
       - internal/sema/parameter_usage_contracts.go
       - internal/sema/parameter_usage_place.go
-      - internal/sema/parameter_usage_capture.go
-      - internal/sema/analyzer_function_value_binding.go
+      - internal/sema/parameter_usage_operations.go
+      - internal/sema/analyzer_callable_join.go
       - internal/sema/analyzer_inference.go
       - cmd/lsp/parameter_insight.go
       - cmd/lsp/hover.go
@@ -439,13 +436,10 @@ integrations:
       - vscode/package.json
       - vscode/src/extension.ts
       - vscode/README.md
-      - internal/sema/parameter_usage_shape.go
       - internal/sema/parameter_usage_recommendations.go
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/parameter_usage.go
-      - internal/sema/parameter_usage_collections.go
-      - internal/sema/parameter_usage_flow.go
       - internal/sema/parameter_usage_propagation.go
       - internal/sema/escape_analysis.go
       - internal/sema/semantic_snapshot.go
@@ -556,6 +550,8 @@ integrations:
       - ownership-aware code action preserves required `<-` for reusable Places
       - analysis category strings are not emitted as compiler diagnostic IDs
     verification:
+      - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-08 after consolidating parameter_usage_{capture,collections,shape}.go into parameter_usage_operations.go parameter_usage_flow.go into parameter_usage.go, and analyzer_function_value_binding.go into analyzer_callable_join.go without behavior or API changes
       - command: go test ./internal/sema -run 'TestParameterUsageOwnershipTransfer' -count=1
         result: passed on 2026-10-07 with consuming forwarding, one-consuming-branch join, move-only read-only by-value parameter, fresh temporary caller, and equal `return value`/`return <-value` demand
       - command: go test ./... -count=1
@@ -668,29 +664,25 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/compiler/incremental_compilation.md
     code:
-      - internal/sema/call_graph_contract.go
+      - internal/sema/call_graph_callables.go
       - internal/sema/analyzer_inference.go
       - internal/sema/analyzer_callable_join.go
       - internal/sema/stack_callable_contracts.go
       - internal/sema/stack_external_contracts.go
       - internal/sema/call_graph_identity.go
-      - internal/sema/call_graph_plan_identity.go
-      - internal/sema/call_graph_tests.go
       - internal/sema/analyzer_test_bodies.go
-      - internal/sema/call_graph_defer.go
       - internal/sema/analyzer_defer.go
       - internal/sema/analyzer_closure.go
       - internal/sema/stack_callable_targets.go
       - internal/sema/call_graph_workspace.go
-      - internal/sema/call_graph_checkpoint.go
-      - internal/sema/call_graph_effect_domains.go
+      - internal/sema/call_graph_summaries.go
       - internal/sema/call_graph.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_control_flow.go
       - internal/sema/analyzer_while_flow.go
       - cmd/lsp/main.go
     tests:
-      - internal/sema/call_graph_contract_test.go
+      - internal/sema/call_graph_callables_test.go
       - testdata/sema/call_graph_open_targets_valid.sec
       - testdata/sema/call_graph_open_targets_invalid.sec
       - internal/sema/callable_join_test.go
@@ -699,16 +691,14 @@ integrations:
       - internal/sema/call_graph_identity_test.go
       - testdata/sema/call_graph_identity_valid.sec
       - testdata/sema/call_graph_identity_unreachable_invalid.sec
-      - internal/sema/call_graph_tests_test.go
       - testdata/sema/call_graph_tests_valid_test.sec
       - testdata/sema/call_graph_tests_invalid_test.sec
-      - internal/sema/call_graph_defer_test.go
       - testdata/sema/call_graph_defer_valid.sec
       - testdata/sema/call_graph_defer_invalid.sec
       - internal/sema/call_graph_workspace_test.go
       - testdata/sema/call_graph_workspace_valid.sec
       - testdata/sema/call_graph_workspace_invalid.sec
-      - internal/sema/call_graph_effect_domains_test.go
+      - internal/sema/call_graph_summaries_test.go
       - testdata/sema/call_graph_effect_domains_valid.sec
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_closure_test.go
@@ -768,6 +758,8 @@ integrations:
       - function-value calls inside lambdas are attributed to the lambda callable rather than the enclosing declaration
       - unknown function-value parameters retain a validated open contract with no invented concrete targets or closed-set proof
     verification:
+      - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-08 after consolidating the call_graph family from 17 to 10 files (plan identity into call_graph_identity.go; contract, defer and test-root producers into call_graph_callables.go; effect-domain and arena allocation fixed-point summaries into call_graph_summaries.go; checkpoints into call_graph_workspace.go; tests regrouped, call_graph_scc_test.go renamed call_graph_test.go) without behavior or API changes
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-07 after canonical joined/open function-value and interface calls, contract validation and unified stack uncertainty boundaries
       - command: go test ./internal/sema -race -run 'TestCallGraph|TestStackOpenCallableContracts|TestStackPartialEvidence|TestFunctionValueTargetsJoinAcrossControlFlow|TestLambdaCapturePreservesCallableDependencies' -count=1
@@ -1739,12 +1731,13 @@ integrations:
       - internal/sema/stack_callable_contracts.go
       - internal/sema/stack_evidence.go
       - internal/sema/stack_budget_diagnostics.go
-      - internal/sema/stack_recursion_depth.go
-      - internal/sema/stack_budget.go
+      - internal/sema/stackbound/recursion_depth.go
+      - internal/sema/stackbound/budget.go
       - internal/sema/stack_callable_targets.go
       - internal/sema/stack_composition.go
       - internal/sema/stack_summary.go
-      - internal/sema/stack_bound.go
+      - internal/sema/stackbound/bound.go
+      - internal/sema/stack_model.go
     tests:
       - internal/sema/stack_external_contracts_test.go
       - testdata/sema/stack_external_contracts_valid.sec
@@ -1755,15 +1748,15 @@ integrations:
       - cmd/compiler/stack_budget_diagnostics_test.go
       - cmd/lsp/stack_budget_diagnostics_test.go
       - testdata/sema/stack_partial_evidence_valid.sec
-      - internal/sema/stack_recursion_depth_test.go
-      - internal/sema/stack_budget_test.go
+      - internal/sema/stackbound/recursion_depth_test.go
+      - internal/sema/stackbound/budget_test.go
       - internal/sema/stack_callable_targets_test.go
       - testdata/sema/stack_callable_targets_valid.sec
       - internal/sema/stack_composition_test.go
       - testdata/sema/stack_composition_valid.sec
       - testdata/sema/stack_composition_unreachable_invalid.sec
       - internal/sema/stack_summary_test.go
-      - internal/sema/stack_bound_test.go
+      - internal/sema/stackbound/bound_test.go
     implemented:
       - StackExternalContractStore retains explicit producer-verified foreign/runtime/platform whole-call guarantees bound to canonical invocation, caller, resolved target and source, and runtime-path guarantees bound to canonical caller/effect/source; both levels require an exact CompilationPlan and usable finite bounds with verified NoReentry
       - semantic and machine boundary-composition APIs consume external guarantees without requiring foreign body frames or inferring trust from callable names; whole-call bounds cover only their matching foreign/opaque panic-effect marker, while independent runtime effects require separate guarantees and cannot stand in for opaque callee bodies
@@ -1797,6 +1790,8 @@ integrations:
       - finite constructors validate nonnegative byte counts and preserve arbitrary precision without host-integer overflow; immutable decimal storage detaches input integers and Bytes returns fresh integers only for finite bounds
       - zero-value and explicit Unknown agree, exact zero remains distinct from unknown and an upper bound of zero retains its classification; stable comparable value identity and display preserve proof quality
     verification:
+      - command: go test ./internal/sema/stackbound ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-08 after moving the pure StackBound, RecursionDepthBound and StackBudget values into internal/sema/stackbound (no parent import) with unchanged Sema names kept as aliases in stack_model.go; TestStackBudgetMachineAuthority moved to stack_summary_test.go because it composes Sema summaries
       - command: go test ./internal/sema -count=1
         result: passed on 2026-10-06 after final external stack-contract regressions, including exact runtime-operation binding, absent no-reentry proof and runtime-handler facts that cannot bound a foreign body
       - command: go vet ./internal/sema

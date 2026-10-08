@@ -18,7 +18,7 @@ func TestEscapeCausePathsLSP(t *testing.T) {
 	origin := lexer.Token{File: file, Line: 1, Column: 4}
 	boundary := lexer.Token{File: current, Line: 1, Column: 1}
 	e := sema.Error{File: current, Line: 1, Column: 1, Message: "escape", PreviousFile: file, PreviousLine: 1, PreviousColumn: 4, EscapeCauses: []sema.EscapeCausePath{{Mode: sema.EscapeModeBorrowEscape, Destination: sema.EscapeDestinationReturnedValue, Steps: []sema.EscapeCauseStep{{Kind: "origin", Message: "origin storage is local", Source: origin}, {Kind: "carrier", Message: "carrier", Source: lexer.Token{File: file, Line: 1, Column: 5}}, {Kind: "boundary", Message: "returned dependency", Source: boundary}}}}}
-	got := semaDiagnosticWithSources(e, 1, uriFromPath(current), "return", sourceOverlay{file: "😀abc"})
+	got := semaDiagnosticWithSources(e, 1, uriFromPath(current), "return", sourceOverlay{Sources: map[string]string{file: "😀abc"}})
 	if len(got.RelatedInformation) != 2 || got.RelatedInformation[0].Location.Range.Start.Character != 4 || got.RelatedInformation[1].Location.Range.Start.Character != 5 {
 		t.Fatal(got)
 	}
@@ -27,7 +27,7 @@ func TestEscapeCausePathsLSP(t *testing.T) {
 	}
 	e.PreviousLine = 0
 	e.EscapeCauses = []sema.EscapeCausePath{{Mode: sema.EscapeModeUnknown, Incomplete: true, Steps: []sema.EscapeCauseStep{{Kind: "unknown", Message: "origin provenance is unknown"}, {Kind: "boundary", Message: "missing proof", Source: boundary}}}}
-	got = semaDiagnosticWithSources(e, 1, uriFromPath(current), "return", nil)
+	got = semaDiagnosticWithSources(e, 1, uriFromPath(current), "return", sourceOverlay{})
 	if len(got.RelatedInformation) != 0 || !strings.Contains(got.Message, "cause path is incomplete") {
 		t.Fatal(got)
 	}

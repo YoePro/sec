@@ -1,0 +1,3 @@
+fn Maximum() int { return @SIGNED_MAX@ }
+fn Minimum() int { return @SIGNED_MIN@ }
+fn UnsignedMaximum() uint { return @UNSIGNED_MAX@u }

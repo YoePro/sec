@@ -1,0 +1,4 @@
+module main
+
+fn Identity(value: float) float { return value }
+fn main() int { return 0 }

@@ -1,0 +1,25 @@
+module main
+
+type Override int default 37
+type Inner struct { number: Override, enabled: bool }
+type Outer struct { inner: Inner, count: int }
+fn Mutable() Outer {
+    let mut value: Outer
+    return value
+}
+fn Omitted() Outer { return Outer {} }
+fn Partial() Outer { return Outer { count: 9 } }
+fn Fixed() int[4] {
+    let mut value: int[4]
+    return value
+}
+fn FixedNamed() Override[3] {
+    let mut value: Override[3]
+    return value
+}
+fn Empty() int[0] {
+    let mut value: int[0]
+    return value
+}
+
+fn main() int { return 0 }

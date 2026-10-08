@@ -1,0 +1,6 @@
+module main
+fn main() int {
+ let mut value: int32 := 0
+ try value = 1 { Err(error) => { discard error } }
+ return 0
+}

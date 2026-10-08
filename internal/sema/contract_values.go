@@ -5,6 +5,7 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 // checkCompileTimeContractExpression validates source values whose complete
@@ -15,6 +16,9 @@ import (
 //   - rules/types/contracts.md — "Initialization and assignment"
 //   - rules/types/contracts.md — "String and collection contracts"
 func (a *Analyzer) checkCompileTimeContractExpression(typ Type, expr ast.Expression) bool {
+	if a.checkEmptyListLiteralContracts(typ, expr) {
+		return true
+	}
 	if a.checkIntegerExpressionRange(typ, expr) {
 		return true
 	}
@@ -65,17 +69,17 @@ func (a *Analyzer) checkStringLiteralContracts(typ Type, expr ast.Expression) bo
 				}
 			}
 			if !member {
-				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates in contract %s", literal.Value, typ.Name)
+				a.addContractError(expressionToken(expr), contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates in contract %s", literal.Value, typ.Name)
 				return true
 			}
 		case LengthContract:
 			if !stringLengthSatisfiesContract(literal.Value, contract) {
-				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates %s contract %s %s", literal.Value, contract.Name, typ.Name, contract.Value.String())
+				a.addContractError(expressionToken(expr), contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates %s contract %s %s", literal.Value, contract.Name, typ.Name, contract.Value.String())
 				return true
 			}
 		case MarkerContract:
 			if contract.Name == "notEmpty" && literal.Value == "" {
-				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates notEmpty contract %s", literal.Value, typ.Name)
+				a.addContractError(expressionToken(expr), contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates notEmpty contract %s", literal.Value, typ.Name)
 				return true
 			}
 		}
@@ -121,20 +125,20 @@ func (a *Analyzer) checkArrayLiteralContracts(typ Type, literal *ast.ArrayLitera
 		switch contract := contract.(type) {
 		case LengthContract:
 			if !knownLengthSatisfiesContract(length, contract) {
-				a.addErrorAtTokenWithMetadata(literal.Token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal length %s violates %s contract %s %s", length.String(), contract.Name, typeName, contract.Value.String())
+				a.addContractError(literal.Token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal length %s violates %s contract %s %s", length.String(), contract.Name, typeName, contract.Value.String())
 				return true
 			}
 		case MarkerContract:
 			switch contract.Name {
 			case "notEmpty":
 				if length.Sign() == 0 {
-					a.addErrorAtTokenWithMetadata(literal.Token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal length 0 violates notEmpty contract %s", typeName)
+					a.addContractError(literal.Token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal length 0 violates notEmpty contract %s", typeName)
 					return true
 				}
 			case "unique":
 				duplicate, original, ok := duplicateArrayLiteralConstant(literal)
 				if ok {
-					a.addErrorAtTokenWithMetadata(expressionToken(literal.Elements[duplicate]), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal element %d duplicates element %d under unique contract %s", duplicate+1, original+1, typeName)
+					a.addContractError(expressionToken(literal.Elements[duplicate]), contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal element %d duplicates element %d under unique contract %s", duplicate+1, original+1, typeName)
 					return true
 				}
 			}
@@ -175,4 +179,44 @@ func duplicateArrayLiteralConstant(literal *ast.ArrayLiteral) (duplicate int, or
 		known = append(known, knownElement{index: index, value: constant})
 	}
 	return 0, 0, false
+}
+
+// checkEmptyListLiteralContracts proves the canonical explicit empty collection
+// shape at the destination boundary, including constrained named derivations.
+// Unsupported or runtime collection expressions receive no length proof.
+// Rules: rules/types/contracts.md — "String and collection contracts",
+// "Initialization and assignment"; rules/collections/collections.md — §13.3;
+// rules/types/default_values.md — "List defaults", "Defaults and contracts".
+func (a *Analyzer) checkEmptyListLiteralContracts(typ Type, expr ast.Expression) bool {
+	literal, ok := expr.(*ast.CollectionLiteral)
+	if !ok || literal.Invalid || !isDefaultableEmptyListType(typ) {
+		return false
+	}
+	return a.checkKnownCollectionLengthContracts(typ, expressionToken(expr), new(big.Int), "list literal")
+}
+
+// checkKnownCollectionLengthContracts validates one proven length in declared
+// contract order, preserving the defining contract's related source location.
+// Rules: rules/types/contracts.md — "Composition", "String and collection contracts",
+// "Diagnostics"; rules/types/default_values.md — "Defaults and contracts".
+func (a *Analyzer) checkKnownCollectionLengthContracts(typ Type, token lexer.Token, length *big.Int, description string) bool {
+	typeName := typeDisplayName(typ)
+	if typ.Named && typ.Name != "" {
+		typeName = typ.Name
+	}
+	for _, contract := range typ.Contracts {
+		switch contract := contract.(type) {
+		case LengthContract:
+			if !knownLengthSatisfiesContract(length, contract) {
+				a.addContractError(token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "%s length %s violates %s contract %s %s", description, length.String(), contract.Name, typeName, contract.Value.String())
+				return true
+			}
+		case MarkerContract:
+			if contract.Name == "notEmpty" && length.Sign() == 0 {
+				a.addContractError(token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "%s length 0 violates notEmpty contract %s", description, typeName)
+				return true
+			}
+		}
+	}
+	return false
 }

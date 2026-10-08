@@ -1,0 +1,87 @@
+module main
+unit FloatSource physical
+unit FloatTarget physical
+impl FloatSource {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 2
+}
+impl FloatTarget {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 1
+}
+type Bounded float32<FloatSource> range -1..1
+fn Range(value: Bounded) float32<FloatTarget> {
+ return value
+}
+fn Guarded(value: float64<FloatSource>) float64<FloatTarget> {
+ if value >= -1g && value <= 1g {
+  return value
+ }
+ return 0
+}
+fn Constant() float32<FloatTarget> {
+ let value: float32<FloatSource> := 1g
+ return value
+}
+fn Wide(value: float<FloatSource>) float<FloatTarget> {
+ if value >= -1g && value <= 1g {
+  return value
+ }
+ return 0
+}
+fn Take(value: float32<FloatTarget>) float32<FloatTarget> {
+ return value
+}
+fn Array(value: float32<FloatSource>, other: float32<FloatTarget>) float32<FloatTarget> {
+ if value > -1g && 1g >= value {
+  let values: float32<FloatTarget>[1] := [value]
+  return values[0]
+ }
+ return 0
+}
+fn Argument(value: float32<FloatSource>, other: float32<FloatTarget>) float32<FloatTarget> {
+ if value > -1g && 1g >= value {
+  return Take(value)
+ }
+ return 0
+}
+fn Arithmetic(value: float32<FloatSource>, other: float32<FloatTarget>) float32<FloatTarget> {
+ if value > -1g && 1g >= value {
+  return other + value
+ }
+ return 0
+}
+fn Comparison(value: float32<FloatSource>, other: float32<FloatTarget>) float32<FloatTarget> {
+ if value > -1g && 1g >= value {
+  let result := other < value
+  discard result
+  return 0
+ }
+ return 0
+}
+fn Assignment(value: float32<FloatSource>, other: float32<FloatTarget>) float32<FloatTarget> {
+ if value > -1g && 1g >= value {
+  let mut stored: float32<FloatTarget> := 0
+  stored = value
+  return stored
+ }
+ return 0
+}
+fn ConvertedConstant() float32<FloatTarget> {
+ let source: float32<FloatSource> := 1g
+ let target: float32<FloatTarget> := source
+ let sum := target + source
+ return sum
+}
+
+type Packet struct {
+ value: float32<FloatTarget>
+}
+fn Field(value: float32<FloatSource>) Packet {
+ if value >= -1g && value <= 1g {
+  return Packet { value: value }
+ }
+ return Packet { value: 0 }
+}

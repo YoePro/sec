@@ -199,16 +199,14 @@ func isIntervalSubjectType(typ Type) bool {
 	return isIntegerType(typ) || typ.Kind == CharType || typ.Kind == RuneType
 }
 
-// isCharByteBound reports whether a bound has a proven byte value for a char
-// subject. A char is one byte, so only an ASCII character literal (whose
-// scalar equals its byte) or a value in 0..255 is a byte; a non-ASCII
-// character literal names no single byte and yields no proof.
+// isCharByteBound reports whether a bound has a proven value for a char
+// subject. A char-shaped character literal's value is its code point, and
+// only values in 0..255 belong to char; larger scalars yield no proof (and
+// Sema rejects them in char context with S1138).
+// Rules: rules/types/types.md — "char"; rules/foundations/operators.md —
+// "Character ordering"; rules/corrections/applied/md043-char-rune-literal-correction-20261008.md — §§2.6, 3.2.
 func isCharByteBound(bound ast.Expression, value *big.Int) bool {
-	limit := int64(0xFF)
-	if _, character := bound.(*ast.CharLiteral); character {
-		limit = 0x7F
-	}
-	return value.Sign() >= 0 && value.Cmp(big.NewInt(limit)) <= 0
+	return value.Sign() >= 0 && value.Cmp(big.NewInt(0xFF)) <= 0
 }
 
 // intervalBoundValue accepts a literal bound or a named compile-time constant
@@ -240,8 +238,8 @@ func mirroredComparison(op string) string {
 }
 
 // intervalLiteral accepts an integer literal, optionally negated, or a
-// character literal valued by its Unicode scalar; for a char subject only an
-// ASCII scalar is also its byte value (see isCharByteBound).
+// character literal valued by its Unicode scalar; for a char subject the
+// scalar must also lie in char's 0..255 domain (see isCharByteBound).
 func intervalLiteral(expression ast.Expression) (*big.Int, string, bool) {
 	switch expression := expression.(type) {
 	case *ast.CharLiteral:

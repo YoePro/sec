@@ -8,14 +8,14 @@ import "sec/internal/ast"
 // Rule: rules/types/default_values.md — "List defaults".
 const CollectionDefault DefaultKind = "collection"
 
-// isDefaultableEmptyListType reports whether typ is a compiler-known list
+// isDefaultableEmptyListType recognizes canonical lists and named derivations
 // whose empty default exists independently of element defaultability.
 //
 // Rules:
-//   - rules/types/default_values.md — "List defaults"
+//   - rules/types/default_values.md — "Named types", "List defaults"
 //   - rules/collections/collections.md — §13.3 empty list state
 func isDefaultableEmptyListType(typ Type) bool {
-	return isCompilerKnownListType(typ) && len(typ.ConstArgs) <= 1
+	return (isCompilerKnownListType(typ) || typ.Kind == StructType && typ.EmptyListDefault && len(typ.TypeArgs) == 1) && len(typ.ConstArgs) <= 1
 }
 
 // inferCollectionLiteral types the empty list literals `list[T] {}` and

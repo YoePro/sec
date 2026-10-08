@@ -23,9 +23,9 @@ func TestRegexContractFixtureReportsFocusedDiagnostics(t *testing.T) {
 	}
 	errors := analyzeSourceRaw(t, string(source))
 	assertSemaErrors(t, errors, []string{
-		"regex contract on Email cannot be validated: the Sec regular-expression syntax and engine are not yet defined at 6:19",
-		"regex contract does not apply to int at 9:16",
-		"regex contract pattern must be a compile-time string at 12:24",
+		"regex contract on Email cannot be validated: the Sec regular-expression syntax and engine are not yet defined at 6:19, type declaration at 6:6",
+		"regex contract does not apply to int at 9:16, type declaration at 9:6",
+		"regex contract pattern must be a compile-time string at 12:24, contract declaration at 12:18",
 	})
 	if errors[0].ID != diagnostics.RegexContractUnavailable || errors[0].Help == "" {
 		t.Fatalf("regex diagnostic = %+v, want S1058 with help", errors[0])

@@ -88,7 +88,7 @@ integrations:
       - "the null sentinel is unsafe-only and has no standalone type: inside unsafe it takes its RawPtr[T] type from an annotation, assignment, return, or an argument position on which every candidate callable agrees, and otherwise reports S1081 ffi.null-without-raw-pointer-context; outside unsafe it reports S1080 ffi.null-outside-unsafe; `== null` and `!= null` report S1082 ffi.null-equality in every context; `raw is null` parses as a dedicated NullTestExpression in if/while conditions, requires unsafe and a RawPtr[T] subject (S1083 ffi.null-test-requires-raw-pointer), and yields bool; `is not null` is rejected; a visible binding named null shadows the contextual sentinel (MD-024); Semantic IR and LLVM reject the node explicitly until lowering"
     remaining:
       - "resolve c:: binding types through the target/library binding environment once it is defined (MD-021); C:: fundamentals and c:: parsing are implemented"
-      - "make possibly-narrowing C/Sec scalar conversions fallible (try) together with the general checked-conversion contract (MD-012); give the LSP the project CompilationPlan target so C:: types resolve in the editor instead of reporting S1077"
+      - "make possibly-narrowing C/Sec scalar conversions fallible (try) with the decided core ConversionError (MD-012 decided 2026-10-08); give the LSP the project CompilationPlan target so C:: types resolve in the editor instead of reporting S1077"
       - "add target-specific calling-convention availability and ABI-model-dependent classification (aggregate, variadic, and function-pointer forms) before backend lowering; per-position type legality is implemented (S1079) apart from the MD-023 scalar and enum questions"
       - "record is null branch refinement as a non-null proof fact for raw-to-safe conversion once that conversion exists; resolve the null lexical status, safe null-test spelling, and negated form (MD-024)"
       - parse and validate complete and incomplete extern C structs with ABI layout and no implicit Defaultable construction
@@ -109,6 +109,7 @@ integrations:
       - resolve libraries, objects, frameworks, import libraries, and search paths through package/build CompilationPlan metadata
       - preserve foreign data kind, ABI identity, bitfield/flex metadata, function pointers, callback adaptation, varargs, effects, and dependencies in Semantic IR and Sec MLIR
       - add the complete parser, Sema, borrow, lifetime, ownership, effects, layout, formatter, LSP, target, Semantic IR, MLIR, LLVM, and diagnostic regression matrix required by ffi.md
+      - "MD-022 (rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md § 2): shape single-quoted character literals into C::char, C::schar and C::uchar when the decoded code-point number is representable in the active ABI model's range (no UTF-8, Latin-1 or codepage encoding, no first-byte fallback); currently rejected. Boolean literal shaping into C::bool and rejection of implicit typed C::/Sec scalar conversions are already implemented"
     excluded:
       - C or C++ header parsing, preprocessing, typedef syntax, macros, and static-inline import
       - general named Sec-to-C symbol export

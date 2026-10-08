@@ -1395,7 +1395,6 @@ integrations:
     - internal/sema/analyzer_test.go
     - internal/sema/analyzer_logical_test.go
     - internal/sema/copy_move_test.go
-    - internal/sema/call_graph_test.go
     - internal/codegen/mlir/generator_test.go
     - internal/codegen/llvm/generator_test.go
     implemented:

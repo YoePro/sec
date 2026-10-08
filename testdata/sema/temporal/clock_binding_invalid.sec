@@ -1,0 +1,4 @@
+module core
+let Moment: datetime := _now
+type Cached int default Moment
+type Projected int default Moment._epochDays

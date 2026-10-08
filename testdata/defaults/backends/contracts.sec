@@ -1,0 +1,19 @@
+module main
+
+type Positive int range 3..10
+type Members int in [7, 9, 5]
+type Override int range 1..100 default 42
+fn Range() Positive {
+    let mut value: Positive
+    return value
+}
+fn Membership() Members {
+    let mut value: Members
+    return value
+}
+fn Explicit() Override {
+    let mut value: Override
+    return value
+}
+
+fn main() int { return 0 }

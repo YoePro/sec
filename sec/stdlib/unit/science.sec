@@ -7,6 +7,7 @@ module units
 /** Becquerel */
 unit Bq physical
 impl Bq {
+    Kind: radioactivity
     LongName: "Becquerel"
     Symbol: "Bq"
     BaseUnit: false
@@ -19,6 +20,7 @@ impl Bq {
 /** Gray */
 unit Gy physical
 impl Gy {
+    Kind: absorbed_dose
     LongName: "Gray"
     Symbol: "Gy"
     BaseUnit: false
@@ -31,6 +33,7 @@ impl Gy {
 /** Sievert */
 unit Sv physical
 impl Sv {
+    Kind: dose_equivalent
     LongName: "Sievert"
     Symbol: "Sv"
     BaseUnit: false
@@ -115,6 +118,7 @@ impl W_m_K {
 /** Newton metre */
 unit Nm physical
 impl Nm {
+    Kind: torque
     LongName: "Newton Metre"
     Symbol: "N·m"
     BaseUnit: false

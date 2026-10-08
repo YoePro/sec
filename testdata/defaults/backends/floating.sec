@@ -1,0 +1,29 @@
+module main
+
+fn Floating() float {
+    let mut value: float
+    return value
+}
+
+fn main() int { return 0 }
+
+type Native float
+type Single float32
+type Double float64
+type ExplicitFloat float32 default 1.5
+fn NativeDefault() Native {
+    let mut value: Native
+    return value
+}
+fn SingleDefault() Single {
+    let mut value: Single
+    return value
+}
+fn DoubleDefault() Double {
+    let mut value: Double
+    return value
+}
+fn ExplicitDefault() ExplicitFloat {
+    let mut value: ExplicitFloat
+    return value
+}

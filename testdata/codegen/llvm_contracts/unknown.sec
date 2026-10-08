@@ -1,0 +1,3 @@
+module main
+fn Identity(value: External) External { return value }
+fn main() int { return 0 }

@@ -1,0 +1,58 @@
+module main
+type Port int range 1..65535
+type Role string in ["...", "guest"]
+type Empty list[int] exactLen 0
+type Box[T] struct { value: T, }
+enum State int { FIRST = 7, SECOND default = 9, }
+type Settings struct {
+    port: Port,
+    label: Role,
+    flags: bool[2],
+}
+fn PortValue() Port { return 12 }
+fn Defaults() void {
+    /* 😀 */ let mut unicode: int
+    let mut number: int // keep this comment
+    let mut port: Port
+    let mut text: Role
+    let mut flags: bool[2]
+    let mut dynamic: int[]
+    let mut listValue: list[int]
+    let mut namedList: Empty
+    let mut bounded: list[int, 4]
+    let mut boxed: Box[int]
+    let mut state: State
+    let mut settings: Settings
+    let mut huge: int[1000000]
+    let emptySettings := Settings {}
+    let partialSettings := Settings { port: 12 }
+    let commaSettings := Settings { port: 12, }
+    let multilineSettings := Settings {
+        port: 12, // preserve field comment
+    }
+    let effectSettings := Settings { port: PortValue() }
+    let completeSettings := Settings { port: 12, label: "guest", flags: [true, false] }
+    let spreadSettings := Settings { completeSettings... }
+    let explicit := 3
+    discard unicode
+    discard effectSettings
+    discard spreadSettings
+    discard number
+    discard port
+    discard text
+    discard flags
+    discard dynamic
+    discard listValue
+    discard namedList
+    discard bounded
+    discard boxed
+    discard state
+    discard settings
+    discard huge
+    discard emptySettings
+    discard partialSettings
+    discard commaSettings
+    discard multilineSettings
+    discard completeSettings
+    discard explicit
+}

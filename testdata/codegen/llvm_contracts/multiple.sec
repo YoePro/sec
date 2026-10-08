@@ -1,0 +1,4 @@
+module main
+
+type Aligned int32 multipleOf 4
+fn main() int { return 0 }

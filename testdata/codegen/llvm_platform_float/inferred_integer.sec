@@ -1,0 +1,4 @@
+module main
+
+fn Work() void { let value := 8g }
+fn main() int { return 0 }

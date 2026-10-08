@@ -6,79 +6,13 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/sema/constant"
 )
 
+// constantIntegerValue adapts pure integer evaluation for Sema consumers.
+// Rules: rules/foundations/operators.md — Integer arithmetic.
 func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
-	switch expr := expr.(type) {
-	case *ast.IntegerLiteral:
-		switch expr.Suffix() {
-		case "t", "r":
-			return nil, false
-		}
-		return ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
-	case *ast.PrefixExpression:
-		if expr.Operator == "+" {
-			return constantIntegerValue(expr.Right)
-		}
-		if expr.Operator != "-" {
-			return nil, false
-		}
-		value, ok := constantIntegerValue(expr.Right)
-		if !ok {
-			return nil, false
-		}
-		return value.Neg(value), true
-	case *ast.InfixExpression:
-		left, ok := constantIntegerValue(expr.Left)
-		if !ok {
-			return nil, false
-		}
-
-		right, ok := constantIntegerValue(expr.Right)
-		if !ok {
-			return nil, false
-		}
-
-		value := new(big.Int)
-		switch expr.Operator {
-		case "+":
-			return value.Add(left, right), true
-		case "-":
-			return value.Sub(left, right), true
-		case "*":
-			return value.Mul(left, right), true
-		case "/":
-			if right.Sign() == 0 {
-				return nil, false
-			}
-			return value.Quo(left, right), true
-		case "%":
-			if right.Sign() == 0 {
-				return nil, false
-			}
-			return value.Rem(left, right), true
-		case "&":
-			return value.And(left, right), true
-		case "|":
-			return value.Or(left, right), true
-		case "^":
-			return value.Xor(left, right), true
-		case "<<":
-			if !right.IsUint64() {
-				return nil, false
-			}
-			return value.Lsh(left, uint(right.Uint64())), true
-		case ">>":
-			if !right.IsUint64() {
-				return nil, false
-			}
-			return value.Rsh(left, uint(right.Uint64())), true
-		default:
-			return nil, false
-		}
-	default:
-		return nil, false
-	}
+	return constant.Integer(expr)
 }
 
 func (a *Analyzer) integerConstantValue(expr ast.Expression) (*big.Int, bool) {
@@ -123,43 +57,7 @@ func (a *Analyzer) integerConstantValueUsing(expr ast.Expression, bindings map[s
 			return nil, false
 		}
 
-		value := new(big.Int)
-		switch expr.Operator {
-		case "+":
-			return value.Add(left, right), true
-		case "-":
-			return value.Sub(left, right), true
-		case "*":
-			return value.Mul(left, right), true
-		case "/":
-			if right.Sign() == 0 {
-				return nil, false
-			}
-			return value.Quo(left, right), true
-		case "%":
-			if right.Sign() == 0 {
-				return nil, false
-			}
-			return value.Rem(left, right), true
-		case "&":
-			return value.And(left, right), true
-		case "|":
-			return value.Or(left, right), true
-		case "^":
-			return value.Xor(left, right), true
-		case "<<":
-			if !right.IsUint64() {
-				return nil, false
-			}
-			return value.Lsh(left, uint(right.Uint64())), true
-		case ">>":
-			if !right.IsUint64() {
-				return nil, false
-			}
-			return value.Rsh(left, uint(right.Uint64())), true
-		default:
-			return nil, false
-		}
+		return constant.IntegerBinary(expr.Operator, left, right)
 	default:
 		return constantIntegerValue(expr)
 	}

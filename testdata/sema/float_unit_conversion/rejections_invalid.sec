@@ -1,0 +1,50 @@
+module main
+unit FloatSource physical
+unit FloatTarget physical
+impl FloatSource {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 2
+}
+impl FloatTarget {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 1
+}
+fn Unknown(value: float32<FloatSource>) float32<FloatTarget> { return value }
+fn Overflow() float32<FloatTarget> {
+ let value: float32<FloatSource> := 340282346638528859811704183484516925440g
+ return value
+}
+fn Half(value: float32<FloatTarget>) float32<FloatSource> {
+ if value >= 0g && value <= 1g {
+  return value
+ }
+ return 0
+}
+fn Mutation(value: float32<FloatSource>) float32<FloatTarget> {
+ let mut changed := value
+ if changed >= -1g && changed <= 1g {
+  changed = value
+  return changed
+ }
+ return 0
+}
+fn Mutable() float32<FloatTarget> {
+ let mut value: float32<FloatSource> := 1g
+ return value
+}
+fn OneBound(value: float64<FloatSource>) float64<FloatTarget> {
+ if value >= -1g {
+  return value
+ }
+ return 0
+}
+fn WrongWidth(value: float32<FloatSource>) float64<FloatTarget> { return value }
+type SmallTarget float32 range 0..1
+fn TargetRange(value: float32<FloatSource>) SmallTarget<FloatTarget> {
+ if value >= 0g && value <= 1g {
+  return value
+ }
+ return 0
+}

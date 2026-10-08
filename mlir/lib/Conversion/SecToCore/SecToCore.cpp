@@ -585,6 +585,17 @@ public:
             return type;
           return sec::ArrayType::get(context, element, type.getLength());
         });
+    // rules/mlir/packages/sec-mlir-dialect_package14.md, section 51:
+    // Result[U, IndexError] must retain exactly the converted component types
+    // used by the existing Result construction and return flow.
+    typeConverter.addConversion(
+        [&](sec::ResultType type) -> std::optional<Type> {
+          Type success = typeConverter.convertType(type.getSuccessType());
+          Type error = typeConverter.convertType(type.getErrorType());
+          if (!success || !error)
+            return std::nullopt;
+          return sec::ResultType::get(context, success, error);
+        });
     typeConverter.addConversion(
         [&](sec::EnumType type) -> std::optional<Type> {
           Type underlying = typeConverter.convertType(type.getUnderlying());

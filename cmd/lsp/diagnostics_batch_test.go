@@ -21,12 +21,12 @@ func diagnosticBatchFixture(t testing.TB, count int) ([]lspserver.Snapshot, sour
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	overlay := sourceOverlay{filepath.Join(dir, "types.sec"): string(source)}
+	overlay := sourceOverlay{Sources: map[string]string{filepath.Join(dir, "types.sec"): string(source)}}
 	snapshots := []lspserver.Snapshot{}
 	for i := 0; i < count; i++ {
 		path := filepath.Join(dir, fmt.Sprintf("file%d.sec", i))
 		text := fmt.Sprintf("module module_siblings\nfn Check%d() AuthError { return AuthError.Invalid }\nfn Pending%d() void\n", i, i)
-		overlay[path] = text
+		overlay.Sources[path] = text
 		snapshots = append(snapshots, lspserver.Snapshot{URI: uriFromPath(path), Version: 1, Text: text})
 	}
 	return snapshots, overlay
@@ -89,9 +89,9 @@ func TestDiagnosticBatchKeepsForeignModuleSeparate(t *testing.T) {
 		{URI: uriFromPath(filepath.Join(dir, "a.sec")), Text: "module a\nenum OnlyA { Yes }\n"},
 		{URI: uriFromPath(filepath.Join(dir, "b.sec")), Text: "module b\nfn Read() OnlyA { return OnlyA.Yes }\n"},
 	}
-	overlay := sourceOverlay{}
+	overlay := sourceOverlay{Sources: map[string]string{}}
 	for _, snapshot := range snapshots {
-		overlay[pathFromURI(snapshot.URI)] = snapshot.Text
+		overlay.Sources[pathFromURI(snapshot.URI)] = snapshot.Text
 	}
 	results := analyzeDiagnosticBatch(snapshots, overlay)
 	encoded, _ := json.Marshal(results[snapshots[1].URI])
@@ -108,7 +108,7 @@ func TestDiagnosticBatchPublishesUnresolvedImportAtOwningDocument(t *testing.T) 
 	path := filepath.Join(dir, "app", "main.sec")
 	text := "module main\n\nimport \"missing/module\"\n"
 	snapshot := lspserver.Snapshot{URI: uriFromPath(path), Version: 1, Text: text}
-	results := analyzeDiagnosticBatch([]lspserver.Snapshot{snapshot}, sourceOverlay{path: text})
+	results := analyzeDiagnosticBatch([]lspserver.Snapshot{snapshot}, sourceOverlay{Sources: map[string]string{path: text}})
 	if len(results[snapshot.URI]) != 1 || results[snapshot.URI][0].Code != diagnostics.UnresolvedImport {
 		t.Fatalf("batch unresolved import diagnostics = %+v", results[snapshot.URI])
 	}

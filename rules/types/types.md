@@ -367,20 +367,44 @@ This conversion is explicit and infallible.
 
 `byte` is the compiler-known byte scalar type.
 
-It represents one byte-sized unsigned value.
+It represents one unsigned 8-bit data byte with the complete value domain `0..255`.
 
 Byte-oriented storage and FFI may use `byte` where the semantic meaning is raw byte data.
+
+`byte` and `char` are distinct Sec types with potentially different members and intended uses, even though both use an identical 8-bit representation. Equal machine representation does not erase type identity: neither is implicitly assignable to the other and neither substitutes for the other in overload resolution.
+
+`byte(charValue)` and `char(byteValue)` are explicit, total, value-preserving conversions over `0..255`. The compiler may implement them without a machine instruction.
+
+```sec
+let character: char := 65t
+let raw: byte := byte(character)
+let restored: char := char(raw)
+```
 
 Detailed ABI identity relative to fixed-width integer types is defined by the ABI and layout rules and must not be inferred merely from equal representation size.
 
 ## `char`
 
-`char` is Sec's character scalar type.
+`char` is Sec's character-oriented 8-bit scalar type with the complete value domain `0..255`.
 
-A character literal is `char` by default when no stronger context selects another compatible scalar type:
+A `char` value is not inherently UTF-8 encoded. Its raw value can participate in byte-oriented encodings, including Latin-1, only when an explicitly chosen encoding interprets it. No ambient locale or encoding is inferred from a `char` value.
+
+`char` ordering is unsigned numeric order `0..255`; it is not Unicode, locale, or alphabetic collation.
+
+A single-quoted character literal is `rune` by default (see "Character literal"). An explicitly expected `char` may context-shape a single-quoted literal only when its decoded Unicode scalar value is in `0..255`. This literal shaping is not an implicit `rune`-to-`char` conversion of a previously typed expression:
 
 ```sec
-let ch := 'A'
+let letter: char := 'a'   // contextual char literal, value 97
+let accent: char := 'é'   // contextual char literal, value 233
+let invalid: char := 'Ω'  // compile-time error: U+03A9 does not fit char
+```
+
+An unsuffixed integer literal is not implicitly shaped to `char`. Character intent is expressed with the `t` suffix, a single-quoted literal in a valid `char` context, or an explicit conversion. This is a deliberate exception to integer-literal contextual shaping for integer-family types:
+
+```sec
+let correct: char := 65t
+let alsoCorrect: char := char(65)
+let incorrect: char := 65  // compile-time error: use 65t or char(65)
 ```
 
 The numeric family suffix for `char` is:
@@ -403,9 +427,18 @@ The canonical explicit zero `char` literal is:
 0t
 ```
 
+A `t`-suffixed literal must be in `0..255`. A `t` literal above 255 is invalid even when it is a valid Unicode scalar value:
+
+```sec
+let maximum: char := 255t
+let invalid: char := 256t   // compile-time error
+```
+
 ## `rune`
 
-`rune` is Sec's Unicode scalar type.
+`rune` is Sec's Unicode scalar type. Its domain is `U+0000..U+10FFFF` excluding the surrogate values `U+D800..U+DFFF`. It is semantically distinct from `char` and `byte`, and `rune` values order by Unicode scalar numeric order.
+
+A single-quoted character literal is `rune` by default, independently of its scalar's numeric value. A default `rune` literal does not become `char` merely because its value is in `0..255`.
 
 The numeric family suffix is:
 
@@ -427,15 +460,17 @@ The canonical explicit zero `rune` literal is:
 0r
 ```
 
-A character literal may be shaped to `rune` by context:
+Examples:
 
 ```sec
-let r: rune := 'A'
+let letter := 'a'   // rune, U+0061
+let pi := 'π'       // rune, U+03C0
+let omega: rune := 'Ω'
 ```
 
 `char` and `rune` remain distinct types.
 
-Conversions between them follow explicit conversion and representability rules.
+Conversions between them follow explicit conversion and representability rules. A runtime `rune`-to-`char` conversion requires a range check when it cannot be proven statically; a compiler-known out-of-range constant is rejected at compile time.
 
 ## `string`
 
@@ -757,7 +792,7 @@ let wideFloat: float64 := 8g
 let exact: decimal128 := 8m
 ```
 
-`t` and `r` select the exact scalar types `char` and `rune`.
+`t` and `r` select the exact scalar types `char` and `rune`. A `t` literal must be in `0..255`; an `r` literal must be a Unicode scalar value (`0..U+10FFFF` excluding `U+D800..U+DFFF`).
 
 ---
 
@@ -918,16 +953,17 @@ Both are exact decimal-family values unless context selects another compatible t
 A character literal defaults to:
 
 ```text
-char
+rune
 ```
 
-but may be shaped to `rune` by compatible context.
+independently of its scalar's numeric value. An explicitly expected `char` may shape it only when the decoded scalar is in `0..255`.
 
 Example:
 
 ```sec
-let ch := 'A'
-let r: rune := 'A'
+let r := 'A'          // rune
+let pi := 'π'         // rune
+let ch: char := 'A'   // contextual char literal
 ```
 
 ## Context shaping
@@ -1351,9 +1387,16 @@ not an implicit `range` contract. A conversion into a constrained named type
 converts into the underlying target domain first, stops on intrinsic failure,
 and only then evaluates the declared contracts in canonical source order
 (`rules/types/contracts.md`, "Conversion failure layers"). A compile-time-known
-invalid value is diagnosed at compile time. The public runtime error type or
-types, variant names, and payloads of these failures remain undecided (MD-012;
-`rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 4).
+invalid value is diagnosed at compile time.
+
+A runtime-dependent checked conversion that can fail exposes the core error
+type `ConversionError` (declared in `sec/core/error.sec`). Intrinsic failures use
+its `OutOfRange`, `InvalidScalar`, `PrecisionLoss`, `ScaleOverflow`, or
+`NonFinite` variants; a declared contract failure uses
+`ConversionError.Contract(ContractError.Violation { ... })` as defined in
+`rules/types/contracts.md`, "Public conversion and contract errors". Defining
+this channel never demotes a proven compile-time error into a runtime result
+(MD-012; `rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` § 4).
 
 Lossy, wrapping, saturating, or otherwise intentionally non-preserving conversion semantics require separately defined explicit operations.
 

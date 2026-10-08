@@ -197,7 +197,7 @@ func TestInvalidExplicitDefaultIsRejected(t *testing.T) {
 
 type Port int range 1..65535 default 0
 `)
-	assertSemaErrors(t, errors, []string{"default value 0 is invalid for Port at 3:38"})
+	assertSemaErrors(t, errors, []string{"default value 0 is invalid for Port at 3:38, contract declaration at 3:15"})
 	if errors[0].ID != diagnostics.DefaultViolatesContract || errors[0].Help != "Port requires range 1..65535; choose a value satisfying every type contract" {
 		t.Fatalf("wrong diagnostic: %q help %q", errors[0].ID, errors[0].Help)
 	}

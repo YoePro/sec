@@ -38,6 +38,7 @@ exports.deactivate = deactivate;
 const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const node_1 = require("vscode-languageclient/node");
+const targets_1 = require("./targets");
 let client;
 let output;
 function activate(context) {
@@ -56,7 +57,7 @@ function activate(context) {
             { scheme: "file", language: "sec" }
         ],
         synchronize: {
-            fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{sec,se}"),
+            fileEvents: [vscode.workspace.createFileSystemWatcher("**/*.{sec,se}"), vscode.workspace.createFileSystemWatcher("**/.sec/sec.toml")],
             configurationSection: "sec"
         },
         initializationOptions: {
@@ -77,6 +78,7 @@ function activate(context) {
     context.subscriptions.push(client);
     registerCompilerKnownDefinitions(context);
     registerShowLocations(context);
+    (0, targets_1.registerTargetSelection)(context, () => client);
     client.start().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         output?.appendLine(`Failed to start SEC language server: ${message}`);

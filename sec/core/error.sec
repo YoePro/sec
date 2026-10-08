@@ -54,6 +54,85 @@ enum MathError error {
     NotFinite,
 }
 
+// Identifies the kind of named-type contract that rejected a value.
+// Rulebook: types/contracts.md "Public conversion and contract errors" (MD-012).
+enum ContractKind {
+    // The value violates a range bound.
+    Range,
+
+    // The value is absent from an allowed-membership set.
+    In,
+
+    // The value is not odd.
+    Odd,
+
+    // The value is not even.
+    Even,
+
+    // The value is not a multiple of the declared divisor.
+    MultipleOf,
+
+    // The value is not finite.
+    Finite,
+
+    // The value does not match the declared regex contract.
+    Regex,
+
+    // The value is shorter than the minimum length.
+    MinLen,
+
+    // The value exceeds the maximum length.
+    MaxLen,
+
+    // The value does not have the exact required length.
+    ExactLen,
+
+    // The value is empty where a nonempty value is required.
+    NotEmpty,
+
+    // The value contains non-unique direct elements.
+    Unique,
+}
+
+// Describes a failure of a declared named-type contract.
+//
+// Contract identity is an ordinal in the declaring type, not a runtime
+// pointer, an allocated message, or a globally stable identifier.
+type ContractError union error {
+    // A named-type contract rejected the value.
+    Violation {
+        // Category of the contract that failed.
+        Kind: ContractKind,
+
+        // Zero-based source-order index of the failing contract.
+        DeclarationIndex: uint,
+    },
+}
+
+// Describes a failure of an otherwise valid checked type conversion.
+// Rulebook: types/types.md "Explicit conversions" and types/contracts.md
+// "Public conversion and contract errors" (MD-012).
+type ConversionError union error {
+    // The value is outside the destination scalar's representable range.
+    OutOfRange,
+
+    // The value is not a valid destination scalar value, such as a
+    // surrogate or out-of-domain Unicode scalar in a rune conversion.
+    InvalidScalar,
+
+    // The value cannot be represented exactly at the destination precision.
+    PrecisionLoss,
+
+    // A required destination decimal scale is not representable.
+    ScaleOverflow,
+
+    // A non-finite input is disallowed by the destination's intrinsic domain.
+    NonFinite,
+
+    // A declared named-type contract rejected an otherwise representable value.
+    Contract(ContractError),
+}
+
 // The one failure family of text: every ToString and every runtime string
 // concatenation or interpolation fails with StringError.
 type StringError union error {

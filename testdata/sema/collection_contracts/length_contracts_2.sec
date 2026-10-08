@@ -1,0 +1,6 @@
+
+type Number int minLen 1
+type Negative string minLen -1
+type Dynamic string maxLen limit
+
+module test

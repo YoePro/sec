@@ -1,0 +1,8 @@
+module main
+
+fn Text() string {
+    let mut value: string
+    return value
+}
+
+fn main() int { return 0 }

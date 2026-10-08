@@ -1,0 +1,3 @@
+#target(os: "linux", arch: "armv7")
+module main
+type Selected struct { Only32: int }

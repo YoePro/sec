@@ -1262,8 +1262,12 @@ let exact: decimal128 := 8m
 ```
 
 `t` and `r` apply only to integer literals and select the exact `char` and
-`rune` scalar types. Their value must be a Unicode scalar value: within
-`0..U+10FFFF` and outside the surrogate range `U+D800..U+DFFF`.
+`rune` scalar types. They have two distinct value checks:
+
+- a `t` literal must be in `0..255`, even when a larger value is a valid
+  Unicode scalar value;
+- an `r` literal must be a Unicode scalar value: within `0..U+10FFFF` and
+  outside the surrogate range `U+D800..U+DFFF`.
 
 Binary, octal, decimal, and hexadecimal integer-form literals accept
 `i`, `u`, `g`, `m`, `t`, or `r`. The canonical suffix letters are not
@@ -1373,10 +1377,11 @@ A newline cannot occur directly inside a character literal.
 Supported escapes are defined in the escape section below.
 
 Whether the literal initializes `char`, `rune`, or another compatible type is
-determined by Sema and the type rules. It is a `char` by default, but becomes
-a `rune` when a `rune` is expected, when compared directly to a `rune` value,
-or as a `rune` `switch` case. Thus `if ch == '$'` is valid when `ch` is a
-`rune`.
+determined by Sema and the type rules. It is a `rune` by default,
+independently of its scalar's numeric value. An explicitly expected `char` may
+shape it to `char` only when the decoded scalar is in `0..255`; this applies
+when a `char` is expected, when compared directly to a `char` value, or as a
+`char` `switch` case. Thus `if ch == '$'` is valid when `ch` is a `char`.
 
 An unterminated character literal is one lexical error beginning at its opening
 quote. The lexer retains the complete candidate through the first physical line

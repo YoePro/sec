@@ -1,0 +1,4 @@
+module main
+
+fn Work() void { let mut value: float }
+fn main() int { return 0 }

@@ -1,0 +1,14 @@
+module application
+
+type Deadlines struct { value: Instant, }
+fn CopyPoint(point: Instant) Instant {
+    let copy := point
+    return copy
+}
+fn OptionalPoint(point: Instant) Option[Instant] { return Some(point) }
+fn NestedPoint(point: Instant) Deadlines { return Deadlines { value: point } }
+type Point Instant
+type Further Point
+fn Wrap(point: Instant) Further { return Further(point) }
+fn Unwrap(point: Further) Instant { return Instant(point) }
+fn BoxPoint(point: Instant) any { return any(point) }

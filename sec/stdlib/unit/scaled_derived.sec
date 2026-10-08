@@ -43,6 +43,7 @@ impl hPa {
 /** Kilojoule */
 unit kJ physical
 impl kJ {
+    Kind: energy
     LongName: "Kilojoule"
     Symbol: "kJ"
     BaseUnit: false
@@ -55,6 +56,7 @@ impl kJ {
 /** Megajoule */
 unit MJ physical
 impl MJ {
+    Kind: energy
     LongName: "Megajoule"
     Symbol: "MJ"
     BaseUnit: false
@@ -67,6 +69,7 @@ impl MJ {
 /** Gigajoule */
 unit GJ physical
 impl GJ {
+    Kind: energy
     LongName: "Gigajoule"
     Symbol: "GJ"
     BaseUnit: false
@@ -79,6 +82,7 @@ impl GJ {
 /** Kilowatt */
 unit kW physical
 impl kW {
+    Kind: power
     LongName: "Kilowatt"
     Symbol: "kW"
     BaseUnit: false
@@ -91,6 +95,7 @@ impl kW {
 /** Megawatt */
 unit MW physical
 impl MW {
+    Kind: power
     LongName: "Megawatt"
     Symbol: "MW"
     BaseUnit: false
@@ -103,6 +108,7 @@ impl MW {
 /** Gigawatt */
 unit GW physical
 impl GW {
+    Kind: power
     LongName: "Gigawatt"
     Symbol: "GW"
     BaseUnit: false
@@ -115,6 +121,7 @@ impl GW {
 /** Kilowatt-hour */
 unit kWh physical
 impl kWh {
+    Kind: energy
     LongName: "Kilowatt Hour"
     Symbol: "kWh"
     BaseUnit: false

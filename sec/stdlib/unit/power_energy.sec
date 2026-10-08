@@ -3,6 +3,7 @@ module units
 /** Joule */
 unit J decimal physical
 impl J {
+    Kind: energy
     LongName: "Joule"
     Symbol: "J"
     BaseUnit: false
@@ -31,6 +32,7 @@ impl J {
 /** Watt */
 unit W decimal physical
 impl W {
+    Kind: power
     LongName: "Watt"
     Symbol: "W"
     BaseUnit: false
@@ -59,6 +61,7 @@ impl W {
 /** Watt-hour (Energy) */
 unit Wh decimal physical
 impl Wh {
+    Kind: energy
     LongName: "Watt Hour"
     Symbol: "Wh"
     BaseUnit: false

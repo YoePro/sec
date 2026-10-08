@@ -1,0 +1,15 @@
+module main
+unit Frequency physical
+unit Rotation physical
+impl Frequency { Dimension: [time^-1]
+ Kind: frequency
+ Scale: 1
+}
+impl Rotation { Dimension: [time^-1]
+ Kind: rotational_frequency
+ Scale: 1/60
+ fn Rotation(value: <Frequency>) <Rotation> {
+  return decimal<Rotation>(value)
+ }
+}
+fn Convert(value: decimal<Frequency>) decimal<Rotation> { return value }

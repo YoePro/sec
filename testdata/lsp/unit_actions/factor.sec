@@ -1,0 +1,6 @@
+module main
+unit SEK currency
+unit EUR currency
+fn Convert(value: decimal<SEK>, rate: decimal<EUR/SEK>) decimal<EUR> {
+    return value
+}

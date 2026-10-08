@@ -121,7 +121,7 @@ integrations:
       - cmd/lsp/main.go
     tests:
       - internal/sema/compiler_known_members_test.go
-      - internal/sema/analyzer_temporal_test.go
+      - internal/sema/temporal/analyzer_test.go
       - cmd/lsp/main_test.go
     implemented:
       - value.SizeOf and TypeName.SizeOf resolve through authoritative read-only compiler-known property entries with uint results

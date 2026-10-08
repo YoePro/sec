@@ -1,0 +1,4 @@
+module main
+fn Convert(value: int8<m>) int64<m> {
+    return value
+}

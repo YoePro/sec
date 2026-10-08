@@ -31,6 +31,7 @@
     "typescript": "^5.0.0"
   },
   "contributes": {
+    "commands": [{ "command": "sec.selectTarget", "title": "SEC: Select Project Target" }],
     "languages": [
       {
         "id": "sec",

@@ -1,0 +1,2 @@
+module main
+fn Convert(value: int8<m/s>) int64<m/s> { return value }

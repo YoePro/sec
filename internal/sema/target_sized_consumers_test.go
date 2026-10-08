@@ -87,6 +87,6 @@ fn F() void {
 		"value 300 overflows int8 at 8:12",
 		"value 300 overflows int8 at 12:7",
 		"value 300 overflows int8 at 13:27",
-		"value 20 violates range contract P 0..10 at 14:24",
+		"value 20 violates range contract P 0..10 at 14:24, contract declaration at 3:12",
 	})
 }

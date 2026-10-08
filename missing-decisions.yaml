@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-06"
+updated: "2026-10-08"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -39,31 +39,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-012
-    area: types-contracts-and-errors
-    rulebooks:
-      - rules/types/contracts.md
-      - rules/types/types.md
-      - rules/errors/errorhandling.md
-    description: >-
-      The semantic layering of checked-conversion failure is decided
-      (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 4): a missing conversion relation is a compile-time type
-      diagnostic, an intrinsic target-domain failure of the underlying
-      primitive stops before contracts, and declared contracts are then
-      checked in source order, with compile-time-known invalid values
-      diagnosed at compile time (implemented for constant integer
-      conversions). Still undecided: whether intrinsic checked-conversion
-      failures and contract-validation failures use separate public error
-      types or a common typed wrapper; the canonical public type name or
-      names; exact variant names; exact payloads; whether a contract failure
-      exposes the contract kind, its source identity or index, or another
-      stable identifier; and which primitive/scalar failure variants belong to
-      the public API. Until decided, the fallible conversion and constrained
-      try-assignment paths cannot get their complete typed frontend contract
-      or runtime validation.
-    classification: constraining
-    status: open
-
   - id: MD-015
     area: types-units-and-temporal
     rulebooks:
@@ -84,7 +59,12 @@ decisions:
       time-dimension quantity to `duration` (scale resolution, carrier,
       rounding to nanoseconds, overflow, negative values). Decide the
       quantity-literal syntax and the conversion contract before
-      frontend.temporal-duration can be implemented.
+      the time-quantity conversion in frontend.temporal-duration can be implemented.
+      The separate no-hard-coded-unit-spellings audit completed on 2026-10-08:
+      call boundaries retain nominal duration checks for familiar and arbitrary
+      unit names, dimensions and scales, and the represented legacy mutex calls
+      do not invent unit-specific timeout overloads. This removes no conversion
+      requirement and does not implement the canonical timeout overload surface.
     classification: blocking
     status: open
 
@@ -222,26 +202,6 @@ decisions:
       the binding environment's form, ownership, per-target contents, and
       selection mechanism.
     classification: blocking
-    status: open
-  - id: MD-022
-    area: c-scalar-literal-shaping
-    rulebooks:
-      - rules/platform/ffi.md
-      - rules/types/types.md
-    description: >-
-      ffi.md § 8 permits literal shaping such as `let count: C::int := 10`
-      "when the literal is representable", but it shows only integer
-      literals. The implementation shapes integer and floating literals into
-      C:: numeric types and, by analogy, the boolean literals true and false
-      into C::bool. It does not shape character literals into C::char,
-      C::schar, or C::uchar, because those are C integer types. Decisions
-      needed: whether boolean literals shape into C::bool, whether character
-      literals shape into the C character types (and with what encoding),
-      and whether a C:: type may initialize another C:: type of a different
-      name implicitly. The implementation currently rejects this, matching
-      the general Sec rule that distinct scalar types need explicit
-      conversion.
-    classification: localized
     status: open
   - id: MD-023
     area: ffi-legal-sec-scalars
@@ -626,31 +586,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-043
-    area: char-byte-domain
-    rulebooks:
-      - rules/types/types.md
-      - rules/foundations/operators.md
-      - rules/foundations/lexical_structure.md
-    description: >-
-      The language owner states (2026-10-05) that `char` is one byte and is
-      not a Unicode scalar by default. types.md only calls `char` "Sec's
-      character scalar type", operators.md § "Character ordering" says `char`
-      values "order by Unicode scalar value within the valid `char` domain",
-      and lexical_structure.md § 13 lets a character literal hold any one
-      Unicode scalar. Sema (2026-10-05) accepts `let e: char := 'é'` and
-      `let b: char := 300t` without diagnostics. Undecided: whether the char
-      domain is 0..255 or ASCII 0..127; whether a non-ASCII character literal
-      shaped to `char` is an error or names a specific byte (for example a
-      Latin-1 value or the first UTF-8 byte); which diagnostic rejects an
-      out-of-range `t` literal; and the rulebook wording for char ordering.
-      Pitfall interval proofs already treat a char as one byte, accept only
-      ASCII character literals and values 0..255 as char bounds, and give no
-      proof otherwise.
-    classification: constraining
-    status: open
-
-
   - id: MD-044
     area: stack-budget-project-contracts
     rulebooks:
@@ -745,4 +680,61 @@ decisions:
       integer carriers; inexact conversions are rejected and the help offers
       only the explicit unit conversion, never an invented rounding policy.
     classification: localized
+    status: open
+
+  - id: MD-048
+    area: unit-transform-conversion-plans
+    rulebooks:
+      - rules/types/units.md
+      - rules/foundations/grammar.md
+      - rules/compiler/semantic_ir.md
+    description: >-
+      Blocks the complete frontend.units-v2 remaining item "validate affine
+      and logarithmic Reference compatibility and implement their specialized
+      explicit conversion plans". units.md "Affine transform" defines
+      canonical = value * Scale + Offset, but "Logarithmic transform" only
+      says that a value maps through LogBase, LogFactor and Reference; it does
+      not define the forward/inverse formulas or the position of LogFactor.
+      Reference must resolve to a compatible compile-time linear quantity,
+      yet the only concrete example is the dimensionless scalar 1.
+      grammar.md "Unit metadata inside impl" retains TokensUntilLineEnd and
+      does not specify the accepted reference-quantity expression forms or
+      how a dimensional reference identifies its carrier, unit coordinates,
+      normalized value and Kind. Decide the forward/inverse transform,
+      admissible reference values and compatibility checks, the numeric
+      carriers and exactness/precision policy for logarithms and exponentials,
+      and the behavior of invalid domains and unrepresentable results,
+      coordinating with MD-047 (rounding) and MD-012 (checked failure types, decided 2026-10-08 as the core ConversionError).
+      The applied units corrections require preservation of transform and
+      Reference facts but do not supply these decisions. Current Sema retains
+      Reference as source text and rejects conversions between distinct
+      logarithmic units with "requires a specialized conversion operation".
+      No partial affine-only implementation was made for this combined item.
+    classification: blocking
+    status: open
+
+  - id: MD-049
+    area: decimal-range-default-scale
+    rulebooks:
+      - rules/types/default_values.md
+      - rules/memory/layout.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v2.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v3.md
+    description: >-
+      default_values.md "Floating and decimal ranges" and A.5 require the
+      unique nearest exactly representable value of the declared type and
+      scale, but source decimal types do not establish the scale used by an
+      implicit range-default search. The canonical carriers have signed i32
+      scales; schema v2 decimal constants require non-negative scales while
+      schema v3 retains the attributes without specifying a source-level
+      range-search policy. Decide whether negative scales are valid, whether
+      the search ranges over every carrier scale or a declared fixed scale,
+      and how an exclusive upper bound of zero selects a nearest negative
+      value. An unrestricted scale has no nearest nonzero value; an i32-bounded
+      search selects an extreme scale whose exact rational/text materialization
+      is impractical. Do not choose endpoint spelling as precision, an arbitrary
+      scale cap, or binary-floating nextafter as language semantics. Blocks
+      frontend.default-values "implement exact successors for exclusive decimal
+      upper bounds"; existing behavior continues to require explicit defaults.
+    classification: blocking
     status: open

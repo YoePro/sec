@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/sema"
 )
@@ -18,6 +19,7 @@ import (
 //   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
 //   - rules/compiler/compiler_analysis.md — §7(4–8), §58(3)
 //   - rules/memory/allocation.md — §29(4)
+//   - rules/tooling/diagnostics.md — §4 severity and mandatory definitions
 
 func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text string, overlay sourceOverlay) diagnostic {
 	start := diagnosticTokenStart(text, lexer.Token{Line: err.Line, Column: err.Column})
@@ -54,12 +56,18 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 	}
 	message, related = appendEscapeCausePaths(err, message, related, uri, text, overlay)
 	message, related = appendAllocationCausePath(err, message, related, uri, text, overlay)
+	resolvedSeverity := lspSeverity(err.Severity, severity)
+	// Mandatory registry policy also applies when a lowering occurrence lacks
+	// an explicit severity or arrives through an advisory fallback path.
+	if definition, known := diagnostics.Lookup(err.ID); known && definition.Mandatory {
+		resolvedSeverity = lspSeverity(definition.DefaultSeverity, resolvedSeverity)
+	}
 	return diagnostic{
 		Range: lspRange{
 			Start: start,
 			End:   end,
 		},
-		Severity:           lspSeverity(err.Severity, severity),
+		Severity:           resolvedSeverity,
 		Code:               err.ID,
 		Source:             "sec",
 		Message:            message,

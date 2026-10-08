@@ -1,0 +1,51 @@
+module main
+type Tag int
+type Box struct { value: int }
+interface Numeric {
+    fn Select(value: int) int
+}
+interface Textual {
+    fn Select(value: string) string
+}
+interface Combined implements Numeric, Textual {
+    fn Select(value: Tag) Tag
+    fn Select(first: int, second: int) int
+}
+interface Direct {
+    fn Select(value: bool) bool
+    fn Select(value: int32) int32
+}
+interface Modes {
+    fn Borrow(value: ref int) int
+    mut fn Change(value: ref mut int) void
+    fn Take(-> value: Box) void
+    fn Many(values: ...int) int
+}
+fn Integer(receiver: ref Combined, value: int) int { return receiver.Select(value) }
+fn Text(receiver: ref Combined, value: string) string { return receiver.Select(value) }
+fn Named(receiver: ref Combined, value: Tag) Tag { return receiver.Select(value) }
+fn Arity(receiver: ref Combined, first: int, second: int) int { return receiver.Select(first, second) }
+fn Boolean(receiver: ref Direct, value: bool) bool { return receiver.Select(value) }
+fn Fixed(receiver: ref Direct, value: int32) int32 { return receiver.Select(value) }
+fn Borrow(receiver: ref Modes, value: ref int) int { return receiver.Borrow(value) }
+fn Change(receiver: ref mut Modes, value: ref mut int) void { receiver.Change(value) }
+fn Take(receiver: ref Modes, value: Box) void { receiver.Take(<-value) }
+fn Variadic(receiver: ref Modes) int { return receiver.Many(1, 2, 3) }
+fn Plain(value: int) int { return value }
+fn DirectCall(value: int) int { return Plain(value) }
+type Concrete struct { value: int }
+impl Concrete implements Direct {
+    fn Select(value: bool) bool { return value }
+    fn Select(value: int32) int32 { return value }
+}
+fn ConcreteCall(receiver: ref Concrete, value: bool) bool { return receiver.Select(value) }
+interface Generic[T] {
+    fn Pick(value: T) T
+    fn Pick(value: bool) bool
+}
+interface Specialized implements Generic[int32] {}
+fn GenericInteger(receiver: ref Generic[int32], value: int32) int32 { return receiver.Pick(value) }
+fn GenericBoolean(receiver: ref Generic[int32], value: bool) bool { return receiver.Pick(value) }
+fn InheritedGeneric(receiver: ref Specialized, value: int32) int32 { return receiver.Pick(value) }
+interface StaticRequirement { static fn Select(value: int) int }
+fn StaticInterface(value: int) int { return StaticRequirement.Select(value) }

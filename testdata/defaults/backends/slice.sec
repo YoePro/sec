@@ -1,0 +1,5 @@
+module main
+fn Slice() void {
+    let mut value: ref int[]
+    discard value
+}

@@ -44,6 +44,11 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		// destruction plan yet, so it must not silently drop the destructor.
 		return nil, &UnsupportedFeatureError{Feature: "custom free lifecycle destruction", Package: options.MaxPackage, Location: location(free.Token)}
 	}
+	// A proved conversion must not disappear while unit operations are still
+	// absent from Semantic IR (semantic-ir-units correction, Erasure boundary).
+	if sites := analyzer.FloatingUnitConversionSites(); len(sites) > 0 {
+		return nil, &UnsupportedFeatureError{Feature: "exact floating unit conversion", Package: options.MaxPackage, Location: location(sites[0])}
+	}
 	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles)}
 	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}, definedStructs: map[TypeID]bool{}}
 	currentModule := ""
@@ -210,15 +215,7 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 	}
 	base := Type{Kind: kind, Name: t.Name, Signed: signed, BitWidth: width, TargetSize: target}
 	if t.Named || t.Declared {
-		if len(t.Contracts) > 0 || t.Unit != "" || !t.Dimension.IsZero() {
-			return 0, &UnsupportedFeatureError{Feature: "named type contracts or units", Package: b.maxPackage}
-		}
-		baseID := b.module.Types.Intern(base)
-		module := t.Module
-		if module == "" {
-			module = b.module.Identity
-		}
-		return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: module + "::" + t.Name, Base: baseID}), nil
+		return b.internNamedScalar(t)
 	}
 	return b.module.Types.Intern(base), nil
 }
@@ -488,6 +485,9 @@ func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
 		w, target := numericWidth(name), name == "int"
 		return TypeInt, true, w, target, true
 	case sema.UintType:
+		if name == "uint" {
+			return TypeUint, false, 0, true, true
+		}
 		if name == "byte" {
 			return TypeByte, false, 8, false, true
 		}
@@ -631,14 +631,23 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 	}
 	var value builtValue
 	var err error
-	if stmt.SynthesizedDefault && ((fb.owner.maxPackage >= 13 && fact.Type.Kind == sema.StructType) ||
-		(fb.owner.maxPackage >= 14 && fact.Type.Kind == sema.ArrayType)) {
-		// Package 13 section 26 and Package 14 sections 24-26 require the new IR
-		// to consume canonical compact DefaultResolution facts instead of
-		// treating Sema's bounded compatibility AST nodes as semantic authority.
+	if stmt.SynthesizedDefault && fb.resolvedDefaultSupported(fact.Type) {
+		// Preserve the declared scalar identity and width, and compact aggregate
+		// defaults, instead of re-inferring the compatibility AST initializer.
+		// Rules: default_values.md — Named types, A.5; P13 §26; P14 §§24–26.
 		value, err = fb.buildResolvedDefault(fact.Type, sema.DefaultValueOf(fact.Type), location(stmt.Token))
 	} else {
-		value, err = fb.buildExpr(stmt.Value, 0)
+		// Integer context shaping must retain the declared carrier at storage
+		// boundaries. Other families keep their own prerequisite checks.
+		// Rules: rules/types/types.md — "Context shaping"; rules/memory/layout.md — §18.
+		var bindingType TypeID
+		if fact.Type.Kind == sema.IntType || fact.Type.Kind == sema.UintType {
+			bindingType, err = fb.owner.internType(fact.Type)
+			if err != nil {
+				return err
+			}
+		}
+		value, err = fb.buildExpr(stmt.Value, bindingType)
 	}
 	if err != nil {
 		return err
@@ -1409,6 +1418,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	if expected != 0 {
 		typeID = expected
 	}
+	if value, handled := fb.buildSignedIntegerLiteral(expr, typeID); handled {
+		return value, nil
+	}
 	if value, handled, foldErr := fb.buildFoldedStringConcat(expr, typeID); handled {
 		return value, foldErr
 	}
@@ -1867,82 +1879,6 @@ func semanticStructAction(action sema.ResolvedStructFieldAction) (StructFieldAct
 	default:
 		return "", false
 	}
-}
-
-func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.DefaultResolution, loc Location) (builtValue, error) {
-	typeID, err := fb.owner.internType(typ)
-	if err != nil {
-		return builtValue{}, err
-	}
-	switch resolution.Kind {
-	case sema.PrimitiveDefault, sema.NamedDefault, sema.RangeDefault, sema.MembershipDefault, sema.ExplicitTypeDefault:
-		switch typ.Kind {
-		case sema.BoolType:
-			value := resolution.Value.Bool
-			return fb.result(Operation{Kind: OpConstBool, Bool: &value, Location: loc}, typeID), nil
-		case sema.StringType:
-			return fb.result(Operation{Kind: OpConstString, String: resolution.Value.String, Location: loc}, typeID), nil
-		case sema.IntType, sema.UintType, sema.CharType, sema.RuneType:
-			if resolution.Value.Integer == nil {
-				return builtValue{}, fb.unsupported("non-integer scalar default", lexer.Token{})
-			}
-			return fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(resolution.Value.Integer), Location: loc}, typeID), nil
-		case sema.FloatType:
-			return fb.result(Operation{Kind: OpConstFloat, FloatLexeme: resolution.Value.Lexeme, Location: loc}, typeID), nil
-		case sema.DecimalType:
-			decimal, parseErr := parseDecimal(resolution.Value.Lexeme)
-			if parseErr != nil {
-				return builtValue{}, parseErr
-			}
-			return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, Location: loc}, typeID), nil
-		}
-	case sema.StructDefault:
-		definition, ok := fb.owner.structDefinition(typeID)
-		if !ok {
-			break
-		}
-		op := Operation{Kind: OpStructConstruct, Location: loc}
-		resolvedByName := map[string]sema.DefaultResolution{}
-		for _, field := range resolution.Fields {
-			resolvedByName[field.Name] = field.Value
-		}
-		for index, field := range typ.Fields {
-			value, valueErr := fb.buildResolvedDefault(field.Type, resolvedByName[field.Name], loc)
-			if valueErr != nil {
-				return builtValue{}, valueErr
-			}
-			op.Operands = append(op.Operands, value.id)
-			op.StructOrigins = append(op.StructOrigins, StructOriginDefault)
-			op.StructActions = append(op.StructActions, StructActionConstructDirect)
-			_ = definition.Fields[index]
-		}
-		return fb.result(op, typeID), nil
-	case sema.ArrayDefault:
-		// SEC-MLIR Package 14 sections 24-27: array defaults remain one compact
-		// semantic operation. Zero length never queries or constructs an element;
-		// positive lengths are restricted to the infallible trivial P14 subset.
-		length, fixed := sema.FixedArrayLength(typ)
-		if typ.Kind != sema.ArrayType || typ.Element == nil || !fixed {
-			return builtValue{}, fb.unsupported("dynamic or malformed array default", lexer.Token{})
-		}
-		if resolution.ArrayLengthDecimal != length.String() {
-			return builtValue{}, fmt.Errorf("array default length fact mismatch for %s", typ.Name)
-		}
-		if length.Sign() != 0 {
-			if resolution.ArrayElementDefault == nil || sema.CopyClassificationOf(*typ.Element) != sema.CopyTrivial || !sema.TriviallyDestructible(*typ.Element) {
-				return builtValue{}, fb.unsupported("non-trivial fixed-array default for "+typ.Name, lexer.Token{})
-			}
-		}
-		elementType, elementErr := fb.owner.internType(*typ.Element)
-		if elementErr != nil {
-			return builtValue{}, elementErr
-		}
-		return fb.result(Operation{
-			Kind: OpArrayDefault, ArrayElementType: elementType,
-			ArrayLength: length.String(), Location: loc,
-		}, typeID), nil
-	}
-	return builtValue{}, fb.unsupported("resolved default "+string(resolution.Kind)+" for "+typ.Name, lexer.Token{})
 }
 
 func (fb *functionBuilder) buildEnumConversion(call *ast.CallExpression, conversion sema.ResolvedEnumConversion, resultType TypeID) (builtValue, error) {
@@ -3255,10 +3191,17 @@ func operatorSpelling(expr ast.Expression) string {
 	}
 }
 
+// buildCall consumes the selected Sema target and rejects unavailable method
+// dispatch before attempting any direct-call lowering.
+// Rules: rules/compiler/semantic_ir.md — resolved call facts;
+// rules/declarations/interfaces.md — §6; compiler_pipeline.md — lowering prerequisites.
 func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, error) {
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {
 		return builtValue{}, fb.unsupported("unresolved function call", call.Token)
+	}
+	if resolved.Kind == sema.ResolvedInterfaceMethodCall {
+		return builtValue{}, fb.unsupported("interface method dispatch", call.Token)
 	}
 	if resolved.Kind == sema.ResolvedStaticMethodCall {
 		return builtValue{}, fb.unsupported("method call", call.Token)

@@ -1,0 +1,21 @@
+module main
+
+type Handle struct {
+    raw: RawPtr[byte],
+}
+
+type Holder struct {
+    handles: list[Handle],
+    bounded: list[int, 8],
+}
+
+fn F() void {
+    let a: list[int] := list[int] {}
+    let b := list[int, 8] {}
+    let mut c: list[Handle]
+    let holder := Holder {}
+    discard a
+    discard b
+    discard c
+    discard holder
+}

@@ -1,0 +1,2 @@
+module core
+type Instant struct { ticks: int64, }

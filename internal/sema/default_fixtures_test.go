@@ -64,7 +64,7 @@ func TestDefaultValueFixtureSuite(t *testing.T) {
 		"default_values_invalid.sec": {"S1047 6:9", "S1009 7:13", "S1009 8:13"},
 		"default_ranges_invalid.sec": {"S1059 5:47", "S1060 6:48", "S1061 9:13"},
 		"default_in_contract_invalid.sec": {
-			"S1054 4:19", "S1053 5:32", "S1059 6:50", "S1011 7:39", "S1011 7:39",
+			"S1054 4:19", "S1053 5:32", "S1059 6:50", "S1011 7:30", "S1011 7:36",
 		},
 		"default_structs_invalid.sec": {"S1059 5:38", "S1061 20:19", "S1063 21:19", "S1010 22:18"},
 		"default_lists_invalid.sec":   {" 5:17", " 6:32"},

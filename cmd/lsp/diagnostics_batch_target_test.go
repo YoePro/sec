@@ -34,7 +34,7 @@ func TestDiagnosticBatchAnalyzesEachPlatformFileForItsTarget(t *testing.T) {
 		uris[name] = uriFromPath(path)
 		snapshots = append(snapshots, lspserver.Snapshot{URI: uris[name], Text: text, Version: 1})
 	}
-	results := analyzeDiagnosticBatch(snapshots, sourceOverlay{})
+	results := analyzeDiagnosticBatch(snapshots, sourceOverlay{Sources: map[string]string{}})
 	for _, name := range []string{"device.freebsd.any.sec", "device.linux.any.sec"} {
 		found := false
 		for _, item := range results[uris[name]] {

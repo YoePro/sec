@@ -72,7 +72,7 @@ func (a *Analyzer) checkEnumMembershipValue(typ Type, expr ast.Expression) bool 
 			}
 		}
 		if !member {
-			a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "enum value %s violates in contract %s", constant.String, typ.Name)
+			a.addContractError(expressionToken(expr), contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "enum value %s violates in contract %s", constant.String, typ.Name)
 			return true
 		}
 	}

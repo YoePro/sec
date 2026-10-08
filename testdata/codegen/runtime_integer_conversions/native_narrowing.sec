@@ -1,0 +1,3 @@
+module main
+fn Convert(value: int64) int { return int(value) }
+fn main() int { return 0 }

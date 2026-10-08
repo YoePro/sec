@@ -94,6 +94,9 @@ func (s *server) republishOpenDiagnostics() error {
 		affected[dir] = true
 	}
 	s.invalidateCrossTargetDirectories(affected)
+	for _, snapshot := range s.documentSnapshots.Snapshots() {
+		s.scheduleCrossTargetDiagnostics(snapshot.URI)
+	}
 	for _, uri := range representatives {
 		s.scheduleModuleDiagnostics(uri)
 	}

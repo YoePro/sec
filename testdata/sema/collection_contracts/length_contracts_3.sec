@@ -1,0 +1,9 @@
+
+type AtLeastFive string minLen 5
+type ImpossibleRange AtLeastFive maxLen 4
+type EmptyCode string exactLen 0 notEmpty
+type ExactFour string exactLen 4
+type ExactConflict ExactFour exactLen 5
+type FixedFour int[4] maxLen 3
+
+module test

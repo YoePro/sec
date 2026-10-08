@@ -19,6 +19,18 @@ import (
 // rules/analysis/pitfall_analysis.md — "Interactive analysis";
 // rules/memory/allocation.md — §29(1); rules/platform/platform_model.md — source selection by target.
 func newLSPAnalyzer(uri string, programs ...*ast.Program) *sema.Analyzer {
+	var program *ast.Program
+	if len(programs) > 0 {
+		program = programs[0]
+	}
+	return newLSPAnalyzerForInputs(uri, program, sourceOverlay{})
+}
+
+// newLSPAnalyzerForInputs binds canonical target facts from the request snapshot.
+// Rules: rules/tooling/lsp.md — Target-aware analysis, Configuration, Snapshots;
+// rules/types/types.md — int and uint, Binary floating-point types.
+func newLSPAnalyzerForInputs(uri string, program *ast.Program, overlay sourceOverlay) *sema.Analyzer {
+	programs := []*ast.Program{program}
 	sourcePath := pathFromURI(uri)
 	depth := lspAnalysisDepth(sourcePath)
 	// Source selection and semantic target selection must use the same active
@@ -43,6 +55,11 @@ func newLSPAnalyzer(uri string, programs ...*ast.Program) *sema.Analyzer {
 			analyzer.SetPitfallSourcePriority([]string{sourcePath})
 			return analyzer
 		}
+	}
+	if plan, ok := selectedLSPPlan(sourcePath, overlay); ok {
+		analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, depth)
+		analyzer.SetPitfallSourcePriority([]string{sourcePath})
+		return analyzer
 	}
 	if plan, err := lspScalarPlan(sourcePath); err == nil {
 		analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, depth)

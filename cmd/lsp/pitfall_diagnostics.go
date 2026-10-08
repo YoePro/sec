@@ -164,7 +164,7 @@ func pitfallDiagnostics(analyzer *sema.Analyzer, uri, text string, overlay sourc
 			if evidence.Source.File != "" && evidence.Source.Line > 0 {
 				source := text
 				if normalizedSourcePath(evidence.Source.File) != normalizedSourcePath(pathFromURI(uri)) {
-					if data, ok := overlay[normalizedSourcePath(evidence.Source.File)]; ok {
+					if data, ok := overlay.Sources[normalizedSourcePath(evidence.Source.File)]; ok {
 						source = data
 					} else if data, err := os.ReadFile(evidence.Source.File); err == nil {
 						source = string(data)

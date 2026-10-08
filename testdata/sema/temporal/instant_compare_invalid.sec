@@ -1,0 +1,2 @@
+module application
+fn Equal(left: Instant, right: Instant) bool { return left == right }

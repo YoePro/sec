@@ -1,0 +1,4 @@
+module main
+
+fn Work() void { let value := float(1) }
+fn main() int { return 0 }

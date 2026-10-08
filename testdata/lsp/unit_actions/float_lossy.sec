@@ -1,0 +1,2 @@
+module main
+fn Convert(value: int32<m>) float32<m> { return value }

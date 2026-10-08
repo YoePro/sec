@@ -80,7 +80,7 @@ func TestAllocationConsumerParity(t *testing.T) {
 					if err := os.WriteFile(filepath.Join(dir, ".sec", "sec.toml"), []byte(configured), 0644); err != nil {
 						t.Fatal(err)
 					}
-					lspReports = append(lspReports, analyze(uri, source), analyzeDiagnosticBatch([]lspserver.Snapshot{{URI: uri, Text: source}}, nil)[uri])
+					lspReports = append(lspReports, analyze(uri, source), analyzeDiagnosticBatch([]lspserver.Snapshot{{URI: uri, Text: source}}, sourceOverlay{})[uri])
 				}
 				for _, command := range []string{"emit-ir", "analyse"} {
 					args := []string{command, path, "--target", target, "--diagnostic-format=json"}

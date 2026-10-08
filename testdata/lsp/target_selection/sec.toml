@@ -1,0 +1,15 @@
+[project]
+name = "target-selection"
+[variant.small]
+os = "linux"
+arch = "armv7"
+[variant.large]
+os = "linux"
+arch = "amd64"
+[variant.duplicate]
+os = "linux"
+arch = "armv7"
+[target.app]
+kind = "command"
+source = "app"
+variants = ["small", "large", "duplicate"]

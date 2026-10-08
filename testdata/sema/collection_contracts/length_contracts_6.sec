@@ -1,0 +1,14 @@
+
+type TwoToThree int[] minLen 2 maxLen 3
+type ExactlyTwo int[] exactLen 2
+type Present int[] notEmpty
+
+let valid: TwoToThree := [1, 2]
+let tooShort: TwoToThree := [1]
+let tooLong: TwoToThree := [1, 2, 3, 4]
+let wrongExact: ExactlyTwo := [1, 2, 3]
+let empty: Present := []
+let pair: int[2] := [1, 2]
+let spreadTooLong: ExactlyTwo := [pair..., 3]
+
+module test

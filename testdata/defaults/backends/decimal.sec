@@ -1,0 +1,8 @@
+module main
+
+fn Decimal() decimal {
+    let mut value: decimal
+    return value
+}
+
+fn main() int { return 0 }

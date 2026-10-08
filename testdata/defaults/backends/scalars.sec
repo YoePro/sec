@@ -1,0 +1,35 @@
+module main
+
+type Named int
+type Override int default 37
+
+fn Integer() int {
+    let mut value: int
+    return value
+}
+fn Unsigned() uint {
+    let mut value: uint
+    return value
+}
+fn Boolean() bool {
+    let mut value: bool
+    return value
+}
+fn Character() char {
+    let mut value: char
+    return value
+}
+fn Rune() rune {
+    let mut value: rune
+    return value
+}
+fn NamedValue() Named {
+    let mut value: Named
+    return value
+}
+fn ExplicitValue() Override {
+    let mut value: Override
+    return value
+}
+
+fn main() int { return 0 }

@@ -24,6 +24,8 @@ import (
 	"sec/internal/formatter"
 	"sec/internal/lexer"
 	"sec/internal/lsp/features"
+	defaultactions "sec/internal/lsp/features/defaults"
+	unitactions "sec/internal/lsp/features/units"
 	"sec/internal/lsp/protocol"
 	lspserver "sec/internal/lsp/server"
 	"sec/internal/parser"
@@ -306,6 +308,7 @@ type server struct {
 	pitfallSettings        pitfallDiagnosticSettings
 	inlayHints             *inlayHintSettings
 	crossTarget            *crossTargetStore
+	targetSelections       map[string]lspTargetSelection // timerMu protects immutable request snapshots
 }
 
 func (s *server) inlayHintSettings() inlayHintSettings {
@@ -313,22 +316,6 @@ func (s *server) inlayHintSettings() inlayHintSettings {
 		return defaultInlayHintSettings()
 	}
 	return *s.inlayHints
-}
-
-type sourceOverlay = lspserver.SourceOverlay
-
-func (s *server) sourceOverlay() sourceOverlay {
-	overlay := sourceOverlay{}
-	if s == nil || s.documentSnapshots == nil {
-		return overlay
-	}
-	for _, snapshot := range s.documentSnapshots.Snapshots() {
-		path := pathFromURI(snapshot.URI)
-		if path != "" {
-			overlay[normalizedSourcePath(path)] = snapshot.Text
-		}
-	}
-	return overlay
 }
 
 type formatterBranchContext struct {
@@ -407,6 +394,7 @@ func (s *server) handle(message rpcMessage) error {
 						"includeText": false,
 					},
 				},
+				"experimental":               map[string]any{"targetSelection": true},
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
 				"workspaceSymbolProvider":    true,
@@ -451,6 +439,8 @@ func (s *server) handle(message rpcMessage) error {
 				"version": "0.1.0",
 			},
 		})
+	case "sec/targets", "sec/selectTarget":
+		return s.handleTargetRequest(message)
 	case "initialized":
 		return nil
 	case "workspace/didChangeWorkspaceFolders":
@@ -601,6 +591,7 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, []codeAction{})
 		}
 		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)
+		actions = append(actions, defaultCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay())...)
 		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
 		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
 		actions = append(actions, missingSeparatorCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
@@ -935,7 +926,7 @@ func analyzeNavigationSource(uri string, text string, overlays ...sourceOverlay)
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 	return analyzer
 }
@@ -985,7 +976,7 @@ func documentHighlightsForSource(uri string, text string, pos position, overlays
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -1075,7 +1066,7 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -1120,7 +1111,7 @@ func referencesForSource(uri string, text string, pos position, includeDeclarati
 	path := pathFromURI(uri)
 	overlay := firstSourceOverlay(overlays)
 	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -1145,7 +1136,7 @@ func referencesForSource(uri string, text string, pos position, includeDeclarati
 	}
 	seen := map[string]bool{}
 	for file := range files {
-		data, err := lspserver.ReadSource(file, overlay)
+		data, err := lspserver.ReadSource(file, overlay.Sources)
 		if err != nil {
 			continue
 		}
@@ -1223,7 +1214,7 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		targetExpr = findSelectorLHS(fileAST, text, context.DotOffset)
 	}
 
-	analyzer := newLSPAnalyzer(uri, fileAST)
+	analyzer := newLSPAnalyzerWithOverlay(uri, fileAST, firstSourceOverlay(overlays))
 	analyzed := false
 	if fileAST != nil && !parseResult.Fatal {
 		prepareProgramForLSP(fileAST, pathFromURI(uri), firstSourceOverlay(overlays))
@@ -1577,7 +1568,7 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 	tokens := sourceTokens(uri, text)
 	for name := range analyzer.Types() {
@@ -2088,7 +2079,7 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 	construction, openOffset, closeOffset, found := constructionAtOffset(program, path, text, offset)
 	if !found || offset <= openOffset || offset > closeOffset {
@@ -3431,7 +3422,7 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 		}
 	}
 	for name, typ := range analyzer.Types() {
-		add(completionItem{Label: name, Kind: typeCompletionKind(typ), Detail: typeCompletionDetail(typ)})
+		add(completionItem{Label: name, Kind: typeCompletionKind(typ), Detail: defaultactions.CompletionDetail(typ)})
 	}
 
 	sortCompletionItems(items)
@@ -3674,14 +3665,6 @@ func typeCompletionKind(typ sema.Type) int {
 	}
 }
 
-func typeCompletionDetail(typ sema.Type) string {
-	detail := string(typ.Kind)
-	if value, _, ok := sema.DefaultValueDisplay(typ); ok {
-		detail += " = " + value
-	}
-	return detail
-}
-
 func functionCompletionDetail(functions []sema.Function) string {
 	if len(functions) == 0 {
 		return ""
@@ -3790,51 +3773,6 @@ func ownershipCodeActions(uri string, text string, reported []diagnostic) []code
 				uri: {edit},
 			}},
 		})
-	}
-	return actions
-}
-
-// unitConversionCodeActions offers the compiler-proven explicit unit
-// conversion Sema recorded for a rejected value, attached to the reported
-// diagnostic at that value. The LSP never derives a conversion itself and
-// never invents a factor, exchange rate, or rounding policy.
-//
-// Rules:
-//   - rules/tooling/lsp.md — "Unit actions"
-//   - rules/types/units.md — "LSP requirements"
-func unitConversionCodeActions(uri string, text string, reported []diagnostic, overlay sourceOverlay) []codeAction {
-	if len(reported) == 0 {
-		return nil
-	}
-	program := parseProgramForLSP(uri, text)
-	if program == nil {
-		return nil
-	}
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri, program)
-	analyzer.Analyze(program)
-	actions := []codeAction{}
-	for _, suggestion := range analyzer.UnitConversionSuggestions() {
-		if suggestion.File != "" && path != "" && normalizedSourcePath(suggestion.File) != normalizedSourcePath(path) {
-			continue
-		}
-		start := diagnosticTokenStart(text, lexer.Token{Line: suggestion.Line, Column: suggestion.Column})
-		end := diagnosticTokenStart(text, lexer.Token{Line: suggestion.EndLine, Column: suggestion.EndColumn})
-		for _, reportedDiagnostic := range reported {
-			if reportedDiagnostic.Range.Start != start {
-				continue
-			}
-			actions = append(actions, codeAction{
-				Title:       "Convert explicitly to " + suggestion.Target + " with " + suggestion.Replacement,
-				Kind:        "quickfix",
-				Diagnostics: []diagnostic{reportedDiagnostic},
-				Edit: workspaceEdit{Changes: map[string][]textEdit{
-					uri: {{Range: lspRange{Start: start, End: end}, NewText: suggestion.Replacement}},
-				}},
-			})
-			break
-		}
 	}
 	return actions
 }
@@ -4442,7 +4380,7 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 		}
 	}
 
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	for _, err := range analyzer.Analyze(program) {
 		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery, text) {
 			diagnostics = append(diagnostics, semaDiagnosticWithSources(err, 1, uri, text, firstSourceOverlay(overlays)))
@@ -4477,7 +4415,7 @@ func semanticDiagnosticComesFromRecovery(err sema.Error, recovery []parser.Recov
 
 func firstSourceOverlay(overlays []sourceOverlay) sourceOverlay {
 	if len(overlays) == 0 {
-		return nil
+		return sourceOverlay{}
 	}
 	return overlays[0]
 }
@@ -4494,7 +4432,7 @@ func sourceTextForToken(currentURI string, currentText string, overlay sourceOve
 	if token.File == "" || tokenPath == currentPath {
 		return currentText
 	}
-	data, err := lspserver.ReadSource(token.File, overlay)
+	data, err := lspserver.ReadSource(token.File, overlay.Sources)
 	if err != nil {
 		return ""
 	}
@@ -4509,8 +4447,8 @@ func prepareProgramForLSP(program *ast.Program, sourceFile string, overlay sourc
 	if program == nil || sourceFile == "" {
 		return nil
 	}
-	target := lspActiveTarget(program, sourceFile)
-	lspserver.AssembleModuleForTarget(program, sourceFile, overlay, target)
+	target := lspActiveTarget(program, sourceFile, overlay)
+	lspserver.AssembleModuleForTarget(program, sourceFile, overlay.Sources, target)
 	resolveCoreSources(program, sourceFile, overlay)
 	return resolveSourceImportsForTarget(program, map[string]bool{}, sourceFile, target, overlay)
 }
@@ -4969,13 +4907,16 @@ func importQualifier(stmt *ast.ImportStatement) string {
 }
 
 func parseSourceInclude(path string, overlays ...sourceOverlay) (*ast.Program, bool) {
-	return lspserver.ParseSource(path, firstSourceOverlay(overlays))
+	return lspserver.ParseSource(path, firstSourceOverlay(overlays).Sources)
 }
 
 func programModulePath(program *ast.Program) string {
 	return lspserver.ProgramModule(program)
 }
 
+// qualifyImportedModule gives imported declarations and unit factors their
+// canonical module identity while retaining the source spelling for tooling.
+// Rules: rules/projects/modules.md — §§7–9; rules/types/units.md — Unit identity.
 func qualifyImportedModule(program *ast.Program, module string) {
 	localFunctions := map[string]bool{}
 	localTypes := map[string]bool{}
@@ -5026,6 +4967,12 @@ func qualifyImportedModule(program *ast.Program, module string) {
 		}
 	}
 
+	unitactions.RewriteNames(program, func(name string) string {
+		if localTypes[name] {
+			return module + "." + name
+		}
+		return name
+	})
 	for _, stmt := range program.Statements {
 		if stmt == nil {
 			continue
@@ -5084,10 +5031,16 @@ func qualifyIdentifierDeclaration(ident *ast.Identifier, module string) {
 	ident.Token.Lexeme = ident.Value
 }
 
+// rewriteImportQualifier resolves aliases in value expressions and structural
+// unit annotations without editing source tokens used by code actions.
+// Rules: rules/projects/modules.md — §§7–9; rules/types/units.md — Structural unit expressions.
 func rewriteImportQualifier(program *ast.Program, from string, to string) {
 	if program == nil || from == "" || to == "" || from == to {
 		return
 	}
+	unitactions.RewriteNames(program, func(name string) string {
+		return rewriteQualifiedName(name, from, to)
+	})
 	for _, stmt := range program.Statements {
 		switch stmt := stmt.(type) {
 		case *ast.FunctionDeclaration:
@@ -5730,7 +5683,7 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 // Rules:
 //   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
 func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
-	return semaDiagnosticWithSources(err, severity, "", text, nil)
+	return semaDiagnosticWithSources(err, severity, "", text, sourceOverlay{})
 }
 
 func lspSeverity(severity diagnostics.Severity, fallback int) int {

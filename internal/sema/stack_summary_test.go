@@ -154,3 +154,48 @@ func TestStackSummaryIdentityValidation(t *testing.T) {
 		t.Fatal("nil store has summaries")
 	}
 }
+
+// TestStackBudgetMachineAuthority uses independent summary evidence and large
+// byte counts; a semantic estimate never satisfies or rejects a machine budget.
+// Rules: rules/analysis/stack_analysis.md — "Machine-level revalidation",
+// "Semantic and machine frame authority", and "CompilationPlan dependence".
+func TestStackBudgetMachineAuthority(t *testing.T) {
+	budget, _ := NewStackBudget("thread-a", StackMeasurementMachine, big.NewInt(4500))
+	semantic, _ := NewUpperStackBound(big.NewInt(4608))
+	machine, _ := NewExactStackBound(big.NewInt(4384))
+	var store StackSummaryStore
+	if err := store.RecordSemantic(SemanticStackSummary{Callable: "entry", CompilationPlanID: "plan", TransitiveMaximum: semantic}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordMachine(MachineStackSummary{Callable: "entry", CompilationPlanID: "plan", TransitiveMaximum: machine}); err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := store.Machine("entry", "plan")
+	if result, err := budget.Compare("thread-a", StackMeasurementMachine, summary.TransitiveMaximum); err != nil || result != StackBudgetSatisfied {
+		t.Fatal("final machine evidence not authoritative", result, err)
+	}
+	if result, err := budget.Compare("thread-a", StackMeasurementSemantic, semantic); err == nil || result != "" {
+		t.Fatal("cross-level estimate compared", result, err)
+	}
+	semantic, _ = NewUpperStackBound(big.NewInt(4000))
+	machine, _ = NewExactStackBound(big.NewInt(4600))
+	if result, err := budget.Compare("thread-a", StackMeasurementMachine, machine); err != nil || result != StackBudgetExactExcess {
+		t.Fatal("final machine excess hidden", result, err)
+	}
+	if result, err := budget.Compare("thread-a", StackMeasurementSemantic, semantic); err == nil || result != "" {
+		t.Fatal("semantic success substituted", result, err)
+	}
+	large := new(big.Int).Lsh(big.NewInt(1), 128)
+	budget, _ = NewStackBudget("thread-a", StackMeasurementMachine, large)
+	for _, delta := range []int64{-1, 0, 1} {
+		count := new(big.Int).Add(large, big.NewInt(delta))
+		bound, _ := NewExactStackBound(count)
+		want := StackBudgetSatisfied
+		if delta > 0 {
+			want = StackBudgetExactExcess
+		}
+		if result, err := budget.Compare("thread-a", StackMeasurementMachine, bound); err != nil || result != want {
+			t.Fatal("large comparison overflow", result, err)
+		}
+	}
+}

@@ -1,0 +1,10 @@
+
+type RequiredValues int[] minLen 1
+type UniquePair int[2] unique
+
+fn Test() void {
+	let mut required: RequiredValues
+	let mut pair: UniquePair
+}
+
+module test

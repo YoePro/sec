@@ -260,6 +260,14 @@ integrations:
           regressions cover decimal and hexadecimal surrogates, out-of-range
           literals, range endpoint rejection, valid boundary scalars and
           noncharacters, and integer-domain surrogate checks from uint or rune.
+      - id: diagnostics.s1138-char-literal-out-of-range
+        description: >-
+          MD-043 (2026-10-08): a t-suffixed literal outside 0..255 or a
+          single-quoted literal shaped by char context whose scalar exceeds
+          255 emits mandatory S1138 literal.char-out-of-range with the literal
+          span and repair help (use the r suffix or declare rune). It is
+          separate from S1120, which keeps the Unicode-scalar domain of r
+          literals (TestCharRuneLiteralSemantics).
       - id: diagnostics.stack-budget-identities
         description: >-
           The registry allocates mandatory Error identities S1121

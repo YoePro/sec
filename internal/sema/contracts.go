@@ -1,72 +1,12 @@
 package sema
 
 import (
-	"fmt"
 	"math/big"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
-
-func (a *Analyzer) typeFromDeclaration(stmt *ast.TypeDeclStatement, baseType Type) Type {
-	return a.typeFromDeclarationWithName(stmt.Name.Value, stmt, baseType)
-}
-
-func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclStatement, baseType Type) Type {
-	typ := baseType
-	typ.Name = name
-	typ.Module = a.currentModule
-	typ.Named = true
-	typ.Declared = true
-	if hasAttribute(stmt.Attributes, "noCopy") {
-		typ.ExplicitlyNonCopyable = true
-		typ.NoCopyPolicyOrigin = name
-	} else if typ.ExplicitlyNonCopyable && typ.NoCopyPolicyOrigin == "" {
-		typ.NoCopyPolicyOrigin = baseType.Name
-	}
-	typ.Underlying = baseType.Name
-	typ.Contracts = append([]Contract(nil), baseType.Contracts...)
-	typ.GenericParameters = genericParameterNameValues(stmt.GenericParameters)
-	typ.GenericConstraints = a.resolvedGenericParameterConstraints(stmt.GenericParameters)
-
-	if stmt.BaseType != nil && stmt.BaseType.Unit != "" {
-		typ.Unit = stmt.BaseType.Unit
-		typ.Dimension = a.parseDimension(stmt.BaseType.Unit)
-	}
-	if stmt.AssignedType != nil && stmt.AssignedType.Unit != "" {
-		typ.Unit = stmt.AssignedType.Unit
-		typ.Dimension = a.parseDimension(stmt.AssignedType.Unit)
-	}
-
-	typ = a.applyContracts(typ, stmt.Contract)
-	if stmt.Default != nil {
-		// MD-011: the default is an ordinary expression in a
-		// SemanticCompileTimeRequiredContext.
-		constant, outcome := a.semanticCompileTimeConstant(stmt.Default)
-		ok := outcome == compileTimeEvaluated
-		if outcome == compileTimeRequiresExecution {
-			typ.InvalidExplicitDefault = true
-			a.reportCompileTimeRequirement(stmt.Default, outcome, "default", diagnostics.InvalidExplicitDefault, "")
-		} else if !ok {
-			typ.InvalidExplicitDefault = true
-			a.addErrorAtTokenWithMetadata(stmt.DefaultToken, diagnostics.InvalidExplicitDefault, "use an allocation-free compile-time constant", "default for %s must be a compile-time primitive constant", name)
-		} else if !defaultRepresentable(typ, constant) {
-			// rules/types/default_values.md, "Explicit type defaults" and
-			// "Diagnostics": representability is checked before contracts.
-			typ.InvalidExplicitDefault = true
-			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.DefaultNotRepresentable, "choose a value representable by "+contractApplicabilityTypeName(typ), "default value %s is not representable by %s", stmt.Default.String(), name)
-		} else if violated, ok := firstViolatedContract(typ, constant); ok {
-			// rules/types/contracts.md, "Explicit defaults" and "Diagnostics":
-			// name the first violated contract in source order.
-			typ.InvalidExplicitDefault = true
-			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.DefaultViolatesContract, fmt.Sprintf("%s requires %s; choose a value satisfying every type contract", name, describeContract(violated)), "default value %s is invalid for %s", stmt.Default.String(), name)
-		} else {
-			typ.ExplicitDefault = &constant
-		}
-	}
-	return typ
-}
 
 func flattenASTContracts(contract ast.Contract) []ast.Contract {
 	if contract == nil {
@@ -122,7 +62,12 @@ func astContractToken(contract ast.Contract) lexer.Token {
 	}
 }
 
+// applyContracts checks the inherited/local conjunction while retaining
+// defining source locations for each owning diagnostic.
+// Rules: rules/types/contracts.md — Composition and Diagnostics.
 func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
+	start := len(a.errors)
+	defer func() { a.relateErrorsSince(start, typ.DeclarationToken, "type declaration") }()
 	for _, contract := range flattenASTContracts(contractNode) {
 		typ = a.applyContract(typ, contract)
 	}
@@ -132,6 +77,9 @@ func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 	return typ
 }
 
+// checkMembershipContractValues validates each original member against the
+// full derived conjunction and links a violation to its defining contract.
+// Rules: rules/types/contracts.md — Ordered membership, Composition and Diagnostics.
 func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Contract) {
 	var token lexer.Token
 	for _, contract := range flattenASTContracts(contractNode) {
@@ -157,6 +105,10 @@ func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Cont
 				continue
 			}
 			if !defaultConstantSatisfies(typ, constant) {
+				start := len(a.errors)
+				if constant.Token.Line > 0 {
+					token = constant.Token
+				}
 				a.addErrorAtTokenWithMetadata(
 					token,
 					diagnostics.InvalidMembershipValue,
@@ -165,12 +117,19 @@ func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Cont
 					constant.Lexeme,
 					typeDisplayName(typ),
 				)
+				if violated, ok := firstViolatedContract(typ, constant); ok {
+					a.relateErrorsSince(start, contractSource(violated), "contract declaration")
+				}
 			}
 		}
 	}
 }
 
+// applyContract validates a source contract and retains its defining location.
+// Rules: rules/types/contracts.md — Applicability, Composition and Diagnostics.
 func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
+	start := len(a.errors)
+	defer func() { a.relateErrorsSince(start, astContractToken(contractNode), "contract declaration") }()
 	switch contract := contractNode.(type) {
 	case *ast.RangeContract:
 		if !a.contractAppliesToType("range", typ) {
@@ -183,7 +142,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "in contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
-		membership := MembershipContract{}
+		membership := MembershipContract{Token: contract.Token}
 		if len(contract.Values) == 0 {
 			a.addErrorAtTokenWithMetadata(
 				contract.Token,
@@ -202,7 +161,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 				var outcome compileTimeOutcome
 				constant, outcome = a.semanticCompileTimeConstant(value)
 				ok = outcome == compileTimeEvaluated
-				if outcome == compileTimeRequiresExecution {
+				if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
 					a.reportCompileTimeRequirement(value, outcome, "membership value", diagnostics.InvalidContractArgument, "")
 					continue
 				}
@@ -233,6 +192,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 				)
 				continue
 			}
+			constant.Token = expressionToken(value)
 			membership.Values = append(membership.Values, constant)
 			membershipTokens = append(membershipTokens, expressionToken(value))
 		}
@@ -248,7 +208,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			// a nonzero compile-time integer divisor; a divisor that cannot be
 			// established is rejected instead of silently dropping the contract.
 			value, outcome := a.semanticCompileTimeInteger(contract.Value)
-			if outcome == compileTimeRequiresExecution {
+			if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
 				a.reportCompileTimeRequirement(contract.Value, outcome, "multipleOf divisor", diagnostics.InvalidContractArgument, "")
 				return typ
 			}
@@ -261,12 +221,12 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			if value.Sign() == 0 {
 				a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "multipleOf contract divisor must not be zero")
 			}
-			typ.Contracts = append(typ.Contracts, MultipleOfContract{Value: new(big.Int).Set(value)})
+			typ.Contracts = append(typ.Contracts, MultipleOfContract{Token: contract.Token, Value: new(big.Int).Set(value)})
 			return typ
 		}
 		if isLengthContractName(contract.Name) {
 			value, outcome := a.semanticCompileTimeInteger(contract.Value)
-			if outcome == compileTimeRequiresExecution {
+			if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
 				a.reportCompileTimeRequirement(contract.Value, outcome, contract.Name+" value", diagnostics.InvalidContractArgument, "")
 				return typ
 			}
@@ -279,12 +239,12 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 				return typ
 			}
 			typ.Contracts = append(typ.Contracts, LengthContract{
-				Name:  contract.Name,
+				Token: contract.Token, Name: contract.Name,
 				Value: new(big.Int).Set(value),
 			})
 			return typ
 		}
-		typ.Contracts = append(typ.Contracts, MarkerContract{Name: contract.Name})
+		typ.Contracts = append(typ.Contracts, MarkerContract{Token: contract.Token, Name: contract.Name})
 		return typ
 	case *ast.RegexContract:
 		return a.applyRegexContract(typ, contract)
@@ -314,7 +274,7 @@ func (a *Analyzer) applyRegexContract(typ Type, contract *ast.RegexContract) Typ
 		return typ
 	}
 	pattern, outcome := a.semanticCompileTimeConstant(contract.Pattern)
-	if outcome == compileTimeRequiresExecution {
+	if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
 		a.reportCompileTimeRequirement(contract.Pattern, outcome, "regex pattern", diagnostics.InvalidContractArgument, "")
 		return typ
 	}
@@ -322,7 +282,7 @@ func (a *Analyzer) applyRegexContract(typ Type, contract *ast.RegexContract) Typ
 		a.addErrorAtTokenWithMetadata(expressionToken(contract.Pattern), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "regex contract pattern must be a compile-time string")
 		return typ
 	}
-	typ.Contracts = append(typ.Contracts, RegexContract{Pattern: pattern.String})
+	typ.Contracts = append(typ.Contracts, RegexContract{Token: contract.Token, Pattern: pattern.String})
 	a.addErrorAtTokenWithMetadata(
 		contract.Token,
 		diagnostics.RegexContractUnavailable,
@@ -348,7 +308,7 @@ func contractApplicabilityTypeName(typ Type) string {
 //   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 3.11–3.17
 //   - rules/types/contracts.md — "Range contracts"
 func (a *Analyzer) applyRangeContract(typ Type, contract *ast.RangeContract) Type {
-	rangeContract := RangeContract{Exclusive: contract.Exclusive}
+	rangeContract := RangeContract{Token: contract.Token, Exclusive: contract.Exclusive}
 	exactBounds := typ.Kind == DecimalType || typ.Kind == FloatType
 	bound := func(expr ast.Expression, position string) (*big.Int, *big.Rat, string, bool) {
 		if expr == nil {
@@ -663,6 +623,9 @@ func (a *Analyzer) checkContractLiteralBounds(typ Type, contractNode ast.Contrac
 	}
 }
 
+// checkIntegerValueRange proves representation bounds and each source-ordered
+// integer contract, preserving the precise defining location of a violation.
+// Rules: rules/types/types.md — int and uint; rules/types/contracts.md — Diagnostics.
 func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.Token) bool {
 	if value == nil {
 		return false
@@ -709,8 +672,8 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 				}
 			}
 			if violatesMin || violatesMax {
-				a.addErrorAtTokenWithMetadata(
-					token,
+				a.addContractError(
+					token, contract,
 					diagnostics.ValueViolatesContract,
 					"use a value satisfying every contract of the named type",
 					"value %s violates range contract %s %s",
@@ -725,19 +688,19 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 				continue
 			}
 			if new(big.Int).Mod(value, contract.Value).Sign() != 0 {
-				a.addErrorAtTokenWithMetadata(token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates multipleOf contract %s %s", value.String(), typ.Name, contract.Value.String())
+				a.addContractError(token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates multipleOf contract %s %s", value.String(), typ.Name, contract.Value.String())
 				return true
 			}
 		case MarkerContract:
 			switch contract.Name {
 			case "odd":
 				if new(big.Int).Mod(value, big.NewInt(2)).Sign() == 0 {
-					a.addErrorAtTokenWithMetadata(token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates odd contract %s", value.String(), typ.Name)
+					a.addContractError(token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates odd contract %s", value.String(), typ.Name)
 					return true
 				}
 			case "even":
 				if new(big.Int).Mod(value, big.NewInt(2)).Sign() != 0 {
-					a.addErrorAtTokenWithMetadata(token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates even contract %s", value.String(), typ.Name)
+					a.addContractError(token, contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates even contract %s", value.String(), typ.Name)
 					return true
 				}
 			}

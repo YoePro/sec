@@ -1,8 +1,8 @@
 package sema
 
 import (
-	"math"
 	"math/big"
+	"sec/internal/sema/constant"
 	"strconv"
 )
 
@@ -60,9 +60,9 @@ func binaryFloatRangeDefault(typ Type) DefaultResolution {
 // binaryFloatAtOrAbove returns the smallest finite binary float of the given
 // width that is greater than or equal to bound.
 func binaryFloatAtOrAbove(bound *big.Rat, bits int) (DefaultConstant, bool) {
-	value, exact := ratToBinaryFloat(bound, bits)
-	if !exact && big.NewRat(0, 1).SetFloat64(value).Cmp(bound) < 0 {
-		value = nextBinaryFloat(value, bits, math.Inf(1))
+	value, ok := constant.FloatEndpoint(bound, bits, false, false)
+	if !ok {
+		return DefaultConstant{}, false
 	}
 	return binaryFloatConstant(value, bits)
 }
@@ -70,36 +70,19 @@ func binaryFloatAtOrAbove(bound *big.Rat, bits int) (DefaultConstant, bool) {
 // binaryFloatAtOrBelow returns the largest finite binary float of the given
 // width that is at most bound, or strictly below bound when exclusive.
 func binaryFloatAtOrBelow(bound *big.Rat, bits int, exclusive bool) (DefaultConstant, bool) {
-	value, _ := ratToBinaryFloat(bound, bits)
-	current := new(big.Rat).SetFloat64(value)
-	if current.Cmp(bound) > 0 || exclusive && current.Cmp(bound) == 0 {
-		value = nextBinaryFloat(value, bits, math.Inf(-1))
+	value, ok := constant.FloatEndpoint(bound, bits, true, exclusive)
+	if !ok {
+		return DefaultConstant{}, false
 	}
 	return binaryFloatConstant(value, bits)
 }
 
-func ratToBinaryFloat(value *big.Rat, bits int) (float64, bool) {
-	if bits == 32 {
-		converted, exact := value.Float32()
-		return float64(converted), exact
-	}
-	return value.Float64()
-}
-
-func nextBinaryFloat(value float64, bits int, direction float64) float64 {
-	if bits == 32 {
-		return float64(math.Nextafter32(float32(value), float32(direction)))
-	}
-	return math.Nextafter(value, direction)
-}
-
+// binaryFloatConstant adapts finite binary scalar values for default resolution.
+// Rules: rules/types/default_values.md — Floating and decimal ranges.
 func binaryFloatConstant(value float64, bits int) (DefaultConstant, bool) {
-	if math.IsInf(value, 0) || math.IsNaN(value) {
+	exact, ok := constant.FloatExact(value, bits)
+	if !ok {
 		return DefaultConstant{}, false
 	}
-	exact := new(big.Rat).SetFloat64(value)
-	if exact == nil {
-		return DefaultConstant{}, false
-	}
-	return DefaultConstant{Kind: FloatType, Lexeme: strconv.FormatFloat(value, 'g', -1, bits), Exact: exact}, true
+	return DefaultConstant{Kind: FloatType, FloatBits: bits, Lexeme: strconv.FormatFloat(value, 'g', -1, bits), Exact: exact}, true
 }

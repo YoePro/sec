@@ -213,9 +213,9 @@ func TestAnalyzeUsesOpenSiblingSnapshotBeforeDisk(t *testing.T) {
 	}
 	usePath := filepath.Join(dir, "use.sec")
 	useSource := "module sample\n\nfn Checked() Result[int, NewError] { return Ok(1) }\n"
-	overlay := sourceOverlay{
+	overlay := sourceOverlay{Sources: map[string]string{
 		normalizedSourcePath(errorPath): "module sample\n\nenum NewError { New }\n",
-	}
+	}}
 
 	for _, got := range analyze(uriFromPath(usePath), useSource, overlay) {
 		if strings.Contains(got.Message, "unknown type NewError") {
@@ -3480,6 +3480,7 @@ type Holder struct {
 	values: list[int],
 	created: datetime,
 	elapsed: duration,
+	deadline: Instant,
 	wall: time,
 }
 
@@ -3500,6 +3501,9 @@ impl Holder implements Iterator[int] {}
 
 	items = completeSource("", source, strings.LastIndex(source, "time")+len("ti"))
 	assertCompletionLabels(t, items, []string{"time"})
+
+	items = completeSource("", source, strings.Index(source, "Instant")+len("Inst"))
+	assertCompletionLabels(t, items, []string{"Instant"})
 
 	items = completeSource("", source, strings.Index(source, "Iterator")+len("Iter"))
 	assertCompletionLabels(t, items, []string{"Iterator"})
@@ -4659,9 +4663,9 @@ func TestCompletionNestedMembersFromSibling(t *testing.T) {
 				dir := t.TempDir()
 				path := filepath.Join(dir, "completion.sec")
 				siblingPath := filepath.Join(dir, "types.sec")
-				snapshots := sourceOverlay{}
+				snapshots := sourceOverlay{Sources: map[string]string{}}
 				if overlay {
-					snapshots[siblingPath] = string(sibling)
+					snapshots.Sources[siblingPath] = string(sibling)
 				} else if err := os.WriteFile(siblingPath, sibling, 0644); err != nil {
 					t.Fatal(err)
 				}
@@ -4799,7 +4803,7 @@ func TestSemaDiagnosticOmitsPrimaryLocationAndLinksRelatedLocation(t *testing.T)
 func TestRelatedLocationUsesRelatedFileUTF16Columns(t *testing.T) {
 	relatedPath := filepath.Join(t.TempDir(), "other.sec")
 	relatedText := "/* \U0001F600 */ let first := 1\n"
-	overlay := sourceOverlay{normalizedSourcePath(relatedPath): relatedText}
+	overlay := sourceOverlay{Sources: map[string]string{normalizedSourcePath(relatedPath): relatedText}}
 	diagnostic := semaDiagnosticWithSources(sema.Error{
 		Message:        "conflict",
 		Line:           1,
@@ -4864,7 +4868,7 @@ func TestThreadV2SurfaceInCompletionAndHover(t *testing.T) {
 	prefix := "fn Work() void {\n}\n\nfn Run() void {\n    let worker := spawn thread Work()\n    let observer := worker.Observe()\n    let status := worker.Status\n    "
 	labels := func(text string) map[string]bool {
 		found := map[string]bool{}
-		for _, item := range completeSource("file:///thread.sec", text, len(text), nil) {
+		for _, item := range completeSource("file:///thread.sec", text, len(text), sourceOverlay{}) {
 			found[item.Label] = true
 		}
 		return found
@@ -4956,7 +4960,7 @@ func TestUnitConversionCodeActionAppliesProvenConversion(t *testing.T) {
 	text := prelude + "fn Use(distance: decimal<km>) decimal<m> {\n    let converted: decimal<m> := distance\n    return converted\n}\n"
 	uri := "file:///units.sec"
 	reported := analyze(uri, text)
-	actions := unitConversionCodeActions(uri, text, reported, nil)
+	actions := unitConversionCodeActions(uri, text, reported, sourceOverlay{})
 	if len(actions) != 1 || actions[0].Title != "Convert explicitly to m with m(distance)" {
 		t.Fatalf("actions = %+v (diagnostics %+v)", actions, reported)
 	}
@@ -4979,7 +4983,7 @@ func TestUnitConversionCodeActionAppliesProvenConversion(t *testing.T) {
 		"fn Use(distance: float<km>) decimal<m> {\n    let converted: decimal<m> := distance\n    return converted\n}\n",
 	} {
 		unsafeText := prelude + unsafe
-		if actions := unitConversionCodeActions(uri, unsafeText, analyze(uri, unsafeText), nil); len(actions) != 0 {
+		if actions := unitConversionCodeActions(uri, unsafeText, analyze(uri, unsafeText), sourceOverlay{}); len(actions) != 0 {
 			t.Fatalf("unproven conversion offered: %+v", actions)
 		}
 	}

@@ -3,6 +3,7 @@ module units
 /** Hertz */
 unit Hz physical
 impl Hz {
+    Kind: frequency
     LongName: "Hertz"
     Symbol: "Hz"
     BaseUnit: false

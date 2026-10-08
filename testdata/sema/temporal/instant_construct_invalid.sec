@@ -1,0 +1,2 @@
+module application
+fn Forge() Instant { return Instant {} }

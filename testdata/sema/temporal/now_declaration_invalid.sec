@@ -1,0 +1,5 @@
+module main
+
+fn _now() datetime {
+    panic "reserved"
+}

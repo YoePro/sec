@@ -1,0 +1,5 @@
+module main // keep header comment
+// preserve source comment
+fn Convert(value: decimal<LocalLength>) decimal<LocalLength> {
+    return value
+}

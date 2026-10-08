@@ -25,7 +25,7 @@ func lspProgramEntryErrors(analyzer *sema.Analyzer, program *ast.Program, source
 	}
 	root := findProjectRoot(sourcePath)
 	manifestPath := filepath.Join(root, ".sec", "sec.toml")
-	manifest, ok := overlay[normalizedSourcePath(manifestPath)]
+	manifest, ok := overlay.Sources[normalizedSourcePath(manifestPath)]
 	if !ok {
 		data, err := os.ReadFile(manifestPath)
 		if err != nil {

@@ -1,0 +1,5 @@
+module main
+type A B
+type B A
+fn Identity(value: A) A { return value }
+fn main() int { return 0 }

@@ -1,0 +1,5 @@
+module main
+type Small int32 range 1..3
+fn main() int { let value: Small := 99
+ discard value
+ return 0 }

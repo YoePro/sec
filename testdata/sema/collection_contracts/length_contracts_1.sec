@@ -1,0 +1,9 @@
+
+type Label string minLen 2 maxLen 12
+type Code string exactLen 4
+type Values int[] minLen 1 maxLen 8
+type Four int[4] exactLen 4
+type Items list[int] minLen 1
+type MoreItems Items maxLen 8
+
+module test

@@ -2391,7 +2391,7 @@ patterns must use an explicit operation.
 
 # Character ordering
 
-`char` values order by Unicode scalar value within the valid `char` domain.
+`char` values order by unsigned 8-bit value (`0..255`).
 
 No locale or alphabetic collation is applied.
 

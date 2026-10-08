@@ -55,12 +55,18 @@ const (
 )
 
 type Type struct {
-	Name                  string
-	Module                string
-	Kind                  TypeKind
-	Named                 bool
-	Declared              bool
-	Intrinsic             bool
+	Name      string
+	Module    string
+	Kind      TypeKind
+	Named     bool
+	Declared  bool
+	Intrinsic bool
+	// MonotonicPoint preserves the opaque Instant carrier through named derivations.
+	// Rules: rules/concurrency/mutex.md §13; types/types.md — Named types.
+	MonotonicPoint bool
+	// EmptyListDefault preserves the compiler-owned list default through named
+	// derivation; rules/types/default_values.md — Named types and List defaults.
+	EmptyListDefault      bool
 	ExplicitlyNonCopyable bool
 	// ErrorAssignable marks concrete error enums/unions and compiler-known
 	// error families assignable to the open lowercase error root defined by
@@ -87,13 +93,17 @@ type Type struct {
 	// ArenaDomainID remains stable across owner moves and Reset; fresh Arena
 	// owners receive distinct logical identities even when backing is reused.
 	// Rules: rules/memory/arena.md — §§4.2(1–5), 7(6), 44(3–4).
-	ArenaDomainID          string
-	MinInt                 *int64
-	MaxInt                 *int64
-	MinUint                *uint64
-	MaxUint                *uint64
-	MinInteger             *big.Int
-	MaxInteger             *big.Int
+	ArenaDomainID string
+	MinInt        *int64
+	MaxInt        *int64
+	MinUint       *uint64
+	MaxUint       *uint64
+	MinInteger    *big.Int
+	MaxInteger    *big.Int
+	// Source provenance survives named derivation and generic substitution.
+	// Rules: rules/types/contracts.md — Diagnostics; rules/types/default_values.md — Diagnostics.
+	DeclarationToken       lexer.Token
+	ExplicitDefaultToken   lexer.Token
 	Contracts              []Contract
 	ExplicitDefault        *DefaultConstant
 	InvalidExplicitDefault bool
@@ -684,6 +694,7 @@ type Contract interface {
 }
 
 type RangeContract struct {
+	Token     lexer.Token
 	Min       *big.Int
 	Max       *big.Int
 	ExactMin  *big.Rat
@@ -696,18 +707,23 @@ type RangeContract struct {
 func (RangeContract) contractNode() {}
 
 type MembershipContract struct {
+	Token  lexer.Token
 	Values []DefaultConstant
 }
 
 func (MembershipContract) contractNode() {}
 
 type DefaultConstant struct {
-	Kind    TypeKind
-	Lexeme  string
-	Integer *big.Int
-	Exact   *big.Rat
-	String  string
-	Bool    bool
+	NominalText bool
+	FloatBits   int
+	DecimalBits int
+	Token       lexer.Token
+	Kind        TypeKind
+	Lexeme      string
+	Integer     *big.Int
+	Exact       *big.Rat
+	String      string
+	Bool        bool
 }
 
 type DefaultKind string
@@ -744,6 +760,7 @@ type DefaultField struct {
 }
 
 type MultipleOfContract struct {
+	Token lexer.Token
 	Value *big.Int
 }
 
@@ -755,6 +772,7 @@ func (MultipleOfContract) contractNode() {}
 //
 // Rule: rules/types/contracts.md — "String and collection contracts".
 type LengthContract struct {
+	Token lexer.Token
 	Name  string
 	Value *big.Int
 }
@@ -762,7 +780,8 @@ type LengthContract struct {
 func (LengthContract) contractNode() {}
 
 type MarkerContract struct {
-	Name string
+	Token lexer.Token
+	Name  string
 }
 
 func (MarkerContract) contractNode() {}
@@ -773,6 +792,7 @@ func (MarkerContract) contractNode() {}
 //
 // Rule: rules/types/contracts.md — "String and collection contracts".
 type RegexContract struct {
+	Token   lexer.Token
 	Pattern string
 }
 
@@ -784,9 +804,11 @@ type DecimalValue struct {
 }
 
 type Symbol struct {
-	Name    string
-	Type    Type
-	Mutable bool
+	// FloatingConstant is an immutable finite value in this binding's unit coordinates.
+	FloatingConstant *big.Rat
+	Name             string
+	Type             Type
+	Mutable          bool
 	// ImplicitMember marks the short-name alias injected for an impl member.
 	// A lexical declaration may shadow such an alias without redeclaring the
 	// underlying field, property or event.
@@ -955,7 +977,7 @@ func newBuiltinTypes() map[string]Type {
 		"Vec":          {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
 		"Set":          {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
 		"Map":          {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
-		"list":         {Name: "list", Kind: StructType, GenericParameters: []string{"T"}},
+		"list":         {Name: "list", Kind: StructType, EmptyListDefault: true, GenericParameters: []string{"T"}},
 		"map":          {Name: "map", Kind: StructType, GenericParameters: []string{"K", "V"}},
 		"set":          {Name: "set", Kind: StructType, GenericParameters: []string{"T"}},
 		"vector":       {Name: "vector", Kind: StructType, GenericParameters: []string{"T"}},
@@ -1095,25 +1117,27 @@ func newBuiltinTypes() map[string]Type {
 		"time":     {Name: "time", Kind: StructType},
 		"datetime": {Name: "datetime", Kind: StructType},
 		"duration": {Name: "duration", Kind: StructType},
-		"float":    {Name: "float", Kind: FloatType, FloatBits: 64},
-		"float32":  {Name: "float32", Kind: FloatType, FloatBits: 32},
-		"float64":  {Name: "float64", Kind: FloatType, FloatBits: 64},
-		"int":      signedType("int", -1<<63, 1<<63-1),
-		"int8":     signedType("int8", -1<<7, 1<<7-1),
-		"int16":    signedType("int16", -1<<15, 1<<15-1),
-		"int32":    signedType("int32", -1<<31, 1<<31-1),
-		"int64":    signedType("int64", -1<<63, 1<<63-1),
-		"int128":   signedBigType("int128", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"),
-		"int256":   signedBigType("int256", "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "57896044618658097711785492504343953926634992332820282019728792003956564819967"),
-		"string":   {Name: "string", Kind: StringType},
-		"uint":     unsignedType("uint", ^uint64(0)),
-		"uint8":    unsignedType("uint8", 1<<8-1),
-		"uint16":   unsignedType("uint16", 1<<16-1),
-		"uint32":   unsignedType("uint32", 1<<32-1),
-		"uint64":   unsignedType("uint64", ^uint64(0)),
-		"uint128":  unsignedBigType("uint128", "340282366920938463463374607431768211455"),
-		"uint256":  unsignedBigType("uint256", "115792089237316195423570985008687907853269984665640564039457584007913129639935"),
-		"void":     {Name: "void", Kind: VoidType},
+		// rules/concurrency/mutex.md §13: opaque, copyable monotonic identity.
+		"Instant": {Name: "Instant", Kind: StructType, MonotonicPoint: true},
+		"float":   {Name: "float", Kind: FloatType, FloatBits: 64},
+		"float32": {Name: "float32", Kind: FloatType, FloatBits: 32},
+		"float64": {Name: "float64", Kind: FloatType, FloatBits: 64},
+		"int":     signedType("int", -1<<63, 1<<63-1),
+		"int8":    signedType("int8", -1<<7, 1<<7-1),
+		"int16":   signedType("int16", -1<<15, 1<<15-1),
+		"int32":   signedType("int32", -1<<31, 1<<31-1),
+		"int64":   signedType("int64", -1<<63, 1<<63-1),
+		"int128":  signedBigType("int128", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"),
+		"int256":  signedBigType("int256", "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "57896044618658097711785492504343953926634992332820282019728792003956564819967"),
+		"string":  {Name: "string", Kind: StringType},
+		"uint":    unsignedType("uint", ^uint64(0)),
+		"uint8":   unsignedType("uint8", 1<<8-1),
+		"uint16":  unsignedType("uint16", 1<<16-1),
+		"uint32":  unsignedType("uint32", 1<<32-1),
+		"uint64":  unsignedType("uint64", ^uint64(0)),
+		"uint128": unsignedBigType("uint128", "340282366920938463463374607431768211455"),
+		"uint256": unsignedBigType("uint256", "115792089237316195423570985008687907853269984665640564039457584007913129639935"),
+		"void":    {Name: "void", Kind: VoidType},
 	}
 
 	// rules/errors/errorhandling.md defines these compiler-known failure

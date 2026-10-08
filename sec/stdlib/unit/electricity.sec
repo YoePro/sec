@@ -310,6 +310,7 @@ impl H {
 /** Radians per second (Angular frequency) */
 unit rad_s decimal physical
 impl rad_s {
+    Kind: angular_velocity
     LongName: "Radian per Second"
     Symbol: "rad/s"
     BaseUnit: false
@@ -357,6 +358,7 @@ impl dB {
 /** Volt-Ampere (Apparent Power) */
 unit VA decimal physical
 impl VA {
+    Kind: apparent_power
     LongName: "Volt Ampere"
     Symbol: "VA"
     BaseUnit: false
@@ -377,6 +379,7 @@ impl VA {
 /** Volt-Ampere Reactive (Reactive Power) */
 unit var decimal physical
 impl var {
+    Kind: reactive_power
     LongName: "Volt Ampere Reactive"
     Symbol: "var"
     BaseUnit: false

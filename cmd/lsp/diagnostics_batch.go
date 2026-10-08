@@ -52,7 +52,7 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 		// document's target, so platform files for different targets (two
 		// `#target` files of one module) must not share a run: the second
 		// would be excluded from the assembly and receive no diagnostics.
-		key := normalizedSourcePath(filepath.Dir(path)) + "\x00" + module + "\x00" + lspActiveTarget(parsed.Program, path).String()
+		key := normalizedSourcePath(filepath.Dir(path)) + "\x00" + module + "\x00" + lspActiveTarget(parsed.Program, path, overlay).String()
 		if module == "" {
 			key = snapshot.URI
 		}
@@ -77,7 +77,7 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 				}
 			}
 		}
-		analyzer := newLSPAnalyzer(first.snapshot.URI, first.program)
+		analyzer := newLSPAnalyzerWithOverlay(first.snapshot.URI, first.program, overlay)
 		paths := make([]string, 0, len(docs))
 		for _, doc := range docs {
 			paths = append(paths, pathFromURI(doc.snapshot.URI))
@@ -121,10 +121,10 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 	}
 	all := s.documentSnapshots.Snapshots()
 	selected := []lspserver.Snapshot{}
-	overlay := sourceOverlay{}
+	overlay := s.sourceOverlay()
 	for _, snapshot := range all {
 		path := pathFromURI(snapshot.URI)
-		overlay[normalizedSourcePath(path)] = snapshot.Text
+		overlay.Sources[normalizedSourcePath(path)] = snapshot.Text
 		if normalizedSourcePath(filepath.Dir(path)) == dir {
 			selected = append(selected, snapshot)
 		}

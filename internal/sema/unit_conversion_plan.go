@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/sema/constant"
 )
 
 // UnitConversionProof names why an implicit fixed unit conversion is exact in
@@ -25,6 +26,8 @@ const (
 	// the converted operand, scaled by the factor, stays integral and inside
 	// the integer carrier's admitted range.
 	UnitConversionIntegerValueRange UnitConversionProof = "integer-value-range"
+	// UnitConversionFloatingValueRange proves every admitted binary lattice value exact.
+	UnitConversionFloatingValueRange UnitConversionProof = "floating-value-range"
 )
 
 // UnitConversionPlan is the compiler-resolved plan of one implicit fixed unit
@@ -36,14 +39,16 @@ const (
 //   - rules/types/units.md — "Exact fixed conversions", "Explicit versus implicit conversion policy"
 //   - rules/compiler/semantic_ir.md — unit facts retain the conversion plan
 type UnitConversionPlan struct {
-	Source  UnitSemantics
-	Target  UnitSemantics
-	Carrier Type
-	Factor  *big.Rat
-	Offset  *big.Rat
-	Proof   UnitConversionProof
-	Minimum *big.Int
-	Maximum *big.Int
+	Source       UnitSemantics
+	Target       UnitSemantics
+	Carrier      Type
+	Factor       *big.Rat
+	Offset       *big.Rat
+	Proof        UnitConversionProof
+	Minimum      *big.Int
+	Maximum      *big.Int
+	FloatMinimum *big.Rat
+	FloatMaximum *big.Rat
 }
 
 // UnitConversionPlanOf returns the implicit fixed conversion plan Sema chose
@@ -61,6 +66,7 @@ func (a *Analyzer) UnitConversionPlanOf(expr ast.Expression) (UnitConversionPlan
 		plan.Minimum = new(big.Int).Set(plan.Minimum)
 		plan.Maximum = new(big.Int).Set(plan.Maximum)
 	}
+	plan.FloatMinimum, plan.FloatMaximum = cloneRat(plan.FloatMinimum), cloneRat(plan.FloatMaximum)
 	return plan, true
 }
 
@@ -146,13 +152,16 @@ func staticUnitConversionPlan(source, target UnitSemantics, carrier Type) (UnitC
 // known value it divides exactly. The unchanged carrier evaluates the
 // conversion, so a proven plan cannot overflow, truncate, or round.
 //
-// Binary floating-point carriers have no value-interval facts yet and keep the
-// static identity-coordinate policy.
+// Binary floating-point carriers use the selected-width lattice proof and finite
+// source bounds rather than the integer interval proof.
 //
 // Rules:
 //   - rules/types/units.md — "No hidden precision loss": overflow and truncation are never hidden
 //   - rules/types/units.md — "Exact fixed conversions": representable without hidden loss in the chosen carrier
 func (a *Analyzer) valueAwareUnitConversionPlan(source, target UnitSemantics, carrier Type, targetType Type, expr ast.Expression) (UnitConversionPlan, bool) {
+	if carrier.Kind == FloatType {
+		return a.floatingUnitConversionPlan(source, target, carrier, targetType, expr)
+	}
 	if expr == nil || (carrier.Kind != IntType && carrier.Kind != UintType) {
 		return UnitConversionPlan{}, false
 	}
@@ -212,6 +221,13 @@ func (a *Analyzer) implicitUnitConversionPlan(target, value Type, expr ast.Expre
 // conversion, recording the chosen conversion plan for expr. Speculative
 // checks such as overload matching use canInitializeUnrecorded.
 func (a *Analyzer) canInitialize(target, value Type, expr ast.Expression) bool {
+	// A character literal reaching a char storage site without an expected
+	// type is shaped here (rules/types/types.md — "char").
+	if value.Kind == RuneType && target.Kind == CharType {
+		if typ, shaped := a.shapeCharacterLiteral(expr, target); shaped {
+			return typ.Kind != InvalidType
+		}
+	}
 	if !a.canInitializeUnrecorded(target, value, expr) {
 		return false
 	}
@@ -256,7 +272,7 @@ func (a *Analyzer) implicitUnitOperandConversion(operand ast.Expression, from, t
 	if !ok {
 		// The converted operand must fit the carrier representation; the
 		// operand's own range contracts only narrow its source interval.
-		representation := Type{Kind: carrier.Kind, MinInteger: carrier.MinInteger, MaxInteger: carrier.MaxInteger}
+		representation := Type{Kind: carrier.Kind, Name: carrier.Name, FloatBits: carrier.FloatBits, MinInteger: carrier.MinInteger, MaxInteger: carrier.MaxInteger}
 		plan, ok = a.valueAwareUnitConversionPlan(from, to, carrier, representation, operand)
 	}
 	if ok && plan.Proof != UnitConversionIdentityCoordinate {
@@ -270,6 +286,13 @@ func (a *Analyzer) implicitUnitOperandConversion(operand ast.Expression, from, t
 // carrier is a bounded integer.
 func (a *Analyzer) implicitUnitConversionRejection(target, value Type, expr ast.Expression) string {
 	const general = "an implicit conversion between unit identities is accepted only when it is exact in the numeric carrier"
+	if sameNumericCarrier(target, value) && target.Kind == FloatType && expr != nil {
+		if lower, upper, known := a.floatingInterval(expr, value); known {
+			return fmt.Sprintf("`%s` may hold %s..%s; its unit conversion is not proven exact without rounding, subnormal loss or overflow in %s (%d bits)", expr.String(), lower.RatString(), upper.RatString(), numericCarrierName(target), target.FloatBits)
+		}
+		return fmt.Sprintf("`%s` has no proven finite floating interval; unit conversion must be exact in %s (%d bits)", expr.String(), numericCarrierName(target), target.FloatBits)
+	}
+
 	if !sameNumericCarrier(target, value) || (target.Kind != IntType && target.Kind != UintType) || expr == nil {
 		return general
 	}
@@ -291,4 +314,41 @@ func (a *Analyzer) implicitUnitConversionRejection(target, value Type, expr ast.
 	}
 	return fmt.Sprintf("`%s` %s, which scaled by %s is not proven to fit %s",
 		expr.String(), values, factor.RatString(), typeDisplayName(target))
+}
+
+// floatingUnitConversionPlan proves both multiplication and the final affine
+// result exact, so a cancelling offset cannot hide intermediate rounding or
+// overflow. Source contracts constrain the operand, not the result carrier.
+// Rules: rules/types/units.md — Exact fixed conversions; No hidden precision loss.
+func (a *Analyzer) floatingUnitConversionPlan(source, target UnitSemantics, carrier, targetType Type, expr ast.Expression) (UnitConversionPlan, bool) {
+	if expr == nil {
+		return UnitConversionPlan{}, false
+	}
+	typ, ok := a.expressionTypes[expr]
+	if !ok || typ.Kind != FloatType {
+		return UnitConversionPlan{}, false
+	}
+	lower, upper, known := a.floatingInterval(expr, typ)
+	if !known {
+		return UnitConversionPlan{}, false
+	}
+	factor, offset, ok := unitConversionCoordinates(source, target)
+	if !ok {
+		return UnitConversionPlan{}, false
+	}
+	if !constant.FloatAffineIntervalExact(lower, upper, factor, big.NewRat(0, 1), carrier.FloatBits) || !constant.FloatAffineIntervalExact(lower, upper, factor, offset, carrier.FloatBits) {
+		return UnitConversionPlan{}, false
+	}
+	convertedLower := new(big.Rat).Add(new(big.Rat).Mul(lower, factor), offset)
+	convertedUpper := new(big.Rat).Add(new(big.Rat).Mul(upper, factor), offset)
+	for _, contract := range targetType.Contracts {
+		if r, ok := contract.(RangeContract); ok {
+			if r.ExactMin != nil && convertedLower.Cmp(r.ExactMin) < 0 || r.ExactMax != nil && (convertedUpper.Cmp(r.ExactMax) > 0 || r.Exclusive && convertedUpper.Cmp(r.ExactMax) == 0) {
+				return UnitConversionPlan{}, false
+			}
+		} else if convertedLower.Cmp(convertedUpper) != 0 || !defaultConstantSatisfies(targetType, DefaultConstant{Kind: FloatType, FloatBits: carrier.FloatBits, Exact: convertedLower}) {
+			return UnitConversionPlan{}, false
+		}
+	}
+	return UnitConversionPlan{Source: source, Target: target, Carrier: carrier, Factor: factor, Offset: offset, Proof: UnitConversionFloatingValueRange, FloatMinimum: lower, FloatMaximum: upper}, true
 }

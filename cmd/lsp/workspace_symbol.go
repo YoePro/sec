@@ -108,7 +108,7 @@ func workspaceSymbolsForQuery(index *workspaceSymbolIndex, roots []string, query
 			continue
 		}
 		summaries[path] = summary
-		if _, open := overlay[path]; open && summary.module != "" {
+		if _, open := overlay.Sources[path]; open && summary.module != "" {
 			openModules[summary.module] = true
 		}
 	}
@@ -125,7 +125,7 @@ func workspaceSymbolsForQuery(index *workspaceSymbolIndex, roots []string, query
 		if !ok {
 			continue
 		}
-		_, open := overlay[path]
+		_, open := overlay.Sources[path]
 		core := isCoreSourcePath(path)
 		for _, entry := range summary.entries {
 			switch visibilityPrefix(entry.name) {
@@ -250,7 +250,7 @@ func workspaceSourcePaths(roots []string, overlay sourceOverlay) []string {
 			return nil
 		})
 	}
-	for path := range overlay {
+	for path := range overlay.Sources {
 		add(path)
 	}
 	sort.Strings(paths)
@@ -262,7 +262,7 @@ func workspaceSourcePaths(roots []string, overlay sourceOverlay) []string {
 func (index *workspaceSymbolIndex) summary(path string, overlay sourceOverlay) (workspaceSymbolFile, bool) {
 	var key string
 	var text string
-	if snapshot, open := overlay[path]; open {
+	if snapshot, open := overlay.Sources[path]; open {
 		hash := fnv.New64a()
 		_, _ = hash.Write([]byte(snapshot))
 		key = "open:" + strconv.FormatUint(hash.Sum64(), 16)
@@ -281,7 +281,7 @@ func (index *workspaceSymbolIndex) summary(path string, overlay sourceOverlay) (
 		return cached, true
 	}
 	if text == "" {
-		data, err := lspserver.ReadSource(path, overlay)
+		data, err := lspserver.ReadSource(path, overlay.Sources)
 		if err != nil {
 			return workspaceSymbolFile{}, false
 		}

@@ -1,0 +1,5 @@
+module main
+fn Operation(left: TYPE, right: TYPE) TYPE {
+    return left OP right
+}
+fn main() int { return 0 }

@@ -198,10 +198,10 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 		if program == nil {
 			continue
 		}
-		lspserver.AssembleModuleForTarget(program, path, overlay, target)
+		lspserver.AssembleModuleForTarget(program, path, overlay.Sources, target)
 		resolveCoreSources(program, path, overlay)
 		resolveSourceImportsForTarget(program, map[string]bool{}, path, target, overlay)
-		analyzer := newLSPAnalyzer(uri, program)
+		analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
 		if definition, ok := platformtarget.Find(target); ok {
 			if plan, err := definition.ScalarPlan(); err == nil {
 				analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
@@ -265,11 +265,16 @@ func conformanceFailureMember(message string) string {
 func moduleTargets(path string, module string, text string, overlay sourceOverlay, active *ast.Program) ([]platformtarget.Target, string) {
 	hash := fnv.New64a()
 	_, _ = hash.Write([]byte(path + "\x00" + text))
+	_, _ = hash.Write([]byte("\x00" + lspActiveTarget(active, path, overlay).String()))
+	options := lspDiagnosticTargetOptions(path, overlay)
+	for _, option := range options {
+		_, _ = hash.Write([]byte("\x00" + option.diagnosticName()))
+	}
 	if target, directed := lspserver.ProgramTarget(active); directed {
 		return []platformtarget.Target{target}, strconv.FormatUint(hash.Sum64(), 16)
 	}
 	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.sec"))
-	for overlayPath := range overlay {
+	for overlayPath := range overlay.Sources {
 		if filepath.Dir(overlayPath) == filepath.Dir(normalizedSourcePath(path)) && filepath.Ext(overlayPath) == ".sec" {
 			matches = append(matches, overlayPath)
 		}
@@ -284,11 +289,11 @@ func moduleTargets(path string, module string, text string, overlay sourceOverla
 			continue
 		}
 		seenPath[normalized] = true
-		program, ok := lspserver.ParseSource(normalized, overlay)
+		program, ok := lspserver.ParseSource(normalized, overlay.Sources)
 		if !ok || lspserver.ProgramModule(program) != module {
 			continue
 		}
-		if data, err := lspserver.ReadSource(normalized, overlay); err == nil {
+		if data, err := lspserver.ReadSource(normalized, overlay.Sources); err == nil {
 			_, _ = hash.Write([]byte(normalized + "\x00"))
 			_, _ = hash.Write(data)
 		}
@@ -297,10 +302,17 @@ func moduleTargets(path string, module string, text string, overlay sourceOverla
 			targets = append(targets, target)
 		}
 	}
+	for _, option := range options {
+		target := platformtarget.Target{OS: option.OS, Arch: option.Arch}
+		if !seen[target.String()] {
+			seen[target.String()] = true
+			targets = append(targets, target)
+		}
+	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i].String() < targets[j].String() })
 	if len(targets) == 0 {
 		// A module without platform files is analyzed for the active target.
-		targets = append(targets, lspActiveTarget(active, path))
+		targets = append(targets, lspActiveTarget(active, path, overlay))
 	}
 	return targets, strconv.FormatUint(hash.Sum64(), 16)
 }

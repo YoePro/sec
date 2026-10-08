@@ -114,7 +114,7 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
 	analyzer.Analyze(program)
 
 	inRange := func(at position) bool {

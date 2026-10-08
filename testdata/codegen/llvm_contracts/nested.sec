@@ -1,0 +1,5 @@
+module main
+type Small int32 range 1..9
+type Container struct { value: Small, }
+fn Identity(value: Container) Container { return value }
+fn main() int { return 0 }

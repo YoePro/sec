@@ -2417,16 +2417,6 @@ baremetal/cortex-m4: invalid
     allocation path reaches allocator.New
 ```
 
-Implemented (2026-10-04) for target-independent documents: when a document
-without its own `#target` belongs to a module whose platform files select two
-or more targets, the server analyzes it once per target in the background on
-open and save, each with that target's sources and scalar plan. Published
-diagnostics then record applicability: one on every target is unchanged; one on
-only some targets ends with `applies to N of M targets: …`; and one absent on
-the active target is added with its targets named first, for example
-`[linux-armv7, freebsd-armv7] …`. The result belongs to the analyzed text and
-is dropped as soon as the document changes until the next save. Target
-selection, a target status panel, and comparison views remain pending.
 
 ---
 

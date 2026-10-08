@@ -1,0 +1,8 @@
+module main
+interface Choice {
+    fn Select(value: int) int
+    fn Select(value: string) string
+    mut fn Change(value: int) void
+}
+fn Missing(receiver: ref Choice, value: bool) void { discard receiver.Select(value) }
+fn WrongReceiver(receiver: ref Choice) void { receiver.Change(1) }

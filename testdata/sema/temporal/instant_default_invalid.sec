@@ -1,0 +1,5 @@
+module application
+fn Default() Instant {
+ let point: Instant
+ return point
+}

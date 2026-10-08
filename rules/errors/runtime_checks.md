@@ -428,8 +428,8 @@ checked arithmetic
 bounds access
     IndexError
 
-contract construction
-    ContractError
+checked conversion, including contract construction
+    ConversionError (a contract failure carries ContractError)
 
 capacity growth
     CapacityError or AllocationError
@@ -743,6 +743,12 @@ let percent := try Percent(raw)
 ```
 
 Proven-safe conversions need no dynamic check.
+
+A runtime-dependent checked conversion that can fail uses the core error type
+`ConversionError`; an intrinsic destination-domain failure takes precedence over
+declared contracts, and the first violated contract in source order is reported
+as `ConversionError.Contract(ContractError.Violation { ... })`
+(`rules/types/contracts.md`, "Public conversion and contract errors").
 
 Lossy semantics require distinct explicit operations.
 

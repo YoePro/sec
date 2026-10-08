@@ -27,7 +27,7 @@ func writeLensModule(t *testing.T, windowsSize string) string {
 
 func TestInterfaceConformanceLensSummarizesEveryTarget(t *testing.T) {
 	path := writeLensModule(t, "")
-	lenses := interfaceConformanceCodeLenses(uriFromPath(path), lensInterfaceSource, sourceOverlay{})
+	lenses := interfaceConformanceCodeLenses(uriFromPath(path), lensInterfaceSource, sourceOverlay{Sources: map[string]string{}})
 	if len(lenses) != 1 || lenses[0].Command == nil || lenses[0].Command.Title != "✓ Handle conforms on 2 targets" {
 		t.Fatalf("lenses = %#v", lenses)
 	}
@@ -38,7 +38,7 @@ func TestInterfaceConformanceLensSummarizesEveryTarget(t *testing.T) {
 
 func TestInterfaceConformanceLensNamesFailingTargetsAndMembers(t *testing.T) {
 	path := writeLensModule(t, "extra: int")
-	lenses := interfaceConformanceCodeLenses(uriFromPath(path), lensInterfaceSource, sourceOverlay{})
+	lenses := interfaceConformanceCodeLenses(uriFromPath(path), lensInterfaceSource, sourceOverlay{Sources: map[string]string{}})
 	if len(lenses) != 1 || lenses[0].Command == nil {
 		t.Fatalf("lenses = %#v", lenses)
 	}

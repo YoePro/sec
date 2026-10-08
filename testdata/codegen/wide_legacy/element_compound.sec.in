@@ -1,0 +1,7 @@
+module main
+fn Operation(left: TYPE, right: TYPE) TYPE {
+    let mut values: TYPE[1] := [left]
+    values[0] += right
+    return values[0]
+}
+fn main() int { return 0 }

@@ -1196,13 +1196,15 @@ integrations:
     area: frontend-interface-analysis
     status: implemented
     audited: '2026-08-19'
+    revised: '2026-10-08'
     repository_baseline: c515862
     document_revision: '2.0'
     document_created: '2026-08-13'
     document_last_updated: '2026-08-14'
     summary: Interface declarations and inheritance preserve canonical same-name overload sets. Distinct parameter
       signatures coexist, exact duplicates are diagnosed or merged according to origin, incompatible contracts are
-      rejected, and conformance checks every retained requirement independently.
+      rejected, and conformance checks every retained requirement independently. Resolved calls retain the exact
+      selected requirement and the same open invocation contract identity as the call graph.
     rules:
     - rules/declarations/interfaces.md
     - rules/declarations/functions.md
@@ -1212,10 +1214,19 @@ integrations:
     - internal/sema/analyzer.go
     - internal/sema/types.go
     - internal/sema/semantic_facts.go
+    - internal/sema/resolved_calls.go
+    - internal/sema/analyzer_inference.go
+    - internal/sema/call_graph_callables.go
+    - internal/ir/semantic/builder.go
     tests:
     - internal/sema/analyzer_test.go
     - testdata/interface_valid.sec
     - testdata/interface_invalid.sec
+    - internal/sema/interfaces/resolved_calls_test.go
+    - internal/ir/semantic/interface_call_test.go
+    - testdata/sema/interface_calls/selected.sec
+    - testdata/sema/interface_calls/rejected_invalid.sec
+    - testdata/sema/interface_calls/ambiguous_invalid.sec
     implemented:
     - interface methods retain parameter, return, static, receiver, and parameter-ownership contract facts
     - concrete interface conformance searches the concrete method overload group by target name plus method name
@@ -1226,18 +1237,23 @@ integrations:
     - distinct same-name overloads from one or more parents are retained
     - exact duplicates and same-signature incompatible contracts are distinguished
     - interface inheritance cycle diagnostics are implemented
+    - resolved interface calls preserve the exact selected overload, source declaration, dispatch kind, and open contract
+    - named parameter identities, inherited requirements, and instantiated generic overloads remain exact during selection
+    - invocation contracts retain borrow, mutable borrow, consuming, variadic, and receiver capability facts
+    - instance and qualified static interface calls share their invocation identity with call-graph target sets
+    - rejected and ambiguous interface calls publish no resolved target
+    - Semantic IR explicitly rejects interface dispatch before emitting an incorrect direct call
     remaining:
-    - preserve the exact selected interface overload in resolved call facts before eventual runtime interface dispatch
     - add future dynamic-dispatch lowering coverage once that backend contract is implemented
     bug_reference:
     - correction10.md
     governance_reconciliation:
-    - Keep frontend.interfaces partial. Amend its implemented wording "exact method parameter/result/static compatibility"
-      so it is clear that the comparison exists for represented requirements, while interface declaration and inheritance
-      do not yet preserve multiple same-name overload requirements.
-    - Do not downgrade ordinary concrete method overload resolution; the defect is the interface requirement-set representation.
-    - The existing remaining item for dynamic dispatch does not document this frontend overload loss, because the
-      requirements are already rejected or collapsed before Semantic IR/backend lowering.
+    - The correction10 requirement-set loss is resolved by retaining direct and inherited overloads. The selected-overload
+      fact gap is also resolved as of 2026-10-08, including nominal parameter identity and instantiated generic requirements.
+    - Keep frontend.interfaces partial for its remaining runtime interface representation and dispatch work. This entry's
+      implemented status covers requirement sets and exact frontend call selection, not runtime dynamic dispatch.
+    - Ordinary concrete calls keep their existing resolution category; interface requirements have a distinct call kind
+      and an open contract rather than a concrete implementation body.
     required_tests:
     - direct interface same-name different-type overloads accepted
     - direct interface same-name different-arity overloads accepted
@@ -1249,6 +1265,17 @@ integrations:
     - concrete implementation must provide every required overload
     - one missing concrete overload is diagnosed
     - selected interface overload is resolved before future dynamic dispatch
+    verification:
+    - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+      result: passed on 2026-10-08 after consolidating the call_graph family from 17 to 10 files (plan identity into call_graph_identity.go; contract, defer and test-root producers into call_graph_callables.go; effect-domain and arena allocation fixed-point summaries into call_graph_summaries.go; checkpoints into call_graph_workspace.go; tests regrouped, call_graph_scc_test.go renamed call_graph_test.go) without behavior or API changes
+    - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema/interfaces ./internal/sema ./internal/ir/semantic -count=1
+      result: passed; exact overload facts, generic substitution, inherited and static requirements, ownership modes, rejected calls, and explicit lowering boundary
+    - command: GOCACHE=/tmp/sec-go-cache go test ./...
+      result: passed; final receiver-preservation adjustment additionally verified by the complete Sema and Semantic IR suites
+    - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema/interfaces ./internal/sema ./internal/ir/semantic
+      result: passed
+    - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema/... ./internal/ir/semantic/...
+      result: passed
   - id: frontend.lambda-capture-binding-classification
     area: frontend-lambda-scope-and-capture-resolution
     status: implemented

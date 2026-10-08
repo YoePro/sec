@@ -212,23 +212,39 @@ const (
 	EscapeProvenanceUnknown                       = "S1132"
 	EscapeVariadicPack                            = "S1133"
 	IndexOutOfBounds                              = "S1134"
-	UnreachableStatement                          = "S3001"
-	UseAfterDiscard                               = "S4001"
-	LargeValueParameter                           = "A2001"
-	RedundantStateTestComparison                  = "A2002"
-	NegatedStateTest                              = "A2003"
-	PitfallAdvisory                               = "A2004"
+	UnitPolymorphismReserved                      = "S1135"
+	// DefaultCycle and BackendDefaultLeftUndefined are semantic compiler-rule
+	// identities, including failures found during lowering, not build-rule IDs.
+	// Rules: rules/types/default_values.md — "Diagnostics";
+	// rules/tooling/diagnostics.md — §§5(3), 5(6–9).
+	DefaultCycle                = "S1136"
+	BackendDefaultLeftUndefined = "S1137"
+	// CharLiteralOutOfRange rejects a t-suffixed literal or a single-quoted
+	// literal shaped by char context whose value is outside char's 0..255.
+	// Rules: rules/types/types.md — "char"; rules/foundations/lexical_structure.md
+	// — §12.7, §13; rules/corrections/applied/md043-char-rune-literal-correction-20261008.md — §6.3.
+	CharLiteralOutOfRange        = "S1138"
+	UnreachableStatement         = "S3001"
+	UseAfterDiscard              = "S4001"
+	LargeValueParameter          = "A2001"
+	RedundantStateTestComparison = "A2002"
+	NegatedStateTest             = "A2003"
+	PitfallAdvisory              = "A2004"
 )
 
 var registry = map[string]Definition{
-	PitfallAdvisory:         {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
-	IndexOutOfBounds:        {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeLocalStorage:      {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeOuterPlace:        {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeMatchPayload:      {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeClosureCapture:    {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeProvenanceUnknown: {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeVariadicPack:      {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	DefaultCycle:                {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	BackendDefaultLeftUndefined: {ID: BackendDefaultLeftUndefined, Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
+	CharLiteralOutOfRange:       {ID: CharLiteralOutOfRange, Name: "literal.char-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
+	UnitPolymorphismReserved:    {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
+	PitfallAdvisory:             {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
+	IndexOutOfBounds:            {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeLocalStorage:          {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeOuterPlace:            {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeMatchPayload:          {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeClosureCapture:        {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeProvenanceUnknown:     {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeVariadicPack:          {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 
 	ArenaResetLiveDependency:                      {ID: ArenaResetLiveDependency, Name: "arena.reset-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
 	ArenaReleaseLiveDependency:                    {ID: ArenaReleaseLiveDependency, Name: "arena.release-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},

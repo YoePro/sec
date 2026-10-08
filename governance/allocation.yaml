@@ -75,7 +75,7 @@ integrations:
     - rules/analysis/call_graph.md
     code:
     - internal/sema/call_graph.go
-    - internal/sema/call_graph_allocation_fixed_point.go
+    - internal/sema/call_graph_summaries.go
     - internal/sema/allocation_facts.go
     - internal/sema/analyzer_noalloc.go
     tests:
@@ -95,6 +95,8 @@ integrations:
     - "new direct allocation facts and canonical call edges invalidate the derived fixed point; graph cloning, plan binding and checkpoint reconstruction start with fresh derived state; immutable snapshot consumers may query summaries concurrently"
     - "all analysis depths, free/allocating/unknown/mixed/trusted-foreign mutual recursion, recursive defer, spawn exclusion, a 256-node cycle, effect/edge additions after queries, detached prior snapshots, deterministic shortest witnesses and real compiler/analyse/LSP owning diagnostics and presentation are verified"
     verification:
+    - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+      result: passed on 2026-10-08 after consolidating the call_graph family from 17 to 10 files (plan identity into call_graph_identity.go; contract, defer and test-root producers into call_graph_callables.go; effect-domain and arena allocation fixed-point summaries into call_graph_summaries.go; checkpoints into call_graph_workspace.go; tests regrouped, call_graph_scc_test.go renamed call_graph_test.go) without behavior or API changes
     - command: go test ./... -count=1
       result: passed on 2026-10-07 after graph-wide allocation fixed points and recursive compiler/analyse/LSP parity cases
     - command: go vet ./...
@@ -168,10 +170,9 @@ integrations:
     - internal/sema/allocation_facts.go
     - internal/layout/allocation_capabilities.go
     - internal/layout/scalar_plan.go
-    - internal/sema/allocation_capabilities.go
     - internal/sema/analyzer_target_plan.go
     - internal/sema/string_materialization.go
-    - internal/sema/allocation_context_description.go
+    - internal/sema/allocation_context_facts.go
     - cmd/lsp/allocation_profile_resolution.go
     - cmd/lsp/analysis_configuration.go
     tests:
@@ -193,6 +194,10 @@ integrations:
     - "fixed-address/register views remain non-owning physical storage without an Arena domain; canonical RawPtr.VolatileRead/VolatileWrite contracts prove allocation freedom independently from volatile effects, including transitive wrappers at all analysis depths and allocation profiles"
     - "raw-pointer cleanup never inherits pointee destruction or allocation; invalid unsafe access retains unknown coverage, similarly named user methods retain actual Arena effects, and foreign mapping without a trusted contract stays unknown; real compiler/analyse/LSP parity covers fixed storage, volatile access, mixed Arena allocation and opaque mapping"
     verification:
+    - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+      result: passed on 2026-10-08 after merging allocation_capabilities.go into allocation_facts.go without behavior or API changes
+    - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+      result: passed on 2026-10-08 after merging allocation_context_description.go into allocation_context_facts.go without behavior or API changes
     - command: go test ./internal/sema ./cmd/lsp -race -run 'TestAllocation|TestCompilerKnownRawPointer|TestNoAlloc' -count=1
       result: passed on 2026-10-07 with canonical volatile contracts, physical/owned storage separation, conservative unknown cleanup/foreign coverage and consumer parity
     - command: go test ./... -count=1
@@ -241,7 +246,6 @@ integrations:
     - internal/sema/analyzer_noalloc.go
     - internal/sema/errors.go
     - internal/sema/allocation_context_facts.go
-    - internal/sema/allocation_context_description.go
     - cmd/compiler/analyse_allocation.go
     - cmd/compiler/analyse.go
     - cmd/compiler/allocation_cause_paths.go
@@ -303,6 +307,8 @@ integrations:
     - "shared target parsing round-trips every registered OS/architecture pair, including hyphenated cortex-m3 architectures; subprocess compiler emit-ir and sec analyse JSON match standalone/batched LSP allocation IDs, owning counts, severity, primary locations and related cause links at interactive/standard/deep depth for hosted/freestanding targets, with valid analyse allocation knowledge, independent unknown evidence, paths and context/domain descriptions matching real callable hovers"
     - "mandatory errors continue to stop CLI report generation and lowering; partial editor facts remain conservative; parity covers the represented allocation model and does not complete operation coverage, general profile selection or mentor diagnostics owned by remaining work"
     verification:
+    - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+      result: passed on 2026-10-08 after merging allocation_context_description.go into allocation_context_facts.go without behavior or API changes
     - command: go test ./... -count=1
       result: passed on 2026-10-07 after active-source target alignment and registered target parsing; real compiler/analyse subprocess parity against standalone/batched LSP is included
     - command: go vet ./...

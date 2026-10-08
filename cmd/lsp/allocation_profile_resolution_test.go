@@ -68,7 +68,7 @@ func TestLSPAllocationCapabilities(t *testing.T) {
 		if count != expected {
 			t.Fatal(test, diagnostics)
 		}
-		batch := analyzeDiagnosticBatch([]lspserver.Snapshot{{URI: uri, Text: string(data)}}, nil)
+		batch := analyzeDiagnosticBatch([]lspserver.Snapshot{{URI: uri, Text: string(data)}}, sourceOverlay{})
 		batchCount := 0
 		for _, item := range batch[uri] {
 			if item.Code == "S1098" {

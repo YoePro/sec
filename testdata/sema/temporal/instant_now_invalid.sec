@@ -1,0 +1,2 @@
+module application
+fn Read() Instant { return Instant.Now }

@@ -1,0 +1,29 @@
+
+type Short string maxLen 4
+type Present string notEmpty
+type Answer string in ["yes", "no"]
+
+type Holder struct {
+    value: Short,
+}
+
+fn Accept(value: Short) void {}
+
+let valid: Short := "åa"
+let tooLong: Short := "hello"
+let missing: Present := ""
+let invalidAnswer: Answer := "maybe"
+let converted := Short("hello")
+let holder := Holder { value: "hello" }
+let mut current: Short := "ok"
+
+fn Call() void {
+    Accept("hello")
+    try current = "hello" { Err(error) => { discard error } }
+}
+
+fn ReturnTooLong() Short {
+    return "hello"
+}
+
+module test

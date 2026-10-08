@@ -2797,6 +2797,14 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	p.rejectAdditionalTypeDeclarationNames(stmt.Name.Value)
 
+	// rules/concurrency/mutex.md §13(1), cancellation.md §43(4):
+	// only the canonical opaque Instant declaration omits its base type.
+	// Source provenance and declaration ownership are checked by Sema.
+	if stmt.Name.Value == "Instant" && len(stmt.GenericParameters) == 0 &&
+		(p.peekToken.Type == lexer.EOF || p.peekToken.Line > p.curToken.Line) {
+		return stmt
+	}
+
 	if p.peekToken.Type == lexer.ASSIGN {
 		p.nextToken()
 		assignToken := p.curToken

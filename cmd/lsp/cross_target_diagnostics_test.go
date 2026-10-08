@@ -33,7 +33,7 @@ func writeCrossTargetModule(t *testing.T) string {
 func TestCrossTargetDiagnosticsRecordApplicability(t *testing.T) {
 	path := writeCrossTargetModule(t)
 	uri := uriFromPath(path)
-	result, ok := computeCrossTargetDiagnostics(uri, crossTargetSharedSource, sourceOverlay{})
+	result, ok := computeCrossTargetDiagnostics(uri, crossTargetSharedSource, sourceOverlay{Sources: map[string]string{}})
 	if !ok || strings.Join(result.targets, ",") != "linux-amd64,windows-amd64" {
 		t.Fatalf("result = %#v, %v", result, ok)
 	}
@@ -60,7 +60,7 @@ func TestCrossTargetDiagnosticsSkipTargetSpecificDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := computeCrossTargetDiagnostics(uriFromPath(linux), string(data), sourceOverlay{}); ok {
+	if _, ok := computeCrossTargetDiagnostics(uriFromPath(linux), string(data), sourceOverlay{Sources: map[string]string{}}); ok {
 		t.Fatal("a #target document has only its own target")
 	}
 }

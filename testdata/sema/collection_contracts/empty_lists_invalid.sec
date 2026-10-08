@@ -1,0 +1,19 @@
+module main
+type Positive list[int] minLen 1
+type ExactlyOne list[int] exactLen 1
+type Present list[int] notEmpty
+type Inherited Positive maxLen 4
+type Bounded list[int, 4] minLen 1
+type Holder struct { values: Positive, }
+fn Accept(values: Positive) void { discard values }
+fn Boundaries() void {
+    let short: Positive := Positive(list[int] {})
+    let wrong: ExactlyOne := ExactlyOne(list[int] {})
+    let missing: Present := Present(list[int] {})
+    let inherited: Inherited := Inherited(list[int] {})
+    let bounded: Bounded := Bounded(list[int, 4] {})
+    let converted := Positive(list[int] {})
+    let holder := Holder { values: Positive(list[int] {}) }
+    Accept(Positive(list[int] {}))
+}
+fn ReturnEmpty() Positive { return Positive(list[int] {}) }

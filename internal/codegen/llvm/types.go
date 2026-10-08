@@ -5,71 +5,14 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/codegen/llvm/scalar"
 )
 
 const llvmDecimalType = "%sec.decimal"
 
-// llvmReturnType maps built-in Sec scalar representations for the legacy LLVM
-// backend, including distinct char and rune widths.
-//
-// Rules:
-//   - rules/types/types.md — "char" and "rune"
-//   - rules/compiler/semantic_ir.md — §11 "Constants"
-func llvmReturnType(ref *ast.TypeReference) string {
-	if ref == nil {
-		return "void"
-	}
-
-	if ref.Name == "fn" || ref.FunctionReturnType != nil {
-		return "ptr"
-	}
-	if ref.Name == "RawPtr" {
-		return "ptr"
-	}
-
-	switch ref.Name {
-	case "bool":
-		return "i1"
-	case "void":
-		return "void"
-	case "int":
-		return "i32"
-	case "uint":
-		return "i64"
-	case "int8", "uint8", "byte", "char":
-		return "i8"
-	case "int16", "uint16":
-		return "i16"
-	case "int32", "uint32":
-		return "i32"
-	case "rune":
-		return "i32"
-	case "int64", "uint64":
-		return "i64"
-	case "int128", "uint128":
-		return "i128"
-	case "int256", "uint256":
-		return "i256"
-	case "float", "float64":
-		return "double"
-	case "float32":
-		return "float"
-	case "string":
-		return "ptr"
-	case "decimal":
-		return llvmDecimalType
-	default:
-		return "void"
-	}
-}
-
-func llvmParameterType(param *ast.Parameter) string {
-	if param.Ref {
-		return "ptr"
-	}
-	return llvmReturnType(param.Type)
-}
-
+// llvmType maps supported aliases and representations, retaining an explicit
+// failure when a nominal type's representation and contracts are unavailable.
+// Rules: rules/types/types.md — Named types; contracts.md — Core rule.
 func (g *Generator) llvmType(ref *ast.TypeReference) string {
 	if ref == nil {
 		return "void"
@@ -85,9 +28,25 @@ func (g *Generator) llvmType(ref *ast.TypeReference) string {
 		return enum.typ
 	}
 	if alias, ok := g.typeAliases[ref.Name]; ok {
+		if g.resolvingAliases == nil {
+			g.resolvingAliases = map[string]bool{}
+		}
+		if g.resolvingAliases[ref.Name] {
+			g.typeFailure = unsupportedContract("cyclic unresolved type representation for "+ref.Name, ref.Token)
+			return "void"
+		}
+		g.resolvingAliases[ref.Name] = true
+		defer delete(g.resolvingAliases, ref.Name)
 		return g.llvmType(alias)
 	}
-	return llvmReturnType(ref)
+	typ := scalar.Type(ref, g.scalarPlan)
+	if typ == "void" && ref.Name != "void" && g.typeFailure == nil {
+		// An unresolved nominal name may carry contracts unavailable to this
+		// raw AST backend. It must not silently become void.
+		// Rules: rules/types/types.md — Named types; contracts.md — Core rule.
+		g.typeFailure = unsupportedContract("unresolved type representation for "+ref.Name, ref.Token)
+	}
+	return typ
 }
 
 func (g *Generator) llvmParameterType(param *ast.Parameter) string {
@@ -115,6 +74,9 @@ func (g *Generator) typeReferenceIsUnsigned(ref *ast.TypeReference) bool {
 	}
 }
 
+// registerEnum uses the selected native int carrier for ordinary enums and preserves explicit integer or bit carriers.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; rules/foundations/operators.md — integer operations.
 func (g *Generator) registerEnum(enumDecl *ast.EnumDeclaration, owner string) {
 	if enumDecl == nil || enumDecl.Name == nil {
 		return
@@ -123,11 +85,11 @@ func (g *Generator) registerEnum(enumDecl *ast.EnumDeclaration, owner string) {
 	if owner != "" {
 		name = owner + "." + name
 	}
-	typ := "i32"
+	typ := g.nativeIntegerType()
 	if enumDecl.BitUnderlying && enumDecl.UnderlyingBitWidth > 0 {
 		typ = fmt.Sprintf("i%d", enumDecl.UnderlyingBitWidth)
 	} else if enumDecl.UnderlyingType != nil {
-		typ = llvmReturnType(enumDecl.UnderlyingType)
+		typ = g.llvmType(enumDecl.UnderlyingType)
 		if typ == "void" {
 			typ = "i32"
 		}
@@ -249,4 +211,35 @@ func enumInitializerValue(expr ast.Expression, iotaValue *big.Int) (*big.Int, bo
 	default:
 		return nil, false
 	}
+}
+
+// nativeIntegerType consumes the resolved platform width for inferred literals
+// and uint-valued builtin members as well as explicit int/uint type references.
+// Rules: rules/types/types.md — "int and uint", "Context shaping".
+func (g *Generator) nativeIntegerType() string {
+	return fmt.Sprintf("i%d", g.scalarPlan.PointerWidthBits)
+}
+
+// contextualIntegerConstant retains exact integer constants in an already
+// established destination carrier without introducing a runtime conversion.
+// Rules: rules/types/types.md — "Context shaping"; rules/foundations/operators.md
+// — integer literal operands. Sema proves source signedness and representability.
+func contextualIntegerConstant(arg value, targetType string) (value, bool) {
+	if _, ok := llvmIntegerWidth(arg.typ); !ok {
+		return value{}, false
+	}
+	width, ok := llvmIntegerWidth(targetType)
+	if !ok {
+		return value{}, false
+	}
+	literal, ok := new(big.Int).SetString(arg.ref, 10)
+	if !ok {
+		return value{}, false
+	}
+	limit := new(big.Int).Lsh(big.NewInt(1), uint(width))
+	if literal.Sign() >= 0 && literal.Cmp(limit) < 0 || literal.Sign() < 0 && literal.Cmp(new(big.Int).Neg(new(big.Int).Rsh(limit, 1))) >= 0 {
+		arg.typ = targetType
+		return arg, true
+	}
+	return value{}, false
 }

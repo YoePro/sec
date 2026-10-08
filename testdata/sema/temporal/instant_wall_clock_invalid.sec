@@ -1,0 +1,2 @@
+module application
+fn Convert(value: Instant) datetime { return datetime(value) }

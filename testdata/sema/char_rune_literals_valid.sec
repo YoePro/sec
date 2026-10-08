@@ -1,0 +1,47 @@
+module main
+
+// MD-043: a single-quoted literal is rune by default; an explicit char
+// context shapes it only for scalars 0..255; t literals are 0..255.
+
+fn InferredRunes() rune {
+    let letter := 'a'
+    let pi := 'π'
+    let omega: rune := 'Ω'
+    if letter == pi {
+        return omega
+    }
+    return letter
+}
+
+fn CharBoundaries() char {
+    let zero: char := 0t
+    let ascii: char := 127t
+    let high: char := 128t
+    let accent: char := 233t
+    let maximum: char := 255t
+    let shaped: char := 'é'
+    let first: char := 'a'
+    if shaped == 'é' && first < 'z' && zero <= maximum && ascii < high && accent == shaped {
+        return maximum
+    }
+    return first
+}
+
+fn ExplicitByteConversions(raw: byte) char {
+    let character: char := char(raw)
+    let back: byte := byte(character)
+    let restored: char := char(back)
+    return restored
+}
+
+fn CharOrdersByByteValue(value: char) bool {
+    return value > 127t && value in 'a'..'z' == false
+}
+
+fn TakesChar(value: char) char {
+    return value
+}
+
+fn CharArgument() char {
+    return TakesChar('x')
+}

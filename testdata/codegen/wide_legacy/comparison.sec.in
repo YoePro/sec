@@ -1,0 +1,3 @@
+module main
+fn Operation(left: TYPE, right: TYPE) bool { return left < right }
+fn main() int { return 0 }

@@ -1,0 +1,4 @@
+module main
+
+type Callback fn(ref float[]) float
+fn main() int { return 0 }

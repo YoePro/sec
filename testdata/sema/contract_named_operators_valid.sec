@@ -1,0 +1,18 @@
+module main
+
+let Minimum: decimal := 1.25
+let Factor: decimal := 2.0
+let Prefix: string := "sec"
+let Suffix: string := "-lang"
+let Large: float32 := 16777216g
+let One: float32 := 1g
+let Wide: decimal128 := 9223372036854775808m
+
+type Amount decimal range Minimum..(Minimum * Factor + 0.5) default Minimum * Factor
+type Name string in [Prefix + Suffix] default Prefix + Suffix
+type Rounded float32 in [Large + One - Large] default Large + One - Large
+type WideAmount decimal128 in [Wide * 2m] default Wide * 2m
+type Flag bool in [Minimum < Factor] default Minimum < Factor
+type Remainder decimal in [-Minimum % Factor] default -Minimum % Factor
+
+fn main() void {}

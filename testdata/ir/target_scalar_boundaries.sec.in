@@ -1,0 +1,37 @@
+module main
+type Signed int
+type Unsigned uint
+fn SignedMin() int { return __SIGNED_MIN__ }
+fn SignedMax() int { return __SIGNED_MAX__ }
+fn UnsignedMax() uint { return __UNSIGNED_MAX__u }
+fn NamedSigned() Signed { return __SIGNED_MAX__ }
+fn NamedUnsigned() Unsigned { return __UNSIGNED_MAX__u }
+fn StoreSigned(value: int) int {
+    let mut current: int := __SIGNED_MIN__
+    current = value
+    return current
+}
+fn StoreUnsigned(value: uint) uint {
+    let mut current: uint := __UNSIGNED_MAX__u
+    current = value
+    return current
+}
+fn IdentitySigned(value: int) int { return value }
+fn IdentityUnsigned(value: uint) uint { return value }
+fn CallSigned() int { return IdentitySigned(__SIGNED_MAX__) }
+fn CallUnsigned() uint { return IdentityUnsigned(__UNSIGNED_MAX__u) }
+fn FixedSigned() int64 { return 9223372036854775807 }
+fn FixedUnsigned() uint64 { return 18446744073709551615u }
+fn SignedArray() int[2] { return [__SIGNED_MIN__, __SIGNED_MAX__] }
+fn UnsignedArray() uint[2] { return [0u, __UNSIGNED_MAX__u] }
+type Derived Signed
+fn DerivedBoundary() Derived { return __SIGNED_MAX__ }
+fn RuntimeNeg(value: int) int { return -value }
+fn FixedStore(value: int32) int32 {
+    let mut current: int32 := -2147483648
+    current = value
+    return current
+}
+fn FallibleArray(values: int[2], index: uint) Result[int, IndexError] {
+    return Ok(try values[index])
+}

@@ -1,0 +1,4 @@
+module main
+fn Inspect(value: Selected) void {
+    value.
+}

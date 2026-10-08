@@ -1,0 +1,6 @@
+module main
+
+type Small int32 range 1..9
+type Derived Small
+fn Identity(value: Derived) Derived { return value }
+fn main() int { return 0 }

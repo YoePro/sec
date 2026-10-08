@@ -177,7 +177,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		case "m":
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 		case "t":
-			if !a.validUnicodeScalarLiteral(expr) {
+			if !a.validCharScalarLiteral(expr) {
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
 			return Type{Name: "char", Kind: CharType}, expressionValue{Display: expr.String()}
@@ -205,7 +205,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			a.addErrorAtToken(expr.Token, "character literal must contain exactly one character")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		return Type{Name: "char", Kind: CharType}, expressionValue{Display: expr.String()}
+		// rules/types/types.md — "Character literal": rune by default,
+		// independently of the scalar's value (MD-043).
+		return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
 	case *ast.BooleanLiteral:
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	case *ast.Identifier:
@@ -447,13 +449,7 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		a.expectedExpressionTypes[expr] = expected
 		defer delete(a.expectedExpressionTypes, expr)
 	}
-	if literal, ok := expr.(*ast.CharLiteral); ok && expected.Kind == RuneType {
-		typ := Type{Name: "rune", Kind: RuneType}
-		if !validCharLiteral(literal.Token.Lexeme) {
-			a.addErrorAtToken(literal.Token, "character literal must contain exactly one character")
-			typ = Type{Kind: InvalidType}
-		}
-		a.expressionTypes[expr] = typ
+	if typ, shaped := a.shapeCharacterLiteral(expr, expected); shaped {
 		return typ, expressionValue{Display: expr.String()}
 	}
 	if lit, ok := expr.(*ast.ArrayLiteral); ok {
@@ -676,6 +672,13 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	// rules/concurrency/mutex.md §13: representation is runtime-private,
+	// with no source constructor defined by temporal.md §4.
+	if typ.MonotonicPoint {
+		a.addErrorAtToken(expr.Token, "Instant has no source struct constructor; its representation is runtime-private")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
 	if typ.Kind != StructType {
 		a.addErrorAtToken(expr.Token, "%s is not a struct type", typ.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -789,6 +792,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		}
 		resolution := DefaultValueOf(field.Type)
 		if resolution.Kind == NoDefault {
+			start := len(a.errors)
 			// rules/types/default_values.md, "Diagnostics": an omitted field
 			// whose type default is invalid or ambiguous keeps that specific
 			// identity instead of the generic non-defaultable-field diagnostic.
@@ -799,6 +803,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			} else {
 				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.MissingNonDefaultableField, "initialize the field explicitly", "field %q in struct %s has no default value and must be initialized", field.Name, typ.Name)
 			}
+			a.relateMissingDefault(start, field.Type, field.Token)
 			planValid = false
 			continue
 		}
@@ -1585,7 +1590,7 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if a.checkStringLiteralContracts(targetType, expr.Value) {
+	if a.checkEmptyListLiteralContracts(targetType, expr.Value) || a.checkStringLiteralContracts(targetType, expr.Value) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1957,6 +1962,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				if !isMethodCall {
 					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 				}
+				if member, ok := expr.Callee.(*ast.MemberExpression); ok && member.Property != nil {
+					if selected, ok := resolvedInterfaceOverloads(methodReceiver.Type, member.Property.Value); ok {
+						methodFunctions = selected
+					}
+				}
 				name = methodName
 				functions = methodFunctions
 				ok = true
@@ -2146,15 +2156,23 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		dispatch := CallDispatchDirect
 		if isMethodCall {
 			dispatch = CallDispatchStaticMethod
+			if dereferenceType(methodReceiver.Type).Kind == InterfaceType {
+				dispatch = CallDispatchInterface
+			}
 		} else if best[0].Function.Extern {
 			dispatch = CallDispatchForeign
 		}
-		a.resolvedCalls[expr] = ResolvedCall{Function: best[0].Function, Kind: resolvedCallKind(dispatch)}
+		contractReceiver := methodReceiver.Type
+		if iface, ok := a.interfaceReceiverForCall(expr, methodReceiver.Type); ok {
+			dispatch = CallDispatchInterface
+			contractReceiver = iface
+		}
+		a.recordResolvedCall(expr, best[0].Function, dispatch, contractReceiver)
 		a.recordForeignBufferExtents(expr, a.resolvedCalls[expr])
 		execution, recordCall := a.callGraphExecutionForCall(expr)
 		if !a.summaryPass && a.callGraphPathReachable && recordCall {
-			if isMethodCall && dereferenceType(methodReceiver.Type).Kind == InterfaceType {
-				a.recordInterfaceGraphCall(methodReceiver.Type, best[0].Function, callCalleeDefinitionToken(expr), execution)
+			if dispatch == CallDispatchInterface {
+				a.recordInterfaceGraphCall(contractReceiver, best[0].Function, callCalleeDefinitionToken(expr), execution)
 			} else {
 				a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
 			}
@@ -2164,7 +2182,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			// rules/errors/panic.md § 21(3)–(4): a method called through an
 			// interface reference or a constrained generic parameter has no
 			// concrete body here, so its panic behavior is unknown.
-			if isMethodCall && (dereferenceType(methodReceiver.Type).Kind == InterfaceType || dereferenceType(methodReceiver.Type).Kind == GenericType) {
+			if dispatch == CallDispatchInterface || (isMethodCall && dereferenceType(methodReceiver.Type).Kind == GenericType) {
 				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: callCalleeDefinitionToken(expr)})
 				a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: callCalleeDefinitionToken(expr), UnknownAllocation: true})
 				a.recordUnknownBlockingCallee(callCalleeDefinitionToken(expr))
@@ -2824,48 +2842,6 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 	return Type{Name: name, Kind: StructType, TypeArgs: []Type{valueType}}, expressionValue{Display: expr.String()}, true
 }
 
-func (a *Analyzer) inferMutexCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok || member.Property == nil {
-		return Type{}, expressionValue{}, false
-	}
-	receiverType, ok := a.compilerKnownReceiverType(member.Object)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-	if !isMutexType(receiverType) {
-		return Type{}, expressionValue{}, false
-	}
-	switch member.Property.Value {
-	case "lock":
-		if len(expr.GenericArguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Mutex.lock does not take type arguments")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Mutex.lock expects 0 arguments, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		// rules/concurrency/blocking.md — "Mutex acquisition": waiting for the
-		// lock may block; tryLock never waits.
-		a.recordBlockingOperation("Mutex.lock", member.Property.Token)
-		return mutexGuardType(receiverType.TypeArgs[0]), expressionValue{Display: expr.String()}, true
-	case "tryLock":
-		if len(expr.GenericArguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Mutex.tryLock does not take type arguments")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "Mutex.tryLock expects 0 arguments, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		guard := mutexGuardType(receiverType.TypeArgs[0])
-		return Type{Name: "Option", Kind: UnionType, TypeArgs: []Type{guard}}, expressionValue{Display: expr.String()}, true
-	default:
-		return Type{}, expressionValue{}, false
-	}
-}
-
 func (a *Analyzer) inferEventCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
@@ -3491,7 +3467,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
+	if a.checkEmptyListLiteralContracts(targetType, expr.Arguments[0]) || a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.expressionTypes[expr] = targetType
@@ -3741,13 +3717,12 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 	if isComparisonOperator(expr.Operator) {
 		a.recordComparisonConstantOperand(expr.Left)
 		a.recordComparisonConstantOperand(expr.Right)
-		if _, ok := expr.Right.(*ast.CharLiteral); ok && leftType.Kind == RuneType {
-			rightType = Type{Name: "rune", Kind: RuneType}
-			a.expressionTypes[expr.Right] = rightType
+		// A character literal compared with a char operand is shaped to char.
+		if typ, shaped := a.shapeCharacterLiteral(expr.Right, leftType); shaped {
+			rightType = typ
 		}
-		if _, ok := expr.Left.(*ast.CharLiteral); ok && rightType.Kind == RuneType {
-			leftType = Type{Name: "rune", Kind: RuneType}
-			a.expressionTypes[expr.Left] = leftType
+		if typ, shaped := a.shapeCharacterLiteral(expr.Left, rightType); shaped {
+			leftType = typ
 		}
 		var valid bool
 		rightType, valid = a.contextualNumericLiteralType(expr.Right, rightType, leftType)
@@ -4176,6 +4151,9 @@ func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType
 func (a *Analyzer) inferRangeMembershipExpression(expr *ast.InfixExpression, rangeExpr *ast.RangeExpression, leftType Type) (Type, expressionValue) {
 	if rangeExpr.Start != nil {
 		startType, _ := a.inferExpression(rangeExpr.Start)
+		if typ, shaped := a.shapeCharacterLiteral(rangeExpr.Start, leftType); shaped {
+			startType = typ
+		}
 		if startType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -4188,6 +4166,9 @@ func (a *Analyzer) inferRangeMembershipExpression(expr *ast.InfixExpression, ran
 
 	if rangeExpr.End != nil {
 		endType, _ := a.inferExpression(rangeExpr.End)
+		if typ, shaped := a.shapeCharacterLiteral(rangeExpr.End, leftType); shaped {
+			endType = typ
+		}
 		if endType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}

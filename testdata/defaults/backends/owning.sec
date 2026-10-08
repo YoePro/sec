@@ -1,0 +1,7 @@
+module main
+fn Owning() int[] {
+    let mut value: int[]
+    return value
+}
+
+fn main() int { return 0 }

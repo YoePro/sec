@@ -39,9 +39,10 @@ func documentTextHash(text string) string {
 }
 
 // scheduleCrossTargetDiagnostics analyzes a target-independent document once
-// per target of its module in the background and republishes the module's
+// per project variant or target of its module in the background and republishes the module's
 // diagnostics when done. It runs on open and save only, because one pass
-// analyzes the module for every target.
+// analyzes the module for every target. Configuration/target switches also
+// reschedule these analyses with the new immutable request selection.
 //
 // Rules:
 //   - rules/tooling/lsp.md — "Multi-target diagnostics", "Target status" (per-target diagnostics)
@@ -98,7 +99,8 @@ func (s *server) crossTargetResultFor(uri string, text string) (crossTargetResul
 }
 
 // computeCrossTargetDiagnostics analyzes a document without its own `#target`
-// for every target selected by its module's platform files. It reports false
+// for every declared project variant, or targets selected by platform files
+// when no project variants apply. It reports false
 // when the document is target-specific or its module has fewer than two
 // targets, where the ordinary active-target diagnostics are complete.
 func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverlay) (result crossTargetResult, ok bool) {
@@ -115,13 +117,26 @@ func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverla
 	if _, directed := lspserver.ProgramTarget(active); directed {
 		return crossTargetResult{}, false
 	}
+	if options := lspDiagnosticTargetOptions(path, overlay); len(options) >= 2 {
+		result = crossTargetResult{textHash: documentTextHash(text), active: lspActiveTarget(active, path, overlay).String(), perTarget: map[string][]diagnostic{}}
+		for _, option := range options {
+			name := option.diagnosticName()
+			result.targets = append(result.targets, name)
+			target := platformtarget.Target{OS: option.OS, Arch: option.Arch}
+			result.perTarget[name] = semanticDiagnosticsForTarget(uri, text, overlay, target)
+			if option.Active {
+				result.active = name
+			}
+		}
+		return result, true
+	}
 	targets, _ := moduleTargets(path, lspserver.ProgramModule(active), text, overlay, active)
 	if len(targets) < 2 {
 		return crossTargetResult{}, false
 	}
 	result = crossTargetResult{
 		textHash:  documentTextHash(text),
-		active:    lspActiveTarget(active, path).String(),
+		active:    lspActiveTarget(active, path, overlay).String(),
 		perTarget: map[string][]diagnostic{},
 	}
 	for _, target := range targets {
@@ -139,10 +154,10 @@ func semanticDiagnosticsForTarget(uri string, text string, overlay sourceOverlay
 	if parsed == nil {
 		return nil
 	}
-	lspserver.AssembleModuleForTarget(parsed, path, overlay, target)
+	lspserver.AssembleModuleForTarget(parsed, path, overlay.Sources, target)
 	resolveCoreSources(parsed, path, overlay)
 	errors := resolveSourceImportsForTarget(parsed, map[string]bool{}, path, target, overlay)
-	analyzer := newLSPAnalyzer(uri, parsed)
+	analyzer := newLSPAnalyzerWithOverlay(uri, parsed, overlay)
 	if definition, found := platformtarget.Find(target); found {
 		if plan, err := definition.ScalarPlan(); err == nil {
 			analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)

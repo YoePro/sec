@@ -2,6 +2,8 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { LanguageClient, LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
 
+import { registerTargetSelection } from "./targets";
+
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel | undefined;
 
@@ -24,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
       { scheme: "file", language: "sec" }
     ],
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{sec,se}"),
+      fileEvents: [vscode.workspace.createFileSystemWatcher("**/*.{sec,se}"), vscode.workspace.createFileSystemWatcher("**/.sec/sec.toml")],
       configurationSection: "sec"
     },
     initializationOptions: {
@@ -52,6 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(client);
   registerCompilerKnownDefinitions(context);
   registerShowLocations(context);
+  registerTargetSelection(context, () => client);
   client.start().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     output?.appendLine(`Failed to start SEC language server: ${message}`);

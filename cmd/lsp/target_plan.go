@@ -27,10 +27,9 @@ type lspManifestTarget struct {
 }
 
 // lspScalarPlan resolves the active source's project target through the same
-// compiler-owned registry used by sec check/build. Until target switching is
-// exposed by the protocol, resolution is deliberately limited to an
-// unambiguous logical target and scalar plan; ambiguous multi-variant projects
-// retain the target-independent fallback instead of guessing.
+// compiler-owned registry used by sec check/build. This automatic fallback
+// requires one unambiguous logical target and scalar plan; explicit request
+// selections are resolved by selectedLSPPlan before reaching this fallback.
 //
 // Rules:
 //   - rules/tooling/lsp.md — "Target-aware analysis" and A.20
@@ -269,16 +268,20 @@ func stripLSPManifestComment(line string) string {
 
 // lspActiveTarget is the target whose sources one analysis of sourcePath
 // sees: the active document's own `#target` when it has one, so a
-// platform-specific file is analyzed for its platform; otherwise the project
-// target when all of its variants share one OS and architecture; otherwise the
+// platform-specific file is analyzed for its platform; otherwise the explicit
+// request selection, then the project target when all variants share one OS
+// and architecture; otherwise the
 // host target, as `sec check` uses by default.
 //
 // Rules:
 //   - rules/platform/platform_model.md — source selection by target
 //   - rules/tooling/lsp.md — "Shared compiler workspace" (target variants)
-func lspActiveTarget(program *ast.Program, sourcePath string) platformtarget.Target {
+func lspActiveTarget(program *ast.Program, sourcePath string, overlays ...sourceOverlay) platformtarget.Target {
 	if target, directed := lspserver.ProgramTarget(program); directed {
 		return target
+	}
+	if plan, ok := selectedLSPPlan(sourcePath, firstSourceOverlay(overlays)); ok {
+		return platformtarget.Target{OS: plan.TargetOS, Arch: plan.TargetArch}
 	}
 	if sourcePath != "" {
 		root := findProjectRoot(sourcePath)

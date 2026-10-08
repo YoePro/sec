@@ -116,7 +116,7 @@ func TestPitfallLSPConfiguration(t *testing.T) {
 	if !strings.Contains(out.String(), `"code":"S1134"`) || strings.Contains(out.String(), `"code":"A2004"`) {
 		t.Fatal(out.String())
 	}
-	mandatory := pitfallCodeActions(uri, source, lspRange{End: endPosition(source)}, nil, s.pitfallSettingsSnapshot())
+	mandatory := pitfallCodeActions(uri, source, lspRange{End: endPosition(source)}, sourceOverlay{}, s.pitfallSettingsSnapshot())
 	if len(mandatory) == 0 {
 		t.Fatal("off removed mandatory guidance")
 	}
@@ -134,7 +134,7 @@ func TestPitfallLSPConfiguration(t *testing.T) {
 func TestPitfallLSPFixes(t *testing.T) {
 	source := pitfallLSPFixture(t)
 	uri := uriFromPath(filepath.Join(t.TempDir(), "main.sec"))
-	actions := pitfallCodeActions(uri, source, lspRange{End: endPosition(source)}, nil, pitfallDiagnosticSettings{})
+	actions := pitfallCodeActions(uri, source, lspRange{End: endPosition(source)}, sourceOverlay{}, pitfallDiagnosticSettings{})
 	fixed, suggested, grouped, unicode := 0, 0, false, false
 	for _, action := range actions {
 		if action.Disabled != nil {
@@ -174,7 +174,7 @@ func TestPitfallLSPFixes(t *testing.T) {
 	// a finding range cannot receive an unrelated edit.
 	changed := strings.ReplaceAll(source, "flag == true", "flag")
 	direct := lspRange{Start: position{Line: 1}, End: position{Line: 1, Character: 100}}
-	if values := pitfallCodeActions(uri, changed, direct, nil, pitfallDiagnosticSettings{}); len(values) != 0 {
+	if values := pitfallCodeActions(uri, changed, direct, sourceOverlay{}, pitfallDiagnosticSettings{}); len(values) != 0 {
 		t.Fatal(values)
 	}
 }
@@ -216,7 +216,7 @@ func TestPitfallLSPProjectReload(t *testing.T) {
 		if hasWidth != (depth == "deep") || len(values[uri]) == 0 || len(values[otherURI]) != 0 {
 			t.Fatal(depth, values)
 		}
-		actions := pitfallCodeActions(uri, source, lspRange{End: endPosition(source)}, nil, s.pitfallSettingsSnapshot())
+		actions := pitfallCodeActions(uri, source, lspRange{End: endPosition(source)}, sourceOverlay{}, s.pitfallSettingsSnapshot())
 		widthFix := false
 		for _, action := range actions {
 			for _, d := range action.Diagnostics {

@@ -1,0 +1,147 @@
+module main
+
+// rules/types/default_values.md: all default kinds and non-defaultable forms.
+type DefaultBool bool
+type DefaultString string
+type DefaultChar char
+type DefaultRune rune
+type DefaultInt int
+type DefaultWide int256
+type DefaultUint uint
+type DefaultFloat float
+type DefaultFloat32 float32
+type DefaultFloat64 float64
+type DefaultDecimal decimal
+type DefaultDecimal128 decimal128
+type DefaultPositive int range 3..10
+type DefaultNegative int range -9..<-2
+type DefaultEven int range 3..10 even
+type DefaultDivisible int range 1..20 multipleOf 6
+type DefaultBinaryRange float64 range 1.5..9.0
+type DefaultDecimalRange decimal range 0.01..10.00
+type DefaultMembership string in ["first", "second"]
+type DefaultExplicit int range 1..100 default (2 + 5)
+type DefaultInherited DefaultExplicit
+type DefaultExplicitText string default "x" + "y"
+type DefaultStruct struct { value: DefaultExplicit, text: string, }
+type DefaultArray DefaultExplicit[2]
+type DefaultEmptyArray int[0]
+type DefaultOwning int[]
+type DefaultLarge int[2048]
+type DefaultList list[int]
+type DefaultBoundedList list[string, 4]
+type DefaultUnion union { Empty default
+ Other }
+type DefaultPayload union { Number(int) default
+ Other }
+type DefaultFields union { Empty { count: int, text: string, } default
+ Other }
+enum DefaultEnum int { First = 10, Second default = 20, }
+type DefaultSlice ref int[]
+type DefaultReference ref int
+type DefaultCallable fn() void
+type DefaultDate date
+type DefaultTime time
+type DefaultDatetime datetime
+type DefaultDuration duration
+type DefaultAmbiguous int range -3..3 odd
+
+type DefaultCollections struct { dynamic: list[int], bounded: list[string, 4], }
+
+type DefaultInt8 int8
+type DefaultInt16 int16
+type DefaultInt32 int32
+type DefaultInt64 int64
+type DefaultInt128 int128
+type DefaultUint8 uint8
+type DefaultUint16 uint16
+type DefaultUint32 uint32
+type DefaultUint64 uint64
+type DefaultUint128 uint128
+type DefaultUint256 uint256
+type DefaultByte byte
+type DefaultInheritedList DefaultList
+type DefaultBox[T] struct { value: T, }
+type DefaultGeneric struct { inner: DefaultBox[int], }
+
+type DefaultExplicitBool bool default true
+type DefaultExplicitChar char default 65t
+type DefaultExplicitRune rune default 955r
+type DefaultExplicitFloat float32 default 1.5g
+type DefaultExplicitDecimal decimal default 1.25m
+type DefaultExplicitWide int128 default 170141183460469231731687303715884105727
+
+fn Show(
+    value0: DefaultBool,
+    value1: DefaultString,
+    value2: DefaultChar,
+    value3: DefaultRune,
+    value4: DefaultInt,
+    value5: DefaultWide,
+    value6: DefaultUint,
+    value7: DefaultFloat,
+    value8: DefaultFloat32,
+    value9: DefaultFloat64,
+    value10: DefaultDecimal,
+    value11: DefaultDecimal128,
+    value12: DefaultPositive,
+    value13: DefaultNegative,
+    value14: DefaultEven,
+    value15: DefaultDivisible,
+    value16: DefaultBinaryRange,
+    value17: DefaultDecimalRange,
+    value18: DefaultMembership,
+    value19: DefaultExplicit,
+    value20: DefaultInherited,
+    value21: DefaultExplicitText,
+    value22: DefaultStruct,
+    value23: DefaultArray,
+    value24: DefaultEmptyArray,
+    value25: DefaultOwning,
+    value26: DefaultLarge,
+    value27: DefaultList,
+    value28: DefaultBoundedList,
+    value29: DefaultUnion,
+    value30: DefaultPayload,
+    value31: DefaultFields,
+    value32: DefaultEnum,
+    value33: DefaultSlice,
+    value34: DefaultReference,
+    value35: DefaultCallable,
+    value36: DefaultDate,
+    value37: DefaultTime,
+    value38: DefaultDatetime,
+    value39: DefaultDuration,
+    value40: DefaultAmbiguous,
+    value41: DefaultCollections,
+    value42: DefaultInt8,
+    value43: DefaultInt16,
+    value44: DefaultInt32,
+    value45: DefaultInt64,
+    value46: DefaultInt128,
+    value47: DefaultUint8,
+    value48: DefaultUint16,
+    value49: DefaultUint32,
+    value50: DefaultUint64,
+    value51: DefaultUint128,
+    value52: DefaultUint256,
+    value53: DefaultByte,
+    value54: DefaultInheritedList,
+    value55: DefaultGeneric,
+    value56: int,
+    value57: DefaultExplicitBool,
+    value58: DefaultExplicitChar,
+    value59: DefaultExplicitRune,
+    value60: DefaultExplicitFloat,
+    value61: DefaultExplicitDecimal,
+    value62: DefaultExplicitWide,
+) void {
+    let mut namedList: DefaultList
+    let mut inheritedList: DefaultInheritedList
+    discard namedList
+    discard inheritedList
+    let partial := DefaultStruct { text: "kept" }
+    let explicitList := list[int] {}
+    discard partial
+    discard explicitList
+}

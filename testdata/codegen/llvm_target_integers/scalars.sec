@@ -1,0 +1,41 @@
+module main
+
+type Signed int
+type Unsigned uint
+enum Code int { FIRST = 1, SECOND = 2, }
+enum DefaultCode { FIRST = 1, SECOND = 2, }
+
+fn SignedIdentity(value: Signed) Signed { return value }
+fn UnsignedIdentity(value: Unsigned) Unsigned { return value }
+fn Sum(value: int) int { return value + 1 }
+fn Negate(value: int) int { return -value }
+fn Stored() int {
+    let mut value: int := 7
+    value = 9
+    return value
+}
+fn UnsignedLiteral() uint { return 7u }
+fn Fixed(value: int32) int32 {
+    let mut stored: int32 := 3
+    stored = 4
+    return value + stored
+}
+fn FixedUnsigned(value: uint64) uint64 { return value }
+fn EnumIdentity(value: Code) Code { return value }
+fn DefaultEnumIdentity(value: DefaultCode) DefaultCode { return value }
+fn CodeValue(value: Code) int {
+    return match value {
+        Code.FIRST => 1
+        Code.SECOND => 2
+        _ => 0
+    }
+}
+fn Length(value: string) uint { return value.len }
+
+fn main() int { return 0 }
+
+fn WidenSigned(value: int) int64 { return int64(value) }
+fn WidenUnsigned(value: uint) uint64 { return uint64(value) }
+
+fn FixedMinimum() int64 { return -9223372036854775808 }
+fn FixedUnsignedMaximum() uint64 { return 18446744073709551615u }

@@ -1,0 +1,15 @@
+module main
+
+fn main() void {
+    let mut candidate: Ambiguous
+    let item := Container {}
+    let text: Text := "abc"
+    let values: Values := [1, 1]
+    let mut value: Base := 2
+    value = 4
+    let immutable: int
+    let generic := GenericContainer[Child] {}
+    discard item
+    discard text
+    discard values
+}

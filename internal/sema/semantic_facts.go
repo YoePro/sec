@@ -27,19 +27,6 @@ type ResolvedBinding struct {
 	Mutable bool
 }
 
-type ResolvedCallKind string
-
-const (
-	ResolvedDirectCall       ResolvedCallKind = "direct"
-	ResolvedForeignCall      ResolvedCallKind = "foreign"
-	ResolvedStaticMethodCall ResolvedCallKind = "static-method"
-)
-
-type ResolvedCall struct {
-	Function Function
-	Kind     ResolvedCallKind
-}
-
 // TestIdentity is the structured semantic identity of a test invocation. A
 // top-level test has one path component; future subtests extend Path rather
 // than defining identity through concatenated display or linker names.
@@ -1433,14 +1420,6 @@ func (a *Analyzer) ResolvedAvailabilityTestOf(expr *ast.AvailabilityExpression) 
 	return fact, ok
 }
 
-func (a *Analyzer) ResolvedCallTarget(call *ast.CallExpression) (ResolvedCall, bool) {
-	if a == nil || call == nil {
-		return ResolvedCall{}, false
-	}
-	resolved, ok := a.resolvedCalls[call]
-	return resolved, ok
-}
-
 // ResolvedConstructionOf returns the exact initializer selection recorded for
 // a successfully analyzed new expression. Tooling and lowering consume this
 // fact instead of reconstructing lifecycle overload resolution from syntax.
@@ -1826,15 +1805,4 @@ func (a *Analyzer) recordBinding(token lexer.Token, kind BindingKind, name strin
 	a.bindingIDs[key] = a.nextBindingID
 	a.bindingFacts[key] = ResolvedBinding{ID: a.nextBindingID, Kind: kind, Name: name, Type: typ, Mutable: mutable}
 	a.nextBindingID++
-}
-
-func resolvedCallKind(dispatch CallDispatchKind) ResolvedCallKind {
-	switch dispatch {
-	case CallDispatchForeign:
-		return ResolvedForeignCall
-	case CallDispatchStaticMethod:
-		return ResolvedStaticMethodCall
-	default:
-		return ResolvedDirectCall
-	}
 }

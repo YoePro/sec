@@ -1,0 +1,3 @@
+module main
+type Pattern string regex ".*"
+fn main() int { return 0 }

@@ -1,0 +1,5 @@
+module main
+
+type Text string notEmpty
+type Values int32[] unique
+fn main() int { return 0 }

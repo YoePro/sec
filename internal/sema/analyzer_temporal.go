@@ -3,6 +3,7 @@ package sema
 import (
 	"sec/internal/ast"
 	"sec/internal/lexer"
+	"sec/internal/sema/temporal"
 )
 
 // CompilerKnownValueAt returns the stable intrinsic identity resolved at one
@@ -16,6 +17,29 @@ func (a *Analyzer) CompilerKnownValueAt(file string, line int, column int) (Comp
 	value, ok := a.compilerKnownValueFacts[sourceTokenKey{File: file, Line: line, Column: column}]
 	value.Effects = append([]EffectKind(nil), value.Effects...)
 	return value, ok
+}
+
+// compileTimeClockRead identifies prohibited ambient-clock operands by the
+// compiler intrinsic registry or a resolved intrinsic temporal type identity.
+// Rules: rules/types/temporal.md — §3 "UTC wall-clock access";
+// rules/corrections/applied/temporal-now-correction-20260928.md — §7.
+func (a *Analyzer) compileTimeClockRead(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		known, ok := compilerKnownValue(expr.Value)
+		return ok && known.ID == "CKV-TEMPORAL-NOW"
+	case *ast.MemberExpression:
+		if expr.Property == nil {
+			return false
+		}
+		path, ok := typePathFromExpression(expr.Object)
+		if !ok {
+			return false
+		}
+		typ, found := a.types[a.resolveTypeName(path)]
+		return found && temporal.IsWallClockProperty(typ.Intrinsic, typ.Name, expr.Property.Value)
+	}
+	return false
 }
 
 // inferCompilerKnownValue resolves compiler-owned value expressions without
@@ -55,4 +79,37 @@ func (a *Analyzer) recordCompilerKnownValueEffects(value CompilerKnownValue, sou
 	for _, kind := range value.Effects {
 		a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: kind, Source: source})
 	}
+}
+
+// registerInstantDeclaration retains the compiler-owned monotonic identity,
+// allowing only its exact opaque declaration in loader-proven core source.
+// Rules: rules/concurrency/mutex.md §13(1)-(5); cancellation.md §43(4).
+func (a *Analyzer) registerInstantDeclaration(stmt *ast.TypeDeclStatement) bool {
+	if stmt.Name.Value != "Instant" || !a.isTrustedCoreBuiltinDeclaration("Instant", stmt.Name.Token) {
+		return false
+	}
+	if stmt.BaseType != nil || stmt.AssignedType != nil || stmt.StructType != nil ||
+		stmt.RegisterType != nil || stmt.Union || len(stmt.Variants) != 0 ||
+		len(stmt.GenericParameters) != 0 || len(stmt.Attributes) != 0 || stmt.ErrorType ||
+		stmt.Contract != nil || stmt.Default != nil || len(stmt.Implements) != 0 {
+		a.addErrorAtToken(stmt.Name.Token, "Instant requires its canonical opaque declaration: type Instant")
+	}
+	typ := a.types["Instant"]
+	typ.Module = "core"
+	typ.Declared = true
+	typ.DeclarationToken = stmt.Name.Token
+	a.types["Instant"] = typ
+	return true
+}
+
+// rejectInstantNonOpaqueDeclaration prevents enum/interface declarations from
+// replacing the runtime-owned monotonic identity, including in trusted core.
+// Rules: rules/concurrency/mutex.md §13(1)-(3); cancellation.md §43(4).
+func (a *Analyzer) rejectInstantNonOpaqueDeclaration(name string, token lexer.Token) bool {
+	if name != "Instant" {
+		return false
+	}
+	a.addErrorAtToken(token, "Instant requires its canonical opaque declaration: type Instant")
+	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
+	return true
 }

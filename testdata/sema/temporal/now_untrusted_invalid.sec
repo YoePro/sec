@@ -1,0 +1,5 @@
+module main
+
+fn Read() datetime {
+    return _now
+}

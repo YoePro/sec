@@ -1,0 +1,5 @@
+module main
+
+type Name string minLen 1 maxLen 4
+type Code string exactLen 2
+fn main() int { return 0 }

@@ -1,0 +1,4 @@
+module main
+@DECLARATIONS@
+fn Convert(value: @SOURCE@) @TARGET@ { return @TARGET@(value) }
+fn main() int { return 0 }

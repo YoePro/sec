@@ -1,0 +1,317 @@
+[
+  {
+    "name": "DefaultBool",
+    "value": "false",
+    "source": "named"
+  },
+  {
+    "name": "DefaultString",
+    "value": "\"\"",
+    "source": "named"
+  },
+  {
+    "name": "DefaultChar",
+    "value": "0t",
+    "source": "named"
+  },
+  {
+    "name": "DefaultRune",
+    "value": "0r",
+    "source": "named"
+  },
+  {
+    "name": "DefaultInt",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultWide",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultFloat",
+    "value": "0.0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultFloat32",
+    "value": "0.0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultFloat64",
+    "value": "0.0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultDecimal",
+    "value": "0.0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultDecimal128",
+    "value": "0.0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultPositive",
+    "value": "3",
+    "source": "range"
+  },
+  {
+    "name": "DefaultNegative",
+    "value": "-3",
+    "source": "range"
+  },
+  {
+    "name": "DefaultEven",
+    "value": "4",
+    "source": "range"
+  },
+  {
+    "name": "DefaultDivisible",
+    "value": "6",
+    "source": "range"
+  },
+  {
+    "name": "DefaultBinaryRange",
+    "value": "1.5",
+    "source": "range"
+  },
+  {
+    "name": "DefaultDecimalRange",
+    "value": "0.01",
+    "source": "range"
+  },
+  {
+    "name": "DefaultMembership",
+    "value": "\"first\"",
+    "source": "membership"
+  },
+  {
+    "name": "DefaultExplicit",
+    "value": "7",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultInherited",
+    "value": "7",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultExplicitText",
+    "value": "\"xy\"",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultStruct",
+    "value": "DefaultStruct { value: 7, text: \"\" }",
+    "source": "struct"
+  },
+  {
+    "name": "DefaultArray",
+    "value": "[7, 7]",
+    "source": "array"
+  },
+  {
+    "name": "DefaultEmptyArray",
+    "value": "[]",
+    "source": "array"
+  },
+  {
+    "name": "DefaultOwning",
+    "value": "[]",
+    "source": "array"
+  },
+  {
+    "name": "DefaultLarge",
+    "value": "[0, ...]",
+    "source": "array"
+  },
+  {
+    "name": "DefaultList",
+    "value": "DefaultList[int] {}",
+    "source": "collection"
+  },
+  {
+    "name": "DefaultBoundedList",
+    "value": "DefaultBoundedList[string, 4] {}",
+    "source": "collection"
+  },
+  {
+    "name": "DefaultUnion",
+    "value": "DefaultUnion.Empty",
+    "source": "union"
+  },
+  {
+    "name": "DefaultPayload",
+    "value": "DefaultPayload.Number(0)",
+    "source": "union"
+  },
+  {
+    "name": "DefaultFields",
+    "value": "DefaultFields.Empty { count: 0, text: \"\" }",
+    "source": "union"
+  },
+  {
+    "name": "DefaultEnum",
+    "value": "DefaultEnum.Second",
+    "source": "enum"
+  },
+  {
+    "name": "DefaultSlice",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultReference",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultCallable",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultDate",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultTime",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultDatetime",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultDuration",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultAmbiguous",
+    "value": null,
+    "source": "none"
+  },
+  {
+    "name": "DefaultCollections",
+    "value": "DefaultCollections { dynamic: list[int] {}, bounded: list[string, 4] {} }",
+    "source": "struct"
+  },
+  {
+    "name": "DefaultInt8",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultInt16",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultInt32",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultInt64",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultInt128",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint8",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint16",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint32",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint64",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint128",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultUint256",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultByte",
+    "value": "0",
+    "source": "named"
+  },
+  {
+    "name": "DefaultInheritedList",
+    "value": "DefaultInheritedList[int] {}",
+    "source": "collection"
+  },
+  {
+    "name": "DefaultGeneric",
+    "value": "DefaultGeneric { inner: DefaultBox { value: 0 } }",
+    "source": "struct"
+  },
+  {
+    "name": "int",
+    "value": "0",
+    "source": "primitive"
+  },
+  {
+    "name": "DefaultExplicitBool",
+    "value": "true",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultExplicitChar",
+    "value": "65t",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultExplicitRune",
+    "value": "955r",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultExplicitFloat",
+    "value": "1.5",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultExplicitDecimal",
+    "value": "1.25m",
+    "source": "explicit"
+  },
+  {
+    "name": "DefaultExplicitWide",
+    "value": "170141183460469231731687303715884105727",
+    "source": "explicit"
+  }
+]

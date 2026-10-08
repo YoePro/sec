@@ -48,7 +48,7 @@ func resolveRenameTarget(uri string, text string, pos position, overlay sourceOv
 	}
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzer(uri, program)
+	analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
 	analyzer.Analyze(program)
 	if _, compilerKnown := analyzer.CompilerKnownMemberAt(use.File, use.Line, use.Column); compilerKnown {
 		return renameTarget{}, fmt.Errorf("%s is a compiler-known member and cannot be renamed", use.Lexeme)
@@ -96,12 +96,12 @@ func renameForSource(uri string, text string, pos position, newName string, over
 	}
 	// The edited document's current text is authoritative even when the
 	// caller's overlay does not carry it.
-	current := sourceOverlay{}
-	for key, value := range overlay {
-		current[key] = value
+	current := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+	for key, value := range overlay.Sources {
+		current.Sources[key] = value
 	}
 	if path := pathFromURI(uri); path != "" {
-		current[normalizedSourcePath(path)] = text
+		current.Sources[normalizedSourcePath(path)] = text
 	}
 	overlay = current
 	locations := referencesForSource(uri, text, pos, true, overlay)
@@ -114,23 +114,23 @@ func renameForSource(uri string, text string, pos position, newName string, over
 	}
 
 	// Semantic safety: the renamed program must not gain errors.
-	renamedOverlay := sourceOverlay{}
-	for key, value := range overlay {
-		renamedOverlay[key] = value
+	renamedOverlay := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+	for key, value := range overlay.Sources {
+		renamedOverlay.Sources[key] = value
 	}
 	renamedText := text
 	for fileURI, edits := range changes {
 		path := pathFromURI(fileURI)
 		original := text
 		if fileURI != uri {
-			data, readErr := lspserver.ReadSource(path, overlay)
+			data, readErr := lspserver.ReadSource(path, overlay.Sources)
 			if readErr != nil {
 				return workspaceEdit{}, fmt.Errorf("cannot read %s: %v", path, readErr)
 			}
 			original = string(data)
 		}
 		updated := applyTextEdits(original, edits)
-		renamedOverlay[normalizedSourcePath(path)] = updated
+		renamedOverlay.Sources[normalizedSourcePath(path)] = updated
 		if fileURI == uri {
 			renamedText = updated
 		}

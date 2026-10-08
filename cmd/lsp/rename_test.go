@@ -29,7 +29,7 @@ func renameAt(t *testing.T, uri string, text string, needle string, occurrence i
 func TestRenameIsSemantic(t *testing.T) {
 	uri := "file:///rename.sec"
 	text := "module main\n\nfn Total(count: int) int {\n    let doubled := count * 2\n    return doubled + count\n}\n\nfn Other(count: int) int {\n    return count\n}\n\nfn Use() int {\n    return Total(1) + Total(2)\n}\n"
-	edit, err := renameAt(t, uri, text, "count", 1, "amount", nil)
+	edit, err := renameAt(t, uri, text, "count", 1, "amount", sourceOverlay{})
 	if err != nil {
 		t.Fatalf("rename local parameter: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestRenameIsSemantic(t *testing.T) {
 		t.Fatalf("renamed program reports %+v", diagnostics)
 	}
 
-	edit, err = renameAt(t, uri, text, "Total", 0, "Sum", nil)
+	edit, err = renameAt(t, uri, text, "Total", 0, "Sum", sourceOverlay{})
 	if err != nil {
 		t.Fatalf("rename function: %v", err)
 	}
@@ -63,11 +63,11 @@ func TestRenameRejectsUnsafeRequests(t *testing.T) {
 	text := "module main\n\nfn Measure(values: int[]) uint {\n    let first := 1\n    let second := 2\n    discard first\n    discard second\n    return values.Len\n}\n\nfn _Helper() int {\n    return 1\n}\n"
 	for _, needle := range []string{"fn Measure", "Len", "return values"} {
 		offset := strings.Index(text, needle)
-		if _, err := prepareRenameForSource(uri, text, offsetPosition(text, offset), nil); err == nil {
+		if _, err := prepareRenameForSource(uri, text, offsetPosition(text, offset), sourceOverlay{}); err == nil {
 			t.Fatalf("prepare-rename accepted %q", needle)
 		}
 	}
-	if result, err := prepareRenameForSource(uri, text, offsetPosition(text, strings.Index(text, "first")), nil); err != nil || result.Placeholder != "first" {
+	if result, err := prepareRenameForSource(uri, text, offsetPosition(text, strings.Index(text, "first")), sourceOverlay{}); err != nil || result.Placeholder != "first" {
 		t.Fatalf("prepare-rename of a local = %+v, %v", result, err)
 	}
 	for _, test := range []struct {
@@ -81,7 +81,7 @@ func TestRenameRejectsUnsafeRequests(t *testing.T) {
 		{needle: "_Helper", newName: "Helper", reason: "visibility prefix"},
 		{needle: "first", newName: "second", reason: "would introduce an error"},
 	} {
-		if _, err := renameAt(t, uri, text, test.needle, 0, test.newName, nil); err == nil || !strings.Contains(err.Error(), test.reason) {
+		if _, err := renameAt(t, uri, text, test.needle, 0, test.newName, sourceOverlay{}); err == nil || !strings.Contains(err.Error(), test.reason) {
 			t.Fatalf("rename %s -> %s error = %v, want %q", test.needle, test.newName, err, test.reason)
 		}
 	}
@@ -100,7 +100,7 @@ func TestRenameSpansModuleFiles(t *testing.T) {
 	if err := os.WriteFile(usage, []byte(usageText), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	edit, err := renameAt(t, uriFromPath(usage), usageText, "Area", 0, "Square", nil)
+	edit, err := renameAt(t, uriFromPath(usage), usageText, "Area", 0, "Square", sourceOverlay{})
 	if err != nil {
 		t.Fatalf("rename across files: %v", err)
 	}

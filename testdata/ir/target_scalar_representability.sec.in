@@ -1,0 +1,2 @@
+module main
+fn Value() __TYPE__ { return __VALUE__ }

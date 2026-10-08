@@ -1,0 +1,6 @@
+module core
+
+// Rules: rules/concurrency/mutex.md §13; cancellation.md §43(4).
+// Copyable point on Sec's monotonic runtime clock, with no destruction duty.
+// Runtime-private representation; never wall-clock, UTC, or calendar time.
+type Instant

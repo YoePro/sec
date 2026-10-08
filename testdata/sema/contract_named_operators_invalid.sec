@@ -1,0 +1,18 @@
+module main
+
+let One: decimal := 1m
+let Three: decimal := 3m
+let Zero: decimal := 0m
+let Prefix: string := "sec"
+let mut Runtime: decimal := 1m
+
+type Inexact decimal default One / Three
+type DivideByZero decimal default One / Zero
+type InvalidText string default Prefix + One
+type NotConstant decimal default Runtime + One
+
+let Binary: float64 := 1g
+type MixedNumeric decimal default Binary + One
+type Nominal string
+let Name: Nominal := "value"
+type HiddenText string default Name + Prefix

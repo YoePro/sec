@@ -3,10 +3,16 @@ package mlir
 import (
 	"fmt"
 	"math/big"
+	"sec/internal/lexer"
 	"strconv"
 	"strings"
 
 	"sec/internal/ast"
+	mlirscalar "sec/internal/codegen/mlir/scalar"
+	"sec/internal/codegen/readiness"
+	"sec/internal/codegen/targetplan"
+	"sec/internal/ir/semantic"
+	"sec/internal/layout"
 )
 
 type Generator struct {
@@ -19,6 +25,8 @@ type Generator struct {
 	returnType     string
 	returnUnsigned bool
 	targetTriple   string
+	scalarPlan     layout.ResolvedScalarPlan
+	failure        error
 	blockOpen      bool
 	locals         map[string]local
 	functions      map[string][]*ast.FunctionDeclaration
@@ -35,6 +43,8 @@ type Generator struct {
 }
 
 type value struct {
+	// integer retains exact emitted constants for checked conversion proofs.
+	integer    *big.Int
 	typ        string
 	ref        string
 	len        string
@@ -112,12 +122,30 @@ const (
 	mlirStringType     = "!llvm.struct<(!llvm.ptr, i64)>"
 )
 
-func GenerateWithTriple(program *ast.Program, triple string) (string, error) {
-	g := &Generator{targetTriple: triple}
-	return g.Generate(program)
-}
-
+// Generate resets invocation state and emits only after canonical target facts
+// have been resolved; unsupported native constants cannot publish partial IR.
+// Rules: rules/types/types.md — "int and uint"; rules/compiler/compiler_pipeline.md — §61(3).
 func (g *Generator) Generate(program *ast.Program) (string, error) {
+	if err := readiness.RejectInstant(program); err != nil {
+		return "", err
+	}
+	triple := g.targetTriple
+	*g = Generator{targetTriple: triple}
+	plan, err := targetplan.Plan(triple)
+	if err != nil {
+		return "", &semantic.UnsupportedFeatureError{Feature: err.Error()}
+	}
+	// rules/types/types.md — Binary floating-point types; MD-014 §6:
+	// this legacy emitter has no complete native f32 implementation. Reject
+	// all source consumers before choosing f64 or writing partial output.
+	if plan.PointerWidthBits == 32 {
+		if err := readiness.RejectPlatformFloat(program, "MLIR on 32-bit targets"); err != nil {
+			return "", err
+		}
+	}
+	g.scalarPlan = plan
+	g.targetTriple = plan.LLVMTriple
+
 	if err := validateEntrypoint(program); err != nil {
 		return "", err
 	}
@@ -137,6 +165,9 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 		case *ast.LetStatement:
 			if stmt.Name != nil && !stmt.Mutable {
 				if constant, ok := g.resolveTopLevelConstant(stmt); ok {
+					if err := readiness.CheckWideConstant(constant.typ, constant.unsigned, constant.literal, stmt.Token); err != nil {
+						return "", err
+					}
 					g.constants[stmt.Name.Value] = constant
 				}
 			}
@@ -243,6 +274,9 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 		g.out.WriteString(g.globals.String())
 	}
 	g.write("}\n")
+	if g.failure != nil {
+		return "", g.failure
+	}
 	return g.out.String(), nil
 }
 
@@ -640,6 +674,10 @@ func (g *Generator) emitFor(stmt *ast.ForStatement) error {
 	return fmt.Errorf("emit-mlir cannot iterate over %s yet", iterable.typ)
 }
 
+// emitArrayFor preserves fixed element carriers and the source native integer
+// index binding while using internal storage indices to traverse the array.
+// Rules: rules/control-flow/flowcontrol_for.md — "Loop bindings", sequential index iteration;
+// rules/types/types.md — "int and uint"; correction5.md — selected target widths.
 func (g *Generator) emitArrayFor(stmt *ast.ForStatement, array value) error {
 	if stmt == nil || stmt.Body == nil {
 		return fmt.Errorf("emit-mlir requires complete array for statements")
@@ -705,12 +743,12 @@ func (g *Generator) emitArrayFor(stmt *ast.ForStatement, array value) error {
 		}
 	} else {
 		if binding := stmt.Bindings[0]; !binding.Discard {
-			indexValue, err := g.coerceIntegerStorageValue(index, "i32", false)
+			indexValue, err := g.coerceIntegerStorageValue(index, g.nativeIntegerType(), false)
 			if err != nil {
 				g.locals = previousLocals
 				return err
 			}
-			g.locals[binding.Name] = local{typ: "i32", ref: indexValue.ref, direct: true}
+			g.locals[binding.Name] = local{typ: g.nativeIntegerType(), ref: indexValue.ref, direct: true}
 		}
 		if binding := stmt.Bindings[1]; !binding.Discard {
 			g.locals[binding.Name] = local{
@@ -1052,7 +1090,7 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 		if err != nil {
 			return err
 		}
-		val, err = g.emitAssignmentOperation(stmt.Operator, current, val)
+		val, err = g.emitAssignmentOperation(stmt.Token, stmt.Operator, current, val)
 		if err != nil {
 			return err
 		}
@@ -1107,7 +1145,7 @@ func (g *Generator) emitIndexAssignment(stmt *ast.AssignmentStatement, target *a
 		currentRef := g.nextTemp()
 		g.write("    %s = llvm.load %s : !llvm.ptr -> %s\n", currentRef, elementPtr, elementType)
 		assigned, err = g.emitAssignmentOperation(
-			stmt.Operator,
+			stmt.Token, stmt.Operator,
 			value{typ: elementType, ref: currentRef, unsigned: slot.unsigned},
 			assigned,
 		)
@@ -1224,7 +1262,7 @@ func (g *Generator) emitMemberAssignment(stmt *ast.AssignmentStatement, member *
 			enumName:   leaf.field.enumName,
 			unsigned:   leaf.field.unsigned,
 		}
-		assigned, err = g.emitAssignmentOperation(stmt.Operator, currentValue, assigned)
+		assigned, err = g.emitAssignmentOperation(stmt.Token, stmt.Operator, currentValue, assigned)
 		if err != nil {
 			return err
 		}
@@ -1295,7 +1333,13 @@ func (g *Generator) loadLocal(slot local) (value, error) {
 	return value{typ: slot.typ, ref: tmp, structName: slot.structName, enumName: slot.enumName, unsigned: slot.unsigned}, nil
 }
 
-func (g *Generator) emitAssignmentOperation(operator string, left value, right value) (value, error) {
+// emitAssignmentOperation shares checked-wide prerequisites for local, array
+// element and struct-field compound writes before publishing their result.
+// Rules: rules/foundations/operators.md — Checked integer arithmetic, compound forms.
+func (g *Generator) emitAssignmentOperation(token lexer.Token, operator string, left value, right value) (value, error) {
+	if err := readiness.CheckWideOperation(left.typ, operator, token); err != nil {
+		return value{}, err
+	}
 	if left.typ != right.typ {
 		return value{}, fmt.Errorf("emit-mlir assignment operator requires matching operand types")
 	}
@@ -1897,6 +1941,9 @@ func deferBodyIsBareReturnMLIR(block *ast.BlockStatement) bool {
 	return ok && ret.Value == nil
 }
 
+// emitExpression uses canonical native integer carriers for inferred literals; explicit source contexts shape constants separately.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -1909,10 +1956,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		if !ok {
 			return value{}, fmt.Errorf("emit-mlir could not parse integer %q", expr.Token.Lexeme)
 		}
-		typ := inferredIntegerLiteralType(parsed, expr.Suffix())
-		if expr.Suffix() == "u" {
-			typ = inferredUnsignedIntegerLiteralType(parsed)
-		}
+		typ := g.inferredIntegerLiteralType(parsed, expr.Suffix())
 		return g.emitIntegerConstantUnsigned(parsed.String(), typ, expr.Suffix() == "u"), nil
 	case *ast.FloatLiteral:
 		if expr.Suffix() != "g" {
@@ -1950,6 +1994,9 @@ func (g *Generator) emitExpressionForTarget(expr ast.Expression, targetType stri
 	return g.emitExpressionForTargetUnsigned(expr, targetType, false)
 }
 
+// emitExpressionForTargetUnsigned keeps exact positive and negative constants in their contextual carrier, including fixed-width minima on narrower targets.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetType string, targetUnsigned bool) (value, error) {
 	if targetType == "" {
 		return g.emitExpression(expr)
@@ -1971,6 +2018,17 @@ func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetT
 		}
 	}
 	switch expr := expr.(type) {
+	case *ast.PrefixExpression:
+		if expr.Operator == "-" && isMLIRIntegerType(targetType) {
+			if literal, ok := expr.Right.(*ast.IntegerLiteral); ok && literal.Suffix() != "u" {
+				integer, ok := ast.ParseIntegerLiteralLexeme(literal.Token.Lexeme)
+				if !ok {
+					return value{}, fmt.Errorf("emit-mlir could not parse integer %q", literal.Token.Lexeme)
+				}
+				integer.Neg(integer)
+				return g.emitIntegerConstantUnsigned(integer.String(), targetType, targetUnsigned), nil
+			}
+		}
 	case *ast.IntegerLiteral:
 		if isMLIRIntegerType(targetType) {
 			parsed, ok := ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
@@ -2178,6 +2236,9 @@ func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
 	return value{}, fmt.Errorf("emit-mlir unknown identifier %s", expr.Value)
 }
 
+// resolveTopLevelConstant retains explicit constant carriers and uses canonical native width for inferred module constants.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) resolveTopLevelConstant(stmt *ast.LetStatement) (mlirConstant, bool) {
 	if stmt == nil || stmt.Value == nil {
 		return mlirConstant{}, false
@@ -2212,11 +2273,8 @@ func (g *Generator) resolveTopLevelConstant(stmt *ast.LetStatement) (mlirConstan
 		if literal, ok := stmt.Value.(*ast.IntegerLiteral); ok {
 			suffix = literal.Suffix()
 		}
-		typ = inferredIntegerLiteralType(integer, suffix)
+		typ = g.inferredIntegerLiteralType(integer, suffix)
 		unsigned = suffix == "u"
-		if unsigned {
-			typ = inferredUnsignedIntegerLiteralType(integer)
-		}
 	}
 	return mlirConstant{literal: integer.String(), typ: typ, unsigned: unsigned}, true
 }
@@ -2270,6 +2328,9 @@ func (g *Generator) emitStructLiteral(expr *ast.StructLiteral) (value, error) {
 	return value{typ: info.typ, ref: aggregate, structName: info.name}, nil
 }
 
+// emitMemberExpression preserves native uint identity for string and fixed-array length values.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, error) {
 	if expr.Object == nil || expr.Property == nil {
 		return value{}, fmt.Errorf("emit-mlir member expression is incomplete")
@@ -2294,7 +2355,7 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 		case "ptr":
 			return value{typ: "!llvm.ptr", ref: object.ref}, nil
 		case "len":
-			return value{typ: "i64", ref: object.len, unsigned: true}, nil
+			return g.coerceValue(value{typ: "i64", ref: object.len, unsigned: true}, g.nativeIntegerType(), true)
 		default:
 			return value{}, fmt.Errorf("emit-mlir unknown string property %s", expr.Property.Value)
 		}
@@ -2303,7 +2364,7 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 		if expr.Property.Value != "len" {
 			return value{}, fmt.Errorf("emit-mlir unknown array property %s", expr.Property.Value)
 		}
-		return g.emitIntegerConstantUnsigned(strconv.FormatInt(length, 10), "i64", true), nil
+		return g.emitIntegerConstantUnsigned(strconv.FormatInt(length, 10), g.nativeIntegerType(), true), nil
 	}
 	if object.structName == "" {
 		return value{}, fmt.Errorf("emit-mlir member access currently requires a struct value")
@@ -2330,6 +2391,9 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 	}, nil
 }
 
+// emitPrefixExpression preserves exact literal negation and rejects dynamic wide
+// negation until deterministic overflow failure is available.
+// Rules: rules/foundations/operators.md — Signed integer negation, Runtime overflow.
 func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, error) {
 	if expr.Operator == "-" && isDefaultDecimalLiteral(expr.Right) {
 		if _, _, ok := decimalLiteralParts(expr); ok {
@@ -2346,7 +2410,7 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 				return value{}, fmt.Errorf("emit-mlir cannot negate unsigned integer literal %q", literal.Token.Lexeme)
 			}
 			parsed.Neg(parsed)
-			typ := inferredIntegerLiteralType(parsed, literal.Suffix())
+			typ := g.inferredIntegerLiteralType(parsed, literal.Suffix())
 			return g.emitIntegerConstant(parsed.String(), typ), nil
 		}
 	}
@@ -2354,6 +2418,11 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 	right, err := g.emitExpression(expr.Right)
 	if err != nil {
 		return value{}, err
+	}
+	if expr.Operator != "+" {
+		if err := readiness.CheckWideOperation(right.typ, expr.Operator, expr.Token); err != nil {
+			return value{}, err
+		}
 	}
 	switch expr.Operator {
 	case "+":
@@ -2422,12 +2491,24 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	if err != nil {
 		return value{}, err
 	}
+	// A left literal follows the established wide carrier on the right;
+	// narrowing the wide operand to the literal's native carrier loses bits.
+	// Rules: rules/types/types.md — Context shaping, explicit widths.
+	if left.integer != nil && (right.typ == "i128" || right.typ == "i256") && left.typ != right.typ {
+		left, err = g.coerceValue(left, right.typ, right.unsigned)
+		if err != nil {
+			return value{}, err
+		}
+	}
 	if left.typ != right.typ {
 		coerced, coerceErr := g.coerceValue(right, left.typ, left.unsigned)
 		if coerceErr != nil {
 			return value{}, fmt.Errorf("emit-mlir binary operator requires matching operand types")
 		}
 		right = coerced
+	}
+	if err := readiness.CheckWideOperation(left.typ, expr.Operator, expr.Token); err != nil {
+		return value{}, err
 	}
 	switch expr.Operator {
 	case "+":
@@ -2574,9 +2655,9 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 		if err != nil {
 			return value{}, err
 		}
-		return g.coerceValue(source, info.typ, info.unsigned)
+		return g.coerceExplicitInteger(source, info.typ, info.unsigned, expr.Arguments[0], expr.Token)
 	}
-	if isMLIRBuiltinNumericTypeName(name) {
+	if g.mlirBuiltinNumericType(name) != "" {
 		return g.emitBuiltinNumericConversion(expr, name)
 	}
 	fn, err := g.resolveFunction(name, len(expr.Arguments))
@@ -2689,6 +2770,9 @@ func (g *Generator) emitStringSliceUnchecked(expr *ast.CallExpression) (value, e
 	return value{typ: "string", ref: ptr, len: length.ref}, nil
 }
 
+// emitConversionExpression resolves native conversion destinations through the selected scalar facts.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (value, error) {
 	if expr == nil || expr.Type == nil || expr.Value == nil {
 		return value{}, fmt.Errorf("emit-mlir conversion expression is incomplete")
@@ -2701,17 +2785,17 @@ func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (va
 		if err != nil {
 			return value{}, err
 		}
-		return g.coerceValue(source, info.typ, info.unsigned)
+		return g.coerceExplicitInteger(source, info.typ, info.unsigned, expr.Value, expr.Token)
 	}
-	targetType := mlirBuiltinNumericType(expr.Type.Name)
+	targetType := g.mlirBuiltinNumericType(expr.Type.Name)
 	if targetType == "" {
 		return value{}, fmt.Errorf("emit-mlir does not support conversion to %s yet", expr.Type.Name)
 	}
-	source, err := g.emitExpression(expr.Value)
+	source, err := g.emitExpressionForTargetUnsigned(expr.Value, targetType, isUnsignedBuiltinName(expr.Type.Name))
 	if err != nil {
 		return value{}, err
 	}
-	result, err := g.coerceValue(source, targetType, isUnsignedBuiltinName(expr.Type.Name))
+	result, err := g.coerceExplicitInteger(source, targetType, isUnsignedBuiltinName(expr.Type.Name), expr.Value, expr.Token)
 	if err != nil {
 		return value{}, err
 	}
@@ -2739,7 +2823,13 @@ func (g *Generator) emitEnumConversion(arguments []ast.Expression, info *mlirEnu
 	return result, nil
 }
 
+// emitIntegerBinary refuses unchecked wide arithmetic, including synthesized
+// operations, while retaining exact carrier widths for bitwise operations.
+// Rules: rules/types/types.md — explicit widths; operators.md — Runtime overflow.
 func (g *Generator) emitIntegerBinary(op string, left value, right value) (value, error) {
+	if err := readiness.CheckWideOperation(left.typ, op, lexer.Token{}); err != nil {
+		return value{}, err
+	}
 	if !isMLIRIntegerType(left.typ) || left.typ != right.typ {
 		return value{}, fmt.Errorf("emit-mlir integer operator currently expects int")
 	}
@@ -2781,10 +2871,14 @@ func (g *Generator) emitIntegerConstant(literal string, typ string) value {
 	return g.emitIntegerConstantUnsigned(literal, typ, false)
 }
 
+// emitIntegerConstantUnsigned retains exact value and signedness for later
+// destination-domain proofs rather than rediscovering them from SSA spelling.
+// Rules: rules/types/types.md — Explicit conversions; compiler/semantic_ir.md — Constants.
 func (g *Generator) emitIntegerConstantUnsigned(literal string, typ string, unsigned bool) value {
 	tmp := g.nextTemp()
 	g.write("    %s = llvm.mlir.constant(%s : %s) : %s\n", tmp, literal, typ, typ)
-	return value{typ: typ, ref: tmp, unsigned: unsigned}
+	integer, _ := new(big.Int).SetString(literal, 10)
+	return value{typ: typ, ref: tmp, unsigned: unsigned, integer: integer}
 }
 
 func (g *Generator) emitDecimalLiteral(expr ast.Expression, typ string) (value, error) {
@@ -2886,36 +2980,6 @@ func (g *Generator) emitDecimalComponents(decimal value) (value, value, error) {
 	return value{typ: coefficientType, ref: coefficientRef}, value{typ: "i32", ref: scaleRef}, nil
 }
 
-func (g *Generator) emitBuiltinNumericConversion(expr *ast.CallExpression, name string) (value, error) {
-	if len(expr.Arguments) != 1 {
-		return value{}, fmt.Errorf("conversion to %s expects 1 argument", name)
-	}
-	targetType := mlirBuiltinNumericType(name)
-	targetUnsigned := isUnsignedBuiltinName(name)
-	source, err := g.emitExpression(expr.Arguments[0])
-	if err != nil {
-		return value{}, err
-	}
-
-	switch {
-	case isMLIRDecimalType(targetType):
-		return g.convertToDecimal(source, targetType)
-	case isMLIRIntegerType(targetType) && isMLIRDecimalType(source.typ):
-		return g.convertDecimalToInteger(source, targetType, targetUnsigned)
-	case source.typ == "!llvm.ptr" && isMLIRIntegerType(targetType):
-		result := g.nextTemp()
-		g.write("    %s = llvm.ptrtoint %s : !llvm.ptr to %s\n", result, source.ref, targetType)
-		return value{typ: targetType, ref: result, unsigned: targetUnsigned}, nil
-	default:
-		result, err := g.coerceValue(source, targetType, targetUnsigned)
-		if err != nil {
-			return value{}, err
-		}
-		result.enumName = ""
-		return result, nil
-	}
-}
-
 func (g *Generator) convertToDecimal(source value, targetType string) (value, error) {
 	targetCoefficientType, ok := decimalCoefficientType(targetType)
 	if !ok {
@@ -2941,66 +3005,6 @@ func (g *Generator) convertToDecimal(source value, targetType string) (value, er
 		return g.emitDecimalValue(coefficient, scale, targetType)
 	}
 	return value{}, fmt.Errorf("emit-mlir cannot convert %s to %s yet", source.typ, targetType)
-}
-
-func (g *Generator) convertDecimalToInteger(source value, targetType string, targetUnsigned bool) (value, error) {
-	coefficient, scale, err := g.emitDecimalComponents(source)
-	if err != nil {
-		return value{}, err
-	}
-	coefficientPtr := g.emitAlloca(coefficient.typ)
-	scalePtr := g.emitAlloca("i32")
-	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", coefficient.ref, coefficientPtr, coefficient.typ)
-	g.write("    llvm.store %s, %s : i32, !llvm.ptr\n", scale.ref, scalePtr)
-
-	conditionLabel := g.nextLabel("decimal.cast.condition")
-	bodyLabel := g.nextLabel("decimal.cast.body")
-	endLabel := g.nextLabel("decimal.cast.end")
-	g.write("    llvm.br ^%s\n", conditionLabel)
-	g.blockOpen = false
-
-	g.write("  ^%s:\n", conditionLabel)
-	g.blockOpen = true
-	currentScale, err := g.loadLocal(local{typ: "i32", ptr: scalePtr})
-	if err != nil {
-		return value{}, err
-	}
-	zeroScale := g.emitIntegerConstant("0", "i32")
-	hasFractionalDigits, err := g.emitIntegerPredicate("sgt", currentScale, zeroScale)
-	if err != nil {
-		return value{}, err
-	}
-	g.write("    llvm.cond_br %s, ^%s, ^%s\n", hasFractionalDigits.ref, bodyLabel, endLabel)
-	g.blockOpen = false
-
-	g.write("  ^%s:\n", bodyLabel)
-	g.blockOpen = true
-	currentCoefficient, err := g.loadLocal(local{typ: coefficient.typ, ptr: coefficientPtr})
-	if err != nil {
-		return value{}, err
-	}
-	ten := g.emitIntegerConstant("10", coefficient.typ)
-	scaled, err := g.emitIntegerBinary("sdiv", currentCoefficient, ten)
-	if err != nil {
-		return value{}, err
-	}
-	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", scaled.ref, coefficientPtr, coefficient.typ)
-	oneScale := g.emitIntegerConstant("1", "i32")
-	nextScale, err := g.emitIntegerBinary("sub", currentScale, oneScale)
-	if err != nil {
-		return value{}, err
-	}
-	g.write("    llvm.store %s, %s : i32, !llvm.ptr\n", nextScale.ref, scalePtr)
-	g.write("    llvm.br ^%s\n", conditionLabel)
-	g.blockOpen = false
-
-	g.write("  ^%s:\n", endLabel)
-	g.blockOpen = true
-	integerValue, err := g.loadLocal(local{typ: coefficient.typ, ptr: coefficientPtr})
-	if err != nil {
-		return value{}, err
-	}
-	return g.coerceValue(integerValue, targetType, targetUnsigned)
 }
 
 func (g *Generator) emitIndexConstant(literal string) value {
@@ -3140,6 +3144,9 @@ func (g *Generator) emitNumericOne(typ string, negative bool) (value, error) {
 	return value{}, fmt.Errorf("emit-mlir cannot create numeric step for %s", typ)
 }
 
+// registerEnum preserves explicit enum carriers and uses the selected native int for default ordinary backing.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) registerEnum(declaration *ast.EnumDeclaration, owner string) error {
 	if declaration == nil || declaration.Name == nil {
 		return fmt.Errorf("emit-mlir enum declaration is incomplete")
@@ -3149,7 +3156,7 @@ func (g *Generator) registerEnum(declaration *ast.EnumDeclaration, owner string)
 		name = owner + "." + name
 	}
 
-	typ := "i32"
+	typ := g.nativeIntegerType()
 	unsigned := false
 	if declaration.BitUnderlying {
 		if declaration.UnderlyingBitWidth <= 0 || declaration.UnderlyingBitWidth > 256 {
@@ -3183,6 +3190,9 @@ func (g *Generator) registerEnum(declaration *ast.EnumDeclaration, owner string)
 			if !ok {
 				return fmt.Errorf("emit-mlir enum value %s.%s is not an integer constant", name, variant.Name.Value)
 			}
+		}
+		if err := readiness.CheckWideConstant(typ, unsigned, next.String(), variant.Token); err != nil {
+			return err
 		}
 		info.values[variant.Name.Value] = next.String()
 		previous = new(big.Int).Set(next)
@@ -3389,6 +3399,9 @@ func (g *Generator) structNameForMLIRType(typ string) string {
 	return ""
 }
 
+// mlirType maps native integers through the canonical plan, recursively retaining array elements and named representations.
+// Rules: rules/types/types.md — "int and uint", "Context shaping";
+// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
 func (g *Generator) mlirType(ref *ast.TypeReference) string {
 	if ref == nil {
 		return "void"
@@ -3415,10 +3428,8 @@ func (g *Generator) mlirType(ref *ast.TypeReference) string {
 		return "i1"
 	case "void":
 		return "void"
-	case "int":
-		return "i32"
-	case "uint":
-		return "i64"
+	case "int", "uint":
+		return g.nativeIntegerType()
 	case "int8", "uint8", "byte":
 		return "i8"
 	case "int16", "uint16":
@@ -3723,41 +3734,6 @@ func decimalCoefficientType(typ string) (string, bool) {
 	}
 }
 
-func isMLIRBuiltinNumericTypeName(name string) bool {
-	return mlirBuiltinNumericType(name) != ""
-}
-
-func mlirBuiltinNumericType(name string) string {
-	switch name {
-	case "int":
-		return "i32"
-	case "uint":
-		return "i64"
-	case "int8", "uint8", "byte":
-		return "i8"
-	case "int16", "uint16":
-		return "i16"
-	case "int32", "uint32":
-		return "i32"
-	case "int64", "uint64":
-		return "i64"
-	case "int128", "uint128":
-		return "i128"
-	case "int256", "uint256":
-		return "i256"
-	case "float", "float64":
-		return "f64"
-	case "float32":
-		return "f32"
-	case "decimal":
-		return mlirDecimalType
-	case "decimal128":
-		return mlirDecimal128Type
-	default:
-		return ""
-	}
-}
-
 func isUnsignedBuiltinName(name string) bool {
 	return strings.HasPrefix(name, "uint") || name == "byte"
 }
@@ -3779,30 +3755,38 @@ func integerBitWidth(typ string) int {
 	return width
 }
 
-func inferredIntegerLiteralType(value *big.Int, suffix string) string {
+// inferredIntegerLiteralType uses the native carrier rather than guessing a
+// wider source type from the magnitude. Explicit contexts are handled separately.
+// Rules: rules/types/types.md — "int and uint", "Context shaping".
+func (g *Generator) inferredIntegerLiteralType(value *big.Int, suffix string) string {
 	if suffix == "u" {
-		return inferredUnsignedIntegerLiteralType(value)
+		return g.inferredUnsignedIntegerLiteralType(value)
 	}
-	if fitsSignedBits(value, 32) {
-		return "i32"
+	if !fitsSignedBits(value, uint(g.scalarPlan.PointerWidthBits)) {
+		g.failure = &semantic.UnsupportedFeatureError{Feature: "integer literal requires an explicit representable context for the selected native width"}
 	}
-	if fitsSignedBits(value, 64) {
-		return "i64"
-	}
-	if fitsSignedBits(value, 128) {
-		return "i128"
-	}
-	return "i256"
+	return g.nativeIntegerType()
 }
 
-func inferredUnsignedIntegerLiteralType(value *big.Int) string {
-	if fitsUnsignedBits(value, 64) {
-		return "i64"
+// inferredUnsignedIntegerLiteralType never infers a wider uint family from value size.
+// Rules: rules/types/types.md — "int and uint", "Context shaping".
+func (g *Generator) inferredUnsignedIntegerLiteralType(value *big.Int) string {
+	if !fitsUnsignedBits(value, uint(g.scalarPlan.PointerWidthBits)) {
+		g.failure = &semantic.UnsupportedFeatureError{Feature: "unsigned integer literal requires an explicit representable context for the selected native width"}
 	}
-	if fitsUnsignedBits(value, 128) {
-		return "i128"
-	}
-	return "i256"
+	return g.nativeIntegerType()
+}
+
+// nativeIntegerType preserves the single selected width across native integer consumers.
+// Rules: rules/types/types.md — "int and uint".
+func (g *Generator) nativeIntegerType() string {
+	return fmt.Sprintf("i%d", g.scalarPlan.PointerWidthBits)
+}
+
+// mlirBuiltinNumericType shares numeric scalar mapping with explicit conversions.
+// Rules: rules/types/types.md — "Explicit conversions", "int and uint".
+func (g *Generator) mlirBuiltinNumericType(name string) string {
+	return mlirscalar.NumericType(name, g.scalarPlan)
 }
 
 func fitsSignedBits(value *big.Int, bits uint) bool {

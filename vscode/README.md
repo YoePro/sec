@@ -114,3 +114,25 @@ Other LSP clients can send the same settings at initialization as
 `{"analysis":{"parameters":{"hover":"concise","advisories":"info"}}}`,
 or in `workspace/didChangeConfiguration` under `settings.sec`. Partial updates
 preserve unspecified choices; unsupported values preserve previous choices.
+
+## Active project target
+
+Run **SEC: Select Project Target** from the Command Palette or click the SEC
+status-bar item. The choices come from the project's `.sec/sec.toml` targets
+and declared variants. Selecting a variant immediately refreshes analysis and
+platform member completion without restarting the server. Selection is scoped
+to the project; an explicit source `#target` keeps precedence for that document.
+**Automatic target** restores the existing source/project default resolution.
+
+For target-independent documents, diagnostics also identify the project output
+variants on which an issue occurs, including variants sharing the same platform.
+These background comparisons refresh on open, save, target switches, and watched
+project configuration changes. While editing, retained comparison results are
+invalidated until the next save.
+
+Other clients can call `sec/targets` with `{ "uri": "file:///…/main.sec" }` to
+receive options containing `logicalTarget`, `variant`, `os`, `arch`,
+`pointerWidthBits`, and `active`. Call `sec/selectTarget` with the same URI and
+the chosen `logicalTarget` and `variant`; empty strings for both restore automatic
+resolution. Invalid choices return JSON-RPC `-32602` and preserve the selection.
+The initialize response advertises `experimental.targetSelection`.

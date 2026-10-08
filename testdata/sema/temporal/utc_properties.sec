@@ -1,0 +1,29 @@
+module core
+
+type date struct { _epochDays: int32, }
+type time struct { _nanosecondsSinceMidnight: uint64, }
+type datetime struct { _epochDays: int32, _nanosecondsSinceMidnight: uint64, }
+
+impl datetime {
+    static property Now: datetime {
+        get { return _now }
+    }
+}
+
+impl date {
+    static property Today: date {
+        get {
+            let now: datetime := _now
+            return date { _epochDays: now._epochDays }
+        }
+    }
+}
+
+impl time {
+    static property Now: time {
+        get {
+            let now: datetime := _now
+            return time { _nanosecondsSinceMidnight: now._nanosecondsSinceMidnight }
+        }
+    }
+}

@@ -1,0 +1,19 @@
+module main
+type Positive list[int] minLen 1
+type ExactlyOne list[int] exactLen 1
+type Present list[int] notEmpty
+type Inherited Positive maxLen 4
+type Bounded list[int, 4] minLen 1
+type Holder struct { values: Positive, }
+type Nested struct { holder: Holder, }
+fn Defaults() void {
+    let mut positive: Positive
+    let mut exact: ExactlyOne
+    let mut present: Present
+    let mut inherited: Inherited
+    let mut bounded: Bounded
+    let holder := Holder {}
+    let nested := Nested {}
+    let mut array: Holder[1]
+    let mut lists: Positive[2]
+}

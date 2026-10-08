@@ -45,13 +45,22 @@ func carrierTryHelp(actual Type, success Type, family string, expr ast.Expressio
 }
 
 // addTypeMismatchError reports an expected/actual mismatch and adds the
-// missing-try explanation when it applies.
+// compiler-derived explicit unit candidates or missing-try explanation.
+// Rules: rules/tooling/lsp.md — Unit actions; rules/types/units.md — LSP requirements;
+// rules/errors/error-handling.md — Simple try propagation.
 func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual Type, expr ast.Expression, format string, args ...any) {
-	if suggestion, ok := a.unitConversionSuggestion(expected, actual, expr); ok {
-		a.unitConversionSuggestions = append(a.unitConversionSuggestions, suggestion)
+	if suggestions := a.unitConversionAlternatives(expected, actual, expr); len(suggestions) > 0 {
+		suggestion := suggestions[0]
+		a.unitConversionSuggestions = append(a.unitConversionSuggestions, suggestions...)
 		a.addErrorAtTokenWithMetadata(token, "",
 			"convert explicitly with `"+suggestion.Replacement+"`; "+a.implicitUnitConversionRejection(expected, actual, expr),
 			format, args...)
+		return
+	}
+	// rules/types/types.md — "char": an unsuffixed integer literal never
+	// shapes to char; name the two valid spellings (MD-043 §3.6).
+	if literal, ok := expr.(*ast.IntegerLiteral); ok && expected.Kind == CharType && isUntypedNumericExpression(expr) {
+		a.addErrorAtTokenWithMetadata(token, "", "write "+literal.Token.Lexeme+"t for a char literal, or char("+literal.Token.Lexeme+") for an explicit conversion; integer literals do not shape to char", format, args...)
 		return
 	}
 	if help := missingTryHelp(expected, actual, expr); help != "" {

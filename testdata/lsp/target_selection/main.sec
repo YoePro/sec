@@ -1,0 +1,4 @@
+module main
+fn Value() int { return 3000000000 }
+fn Inspect(value: Selected) void { discard value }
+fn main() int { return 0 }

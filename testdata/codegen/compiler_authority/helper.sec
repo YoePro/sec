@@ -1,0 +1,6 @@
+module main
+
+fn main() int {
+    __StringSliceUnchecked("hello", 1u, 4u)
+    return 0
+}

@@ -1,0 +1,51 @@
+module str
+
+test "Join inserts separators" {
+    let mut values: string[]
+    try values.Append("Hello")
+    try values.Append("World")
+    try values.Append("Sec")
+
+    let result := try Join(values, ", ")
+
+    testing.ExpectEqual("Hello, World, Sec", result)
+}
+
+test "Join handles empty collection" {
+    let mut values: string[]
+
+    let result := try Join(values, ",")
+
+    testing.ExpectEqual("", result)
+}
+
+test "Join handles single element" {
+    let mut values: string[]
+    try values.Append("Hello")
+
+    let result := try Join(values, ",")
+
+    testing.ExpectEqual("Hello", result)
+}
+
+test "Join preserves empty elements" {
+    let mut values: string[]
+    try values.Append("a")
+    try values.Append("")
+    try values.Append("b")
+
+    let result := try Join(values, ",")
+
+    testing.ExpectEqual("a,,b", result)
+}
+
+test "Join preserves Unicode" {
+    let mut values: string[]
+    try values.Append("Hej")
+    try values.Append("världen")
+    try values.Append("🦊")
+
+    let result := try Join(values, " → ")
+
+    testing.ExpectEqual("Hej → världen → 🦊", result)
+}

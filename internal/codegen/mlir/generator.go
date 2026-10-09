@@ -1,6 +1,7 @@
 package mlir
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"sec/internal/lexer"
@@ -13,33 +14,36 @@ import (
 	"sec/internal/codegen/targetplan"
 	"sec/internal/ir/semantic"
 	"sec/internal/layout"
+	"sec/internal/sema"
 )
 
 type Generator struct {
-	out            strings.Builder
-	activeOut      *strings.Builder
-	prologue       strings.Builder
-	globals        strings.Builder
-	label          int
-	temp           int
-	returnType     string
-	returnUnsigned bool
-	targetTriple   string
-	scalarPlan     layout.ResolvedScalarPlan
-	failure        error
-	blockOpen      bool
-	locals         map[string]local
-	functions      map[string][]*ast.FunctionDeclaration
-	functionNames  map[*ast.FunctionDeclaration]string
-	reachable      map[*ast.FunctionDeclaration]bool
-	constants      map[string]mlirConstant
-	namedTypes     map[string]mlirNamedType
-	structs        map[string]*mlirStruct
-	enums          map[string]*mlirEnum
-	loops          []loopContext
-	defers         []*deferEntry
-	deferByStmt    map[*ast.DeferStatement]*deferEntry
-	stringID       int
+	out                 strings.Builder
+	activeOut           *strings.Builder
+	prologue            strings.Builder
+	globals             strings.Builder
+	label               int
+	temp                int
+	returnType          string
+	returnUnsigned      bool
+	targetTriple        string
+	scalarPlan          layout.ResolvedScalarPlan
+	failure             error
+	blockOpen           bool
+	locals              map[string]local
+	functions           map[string][]*ast.FunctionDeclaration
+	functionNames       map[*ast.FunctionDeclaration]string
+	generatedIdentities *sema.GeneratedIdentityIndex
+	helperOrigins       map[*ast.FunctionDeclaration]sema.GeneratedIdentity
+	reachable           map[*ast.FunctionDeclaration]bool
+	constants           map[string]mlirConstant
+	namedTypes          map[string]mlirNamedType
+	structs             map[string]*mlirStruct
+	enums               map[string]*mlirEnum
+	loops               []loopContext
+	defers              []*deferEntry
+	deferByStmt         map[*ast.DeferStatement]*deferEntry
+	stringID            int
 }
 
 type value struct {
@@ -126,7 +130,13 @@ const (
 // have been resolved; unsupported native constants cannot publish partial IR.
 // Rules: rules/types/types.md — "int and uint"; rules/compiler/compiler_pipeline.md — §61(3).
 func (g *Generator) Generate(program *ast.Program) (string, error) {
+	if err := readiness.RejectStringLengthContracts(program, nil, "legacy MLIR"); err != nil {
+		return "", err
+	}
 	if err := readiness.RejectInstant(program); err != nil {
+		return "", err
+	}
+	if err := readiness.RejectUnitQuantities(program, nil, "legacy MLIR"); err != nil {
 		return "", err
 	}
 	triple := g.targetTriple
@@ -143,7 +153,12 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 			return "", err
 		}
 	}
+	if err := readiness.ValidateCompilerAuthority(program, plan, "legacy MLIR"); err != nil {
+		return "", err
+	}
 	g.scalarPlan = plan
+	g.generatedIdentities = sema.NewGeneratedIdentityIndex(program)
+	g.helperOrigins = map[*ast.FunctionDeclaration]sema.GeneratedIdentity{}
 	g.targetTriple = plan.LLVMTriple
 
 	if err := validateEntrypoint(program); err != nil {
@@ -233,7 +248,22 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 					return "", fmt.Errorf("emit-mlir does not yet support overloads of %s with the same arity", name)
 				}
 				arities[len(fn.Parameters)] = true
-				symbol = fmt.Sprintf("%s__sec_arity_%d", name, len(fn.Parameters))
+				target, _ := json.Marshal(g.scalarPlan)
+				identity, ok := g.generatedIdentities.Resolve("overload", "", fn.Token, string(target))
+				if !ok {
+					return "", fmt.Errorf("emit-mlir overload requires a prepared lexical source origin")
+				}
+				symbol = ".sec.generated." + identity.ID
+				// Explicit source linkage cannot alias a generated specialization.
+				// Rules: rules/compiler/compiler_pipeline.md — §76(3–4).
+				for _, declarations := range g.functions {
+					for _, declaration := range declarations {
+						if declaration != fn && declaration.LinkName == symbol {
+							return "", fmt.Errorf("generated overload symbol %s conflicts with source linkage", symbol)
+						}
+					}
+				}
+				g.helperOrigins[fn] = identity
 			}
 			g.functionNames[fn] = symbol
 		}
@@ -280,7 +310,20 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	return g.out.String(), nil
 }
 
+// emitFunction emits only signatures whose value representations are supported,
+// preserving the distinction between actual void and an unresolved type.
+// Rules: rules/types/types.md — void; rules/compiler/compiler_pipeline.md — lowering prerequisites.
+// emitFunction emits the selected source signature and records provenance for
+// generated overload symbols at this existing LLVM-dialect boundary.
+// Rules: rules/declarations/functions.md — overloads;
+// rules/compiler/compiler_pipeline.md — §§76,103; compiler.md — §71.
 func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
+	if identity, ok := g.helperOrigins[fn]; ok {
+		g.write("  // sec-generated %s origin=%q source=%q:%d:%d\n", identity.ID, identity.Origin, identity.Source.File, identity.Source.Line, identity.Source.Column)
+	}
+	if err := g.validateNominalSignature(fn); err != nil {
+		return err
+	}
 	for _, parameter := range fn.Parameters {
 		if err := validateLegacyMLIRArrayType(parameter.Type); err != nil {
 			return err
@@ -2352,9 +2395,11 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 	}
 	if object.typ == "string" {
 		switch expr.Property.Value {
-		case "ptr":
+		case "ptr", "Ptr":
 			return value{typ: "!llvm.ptr", ref: object.ref}, nil
-		case "len":
+		case "Len", "RuneLen", "len":
+			return g.coerceValue(g.emitStringRuneLength(object), g.nativeIntegerType(), true)
+		case "ByteLen":
 			return g.coerceValue(value{typ: "i64", ref: object.len, unsigned: true}, g.nativeIntegerType(), true)
 		default:
 			return value{}, fmt.Errorf("emit-mlir unknown string property %s", expr.Property.Value)

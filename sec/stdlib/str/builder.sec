@@ -36,9 +36,6 @@ impl Builder {
         return Err(CollectionError.AllocationFailed)
     }
 
-    free() {
-    }
-
     property ByteCount: uint {
         get {
             return 0

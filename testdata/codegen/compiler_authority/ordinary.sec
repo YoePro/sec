@@ -1,0 +1,9 @@
+module main
+
+fn __Helper(value: int) int {
+    return value + 1
+}
+
+fn main() int {
+    return __Helper(2)
+}

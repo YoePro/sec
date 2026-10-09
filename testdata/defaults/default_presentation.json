@@ -136,12 +136,12 @@
   },
   {
     "name": "DefaultList",
-    "value": "DefaultList[int] {}",
+    "value": "DefaultList {}",
     "source": "collection"
   },
   {
     "name": "DefaultBoundedList",
-    "value": "DefaultBoundedList[string, 4] {}",
+    "value": "DefaultBoundedList {}",
     "source": "collection"
   },
   {
@@ -271,7 +271,7 @@
   },
   {
     "name": "DefaultInheritedList",
-    "value": "DefaultInheritedList[int] {}",
+    "value": "DefaultInheritedList {}",
     "source": "collection"
   },
   {

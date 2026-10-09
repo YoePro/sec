@@ -29,7 +29,8 @@ type ResolvedCall struct {
 // interface invocation retains the same open contract used by the call graph;
 // it cannot masquerade as a direct or static concrete method invocation.
 // Rules: rules/declarations/functions.md — §§19,20,24;
-// rules/declarations/interfaces.md — §§5,6;
+// rules/declarations/interfaces.md — §§5,6,9.1;
+// rules/compiler/compiler_known_members.md — LSP, Stable member identity;
 // rules/analysis/call_graph.md — Interfaces, Open callable contract.
 func (a *Analyzer) recordResolvedCall(call *ast.CallExpression, function Function, dispatch CallDispatchKind, receiver Type) {
 	fact := ResolvedCall{Function: function, Kind: resolvedCallKind(dispatch)}
@@ -37,6 +38,11 @@ func (a *Analyzer) recordResolvedCall(call *ast.CallExpression, function Functio
 		fact.InterfaceContract = interfaceInvocationContract(receiver, function)
 	}
 	a.resolvedCalls[call] = fact
+	if member, ok := compilerKnownInterfaceMember(function); ok {
+		if selector, ok := call.Callee.(*ast.MemberExpression); ok && selector.Property != nil {
+			a.compilerKnownMemberFacts[sourceTokenLocation(selector.Property.Token)] = member
+		}
+	}
 }
 
 // ResolvedCallTarget exposes the chosen requirement and a detached public

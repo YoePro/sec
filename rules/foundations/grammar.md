@@ -511,6 +511,9 @@ LengthContract
     ::= Contextual("minLen") Expression
       | Contextual("maxLen") Expression
       | Contextual("exactLen") Expression
+      | Contextual("minByteLen") Expression
+      | Contextual("maxByteLen") Expression
+      | Contextual("exactByteLen") Expression
 
 RegexContract
     ::= Contextual("regex") Expression
@@ -1425,14 +1428,22 @@ ForeignTypeDeclaration
       | "extern" "C" "type" Identifier "enum" ForeignEnumBody
 
 ForeignTypeReference
-    ::= "C" "::" Identifier
-      | "c" "::" Identifier { "::" Identifier }
-      | "C" "::" "fn" "(" [ ForeignParameterTypeList ] ")" TypeReference
-      | "C" "::" "flex" "[" TypeReference "]"
+    ::= "c" "::" Identifier { "::" Identifier }
+      | "c" "::" "fn" "(" [ ForeignParameterTypeList ] ")" TypeReference
+      | "c" "::" "flex" "[" TypeReference "]"
+
+ForeignCallbackExpression
+    ::= "c" "::" "callback" "(" Expression ")"
 ```
 
+`c::` is the only C qualification prefix; the capitalized `C::` form is not Sec
+0.1 syntax. `::` is a single token with no whitespace inside or around it.
+Fundamental names and target-defined binding names are distinguished during
+semantic resolution; the production grants no permission to use an arbitrarily
+spelled C type without a real binding (MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 2.8).
+
 `bit[N]` after a field's C base type is a C bitfield declarator only inside an
-`extern "C"` data declaration. `C::callback(expression)` is the explicit
+`extern "C"` data declaration. `c::callback(expression)` is the explicit
 environment-free callback adapter expression.
 
 ---
@@ -3024,6 +3035,27 @@ MembershipSource
 The parser accepts a range-or-expression right operand.
 
 `for value in source` is iteration grammar, not this boolean operator.
+
+---
+
+# Foreign null sentinel and null tests
+
+```text
+ForeignNullSentinel
+    ::= "null"
+
+ForeignNullTest
+    ::= Expression "is" "null"
+      | Expression "is" "not" "null"
+```
+
+`ForeignNullTest` is a boolean expression at the equality/state-test precedence
+of `is` and `is not`. Its left operand is bound and evaluated once. `null` is a
+reserved spelling, and Sema permits the sentinel and both tests only inside
+`unsafe` with a raw-pointer operand or an explicit raw-pointer target type. The
+production grants no general-purpose null operand or null expression type, and
+`== null`/`!= null` remain invalid (MD-024, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 5.8;
+`rules/platform/ffi.md` § 11).
 
 ---
 

@@ -1,0 +1,9 @@
+module main
+
+fn First(left: ref mut byte[], right: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(left)
+    let mut other := Arena.FromBuffer(right)
+    let mut moved :<- arena
+    moved.Release()
+    other.Release()
+}

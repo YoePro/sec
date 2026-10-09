@@ -1,0 +1,8 @@
+module test
+type DynamicRows int[][] unique
+type Views ref int[]
+type UniqueViews Views[] unique
+type Callbacks fn(int) int
+type UniqueCallbacks list[Callbacks] unique
+type GenericUnique[T] list[T] unique
+fn Generic(values: GenericUnique[Callbacks]) void {}

@@ -110,6 +110,10 @@ type binding struct {
 	mutable bool
 }
 
+// buildFunction preserves resolved signature identities and emits canonical body
+// facts; missing representation is diagnosed at the relevant source signature.
+// Rules: rules/compiler/semantic_ir.md — signatures and §90 Source locations;
+// rules/compiler/compiler_pipeline.md — Sema facts before lowering.
 func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	resolved, ok := b.analyzer.ResolvedFunctionForDeclaration(decl)
 	if !ok {
@@ -117,7 +121,11 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	}
 	returnType, err := b.internType(resolved.ReturnType)
 	if err != nil {
-		return err
+		token := decl.Token
+		if decl.ReturnType != nil {
+			token = decl.ReturnType.Token
+		}
+		return locateUnsupportedType(err, token)
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
 	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
@@ -126,7 +134,7 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	for i, parameter := range resolved.Parameters {
 		typeID, err := b.internType(parameter.Type)
 		if err != nil {
-			return err
+			return locateUnsupportedType(err, parameter.Token)
 		}
 		ownership, err := ownershipForParameter(parameter, b.maxPackage)
 		if err != nil {
@@ -170,7 +178,19 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	return nil
 }
 
+// internType maps resolved source identities into the represented Semantic IR
+// families, rejecting erasure of unsupported quantities and nominal wrappers.
+// Rules: rules/types/types.md — Type identity; rules/compiler/semantic_ir.md — §20;
+// rules/mlir/packages/sec-mlir-dialect_package11.md — §26 Result relationship.
 func (b *builder) internType(t sema.Type) (TypeID, error) {
+	// Units cannot become ordinary scalars before their resolved quantity facts
+	// and operations have a representation (Semantic IR §20, units correction).
+	if t.Unit != "" || !t.Dimension.IsZero() || t.UnitSemantics.Identity != "" {
+		if t.Named || t.Declared {
+			return 0, &UnsupportedFeatureError{Feature: "named type contracts or units", Package: b.maxPackage}
+		}
+		return 0, &UnsupportedFeatureError{Feature: "unit quantity representation for " + t.Name, Package: b.maxPackage}
+	}
 	if t.Kind == sema.ArrayType {
 		if b.maxPackage < 14 {
 			return 0, &UnsupportedFeatureError{Feature: "array type " + t.Name, Package: b.maxPackage}
@@ -178,6 +198,9 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		return b.internArrayType(t)
 	}
 	if t.Kind == sema.ResultType && len(t.TypeArgs) == 2 {
+		if t.Name != "Result" && (t.Named || t.Declared) {
+			return 0, &UnsupportedFeatureError{Feature: "nominal Result wrapper " + t.Name, Package: b.maxPackage}
+		}
 		success, err := b.internType(t.TypeArgs[0])
 		if err != nil {
 			return 0, err
@@ -224,6 +247,9 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 // the Semantic IR type layer only. Array construction, indexing and storage
 // operations remain separate Package 14 work items.
 func (b *builder) internArrayType(t sema.Type) (TypeID, error) {
+	if t.Named || t.Declared {
+		return 0, &UnsupportedFeatureError{Feature: "nominal array wrapper " + t.Name, Package: b.maxPackage}
+	}
 	if t.Element == nil {
 		return 0, &UnsupportedFeatureError{Feature: "array type with missing element", Package: b.maxPackage}
 	}
@@ -423,26 +449,6 @@ func (b *builder) internUnionType(t sema.Type) (TypeID, error) {
 	}
 	b.module.Unions = append(b.module.Unions, definition)
 	return typeID, nil
-}
-
-func (b *builder) semanticIdentity(t sema.Type) (string, string) {
-	module := t.Module
-	if module == "" {
-		if t.Intrinsic {
-			module = "core"
-		} else {
-			module = b.module.Identity
-		}
-	}
-	identity := module + "::" + t.Name
-	if len(t.TypeArgs) != 0 {
-		parts := make([]string, len(t.TypeArgs))
-		for index, argument := range t.TypeArgs {
-			parts[index] = canonicalSemaType(argument)
-		}
-		identity += "<" + strings.Join(parts, ",") + ">"
-	}
-	return module, identity
 }
 
 func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
@@ -2486,6 +2492,11 @@ func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtVal
 	if !ok {
 		return builtValue{}, fb.unsupported("unresolved try expression", expr.Token)
 	}
+	if resolved.TestBoundary {
+		// rules/errors/errorhandling.md §41: propagation to a test invocation
+		// needs the test harness failure outcome, which has no Semantic IR yet.
+		return builtValue{}, fb.unsupported("try propagation to a test boundary", expr.Token)
+	}
 	switch resolved.Kind {
 	case sema.ResolvedTryArithmeticPropagation:
 		if len(expr.Handlers) != 0 {
@@ -3330,12 +3341,6 @@ func functionID(f sema.Function, types *TypeTable) FunctionID {
 		parts[i] = canonicalSemaType(p.Type)
 	}
 	return FunctionID(f.Module + "::" + f.Name + "(" + strings.Join(parts, ",") + ")")
-}
-func canonicalSemaType(t sema.Type) string {
-	if t.Module != "" && (t.Named || t.Declared) {
-		return t.Module + "::" + t.Name
-	}
-	return t.Name
 }
 func parseDecimal(lexeme string) (DecimalConstant, error) {
 	digits, _ := ast.SplitNumericLiteralSuffix(lexeme)

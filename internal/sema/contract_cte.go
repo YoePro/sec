@@ -64,6 +64,9 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 	if a.compileTimeClockRead(expr) {
 		return DefaultConstant{}, compileTimeForbiddenClock
 	}
+	if value, ok := a.nominalMemberConstant(expr, context); ok {
+		return value, compileTimeEvaluated
+	}
 	if constant, ok := defaultConstantFromExpression(expr); ok && !compileTimeOperatorExpression(expr) {
 		if numeric, ok := expr.(interface{ Suffix() string }); ok && numeric.Suffix() == "g" && context.Kind != FloatType {
 			context = a.types["float"]
@@ -172,6 +175,9 @@ func (a *Analyzer) compileTimeExpressionExecutes(expr ast.Expression) bool {
 	case *ast.CallExpression:
 		return true
 	case *ast.MemberExpression:
+		if _, ok := a.nominalMemberOwner(expr, Type{}); ok {
+			return false
+		}
 		if owner, ok := expr.Object.(*ast.Identifier); ok {
 			if typ, exists := a.types[owner.Value]; exists && typ.Kind == EnumType {
 				return false

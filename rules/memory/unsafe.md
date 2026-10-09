@@ -430,6 +430,8 @@ MayUseNondeterministicInput
 
 § 19(1) Merely storing, copying, moving, returning, passing, equality-testing, or null-testing `RawPtr[T]` is not inherently unsafe when `raw_pointers.md` defines the operation as safe.
 
+§ 19(1a) Independently of § 19(1), the null-test source syntax `pointer is null` / `pointer is not null` and the `null` sentinel require an explicit `unsafe` context (`raw_pointers.md` § 7(9a); `rules/platform/ffi.md` § 11). The requirement keeps foreign null syntax from spreading into ordinary code; it does not reclassify the test as a memory access or a dereference (MD-024).
+
 § 19(2) These operations do not assert pointee validity.
 
 § 19(3) A type containing `RawPtr[T]` is not automatically unsafe.

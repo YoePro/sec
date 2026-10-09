@@ -214,3 +214,34 @@ func CompilerKnownSyntheticDefinition(member CompilerKnownMember) string {
 func CompilerKnownSyntheticSignatureLine(text string) int {
 	return strings.Count(strings.TrimRight(text, "\n"), "\n")
 }
+
+// CompilerKnownSymbolAt exposes resolved members, interface requirements and
+// private value intrinsics to tooling through the same presentation model.
+// Untrusted value uses have no fact and cannot acquire a synthetic identity.
+// Rules: rules/compiler/compiler_known_members.md — LSP, Private core UTC wall-clock intrinsic;
+// rules/types/temporal.md — §3.
+func (a *Analyzer) CompilerKnownSymbolAt(file string, line int, column int) (CompilerKnownMember, bool) {
+	if member, ok := a.CompilerKnownMemberAt(file, line, column); ok {
+		return member, true
+	}
+	value, ok := a.CompilerKnownValueAt(file, line, column)
+	if !ok {
+		return CompilerKnownMember{}, false
+	}
+	return compilerKnownValuePresentation(value), true
+}
+
+// compilerKnownValuePresentation projects canonical value metadata for tooling.
+// Rules: rules/compiler/compiler_known_members.md — LSP, Private core UTC wall-clock intrinsic;
+// rules/types/temporal.md — §3.
+func compilerKnownValuePresentation(value CompilerKnownValue) CompilerKnownMember {
+	return CompilerKnownMember{
+		ID: value.ID, Name: value.Name, Kind: CompilerKnownValueExpression,
+		Result: value.Result, Signature: value.Name + ": " + typeDisplayName(value.Result),
+		Effects: value.Effects, Category: CompilerKnownOperation,
+		Rule:              "rules/types/temporal.md — §3; rules/compiler/compiler_known_members.md — Private core UTC wall-clock intrinsic",
+		Receiver:          "loader-proven core source only",
+		TargetRestriction: value.RequiredCapability + " must be Supported and Enabled in the frozen CompilationPlan",
+		Documentation:     "One UTC wall-clock read per evaluation; unavailable in compile-time evaluation and static initialization.",
+	}
+}

@@ -41,7 +41,7 @@ An imported foreign function is declared with `extern` and has no Sec body.
 Examples:
 
 ```sec
-extern "C" fn GetVersion() C::int
+extern "C" fn GetVersion() c::int
 
 extern "system" fn GetSystemValue() uint32
 ```
@@ -49,7 +49,7 @@ extern "system" fn GetSystemValue() uint32
 A body on an imported extern declaration is invalid in Sec 0.1.
 
 ```sec
-extern "C" fn GetVersion() C::int {
+extern "C" fn GetVersion() c::int {
     return 1
 }
 ```
@@ -81,7 +81,7 @@ This fact does not require repetitive `unsafe` syntax at every ordinary call sit
 Example:
 
 ```sec
-extern "C" fn GetProcessId() C::int
+extern "C" fn GetProcessId() c::int
 
 let processId := GetProcessId()
 ```
@@ -130,45 +130,64 @@ A binding may expose safer or more nominal Sec wrapper names than the original f
 
 ## 5. Fundamental C ABI scalar family
 
-Compiler-known fundamental C ABI scalar types use uppercase `C::` qualification.
+Compiler-known fundamental C ABI scalar types use lowercase `c::` qualification.
+`c::` is the only canonical C qualification prefix in Sec 0.1; the former
+capitalized `C::` spelling is not Sec 0.1 syntax (MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 2).
 
 Examples include:
 
 ```sec
-C::char
-C::schar
-C::uchar
+c::char
+c::schar
+c::uchar
 
-C::short
-C::ushort
+c::short
+c::ushort
 
-C::int
-C::uint
+c::int
+c::uint
 
-C::long
-C::ulong
+c::long
+c::ulong
 
-C::long_long
-C::ulong_long
+c::long_long
+c::ulong_long
 
-C::float
-C::double
-C::long_double
+c::float
+c::double
+c::long_double
 
-C::bool
+c::bool
 ```
 
-`C::` is compiler-known foreign type-family qualification.
+`c::` is compiler-known foreign type-family qualification.
 
-It is not ordinary member access and does not create a runtime value named `C`.
+It is not ordinary member access and does not create a runtime value named `c`.
+
+`::` is one lexical token recognized with longest-match precedence over a single
+`:`; `:=` and `:<-` remain separate tokens. A qualification contains no
+whitespace inside or adjacent to `::`:
+
+```sec
+let a: c::int := 1                // valid
+let b: c::stddef::size_t := 2     // valid
+let c: C::int := 3                // invalid: removed capitalized prefix
+let d: c :: int := 4              // invalid: separated qualification
+let e: c: :int := 5               // invalid: split punctuation
+```
+
+The same prefix qualifies the C-specific constructions `c::fn(...)`,
+`c::flex[T]`, and `c::callback(expression)`. The calling-convention string
+remains `extern "C"`; it is distinct from the type qualification and is not
+renamed to `extern "c"`.
 
 The physical representation of each type is resolved through the active C ABI model.
 
-For example, `C::long` may have different widths on different targets.
+For example, `c::long` may have different widths on different targets.
 
 ## 6. C library and platform binding namespaces
 
-C standard-library, implementation-specific, and platform-specific binding types use lowercase hierarchical `c::` qualification.
+C standard-library, implementation-specific, and platform-specific binding types use the same lowercase hierarchical `c::` qualification.
 
 Example:
 
@@ -189,6 +208,42 @@ Such names are not automatically fundamental compiler primitives.
 
 Their concrete definitions are supplied by the selected target/library binding environment.
 
+Responsibilities are split as follows (MD-021, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 3):
+
+- The compiler owns the semantic meaning of the fundamental C ABI type family,
+  the C-specific constructs, ABI representation and legality checks, and
+  lowering under the active `CompilationPlan`.
+- Platform bindings, normally provided from `sec/platform`, supply
+  target-specific C declarations such as `c::stddef::size_t`,
+  `c::time::time_t`, `c::stdarg::va_list`, and, where available,
+  `c::posix::socklen_t`. These names are not universal fundamental scalars.
+- The selected `CompilationPlan` resolves one compatible platform C binding
+  environment for the target and makes its standard C binding types available
+  under `c::` without a source-level import. The available set is
+  target-specific; an unavailable or unresolved name is a compile-time error,
+  and host definitions are never substituted.
+- Third-party C libraries are ordinary Sec binding packages or modules imported
+  through the normal module system. They may carry native link dependencies
+  through the existing project/package build metadata and need no compiler
+  change to add foreign functions or types.
+
+```sec
+import "bindings/sqlite"
+```
+
+The path above illustrates an ordinary logical import; it reserves no path and
+prescribes no package registry.
+
+Sec defines no second language for C header files, C typedef syntax, C
+preprocessor directives, or automatic header parsing. An optional external
+binding generator may emit ordinary Sec declarations.
+
+Missing, incompatible, ambiguous, stale, or untrusted binding metadata fails
+closed during compilation rather than falling back to the host's C ABI. The
+exact serialization and selection mechanism for target-provided binding
+declarations belongs to the target, platform, and build rules and is not yet
+specified there.
+
 Ordinary local identifiers remain legal even when they use the same spelling.
 
 ```sec
@@ -206,10 +261,10 @@ The `::` mechanism may support additional foreign language families in future la
 
 Representation equality does not create source-level type identity.
 
-On a target where `C::int` is a signed 32-bit value, `C::int` and `int32` may have identical physical representation while remaining distinct Sec types.
+On a target where `c::int` is a signed 32-bit value, `c::int` and `int32` may have identical physical representation while remaining distinct Sec types.
 
 ```sec
-let foreignValue: C::int := 42
+let foreignValue: c::int := 42
 let secValue: int32 := 42
 ```
 
@@ -220,11 +275,11 @@ Assignment does not become implicit merely because the current ABI gives both ty
 Conversions use the ordinary Sec explicit conversion model.
 
 ```sec
-let foreignValue: C::int := 42
+let foreignValue: c::int := 42
 let secValue := int32(foreignValue)
 
 let other: int32 := 42
-let foreignOther := C::int(other)
+let foreignOther := c::int(other)
 ```
 
 If the target type can represent the complete source value domain, the conversion is infallible.
@@ -233,7 +288,7 @@ If the conversion may lose range, it is checked and requires `try`.
 
 ```sec
 let wide: int64 := ReadWideValue()
-let narrow := try C::int(wide)
+let narrow := try c::int(wide)
 ```
 
 A representation-identical conversion may lower to no machine instruction.
@@ -241,47 +296,47 @@ A representation-identical conversion may lower to no machine instruction.
 Literal shaping remains distinct from runtime conversion.
 
 ```sec
-let count: C::int := 10
+let count: c::int := 10
 ```
 
 is valid when the literal is representable.
 
-An untyped boolean literal `true` or `false` may be shaped to `C::bool` when the
+An untyped boolean literal `true` or `false` may be shaped to `c::bool` when the
 target type is known. This is literal shaping, not an implicit conversion of a
 previously typed `bool` value:
 
 ```sec
-let b: C::bool := true
+let b: c::bool := true
 let source: bool := true
-let invalid: C::bool := source    // invalid: different nominal scalar type
-let converted := C::bool(source)  // valid explicit conversion
+let invalid: c::bool := source    // invalid: different nominal scalar type
+let converted := c::bool(source)  // valid explicit conversion
 ```
 
-A single-quoted character literal defaults to `rune`. In an explicit `C::char`,
-`C::schar`, or `C::uchar` target context the literal may instead be shaped to
+A single-quoted character literal defaults to `rune`. In an explicit `c::char`,
+`c::schar`, or `c::uchar` target context the literal may instead be shaped to
 that C scalar when the decoded Unicode scalar's numeric value is representable
 by that target's C ABI integer range. Shaping performs no UTF-8, Latin-1,
 locale, platform-codepage, or other text encoding: the scalar's code-point
 number is the candidate integer value, and there is no first-byte-of-UTF-8
-fallback. The active ABI model determines `C::char` signedness and every C
+fallback. The active ABI model determines `c::char` signedness and every C
 character scalar limit:
 
 ```sec
-let a: C::char := 'A'     // valid where 65 is representable
-let c: C::uchar := 'é'    // valid where 233 is representable
-let d: C::char := 'é'     // invalid on a signed 8-bit C::char
-let e: C::uchar := 'π'    // invalid on an 8-bit C::uchar
+let a: c::char := 'A'     // valid where 65 is representable
+let c: c::uchar := 'é'    // valid where 233 is representable
+let d: c::char := 'é'     // invalid on a signed 8-bit c::char
+let e: c::uchar := 'π'    // invalid on an 8-bit c::uchar
 ```
 
 Literal shaping is not a grant of general implicit scalar conversion. A typed
-`rune`, `char`, `bool`, or `C::` scalar never implicitly becomes another nominal
-`C::` scalar through assignment or argument passing, even when representations
+`rune`, `char`, `bool`, or `c::` scalar never implicitly becomes another nominal
+`c::` scalar through assignment or argument passing, even when representations
 coincide:
 
 ```sec
-let a: C::int := 42
-let invalid: C::long := a
-let b := C::long(a)   // explicit; checked if the source domain does not fit
+let a: c::int := 42
+let invalid: c::long := a
+let b := c::long(a)   // explicit; checked if the source domain does not fit
 ```
 
 Explicit C-to-C, C-to-Sec, and Sec-to-C conversions follow the whole-source-domain
@@ -320,12 +375,12 @@ extern "C" fn CRC32(
 ) uint32
 ```
 
-When the foreign source type is C ABI-defined rather than fixed-width, the binding uses the appropriate `C::` type.
+When the foreign source type is C ABI-defined rather than fixed-width, the binding uses the appropriate `c::` type.
 
 For a C `int`, use:
 
 ```sec
-C::int
+c::int
 ```
 
 rather than hard-coding `int32` merely because the current target happens to use a 32-bit C `int`.
@@ -333,6 +388,26 @@ rather than hard-coding `int32` merely because the current target happens to use
 Sec `bool`, Sec `char`, and Sec `rune` do not automatically represent C `_Bool`, C `char`, or foreign wide-character types.
 
 Use the correct C or binding type.
+
+Target-sized Sec `int` and `uint` are legal in a foreign signature only where
+the selected ABI model proves that the resolved Sec type's size, signedness,
+alignment, argument/return classification, and every other required property
+match the foreign ABI contract in that exact position. Equal size on one host
+grants no portable compatibility:
+
+```sec
+// Valid only when the selected target ABI proves the declared representation.
+extern "C" fn ReadNativeCount() uint
+```
+
+`int128`, `uint128`, `int256`, and `uint256` may cross a foreign boundary only
+when the Sec compiler and target support the type and the selected foreign ABI
+explicitly supports that concrete representation in that call position. Code
+generator integer support alone is not evidence of an interoperable foreign ABI.
+
+On an unsupported or unverified target the compiler rejects the foreign
+signature before lowering; it never guesses a representation or truncates
+silently (MD-023, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 4).
 
 ## 10. Raw pointers
 
@@ -376,12 +451,39 @@ if raw is null {
 }
 ```
 
-Null testing uses `is`.
+Sec has no general-purpose null value and no nullable ordinary references.
+`Option[T]` with `Some`/`None` expresses optional values in ordinary Sec code;
+`null` exists solely as the foreign/raw-pointer sentinel. `null` is a reserved
+lexical spelling, so a user binding cannot shadow it.
 
-Equality comparison with `null` is invalid.
+Null testing uses the two symmetric tests `is null` and `is not null`. Both
+produce `bool` and may appear in any boolean-expression position inside
+`unsafe`, not only in `if` and `while` conditions. The left operand is
+evaluated exactly once, and the test performs no dereference:
+
+```sec
+unsafe {
+    let missing: bool := pointer is null
+    let present: bool := pointer is not null
+
+    if pointer is not null {
+        UseForeignPointer(pointer)
+    }
+}
+```
+
+`!(pointer is null)` remains valid, and `is not null` is a canonical spelling
+that must not be rejected. The operand must have a supported foreign or
+raw-pointer type.
+
+Equality comparison with `null` is invalid, as is any comparison or conversion
+involving `None`:
 
 ```sec
 if raw == null {
+    ...
+}
+if raw != null {
     ...
 }
 ```
@@ -404,6 +506,19 @@ unsafe {
 }
 ```
 
+Constructing a foreign null pointer requires both `unsafe` and an explicit
+raw-pointer type context:
+
+```sec
+let pointer: RawPtr[byte] := null     // invalid: outside unsafe
+let optional: Option[byte] := null    // invalid: use None
+```
+
+Ordinary Sec wrappers validate foreign nullable results inside their unsafe
+boundary and expose `Option[T]` or an appropriate `Result[T, E]`. A raw pointer
+in a signature does not by itself make every call unsafe; the `extern` versus
+`unsafe extern` rule still governs calls (MD-024, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 5).
+
 A zero-valued character or byte used as a C string terminator is not the `null` sentinel.
 
 ## 12. Safe references in foreign parameters
@@ -411,9 +526,9 @@ A zero-valued character or byte used as a C string terminator is not the `null` 
 An extern parameter may use `ref T` or `ref mut T` when the foreign contract is a non-null call-bounded borrow.
 
 ```sec
-extern "C" fn Inspect(value: ref Header) C::int
+extern "C" fn Inspect(value: ref Header) c::int
 
-extern "C" fn Modify(value: ref mut Header) C::int
+extern "C" fn Modify(value: ref mut Header) c::int
 ```
 
 The contracts are:
@@ -463,7 +578,7 @@ A stored pointer field in C-compatible data uses `RawPtr[T]`.
 
 ```sec
 extern "C" type Node struct {
-    value: C::int,
+    value: c::int,
     next: RawPtr[Node],
 }
 ```
@@ -478,8 +593,8 @@ The canonical C struct declaration is:
 
 ```sec
 extern "C" type Point struct {
-    x: C::int,
-    y: C::int,
+    x: c::int,
+    y: c::int,
 }
 ```
 
@@ -540,8 +655,8 @@ The canonical C union declaration is:
 
 ```sec
 extern "C" type Value union {
-    integer: C::int,
-    real: C::double,
+    integer: c::int,
+    real: c::double,
 }
 ```
 
@@ -593,15 +708,20 @@ match color {
 
 This differs from ordinary closed Sec enums.
 
+An ordinary closed Sec enum is not FFI-legal merely because it has an
+integer-backed representation, and the compiler never reinterprets it as an
+open C enum. A C enum with C ABI and open-value behavior is declared as an
+`extern "C"` enum (MD-023).
+
 ## 20. C bitfields
 
 A C bitfield in an `extern "C"` data declaration uses the C base type followed by a bitfield width declarator.
 
 ```sec
 extern "C" type Flags struct {
-    enabled: C::uint bit[1],
-    mode: C::uint bit[3],
-    reserved: C::uint bit[28],
+    enabled: c::uint bit[1],
+    mode: c::uint bit[3],
+    reserved: c::uint bit[28],
 }
 ```
 
@@ -622,13 +742,13 @@ The C bitfield base type must be classified as bitfield-capable by the active AB
 Unnamed bitfields use `_`.
 
 ```sec
-_: C::uint bit[4],
+_: c::uint bit[4],
 ```
 
 A zero-width bitfield is permitted only in an unnamed C bitfield position.
 
 ```sec
-_: C::uint bit[0],
+_: c::uint bit[0],
 ```
 
 Its layout effect is defined by the active C ABI.
@@ -668,7 +788,7 @@ C array parameters are represented by their actual ABI pointer form rather than 
 A C flexible-array member uses:
 
 ```sec
-C::flex[T]
+c::flex[T]
 ```
 
 Example:
@@ -676,7 +796,7 @@ Example:
 ```sec
 extern "C" type Packet struct {
     length: c::stddef::size_t,
-    data: C::flex[byte],
+    data: c::flex[byte],
 }
 ```
 
@@ -710,23 +830,23 @@ A `ref` or `ref mut` to a misaligned field is invalid unless the required alignm
 A C ABI function-pointer type uses:
 
 ```sec
-C::fn(ParameterTypes) ReturnType
+c::fn(ParameterTypes) ReturnType
 ```
 
 Examples:
 
 ```sec
-C::fn(C::int) void
-C::fn(RawPtr[Context], C::int) C::bool
+c::fn(c::int) void
+c::fn(RawPtr[Context], c::int) c::bool
 ```
 
-A `C::fn(...) R` value is not a native Sec callable type.
+A `c::fn(...) R` value is not a native Sec callable type.
 
 Compare:
 
 ```sec
-fn(C::int) void
-C::fn(C::int) void
+fn(c::int) void
+c::fn(c::int) void
 ```
 
 The first is a native Sec callable.
@@ -746,19 +866,19 @@ Sec 0.1 supports callbacks required to consume foreign C APIs.
 The explicit adapter is:
 
 ```sec
-C::callback(callable)
+c::callback(callable)
 ```
 
-`C::callback` produces a non-null `C::fn(...) R` value with the corresponding C ABI signature.
+`c::callback` produces a non-null `c::fn(...) R` value with the corresponding C ABI signature.
 
 Example:
 
 ```sec
-fn OnValue(value: C::int) void {
+fn OnValue(value: c::int) void {
     ProcessValue(int32(value))
 }
 
-let callback := C::callback(OnValue)
+let callback := c::callback(OnValue)
 ```
 
 The source callable must be:
@@ -772,11 +892,11 @@ Capturing closures are not directly adaptable to C callbacks in Sec 0.1.
 
 `mut fn` and `-> fn` callables are not directly adaptable.
 
-The compiler may generate a private C ABI thunk/entry point required to implement `C::callback`.
+The compiler may generate a private C ABI thunk/entry point required to implement `c::callback`.
 
 This is callback interoperation, not general Sec-to-C symbol export.
 
-No user-selected exported C symbol is created by `C::callback`.
+No user-selected exported C symbol is created by `c::callback`.
 
 When a C API provides an explicit userdata/context pointer, that pointer is the canonical state-transport mechanism for Sec 0.1 callbacks.
 
@@ -804,9 +924,9 @@ C varargs:
 
 ```sec
 unsafe extern "C" fn Printf(
-    format: RawPtr[C::char],
+    format: RawPtr[c::char],
     ...
-) C::int
+) c::int
 ```
 
 A bare final `...` is permitted only for C foreign variadic signatures and C function-pointer types.
@@ -825,7 +945,7 @@ The compiler applies the active C ABI's default argument promotions to already-C
 
 Examples include the required promotion of:
 
-- C floating types such as `C::float` to the appropriate promoted C type;
+- C floating types such as `c::float` to the appropriate promoted C type;
 - small C integer types to the appropriate promoted integer type.
 
 The exact promotions are determined by the active C ABI model.
@@ -851,13 +971,13 @@ Sec `string` has no direct C ABI representation.
 The following is invalid as a raw FFI signature:
 
 ```sec
-extern "C" fn Open(path: string) C::int
+extern "C" fn Open(path: string) c::int
 ```
 
 A C character pointer is represented by the corresponding pointer type, for example:
 
 ```sec
-RawPtr[C::char]
+RawPtr[c::char]
 ```
 
 Such a pointer does not by itself imply:
@@ -917,9 +1037,9 @@ A pointer-plus-length foreign API is distinct from a NUL-terminated string API.
 
 ```sec
 extern "C" fn ConsumeText(
-    data: RawPtr[C::char],
+    data: RawPtr[c::char],
     length: c::stddef::size_t,
-) C::int
+) c::int
 ```
 
 The wrapper must know what the length counts.
@@ -967,7 +1087,7 @@ A fixed foreign character array remains an array.
 
 ```sec
 extern "C" type User struct {
-    name: C::char[64],
+    name: c::char[64],
 }
 ```
 
@@ -978,7 +1098,7 @@ A flexible foreign character array also remains foreign character storage.
 ```sec
 extern "C" type Message struct {
     length: c::stddef::size_t,
-    data: C::flex[C::char],
+    data: c::flex[c::char],
 }
 ```
 
@@ -989,7 +1109,7 @@ The wrapper decides whether such storage represents text and which encoding/prot
 Foreign pointer nesting is represented explicitly.
 
 ```sec
-RawPtr[RawPtr[C::char]]
+RawPtr[RawPtr[c::char]]
 ```
 
 does not automatically become `string[]`.
@@ -1124,7 +1244,7 @@ When the foreign symbol differs from the Sec declaration name, use:
 
 ```sec
 @link_name("foreign_symbol")
-extern "C" fn SecName(...) C::int
+extern "C" fn SecName(...) c::int
 ```
 
 `@link_name` affects the foreign/link symbol only.
@@ -1167,17 +1287,19 @@ FFI-legal in this position
 
 Types commonly legal in appropriate foreign positions include:
 
-- fundamental `C::` scalar types;
+- fundamental `c::` scalar types;
 - resolved `c::` binding scalar/ABI types;
 - ABI-stable fixed-width Sec numeric scalars;
+- target-sized `int` and `uint`, and `int128`/`uint128`/`int256`/`uint256`,
+  only where the selected ABI proves the representation in that exact position;
 - `RawPtr[T]`;
 - call-bounded `ref T` and `ref mut T` parameters;
-- `C::fn(...) R`;
+- `c::fn(...) R`;
 - complete `extern "C"` structs;
 - `extern "C"` enums;
 - `extern "C"` unions;
 - fixed arrays in C data;
-- `C::flex[T]` in its restricted final-field position.
+- `c::flex[T]` in its restricted final-field position.
 
 ## 46. Types forbidden from direct raw FFI use
 
@@ -1282,14 +1404,17 @@ extern "C" type Name struct
 extern "C" type Name union { ... }
 extern "C" type Name enum { ... }
 
-C::name
+c::name
 c::namespace::name
 
-C::fn(...) R
-C::callback(...)
+expression is null
+expression is not null
+
+c::fn(...) R
+c::callback(...)
 
 field: C-type bit[N]
-field: C::flex[T]
+field: c::flex[T]
 
 fixed-parameters, ...
 ```
@@ -1299,6 +1424,8 @@ The parser must reject:
 - extern functions with Sec bodies in Sec 0.1;
 - malformed or unknown calling-convention strings;
 - C varargs on non-C foreign declarations;
+- the removed capitalized `C::` prefix and whitespace inside or around `::`;
+- `== null` and `!= null`;
 - non-final C varargs markers;
 - invalid flexible-array positions;
 - zero-width named bitfields;
@@ -1309,16 +1436,22 @@ The parser must reject:
 Sema must:
 
 - resolve the selected calling convention;
-- resolve `C::` fundamental types through the active C ABI model;
+- resolve `c::` fundamental types through the active C ABI model;
 - resolve `c::` binding types through the selected target/library environment;
 - validate C-to-Sec and Sec-to-C conversions;
 - validate FFI legality per position;
 - distinguish raw pointer semantics from call-bounded reference semantics;
-- enforce null lexical restrictions;
+- enforce null lexical restrictions: `null`, `is null`, and `is not null` only
+  inside `unsafe`, only with a raw-pointer operand or explicit raw-pointer target
+  type, and with the tested operand evaluated once;
+- reject foreign `int`/`uint` and 128/256-bit integers unless the selected ABI
+  proves the position, and reject ordinary closed enums at foreign boundaries;
+- resolve target binding names under `c::` without an import and without host
+  fallback;
 - validate complete/incomplete foreign data usage;
 - validate C struct, union, enum, bitfield, fixed-array, and flexible-array rules;
 - validate C function-pointer types and non-null call proofs;
-- validate `C::callback` environment-free reusable callable requirements;
+- validate `c::callback` environment-free reusable callable requirements;
 - validate C varargs and default promotions;
 - validate trusted foreign effect declarations;
 - validate foreign symbol and target metadata;
@@ -1380,11 +1513,11 @@ flexible-array member must be the final field of an extern "C" struct
 ```
 
 ```text
-native Sec callable cannot be used as a C function pointer; use C::fn or C::callback
+native Sec callable cannot be used as a C function pointer; use c::fn or c::callback
 ```
 
 ```text
-capturing callable cannot be adapted with C::callback in Sec 0.1
+capturing callable cannot be adapted with c::callback in Sec 0.1
 ```
 
 ```text
@@ -1435,7 +1568,7 @@ Do not make foreign ref-count operations implicit copies.
 
 Do not assume C character pointers are text.
 
-Do not hard-code `C::int`/`C::long` widths.
+Do not hard-code `c::int`/`c::long` widths.
 
 Do not make ordinary Sec representation accidentally ABI-significant.
 

@@ -21,7 +21,7 @@ func TestTypeDiagnosticLocationsCLI(t *testing.T) {
 				t.Fatal(code, output)
 			}
 			for _, e := range document.Occurrences {
-				if e.ID == nil || len(e.Related) != 1 || e.Related[0].Message == nil || e.Related[0].Span.Start.Line == 0 {
+				if e.ID == nil || len(e.Related) < 1 || e.Related[0].Message == nil || e.Related[0].Span.Start.Line == 0 {
 					t.Fatal(e)
 				}
 				if e.Primary.Span.File == use && e.Related[0].Span.File != base && e.Related[0].Span.File != use {
@@ -33,5 +33,31 @@ func TestTypeDiagnosticLocationsCLI(t *testing.T) {
 				t.Fatal(humanCode, human)
 			}
 		})
+	}
+}
+
+// Rules: rules/types/contracts.md — Ordered membership, Diagnostics;
+// rules/tooling/diagnostics.md — §§8(2),9(7),14.
+// CLI JSON and human output retain both precise links without splitting errors.
+func TestContractMultipleLocationsCLI(t *testing.T) {
+	for _, command := range []string{"sema", "analyse"} {
+		args := []string{command, "../../testdata/contracts/locations"}
+		_, output, code := runCLIForDiagnostics(t, append(args, "--diagnostic-format=json")...)
+		document := decodeOccurrenceDocument(t, output)
+		if code != 3 || document.Summary.Errors != 2 || len(document.Occurrences) != 2 {
+			t.Fatal(code, output)
+		}
+		for _, e := range document.Occurrences {
+			if len(e.Related) != 2 || e.Related[1].Message == nil || e.Related[1].Message.Text != "contract declaration" || e.Related[1].Span.End.Column <= e.Related[1].Span.Start.Column {
+				t.Fatal(e)
+			}
+			if e.Primary.Span.File != "../../testdata/contracts/locations/definitions.sec" {
+				t.Fatal(e)
+			}
+		}
+		_, human, humanCode := runCLIForDiagnostics(t, args...)
+		if humanCode != code || !strings.Contains(human, "previous declaration at") || strings.Count(human, "contract declaration at") != 3 {
+			t.Fatal(humanCode, human)
+		}
 	}
 }

@@ -84,6 +84,10 @@ func runCLI() {
 		return
 	}
 
+	if command == "test" {
+		exitCLI(runTestCommand(flag.Args()[1:], os.Stdout))
+	}
+
 	if command == "analyse" {
 		runAnalyseCommand(flag.Args()[1:], os.Stdout)
 		return
@@ -162,6 +166,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec analyse [--all] [--target <os-arch>] <file.sec|dir|glob>...")
+	fmt.Fprintln(os.Stderr, "       sec test [--list] [--run <regexp>] [--json] [--target <os-arch>] [<file_test.sec|dir|glob>...]")
 	fmt.Fprintln(os.Stderr, "       sec fmt [--check] <file.sec>...")
 	fmt.Fprintln(os.Stderr, "       sec fmt --stdin")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")

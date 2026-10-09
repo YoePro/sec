@@ -46,9 +46,10 @@ integrations:
     status: partial
     integrated: "2026-09-27"
     summary: >-
-      Resolves canonical source imports for LSP analysis through standard-library,
-      platform, and project roots so imported qualified declarations reach Sema
-      and do not produce false unknown-type or unknown-member diagnostics.
+      Resolves canonical source imports for LSP analysis through
+      standard-library, platform, and project roots so imported qualified
+      declarations reach Sema and do not produce false unknown-type or
+      unknown-member diagnostics.
     rules:
       - rules/projects/modules.md
       - rules/tooling/lsp.md
@@ -87,8 +88,8 @@ integrations:
     status: implemented
     integrated: "2026-08-24"
     summary: >-
-      Analyzes every recoverable sibling source declaring the active file's module
-      as one compiler-owned semantic program, including unsaved editor
+      Analyzes every recoverable sibling source declaring the active file's
+      module as one compiler-owned semantic program, including unsaved editor
       snapshots, so declarations resolve consistently across module files.
     rules:
       - rules/projects/modules.md
@@ -207,7 +208,6 @@ integrations:
     verification:
       - command: go test ./cmd/lsp -run 'TestCompletion(ReturnsEnumMembersAndUnionVariantsAfterTypeDot|SeparatesStaticAndInstanceMembers|ReturnsStructMembersAfterDot)' -count=1
         result: passed
-
       - command: go test ./cmd/lsp -run 'TestCompletion|TestFindSelector' -count=1
         result: passed, including nested same-module members and recovered active declarations
       - command: go test ./...
@@ -219,8 +219,9 @@ integrations:
     integrated: "2026-09-08"
     summary: >-
       Coalesces open-document diagnostics by directory module and analyzes each
-      represented module once, avoiding repeated whole-module Sema work for every
-      open sibling. Diagnostic work is serialized and obsolete jobs are rejected.
+      represented module once, avoiding repeated whole-module Sema work for
+      every open sibling. Diagnostic work is serialized and obsolete jobs are
+      rejected.
     rules:
       - rules/tooling/lsp.md
       - rules/projects/modules.md
@@ -324,6 +325,7 @@ integrations:
         result: passed on 2026-10-03; declaration/use hover and member completion retain the exact fallible setter contract
       - command: go test ./cmd/lsp -count=1
         result: passed
+
   - id: tooling.lsp-responsiveness
     area: tooling-lsp
     status: partial
@@ -331,8 +333,8 @@ integrations:
     summary: >-
       Tracks LSP latency. Every request re-runs parsing and Sema over core and
       the open module, so per-request cost dominates editor responsiveness and
-      format-on-save, which VS Code aborts after 750 ms when queued behind
-      other requests.
+      format-on-save, which VS Code aborts after 750 ms when queued behind other
+      requests.
     rules:
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.md
@@ -344,14 +346,14 @@ integrations:
       - internal/sema/contextual_arguments_test.go
       - cmd/lsp/main_test.go
     implemented:
-      - "the builtin type table is built once and shared read-only for lookups (builtinType), while each Analyzer still receives its own mutable copy; compiler-known member lookup previously rebuilt the whole table for every member expression, which dominated CPU and garbage collection"
-      - "hover and semantic-token requests on sec/stdlib/net/url/url.sec dropped from about 0.6 s to about 0.12 s each, and module diagnostics from about 1.2 s to about 0.72 s including the 600 ms debounce"
-      - "LSP diagnostic messages no longer repeat the primary location; a related location stays in the text and is attached as relatedInformation"
-      - "the diagnostic debounce after document changes is 300 ms (reduced from 600 ms on 2026-10-03), so module diagnostics on url.sec arrive after about 0.42 s"
+      - the builtin type table is built once and shared read-only for lookups (builtinType), while each Analyzer still receives its own mutable copy; compiler-known member lookup previously rebuilt the whole table for every member expression, which dominated CPU and garbage collection
+      - hover and semantic-token requests on sec/stdlib/net/url/url.sec dropped from about 0.6 s to about 0.12 s each, and module diagnostics from about 1.2 s to about 0.72 s including the 600 ms debounce
+      - LSP diagnostic messages no longer repeat the primary location; a related location stays in the text and is attached as relatedInformation
+      - the diagnostic debounce after document changes is 300 ms (reduced from 600 ms on 2026-10-03), so module diagnostics on url.sec arrive after about 0.42 s
       - "related-location columns (fixed 2026-10-03): semaDiagnosticWithSources converts a diagnostic's related location to UTF-16 with the related file's own text through sourceTextForToken, preferring the current document, then an unsaved open document from the overlay, then disk; an unreadable related file keeps the scalar column instead of dropping the link (TestRelatedLocationUsesRelatedFileUTF16Columns)"
       - "formatting priority (2026-10-03): a reader goroutine feeds protocol messages into a request queue (cmd/lsp/request_queue.go); textDocument/formatting and willSaveWaitUntil move ahead of read-only analysis requests still waiting in the queue but never ahead of a document-synchronization notification or any other message, so format-on-save is delayed at most by the request already running and always formats the latest edited text (TestFormattingOvertakesOnlyQueuedAnalysisRequests, TestServerRunAnswersQueuedRequestsUntilEOF; race-detector clean)"
     remaining:
-      - "reuse parsed core and unchanged module sources across requests instead of re-parsing and re-analyzing them for every hover, semantic-token, and completion request"
+      - reuse parsed core and unchanged module sources across requests instead of re-parsing and re-analyzing them for every hover, semantic-token, and completion request
     verification:
       - command: scripted stdio LSP session on sec/stdlib/net/url/url.sec (initialize, didOpen, semanticTokens, documentSymbol, formatting, hover x3, willSaveWaitUntil, didSave)
         result: measured on 2026-10-02 after the change; per-request latency about 0.12 s, formatting 0.004 s
@@ -435,8 +437,8 @@ integrations:
     summary: >-
       Offers "Insert missing ','" for P2002 missing-comma diagnostics whose
       repair the parser proved between later-line struct fields, parameters,
-      call arguments, and array elements, inserting the comma after the
-      previous item exactly as the opt-in formatter Language Correction.
+      call arguments, and array elements, inserting the comma after the previous
+      item exactly as the opt-in formatter Language Correction.
     rules:
       - rules/tooling/lsp.md
       - rules/compiler/parser_recovery.md
@@ -462,10 +464,10 @@ integrations:
     status: partial
     integrated: "2026-10-03"
     summary: >-
-      Member completion written directly as a returned value offers only
-      members whose value type matches the expected return type, including
-      property getters whose expected type is the property type (user
-      decision 2026-10-03: only, not merely ranked first).
+      Member completion written directly as a returned value offers only members
+      whose value type matches the expected return type, including property
+      getters whose expected type is the property type (user decision
+      2026-10-03: only, not merely ranked first).
     rules:
       - rules/tooling/lsp.md
     code:
@@ -498,8 +500,8 @@ integrations:
     integrated: "2026-10-04"
     summary: >-
       Implements textDocument/inlayHint from Sema facts with individually
-      configurable inferred-type and parameter-name categories, the first
-      slice of the rulebook's inlay-hint catalogue.
+      configurable inferred-type and parameter-name categories, the first slice
+      of the rulebook's inlay-hint catalogue.
     rules:
       - rules/tooling/lsp.md
     code:
@@ -512,7 +514,7 @@ integrations:
       - cmd/lsp/inlay_hints_test.go
     implemented:
       - initialize advertises inlayHintProvider; textDocument/inlayHint is a deferrable read-only request
-      - inferred-type hints `: T` after a let without a declared type, from the resolved binding, omitted when a struct literal, new, or same-named conversion call already spells the type
+      - "inferred-type hints `: T` after a let without a declared type, from the resolved binding, omitted when a struct literal, new, or same-named conversion call already spells the type"
       - parameter-name hints `name:` before the arguments of Sema-resolved calls with two or more arguments, excluding self, stopping at variadic parameters and spread arguments, and omitted where the argument's final name equals the parameter name
       - hints are limited to the requested range and to the active file
       - sec.inlayHints.types and sec.inlayHints.parameters (default on) arrive through initializationOptions and workspace/didChangeConfiguration; the VS Code extension contributes both settings and synchronizes the sec section
@@ -535,10 +537,10 @@ integrations:
     status: partial
     integrated: "2026-10-04"
     summary: >-
-      Shows, on every interface declaration, whether its implementations
-      conform on each target selected by the module's platform files, so an
-      interface with per-platform implementations can be checked from the
-      interface file itself.
+      Shows, on every interface declaration, whether its implementations conform
+      on each target selected by the module's platform files, so an interface
+      with per-platform implementations can be checked from the interface file
+      itself.
     rules:
       - rules/tooling/lsp.md
       - rules/declarations/interfaces.md
@@ -552,10 +554,10 @@ integrations:
       - internal/sema/interface_conformance_test.go
     implemented:
       - initialize advertises codeLensProvider; textDocument/codeLens is a deferrable read-only request
-      - one analysis per distinct #target of the module's source files (the active target when there is none), with module assembly, imports, and the registry scalar plan of that target
+      - one analysis per distinct
       - per interface, the implementing types and the S1106/S1107 conformance failures of each target are summarized as a conforming lens or a failing lens naming targets, members, and targets without an implementation
       - the lens command sec.showLocations (VS Code peek references) lists failing implementation members or the implementing types
-      - results are cached by a hash over the module's sources and the active text (stdlib/os interface: about 1.9 s cold over 18 targets, about 10 ms cached)
+      - "results are cached by a hash over the module's sources and the active text (stdlib/os interface: about 1.9 s cold over 18 targets, about 10 ms cached)"
       - an unresolved parameter type in an interface requirement is kept as an invalid type and neither the requirement nor an implementation with unresolved types reports a conformance cascade
     remaining:
       - codeLens/resolve so the cross-target analysis runs lazily and off the request path
@@ -571,8 +573,8 @@ integrations:
     integrated: "2026-10-04"
     summary: >-
       Publishes diagnostics of a target-independent document for every target
-      its project variants or module's platform files select, recording each diagnostic's
-      applicability as the rulebook requires.
+      its project variants or module's platform files select, recording each
+      diagnostic's applicability as the rulebook requires.
     rules:
       - rules/tooling/lsp.md
       - rules/platform/platform_model.md
@@ -586,7 +588,7 @@ integrations:
       - cmd/lsp/cross_target_diagnostics_test.go
     implemented:
       - "project variants and active selection (2026-10-08): diagnostics retain logical-target/output-variant identity for distinct scalar plans and duplicate platforms; target switches and watched project changes invalidate and recompute background comparisons; the canonical target selection implementation is owned by frontend.target-sized-integer-semantics in governance/types.yaml"
-      - on didOpen and didSave a document without its own #target, in a module whose files select two or more targets, is analyzed once per target in the background with that target's module sources, imports, and registry scalar plan
+      - on didOpen and didSave a document without its own
       - results are stored per document text hash, invalidated by a newer request or a close, and dropped while the document has unsaved changes
       - publication merges them with the active diagnostics; every-target diagnostics are unchanged, some-target diagnostics state "applies to N of M targets", and diagnostics absent on the active target are added prefixed with their targets
       - stdlib/os file.sec analyzes on 18 targets in about 1.9 s off the request path
@@ -596,4 +598,30 @@ integrations:
       - dedicated target status panel and target comparison views beyond the implemented VS Code selector/status-bar indicator
     verification:
       - command: go test ./cmd/lsp -run CrossTargetDiagnostics -count=1
-        result: passed on 2026-10-04 for a shared file calling a method that only the linux platform file provides, reported as windows-only with applicability, and no cross-target pass for a #target document
+        result: passed on 2026-10-04 for a shared file calling a method that only the linux platform file provides, reported as windows-only with applicability, and no cross-target pass for a
+
+  - id: tooling.lsp-binding-name-collisions
+    status: implemented
+    summary: >-
+      Hover and completion present locals and parameters from the binding Sema
+      resolved or declared at the exact position instead of the module-wide name
+      table, which keeps one entry per name across all functions and sibling
+      files.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/foundations/names_scopes_visibility.md
+    implemented:
+      - "hover on a parameter or local, at its declaration or a use, presents the binding from Sema's ResolvedBindingAt or the new ResolvedBindingDeclaredAt; Fields(value: string) in sec/stdlib/str/split.sec was hovered as value: rune because the overloaded method AppendRepeat(value: rune, ...) in builder.sec was the last binding named value analyzed in the module"
+      - identifier and expected-type completion select, per name, the binding of the completed file declared closest before the cursor in the enclosing function through the new ResolvedBindingDeclarations, and skip name-table locals from other files; the current parameter value was previously not offered at all in a module whose sibling file declared another value
+    remaining: []
+    area: tooling
+    integrated: "2026-10-09"
+    code:
+      - cmd/lsp/hover.go
+      - cmd/lsp/main.go
+      - internal/sema/semantic_facts.go
+    tests:
+      - cmd/lsp/hover_binding_scope_test.go
+    verification:
+      - command: go test ./cmd/lsp ./internal/sema -count=1
+        result: passed on 2026-10-09; both regression tests fail without the fix

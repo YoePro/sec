@@ -803,7 +803,7 @@ validation. Its caller must establish:
 
 ```text
 start <= end
-end <= value.Len
+end <= value.ByteLen
 ```
 
 Public core operations such as checked substring extraction own those checks
@@ -831,6 +831,14 @@ with semantic result type `datetime`. It is available only while compiling
 loader-proven `sec/core`; it has no public declaration, is not importable, and
 must not appear in ordinary lookup, completion, or public API documentation
 outside trusted core.
+
+The same core-only exposure boundary applies to other compiler-provided
+function or value spellings beginning with `_`: these are internal core
+services, not public Sec APIs. An LSP synthetic-definition request by registry
+ID alone must not expose such a service; navigation must originate from a
+semantically authorized core use. Ordinary source declarations keep their
+module-internal or private visibility under
+`rules/foundations/names_scopes_visibility.md` §§12.2–12.3.
 
 Its stable registry contract is:
 
@@ -919,7 +927,8 @@ RawPtr[byte]
 It refers to the first encoded storage byte of the string view or representation
 selected by the active CompilationPlan.
 
-`text.Len` is the number of accessible encoded bytes.
+`text.ByteLen` is the number of accessible encoded bytes.
+`text.Len` equals `text.RuneLen` and counts decoded Unicode scalar values.
 
 `Ptr` does not imply a trailing zero byte.
 
@@ -1126,26 +1135,26 @@ There is no `Length` alias in Sec 0.1.
 
 ---
 
-# `Len` on strings
+# `Len`, `RuneLen`, and `ByteLen` on strings
 
-For `string`:
+For `string`, all three are read-only properties returning `uint`:
 
 ```sec
-let byteCount := text.Len
+let runeCount := text.Len
+let sameCount := text.RuneLen
+let byteCount := text.ByteLen
 ```
 
-`Len` is the number of encoded bytes accessible through the string's byte view.
+`Len` equals `RuneLen`: the number of decoded Unicode scalar values.
+It counts neither grapheme clusters nor display columns and performs no
+normalization. `ByteLen` is the encoded UTF-8 byte count. Embedded U+0000
+counts as one rune and one byte; non-BMP scalars count as one rune and four
+bytes. No trailing terminator contributes to either count.
 
-It is not:
-
-```text
-rune count;
-char count;
-grapheme-cluster count;
-display-column width.
-```
-
-String iteration and conversion members provide higher-level text semantics.
+For example, `"éΩ"` has `Len == RuneLen == 2` and `ByteLen == 4`.
+Pointer-based byte views, byte offsets and foreign lengths use `ByteLen`.
+The string contracts in `rules/types/contracts.md` use these same units.
+The compatibility lowercase `.len` follows `.Len` and therefore counts runes.
 
 ---
 
@@ -2742,7 +2751,7 @@ Examples:
 Len
     compiler-known property
     result: uint
-    string meaning: encoded byte length
+    string meaning: Unicode scalar count (RuneLen); ByteLen is the UTF-8 byte count
 
 Ptr
     unsafe compiler-known property
@@ -3097,7 +3106,7 @@ legacy ptr migration.
 Test:
 
 ```text
-string byte length;
+string RuneLen and ByteLen with distinct units;
 fixed-array compile-time length;
 owning sequence runtime length;
 shared slice;
@@ -3580,7 +3589,7 @@ returns target-specific physical storage size in bytes.
 
 Value-form receiver effects remain observable.
 
-String `Len` is encoded byte length.
+String `Len` equals `RuneLen` and counts Unicode scalar values; `ByteLen` is encoded UTF-8 byte length.
 
 Array and slice `Len` is element count.
 

@@ -1,0 +1,26 @@
+module main
+type Left struct { value: int }
+type Right struct { value: int }
+type Derived Left
+type DerivedAgain Derived
+type Box[T] struct { value: T }
+type Fixed Box[int]
+type FixedOther Box[int]
+type DifferentlyFixed Box[string]
+type GenericFixed[T] Box[int]
+type GenericIdentity[T] T
+type ArrayA int[2]
+type ArrayB int[2]
+type CallbackA fn(int) int
+type CallbackB fn(int) int
+type Word enum { A, B }
+type OtherWord enum { A, B }
+type Choice union { A, B }
+type OtherChoice union { A, B }
+type Failure enum error { Failed }
+type OtherFailure enum error { Failed }
+type RegisterA register[8] { Value: bit[8] }
+type RegisterB register[8] { Value: bit[8] }
+type CastTarget TARGET
+fn Accept(value: TARGET) void {}
+fn Check(value: SOURCE) void { ACTION }

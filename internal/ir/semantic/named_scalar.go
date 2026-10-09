@@ -13,6 +13,9 @@ func (b *builder) internNamedScalar(t sema.Type) (TypeID, error) {
 		return 0, &UnsupportedFeatureError{Feature: "named type contracts or units", Package: b.maxPackage}
 	}
 	underlying, found := b.analyzer.Types()[t.Underlying]
+	if t.NamedBase != nil {
+		underlying, found = *t.NamedBase, true
+	}
 	if !found || t.Underlying == t.Name {
 		return 0, &UnsupportedFeatureError{Feature: "unresolved scalar base for " + t.Name, Package: b.maxPackage}
 	}
@@ -20,9 +23,16 @@ func (b *builder) internNamedScalar(t sema.Type) (TypeID, error) {
 	if err != nil {
 		return 0, err
 	}
-	module := t.Module
-	if module == "" {
-		module = b.module.Identity
+	module, identity := b.semanticIdentity(t)
+	args := make([]TypeID, 0, len(t.TypeArgs))
+	if !t.FixedNamedArguments {
+		for _, argument := range t.TypeArgs {
+			id, err := b.internType(argument)
+			if err != nil {
+				return 0, err
+			}
+			args = append(args, id)
+		}
 	}
-	return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: module + "::" + t.Name, Base: baseID}), nil
+	return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: identity, Base: baseID, TypeArgs: args}), nil
 }

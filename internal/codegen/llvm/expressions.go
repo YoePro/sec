@@ -47,7 +47,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		}
 		return value{typ: "i1", ref: "false"}, nil
 	case *ast.CharLiteral:
-		return emitCharacterLiteral(expr)
+		return g.emitCharacterLiteral(expr)
 	case *ast.StringLiteral:
 		return g.emitStringLiteral(expr)
 	case *ast.InterpolatedStringLiteral:
@@ -72,11 +72,17 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		}
 		return value{typ: "void"}, nil
 	case *ast.OkExpression:
+		if g.returnType == stringResultType {
+			return g.emitStringResultOk(expr)
+		}
 		if expr.Value == nil {
 			return value{typ: g.returnType, ref: llvmZeroValue(g.returnType)}, nil
 		}
 		return g.emitExpression(expr.Value)
 	case *ast.ErrExpression:
+		if g.returnType == stringResultType {
+			return value{}, unsupportedContract("explicit ConversionError construction", expr.Token)
+		}
 		return value{typ: g.returnType, ref: llvmZeroValue(g.returnType)}, nil
 	case *ast.PrefixExpression:
 		return g.emitPrefixExpression(expr)
@@ -91,26 +97,10 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	}
 }
 
-// emitCharacterLiteral lowers the parser-decoded Unicode scalar through the
-// legacy LLVM path. Contextual coercion widens ASCII character literals when a
-// rune is required by a return, argument, or conversion target.
-//
-// Rules:
-//   - rules/foundations/lexical_structure.md — §13 "Character literals"
-//   - rules/types/types.md — "char", "rune", and "Context shaping"
-func emitCharacterLiteral(expr *ast.CharLiteral) (value, error) {
-	runes := []rune(expr.Value)
-	if len(runes) != 1 {
-		return value{}, fmt.Errorf("emit-llvm requires one decoded character scalar for %q", expr.Token.Lexeme)
-	}
-	typ := "i8"
-	if runes[0] > 0xFF {
-		typ = "i32"
-	}
-	return value{typ: typ, ref: strconv.FormatInt(int64(runes[0]), 10), unsigned: true}, nil
-}
-
 func (g *Generator) emitTryExpression(expr *ast.TryExpression) (value, error) {
+	if g.stringFacts != nil && len(g.stringFacts.conversions) > 0 {
+		return g.emitStringTry(expr)
+	}
 	return g.emitExpression(expr.Expression)
 }
 
@@ -259,10 +249,12 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 		return value{}, fmt.Errorf("emit-llvm only supports members on string for now")
 	}
 	switch expr.Property.Value {
-	case "ptr":
+	case "ptr", "Ptr":
 		return value{typ: "ptr", ref: object.ref}, nil
-	case "len":
+	case "ByteLen":
 		return g.coerceValue(value{typ: "i64", ref: object.lenRef, unsigned: true}, g.nativeIntegerType())
+	case "Len", "RuneLen", "len":
+		return g.coerceValue(value{typ: "i64", ref: g.emitStringRuneLength(object), unsigned: true}, g.nativeIntegerType())
 	default:
 		return value{}, fmt.Errorf("unknown string member %s", expr.Property.Value)
 	}

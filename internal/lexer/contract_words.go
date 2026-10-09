@@ -27,6 +27,9 @@ var contractWords = []string{
 	"minLen",
 	"maxLen",
 	"exactLen",
+	"minByteLen",
+	"maxByteLen",
+	"exactByteLen",
 	"notEmpty",
 	"unique",
 	"finite",
@@ -56,7 +59,7 @@ func ContractWords() []string {
 //   - rules/foundations/grammar.md — "Type contracts"
 func ContractWordRoleOf(spelling string) ContractWordRole {
 	switch spelling {
-	case "multipleOf", "minLen", "maxLen", "exactLen":
+	case "multipleOf", "minLen", "maxLen", "exactLen", "minByteLen", "maxByteLen", "exactByteLen":
 		return ValueContractWord
 	case "notEmpty", "unique", "finite", "odd", "even":
 		return MarkerContractWord

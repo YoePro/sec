@@ -489,6 +489,13 @@ changing the rule that ordinary imports are not re-exports.
 
 Selective imports and wildcard imports are not part of Sec 0.1.
 
+The C binding types that the selected platform binding environment supplies
+under `c::` (such as `c::stddef::size_t`) are available without an import. They
+are reached only through the qualified foreign namespace, so this is not name
+injection into the importing module. Third-party C libraries are ordinary
+binding modules imported through the rules of this rulebook (MD-021,
+`rules/platform/ffi.md` § 6).
+
 ---
 
 ## 13. `internal` module access

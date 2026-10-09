@@ -33,24 +33,30 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 	// one; the related location is also attached as a navigable link.
 	message := err.DisplayMessage()
 	var related []diagnosticRelatedInformation
-	if err.PreviousLine > 0 && err.PreviousColumn > 0 {
-		previous := fmt.Sprintf("%d:%d", err.PreviousLine, err.PreviousColumn)
-		if err.PreviousFile != "" {
-			previous = err.PreviousFile + ":" + previous
+	for _, link := range err.RelatedLocations() {
+		previous := fmt.Sprintf("%d:%d", link.Line, link.Column)
+		if link.File != "" {
+			previous = link.File + ":" + previous
 		}
-		message += "\n\n" + err.RelatedLocationLabel() + " at " + previous
-		if err.PreviousFile != "" {
-			relatedToken := lexer.Token{File: err.PreviousFile, Line: err.PreviousLine, Column: err.PreviousColumn}
-			point := position{Line: err.PreviousLine - 1, Character: err.PreviousColumn - 1}
-			if relatedText := sourceTextForToken(uri, text, overlay, relatedToken); relatedText != "" {
-				point = diagnosticTokenStart(relatedText, relatedToken)
+		message += "\n\n" + link.Label + " at " + previous
+		if link.File != "" {
+			token := lexer.Token{File: link.File, Line: link.Line, Column: link.Column}
+			point := position{Line: link.Line - 1, Character: link.Column - 1}
+			relatedText := sourceTextForToken(uri, text, overlay, token)
+			if relatedText != "" {
+				point = diagnosticTokenStart(relatedText, token)
 			}
-			related = append(related, diagnosticRelatedInformation{
-				Location: location{URI: uriFromPath(err.PreviousFile), Range: lspRange{Start: point, End: point}},
-				Message:  err.RelatedLocationLabel(),
-			})
+			end := point
+			if link.EndLine > 0 && link.EndColumn > 0 {
+				end = position{Line: link.EndLine - 1, Character: link.EndColumn - 1}
+				if relatedText != "" {
+					end = diagnosticTokenStart(relatedText, lexer.Token{Line: link.EndLine, Column: link.EndColumn})
+				}
+			}
+			related = append(related, diagnosticRelatedInformation{Location: location{URI: uriFromPath(link.File), Range: lspRange{Start: point, End: end}}, Message: link.Label})
 		}
 	}
+
 	if err.Help != "" {
 		message += "\n\nhelp: " + err.Help
 	}

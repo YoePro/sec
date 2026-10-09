@@ -1,0 +1,6 @@
+module core
+
+fn CrossFileValue() int {
+    let callback: fn(int) int := __Increment
+    return callback(1)
+}

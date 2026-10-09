@@ -1,0 +1,43 @@
+module membership
+
+type State union { Idle
+ Ready
+ Failed
+}
+type Allowed State in [State.Ready, State.Idle]
+type Alias Allowed
+type Explicit State in [State.Idle, State.Ready] default State.Ready
+let First: State := State.Ready
+let Second: State := First
+type FromBindings State in [Second, State.Idle]
+type True bool in [State.Ready == State.Ready] default true
+fn Accept(value: Allowed) Allowed { return value }
+fn Defaults() Allowed {
+ let mut value: Allowed
+ return value
+}
+fn AliasDefault() Alias {
+ let mut value: Alias
+ return value
+}
+fn ExplicitDefault() Explicit {
+ let mut value: Explicit
+ return value
+}
+fn Store() Allowed { return Allowed.Ready }
+enum Code int { Ok = 0
+ LegacyOk = 0
+ Failed = 1
+}
+type Codes Code in [Code.Ok, Code.Failed]
+type CodeAlias Codes
+type TrueAlias bool in [Code.Ok == Code.LegacyOk] default true
+type GenericAllowed Choice[int] in [Choice[int].Yes, Choice[int].No]
+type GenericAlias GenericAllowed
+type Choice[T] union { Yes
+ No
+}
+fn GenericDefault() GenericAllowed {
+ let mut value: GenericAllowed
+ return value
+}

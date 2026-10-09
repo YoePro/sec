@@ -1,0 +1,10 @@
+module core
+
+type duration struct { _nanoseconds: int64 }
+type date struct { _epochDays: int32 }
+type time struct { _nanosecondsSinceMidnight: uint64 }
+type datetime struct { _epochDays: int32, _nanosecondsSinceMidnight: uint64 }
+
+impl TYPE {
+    fn Original() int { return 1 }
+}

@@ -1,0 +1,23 @@
+module main
+type Signed int
+type SignedOther int
+type SignedChain Signed
+type Unsigned uint
+type Binary float64
+type Exact decimal
+type Flag bool
+type FlagOther bool
+type Text string
+type TextOther string
+type Letter char
+type LetterOther char
+type Scalar rune
+type ScalarOther rune
+fn Accept(value: TARGET) void {}
+fn Check(value: SOURCE, seed: TARGET) void {
+    let local: TARGET := value
+    let mut destination := seed
+    destination = value
+    Accept(value)
+}
+fn Return(value: SOURCE) TARGET { return value }

@@ -1,6 +1,7 @@
 
 type ASCII string exactLen 4 default "test"
-type UTF8 string exactLen 2 default "å"
+type UTF8 string exactLen 1 default "å"
+type UTF8Bytes string exactByteLen 2 default "å"
 type TooShort string minLen 4 default "abc"
 type TooLong string maxLen 2 default "abc"
 type WrongExact string exactLen 4 default "abc"

@@ -204,7 +204,7 @@ fn F() void {
 			t.Fatalf("error %d = %+v, want %s", index, errors[index], id)
 		}
 	}
-	if value, kind, ok := DefaultValueDisplay(analyzer.types["Primary"]); !ok || kind != MembershipDefault || value != "Color.Blue" {
+	if value, kind, ok := DefaultValueDisplay(analyzer.types["Primary"]); !ok || kind != MembershipDefault || value != "Primary.Blue" {
 		t.Fatalf("Primary default = %q %q %v", value, kind, ok)
 	}
 }

@@ -1,0 +1,7 @@
+module main
+fn Accept(value: fn(int) int) void {}
+fn Variadic(values: ...int) int { return 0 }
+fn Check() void {
+    let source := Variadic
+    Accept(source)
+}

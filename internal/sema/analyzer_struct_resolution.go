@@ -7,8 +7,9 @@ type pendingTypeDeclaration struct {
 	module      string
 }
 
-// analyzeNonGenericTypeDependencies resolves ordinary module-level structs and
-// their named by-value wrappers in dependency order rather than source order.
+// analyzeLayoutTypeDependencies resolves module-level struct/union templates and
+// named wrappers in dependency order, before concrete generic instantiation.
+// Complete domains and fixed arguments must precede membership and identity checks.
 // This gives every acyclic forward field reference its complete semantic field
 // shape before later declarations and function bodies consume it. Cyclic
 // declarations are left finite during construction and are rejected separately
@@ -20,7 +21,8 @@ type pendingTypeDeclaration struct {
 //   - rules/types/types.md — "Type identity", "Named types"
 //   - rules/memory/layout.md — §13(5) "Nested structs"
 //   - rules/memory/layout.md — §25(1)-(4) "Recursive layout"
-func (a *Analyzer) analyzeNonGenericTypeDependencies(program *ast.Program) map[*ast.TypeDeclStatement]bool {
+//   - rules/types/contracts.md — Ordered membership; rules/declarations/unions.md — §14 Equality
+func (a *Analyzer) analyzeLayoutTypeDependencies(program *ast.Program) map[*ast.TypeDeclStatement]bool {
 	resolved := map[*ast.TypeDeclStatement]bool{}
 	if program == nil {
 		return resolved
@@ -30,7 +32,7 @@ func (a *Analyzer) analyzeNonGenericTypeDependencies(program *ast.Program) map[*
 	order := []string{}
 	a.withProgramModules(program, func(statement ast.Statement) {
 		declaration, ok := statement.(*ast.TypeDeclStatement)
-		if !ok || !isNonGenericLayoutDeclaration(declaration) || a.invalidTypeDeclaration(declaration.Name.Token) {
+		if !ok || !isLayoutDeclaration(declaration) || a.invalidTypeDeclaration(declaration.Name.Token) {
 			return
 		}
 		name := declaration.Name.Value
@@ -51,18 +53,43 @@ func (a *Analyzer) analyzeNonGenericTypeDependencies(program *ast.Program) map[*
 			return
 		}
 		state[name] = 1
+		resolveDependency := func(dependency string) {
+			for _, parameter := range candidate.declaration.GenericParameters {
+				if parameter.Name.Value == dependency {
+					return
+				}
+			}
+			resolve(dependency)
+		}
 		if candidate.declaration.StructType != nil {
 			for _, field := range candidate.declaration.StructType.Fields {
 				if field == nil {
 					continue
 				}
 				for _, dependency := range typeDeclarationDependencies(field.Type, declarations) {
-					resolve(dependency)
+					resolveDependency(dependency)
+				}
+			}
+		} else if candidate.declaration.Union {
+			for _, variant := range candidate.declaration.UnionVariants {
+				if variant == nil {
+					continue
+				}
+				for _, dependency := range typeDeclarationDependencies(variant.Payload, declarations) {
+					resolveDependency(dependency)
+				}
+				for _, field := range variant.PayloadFields {
+					if field == nil {
+						continue
+					}
+					for _, dependency := range typeDeclarationDependencies(field.Type, declarations) {
+						resolveDependency(dependency)
+					}
 				}
 			}
 		} else {
 			for _, dependency := range typeDeclarationDependencies(layoutDeclarationUnderlying(candidate.declaration), declarations) {
-				resolve(dependency)
+				resolveDependency(dependency)
 			}
 		}
 
@@ -118,9 +145,15 @@ func typeDeclarationDependencies(reference *ast.TypeReference, declarations map[
 	return result
 }
 
-func isNonGenericLayoutDeclaration(declaration *ast.TypeDeclStatement) bool {
-	if declaration == nil || declaration.Name == nil || len(declaration.GenericParameters) != 0 {
+// isLayoutDeclaration selects declarations whose complete template/base facts
+// are needed before nominal wrappers and concrete instantiations can resolve.
+// Rules: rules/types/types.md — Named types; declarations/generics.md — Substitution.
+func isLayoutDeclaration(declaration *ast.TypeDeclStatement) bool {
+	if declaration == nil || declaration.Name == nil {
 		return false
+	}
+	if declaration.Union {
+		return true
 	}
 	if declaration.StructType != nil {
 		return true
@@ -128,6 +161,8 @@ func isNonGenericLayoutDeclaration(declaration *ast.TypeDeclStatement) bool {
 	return !declaration.Union && declaration.RegisterType == nil && len(declaration.Variants) == 0 && (declaration.BaseType != nil || declaration.AssignedType != nil)
 }
 
+// layoutDeclarationUnderlying retains the declared base-type dependency.
+// Rules: rules/types/types.md — Named types.
 func layoutDeclarationUnderlying(declaration *ast.TypeDeclStatement) *ast.TypeReference {
 	if declaration == nil {
 		return nil

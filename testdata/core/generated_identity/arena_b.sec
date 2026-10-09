@@ -1,0 +1,6 @@
+module main
+
+fn Second(buffer: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Release()
+}

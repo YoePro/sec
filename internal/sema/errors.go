@@ -7,6 +7,17 @@ import (
 	"sec/internal/lexer"
 )
 
+// RelatedLocation is one source-mapped explanation of a diagnostic.
+// Rules: rules/tooling/diagnostics.md — §§8(2),9(1–7).
+type RelatedLocation struct {
+	File      string
+	Line      int
+	Column    int
+	EndLine   int
+	EndColumn int
+	Label     string
+}
+
 type Error struct {
 	ID             string
 	Severity       diagnostics.Severity
@@ -24,6 +35,8 @@ type Error struct {
 	// RelatedLabel names the related location; empty means "previous
 	// declaration".
 	RelatedLabel string
+	// Related retains additional ordered locations without replacing the legacy first link.
+	Related []RelatedLocation
 	// EscapeCauses explains the existing owning error using canonical provenance.
 	EscapeCauses []EscapeCausePath
 	// AllocationCause is the canonical navigable witness of an allocation-policy violation.
@@ -67,20 +80,40 @@ func (e Error) DisplayMessage() string {
 // Rules: rules/compiler/compiler_analysis.md — §58(3);
 // rules/tooling/diagnostics.md — §9.
 func (e Error) Error() string {
+	message := e.DisplayMessage()
 	if e.Line > 0 && e.Column > 0 {
-		if e.PreviousLine > 0 && e.PreviousColumn > 0 {
-			return fmt.Sprintf(
-				"%s at %s, %s at %s",
-				e.DisplayMessage(),
-				formatLocation(e.File, e.Line, e.Column),
-				e.RelatedLocationLabel(),
-				formatLocation(e.PreviousFile, e.PreviousLine, e.PreviousColumn),
-			)
-		}
-		return fmt.Sprintf("%s at %s", e.DisplayMessage(), formatLocation(e.File, e.Line, e.Column))
+		message += " at " + formatLocation(e.File, e.Line, e.Column)
 	}
+	for _, related := range e.RelatedLocations() {
+		message += ", " + related.Label + " at " + formatLocation(related.File, related.Line, related.Column)
+	}
+	return message
+}
 
-	return e.DisplayMessage()
+// RelatedLocations exposes the ordered diagnostic provenance, including the
+// compatibility previous-declaration link, without duplicate or invalid points.
+// Rules: rules/tooling/diagnostics.md — §§8(2),9(2,5,7).
+func (e Error) RelatedLocations() []RelatedLocation {
+	locations := make([]RelatedLocation, 0, len(e.Related)+1)
+	appendLocation := func(location RelatedLocation) {
+		if location.Line <= 0 || location.Column <= 0 {
+			return
+		}
+		for _, existing := range locations {
+			if existing.File == location.File && existing.Line == location.Line && existing.Column == location.Column {
+				return
+			}
+		}
+		if location.Label == "" {
+			location.Label = "previous declaration"
+		}
+		locations = append(locations, location)
+	}
+	appendLocation(RelatedLocation{File: e.PreviousFile, Line: e.PreviousLine, Column: e.PreviousColumn, Label: e.RelatedLocationLabel()})
+	for _, location := range e.Related {
+		appendLocation(location)
+	}
+	return locations
 }
 
 // addErrorAtTokenWithPreviousMetadata emits one registered semantic diagnostic

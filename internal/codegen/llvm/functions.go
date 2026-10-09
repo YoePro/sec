@@ -1,6 +1,7 @@
 package llvm
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 )
 
 func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
-	returnType := g.llvmType(fn.ReturnType)
+	returnType := g.stringReturnType(fn.ReturnType)
 	if fn.Name != nil && fn.Name.Value == "main" && returnType == "void" {
 		returnType = "i32"
 	}
@@ -32,7 +33,7 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		if i > 0 {
 			g.write(", ")
 		}
-		if param.Type != nil && param.Type.Name == "string" {
+		if param.Type != nil && g.stringTypeReference(param.Type) {
 			if declaration {
 				g.write("ptr, i64")
 				continue
@@ -104,6 +105,10 @@ func llvmIdentifier(name string) string {
 	return `"` + escaped + `"`
 }
 
+// emitLambdaExpression emits a non-capturing callable with a target-qualified
+// lexical identity and source provenance, independently of emission order.
+// Rules: rules/declarations/lambda-functions.md — non-capturing callable representation;
+// rules/compiler/compiler_pipeline.md — §§76,103; compiler.md — §71.
 func (g *Generator) emitLambdaExpression(expr *ast.LambdaExpression) (value, error) {
 	if len(expr.Captures) > 0 {
 		return value{}, fmt.Errorf("emit-llvm does not support capturing lambdas yet")
@@ -112,8 +117,20 @@ func (g *Generator) emitLambdaExpression(expr *ast.LambdaExpression) (value, err
 		return value{}, fmt.Errorf("emit-llvm requires complete lambda expressions")
 	}
 
-	name := fmt.Sprintf("__sec_lambda_%d", g.lambdaID)
-	g.lambdaID++
+	target, _ := json.Marshal(g.scalarPlan)
+	identity, ok := g.generatedIdentities.Resolve("lambda", "", expr.Token, string(target))
+	if !ok {
+		return value{}, fmt.Errorf("emit-llvm lambda requires a prepared lexical source origin")
+	}
+	name := ".sec.generated." + identity.ID
+	// Explicit foreign link names share the emitted symbol namespace. Diagnose
+	// a collision instead of redirecting either source or generated calls.
+	// Rules: rules/compiler/compiler_pipeline.md — §76(3–4); rules/platform/ffi.md — symbol linkage.
+	for _, declaration := range g.functions {
+		if declaration.Name != nil && (declaration.Name.Value == name || declaration.LinkName == name) {
+			return value{}, fmt.Errorf("generated lambda symbol %s conflicts with source linkage", name)
+		}
+	}
 
 	fnType := lambdaFunctionType(expr)
 	previousOut := g.activeOut
@@ -135,12 +152,13 @@ func (g *Generator) emitLambdaExpression(expr *ast.LambdaExpression) (value, err
 		g.blockOpen = previousBlockOpen
 	}()
 
-	g.write("define %s @%s(", g.returnType, name)
+	g.write("; sec-generated %s origin=%q source=%q:%d:%d\n", identity.ID, identity.Origin, identity.Source.File, identity.Source.Line, identity.Source.Column)
+	g.write("define private %s @%s(", g.returnType, name)
 	for i, param := range expr.Parameters {
 		if i > 0 {
 			g.write(", ")
 		}
-		if param.Type != nil && param.Type.Name == "string" {
+		if param.Type != nil && g.stringTypeReference(param.Type) {
 			g.write("ptr %%%s.ptr, i64 %%%s.len", param.Name.Value, param.Name.Value)
 			g.locals[param.Name.Value] = local{typ: "string", ref: "%" + param.Name.Value + ".ptr", lenRef: "%" + param.Name.Value + ".len", direct: true}
 			continue

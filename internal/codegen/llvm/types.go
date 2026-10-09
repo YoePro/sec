@@ -18,7 +18,15 @@ func (g *Generator) llvmType(ref *ast.TypeReference) string {
 		return "void"
 	}
 	if ref.Name == "Result" && len(ref.TypeArgs) == 2 {
-		return g.llvmType(ref.TypeArgs[0])
+		if g.stringFacts != nil && ref.TypeArgs[1].Name == "ConversionError" && g.stringTypeReference(ref.TypeArgs[0]) {
+			g.needsStringResult = true
+			return stringResultType
+		}
+		// Result carries both success and error; representing only success loses
+		// source semantics. Only the analyzed string Contract branch above has
+		// a complete legacy representation (types.md — Result, P11 §26).
+		g.typeFailure = unsupportedContract("Result success/error representation is unsupported by legacy LLVM", ref.Token)
+		return "void"
 	}
 	if ref.Name == "decimal" {
 		g.needsDecimal = true

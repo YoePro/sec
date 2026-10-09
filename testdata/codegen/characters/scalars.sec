@@ -1,0 +1,29 @@
+module main
+
+type Letter char
+type Scalar rune
+fn ByteChar() char { return '\x41' }
+fn LatinChar() char { return 'é' }
+fn ASCIIRune() rune { return 'A' }
+fn UnicodeRune() rune { return '\u{03A9}' }
+fn NonBMP() rune { return '😀' }
+fn Replacement() rune { return '�' }
+fn Zero() char { return '\0' }
+fn NamedChar() Letter { return 'é' }
+fn NamedRune() Scalar { return 'A' }
+fn InferredASCII() rune { let value := 'A'
+    return value }
+fn InferredLatin() rune { let value := 'é'
+    return value }
+fn CharIdentity(value: char) char { return value }
+fn RuneIdentity(value: rune) rune { return value }
+fn CharCall() char { return CharIdentity('é') }
+fn RuneCall() rune { return RuneIdentity('A') }
+enum Choice { FIRST, SECOND, }
+fn Select(value: Choice) rune {
+    return match value {
+        Choice.FIRST => 'A'
+        _ => 'Ω'
+    }
+}
+fn main() int { return 0 }

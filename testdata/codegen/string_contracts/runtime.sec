@@ -1,0 +1,26 @@
+module main
+
+type Label string minLen 1 maxLen 2 maxByteLen 4
+type Exact string exactLen 2
+type Nonempty string notEmpty
+type ByteExact string exactByteLen 4
+type ByteRange string minByteLen 2 maxByteLen 3
+
+type Derived Label exactByteLen 4
+
+fn Convert(raw: string) Result[Label, ConversionError] {
+    let label := try Label(raw)
+    return Ok(label)
+}
+fn ConvertExact(raw: string) Result[Exact, ConversionError] { return Ok(try Exact(raw)) }
+fn ConvertNonempty(raw: string) Result[Nonempty, ConversionError] { return Ok(try Nonempty(raw)) }
+fn ConvertBytes(raw: string) Result[ByteExact, ConversionError] { return Ok(try ByteExact(raw)) }
+fn ConvertRange(raw: string) Result[ByteRange, ConversionError] { return Ok(try ByteRange(raw)) }
+fn ConvertDerived(raw: string) Result[Derived, ConversionError] { return Ok(try Derived(raw)) }
+fn Runes(raw: string) uint { return raw.Len }
+fn RuneAlias(raw: string) uint { return raw.RuneLen }
+fn Bytes(raw: string) uint { return raw.ByteLen }
+fn main() int { return 0 }
+fn Forward(raw: string) Result[Label, ConversionError] { return Ok(try Convert(raw)) }
+fn Identity(raw: string) string { return raw }
+fn ConvertCall(raw: string) Result[Label, ConversionError] { return Ok(try Label(Identity(raw))) }

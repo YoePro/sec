@@ -1,0 +1,6 @@
+module main
+
+fn pick(value: int) int { return value }
+fn pick(left: int, right: int) int { return left + right }
+fn pick__sec_arity_1() int { return 7 }
+fn main() int { return pick(2, 3) + pick__sec_arity_1() }

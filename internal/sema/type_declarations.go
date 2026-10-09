@@ -19,6 +19,15 @@ func (a *Analyzer) typeFromDeclaration(stmt *ast.TypeDeclStatement, baseType Typ
 // rules/types/default_values.md — Explicit type defaults.
 func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclStatement, baseType Type) Type {
 	typ := baseType
+	base := baseType
+	typ.NamedBase = &base
+	typ.FixedNamedArguments = len(stmt.GenericParameters) == 0 && (len(baseType.TypeArgs) > 0 || len(baseType.ConstArgs) > 0)
+	if baseType.Kind == EnumType || baseType.Kind == UnionType {
+		typ.ConstantAncestors = append(append([]string(nil), baseType.ConstantAncestors...), baseType.Name)
+		if typ.ConstantBaseName == "" {
+			typ.ConstantBaseName = baseType.Name
+		}
+	}
 	typ.DeclarationToken = stmt.Name.Token
 	typ.Name = name
 	typ.Module = a.currentModule
@@ -97,4 +106,140 @@ func isCoreBuiltinDeclaration(name string) bool {
 // Rules: rules/library/core-library.md; rules/types/temporal.md §2.
 func (a *Analyzer) isTrustedCoreBuiltinDeclaration(name string, token lexer.Token) bool {
 	return isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token)
+}
+
+// validateImplTarget checks nominal ownership, core authority and generic target syntax
+// before any impl member or nested declaration can enter the semantic tables.
+// Rules: rules/compiler/compiler_known_members.md — Lookup order;
+// rules/declarations/impl.md — defining module and impl extensions; rules/types/temporal.md — §2.
+func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
+	if impl == nil || impl.Target == nil {
+		return Type{}, false
+	}
+	// A unit whose spelling an ordinary type of another module took keeps its
+	// impl block in the unit's own module (rules/types/units.md).
+	if unitEntry, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && unitEntry.Module == a.currentModule {
+		if unit, ok := a.units[impl.Target.Name]; ok {
+			a.bindDefinition(impl.Target.Token, unit.Token)
+		}
+		a.shadowedUnitImpls[impl] = true
+		return unitEntry, true
+	}
+	target, ok := a.types[impl.Target.Name]
+	if !ok {
+		a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
+		return Type{}, false
+	}
+	if definition, exists := a.typeDefinitionTokens[impl.Target.Name]; exists {
+		a.bindDefinition(impl.Target.Token, definition)
+	}
+	// A real core declaration may refine a compiler-owned type into a named
+	// struct. That representation detail never transfers extension authority.
+	// Named user derivations retain their own identity and ordinary impl rules.
+	// Rules: compiler_known_members.md — Lookup order; temporal.md — §2.
+	if (target.Named || target.Kind == InvalidType) && compilerOwnedImplIdentity(target) && !a.isTrustedCoreSourceToken(impl.Target.Token) {
+		a.addErrorAtToken(impl.Target.Token, "impl target %s is compiler-owned; only loader-proven core source may implement or extend it", impl.Target.Name)
+		return Type{}, false
+	}
+	if !target.Named && target.Kind != InvalidType && !a.isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
+		a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
+		return Type{}, false
+	}
+	if target.Kind == InterfaceType {
+		a.addErrorAtToken(impl.Target.Token, "interface %s cannot have an ordinary impl block", impl.Target.Name)
+		return Type{}, false
+	}
+	if !impl.Extends && target.Module != "" && a.currentModule != "" && target.Module != a.currentModule {
+		a.addErrorAtToken(
+			impl.Target.Token,
+			"ordinary impl for %s must be declared in defining module %s, not module %s",
+			typeDisplayName(target),
+			moduleDisplayName(target.Module),
+			moduleDisplayName(a.currentModule),
+		)
+		return Type{}, false
+	}
+	if !a.validateImplGenericTarget(impl, target) {
+		return Type{}, false
+	}
+	return target, true
+}
+
+// isAllowedCoreBuiltinImpl grants builtin implementation authority only to
+// loader-proven core source and the supported canonical builtin surface.
+// Rules: rules/library/core-library.md — §1.2; compiler_known_members.md — Lookup order.
+func (a *Analyzer) isAllowedCoreBuiltinImpl(target string, token lexer.Token) bool {
+	if !a.isTrustedCoreSourceToken(token) {
+		return false
+	}
+	return isCoreBuiltinImplTarget(target)
+}
+
+// isCoreBuiltinImplTarget lists the builtin families supported by privileged
+// core impls; this compiler support list does not grant source provenance.
+// Rules: rules/library/core-library.md — §1.2; rules/compiler/compiler_known_members.md — Lookup order.
+func isCoreBuiltinImplTarget(target string) bool {
+	switch target {
+	case "bool",
+		"byte",
+		"char",
+		"rune",
+		"string",
+		"int",
+		"int8",
+		"int16",
+		"int32",
+		"int64",
+		"int128",
+		"int256",
+		"uint",
+		"uint8",
+		"uint16",
+		"uint32",
+		"uint64",
+		"uint128",
+		"uint256",
+		"float",
+		"float32",
+		"float64",
+		"decimal",
+		"decimal128",
+		"date",
+		"time",
+		"datetime",
+		"duration",
+		"RawPtr",
+		"Option",
+		"Result",
+		// rules/collections/collections.md sections 1-2 and 13-15 make
+		// these compiler-known collection families part of the core surface.
+		// Only loader-proven core sources reach this allowlist; stdlib and user
+		// modules therefore cannot use it to monkey-patch the families.
+		"list",
+		"map",
+		"set",
+		// rules/collections/shaped-types.md sections 34-35 reserve the
+		// canonical shaped semantics for the compiler while permitting core
+		// helpers and additive algorithms on these compiler-known identities.
+		"vector",
+		"matrix",
+		"tensor",
+		"tensor_view",
+		"Shape",
+		"Strides",
+		"TensorLayout",
+		"MemorySpace":
+		return true
+	default:
+		return false
+	}
+}
+
+// compilerOwnedImplIdentity recognizes the resolved canonical builtin identity,
+// including a concrete core declaration, while excluding nominal user derivations.
+// Rules: rules/compiler/compiler_known_members.md — Lookup order, Named and related types;
+// rules/types/temporal.md — §2.
+func compilerOwnedImplIdentity(target Type) bool {
+	canonical, registered := sharedBuiltinTypes()[target.Name]
+	return registered && canonical.Intrinsic && target.Intrinsic
 }

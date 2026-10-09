@@ -1,0 +1,52 @@
+module main
+
+impl string {
+    property ByteLen: uint {
+        get {
+            return self.Len
+        }
+    }
+
+    property BackingCount: uint {
+        get { return self.ByteLen }
+    }
+
+    fn IndexOf(value: string) Option[uint] {
+        return None
+    }
+}
+
+type Priority uint8
+type HeaderValue string
+type Override string
+
+impl HeaderValue {
+    fn IsValid() bool {
+        return self.ByteLen != 0u
+    }
+}
+
+impl Override {
+    property BackingCount: bool {
+        get {
+            return true
+        }
+    }
+}
+
+enum StructuredFieldError error {
+    AllocationFailed
+}
+
+fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
+    let bytes: uint := value.ByteLen
+    let n: Option[uint] := value.IndexOf("=")
+    if n is None {
+        return Err(StructuredFieldError.AllocationFailed)
+    }
+    return Err(StructuredFieldError.AllocationFailed)
+}
+
+fn CheckExactProperty(value: Override) bool {
+    return value.BackingCount
+}

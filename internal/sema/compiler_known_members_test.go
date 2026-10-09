@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"os"
 	"strings"
 
 	"sec/internal/diagnostics"
@@ -510,55 +511,12 @@ fn Test(users: list[int], entries: map[int, string], members: set[int], other: s
 // while retaining its nominal type.
 func TestNamedStringInheritsPrivilegedCoreMembers(t *testing.T) {
 	const sourceFile = "/tmp/sec-test/sec/core/string.sec"
-	input := `module main
+	data, err := os.ReadFile("../../testdata/sema/string_contracts/privileged_members.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := string(data)
 
-impl string {
-    property ByteLen: uint {
-        get {
-            return self.Len
-        }
-    }
-
-    fn IndexOf(value: string) Option[uint] {
-        return None
-    }
-}
-
-type Priority uint8
-type HeaderValue string
-type Override string
-
-impl HeaderValue {
-    fn IsValid() bool {
-        return self.ByteLen != 0u
-    }
-}
-
-impl Override {
-    property ByteLen: bool {
-        get {
-            return true
-        }
-    }
-}
-
-enum StructuredFieldError error {
-    AllocationFailed
-}
-
-fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
-    let bytes: uint := value.ByteLen
-    let n: Option[uint] := value.IndexOf("=")
-    if n is None {
-        return Err(StructuredFieldError.AllocationFailed)
-    }
-    return Err(StructuredFieldError.AllocationFailed)
-}
-
-fn CheckExactProperty(value: Override) bool {
-    return value.ByteLen
-}
-`
 	l := lexer.NewWithFile(input, sourceFile)
 	p := parser.New(l)
 	program := p.ParseProgram()
@@ -644,6 +602,8 @@ func TestCompilerKnownRegistryHasStableRequiredIDs(t *testing.T) {
 	want := map[string]bool{
 		"CKM-PTR-VALUE":          false,
 		"CKM-LEN-STRING":         false,
+		"CKM-BYTELEN-STRING":     false,
+		"CKM-RUNELEN-STRING":     false,
 		"CKM-SIZEOF-VALUE":       false,
 		"CKM-TOSTRING-STRING":    false,
 		"CKM-STRING-TOBYTEARRAY": false,

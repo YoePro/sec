@@ -51,6 +51,12 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 		a.addErrorAtToken(stmt.Token, "naked try assignment cannot propagate outside a function; add a local try handler")
 		return
 	}
+	if a.tryPropagatesToTestBoundary() {
+		a.resolvedTryAssignments[stmt] = ResolvedTryAssignment{
+			Kind: ResolvedTryAssignmentPropagation, ErrorType: errorType, TestBoundary: true,
+		}
+		return
+	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
 		a.addErrorAtToken(stmt.Token, "naked try assignment propagates %s with return Err, but this function returns %s; add a local try handler or change the function return type to Result[void, %s]", typeDisplayName(errorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType))
 		return

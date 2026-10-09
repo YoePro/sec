@@ -478,6 +478,12 @@ Conversions between them follow explicit conversion and representability rules. 
 
 A string is not an implicit array of `char`, `rune`, or `byte`.
 
+`Len` equals `RuneLen` and counts decoded Unicode scalar values without
+normalization. `ByteLen` counts encoded UTF-8 bytes. Both counts exclude any
+external terminator. For example, `"éΩ"` has `Len == RuneLen == 2` and
+`ByteLen == 4`. String length contracts use the units defined by
+`rules/types/contracts.md` revision 2.1.
+
 Conversions between strings and arrays, slices, bytes, or runes use explicitly defined core/library operations.
 
 Array slice syntax does not apply directly to `string`. Checked substring

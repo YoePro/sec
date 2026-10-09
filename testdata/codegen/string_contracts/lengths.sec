@@ -1,0 +1,5 @@
+module main
+fn Runes(raw: string) uint { return raw.Len }
+fn RuneAlias(raw: string) uint { return raw.RuneLen }
+fn Bytes(raw: string) uint { return raw.ByteLen }
+fn main() int { return 0 }

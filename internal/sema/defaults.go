@@ -6,6 +6,7 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
+	"sec/internal/sema/membership"
 )
 
 // DefaultValueOf resolves a compile-time, allocation-free semantic default.
@@ -73,6 +74,13 @@ func defaultResolutionDisplay(typ Type, resolution DefaultResolution) string {
 	case CollectionDefault:
 		return typeDisplayName(typ) + " {}"
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
+		if resolution.Value.Kind == EnumType || resolution.Value.Kind == UnionType {
+			owner := typeDisplayName(typ)
+			if typ.ConstantBaseName != "" && len(typ.GenericParameters) == 0 {
+				owner = typ.Name
+			}
+			return owner + "." + resolution.Value.String
+		}
 		return resolution.Value.Lexeme
 	case EnumDefault:
 		return typ.Name + "." + resolution.Value.Lexeme
@@ -344,7 +352,10 @@ func defaultConstantCompatible(typ Type, value DefaultConstant) bool {
 	case CharType, RuneType:
 		return value.Integer != nil || value.Kind == typ.Kind || typ.Kind == RuneType && value.Kind == CharType
 	case EnumType:
-		return value.Kind == EnumType && enumHasMember(typ, value.String)
+		return value.Kind == EnumType && enumHasMember(typ, value.String) && (value.Nominal.Owner == "" || nominalConstantCompatible(typ, value.Nominal))
+	case UnionType:
+		variant, ok := unionVariantByName(typ, value.Nominal.Member)
+		return value.Kind == UnionType && nominalConstantCompatible(typ, value.Nominal) && ok && variant.Payload == nil && len(variant.PayloadFields) == 0
 	default:
 		return false
 	}
@@ -568,6 +579,9 @@ func defaultConstantSatisfies(typ Type, value DefaultConstant) bool {
 }
 
 func defaultConstantsEqual(left, right DefaultConstant) bool {
+	if left.Nominal.Owner != "" || right.Nominal.Owner != "" {
+		return left.Kind == right.Kind && membership.Equal(left.Nominal, right.Nominal)
+	}
 	leftExact := left.Exact
 	if leftExact == nil && left.Integer != nil {
 		leftExact = new(big.Rat).SetInt(left.Integer)
@@ -704,7 +718,7 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token) ast.Expression {
 	switch resolution.Kind {
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
-		if resolution.Value.Kind == EnumType {
+		if resolution.Value.Kind == EnumType || resolution.Value.Kind == UnionType {
 			// rules/types/contracts.md "Ordered membership": an enum member
 			// default is selected through the storage type's own name.
 			return &ast.MemberExpression{

@@ -6,7 +6,7 @@ module str
  * File:        stdlib/str/split.sec
  * Module:      str
  * Revision:    1
- * Updated:     2026-10-05
+ * Updated:     2026-10-09
  * Author:      Jonas Engström
  *
  * Purpose:
@@ -28,29 +28,231 @@ module str
 // TODO: Implement stdlib/str/split.sec
 
 fn Split(value: string, separator: string) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+
+    for part in value.Split(separator) {
+        try result.Append(part)
+    }
+
+    return Ok(result)
 }
 
 fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+
+    if maxParts == 0 {
+        return Ok(result)
+    }
+
+    if maxParts == 1 {
+        try result.Append(value)
+        return Ok(result)
+    }
+
+    // An empty string split by an empty separator has no runes.
+    if value.Len == 0 && separator.Len == 0 {
+        return Ok(result)
+    }
+
+    let mut position: uint := 0
+
+    for part in value.Split(separator) {
+        if result.Len == maxParts - 1 {
+            // Preserve the complete unsplit remainder.
+            let remainder := try value.Slice(position, value.Len) {
+                Err(_) => {
+                    panic "SplitN: invalid remainder position"
+                }
+            }
+
+            try result.Append(remainder)
+            return Ok(result)
+        }
+
+        try result.Append(part)
+
+        let end := position + part.Len
+
+        if separator.Len > 0 && end < value.Len {
+            position = end + separator.Len
+        } else {
+            position = end
+        }
+    }
+
+    return Ok(result)
 }
 
 fn SplitAfter(value: string, separator: string) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+    let mut position: uint := 0
+
+    for part in value.Split(separator) {
+        let end := position + part.Len
+
+        if separator.Len > 0 && end < value.Len {
+            let nextPosition := end + separator.Len
+
+            let retained := try value.Slice(position, nextPosition) {
+                Err(_) => {
+                    panic "SplitAfter: invalid separator bounds"
+                }
+            }
+
+            try result.Append(retained)
+            position = nextPosition
+        } else {
+            try result.Append(part)
+            position = end
+        }
+    }
+
+    return Ok(result)
 }
 
 fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+
+    if maxParts == 0 {
+        return Ok(result)
+    }
+
+    if maxParts == 1 {
+        try result.Append(value)
+        return Ok(result)
+    }
+
+    if value.Len == 0 && separator.Len == 0 {
+        return Ok(result)
+    }
+
+    let mut position: uint := 0
+
+    for part in value.Split(separator) {
+        if result.Len == maxParts - 1 {
+            // Preserve the complete unsplit remainder.
+            let remainder := try value.Slice(position, value.Len) {
+                Err(_) => {
+                    panic "SplitAfterN: invalid remainder position"
+                }
+            }
+
+            try result.Append(remainder)
+            return Ok(result)
+        }
+
+        let end := position + part.Len
+
+        if separator.Len > 0 && end < value.Len {
+            let nextPosition := end + separator.Len
+
+            let retained := try value.Slice(position, nextPosition) {
+                Err(_) => {
+                    panic "SplitAfterN: invalid separator bounds"
+                }
+            }
+
+            try result.Append(retained)
+            position = nextPosition
+        } else {
+            try result.Append(part)
+            position = end
+        }
+    }
+
+    return Ok(result)
 }
 
 fn SplitLines(value: string) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+
+    for line in value.SplitLines() {
+        try result.Append(line)
+    }
+
+    return Ok(result)
 }
 
 fn Fields(value: string) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+    let mut position: uint := 0
+    let mut start: uint := 0
+    let mut inField: bool := false
+
+    for character in value {
+        if character.IsWhitespace {
+            if inField {
+                let field := try value.Slice(start, position) {
+                    Err(_) => {
+                        panic "Fields: invalid field bounds"
+                    }
+                }
+
+                try result.Append(field)
+                inField = false
+            }
+        } else {
+            if !inField {
+                start = position
+                inField = true
+            }
+        }
+
+        position += character.Utf8Length
+    }
+
+    // Materialize the final field if the string
+    // does not end with whitespace.
+    if inField {
+        let field := try value.Slice(start, position) {
+            Err(_) => {
+                panic "Fields: invalid final field bounds"
+            }
+        }
+
+        try result.Append(field)
+    }
+
+    return Ok(result)
 }
 
 fn FieldsBy(value: string, separator: fn(rune) bool) Result[string[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: string[]
+    let mut position: uint := 0
+    let mut start: uint := 0
+    let mut inField: bool := false
+
+    for character in value {
+        if separator(character) {
+            if inField {
+                let field := try value.Slice(start, position) {
+                    Err(_) => {
+                        panic "FieldsBy: invalid field bounds"
+                    }
+                }
+
+                try result.Append(field)
+                inField = false
+            }
+        } else {
+            if !inField {
+                start = position
+                inField = true
+            }
+        }
+
+        position += character.Utf8Length
+    }
+
+    if inField {
+        let field := try value.Slice(start, position) {
+            Err(_) => {
+                panic "FieldsBy: invalid final field bounds"
+            }
+        }
+
+        try result.Append(field)
+    }
+
+    return Ok(result)
 }

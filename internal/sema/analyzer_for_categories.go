@@ -7,6 +7,7 @@ package sema
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_for.md — §13 "Sec 0.1 iterable categories", §37 "Compiler-known Iterator[T]"
+//   - rules/declarations/interfaces.md — §§6, 9.1 canonical conformance.
 func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, bool) {
 	concrete := dereferenceType(source)
 	for _, iface := range concrete.Implements {
@@ -14,19 +15,20 @@ func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, boo
 			continue
 		}
 		element := iface.TypeArgs[0]
-		for _, method := range a.functions[concrete.Name+".Next"] {
-			if method.Static || len(explicitInterfaceComparableParameters(method.Parameters)) != 0 {
+		required, ok := compilerKnownInterfaceRequirement(iface, "Next")
+		if !ok {
+			continue
+		}
+		for _, method := range a.functions[concrete.Name+"."+required.Name] {
+			if !hasCompatibleInterfaceMethod(concrete, iface, []Function{method}, required) {
 				continue
 			}
-			if method.ReturnType.Name != "Option" || len(method.ReturnType.TypeArgs) != 1 || !sameConcreteType(method.ReturnType.TypeArgs[0], element) {
-				continue
-			}
-			method.CompilerKnownID = "CKM-ITERATOR-NEXT"
+			method.CompilerKnownID = required.CompilerKnownID
 			return element, method, iface, true
 		}
-		// Preserve useful loop binding inference while ordinary interface
-		// conformance emits the canonical missing/signature diagnostic.
-		required := Function{Name: "Next", ImplTarget: concrete.Name, CompilerKnownID: "CKM-ITERATOR-NEXT", ReceiverMutable: true, ReturnType: Type{Name: "Option", Kind: UnionType, TypeArgs: []Type{element}}}
+		// Preserve loop binding inference while ordinary conformance reports
+		// the missing or mismatched implementation at the implements clause.
+		required.ImplTarget = concrete.Name
 		return element, required, iface, true
 	}
 	return Type{}, Function{}, Type{}, false

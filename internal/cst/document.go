@@ -1,6 +1,7 @@
 // Package cst provides a lossless lexical syntax layer for source-to-source
-// tooling. Structural grammar nodes and parser recovery nodes can be added on
-// top of this source-ordered foundation.
+// tooling. Parser roles (ApplyProgramRoles) and parser recovery nodes
+// (ApplyRecovery) are attached on top of this source-ordered foundation;
+// structural grammar nodes can be added the same way.
 package cst
 
 import (
@@ -42,17 +43,21 @@ type Element struct {
 // source-ordered, non-overlapping, and cover every source byte exactly once.
 // Groups add delimiter nesting without assigning grammatical roles; unmatched
 // closers remain source element indexes. EOF is kept separately because it is
-// a zero-width lexical anchor.
+// a zero-width lexical anchor. Recovery holds parser missing-token and
+// skipped-token nodes once ApplyRecovery attaches them; they reference
+// elements but never add source bytes.
 type Document struct {
 	Elements         []Element
 	Groups           []DelimiterGroup
 	UnmatchedClosers []int
 	EOF              lexer.Token
 	Diagnostics      []lexer.Diagnostic
+	Recovery         []RecoveryNode
 }
 
 // Text reconstitutes the exact source, including comments, invalid bytes,
-// whitespace, physical line endings, and an optional initial BOM.
+// whitespace, physical line endings, and an optional initial BOM. Virtual
+// missing tokens are never printed.
 func (d Document) Text() string {
 	var result strings.Builder
 	for _, element := range d.Elements {

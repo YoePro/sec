@@ -26,7 +26,9 @@ func contractSource(contract Contract) lexer.Token {
 
 // relateErrorsSince enriches an owning error without changing its identity,
 // severity, primary location or a more specific existing related location.
-// Rules: rules/tooling/diagnostics.md — §12 related locations;
+// A contract link is retained alongside previous-value provenance; generic
+// fallback type links do not replace or duplicate that more precise evidence.
+// Rules: rules/tooling/diagnostics.md — §§8(2),9(7) related locations;
 // rules/types/contracts.md — Diagnostics; rules/types/default_values.md — Diagnostics.
 func (a *Analyzer) relateErrorsSince(start int, token lexer.Token, label string) {
 	if token.Line <= 0 || token.Column <= 0 {
@@ -34,7 +36,23 @@ func (a *Analyzer) relateErrorsSince(start int, token lexer.Token, label string)
 	}
 	for i := start; i < len(a.errors); i++ {
 		e := &a.errors[i]
-		if e.PreviousLine > 0 || e.File == token.File && e.Line == token.Line && e.Column == token.Column {
+		if e.File == token.File && e.Line == token.Line && e.Column == token.Column {
+			continue
+		}
+		if e.PreviousLine > 0 {
+			if label == "contract declaration" {
+				duplicate := false
+				for _, related := range e.RelatedLocations() {
+					if related.File == token.File && related.Line == token.Line && related.Column == token.Column {
+						duplicate = true
+						break
+					}
+				}
+				if !duplicate {
+					endLine, endColumn := token.EndPosition()
+					e.Related = append(e.Related, RelatedLocation{File: token.File, Line: token.Line, Column: token.Column, EndLine: endLine, EndColumn: endColumn, Label: label})
+				}
+			}
 			continue
 		}
 		e.PreviousFile, e.PreviousLine, e.PreviousColumn = token.File, token.Line, token.Column

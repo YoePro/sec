@@ -47,6 +47,11 @@ func TestLSPPresentsEveryDefaultForm(t *testing.T) {
 			if !ok {
 				t.Fatal("missing hover", entry.Name)
 			}
+			if entry.Name == "DefaultList" || entry.Name == "DefaultBoundedList" || entry.Name == "DefaultInheritedList" {
+				if !strings.Contains(result.Contents.Value, "value"+strconv.Itoa(i)+": "+entry.Name+"\n") {
+					t.Fatal("nongeneric nominal hover gained carrier parameters", result.Contents.Value)
+				}
+			}
 			detail, exists := completion[entry.Name]
 			if !exists {
 				t.Fatal("missing completion", entry.Name)

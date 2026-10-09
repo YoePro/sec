@@ -76,7 +76,10 @@ type confusableDeclaration struct {
 // moduleConfusableIndex indexes, by skeleton, the module-level types and free
 // functions of the current module that a local may not shadow.
 func (a *Analyzer) moduleConfusableIndex() map[string][]confusableDeclaration {
-	if index, ok := a.confusableModuleIndex[a.currentModule]; ok {
+	// Private free functions contribute only in their source file (§12.3).
+	// Cache the visible surface by file as well as by module.
+	key := a.currentModule + "\x00" + a.currentSourceFile
+	if index, ok := a.confusableModuleIndex[key]; ok {
 		return index
 	}
 	index := map[string][]confusableDeclaration{}
@@ -99,7 +102,7 @@ func (a *Analyzer) moduleConfusableIndex() map[string][]confusableDeclaration {
 			break
 		}
 	}
-	a.confusableModuleIndex[a.currentModule] = index
+	a.confusableModuleIndex[key] = index
 	return index
 }
 

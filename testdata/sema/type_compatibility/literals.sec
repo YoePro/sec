@@ -1,0 +1,16 @@
+module main
+type IntRoot int
+type IntChild IntRoot
+type Flag bool
+type Text string
+type Letter char
+type Scalar rune
+fn Literals() void {
+    let number: IntChild := 4
+    let flag: Flag := true
+    let text: Text := "é"
+    let letter: Letter := 'é'
+    let scalar: Scalar := 'Ω'
+    let numericLetter: Letter := 65t
+    let numericScalar: Scalar := 0x3A9r
+}

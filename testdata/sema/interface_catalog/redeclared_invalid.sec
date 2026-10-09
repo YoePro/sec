@@ -1,0 +1,2 @@
+module main
+interface Iterator[T] { fn Next() Option[T] }

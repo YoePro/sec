@@ -49,7 +49,7 @@ func TestTypeDiagnosticLocationsLSP(t *testing.T) {
 		uri := uriFromPath(e.File)
 		text := overlay.Sources[e.File]
 		d := semaDiagnosticWithSources(e, 3, uri, text, overlay)
-		if d.Code != e.ID || d.Severity != 1 || len(d.RelatedInformation) != 1 {
+		if d.Code != e.ID || d.Severity != 1 || len(d.RelatedInformation) != len(e.RelatedLocations()) {
 			t.Fatal(e, d)
 		}
 		link := d.RelatedInformation[0]
@@ -66,6 +66,68 @@ func TestTypeDiagnosticLocationsLSP(t *testing.T) {
 		}
 		if link.Location.URI != relatedURI || link.Location.Range.Start != diagnosticTokenStart(related, token) || link.Message != e.RelatedLabel {
 			t.Fatal("source relation changed", e, d)
+		}
+	}
+}
+
+// Rules: rules/types/contracts.md — Ordered membership, Diagnostics;
+// rules/tooling/lsp.md — Shared diagnostic model, protocol position encoding.
+// Every contract link uses its own unsaved source and maps both range endpoints.
+func TestContractMultipleLocationsLSP(t *testing.T) {
+	program := &ast.Program{}
+	overlay := sourceOverlay{Sources: map[string]string{}}
+	for _, name := range []string{"definitions.sec", "use_invalid.sec"} {
+		path, err := filepath.Abs("../../testdata/contracts/locations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.Replace(string(data), "😀", "😀😀", 1)
+		result := parser.New(lexer.NewWithFile(text, path)).Parse()
+		if result.HasErrors {
+			t.Fatal(result.Diagnostics)
+		}
+		program.Statements = append(program.Statements, result.Program.Statements...)
+		overlay.Sources[path] = text
+	}
+	errors := sema.NewAnalyzer().Analyze(program)
+	if len(errors) != 2 {
+		t.Fatal(errors)
+	}
+	for _, e := range errors {
+		d := semaDiagnosticWithSources(e, 3, uriFromPath(e.File), overlay.Sources[e.File], overlay)
+		links := e.RelatedLocations()
+		if d.Code != e.ID || d.Severity != 1 || len(links) != 2 || len(d.RelatedInformation) != 2 {
+			t.Fatal(e, d)
+		}
+		for i, link := range links {
+			got := d.RelatedInformation[i]
+			text := overlay.Sources[link.File]
+			start := diagnosticTokenStart(text, lexer.Token{Line: link.Line, Column: link.Column})
+			end := start
+			if link.EndLine > 0 {
+				end = diagnosticTokenStart(text, lexer.Token{Line: link.EndLine, Column: link.EndColumn})
+			}
+			if got.Location.URI != uriFromPath(link.File) || got.Location.Range.Start != start || got.Location.Range.End != end || got.Message != link.Label {
+				t.Fatal(e, d)
+			}
+			if link.Line == 3 {
+				line := strings.Split(text, "\n")[2]
+				spelling := "in ["
+				if strings.Contains(line, "range") {
+					spelling = "range"
+				}
+				if i == 1 || strings.Contains(line, "range") {
+					index := strings.Index(line, spelling)
+					want := len(utf16.Encode([]rune(line[:index])))
+					if got.Location.Range.Start.Character != want {
+						t.Fatalf("got %d want %d", got.Location.Range.Start.Character, want)
+					}
+				}
+			}
 		}
 	}
 }

@@ -1,0 +1,21 @@
+module test
+let answer := 2 + 3
+type Numbers int[] unique
+type Decimals decimal[] unique
+type Texts string[] unique
+enum Code int { First = 1, Second = 2, }
+type Codes Code[] unique
+type Row int[2]
+type Rows Row[] unique
+type Point struct { x: int, y: int, }
+type Points Point[] unique
+fn Check() void {
+    let numbers: Numbers := [answer, 5]
+    let decimals: Decimals := [1.0m, 1.00m]
+    let texts: Texts := ["é", "\u{00E9}"]
+    let codes: Codes := [Code.First, Code.First]
+    let rows: Rows := [[1, 1], [1, 1]]
+    let points: Points := [Point { x: 1 }, Point { x: 1, y: 0 }]
+}
+type Holder struct { values: Numbers, }
+fn Field() void { let holder := Holder { values: [4, 2 + 2] } }

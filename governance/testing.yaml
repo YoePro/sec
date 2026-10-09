@@ -5,16 +5,16 @@ integrations:
   - id: tooling.language-testing
     area: language-testing-and-tooling
     status: partial
-    repository_baseline: "814a584"
-    revised: "2026-09-25"
+    repository_baseline: 814a584
+    revised: "2026-10-09"
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
       selection, top-level test declarations, compiler-known testing operations,
       same-module white-box tests, project tests/ integration modules,
       TestCompilationPlan, static harness generation, subtests, structured test
-      outcomes, sec test execution, execution-provider integration, and compiler-
-      owned LSP/editor test discovery. Benchmarking and fuzzing are future design
-      areas and are not part of this integration.
+      outcomes, sec test execution, execution-provider integration, and
+      compiler- owned LSP/editor test discovery. Benchmarking and fuzzing are
+      future design areas and are not part of this integration.
     rules:
       - rules/tooling/testing.md
       - rules/foundations/grammar.md
@@ -40,6 +40,13 @@ integrations:
       - internal/sema/analyzer.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
+      - internal/sema/analyzer_test_bodies.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/try_failure_set.go
+      - internal/sema/analyzer_try_assignment.go
+      - cmd/lsp/hover_try.go
+      - internal/ir/semantic/builder.go
+      - cmd/compiler/test_command.go
     tests:
       - internal/parser/parser_test.go
       - internal/cst/roles_test.go
@@ -47,94 +54,43 @@ integrations:
       - internal/sema/analyzer_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
+      - internal/sema/test_boundary_try_test.go
+      - cmd/compiler/test_command_test.go
     implemented:
-      - contextual top-level `test "name" { ... }` recognition retains a
-        distinct ast.TestDeclaration with its source name and ordinary Sec body
-        while `test` remains an identifier outside the declaration shape
-      - declaration-shaped nested tests are diagnosed with P2011 and recovered
-        without losing later statements in the enclosing body
-      - malformed top-level test headers retain an explicitly invalid
-        ast.TestDeclaration and recover their body across missing names,
-        forbidden parameters, and forbidden return types with stable P2020;
-        ordinary function-name and call positions keep `test` as an identifier
-      - Sema enforces the *_test.sec filename, non-empty top-level test names,
-        and unique module-plus-name identities through stable S1030-S1032
-        diagnostics without registering tests as ordinary callable functions
-      - Sema retains valid top-level tests in source order with a structured,
-        compiler-owned module-plus-path TestIdentity and source location;
-        read-only queries do not expose mutable identity-path storage or depend
-        on generated function names and linker symbols
-      - Sema analyzes ordinary test-body statements in isolated invocation-local
-        scopes, accepts bare return, and rejects return values with stable S1033
-        without creating an ordinary Function declaration or callable source name
-      - compiler-known testing.Expect and testing.Require resolve only in direct
-        test context with one bool condition and an optional string message;
-        S1034-S1036 cover context and argument errors, and resolved operations
-        retain their owning test without modeling testing as an imported module
-      - compiler-known testing.Log resolves in direct test context with exactly
-        one string message, records a non-terminal testing operation fact, and
-        reports invalid arguments through stable S1037
-      - compiler-known testing.ExpectEqual and testing.RequireEqual validate two
-        equality-comparable operands and an optional string message in direct
-        test context, infer each operand once, retain the original expected/actual
-        expressions in resolved Sema facts, and report invalid calls through S1042-S1043;
-        this is frontend validation only, without execution or lowering
-      - compiler-known testing.Pass, testing.Fail, and testing.Skip now validate
-        their zero-argument or required-string-message signatures in direct test
-        context, retain resolved operation facts, and report invalid arguments
-        through stable S1044; terminal flow, cleanup, and outcome behavior are
-        not yet implemented
-      - focused parser fixtures cover retained top-level tests and nested-test
-        recovery, and focused Sema tests cover valid and invalid test identity,
-        testing signatures, and equality operation facts and diagnostics;
-        `go test ./...` passes
+      - contextual top-level `test "name" { ... }` recognition retains a distinct ast.TestDeclaration with its source name and ordinary Sec body while `test` remains an identifier outside the declaration shape
+      - declaration-shaped nested tests are diagnosed with P2011 and recovered without losing later statements in the enclosing body
+      - malformed top-level test headers retain an explicitly invalid ast.TestDeclaration and recover their body across missing names, forbidden parameters, and forbidden return types with stable P2020; ordinary function-name and call positions keep `test` as an identifier
+      - Sema enforces the *_test.sec filename, non-empty top-level test names, and unique module-plus-name identities through stable S1030-S1032 diagnostics without registering tests as ordinary callable functions
+      - Sema retains valid top-level tests in source order with a structured, compiler-owned module-plus-path TestIdentity and source location; read-only queries do not expose mutable identity-path storage or depend on generated function names and linker symbols
+      - Sema analyzes ordinary test-body statements in isolated invocation-local scopes, accepts bare return, and rejects return values with stable S1033 without creating an ordinary Function declaration or callable source name
+      - compiler-known testing.Expect and testing.Require resolve only in direct test context with one bool condition and an optional string message; S1034-S1036 cover context and argument errors, and resolved operations retain their owning test without modeling testing as an imported module
+      - compiler-known testing.Log resolves in direct test context with exactly one string message, records a non-terminal testing operation fact, and reports invalid arguments through stable S1037
+      - compiler-known testing.ExpectEqual and testing.RequireEqual validate two equality-comparable operands and an optional string message in direct test context, infer each operand once, retain the original expected/actual expressions in resolved Sema facts, and report invalid calls through S1042-S1043; this is frontend validation only, without execution or lowering
+      - compiler-known testing.Pass, testing.Fail, and testing.Skip now validate their zero-argument or required-string-message signatures in direct test context, retain resolved operation facts, and report invalid arguments through stable S1044; terminal flow, cleanup, and outcome behavior are not yet implemented
+      - focused parser fixtures cover retained top-level tests and nested-test recovery, and focused Sema tests cover valid and invalid test identity, testing signatures, and equality operation facts and diagnostics; `go test ./...` passes
       - formatter projects valid top-level test-name strings onto exact CST roles, canonicalizes only their horizontal block-header trivia in the shared CST pass, uses ordinary block and testing-call formatting, preserves the exact test-name token including spacing and escapes, remains idempotent, and does not rewrite ordinary identifiers, calls, functions, or strings named test
       - rulebook inventory and directory documentation distinguish the written source-language testing contract from rules/compiler/compiler_testing.md and its compiler-verification infrastructure
+      - "test bodies are a compiler-known try propagation boundary (2026-10-09): bodyless Result, bounds, arithmetic and failure-set try and naked try assignment of any error type are accepted in a test body and resolved with TestBoundary instead of S1093 against the test's internal void return; defer bodies, lambdas inside a test and ordinary functions keep their own boundaries, try hover names the test invocation as propagation target, and Semantic IR rejects the boundary explicitly"
+      - "first sec test command (2026-10-09, cmd/compiler/test_command.go): selects *_test.sec files from explicit files, directories and globs or, without arguments, from the project root with .sec/sec.toml; compiles each directory's test files with their white-box production module without aborting on the first failing module; discovers top-level tests from Sema ResolvedTests metadata; filters by --run regular expression; --list discovers and compiles only; reports a structured per-test model (module, name, identity, source location, status) as human lines or --json; keeps compilation failure, execution unavailable and test outcomes distinct with exit statuses 3, 4 and 1, and reports an empty selection or an unmatched filter explicitly"
     remaining:
-      - require TestCompilationPlan context in addition to the implemented
-        *_test.sec filename check, complete remaining declaration diagnostics,
-        test-boundary try behavior, and callable-effect facts
-      - add TestCompilationPlan as an explicit compilation mode and keep
-        production validity independent from test-only declarations
-      - select same-directory *_test.sec only in test compilation and add the
-        project-root tests/ test-only source universe
-      - implement test-only dependency direction so Test may depend on Production
-        and Test while Production may not depend on Test
-      - complete the compiler-known test-context namespace with Run and
-        TestResult, plus execution/control-flow semantics for the implemented
-        Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface
-      - implement test-boundary `try` propagation so unexpected Err terminates the
-        current invocation as a structured test failure after ordinary cleanup
-      - implement monotonic failure state and controlled cleanup for Pass, Fail,
-        Skip, Require failures, bare return, and unexpected Err
-      - implement synchronous hierarchical subtests, runtime sibling-name
-        validation, child result attribution, and child-failure propagation to
-        the parent
-      - generate a static selected-test harness without runtime reflection,
-        constructor registration, or a mandatory heap
-      - implement canonical `sec test` project discovery, scoped selection,
-        deterministic filtering, fail-fast scheduling policy, result aggregation,
-        structured results, and exit status
-      - keep dependency module tests out of a scoped test run unless those tests
-        are explicitly selected
-      - support selection before final linking so constrained target artifacts may
-        include only the selected test set and required code
-      - add hosted native TestExecutionProvider support and distinguish
-        CompilationFailed, ExecutionUnavailable, ExecutionFailed, and completed
-        test outcomes
-      - define execution-provider interfaces sufficient for later simulator,
-        emulator, debug-probe, hardware-farm, reset, fault, and timeout reporting
-        without making transport a source-language rule
-      - add compiler-workspace/LSP test discovery and test compilation views with
-        Run Test and Debug Test metadata for editor clients
-      - integrate the VS Code extension with compiler-owned test metadata and the
-        editor-native test UI without adding an independent Sec test parser
-      - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted,
-        and provider regression tests from rules/tooling/testing.md
-      - synchronize rules/projects/modules.md and rules/projects/projects.md to
-        remove the obsolete source-visible std/... standard-library import prefix
-        and preserve direct logical imports such as `import "io"` and
-        `import "net/http"`
+      - require TestCompilationPlan context in addition to the implemented *_test.sec filename check, complete remaining declaration diagnostics, and callable-effect facts
+      - add TestCompilationPlan as an explicit compilation mode and keep production validity independent from test-only declarations
+      - select same-directory *_test.sec only in test compilation and add the project-root tests/ test-only source universe
+      - implement test-only dependency direction so Test may depend on Production and Test while Production may not depend on Test
+      - complete the compiler-known test-context namespace with Run and TestResult, plus execution/control-flow semantics for the implemented Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface
+      - lower test-boundary try propagation so an unexpected Err terminates the current invocation as a structured Failed outcome reporting the error after ordinary cleanup; Sema accepts and resolves it (ResolvedTry.TestBoundary), Semantic IR rejects it explicitly until the test harness outcome exists
+      - implement monotonic failure state and controlled cleanup for Pass, Fail, Skip, Require failures, bare return, and unexpected Err
+      - implement synchronous hierarchical subtests, runtime sibling-name validation, child result attribution, and child-failure propagation to the parent
+      - generate a static selected-test harness without runtime reflection, constructor registration, or a mandatory heap
+      - "complete sec test: project-model source universe (production source directories and tests/ instead of a recursive scan of the project root), canonical module/path selectors once the CLI/project model defines them, fail-fast scheduling, execution through the harness with PASS/FAIL/SKIP outcomes and failure records, and the test-only dependency direction"
+      - keep dependency module tests out of a scoped test run unless those tests are explicitly selected
+      - support selection before final linking so constrained target artifacts may include only the selected test set and required code
+      - add hosted native TestExecutionProvider support and distinguish CompilationFailed, ExecutionUnavailable, ExecutionFailed, and completed test outcomes
+      - define execution-provider interfaces sufficient for later simulator, emulator, debug-probe, hardware-farm, reset, fault, and timeout reporting without making transport a source-language rule
+      - add compiler-workspace/LSP test discovery and test compilation views with Run Test and Debug Test metadata for editor clients
+      - integrate the VS Code extension with compiler-owned test metadata and the editor-native test UI without adding an independent Sec test parser
+      - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted, and provider regression tests from rules/tooling/testing.md
+      - synchronize rules/projects/modules.md and rules/projects/projects.md to remove the obsolete source-visible std/... standard-library import prefix and preserve direct logical imports such as `import "io"` and `import "net/http"`
     corrections_applied:
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     deferred:
@@ -146,6 +102,10 @@ integrations:
       - explicit source-level per-test timeout syntax
       - testing.Parallel and runner-controlled source-visible parallel scheduling
     verification:
+      - command: go test ./cmd/compiler -run TestSecTest -count=1
+        result: passed on 2026-10-09 with listing, unavailable execution, JSON and regexp selection, unmatched filters, compilation failure, test-boundary try, and selection errors; sec test --list over sec/stdlib/str with the two \u escapes of split_test.sec corrected and join files removed discovers 35 tests
+      - command: go test ./internal/sema -run 'TestBodylessTryPropagatesToTheTestBoundary|TestTestBoundaryDoesNotExtendBeyondTheTestBody' -count=1
+        result: passed on 2026-10-09; the boundary test fails without the fix, and sec sema over sec/stdlib/str with split_test.sec reports no S1093
       - command: go test ./internal/sema -run ResolvedTestMetadataRetainsStructuredIdentity -count=1
         result: passed; structured identity, source metadata, source order, declaration lookup, and defensive copying are covered
       - command: go test ./internal/formatter -run 'TopLevelTestDeclaration' -count=1
@@ -160,15 +120,16 @@ integrations:
     document_revision: "1.0"
     repository_baseline: main-reviewed-2026-09-26
     summary: >-
-      Implements the canonical Sec 0.1 compiler-verification model: complementary
-      unit, stage-boundary and end-to-end evidence; registered structured diagnostic
-      conformance; Semantic IR as the primary semantic checkpoint; negative verifier
-      testing; invariant-oriented lowering and backend/artifact verification;
-      executable and differential conformance; required fuzzing and mutation testing;
-      deterministic isolated tests; contract-driven target/optimization/debug matrices;
-      regression provenance and corpus lifecycle; and three-layer debug-information
-      conformance. Compiler tests are evidence for canonical feature rulebooks and do
-      not become a second language specification.
+      Implements the canonical Sec 0.1 compiler-verification model:
+      complementary unit, stage-boundary and end-to-end evidence; registered
+      structured diagnostic conformance; Semantic IR as the primary semantic
+      checkpoint; negative verifier testing; invariant-oriented lowering and
+      backend/artifact verification; executable and differential conformance;
+      required fuzzing and mutation testing; deterministic isolated tests;
+      contract-driven target/optimization/debug matrices; regression provenance
+      and corpus lifecycle; and three-layer debug-information conformance.
+      Compiler tests are evidence for canonical feature rulebooks and do not
+      become a second language specification.
     rules:
       - rules/compiler/compiler_testing.md
       - rules/tooling/testing.md
@@ -197,191 +158,210 @@ integrations:
     implemented:
       - id: testing.compiler-verification-v1.host-test-foundation
         description: >-
-          Repository host-language tests already exercise parser, semantic analyzer,
-          compiler CLI and LSP implementation code; these are useful local and
-          integration foundations but are not by themselves the complete canonical
-          compiler-verification harness.
+          Repository host-language tests already exercise parser, semantic
+          analyzer, compiler CLI and LSP implementation code; these are useful
+          local and integration foundations but are not by themselves the
+          complete canonical compiler-verification harness.
       - id: testing.compiler-verification-v1.diagnostic-registry
         description: >-
-          A central diagnostic registry exists with stable ID, symbolic name, family,
-          default severity, mandatory classification and retired state; registered
-          definitions are the existing canonical identity surface consumed by tests.
+          A central diagnostic registry exists with stable ID, symbolic name,
+          family, default severity, mandatory classification and retired state;
+          registered definitions are the existing canonical identity surface
+          consumed by tests.
       - id: testing.compiler-verification-v1.diagnostic-catalog
         description: >-
-          `sec diagnostics` and `sec diagnostics --json` expose the registered catalog;
-          catalog tests verify definition-field preservation, schema reflection and
-          registry/catalog consistency for the currently modeled structures.
+          `sec diagnostics` and `sec diagnostics --json` expose the registered
+          catalog; catalog tests verify definition-field preservation, schema
+          reflection and registry/catalog consistency for the currently modeled
+          structures.
       - id: testing.compiler-verification-v1.diagnostic-detail-command
         description: >-
-          `sec diagnostics <ID>` resolves one exact registered definition and renders
-          its stable ID, symbolic name, family, default severity, mandatory/configurable
-          state and active/retired status from the same registry used by the complete
-          text and JSON catalogs; unknown IDs and mixed argument forms fail explicitly.
+          `sec diagnostics <ID>` resolves one exact registered definition and
+          renders its stable ID, symbolic name, family, default severity,
+          mandatory/configurable state and active/retired status from the same
+          registry used by the complete text and JSON catalogs; unknown IDs and
+          mixed argument forms fail explicitly.
       - id: testing.compiler-verification-v1.parser-recovery-foundation
         description: >-
-          Parser diagnostics and recovery already expose structured compatibility
-          information including diagnostic IDs, primary tokens, expected/unexpected
-          tokens, recovery context and recovery episodes; bounded/deduplicated recovery
-          behavior is represented in the current parser implementation.
+          Parser diagnostics and recovery already expose structured
+          compatibility information including diagnostic IDs, primary tokens,
+          expected/unexpected tokens, recovery context and recovery episodes;
+          bounded/deduplicated recovery behavior is represented in the current
+          parser implementation.
       - id: testing.compiler-verification-v1.lsp-diagnostic-identity
         description: >-
-          LSP semantic diagnostics already expose the compiler diagnostic ID as the LSP
-          diagnostic code, providing an existing cross-interface identity foundation.
+          LSP semantic diagnostics already expose the compiler diagnostic ID as
+          the LSP diagnostic code, providing an existing cross-interface
+          identity foundation.
       - id: testing.compiler-verification-v1.semantic-ir-verifier-foundation
         description: >-
-          Existing compiler governance records a Semantic IR and dedicated verifier as
-          an implemented compiler-pipeline foundation. The new rulebook requires this
-          foundation to gain systematic positive, negative, fuzz and mutation evidence.
+          Existing compiler governance records a Semantic IR and dedicated
+          verifier as an implemented compiler-pipeline foundation. The new
+          rulebook requires this foundation to gain systematic positive,
+          negative, fuzz and mutation evidence.
     partial:
       - id: testing.compiler-verification-v1.structured-diagnostics-migration
         description: >-
-          Diagnostic conformance is only partially migrated: many compiler paths still
-          use legacy/raw diagnostic forms, and the current catalog explicitly reports
-          incomplete coverage. Full conformance requires every emitted primary
-          diagnostic to use the canonical registry/occurrence model.
+          Diagnostic conformance is only partially migrated: many compiler paths
+          still use legacy/raw diagnostic forms, and the current catalog
+          explicitly reports incomplete coverage. Full conformance requires
+          every emitted primary diagnostic to use the canonical
+          registry/occurrence model.
       - id: testing.compiler-verification-v1.stage-local-coverage
         description: >-
-          Parser, Sema and compiler tests exist, but there is not yet one canonical
-          evidence model tying every normative compiler obligation to stage-local and
-          downstream tests with sufficient-evidence auditing.
+          Parser, Sema and compiler tests exist, but there is not yet one
+          canonical evidence model tying every normative compiler obligation to
+          stage-local and downstream tests with sufficient-evidence auditing.
       - id: testing.compiler-verification-v1.regression-practice
         description: >-
-          The repository contains regression-style tests, but the stable identity,
-          failure-predicate provenance, obligation linkage, reduction workflow and
-          retirement traceability required by this rulebook are not yet implemented as
-          a unified compiler-testing contract.
+          The repository contains regression-style tests, but the stable
+          identity, failure-predicate provenance, obligation linkage, reduction
+          workflow and retirement traceability required by this rulebook are not
+          yet implemented as a unified compiler-testing contract.
       - id: testing.compiler-verification-v1.target-matrix-foundation
         description: >-
           Compiler and linking governance already call for cross-compilation,
-          multi-Variant and deterministic tests, but contract-driven matrix expansion,
-          per-cell evidence states and inspectable selection plans are not yet a
-          canonical shared harness facility.
+          multi-Variant and deterministic tests, but contract-driven matrix
+          expansion, per-cell evidence states and inspectable selection plans
+          are not yet a canonical shared harness facility.
       - id: testing.compiler-verification-v1.debug-test-foundation
         description: >-
-          debug_information.md defines the required structural, physical-format and
-          debugger-integration evidence, but the common debugger-driving and normalized
-          Sec-observation harness required here is not yet implemented.
+          debug_information.md defines the required structural, physical-format
+          and debugger-integration evidence, but the common debugger-driving and
+          normalized Sec-observation harness required here is not yet
+          implemented.
     unimplemented:
       - id: testing.compiler-verification-v1.canonical-harness
         description: >-
-          Implement a shared compiler-test harness model with stable case identity,
-          independent fixture/oracle representation, exact/required/forbidden
-          assertions, independent case selection, failure artifacts and fail-closed
-          metadata validation.
+          Implement a shared compiler-test harness model with stable case
+          identity, independent fixture/oracle representation,
+          exact/required/forbidden assertions, independent case selection,
+          failure artifacts and fail-closed metadata validation.
       - id: testing.compiler-verification-v1.obligation-evidence-graph
         description: >-
-          Implement machine-readable traceability from canonical feature/integration
-          obligations to sufficient tests and required concrete matrix executions.
+          Implement machine-readable traceability from canonical
+          feature/integration obligations to sufficient tests and required
+          concrete matrix executions.
       - id: testing.compiler-verification-v1.semantic-ir-assertions
         description: >-
           Add structured Semantic IR assertions for ownership, Place identity,
-          availability, cleanup, effects, specialization identity and provenance rather
-          than relying only on implementation text dumps.
+          availability, cleanup, effects, specialization identity and provenance
+          rather than relying only on implementation text dumps.
       - id: testing.compiler-verification-v1.negative-verifier-suite
         description: >-
-          Add deliberately invalid Semantic IR/Sec MLIR/verifier fixtures and ensure
-          verifier failures are controlled and invariant-specific.
+          Add deliberately invalid Semantic IR/Sec MLIR/verifier fixtures and
+          ensure verifier failures are controlled and invariant-specific.
       - id: testing.compiler-verification-v1.verifier-fuzzing
         description: >-
-          Add structure-aware verifier fuzzing, including mutation of otherwise-valid IR
-          to violate one invariant at a time.
+          Add structure-aware verifier fuzzing, including mutation of
+          otherwise-valid IR to violate one invariant at a time.
       - id: testing.compiler-verification-v1.compiler-fuzzing
         description: >-
-          Add required arbitrary-source robustness fuzzing and structure-aware source or
-          compiler-path fuzzing with bounded resource controls, replayable concrete
-          inputs and ordinary regression promotion.
+          Add required arbitrary-source robustness fuzzing and structure-aware
+          source or compiler-path fuzzing with bounded resource controls,
+          replayable concrete inputs and ordinary regression promotion.
       - id: testing.compiler-verification-v1.generated-metamorphic-testing
         description: >-
-          Add verified program generators and explicit invariant-backed metamorphic
-          transformations for deeper semantic/differential compiler testing.
+          Add verified program generators and explicit invariant-backed
+          metamorphic transformations for deeper semantic/differential compiler
+          testing.
       - id: testing.compiler-verification-v1.fault-injection
         description: >-
-          Add verified deterministic fault injection for allocation, process, IPC, I/O,
-          resource and other failure paths whose rollback/cleanup semantics cannot be
-          exercised reliably from ambient host failures.
+          Add verified deterministic fault injection for allocation, process,
+          IPC, I/O, resource and other failure paths whose rollback/cleanup
+          semantics cannot be exercised reliably from ambient host failures.
       - id: testing.compiler-verification-v1.contract-matrix-engine
         description: >-
-          Add deterministic inspectable contract-driven matrix expansion over relevant
-          Target, Variant, ABI, optimization, debug, implementation-path and capability
-          classes without requiring a full Cartesian product.
+          Add deterministic inspectable contract-driven matrix expansion over
+          relevant Target, Variant, ABI, optimization, debug,
+          implementation-path and capability classes without requiring a full
+          Cartesian product.
       - id: testing.compiler-verification-v1.path-enforcement
         description: >-
-          Add test metadata capable of requiring a canonical lowering/backend path and
-          forbidding fallback so legacy success cannot certify an unused replacement
-          path.
+          Add test metadata capable of requiring a canonical lowering/backend
+          path and forbidding fallback so legacy success cannot certify an
+          unused replacement path.
       - id: testing.compiler-verification-v1.plan-isolation
         description: >-
-          Add multi-Variant and cross-compilation tests that verify target-plan, artifact,
-          diagnostic and relevant cache isolation and detect compiler-host leakage.
+          Add multi-Variant and cross-compilation tests that verify target-plan,
+          artifact, diagnostic and relevant cache isolation and detect
+          compiler-host leakage.
       - id: testing.compiler-verification-v1.test-isolation
         description: >-
-          Add canonical per-test temporary/output isolation, explicit resource locks,
-          sharding semantics, randomized-order/repeat modes and reproducible seed/input
-          capture.
+          Add canonical per-test temporary/output isolation, explicit resource
+          locks, sharding semantics, randomized-order/repeat modes and
+          reproducible seed/input capture.
       - id: testing.compiler-verification-v1.flake-classification
         description: >-
-          Add canonical intermittent-failure classification where retry may diagnose but
-          never convert an observed failure into an ordinary pass; keep quarantine
-          distinct from skip and from passing evidence.
+          Add canonical intermittent-failure classification where retry may
+          diagnose but never convert an observed failure into an ordinary pass;
+          keep quarantine distinct from skip and from passing evidence.
       - id: testing.compiler-verification-v1.harness-self-tests
         description: >-
-          Add direct fail-closed self-tests for expectation parsing, matrix selection,
-          marker resolution, outcome classification, timeouts, artifact comparison,
-          skip/quarantine handling and other pass/fail machinery.
+          Add direct fail-closed self-tests for expectation parsing, matrix
+          selection, marker resolution, outcome classification, timeouts,
+          artifact comparison, skip/quarantine handling and other pass/fail
+          machinery.
       - id: testing.compiler-verification-v1.mutation-testing
         description: >-
-          Add required mutation or equivalent deliberate implementation-fault testing
-          for soundness-critical ownership, borrowing, types/generics, effects, cleanup,
-          verifier, atomics, ABI/layout, target-capability and transactional logic.
+          Add required mutation or equivalent deliberate implementation-fault
+          testing for soundness-critical ownership, borrowing, types/generics,
+          effects, cleanup, verifier, atomics, ABI/layout, target-capability and
+          transactional logic.
       - id: testing.compiler-verification-v1.survivor-review
         description: >-
-          Track killed, survived, equivalent, unbuildable, timeout and infrastructure
-          mutation outcomes and require explicit review of non-equivalent survivors.
+          Track killed, survived, equivalent, unbuildable, timeout and
+          infrastructure mutation outcomes and require explicit review of
+          non-equivalent survivors.
       - id: testing.compiler-verification-v1.regression-provenance
         description: >-
-          Add stable regression provenance, failure-predicate preservation, practical
-          reduction, pre-fix failure evidence where possible and traceable retirement.
+          Add stable regression provenance, failure-predicate preservation,
+          practical reduction, pre-fix failure evidence where possible and
+          traceable retirement.
       - id: testing.compiler-verification-v1.metadata-schema
         description: >-
-          Define strict persistent compiler-test metadata schema/version behavior once a
-          cross-version harness format is introduced; unknown fields/versions must fail
-          closed rather than weaken old expectations.
+          Define strict persistent compiler-test metadata schema/version
+          behavior once a cross-version harness format is introduced; unknown
+          fields/versions must fail closed rather than weaken old expectations.
       - id: testing.compiler-verification-v1.corpus-roles
         description: >-
-          Separate curated conformance, curated regression, generated/property, fuzz
-          exploration and external corpus roles with reproducible promotion of failures.
+          Separate curated conformance, curated regression, generated/property,
+          fuzz exploration and external corpus roles with reproducible promotion
+          of failures.
       - id: testing.compiler-verification-v1.external-provenance
         description: >-
-          Record or constrain material LLVM, linker, debugger, emulator, hardware/runtime
-          provider and external-corpus versions; model intentional version variation as
-          an explicit matrix dimension.
+          Record or constrain material LLVM, linker, debugger, emulator,
+          hardware/runtime provider and external-corpus versions; model
+          intentional version variation as an explicit matrix dimension.
       - id: testing.compiler-verification-v1.debugger-harness
         description: >-
-          Implement normalized debugger-driving tests for LineTables and Full, optimized
-          variable availability, generic/logical frame identities, observational safety,
-          artifact/source correlation and negative debug capabilities.
+          Implement normalized debugger-driving tests for LineTables and Full,
+          optimized variable availability, generic/logical frame identities,
+          observational safety, artifact/source correlation and negative debug
+          capabilities.
       - id: testing.compiler-verification-v1.debug-semantic-equivalence
         description: >-
-          Add representative execution comparison across None, LineTables and Full with
-          relevant optimization classes to prove debug configuration does not change Sec
-          program semantics.
+          Add representative execution comparison across None, LineTables and
+          Full with relevant optimization classes to prove debug configuration
+          does not change Sec program semantics.
       - id: testing.compiler-verification-v1.incremental-differential-hook
         description: >-
           Own the generic cold-versus-incremental differential, matrix, fuzzing,
-          mutation, fault-injection, race, and regression infrastructure. Concrete
-          dependency, invalidation, cache-validity, publication, history-independence,
-          and feature-specific evidence obligations are owned by
-          rules/compiler/incremental_compilation.md and
+          mutation, fault-injection, race, and regression infrastructure.
+          Concrete dependency, invalidation, cache-validity, publication,
+          history-independence, and feature-specific evidence obligations are
+          owned by rules/compiler/incremental_compilation.md and
           compiler.incremental-compilation-v1.
     identified_bugs:
       - id: testing.compiler-verification-v1.bug.diagnostic-prefix-drift
         severity: medium
         description: >-
-          rules/tooling/diagnostics.md allocates lexical/tokenization diagnostics under
-          the P1xxx range, but internal/diagnostics currently publishes lexer diagnostics
-          as L1001-L1020. Stable published IDs must not be casually renumbered, so the
-          diagnostics owner must explicitly reconcile the written allocation policy with
-          the existing registry before claiming complete diagnostic conformance.
+          rules/tooling/diagnostics.md allocates lexical/tokenization
+          diagnostics under the P1xxx range, but internal/diagnostics currently
+          publishes lexer diagnostics as L1001-L1020. Stable published IDs must
+          not be casually renumbered, so the diagnostics owner must explicitly
+          reconcile the written allocation policy with the existing registry
+          before claiming complete diagnostic conformance.
         evidence:
           - rules/tooling/diagnostics.md
           - internal/diagnostics/diagnostics.go

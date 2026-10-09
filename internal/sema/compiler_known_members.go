@@ -14,6 +14,7 @@ import (
 type CompilerKnownMemberKind string
 
 const (
+	CompilerKnownValueExpression    CompilerKnownMemberKind = "value"
 	CompilerKnownProperty           CompilerKnownMemberKind = "property"
 	CompilerKnownMethod             CompilerKnownMemberKind = "method"
 	CompilerKnownAssociatedFunction CompilerKnownMemberKind = "associated-function"
@@ -193,8 +194,19 @@ func compilerKnownFunction(name string) (CompilerKnownFunction, bool) {
 	return CompilerKnownFunction{}, false
 }
 
+// CompilerKnownMembersForType supplies receiver-resolved registry members and
+// compiler-owned interface requirements to semantic lookup and tooling.
+// Rules: rules/compiler/compiler_known_members.md — Registry, Built-in type member lookup;
+// rules/declarations/interfaces.md — §9.1.
 func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 	members := compilerKnownValueMembers(typ)
+	if !static {
+		for _, method := range dereferenceType(typ).InterfaceMethods {
+			if member, ok := compilerKnownInterfaceMember(method); ok {
+				members = append(members, member)
+			}
+		}
+	}
 	if static {
 		members = compilerKnownStaticMembers(typ)
 	}
@@ -232,6 +244,9 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		members = append(members, CompilerKnownMember{ID: "CKM-LEN-VARIADIC-PACK", Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
 	} else if compilerKnownSequenceType(typ) {
 		members = append(members, CompilerKnownMember{ID: compilerKnownLenID(typ), Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
+		if dereferenceType(typ).Kind == StringType {
+			members = append(members, CompilerKnownMember{ID: "CKM-BYTELEN-STRING", Name: "ByteLen", Kind: CompilerKnownProperty, Result: uintType}, CompilerKnownMember{ID: "CKM-RUNELEN-STRING", Name: "RuneLen", Kind: CompilerKnownProperty, Result: uintType})
+		}
 		if dereferenceType(typ).Kind != StringType {
 			members = append(members, CompilerKnownMember{ID: compilerKnownIsEmptyID(typ), Name: "IsEmpty", Kind: CompilerKnownProperty, Result: boolType})
 		}

@@ -505,6 +505,9 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 	var initial *value
 	if stmt.Type != nil {
 		typ = g.llvmType(stmt.Type)
+		if g.stringTypeReference(stmt.Type) {
+			typ = "string"
+		}
 	}
 	if stmt.Value != nil {
 		var val value
@@ -1121,7 +1124,7 @@ func (g *Generator) emitExpressionTypeOnly(expr ast.Expression) (string, error) 
 	case *ast.BooleanLiteral:
 		return "i1", nil
 	case *ast.CharLiteral:
-		value, err := emitCharacterLiteral(expr)
+		value, err := g.emitCharacterLiteral(expr)
 		if err != nil {
 			return "", err
 		}
@@ -1164,6 +1167,11 @@ func (g *Generator) emitExpressionStatement(expr ast.Expression) (value, error) 
 
 func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) {
 	name := callExpressionName(expr)
+	if g.stringFacts != nil {
+		if fact, ok := g.stringFacts.conversions[expr]; ok {
+			return g.emitStringContractConversion(expr, fact)
+		}
+	}
 	if name == "__StringSliceUnchecked" {
 		return g.emitStringSliceUnchecked(expr)
 	}
@@ -1277,7 +1285,7 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 			return value{}, err
 		}
 		param := fn.Parameters[i]
-		if param.Type != nil && param.Type.Name == "string" {
+		if param.Type != nil && g.stringTypeReference(param.Type) {
 			if arg.typ != "string" {
 				return value{}, fmt.Errorf("argument %d to %s must be string", i+1, name)
 			}
@@ -1292,7 +1300,7 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 		args = append(args, arg)
 	}
 
-	returnType := g.llvmType(fn.ReturnType)
+	returnType := g.stringReturnType(fn.ReturnType)
 	var result string
 	if returnType != "void" {
 		result = g.nextTemp()
@@ -1310,6 +1318,12 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 	g.write(")\n")
 	if returnType == "void" {
 		return value{typ: "void"}, nil
+	}
+	if returnType == "%sec.string" {
+		pointer, length := g.nextTemp(), g.nextTemp()
+		g.write("  %s = extractvalue %%sec.string %s, 0\n", pointer, result)
+		g.write("  %s = extractvalue %%sec.string %s, 1\n", length, result)
+		return value{typ: "string", ref: pointer, lenRef: length}, nil
 	}
 	return value{typ: returnType, ref: result}, nil
 }
@@ -1415,6 +1429,12 @@ func (g *Generator) emitReturn(stmt *ast.ReturnStatement) error {
 				return err
 			}
 		} else {
+			return err
+		}
+	}
+	if g.returnType == "%sec.string" {
+		value, err = g.packStringDescriptor(value)
+		if err != nil {
 			return err
 		}
 	}

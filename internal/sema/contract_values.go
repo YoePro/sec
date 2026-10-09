@@ -22,7 +22,7 @@ func (a *Analyzer) checkCompileTimeContractExpression(typ Type, expr ast.Express
 	if a.checkIntegerExpressionRange(typ, expr) {
 		return true
 	}
-	if a.checkEnumMembershipValue(typ, expr) {
+	if a.checkNominalMembershipValue(typ, expr) {
 		return true
 	}
 	return a.checkStringLiteralContracts(typ, expr)
@@ -50,8 +50,9 @@ func (a *Analyzer) checkDeclaredContractExpression(typ Type, expr ast.Expression
 
 // checkStringLiteralContracts checks every represented string contract without
 // reinterpreting runtime strings as compile-time values. StringLiteral.Value is
-// already escape-decoded by the parser, so length uses the canonical UTF-8 byte
-// count also exposed by string.Len.
+// already escape-decoded by the parser. Len contracts count Unicode scalars;
+// explicit ByteLen contracts count encoded UTF-8 bytes.
+// Rules: rules/types/contracts.md — String and collection contracts (revision 2.1).
 func (a *Analyzer) checkStringLiteralContracts(typ Type, expr ast.Expression) bool {
 	literal, ok := expr.(*ast.StringLiteral)
 	if !ok || typ.Kind != StringType || len(typ.Contracts) == 0 {
@@ -136,7 +137,7 @@ func (a *Analyzer) checkArrayLiteralContracts(typ Type, literal *ast.ArrayLitera
 					return true
 				}
 			case "unique":
-				duplicate, original, ok := duplicateArrayLiteralConstant(literal)
+				duplicate, original, ok := a.duplicateArrayLiteralConstant(typ, literal)
 				if ok {
 					a.addContractError(expressionToken(literal.Elements[duplicate]), contract, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal element %d duplicates element %d under unique contract %s", duplicate+1, original+1, typeName)
 					return true
@@ -145,40 +146,6 @@ func (a *Analyzer) checkArrayLiteralContracts(typ Type, literal *ast.ArrayLitera
 		}
 	}
 	return false
-}
-
-// duplicateArrayLiteralConstant returns the first source-ordered pair whose
-// direct elements have proven compile-time semantic equality. Spread contents
-// and runtime expressions are intentionally opaque.
-//
-// Rules:
-//   - rules/types/contracts.md — "String and collection contracts"
-//   - rules/types/contracts.md — "Ordered membership" semantic equality
-func duplicateArrayLiteralConstant(literal *ast.ArrayLiteral) (duplicate int, original int, ok bool) {
-	if literal == nil {
-		return 0, 0, false
-	}
-	type knownElement struct {
-		index int
-		value DefaultConstant
-	}
-	known := make([]knownElement, 0, len(literal.Elements))
-	for index, element := range literal.Elements {
-		if _, spread := element.(*ast.SpreadExpression); spread {
-			continue
-		}
-		constant, constantOK := defaultConstantFromExpression(element)
-		if !constantOK {
-			continue
-		}
-		for _, previous := range known {
-			if defaultConstantsEqual(constant, previous.value) {
-				return index, previous.index, true
-			}
-		}
-		known = append(known, knownElement{index: index, value: constant})
-	}
-	return 0, 0, false
 }
 
 // checkEmptyListLiteralContracts proves the canonical explicit empty collection

@@ -2,6 +2,7 @@ package sema
 
 import (
 	"math/big"
+	"sort"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -417,6 +418,15 @@ type ResolvedTry struct {
 	// Failures is the ordered compiler-internal failure set of a failure-set
 	// try; it is empty for the dedicated single-source kinds.
 	Failures []TryFailurePoint
+	// TestBoundary marks a bodyless propagation whose Err reaches the
+	// enclosing test invocation instead of a Result return. The test then
+	// fails with the unexpected error after ordinary cleanup; the test has no
+	// source-visible Result, so EnclosingResultType is empty.
+	//
+	// Rules:
+	//   - rules/errors/errorhandling.md — §41 "Test propagation boundary"
+	//   - rules/tooling/testing.md — §10 "Error propagation at a test boundary"
+	TestBoundary bool
 }
 
 type ResolvedTryAssignmentKind string
@@ -433,6 +443,9 @@ type ResolvedTryAssignment struct {
 	ErrorType           Type
 	EnclosingResultType Type
 	HandlerPlan         ResolvedTryPlan
+	// TestBoundary marks a propagation to the enclosing test invocation (see
+	// ResolvedTry.TestBoundary).
+	TestBoundary bool
 }
 
 type ResolvedTryHandlerPatternKind string
@@ -1390,6 +1403,59 @@ func (a *Analyzer) ResolvedBindingAt(file string, line int, column int) (Resolve
 	fact := a.bindingFacts[key]
 	fact.ID = id
 	return fact, true
+}
+
+// ResolvedBindingDeclaredAt returns the local or parameter binding whose
+// declaring name token starts at one source position, so tooling can present
+// a declaration without resolving its name through a module-wide table.
+func (a *Analyzer) ResolvedBindingDeclaredAt(file string, line int, column int) (ResolvedBinding, bool) {
+	if a == nil {
+		return ResolvedBinding{}, false
+	}
+	key := sourceTokenKey{File: file, Line: line, Column: column}
+	id, ok := a.bindingIDs[key]
+	if !ok {
+		return ResolvedBinding{}, false
+	}
+	fact := a.bindingFacts[key]
+	fact.ID = id
+	return fact, true
+}
+
+// ResolvedBindingDeclaration is one local or parameter binding together with
+// the source position of its declaring name token.
+type ResolvedBindingDeclaration struct {
+	Binding ResolvedBinding
+	File    string
+	Line    int
+	Column  int
+}
+
+// ResolvedBindingDeclarations returns every local and parameter binding of
+// the analyzed program in source order (file, line, column). Unlike Symbols,
+// which keeps one entry per name, same-named bindings of different functions
+// and files remain distinct, so tooling can select the binding declared at
+// or visible from a position.
+func (a *Analyzer) ResolvedBindingDeclarations() []ResolvedBindingDeclaration {
+	if a == nil {
+		return nil
+	}
+	declarations := make([]ResolvedBindingDeclaration, 0, len(a.bindingFacts))
+	for key, fact := range a.bindingFacts {
+		fact.ID = a.bindingIDs[key]
+		declarations = append(declarations, ResolvedBindingDeclaration{Binding: fact, File: key.File, Line: key.Line, Column: key.Column})
+	}
+	sort.Slice(declarations, func(i, j int) bool {
+		left, right := declarations[i], declarations[j]
+		if left.File != right.File {
+			return left.File < right.File
+		}
+		if left.Line != right.Line {
+			return left.Line < right.Line
+		}
+		return left.Column < right.Column
+	})
+	return declarations
 }
 
 // ResolvedOptionIfBindingOf returns the immutable Sema plan for one valid

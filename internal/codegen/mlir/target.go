@@ -24,7 +24,13 @@ func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple stri
 	if analyzer == nil || program == nil {
 		return "", &semantic.UnsupportedFeatureError{Feature: "missing analyzed native integer facts"}
 	}
+	if err := readiness.RejectStringLengthContracts(program, analyzer, "legacy MLIR"); err != nil {
+		return "", err
+	}
 	if err := readiness.CheckWideProgram(program, analyzer, "MLIR"); err != nil {
+		return "", err
+	}
+	if err := readiness.RejectUnitQuantities(program, analyzer, "legacy MLIR"); err != nil {
 		return "", err
 	}
 	plan, err := targetplan.Plan(triple)

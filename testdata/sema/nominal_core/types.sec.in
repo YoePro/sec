@@ -1,0 +1,22 @@
+module main
+enum Failure error { Failed }
+type Base int32
+type Child Base
+type ID[T] int32
+type Wrapped[T] T
+type Box[T] struct { value: T }
+type Choice[T] union { None, Some(T) }
+type Registers register[8] { Value: bit[8] }
+interface Reader { fn Read() int }
+type Outcome Result[int,Failure]
+type Samples int[2]
+unit Meter physical
+impl Meter {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 1
+}
+fn Hold(value: TARGET) void {}
+fn main() void {}
+fn Identities(left: ID[int], right: ID[string]) void {}
+fn Nested(left: Box[ID[int]], right: Box[ID[string]]) void {}

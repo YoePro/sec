@@ -1,0 +1,18 @@
+module core
+
+fn __Increment(value: int) int {
+    return value + 1
+}
+
+fn __Identity[T](value: T) T {
+    return value
+}
+
+fn _Shared(value: int) int {
+    return __Increment(value)
+}
+
+fn UsePrivateHelpers() int {
+    let callback: fn(int) int := __Increment
+    return callback(__Identity(1))
+}

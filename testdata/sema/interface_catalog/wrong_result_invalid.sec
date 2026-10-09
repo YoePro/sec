@@ -1,0 +1,6 @@
+module main
+
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[string] { return None }
+}

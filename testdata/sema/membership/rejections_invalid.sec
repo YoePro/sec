@@ -1,0 +1,41 @@
+module membership
+
+type State union { Idle
+ Ready
+ Failed
+}
+type Other union { Idle
+ Ready
+ Failed
+}
+type Allowed State in [State.Ready, State.Idle]
+type Duplicate State in [State.Ready, State.Ready]
+type Foreign State in [Other.Ready]
+type Missing State in [State.Missing]
+type Empty State in []
+type Explicit State in [State.Ready] default State.Failed
+type Inherited Allowed in [State.Failed]
+let Known: State := State.Failed
+fn Invalid() Allowed { return Allowed.Failed }
+fn InvalidBinding() Allowed { return Allowed(Known) }
+type Payload union { Empty
+ Number(int)
+}
+type Unsupported Payload in [Payload.Empty]
+enum Code int { Ok = 0
+ LegacyOk = 0
+ Failed = 1
+}
+type EnumDuplicate Code in [Code.Ok, Code.LegacyOk]
+let mut Mutable: State := State.Ready
+type Runtime State in [Mutable]
+fn Getter() State { return State.Ready }
+type RequiresExecutor State in [Getter()]
+type Choice[T] union { Yes
+ No
+}
+type GenericForeign Choice[int] in [Choice[string].Yes]
+type GenericDuplicate Choice[int] in [Choice[int].Yes, Choice[int].Yes]
+type Sibling State
+type NoCoercion State in [Sibling.Ready]
+type NoEqualityCoercion bool in [State.Ready == Allowed.Ready]

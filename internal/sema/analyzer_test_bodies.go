@@ -94,3 +94,17 @@ func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
 
 	a.analyzeBlockStatements(declaration.Body)
 }
+
+// tryPropagatesToTestBoundary reports whether a bodyless try (or try
+// assignment) at the current position propagates its Err to the enclosing
+// test invocation. A test body is a compiler-known propagation boundary: any
+// error type fails the current invocation after ordinary cleanup, without a
+// source-visible Result. A lambda inside the test is its own function and
+// clears currentTest; defer bodies are rejected before this point.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §41 "Test propagation boundary"
+//   - rules/tooling/testing.md — §10.1 "Test boundary supports try", §10.2 "Unexpected propagated error"
+func (a *Analyzer) tryPropagatesToTestBoundary() bool {
+	return a.currentTest != nil && a.inFunctionBody && !a.inDeferBlock
+}

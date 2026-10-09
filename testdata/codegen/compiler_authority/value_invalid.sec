@@ -1,0 +1,5 @@
+module core
+
+fn UseInternalAsValue() void {
+    let callback := __StringSliceUnchecked
+}

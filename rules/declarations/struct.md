@@ -540,7 +540,7 @@ struct contract. It uses source field order and the active C ABI's natural
 layout and is not implicitly Defaultable; complete explicit construction is
 required. The bodyless form declares an incomplete foreign struct, which has no
 known by-value size and is legal only behind `RawPtr`, or as a call-bounded
-foreign `ref`/`ref mut` parameter. A final `C::flex[T]` field has no Sec
+foreign `ref`/`ref mut` parameter. A final `c::flex[T]` field has no Sec
 descriptor or implicit length. C bitfields use ABI-owned placement and are not
 independently addressable.
 

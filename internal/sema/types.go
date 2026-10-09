@@ -8,6 +8,7 @@ import (
 
 	"sec/internal/layout"
 	"sec/internal/lexer"
+	"sec/internal/sema/membership"
 )
 
 type TypeKind string
@@ -55,12 +56,18 @@ const (
 )
 
 type Type struct {
-	Name      string
-	Module    string
-	Kind      TypeKind
-	Named     bool
-	Declared  bool
-	Intrinsic bool
+	Name     string
+	Module   string
+	Kind     TypeKind
+	Named    bool
+	Declared bool
+	// NamedBase retains the resolved declared representation, including fixed
+	// generic arguments and parameter substitution, independently of own identity.
+	// FixedNamedArguments distinguishes inherited carrier arguments from source parameters.
+	// Rules: rules/types/types.md — Named types, Generic and parameterized types.
+	NamedBase           *Type
+	FixedNamedArguments bool
+	Intrinsic           bool
 	// MonotonicPoint preserves the opaque Instant carrier through named derivations.
 	// Rules: rules/concurrency/mutex.md §13; types/types.md — Named types.
 	MonotonicPoint bool
@@ -74,8 +81,16 @@ type Type struct {
 	ErrorAssignable    bool
 	NoCopyPolicyOrigin string
 	Underlying         string
-	Unit               string
-	Dimension          Dimension
+	// ConstantBaseName preserves the declaring enum/union name through named
+	// derivations; concrete TypeArgs remain part of compile-time value identity.
+	// Rules: rules/types/contracts.md — Ordered membership; rules/declarations/unions.md — §14.
+	ConstantBaseName string
+	// ConstantAncestors records legal declaration owners of membership literals;
+	// sibling named derivations do not silently coerce into this base family.
+	// Rules: rules/types/contracts.md — Ordered membership; rules/types/types.md — Named types.
+	ConstantAncestors []string
+	Unit              string
+	Dimension         Dimension
 	// UnitSemantics retains the complete resolved quantity identity from
 	// rules/types/units.md through frontend analysis and tooling.
 	UnitSemantics              UnitSemantics
@@ -714,6 +729,7 @@ type MembershipContract struct {
 func (MembershipContract) contractNode() {}
 
 type DefaultConstant struct {
+	Nominal     membership.Value
 	NominalText bool
 	FloatBits   int
 	DecimalBits int
@@ -848,12 +864,18 @@ var (
 )
 
 // builtinTypes returns a fresh, caller-owned copy of the builtin type table
-// for an Analyzer, which extends its own table with declarations.
+// for an Analyzer, which extends its own table with declarations. Compiler-known
+// interface requirements are detached because conformance attaches source facts.
+// Rules: rules/types/types.md — Compiler-known types;
+// rules/declarations/interfaces.md — §9.1 Compiler-known generic interfaces.
 func builtinTypes() map[string]Type {
 	shared := sharedBuiltinTypes()
 	types := make(map[string]Type, len(shared))
 	for name, typ := range shared {
 		types[name] = typ
+	}
+	for _, iface := range CompilerKnownInterfaces() {
+		types[iface.Name] = iface
 	}
 	return types
 }
@@ -870,6 +892,10 @@ func sharedBuiltinTypes() map[string]Type {
 	return builtinTypeTable
 }
 
+// newBuiltinTypes installs builtin type facts and compiler-owned interface
+// templates from the canonical registry before declaration analysis.
+// Rules: rules/types/types.md — Compiler-known types;
+// rules/declarations/interfaces.md — §9.1.
 func newBuiltinTypes() map[string]Type {
 	types := map[string]Type{
 		"any":    {Name: "any", Kind: AnyType},
@@ -951,29 +977,7 @@ func newBuiltinTypes() map[string]Type {
 				{Name: "None"},
 			},
 		},
-		// Iterator is the compiler-known, statically dispatched iteration
-		// contract from rules/control-flow/flowcontrol_for.md section 37. It has
-		// no runtime representation or dynamic-dispatch requirement: a concrete
-		// type participates only through explicit implements Iterator[T].
-		"Iterator": {
-			Name:              "Iterator",
-			Kind:              InterfaceType,
-			GenericParameters: []string{"T"},
-			InterfaceMethods: []Function{
-				{
-					Name:            "Next",
-					CompilerKnownID: "CKM-ITERATOR-NEXT",
-					ReceiverMutable: true,
-					ReturnType: Type{
-						Name: "Option",
-						Kind: UnionType,
-						TypeArgs: []Type{
-							{Name: "T", Kind: GenericType},
-						},
-					},
-				},
-			},
-		},
+
 		"Vec":          {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
 		"Set":          {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
 		"Map":          {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
@@ -1151,6 +1155,10 @@ func newBuiltinTypes() map[string]Type {
 		typ := types[name]
 		typ.ErrorAssignable = true
 		types[name] = typ
+	}
+
+	for _, iface := range CompilerKnownInterfaces() {
+		types[iface.Name] = iface
 	}
 
 	for name, typ := range types {

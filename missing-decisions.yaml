@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-08"
+updated: "2026-10-09"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -163,25 +163,6 @@ decisions:
       dependencies in analysis.allocation and sema.isr-analysis.
     classification: blocking
     status: open
-  - id: MD-020
-    area: lexer-foreign-qualification
-    rulebooks:
-      - rules/foundations/lexical_structure.md
-      - rules/foundations/grammar.md
-      - rules/platform/ffi.md
-    description: >-
-      grammar.md ForeignTypeReference uses "::" as a terminal (`"C" "::"
-      Identifier`, `"c" "::" Identifier { "::" Identifier }`), but the
-      operator and punctuation list in lexical_structure.md § 16 and the
-      longest-match list in § 17 do not contain `::`. The lexer therefore
-      produces two ':' tokens. Without touching the lexer, the parser
-      currently accepts exactly two adjacent ':' tokens, with no whitespace
-      and directly attached to the surrounding names, as the "::" terminal.
-      Decisions needed: whether `::` is a lexical token (and its place in
-      § 16/§ 17 longest match relative to `:`, `:=`, and `:<-`), and whether
-      whitespace may appear around or inside `::`.
-    classification: localized
-    status: open
   - id: MD-021
     area: c-binding-environment
     rulebooks:
@@ -189,6 +170,17 @@ decisions:
       - rules/platform/abi.md
       - rules/platform/target_profiles.md
     description: >-
+      PARTLY DECIDED 2026-10-08 by rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md § 3 and integrated into
+      rules/platform/ffi.md § 6, rules/platform/target_profiles.md § 11 and
+      rules/projects/modules.md § 12: the compiler owns the fundamental c:: family
+      and ABI checks; platform bindings (normally sec/platform) supply target C
+      binding types, which the CompilationPlan makes available under c:: without
+      an import, failing closed with no host fallback; third-party C libraries are
+      ordinary imported binding modules with link metadata. STILL OPEN (correction
+      § 3.7, § 8.2): the source or metadata serialization of the target-provided
+      binding declarations and the mechanism that selects one environment for a
+      CompilationPlan; this belongs to the target, platform and build rulebooks and
+      must not be invented. Original question:
       ffi.md § 6 says c:: binding types (c::stddef::size_t,
       c::time::time_t, c::stdarg::va_list, c::posix::socklen_t) are
       "supplied by the selected target/library binding environment", and
@@ -202,57 +194,6 @@ decisions:
       the binding environment's form, ownership, per-target contents, and
       selection mechanism.
     classification: blocking
-    status: open
-  - id: MD-023
-    area: ffi-legal-sec-scalars
-    rulebooks:
-      - rules/platform/ffi.md
-      - rules/foundations/grammar.md
-      - rules/types/types.md
-    description: >-
-      ffi.md § 9 lists the fixed-width Sec scalars that may appear directly
-      in foreign signatures (byte, int8 through uint64, float32, float64)
-      "when they exactly describe the foreign ABI type", and § 45 adds
-      C:: scalars, RawPtr, call-bounded references, and extern "C" enums.
-      Three points are open. (1) The target-sized int and uint are not
-      listed, but grammar.md's extern example writes `length: uint` and
-      `int64`, and existing tests and bindings use `int`/`uint` in C
-      externs. (2) int128, uint128, int256, and uint256 are fixed-width but
-      have no C:: counterpart in the C ABI model. (3) § 45 allows
-      extern "C" enums, which are not implemented yet, while ordinary Sec
-      enums with an integer underlying type are neither listed as legal nor
-      listed as forbidden in § 46. The C/system legality check (S1079)
-      currently keeps the earlier behavior and accepts all three. Decisions
-      needed: whether int/uint, the 128/256-bit integers, and integer-backed
-      Sec enums are FFI-legal, and if so under which ABI-model conditions.
-    classification: constraining
-    status: open
-  - id: MD-024
-    area: null-sentinel-syntax
-    rulebooks:
-      - rules/platform/ffi.md
-      - rules/memory/raw_pointers.md
-      - rules/memory/unsafe.md
-      - rules/foundations/grammar.md
-      - rules/foundations/lexical_structure.md
-    description: >-
-      ffi.md § 11 defines the null sentinel by example: `null` is legal only
-      lexically inside unsafe, has no standalone type, and is tested with
-      `raw is null`, while `== null` is invalid. Four points are open.
-      (1) Neither lexical_structure.md nor grammar.md mentions `null` or
-      `is null`. The implementation treats `null` as a contextual word in
-      expressions and in the contextual if/while `is` test, so a visible
-      binding named null shadows it; whether `null` is a reserved word is
-      undecided. (2) raw_pointers.md § 5.1 and unsafe.md § 19(1) say that
-      testing a raw pointer for null is not inherently unsafe, but the only
-      defined spelling, `is null`, is unsafe-only, and unsafe.md § 12's safe
-      example uses `pointer.IsNull()`, which no rulebook defines. (3) No
-      negated form (`is not null`) is defined; the parser rejects it like
-      other undefined `is not` forms. (4) Whether `is null` is usable outside
-      if/while conditions, as an ordinary bool expression. Decisions needed:
-      the lexical status of null, the safe null-test spelling, the negated
-      form, and the expression positions of `is null`.
-    classification: constraining
     status: open
   - id: MD-025
     area: custom-free-semantics
@@ -737,4 +678,142 @@ decisions:
       frontend.default-values "implement exact successors for exclusive decimal
       upper bounds"; existing behavior continues to require explicit defaults.
     classification: blocking
+    status: open
+
+  - id: MD-050
+    area: string-unicode-validity
+    rulebooks:
+      - rules/types/types.md
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/types/contracts.md
+    description: >-
+      Len is now RuneLen by explicit user decision, but the string model does
+      not settle invalid UTF-8. compiler_known_members.md leaves ToRuneArray
+      replacement/error policy undecided, while core string.Slice checks byte
+      bounds without checking code-point boundaries. Decide whether every
+      string must be valid UTF-8 (with boundary-checked Slice and construction)
+      or RuneLen counts U+FFFD once per invalid byte. Compile-time proofs and
+      native runtime helpers must use the same policy before the string-length
+      runtime requirement can be considered complete. User clarification is
+      pending; valid UTF-8 cases are implemented and tested.
+    classification: blocking
+    status: open
+
+  - id: MD-051
+    area: numeric-string-constructor-conversions
+    rulebooks:
+      - rules/types/types.md
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+    description: >-
+      The nominal identity and conversion relation audit found pre-existing
+      Sema permission for string(numericValue), including named string wrappers.
+      types.md requires an explicit conversion relation, but neither it nor
+      core-library.md defines this constructor cast: ToString is a separate
+      fallible member operation, and compiler_known_members.md defines string
+      construction from bytes and runes. Decide whether numeric constructor
+      casts are valid and, if so, their formatting, failure/result type and
+      relation to ToString. Existing frontend permission is characterized
+      separately from normative matrix tests; the audit does not declare its
+      runtime semantics implemented. Constrains the scalar conversion and
+      nominal-core conversion completion tracked by frontend.types-core.
+    classification: constraining
+    status: open
+
+  - id: MD-052
+    area: privileged-core-low-level-function-bodies
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+      - rules/foundations/grammar.md
+      - rules/corrections/applied/correction-string-slice-helper-20260823.md
+    description: >-
+      core-library.md sections 1.1, 1.2 and the checked string substring
+      boundary permit private privileged-core helpers with direct MLIR/LLVM
+      bodies. The applied string-slice correction requires established inline
+      MLIR/LLVM syntax, but no rulebook or grammar production defines it.
+      Decide the source delimiters and body form, low-level dialect/version
+      and backend selection, parameter/result binding and representation ABI,
+      target facts and substitutions, verification and diagnostics, and how
+      declared ownership, lifetime, effects and unsafe obligations are retained
+      across the body. Sec asm is explicitly neither Sec MLIR nor LLVM IR
+      (inline_assembly.md sections 4-5) and cannot supply this syntax.
+      Blocks core.string-slice-helper's low-level-body syntax definition and
+      its lexer, parser, AST, Sema, formatter and applicable backend support,
+      and therefore the dependent migration/removal of its compiler-known compatibility path.
+      The existing compatibility implementation remains in place; no new
+      low-level syntax or semantics is inferred from backend code. The user
+      separately scoped ordinary private Sec helpers on 2026-10-09; their
+      existing syntax, source-file access checks and frontend tooling are
+      implemented and are not blocked by this decision.
+    classification: blocking
+    status: open
+
+  - id: MD-053
+    area: constraint-effect-contracts
+    rulebooks:
+      - rules/compiler/monomorphization.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/generics.md
+      - rules/foundations/attributes.md
+    description: >-
+      monomorphization.md § 5.4 and § 12.5 check an explicit effect guarantee
+      such as @noAlloc, @noPanic or @noBlock on a generic template against its
+      generic contracts and require it for every valid substitution. A method
+      called through a constraint has no contract that promises such an effect,
+      so the template-level call is unknown and a guaranteed generic template
+      that calls any constraint method is always rejected. Neither
+      interfaces.md nor attributes.md defines whether an interface requirement
+      may carry @noAlloc, @noPanic or @noBlock (the parser rejects attributes
+      inside an interface block), whether every conformance must then satisfy
+      it, how a conforming method proves it, and how the guarantee combines with
+      inherited interfaces and generic arguments. The frontend keeps
+      constraint calls unknown for explicit template guarantees; separately,
+      concrete specialization effects are tracked as an implementation gap in
+      governance/allocation.yaml frontend.allocation.
+    classification: constraining
+    status: open
+
+  - id: MD-054
+    area: formatter-project-configuration-manifest
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/projects/projects.md
+      - rules/tooling/lsp.md
+    description: >-
+      formatter.md § 4(5) lists the project formatting configuration
+      (format_version, vertical_style, indentation_width, width_mode,
+      line_width, the adaptive widths and language_corrections) and § 4(15)
+      makes every byte-changing setting project-owned, but no rulebook names
+      where it lives in .sec/sec.toml. projects.md § 5(3) makes unknown
+      top-level tables errors unless another rulebook owns them and § 6(1) has
+      no formatter section, so a table such as [format] or [formatter] cannot
+      be chosen without inventing manifest syntax. Also undefined: what a
+      formatter does with a format_version it does not implement (reject,
+      leave sources unchanged, or fall back), whether an absent table means
+      the § 4(5) defaults, whether command-line options may override the
+      manifest under projects.md § 25, and whether language_corrections is a
+      project setting or only an explicit invocation flag. The formatter
+      implements the option values (formatter.Options) but reads no manifest.
+    classification: localized
+    status: open
+
+  - id: MD-055
+    area: formatter-import-region-detached-comments
+    rulebooks:
+      - rules/tooling/formatter.md
+    description: >-
+      formatter.md § 13(5)–(6) sorts imports by path and moves comments
+      attached to an import with it, and § 13(3) lets the formatter gather
+      scattered imports into one region. No rule says what happens to a
+      comment that belongs to no single import when imports are reordered: a
+      group heading followed by an empty line (for example "// networking"
+      above several imports), a comment between the last import and the
+      closing parenthesis, or an inline block comment. Options include
+      keeping such comments at the top of the region, attaching a heading to
+      the next import, or not reordering a region that contains one. The
+      formatter currently leaves the whole import region unchanged when it
+      contains such a comment.
+    classification: localized
     status: open

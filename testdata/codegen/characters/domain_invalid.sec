@@ -1,0 +1,3 @@
+module main
+fn Character() char { return 'Ω' }
+fn main() int { return 0 }

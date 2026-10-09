@@ -366,9 +366,9 @@ integrations:
       - Consuming Result projections reject borrowed receivers and reject a potentially active non-retained payload carrying a non-discardable obligation.
       - Explicit ownership moves reject addressed volatile/MMIO roots and their projections, while an ordinary read into local inline storage produces a snapshot that follows normal copy/move rules.
     remaining:
-      - result-borrowed-projections: implement non-consuming Result.OkRef/ErrRef with shared-borrow lifetime tracking
-      - result-projection-state-proof: permit a non-discardable alternate payload only when control-flow proves that Result state unreachable
-      - result-projection-semantic-ir-and-lowering: retain the selected payload, destroy the active alternate exactly once, and preserve consumption facts downstream
+      - "result-borrowed-projections: implement non-consuming Result.OkRef/ErrRef with shared-borrow lifetime tracking"
+      - "result-projection-state-proof: permit a non-discardable alternate payload only when control-flow proves that Result state unreachable"
+      - "result-projection-semantic-ir-and-lowering: retain the selected payload, destroy the active alternate exactly once, and preserve consumption facts downstream"
       - complete Place availability integration including nested/indexed/sliced/opaque alias cases and the ownership-v2 Availability/UnavailableReason model
       - align discard convergence, conditional availability, conditional replacement, and custom-free partial-move prohibition with ownership-v2
       - stable diagnostic IDs and mentor diagnostics for missing <-, implicit consuming construction, use-after-move, move while borrowed, invalid overlap, move from non-owned/fixed storage, and Result projection consumption
@@ -378,7 +378,7 @@ integrations:
       - -> parameter with reusable source rejects Consume(resource) and accepts Consume(<-resource)
       - -> parameter accepts a fresh temporary without synthetic <- boilerplate
       - Some(resource) rejects reusable move-only source while Some(<-resource) consumes it
-      - struct owning field rejects plain reusable move-only source and accepts Field: <-resource
+      - "struct owning field rejects plain reusable move-only source and accepts Field: <-resource"
       - non-terminal Ok(resource) rejects reusable move-only source while Ok(<-resource) is valid
       - return Ok(resource) remains valid as a terminal return transfer and return Ok(<-resource) is also accepted
       - return resource and return <-resource have identical ownership results

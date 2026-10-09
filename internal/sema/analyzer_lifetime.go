@@ -332,6 +332,9 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 	if a.checkBorrowedMovePlace(place, expressionToken(expr)) {
 		return false
 	}
+	if len(place.Projections) == 0 && a.rejectBorrowedArenaMove(place.Root, expressionToken(expr)) {
+		return false
+	}
 	a.markPlaceUnavailable(place, expressionToken(expr), "moved")
 	if len(place.Projections) == 0 && place.Type.Kind != ReferenceType {
 		a.endBorrowsHeldBy(place.Root)

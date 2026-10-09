@@ -6,69 +6,110 @@ integrations:
     area: compiler-implementation-governance
     status: implemented
     introduced_by: correction25.md
-    audited: '2026-08-20'
+    audited: "2026-08-20"
     repository_baseline: c515862
-    summary: Establish a general Sec implementation traceability rule. Where applicable, every source file and every
-      function that implements, validates, analyzes, or lowers normative Sec behavior must identify in comments the
-      canonical rulebook(s) and the specific rule/section(s) it implements. Narrow functions should cite precise rules;
-      broad cross-cutting functions may cite several books or higher-level sections. Pure non-normative infrastructure
-      may use a documented exception.
+    summary: Establish a general Sec implementation traceability rule. Where applicable, every source file and every function that implements, validates, analyzes, or lowers normative Sec behavior must identify in comments the canonical rulebook(s) and the specific rule/section(s) it implements. Narrow functions should cite precise rules; broad cross-cutting functions may cite several books or higher-level sections. Pure non-normative infrastructure may use a documented exception.
     canonical_destination:
-    - rules/README.md
+      - rules/README.md
     required_policy:
-    - file-level comments identify principal normative rulebook owners
-    - function-level comments identify the most precise practical rule or section owners
-    - multiple materially relevant rulebooks are listed rather than forcing a false single owner
-    - canonical rulebook paths are used
-    - stable rule IDs or section headings/numbers are preferred over source line numbers
-    - comments are updated in the same change when semantic ownership changes
-    - rulebook moves/replacements require source-reference migration
-    - comments are traceability metadata and never override normative rulebooks
-    - genuinely non-normative infrastructure may be exempt where no useful rule mapping exists
-    - focused semantic regression tests should cite their rule and correction where practical
+      - file-level comments identify principal normative rulebook owners
+      - function-level comments identify the most precise practical rule or section owners
+      - multiple materially relevant rulebooks are listed rather than forcing a false single owner
+      - canonical rulebook paths are used
+      - stable rule IDs or section headings/numbers are preferred over source line numbers
+      - comments are updated in the same change when semantic ownership changes
+      - rulebook moves/replacements require source-reference migration
+      - comments are traceability metadata and never override normative rulebooks
+      - genuinely non-normative infrastructure may be exempt where no useful rule mapping exists
+      - focused semantic regression tests should cite their rule and correction where practical
     implemented:
-    - canonical implementation traceability policy is defined in rules/README.md
-    - preferred Go and Sec source-reference forms are documented
-    - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
+      - canonical implementation traceability policy is defined in rules/README.md
+      - preferred Go and Sec source-reference forms are documented
+      - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
     remaining:
-    - decide whether lint/CI should verify traceability on new or modified semantic functions
-    - migrate high-value semantic files incrementally
-    - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
-    - add correction references to focused regression tests where useful
+      - decide whether lint/CI should verify traceability on new or modified semantic functions
+      - migrate high-value semantic files incrementally
+      - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
+      - add correction references to focused regression tests where useful
     audit_targets:
-    - source: correction28.md
-      functions:
-      - inferArenaCall
-      - Arena Reset/Release dependency validation helpers
-      - Arena generation and epoch validity helpers
-      - dependency-liveness and last-use integration
-    - source: correction29.md
-      functions:
-      - builtinTypes
-      - copyClassificationOf
-      - triviallyDestructible
-      - inferArenaConstructorCall
-      - inferArenaCall
-      - ArenaDomain creation, transfer, epoch, and borrowed-backing helpers
-    - source: correction27.md
-      functions:
-      - validateCompilerKnownGenericType
-      - validateCompilerKnownTypeArity
-      - static shaped product and Len validation
-      - contextualMatrixMultiplyAhead
-      - curPrecedence
-      - inferMatrixMultiplyExpression
+      - source: correction28.md
+        functions:
+          - inferArenaCall
+          - Arena Reset/Release dependency validation helpers
+          - Arena generation and epoch validity helpers
+          - dependency-liveness and last-use integration
+      - source: correction29.md
+        functions:
+          - builtinTypes
+          - copyClassificationOf
+          - triviallyDestructible
+          - inferArenaConstructorCall
+          - inferArenaCall
+          - ArenaDomain creation, transfer, epoch, and borrowed-backing helpers
+      - source: correction27.md
+        functions:
+          - validateCompilerKnownGenericType
+          - validateCompilerKnownTypeArity
+          - static shaped product and Len validation
+          - contextualMatrixMultiplyAhead
+          - curPrecedence
+          - inferMatrixMultiplyExpression
 
   - id: governance.lexical-shaped-parser-status
     area: documentation-governance
     status: implemented
-    audited: '2026-08-20'
+    audited: "2026-08-20"
     repository_baseline: c515862
-    summary: Governance now treats built-in collection and shaped type parser integration as implemented. Remaining
-      lexical/tooling work is limited to genuinely unsupported formatter, semantic-token, contextual-classification,
-      and recovery behavior.
+    summary: Governance now treats built-in collection and shaped type parser integration as implemented. Remaining lexical/tooling work is limited to genuinely unsupported formatter, semantic-token, contextual-classification, and recovery behavior.
     governance_reconciliation:
-    - remove or narrow the stale built-in collection/shaped parser-integration remaining item
-    - keep contextual x formatter/semantic-token classification as remaining
-    - keep incomplete lexical/tooling classifications that are actually unsupported
+      - remove or narrow the stale built-in collection/shaped parser-integration remaining item
+      - keep contextual x formatter/semantic-token classification as remaining
+      - keep incomplete lexical/tooling classifications that are actually unsupported
     status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: governance.yamlstatus-tooling
+    status: partial
+    summary: >-
+      cmd/yamlstatus reports governance statistics, selects remaining points,
+      edits fragments through the YAML node tree with canonical formatting, and
+      validates the whole ledger structurally with check. Ideas not yet
+      implemented are tracked in cmd/yamlstatus/IDEAS.md.
+    rules:
+      - codex.md
+      - cmd/yamlstatus/IDEAS.md
+      - governance/README.md
+    implemented:
+      - statistics and remaining-point selection (-file, -id, -point, -random, -exclude, -json)
+      - fmt harmonizes fragments into one canonical layout without changing any decoded value, and reports type hazards that only fmt -fix-types rewrites
+      - set, add, remove, move, verify, repath and new edit exact integrations, print a unified diff, write only with -write, and fail closed on unknown, ambiguous or out-of-range targets
+      - check validates the ledger (loading, fragment header, index.yaml fragment list, unique IDs, id/status, status vocabulary, verification items, checklist item shapes, merged list items) with file, line and integration ID, and edit commands refuse changes that add a problem; its first run found and fixed 24 problems
+    remaining:
+      - "-paths: report code, tests and rules paths that do not exist (IDEAS.md section 2)"
+      - "-uses PATH: list integrations referencing a file (IDEAS.md section 3)"
+      - canonical key order per integration, which needs an agreed order first (IDEAS.md section 4.1)
+      - "-md: missing-decision cross-references and stale references to closed decisions (IDEAS.md section 5)"
+      - "-corrections: applied-correction bookkeeping (IDEAS.md section 6)"
+      - "-diff BASELINE: remaining-count changes against a snapshot or HEAD (IDEAS.md section 7)"
+      - "-diagnostics: diagnostic registry versus governance and next free ID (IDEAS.md section 8)"
+      - "-grep TEXT limited to remaining items (IDEAS.md section 9)"
+    area: governance
+    integrated: "2026-10-09"
+    code:
+      - cmd/yamlstatus/main.go
+      - cmd/yamlstatus/cli.go
+      - cmd/yamlstatus/selection.go
+      - cmd/yamlstatus/document.go
+      - cmd/yamlstatus/emit.go
+      - cmd/yamlstatus/hazards.go
+      - cmd/yamlstatus/edit.go
+      - cmd/yamlstatus/check.go
+    tests:
+      - cmd/yamlstatus/main_test.go
+      - cmd/yamlstatus/selection_test.go
+      - cmd/yamlstatus/edit_test.go
+      - cmd/yamlstatus/check_test.go
+    verification:
+      - command: go run ./cmd/yamlstatus check
+        result: 0 problems in 47 fragments on 2026-10-09 after fixing the 24 problems found by the first run
+      - command: go test ./cmd/yamlstatus -count=1
+        result: passed on 2026-10-09 with well-formed and broken ledgers covering every check category, refused problem-introducing edits, and unblocked edits of fragments with pre-existing problems

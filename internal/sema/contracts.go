@@ -66,6 +66,9 @@ func astContractToken(contract ast.Contract) lexer.Token {
 // defining source locations for each owning diagnostic.
 // Rules: rules/types/contracts.md — Composition and Diagnostics.
 func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
+	if contractNode != nil {
+		a.analyzedContractNodes[contractNode] = true
+	}
 	start := len(a.errors)
 	defer func() { a.relateErrorsSince(start, typ.DeclarationToken, "type declaration") }()
 	for _, contract := range flattenASTContracts(contractNode) {
@@ -120,6 +123,7 @@ func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Cont
 				if violated, ok := firstViolatedContract(typ, constant); ok {
 					a.relateErrorsSince(start, contractSource(violated), "contract declaration")
 				}
+				a.relateErrorsSince(start, membership.Token, "contract declaration")
 			}
 		}
 	}
@@ -128,6 +132,9 @@ func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Cont
 // applyContract validates a source contract and retains its defining location.
 // Rules: rules/types/contracts.md — Applicability, Composition and Diagnostics.
 func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
+	if contractNode != nil {
+		a.analyzedContractNodes[contractNode] = true
+	}
 	start := len(a.errors)
 	defer func() { a.relateErrorsSince(start, astContractToken(contractNode), "contract declaration") }()
 	switch contract := contractNode.(type) {
@@ -156,18 +163,16 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		}
 		membershipTokens := []lexer.Token{}
 		for _, value := range contract.Values {
-			constant, ok := enumMemberConstant(typ, value)
+			constant, outcome := a.semanticCompileTimeConstantVisiting(value, map[string]bool{}, typ)
+			ok := outcome == compileTimeEvaluated
 			if !ok {
-				var outcome compileTimeOutcome
-				constant, outcome = a.semanticCompileTimeConstant(value)
-				ok = outcome == compileTimeEvaluated
 				if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
 					a.reportCompileTimeRequirement(value, outcome, "membership value", diagnostics.InvalidContractArgument, "")
 					continue
 				}
 			}
 			if !ok {
-				a.addErrorAtTokenWithMetadata(expressionToken(value), diagnostics.InvalidContractArgument, "use a compile-time value or, for an enum-based type, one of its declared members", "membership value %s is not a compile-time constant of %s", value.String(), typeDisplayName(typ))
+				a.addErrorAtTokenWithMetadata(expressionToken(value), diagnostics.InvalidContractArgument, "use a compile-time value of the base type, including a declared payload-less union or enum member", "membership value %s is not a compile-time constant of %s", value.String(), typeDisplayName(typ))
 				continue
 			}
 			if !defaultConstantCompatible(typ, constant) {
@@ -201,6 +206,9 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 	case *ast.MarkerContract:
 		if !a.contractAppliesToType(contract.Name, typ) {
 			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "%s contract does not apply to %s", contract.Name, contractApplicabilityTypeName(typ))
+			return typ
+		}
+		if contract.Name == "unique" && !a.validateUniqueEquality(typ, contract.Token) {
 			return typ
 		}
 		if contract.Name == "multipleOf" {
@@ -509,11 +517,13 @@ func (a *Analyzer) contractAppliesToType(name string, typ Type) bool {
 	case "range":
 		return isNumericType(typ)
 	case "in":
-		return isScalarContractType(typ)
+		return isScalarContractType(typ) || payloadlessUnion(typ)
 	case "multipleOf":
 		return isIntegerType(typ)
 	case "odd", "even":
 		return isIntegerType(typ)
+	case "minByteLen", "maxByteLen", "exactByteLen":
+		return typ.Kind == StringType
 	case "minLen", "maxLen", "exactLen", "notEmpty":
 		return typ.Kind == StringType || a.isCollectionContractType(typ)
 	case "unique":

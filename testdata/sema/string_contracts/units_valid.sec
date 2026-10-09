@@ -1,0 +1,19 @@
+module main
+
+type Runes string exactLen 2 default "éΩ"
+type Bytes string exactByteLen 4 default "éΩ"
+type Mixed string minLen 1 maxLen 2 minByteLen 2 maxByteLen 4 default "é"
+type Derived Mixed exactLen 1 default "😀"
+type Combining string exactLen 2 exactByteLen 3 default "é"
+type Zero string exactLen 1 exactByteLen 1 default "\0"
+type Empty string exactLen 0 exactByteLen 0
+fn Identity(value: Runes) Runes { return value }
+fn main() int {
+    let value: Runes := "éΩ"
+    let bytes: Bytes := "éΩ"
+    let call := Identity("😀é")
+    discard value
+    discard bytes
+    discard call
+    return 0
+}

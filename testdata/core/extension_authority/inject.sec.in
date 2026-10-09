@@ -1,0 +1,7 @@
+module core
+
+impl EXTEND TYPE {
+    type Injected int
+    fn Hijack() int { return 2 }
+    static property Added: int { get { return 3 } }
+}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"math/big"
 	"sec/internal/diagnostics"
 	"sec/internal/layout"
 	"sec/internal/lexer"
@@ -58,5 +59,41 @@ func TestTypeDiagnosticsSemanticMatrix(t *testing.T) {
 			}
 
 		}
+	}
+}
+
+// TestNominalIdentityCacheKeys checks that ordinary comparison and callable/cache
+// identity both distinguish declared names/modules, including structural carriers.
+// Rules: rules/types/types.md — Type identity, Arrays, Function types.
+func TestNominalIdentityCacheKeys(t *testing.T) {
+	integer := builtinType("int")
+	array := NewFixedArrayType(integer, big.NewInt(2))
+	callback := Type{Kind: FunctionType, Name: "fn(int) int", FunctionParameterTypes: []Type{integer}, FunctionReturnType: &integer}
+	for _, base := range []Type{integer, builtinType("bool"), builtinType("string"), array, callback} {
+		left := base
+		left.Name = "Identity"
+		left.Named = true
+		left.Module = "left"
+		right := left
+		right.Module = "right"
+		sibling := left
+		sibling.Name = "Sibling"
+		for _, other := range []Type{right, sibling, base} {
+			if sameConcreteType(left, other) || canonicalTypeIdentity(left) == canonicalTypeIdentity(other) {
+				t.Fatalf("nominal collision: %s / %s", canonicalTypeIdentity(left), canonicalTypeIdentity(other))
+			}
+		}
+		if !sameConcreteType(left, left) || canonicalTypeIdentity(left) != canonicalTypeIdentity(left) {
+			t.Fatal("identity is not reflexive")
+		}
+	}
+	placeholder := Type{Name: "Forward", Module: "main", Kind: InvalidType}
+	complete := Type{Name: "Forward", Module: "main", Kind: StructType, Named: true}
+	if !sameConcreteType(placeholder, complete) {
+		t.Fatal("prepass declaration identity was lost")
+	}
+	complete.Module = "other"
+	if sameConcreteType(placeholder, complete) {
+		t.Fatal("prepass placeholder crossed a module boundary")
 	}
 }

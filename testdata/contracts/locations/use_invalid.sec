@@ -1,0 +1,4 @@
+module main
+
+/* 😀 */ type Narrow Allowed range 3..5
+fn main() int { return 0 }

@@ -25,6 +25,11 @@ const coreModuleName = "core"
 //   - rules/types/units.md — separate unit-symbol namespace
 func (a *Analyzer) visibleShadowedDeclaration(name string, includeVariables bool) (moduleDeclaration, bool) {
 	accepts := func(declaration moduleDeclaration) bool {
+		// An inaccessible file-private free function is not a visible name
+		// that a parameter or local binding could shadow (§§8, 12.3, 17).
+		if declaration.Kind == moduleDeclarationFunction && !a.FunctionVisibleFromSource(Function{Name: declaration.Name, Token: declaration.Token}, a.currentSourceFile) {
+			return false
+		}
 		return declaration.Kind != moduleDeclarationUnit && validDefinitionToken(declaration.Token) &&
 			(includeVariables || declaration.Kind != moduleDeclarationVariable)
 	}

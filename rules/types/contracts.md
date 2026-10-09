@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-08
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-09
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/contracts.md`
 - **Implementation governance:** `governance/types.yaml`
@@ -86,6 +86,9 @@ multipleOf divisor
 minLen value
 maxLen value
 exactLen value
+minByteLen value
+maxByteLen value
+exactByteLen value
 regex pattern
 explicit default expression
 ```
@@ -149,6 +152,7 @@ The initial contracts apply as follows:
 | `finite` | float and decimal named types |
 | `regex` | string-like named types |
 | `minLen`, `maxLen`, `exactLen`, `notEmpty` | string and supported collection-shaped named types |
+| `minByteLen`, `maxByteLen`, `exactByteLen` | string-like named types only |
 | `unique` | supported collection-shaped named types with comparable elements |
 
 The compiler rejects a contract that does not apply to the named base type.
@@ -253,8 +257,35 @@ validated (MD-010; `rules/corrections/applied/missing-decisions-md010-md014-corr
 
 `minLen`, `maxLen`, and `exactLen` take nonnegative integer values established
 by semantic CTE.
-`notEmpty` means length greater than zero. String length uses the same unit as
-ordinary Sec string-length operations.
+For strings, `Len` equals `RuneLen`: the number of decoded Unicode scalar
+values, without normalization, grapheme clustering or display-width counting.
+`minLen`, `maxLen`, `exactLen` and `notEmpty` use this count. For supported
+collections these contracts continue to count direct logical elements.
+
+The string-only contracts `minByteLen`, `maxByteLen` and `exactByteLen` take
+nonnegative integers established by semantic CTE and compare the encoded UTF-8
+byte count (`ByteLen`). They do not apply to arrays or other collections.
+Rune and byte contracts are independent requirements in the same source-ordered
+conjunction; neither unit is silently substituted for the other.
+
+`notEmpty` means `Len > 0`. For strings this also implies `ByteLen > 0`.
+Compile-time validation and runtime validation use the same units, including
+explicit defaults, literal initialization and checked conversion.
+
+```sec
+type TwoRunes string exactLen 2
+type FourBytes string exactByteLen 4
+type Bounded string minLen 1 maxLen 8 maxByteLen 32
+// "éΩ" has Len == RuneLen == 2 and ByteLen == 4.
+```
+
+Runtime conversion evaluates its source exactly once and checks inherited and
+local contracts in canonical order. On failure no constrained value is
+constructed; the first failed length contract is reported through
+`ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex })`.
+The byte contracts use `ContractKind.MinByteLen`, `MaxByteLen` and
+`ExactByteLen`. Empty strings, embedded U+0000 and non-BMP scalars use these
+same counting rules; terminators are not part of ByteLen.
 
 `unique` requires every direct element of the contracted collection to be
 semantically unequal to every other direct element. It does not recurse into
@@ -386,7 +417,7 @@ restate them as a competing source of truth.
   `ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex })`.
 - `Kind` is the `ContractKind` of the failed contract (`Range`, `In`, `Odd`,
   `Even`, `MultipleOf`, `Finite`, `Regex`, `MinLen`, `MaxLen`, `ExactLen`,
-  `NotEmpty`, or `Unique`).
+  `NotEmpty`, `Unique`, `MinByteLen`, `MaxByteLen`, or `ExactByteLen`).
 - `DeclarationIndex` is the zero-based source-order index of the failing
   contract within the named-type declaration. It is not promised stable across
   edits that insert, remove, or reorder contracts, and it is not a pointer,

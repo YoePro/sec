@@ -9,7 +9,7 @@ import (
 )
 
 // AllocationContextFact exposes selection evidence for one canonical allocation
-// site. CreatedDomain is the resulting Arena's identity, not the domain backing
+// site. CreatedDomain is the resulting Arena's abstract creation-site identity, not the domain backing
 // its construction. Empty domain IDs and ContextKnown=false remain unresolved.
 // Rules: rules/memory/allocation.md — §§5,6,8,17(6)-(9),29(1),(3);
 // rules/memory/arena.md — §§4.2,4.3,67(4).

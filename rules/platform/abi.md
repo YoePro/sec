@@ -100,8 +100,8 @@ They correspond to:
 
 ```sec
 extern "Sec" fn NativeEntry(value: int) int
-extern "C" fn ForeignEntry(value: C::int) C::int
-extern "system" fn PlatformEntry(value: C::int) C::int
+extern "C" fn ForeignEntry(value: c::int) c::int
+extern "system" fn PlatformEntry(value: c::int) c::int
 ```
 
 The active `CompilationPlan` resolves each family to a concrete calling
@@ -505,10 +505,10 @@ Such adaptation belongs to explicit FFI or wrapper semantics.
 Compiler-known C scalar types retain distinct semantic identities such as:
 
 ```text
-C::int
-C::long
-C::long_double
-C::bool
+c::int
+c::long
+c::long_double
+c::bool
 ```
 
 Their physical representations are selected by the active C `ABIModel`.
@@ -525,6 +525,15 @@ uint
 
 do not become their C counterparts merely because their physical layouts happen
 to match on a particular target.
+
+Target-sized `int` and `uint` are legal in a foreign signature only where the
+active `ABIModel` proves that the resolved type's size, signedness, alignment,
+and argument/return classification match the foreign contract in that exact
+position. `int128`, `uint128`, `int256`, and `uint256` cross a foreign boundary
+only when the target supports the type and the selected foreign ABI explicitly
+supports that representation in that call position; code-generator integer
+support alone is not evidence. An unverified position is rejected before
+lowering (MD-023, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 4; `rules/platform/ffi.md` § 9).
 
 ---
 
@@ -557,7 +566,7 @@ is legal.
 FFI may permit a foreign declaration such as:
 
 ```sec
-extern "C" fn Inspect(value: ref Header) C::int
+extern "C" fn Inspect(value: ref Header) c::int
 ```
 
 when `ref Header` denotes the canonical non-null, call-bounded foreign borrow
@@ -583,13 +592,13 @@ and physical representation families.
 Conceptually:
 
 ```text
-fn(C::int) void
+fn(c::int) void
 ```
 
 and:
 
 ```text
-C::fn(C::int) void
+c::fn(c::int) void
 ```
 
 are not ABI-identical merely because both are callable.
@@ -1196,7 +1205,7 @@ Test:
 
 Test:
 
-- `C::` scalar representation;
+- `c::` scalar representation;
 - foreign structs;
 - foreign unions;
 - foreign enums;

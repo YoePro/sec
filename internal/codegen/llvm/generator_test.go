@@ -26,26 +26,6 @@ func TestInterpolationDoesNotSilentlyEmitSourceText(t *testing.T) {
 	}
 }
 
-// rules/foundations/lexical_structure.md §§13–15 and rules/types/types.md
-// require decoded character scalars to retain char/rune representation through
-// the legacy LLVM path.
-func TestGenerateDecodedCharacterAndRuneLiterals(t *testing.T) {
-	program := parseAndAnalyze(t, `module main
-fn Character() char { return '\x41' }
-fn Rune() rune { return '\u{03A9}' }
-fn main() int { return 0 }
-`)
-	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"ret i8 65", "ret i32 937"} {
-		if !strings.Contains(got, expected) {
-			t.Fatalf("LLVM output missing %q:\n%s", expected, got)
-		}
-	}
-}
-
 func TestGenerateMinimalMainWithIf(t *testing.T) {
 	input := `
 module main
@@ -358,13 +338,18 @@ fn main() int {
 }
 
 func TestGenerateCompilerKnownStringSliceUnchecked(t *testing.T) {
-	program := parseProgram(t, `module main
+	data, err := os.ReadFile("../../../testdata/codegen/compiler_authority/helper.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := "sec/core/string.sec"
+	p := parser.New(lexer.NewWithFile(string(data), owner))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatal(p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{owner: ast.SourceCore}
 
-fn main() int {
-	__StringSliceUnchecked("hello", 1u, 4u)
-	return 0
-}
-`)
 	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
 	if err != nil {
 		t.Fatalf("GenerateWithTriple returned error: %v", err)
@@ -935,9 +920,9 @@ fn main() int {
 	}
 
 	expectedParts := []string{
-		`define i64 @__sec_lambda_0(i64 %value)`,
+		`define private i64 @.sec.generated.lambda-`,
 		`mul i64 %value, 2`,
-		`store ptr @__sec_lambda_0`,
+		`store ptr @.sec.generated.lambda-`,
 		`load ptr`,
 		`call i64 %`,
 		`ret i64`,

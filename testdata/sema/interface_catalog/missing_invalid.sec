@@ -1,0 +1,7 @@
+module main
+
+type First struct { value: int }
+impl First implements Iterator[int] {}
+
+type Second struct { value: int }
+impl Second implements Iterator[int] {}

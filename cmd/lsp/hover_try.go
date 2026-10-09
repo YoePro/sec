@@ -173,10 +173,19 @@ func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpr
 		} else {
 			lines = append(lines, "Propagated error: `"+lspTypeName(resolved.ErrorType)+"`")
 		}
-		lines = append(lines,
-			"Propagation target: `"+lspTypeName(resolved.EnclosingResultType)+"`",
-			"Err consumed by: `enclosing function return`",
-		)
+		if resolved.TestBoundary {
+			// rules/errors/errorhandling.md §41: the test invocation is the
+			// boundary; it has no source-visible Result.
+			lines = append(lines,
+				"Propagation target: `test invocation`",
+				"Err consumed by: `test failure (unexpected error)`",
+			)
+		} else {
+			lines = append(lines,
+				"Propagation target: `"+lspTypeName(resolved.EnclosingResultType)+"`",
+				"Err consumed by: `enclosing function return`",
+			)
+		}
 		lines = append(lines, errorIdentityHoverLines(resolved)...)
 	}
 
@@ -288,9 +297,13 @@ func tryAssignmentHover(text string, program *ast.Program, analyzer *sema.Analyz
 		lines := []string{"### `try` assignment", "Error channel: `" + lspTypeName(resolved.ErrorType) + "`"}
 		switch resolved.Kind {
 		case sema.ResolvedTryAssignmentPropagation:
+			target := "`" + lspTypeName(resolved.EnclosingResultType) + "`"
+			if resolved.TestBoundary {
+				target = "`test invocation`"
+			}
 			lines = append(lines,
 				"Failure handling: `propagated`",
-				"Propagation target: `"+lspTypeName(resolved.EnclosingResultType)+"`",
+				"Propagation target: "+target,
 			)
 		default:
 			coverage := "partial"

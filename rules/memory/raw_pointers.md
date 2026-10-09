@@ -239,6 +239,8 @@ another raw-pointer-producing operation
 
 § 7(9) The source sentinel `null` is restricted by the canonical FFI/raw-pointer grammar rules; that syntax restriction does not narrow the runtime value domain of `RawPtr[T]`.
 
+§ 7(9a) The source spellings `null`, `pointer is null`, and `pointer is not null` are valid only inside an explicit `unsafe` context (`rules/platform/ffi.md` § 11). This is a restriction on source syntax, keeping foreign null semantics out of ordinary Sec code; it does not make the null test a dereference, does not validate pointee lifetime, and proves no general address safety. Both tests produce `bool`, evaluate the pointer operand once, and may appear in any boolean-expression position inside `unsafe`; `== null` and `!= null` are invalid (MD-024, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 5).
+
 § 7(10) Safe wrappers should normally convert nullable foreign outcomes into explicit abstractions such as:
 
 ```sec

@@ -217,6 +217,15 @@ RTOS leaves it target-defined.
 BareMetal disables it by default, but may enable it when the target defines a
 normal termination contract and required support.
 
+The resolved `CompilationPlan` selects exactly one compatible platform C binding
+environment for the target, normally provided from `sec/platform`. It supplies
+target-specific C binding declarations such as `c::stddef::size_t` and
+`c::time::time_t` under `c::` without a source import; the compiler owns the
+fundamental C ABI types. Missing, incompatible, ambiguous, stale, or untrusted
+binding metadata fails closed and never falls back to the host C ABI. The source
+or metadata serialization and the selection mechanism of that environment are
+not yet specified (MD-021, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 3; `rules/platform/ffi.md` § 6).
+
 ## 12. SafetyCheckPolicy
 
 All Sec 0.1 profile families preserve mandatory Sec safety semantics.

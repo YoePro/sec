@@ -15,6 +15,12 @@ them; source-level contract/default and target tests remain in `sema`.
 The parent interprets the names against the separate unit and generic type
 namespaces and reports diagnostics; the child imports only the AST.
 
+`membership/` owns immutable nominal value-class identities and semantic
+equality without source or memory comparisons. The parent resolves enum and
+union constructors through shared semantic CTE, validates contracts and supplies
+source diagnostics. Conformance tests use public Sema APIs from the child's
+external test package; Sec fixtures live in `testdata/sema/membership/`.
+
 `collectionshape/` owns exact length proofs and intersections of resolved
 length requirements. It depends only on arbitrary-precision arithmetic; the
 parent retains named contracts and source diagnostics. Length-contract and
@@ -47,3 +53,21 @@ facts, including inherited and named signatures, ownership and call-graph
 contract parity. The tests consume public Sema APIs; Analyzer-owned requirement
 resolution and fact publication stay in focused parent files to avoid a package
 cycle. Sec fixtures live under `testdata/sema/interface_calls/`.
+
+`stringcontract` owns immutable, source-ordered rune/byte length requirements,
+exact satisfiability proofs and runtime first-violation evaluation. It imports
+`collectionshape` for scalar comparisons and never imports its parent Sema
+package. Analyzer adapters retain nominal type facts, CTE and provenance.
+
+`typecompatibility/` owns the external source matrix for nominal typed values,
+explicit conversion relations, contextual literals and parameterized families.
+`type_compatibility.go` owns the Analyzer's shared identity/assignability and
+conversion checks; compiler-known refinements use canonical core type facts,
+and source fixtures live under `testdata/sema/type_compatibility/`. Runtime
+checked conversion emission remains a separate backend responsibility.
+
+`collectionshape/unique.go` owns source-ordered direct-element duplicate detection
+with caller-supplied semantic equality, without requiring hashing or recursively
+validating uniqueness. `unique_contracts.go` supplies canonical scalar constant
+proofs, resolved aggregate values and element comparability; runtime emission
+and the general semantic CTE executor retain their separate governance owners.

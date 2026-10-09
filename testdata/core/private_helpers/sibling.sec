@@ -1,0 +1,10 @@
+module core
+
+fn UseSharedHelper() int {
+    return _Shared(1)
+}
+
+fn UseLocalPrivateSpelling() int {
+    let __Increment := 3
+    return __Increment
+}

@@ -1,0 +1,5 @@
+module main
+
+fn Pull[T: Iterator[int]](value: ref mut T) Option[int] {
+    return value.Next(1)
+}

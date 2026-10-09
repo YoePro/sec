@@ -21,7 +21,8 @@ const (
 	// TryFailureBounds is a runtime-checked index (IndexError).
 	TryFailureBounds TryFailureKind = "bounds"
 	// TryFailureContract is a runtime conversion into a constrained named
-	// type (ContractError).
+	// type (canonical ConversionError for strings; other families still use the
+	// legacy ContractError channel pending MD-012 runtime integration).
 	TryFailureContract TryFailureKind = "contract"
 	// TryFailureAllocation is a runtime string concatenation or interpolation
 	// whose materialization may fail to allocate (StringError.Allocation; MD-004
@@ -101,7 +102,13 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 				visit(argument)
 			}
 			if a.runtimeContractConversion(node) {
-				points = append(points, TryFailurePoint{Kind: TryFailureContract, ErrorType: a.types["ContractError"], Expression: node, Token: node.Token})
+				errorType := a.types["ContractError"]
+				if target, ok := a.expressionTypes[node]; ok && target.Kind == StringType {
+					if conversionError, found := a.types["ConversionError"]; found {
+						errorType = conversionError
+					}
+				}
+				points = append(points, TryFailurePoint{Kind: TryFailureContract, ErrorType: errorType, Expression: node, Token: node.Token})
 			}
 		case *ast.ConversionExpression:
 			visit(node.Value)
@@ -262,9 +269,14 @@ func (a *Analyzer) inferFailureSetTryExpression(expr *ast.TryExpression, success
 		if !a.checkFailureSetPropagation(expr, points) {
 			return successType, result
 		}
+		boundary := a.tryPropagatesToTestBoundary()
+		enclosing := a.currentFunctionReturn
+		if boundary {
+			enclosing = Type{}
+		}
 		a.resolvedTries[expr] = ResolvedTry{
 			Kind: ResolvedTryFailureSetPropagation, SuccessType: successType, ErrorType: failureSetErrorType(members),
-			EnclosingResultType: a.currentFunctionReturn, Failures: append([]TryFailurePoint(nil), points...),
+			EnclosingResultType: enclosing, Failures: append([]TryFailurePoint(nil), points...), TestBoundary: boundary,
 		}
 		a.commitTryFailurePoints(points)
 		return successType, result
@@ -318,6 +330,9 @@ func (a *Analyzer) checkFailureSetPropagation(expr *ast.TryExpression, points []
 	case !a.inFunctionBody:
 		a.addBodylessTryError(expr.Token, "bodyless try cannot propagate outside a function; add a local try handler")
 		return false
+	case a.tryPropagatesToTestBoundary():
+		// Every failure, of any error type, fails the test invocation.
+		return true
 	case a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2:
 		members := tryFailureSetTypes(points)
 		a.addBodylessTryError(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or return a Result whose error channel accepts them",

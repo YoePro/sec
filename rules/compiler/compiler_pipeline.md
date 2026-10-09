@@ -1571,6 +1571,32 @@ debug helpers.
 
 § 76(4) Generated code is not a loophole around language/compiler invariants.
 
+### Generated identity records (compiler metadata, not Sec declarations)
+
+A compiler-generated identity record contains the following compiler data:
+
+- `ID`: a deterministic digest-qualified identity;
+- `Kind`: the generated artifact/resource family;
+- `Owner`: its source module and containing semantic/lexical owner;
+- `Origin`: the declaration-relative lexical occurrence path;
+- `Target`: the resolved representation-plan key, when representation affects the artifact;
+- `Source`: the current source file, line and column used for navigation and diagnostics.
+
+The identity key comprises `Kind`, `Owner`, `Origin` and `Target`. `Source`
+coordinates locate the current occurrence and are retained for traceability;
+shifting coordinates does not change a prepared lexical identity. Collection
+order, process addresses and host queries must not enter the key. Provenance
+records are exposed in canonical identity order as detached compiler data.
+Missing lexical provenance must be diagnosed instead of assigning a shared
+fallback identity. These records introduce no Sec type, function or source
+spelling and do not authorize source code to call an internal helper.
+
+Frontend Arena records identify abstract creation sites. Runtime allocation
+instances and epochs still obey the owning Arena rules; a source-site record
+is not a runtime allocation identity. Generated helper names remain separate
+from ordinary source names, and explicit linkage collisions are diagnosed.
+
+
 ---
 
 ## § 77 Platform-generated interrupt wrappers

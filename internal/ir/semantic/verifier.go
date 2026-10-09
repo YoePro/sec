@@ -88,6 +88,13 @@ func verifyStructDefinitions(module *Module) error {
 func verifyTypes(table *TypeTable) error {
 	for i, t := range table.types {
 		id := TypeID(i + 1)
+		// rules/types/types.md — concrete generic arguments participate in identity;
+		// Semantic IR type references must all resolve before any lowering.
+		for _, argument := range t.TypeArgs {
+			if _, ok := table.Lookup(argument); !ok {
+				return fmt.Errorf("type !%d has invalid type argument !%d", id, argument)
+			}
+		}
 		if t.Kind == TypeNamed {
 			if t.Identity == "" || t.Base == 0 {
 				return fmt.Errorf("invalid named type !%d", id)

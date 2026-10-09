@@ -1,0 +1,4 @@
+module main
+
+/* 😀 */ type Choices int in [1, 1]
+type Allowed int in [2, 4]

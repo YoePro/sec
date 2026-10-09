@@ -35,16 +35,17 @@ func (r *diagnosticReporter) semaDiagnostic(diagnostic sema.Error, human string,
 			End:   occurrencePosition{Line: endLine, Column: endColumn},
 		}}
 	}
-	if diagnostic.PreviousLine > 0 && diagnostic.PreviousColumn > 0 {
-		position := occurrencePosition{Line: diagnostic.PreviousLine, Column: diagnostic.PreviousColumn}
-		related := occurrenceRelated{
-			Span: occurrenceSpan{File: diagnostic.PreviousFile, Start: position, End: position},
+	for _, location := range diagnostic.RelatedLocations() {
+		start := occurrencePosition{Line: location.Line, Column: location.Column}
+		end := start
+		if location.EndLine > 0 && location.EndColumn > 0 {
+			end = occurrencePosition{Line: location.EndLine, Column: location.EndColumn}
 		}
-		if diagnostic.RelatedLabel != "" {
-			related.Message = &occurrenceMessage{Key: "related", Arguments: map[string]string{}, Text: diagnostic.RelatedLabel}
-		}
+		related := occurrenceRelated{Span: occurrenceSpan{File: location.File, Start: start, End: end}}
+		related.Message = &occurrenceMessage{Key: "related", Arguments: map[string]string{}, Text: location.Label}
 		occurrence.Related = append(occurrence.Related, related)
 	}
+
 	occurrence.addHelp(diagnostic.Help)
 	human = appendEscapeCausePaths(&occurrence, diagnostic, human)
 	human = appendAllocationCausePath(&occurrence, diagnostic, human)

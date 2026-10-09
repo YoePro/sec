@@ -21,6 +21,9 @@ import (
 )
 
 type Analyzer struct {
+	// analyzedContractNodes tracks exact declarations consumed during this analysis.
+	// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites.
+	analyzedContractNodes        map[ast.Contract]bool
 	analysisDepth                AnalysisDepth
 	analysisBudget               AnalysisBudget
 	pitfallPrioritySources       map[string]bool
@@ -42,6 +45,7 @@ type Analyzer struct {
 	validImplStatements          map[*ast.ImplStatement]bool
 	currentImplTarget            string
 	currentModule                string
+	currentSourceFile            string
 	genericTypes                 map[string]Type
 	genericTypeInstances         map[genericInstanceKey]Type
 	genericFuncInstances         map[genericInstanceKey]Function
@@ -153,7 +157,7 @@ type Analyzer struct {
 	boundsIncomplete           map[sourceTokenKey]bool
 	currentCallable            CallableID
 	callGraphPathReachable     bool
-	nextArenaDomainID          uint64
+	generatedIdentities        *GeneratedIdentityIndex
 	spawnCallExpression        *ast.CallExpression
 	spawnCallExecution         CallExecutionRelation
 	typeDefinitionTokens       map[string]lexer.Token
@@ -345,6 +349,7 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
+	a.analyzedContractNodes = map[ast.Contract]bool{}
 	a.errors = nil
 	a.analysisSchedule = nil
 	a.trustedCoreSources = map[string]bool{}
@@ -424,6 +429,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
 	a.callGraph.syntaxOrigins = prepareGraphSyntaxOrigins(program)
+	a.generatedIdentities = NewGeneratedIdentityIndex(program)
 	a.escapeAnalysis = newEscapeAnalysis()
 	a.parameterUsageAnalysis = newParameterUsageAnalysis()
 	a.pitfallAnalysis = newPitfallAnalysis()
@@ -468,6 +474,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validImplStatements = map[*ast.ImplStatement]bool{}
 	a.currentImplTarget = ""
 	a.currentModule = ""
+	a.currentSourceFile = ""
 	a.genericTypes = nil
 	a.genericTypeInstances = map[genericInstanceKey]Type{}
 	a.genericFuncInstances = map[genericInstanceKey]Function{}
@@ -934,7 +941,11 @@ func (a *Analyzer) Symbols() map[string]Symbol {
 	return out
 }
 
+// withProgramModules supplies declaration module and source-file context to
+// each semantic pass, restoring both when nested visits complete.
+// Rules: rules/foundations/names_scopes_visibility.md — §§3, 12.3, 19.
 func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.Statement)) {
+	previousFile := a.currentSourceFile
 	previous := a.currentModule
 	module := ""
 	for _, stmt := range program.Statements {
@@ -946,9 +957,11 @@ func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.State
 			continue
 		}
 		a.currentModule = module
+		a.currentSourceFile = statementToken(stmt).File
 		visit(stmt)
 	}
 	a.currentModule = previous
+	a.currentSourceFile = previousFile
 }
 
 // validateModuleDeclaration requires every source file to declare exactly one
@@ -1677,51 +1690,6 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 	}
 }
 
-func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
-	if impl == nil || impl.Target == nil {
-		return Type{}, false
-	}
-	// A unit whose spelling an ordinary type of another module took keeps its
-	// impl block in the unit's own module (rules/types/units.md).
-	if unitEntry, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && unitEntry.Module == a.currentModule {
-		if unit, ok := a.units[impl.Target.Name]; ok {
-			a.bindDefinition(impl.Target.Token, unit.Token)
-		}
-		a.shadowedUnitImpls[impl] = true
-		return unitEntry, true
-	}
-	target, ok := a.types[impl.Target.Name]
-	if !ok {
-		a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
-		return Type{}, false
-	}
-	if definition, exists := a.typeDefinitionTokens[impl.Target.Name]; exists {
-		a.bindDefinition(impl.Target.Token, definition)
-	}
-	if !target.Named && target.Kind != InvalidType && !a.isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
-		a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
-		return Type{}, false
-	}
-	if target.Kind == InterfaceType {
-		a.addErrorAtToken(impl.Target.Token, "interface %s cannot have an ordinary impl block", impl.Target.Name)
-		return Type{}, false
-	}
-	if !impl.Extends && target.Module != "" && a.currentModule != "" && target.Module != a.currentModule {
-		a.addErrorAtToken(
-			impl.Target.Token,
-			"ordinary impl for %s must be declared in defining module %s, not module %s",
-			typeDisplayName(target),
-			moduleDisplayName(target.Module),
-			moduleDisplayName(a.currentModule),
-		)
-		return Type{}, false
-	}
-	if !a.validateImplGenericTarget(impl, target) {
-		return Type{}, false
-	}
-	return target, true
-}
-
 // implBlockKey separates the impl block of a shadowed unit from the impl
 // block of the same-spelled ordinary type in another module.
 func (a *Analyzer) implBlockKey(impl *ast.ImplStatement) string {
@@ -1753,75 +1721,11 @@ func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
 	}
 }
 
-func (a *Analyzer) isAllowedCoreBuiltinImpl(target string, token lexer.Token) bool {
-	if !a.isTrustedCoreSourceToken(token) {
-		return false
-	}
-	return isCoreBuiltinImplTarget(target)
-}
-
 // isTrustedCoreSourceToken enforces rules/library/core-library.md source
 // authority. correction9.md requires loader provenance rather than a forgeable
 // /sec/core/ pathname substring.
 func (a *Analyzer) isTrustedCoreSourceToken(token lexer.Token) bool {
 	return token.File != "" && a.trustedCoreSources[filepath.Clean(token.File)]
-}
-
-func isCoreBuiltinImplTarget(target string) bool {
-	switch target {
-	case "bool",
-		"byte",
-		"char",
-		"rune",
-		"string",
-		"int",
-		"int8",
-		"int16",
-		"int32",
-		"int64",
-		"int128",
-		"int256",
-		"uint",
-		"uint8",
-		"uint16",
-		"uint32",
-		"uint64",
-		"uint128",
-		"uint256",
-		"float",
-		"float32",
-		"float64",
-		"decimal",
-		"decimal128",
-		"date",
-		"time",
-		"datetime",
-		"duration",
-		"RawPtr",
-		"Option",
-		"Result",
-		// rules/collections/collections.md sections 1-2 and 13-15 make
-		// these compiler-known collection families part of the core surface.
-		// Only loader-proven core sources reach this allowlist; stdlib and user
-		// modules therefore cannot use it to monkey-patch the families.
-		"list",
-		"map",
-		"set",
-		// rules/collections/shaped-types.md sections 34-35 reserve the
-		// canonical shaped semantics for the compiler while permitting core
-		// helpers and additive algorithms on these compiler-known identities.
-		"vector",
-		"matrix",
-		"tensor",
-		"tensor_view",
-		"Shape",
-		"Strides",
-		"TensorLayout",
-		"MemorySpace":
-		return true
-	default:
-		return false
-	}
 }
 
 func (a *Analyzer) validateImplGenericTarget(stmt *ast.ImplStatement, target Type) bool {
@@ -1923,7 +1827,7 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 }
 
 func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
-	resolvedTypes := a.analyzeNonGenericTypeDependencies(program)
+	resolvedTypes := a.analyzeLayoutTypeDependencies(program)
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt := stmt.(type) {
 		case *ast.TypeDeclStatement:
@@ -5268,6 +5172,9 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	if valueType.Kind == InvalidType {
 		return
 	}
+	if valueType.Name == "Arena" && a.rejectBorrowedArenaReturn(stmt.Value) {
+		return
+	}
 	if variadicPackValue(valueType) {
 		// rules/declarations/functions.md section 32: a pack may not escape
 		// the invocation through the function result.
@@ -7653,50 +7560,6 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 	}
 }
 
-func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targetName string) []Type {
-	if len(refs) == 0 {
-		return nil
-	}
-
-	implemented := []Type{}
-	seen := map[string]lexer.Token{}
-	for _, ref := range refs {
-		typ, ok := a.resolveType(ref)
-		if !ok {
-			continue
-		}
-		if typ.Kind != InterfaceType {
-			a.addErrorAtToken(ref.Token, "implemented type %s on %s is not an interface", typeDisplayName(typ), targetName)
-			continue
-		}
-		// Compiler-known interfaces have no source declaration token. Anchor
-		// conformance diagnostics at the explicit implements clause instead of
-		// leaking a synthetic 0:0 location to CLI and LSP consumers.
-		if typ.Intrinsic {
-			for index := range typ.InterfaceMethods {
-				typ.InterfaceMethods[index].Token = ref.Token
-			}
-			for index := range typ.InterfaceProperties {
-				typ.InterfaceProperties[index].Token = ref.Token
-			}
-			for index := range typ.InterfaceEvents {
-				typ.InterfaceEvents[index].Token = ref.Token
-			}
-		}
-		if previous, exists := seen[typ.Name]; exists {
-			_ = previous
-			a.addErrorAtToken(ref.Token, "duplicate implemented interface %s on %s", typeDisplayName(typ), targetName)
-			continue
-		}
-		if _, recorded := a.implementsClauseTokens[targetName+"\x00"+typ.Name]; !recorded {
-			a.implementsClauseTokens[targetName+"\x00"+typ.Name] = ref.Token
-		}
-		seen[typ.Name] = ref.Token
-		implemented = append(implemented, typ)
-	}
-	return implemented
-}
-
 // analyzeNestedTypeDeclaration resolves an associated nominal declaration and
 // validates its generic type-parameter names and same-module type shadowing in
 // the owner's member namespace.
@@ -9722,7 +9585,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		if !ok || !requiresOwnershipTransfer(symbol.Type) {
 			return false
 		}
-		if a.checkBorrowedMove(expr.Value, expr.Token) {
+		if a.checkBorrowedMove(expr.Value, expr.Token) || a.rejectBorrowedArenaMove(expr.Value, expr.Token) {
 			return false
 		}
 		a.moved[expr.Value] = expr.Token
@@ -10580,18 +10443,22 @@ func (a *Analyzer) validateShapedStaticType(token lexer.Token, typ *Type, minCon
 	return true
 }
 
+// validateVoidTypeArguments permits void only in canonical pointer, result and
+// execution-completion positions, including declared wrappers of those families.
+// Rules: rules/types/types.md — void; rules/concurrency/tasks.md — §§3(3), 12(9), 16(11); rules/concurrency/threads.md — completion handles.
 func (a *Analyzer) validateVoidTypeArguments(token lexer.Token, typ Type) bool {
+	representation := a.namedRepresentation(typ)
 	for index, argument := range typ.TypeArgs {
 		if argument.Kind != VoidType {
 			continue
 		}
-		if typ.Name == "RawPtr" || typ.Name == "Result" && index == 0 {
+		if typ.Kind == RawPtrType || typ.Kind == ResultType && index == 0 {
 			continue
 		}
 		// rules/concurrency/tasks.md sections 3(3), 12(9), and 16(11), plus
 		// rules/concurrency/threads.md: execution handles and task outcomes may
 		// carry void. This denotes completion without a value, not stored void.
-		if index == 0 && (typ.Name == "Task" || typ.Name == "TaskOutcome" || typ.Name == "Thread" || typ.Name == "ThreadObserver") {
+		if index == 0 && (representation.Name == "Task" || representation.Name == "TaskOutcome" || representation.Name == "Thread" || representation.Name == "ThreadObserver") {
 			continue
 		}
 		a.addErrorAtToken(token, "%s does not permit void as a type argument", typ.Name)
@@ -10706,6 +10573,9 @@ func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference) (Type, bool) {
 	return typ, true
 }
 
+// instantiateGenericType substitutes concrete arguments into canonical declaration
+// and declared-base facts before caching a nominal instance.
+// Rules: rules/declarations/generics.md — §17 Substitution; rules/types/types.md — Generic and parameterized types.
 func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	key := genericTypeInstanceKey(typ)
 	if existing, ok := a.genericTypeInstances[key]; ok {
@@ -10720,6 +10590,10 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	}
 
 	out := typ
+	if typ.NamedBase != nil {
+		base := substituteGenericType(*typ.NamedBase, substitution)
+		out.NamedBase = &base
+	}
 	memberTemplate := typ
 	// A named template whose representation is its own type parameter, such as
 	// `type Wrapped[T] T`, initially has GenericType as its carrier. Substitute
@@ -10837,6 +10711,9 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 //   - rules/types/types.md — named types
 func genericNamedTypeWithRepresentation(template Type, representation Type) Type {
 	out := representation
+	base := representation
+	out.NamedBase = &base
+	out.FixedNamedArguments = false
 	out.Name = template.Name
 	out.Module = template.Module
 	out.Named = true
@@ -10868,7 +10745,14 @@ func genericStructFieldHasDirectRecursiveStorage(owner Type, field Type) bool {
 	}
 }
 
+// substituteGenericType replaces parameters in representation, element and
+// callable facts while retaining each named declaration identity.
+// Rules: rules/declarations/generics.md — §17 Substitution; rules/types/types.md — Named types.
 func substituteGenericType(typ Type, substitution map[string]Type) Type {
+	if typ.NamedBase != nil {
+		base := substituteGenericType(*typ.NamedBase, substitution)
+		typ.NamedBase = &base
+	}
 	if typ.Kind == GenericType {
 		if concrete, ok := substitution[typ.Name]; ok {
 			return concrete
@@ -12945,84 +12829,8 @@ func genericFunctionInstanceKey(function Function, substitution map[string]Type)
 	}
 }
 
-func typeDeclarationIdentity(typ Type) string {
-	return typ.Module + ":" + string(typ.Kind) + ":" + typ.Name
-}
-
 func functionDeclarationIdentity(function Function) string {
 	return fmt.Sprintf("%s:fn:%s:%d:%d", function.Module, function.Name, function.Token.Line, function.Token.Column)
-}
-
-func canonicalTypeArgumentsKey(args []Type) string {
-	if len(args) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(args))
-	for _, arg := range args {
-		parts = append(parts, canonicalTypeIdentity(arg))
-	}
-	return strings.Join(parts, ";")
-}
-
-func canonicalTypeIdentity(typ Type) string {
-	switch typ.Kind {
-	case ArrayType:
-		shape := string(arrayShapeOf(typ))
-		if length, ok := exactFixedArrayLength(typ); ok {
-			shape += ":" + length.String()
-		}
-		if typ.Element == nil {
-			return "array:" + shape + ":<nil>"
-		}
-		return "array:" + shape + ":" + canonicalTypeIdentity(*typ.Element)
-	case SliceType:
-		if typ.Element == nil {
-			return "slice:<nil>"
-		}
-		return "slice:" + canonicalTypeIdentity(*typ.Element)
-	case VariadicPackType:
-		if typ.Element == nil {
-			return "variadic-pack:<nil>"
-		}
-		return "variadic-pack:" + canonicalTypeIdentity(*typ.Element)
-	case FunctionType:
-		params := make([]string, 0, len(typ.FunctionParameterTypes))
-		for _, param := range typ.FunctionParameterTypes {
-			params = append(params, canonicalTypeIdentity(param))
-		}
-		returnType := "<nil>"
-		if typ.FunctionReturnType != nil {
-			returnType = canonicalTypeIdentity(*typ.FunctionReturnType)
-		}
-		shape := "fixed"
-		if typ.FunctionVariadic {
-			shape = "variadic"
-		}
-		return string(normalizedCallableCapability(typ.FunctionCapability)) + ":fn:" + shape + ":(" + strings.Join(params, ",") + ")->" + returnType
-	default:
-		identity := typeDeclarationIdentity(typ)
-		if identity == "::" || typ.Name == "" {
-			identity = string(typ.Kind)
-		}
-		if len(typ.TypeArgs) > 0 {
-			identity += "[" + canonicalTypeArgumentsKey(typ.TypeArgs) + "]"
-		}
-		if len(typ.ConstArgs) > 0 {
-			parts := make([]string, 0, len(typ.ConstArgs))
-			for _, arg := range typ.ConstArgs {
-				parts = append(parts, fmt.Sprintf("%d", arg))
-			}
-			identity += "[" + strings.Join(parts, ";") + "]"
-		}
-		return identity
-	}
-}
-
-func genericFunctionDisplayName(name string, function Function) string {
-	if len(function.Parameters) == 0 {
-		return name
-	}
-	return name
 }
 
 func (a *Analyzer) resolveFunctionValueInitializer(target Type, expr ast.Expression) (Type, bool) {
@@ -13118,16 +12926,6 @@ func functionCallableCapability(function Function) CallableCapability {
 		return CallableMutable
 	}
 	return CallableShared
-}
-
-func (a *Analyzer) accessibleFunctions(functions []Function) []Function {
-	out := make([]Function, 0, len(functions))
-	for _, function := range functions {
-		if a.canAccessDeclaredName(function.Name, function.Module) {
-			out = append(out, function)
-		}
-	}
-	return out
 }
 
 func (a *Analyzer) canAccessDeclaredName(name string, declarationModule string) bool {
@@ -15644,267 +15442,6 @@ func (a *Analyzer) checkInitializerType(target Type, value Type, expr ast.Expres
 	return false
 }
 
-func canInitialize(target Type, value Type, expr ast.Expression) bool {
-	if target.Kind == InvalidType || value.Kind == InvalidType {
-		return true
-	}
-	// A never expression has no continuing path on which a value would need to
-	// inhabit the target type.
-	if value.Kind == NeverType {
-		return true
-	}
-	if target.Kind == AnyType {
-		return value.Kind != VoidType && value.Kind != NeverType
-	}
-	if value.Kind == AnyType {
-		return target.Kind == AnyType
-	}
-	if hasUnitSemantics(target) || hasUnitSemantics(value) {
-		return canInitializeUnitQuantity(target, value, expr)
-	}
-	if allowed, foreign := canInitializeForeignCScalar(target, value, isNumericLiteral(expr) || isBooleanLiteral(expr)); foreign {
-		return allowed
-	}
-	// rules/errors/errorhandling.md defines a one-way, error-specific widening
-	// relation. It is not general interface inheritance and never permits
-	// implicit narrowing from error to one concrete error family.
-	if target.Kind == ErrorRootType || value.Kind == ErrorRootType {
-		return target.Kind == ErrorRootType && (value.Kind == ErrorRootType || value.ErrorAssignable)
-	}
-
-	if target.Kind == FunctionType || value.Kind == FunctionType {
-		return sameFunctionType(target, value)
-	}
-
-	if target.Kind == ReferenceType {
-		if target.Element == nil {
-			return false
-		}
-		if value.Kind == ReferenceType {
-			return sameConcreteType(target, value)
-		}
-		return canInitialize(*target.Element, value, expr)
-	}
-
-	if target.Kind == ArrayType || value.Kind == ArrayType || target.Kind == SliceType || value.Kind == SliceType {
-		// rules/collections/collections.md; correction26.md: T[] and T[N]
-		// are distinct owning representations. Dynamic owners initialize only
-		// from the same dynamic owner type; fixed arrays require exact extent.
-		if target.Kind == ArrayType && value.Kind == ArrayType &&
-			arrayShapeOf(target) == ArrayShapeDynamic && arrayShapeOf(value) == ArrayShapeDynamic &&
-			target.Element != nil && value.Element != nil {
-			return canInitialize(*target.Element, *value.Element, expr)
-		}
-		return sameConcreteType(target, value)
-	}
-
-	if target.Kind == EnumType || value.Kind == EnumType {
-		return target.Kind == EnumType && value.Kind == EnumType && sameConcreteType(target, value)
-	}
-
-	if target.Kind == StructType || value.Kind == StructType {
-		return target.Kind == StructType && value.Kind == StructType && sameConcreteType(target, value)
-	}
-
-	if target.Kind == RegisterType || value.Kind == RegisterType {
-		return target.Kind == RegisterType && value.Kind == RegisterType && sameConcreteType(target, value)
-	}
-
-	if target.Kind == UnionType || value.Kind == UnionType {
-		return target.Kind == UnionType && value.Kind == UnionType && sameConcreteType(target, value)
-	}
-
-	if len(target.TypeArgs) > 0 || len(value.TypeArgs) > 0 {
-		return sameConcreteType(target, value)
-	}
-
-	if (isNominal(target) || isNominal(value)) && target.Name != value.Name {
-		if target.Kind == StringType && value.Kind == StringType {
-			_, literal := expr.(*ast.StringLiteral)
-			return literal
-		}
-		return canUntypedNumericInitializeNominal(target, value, expr)
-	}
-
-	if target.Kind == value.Kind {
-		if isNumericType(target) && isNumericType(value) {
-			if isNumericLiteral(expr) {
-				return true
-			}
-			return sameConcreteType(target, value)
-		}
-		return true
-	}
-
-	if target.Kind == UintType && value.Kind == IntType {
-		return isNumericLiteral(expr)
-	}
-
-	if target.Kind == DecimalType && isNumericLiteral(expr) {
-		_, ok := decimalLiteralValue(expr)
-		return ok
-	}
-
-	if target.Kind == FloatType && value.Kind == DecimalType && isNumericLiteral(expr) {
-		return true
-	}
-
-	return false
-}
-
-// canInitializeUnitQuantity applies the implicit fixed-conversion policy from
-// rules/types/units.md before nominal numeric initialization is considered.
-func canInitializeUnitQuantity(target Type, value Type, expr ast.Expression) bool {
-	if isUntypedNumericExpression(expr) && hasUnitSemantics(target) && !hasUnitSemantics(value) &&
-		isNumericType(target) && isNumericType(value) {
-		return target.Kind == value.Kind ||
-			(target.Kind == UintType && value.Kind == IntType) ||
-			(target.Kind == DecimalType && (value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType)) ||
-			(target.Kind == FloatType && (value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType))
-	}
-	if !isNumericType(target) || !isNumericType(value) {
-		return false
-	}
-	// rules/types/units.md, "Same named unit": no unit conversion is needed.
-	if sameConcreteType(target, value) {
-		return true
-	}
-	if !sameNumericCarrier(target, value) || !target.Dimension.Equal(value.Dimension) {
-		return false
-	}
-	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(value)
-	if !unitKindCompatible(to, from) || !unitOriginCompatible(to, from) || to.Role != from.Role {
-		return false
-	}
-	return exactImplicitUnitConversion(from, to, target.Kind)
-}
-
-func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expression) bool {
-	if !isUntypedNumericExpression(expr) {
-		return false
-	}
-	switch target.Underlying {
-	case "int", "int8", "int16", "int32", "int64", "int128", "int256":
-		return value.Kind == IntType || value.Kind == UintType
-	case "uint", "uint8", "uint16", "uint32", "uint64", "uint128", "uint256":
-		return value.Kind == IntType || value.Kind == UintType
-	case "float", "float32", "float64":
-		return value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType
-	case "decimal", "decimal128":
-		return value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType
-	default:
-		return false
-	}
-}
-
-// canExplicitConvert admits only conversion spellings authorized by the
-// source and target type families; enum/string permission remains nominal and
-// explicit.
-//
-// Rules:
-//   - rules/declarations/enums.md — "Conversions"
-//   - rules/types/types.md — explicit conversions
-func canExplicitConvert(target Type, value Type) bool {
-
-	if target.Kind == InvalidType || value.Kind == InvalidType {
-		return false
-	}
-	if target.Kind == AnyType {
-		return value.Kind != VoidType && value.Kind != NeverType
-	}
-	if value.Kind == AnyType {
-		return false
-	}
-
-	// rules/concurrency/mutex.md §13 and temporal.md §4: opaque monotonic
-	// points cannot be reinterpreted as wall-clock or other struct values.
-	if target.MonotonicPoint || value.MonotonicPoint {
-		return target.MonotonicPoint && value.MonotonicPoint
-	}
-
-	if target.Kind == EnumType && isIntegerType(value) {
-		return true
-	}
-	if target.Kind == EnumType && target.Underlying == "string" && value.Kind == StringType && !value.Named {
-		return true
-	}
-	if target.Kind == RegisterType && isIntegerType(value) {
-		return true
-	}
-
-	// rules/types/types.md defines char and rune as distinct scalar types whose
-	// represented values cross the integer boundary only through an explicit
-	// conversion. This grants the conversion spelling, not implicit arithmetic
-	// or assignability between the families.
-	if isIntegerType(target) && (isIntegerType(value) || value.Kind == DecimalType || value.Kind == CharType || value.Kind == RuneType) {
-		return true
-	}
-
-	if isIntegerType(target) && value.Kind == EnumType {
-		return true
-	}
-	if target.Kind == StringType && !target.Named && value.Kind == EnumType && value.Underlying == "string" {
-		return true
-	}
-
-	if target.Kind == CharType && (isIntegerType(value) || value.Kind == RuneType) {
-		return true
-	}
-
-	if target.Kind == RuneType && (isIntegerType(value) || value.Kind == CharType) {
-		return true
-	}
-
-	if target.Kind == BoolType && isNumericType(value) {
-		return true
-	}
-
-	if target.Kind == RawPtrType && (value.Kind == UintType || value.Kind == RawPtrType || value.Kind == ReferenceType) {
-		return true
-	}
-	if target.Kind == UintType && (value.Kind == RawPtrType || value.Kind == ReferenceType) {
-		return true
-	}
-
-	if target.Kind == StringType && isNumericType(value) {
-		return true
-	}
-
-	if target.Kind == UnionType || value.Kind == UnionType {
-		return target.Kind == UnionType && value.Kind == UnionType && sameConcreteType(target, value)
-	}
-
-	if target.Kind == value.Kind {
-		return true
-	}
-
-	if target.Kind == FloatType && isNumericType(value) {
-		return true
-	}
-
-	if target.Kind == DecimalType && isNumericType(value) {
-		return true
-	}
-
-	return false
-}
-
-func hasContracts(typ Type) bool {
-	return len(typ.Contracts) > 0
-}
-
-func isNominal(typ Type) bool {
-	return typ.Named && (typ.Kind == EnumType || typ.Kind == UnionType || hasContracts(typ) || !typ.Dimension.IsZero())
-}
-
-func isIntegerType(typ Type) bool {
-	return typ.Kind == IntType || typ.Kind == UintType
-}
-
-func isNumericType(typ Type) bool {
-	return typ.Kind == IntType || typ.Kind == UintType || typ.Kind == FloatType || typ.Kind == DecimalType
-}
-
 func taskType(result Type) Type {
 	return Type{Name: "Task", Kind: StructType, TypeArgs: []Type{result}}
 }
@@ -15989,66 +15526,6 @@ func atomicFetchOperationSupported(operation string, element Type) bool {
 	}
 }
 
-func sameConcreteType(left Type, right Type) bool {
-	if left.Kind == FunctionType || right.Kind == FunctionType {
-		return sameFunctionType(left, right)
-	}
-	if left.Kind == ArrayType || right.Kind == ArrayType {
-		return left.Kind == ArrayType && right.Kind == ArrayType &&
-			sameArrayShape(left, right) && left.Element != nil && right.Element != nil &&
-			sameConcreteType(*left.Element, *right.Element)
-	}
-	if left.Kind == VariadicPackType || right.Kind == VariadicPackType {
-		return left.Kind == VariadicPackType && right.Kind == VariadicPackType &&
-			left.Element != nil && right.Element != nil && sameConcreteType(*left.Element, *right.Element)
-	}
-	if left.Unit != "" || right.Unit != "" {
-		return left.Kind == right.Kind &&
-			left.Name == right.Name &&
-			left.Unit == right.Unit &&
-			sameTypeArguments(left.TypeArgs, right.TypeArgs) &&
-			sameConstArguments(left.ConstArgs, right.ConstArgs)
-	}
-	if !left.Dimension.IsZero() || !right.Dimension.IsZero() {
-		return left.Kind == right.Kind &&
-			left.Name == right.Name &&
-			left.Dimension.Equal(right.Dimension) &&
-			sameTypeArguments(left.TypeArgs, right.TypeArgs) &&
-			sameConstArguments(left.ConstArgs, right.ConstArgs)
-	}
-	if left.Name != "" || right.Name != "" {
-		return left.Name == right.Name &&
-			(!isEventFamilyName(left.Name) || eventCapacity(left) == eventCapacity(right)) &&
-			sameTypeArguments(left.TypeArgs, right.TypeArgs) &&
-			sameConstArguments(left.ConstArgs, right.ConstArgs)
-	}
-	return left.Kind == right.Kind
-}
-
-func sameTypeArguments(left []Type, right []Type) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if !sameConcreteType(left[i], right[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func sameConstArguments(left []int64, right []int64) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func implicitlyCopyable(typ Type) bool {
 	switch CopyClassificationOf(typ) {
 	case CopyTrivial, CopySemantic:
@@ -16056,30 +15533,6 @@ func implicitlyCopyable(typ Type) bool {
 	default:
 		return false
 	}
-}
-
-func sameFunctionType(left Type, right Type) bool {
-	if left.Kind != FunctionType || right.Kind != FunctionType {
-		return false
-	}
-	if left.FunctionReturnType == nil || right.FunctionReturnType == nil {
-		return false
-	}
-	if normalizedCallableCapability(left.FunctionCapability) != normalizedCallableCapability(right.FunctionCapability) {
-		return false
-	}
-	if left.FunctionVariadic != right.FunctionVariadic {
-		return false
-	}
-	if len(left.FunctionParameterTypes) != len(right.FunctionParameterTypes) {
-		return false
-	}
-	for i := range left.FunctionParameterTypes {
-		if !sameConcreteType(left.FunctionParameterTypes[i], right.FunctionParameterTypes[i]) {
-			return false
-		}
-	}
-	return sameConcreteType(*left.FunctionReturnType, *right.FunctionReturnType)
 }
 
 func assignmentVerb(operator string) string {
@@ -16199,8 +15652,17 @@ func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
 // presentations such as `sec analyse`, keeping one display authority.
 func TypeDisplayName(typ Type) string { return typeDisplayName(typ) }
 
+// typeDisplayName renders source identity, including declared generic arguments
+// without inventing parameters for nongeneric wrappers of generic carriers.
+// Rules: rules/types/types.md — Named types, Generic and parameterized types.
 func typeDisplayName(typ Type) string {
-	if typ.Kind == ReferenceType && typ.Element != nil {
+	// A nongeneric named declaration inherits carrier arguments without gaining
+	// new source parameters. Its name remains the declared source spelling.
+	// Rules: rules/types/types.md — Named types, Generic and parameterized types.
+	if typ.Named && typ.FixedNamedArguments {
+		return typ.Name
+	}
+	if !typ.Named && typ.Kind == ReferenceType && typ.Element != nil {
 		if typ.ReferenceMutable {
 			return "ref mut " + typeDisplayName(*typ.Element)
 		}
@@ -16208,10 +15670,10 @@ func typeDisplayName(typ Type) string {
 	}
 	// rules/types/types.md "Named types": a named array or slice type is
 	// presented by its nominal identity, not its structural representation.
-	if typ.Named && typ.Name != "" && (typ.Kind == ArrayType || typ.Kind == SliceType) {
+	if typ.Named && typ.Name != "" && len(typ.TypeArgs) == 0 && len(typ.ConstArgs) == 0 && (typ.Kind == ArrayType || typ.Kind == SliceType) {
 		return typ.Name
 	}
-	if typ.Kind == ArrayType && typ.Element != nil {
+	if !typ.Named && typ.Kind == ArrayType && typ.Element != nil {
 		if arrayShapeOf(typ) == ArrayShapeDynamic {
 			return typeDisplayName(*typ.Element) + "[]"
 		}
@@ -16220,13 +15682,13 @@ func typeDisplayName(typ Type) string {
 		}
 		return typeDisplayName(*typ.Element) + "[invalid]"
 	}
-	if typ.Kind == SliceType && typ.Element != nil {
+	if !typ.Named && typ.Kind == SliceType && typ.Element != nil {
 		return typeDisplayName(*typ.Element) + "[]"
 	}
 	if typ.Kind == VariadicPackType && typ.Element != nil {
 		return "..." + typeDisplayName(*typ.Element)
 	}
-	if typ.Kind == FunctionType {
+	if !typ.Named && typ.Kind == FunctionType {
 		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ), typ.FunctionCapability, typ.FunctionVariadic)
 	}
 	if typ.Name != "" && (len(typ.TypeArgs) > 0 || len(typ.ConstArgs) > 0) {

@@ -1,0 +1,73 @@
+module main
+
+fn Consume(-> arena: Arena) void {
+    discard arena
+}
+
+fn ReadWhileLive() byte {
+    let mut buffer: byte[] := [0u, 0u]
+    let mut arena := Arena.FromBuffer(buffer)
+    let first := buffer[0]
+    arena.Release()
+    return first
+}
+
+fn TwoArenas() void {
+    let mut buffer: byte[] := [0u, 0u]
+    let mut first := Arena.FromBuffer(buffer)
+    let mut second := Arena.FromBuffer(buffer)
+    first.Release()
+    second.Release()
+}
+
+fn MovedArenaStillControls() byte {
+    let mut buffer: byte[] := [0u, 0u]
+    let arena := Arena.FromBuffer(buffer)
+    let mut owner :<- arena
+    let first := buffer[0]
+    owner.Release()
+    return first
+}
+
+fn ReturnBinding() Arena {
+    let mut buffer: byte[] := [0u, 0u]
+    let arena := Arena.FromBuffer(buffer)
+    return arena
+}
+
+fn ReturnDirect(buffer: ref mut byte[]) Arena {
+    return Arena.FromBuffer(buffer)
+}
+
+fn PassConsuming() void {
+    let mut buffer: byte[] := [0u, 0u]
+    let arena := Arena.FromBuffer(buffer)
+    Consume(<-arena)
+}
+
+fn ImmutableBacking() void {
+    let buffer: byte[] := [0u, 0u]
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Reset()
+}
+
+fn WrongElement() void {
+    let mut buffer: int[] := [0, 0]
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Reset()
+}
+
+fn ReleaseThroughReference(arena: ref mut Arena) void {
+    arena.Release()
+}
+
+fn ResetThroughSharedReference(arena: ref Arena) void {
+    arena.Reset()
+}
+
+fn StaleAfterResetThroughReference(arena: ref mut Arena) Result[void, AllocationError] {
+    let values := try arena.Alloc[byte](4u)
+    arena.Reset()
+    values[0] = 1u
+    return Ok()
+}

@@ -66,5 +66,14 @@ func compilerKnownDefinitionText(uri string) (string, bool) {
 	if member, ok := syntheticDefinitionMembers.Load(id); ok {
 		return sema.CompilerKnownSyntheticDefinition(member.(sema.CompilerKnownMember)), true
 	}
+	if symbol, ok := sema.CompilerKnownIntrinsicSymbolByID(id); ok {
+		// Core-only value definitions require navigation from an authorized
+		// Sema use; an ID-only content request supplies no source authority.
+		// Rules: compiler_known_members.md — Private core UTC wall-clock intrinsic.
+		if symbol.Kind == sema.CompilerKnownValueExpression {
+			return "", false
+		}
+		return sema.CompilerKnownSyntheticDefinition(symbol), true
+	}
 	return sema.CompilerKnownSyntheticDefinition(sema.CompilerKnownMember{ID: id, Name: id}), true
 }

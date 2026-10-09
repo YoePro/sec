@@ -1057,7 +1057,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		if member.Name == "OkRef" || member.Name == "ErrRef" {
 			return a.inferBorrowedResultProjection(expr, objectType, member)
 		}
-		return member.Result, true
+		return a.refinedCompilerKnownType(member.Result), true
 	}
 
 	if memberType, ok := a.inferChannelMember(expr, objectType); ok {
@@ -1212,7 +1212,7 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 		}
 		if member, ok := compilerKnownMember(typ, expr.Property.Value, true); ok && member.Kind == CompilerKnownProperty {
 			a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
-			return member.Result, true
+			return a.refinedCompilerKnownType(member.Result), true
 		}
 		return Type{}, false
 	}
@@ -1561,7 +1561,7 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	if !canExplicitConvert(targetType, valueType) {
+	if !a.canExplicitConvert(targetType, valueType) {
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1572,6 +1572,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 		return converted, expressionValue{Display: expr.String()}
 	}
 	if targetType.Kind == EnumType {
+		if a.checkNominalMembershipValue(targetType, expr.Value) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		conversionType, valid := a.enumConversionResultType(targetType, valueType, expr.Value)
 		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -1590,7 +1593,7 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if a.checkEmptyListLiteralContracts(targetType, expr.Value) || a.checkStringLiteralContracts(targetType, expr.Value) {
+	if a.checkEmptyListLiteralContracts(targetType, expr.Value) || a.checkStringLiteralContracts(targetType, expr.Value) || a.checkNominalMembershipValue(targetType, expr.Value) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -2350,7 +2353,7 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 	if !valid {
 		return Type{Kind: InvalidType}, result, true
 	}
-	return known.Result, result, true
+	return a.refinedCompilerKnownType(known.Result), result, true
 }
 
 func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Type, hasExpected bool) (Type, expressionValue, bool) {
@@ -2444,6 +2447,14 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 	if !exists || member.Kind != CompilerKnownMethod {
 		return Type{}, expressionValue{}, false
 	}
+	// Interface requirements use ordinary overload/conformance validation.
+	// Publish identity only after successful resolution in recordResolvedCall.
+	// Rules: rules/declarations/interfaces.md — §§6,9.1.
+	for _, requirement := range lookupType.InterfaceMethods {
+		if requirement.CompilerKnownID == member.ID {
+			return Type{}, expressionValue{}, false
+		}
+	}
 	// A trusted core impl on a compiler-known primitive participates in the
 	// same overload set as methods on declared nominal types. In particular,
 	// byte.ToString(ByteStringFormat) must be considered before the universal
@@ -2493,12 +2504,12 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 			}
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort", "RequestCancel", "Observe", "Start":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "Append", "Fill":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2522,7 +2533,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 			}
 			a.resolvedRangeAppends[expr] = entry
-			return member.Result, expressionValue{Display: expr.String()}, true
+			return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], elementType)
 		if !a.canInitialize(elementType, valueType, expr.Arguments[0]) {
@@ -2534,7 +2545,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(memberExpr.Property.Token, "Fill requires a copyable element type, got %s", typeDisplayName(elementType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "RemoveAt":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".RemoveAt", 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2542,7 +2553,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		if !a.compilerKnownCountArgument(expr.Arguments[0], "RemoveAt") {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "Insert":
 		if !a.checkCompilerKnownCallArity(expr, "list.Insert", 2, 2) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2559,7 +2570,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(expressionToken(expr.Arguments[1]), "Insert value must be %s, got %s", typeDisplayName(elementType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "Remove", "Contains", "IndexOf", "Add":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2576,7 +2587,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s argument must be %s, got %s", member.Name, typeDisplayName(argumentType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "ContainsKey":
 		if !a.checkCompilerKnownCallArity(expr, "map.ContainsKey", 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2590,7 +2601,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "ContainsKey argument must be %s, got %s", typeDisplayName(keyType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "SortBy":
 		if !a.checkCompilerKnownCallArity(expr, "list.SortBy", 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2600,7 +2611,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SortBy requires a comparison function, got %s", typeDisplayName(compareType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	case "Union", "Intersection", "Difference", "SymmetricDifference":
 		if !a.checkCompilerKnownCallArity(expr, "set."+member.Name, 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2616,7 +2627,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(memberExpr.Property.Token, "%s requires a copyable set element type", member.Name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return member.Result, expressionValue{Display: expr.String()}, true
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
 	}
@@ -2636,7 +2647,7 @@ func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression,
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "string.%s requires a %s array or slice, got %s", member.Name, want, typeDisplayName(argumentType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	return member.Result, expressionValue{Display: expr.String()}, true
+	return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 }
 
 // inferRawPointerCall validates compiler-known raw-address operations. Unsafe
@@ -3438,7 +3449,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	if !canExplicitConvert(targetType, valueType) {
+	if !a.canExplicitConvert(targetType, valueType) {
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -3449,6 +3460,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		return converted, expressionValue{Display: expr.String()}
 	}
 	if targetType.Kind == EnumType {
+		if a.checkNominalMembershipValue(targetType, expr.Arguments[0]) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		conversionType, valid := a.enumConversionResultType(targetType, valueType, expr.Arguments[0])
 		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -3467,7 +3481,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if a.checkEmptyListLiteralContracts(targetType, expr.Arguments[0]) || a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
+	if a.checkEmptyListLiteralContracts(targetType, expr.Arguments[0]) || a.checkStringLiteralContracts(targetType, expr.Arguments[0]) || a.checkNominalMembershipValue(targetType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.expressionTypes[expr] = targetType
@@ -3558,6 +3572,12 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
+	if a.tryPropagatesToTestBoundary() {
+		a.resolvedTries[expr] = ResolvedTry{
+			Kind: ResolvedTryResultPropagation, SuccessType: valueType.TypeArgs[0], ErrorType: valueType.TypeArgs[1], TestBoundary: true,
+		}
+		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
 		a.addBodylessTryError(
 			expr.Token,
@@ -3611,6 +3631,11 @@ func (a *Analyzer) inferBoundsTryExpression(expr *ast.TryExpression, index *ast.
 		a.addBodylessTryError(expr.Token, "bodyless bounds try cannot propagate outside a function; add a local try handler")
 		return plan.ElementType, result
 	}
+	if a.tryPropagatesToTestBoundary() {
+		a.resolvedTries[expr] = ResolvedTry{Kind: ResolvedTryBoundsPropagation, SuccessType: plan.ElementType, ErrorType: errorType, TestBoundary: true}
+		a.commitFallibleBoundsIndex(index, plan, errorType)
+		return plan.ElementType, result
+	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
 		a.addBodylessTryError(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
 		return plan.ElementType, result
@@ -3646,6 +3671,13 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 	}
 	if !a.inFunctionBody {
 		a.addBodylessTryError(expr.Token, "bodyless arithmetic try cannot propagate outside a function; add a local try handler")
+		return operator.ResultType, result
+	}
+	if a.tryPropagatesToTestBoundary() {
+		a.resolvedTries[expr] = ResolvedTry{
+			Kind: ResolvedTryArithmeticPropagation, SuccessType: operator.ResultType, ErrorType: arithmeticError, TestBoundary: true,
+		}
+		a.resolveArithmeticFailureEffect(expr.Expression)
 		return operator.ResultType, result
 	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {

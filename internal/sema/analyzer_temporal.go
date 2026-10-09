@@ -61,6 +61,12 @@ func (a *Analyzer) inferCompilerKnownValue(expr *ast.Identifier) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
+	// Trusted core declarations refine the same compiler-owned identity. Read
+	// the resolved type table so intrinsic results preserve that refinement.
+	// Rules: rules/types/temporal.md — §2; types/types.md — Type identity.
+	if resolved, found := a.types[known.Result.Name]; found && resolved.Kind == known.Result.Kind {
+		known.Result = resolved
+	}
 	a.compilerKnownValueFacts[sourceTokenLocation(expr.Token)] = known
 	a.recordCompilerKnownValueEffects(known, expr.Token)
 	return known.Result, expressionValue{Display: expr.String()}, true

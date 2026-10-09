@@ -6,7 +6,7 @@ integrations:
     area: core-and-lowering
     status: partial
     integrated: "2026-08-23"
-    revised: "2026-09-25"
+    revised: "2026-10-09"
     summary: >-
       The checked core API and representation-level behavior exist, but the
       current compiler-known registry and name-specific direct-generator path
@@ -23,6 +23,10 @@ integrations:
       - rules/foundations/names_scopes_visibility.md
       - rules/corrections/applied/correction-string-slice-helper-20260823.md
     code:
+      - internal/sema/function_visibility.go
+      - internal/sema/parameter_naming.go
+      - internal/sema/confusable_identifiers.go
+      - cmd/lsp/function_visibility.go
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
       - internal/codegen/llvm/statements.go
@@ -30,12 +34,16 @@ integrations:
       - cmd/lsp/main.go
       - sec/core/string.sec
     tests:
+      - internal/sema/corehelpers/frontend_test.go
+      - cmd/lsp/function_visibility_test.go
+      - testdata/core/private_helpers
       - internal/sema/compiler_known_members_test.go
       - internal/sema/analyzer_test.go
       - internal/codegen/llvm/generator_test.go
       - internal/codegen/mlir/generator_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - "ordinary private core-helper frontend (2026-10-09, user-scoped separately from low-level bodies): existing fn __Helper syntax is retained by lexer, parser, AST and formatter, including generic signatures and source owner tokens. Sema preserves source-file context across passes and enforces file-private access before direct/generic calls and callable-value binding; trusted core provenance grants no sibling-file access. Module-internal helpers remain callable from sibling files. Shadowing/confusable checks use the visible file surface, and LSP general/expected-return completion uses the same private-function boundary. Fixtures cover formatting fixed points, AST/source identity, both file orders and diagnosed invalid accesses."
       - checked string.Slice validates start <= end and end <= string length before calling the unchecked operation
       - the current compatibility path requires loader-proven core provenance, validates (string, uint, uint) -> string, and records sec/core/string.sec as its exact temporary owner
       - another trusted core source file cannot invoke the source-file-private compatibility helper
@@ -43,12 +51,21 @@ integrations:
       - directly emit pointer offset and end-minus-start length in the AST LLVM and MLIR generators without a helper symbol
       - remove the invalid core implementation that attempted to apply array slice syntax to string
     remaining:
-      - define or identify the exact privileged-core inline MLIR/LLVM function-body syntax referenced by the correction
-      - implement that syntax in lexer, parser, AST, Sema, formatter, and the applicable backend path
+      - define or identify the exact privileged-core inline MLIR/LLVM function-body syntax referenced by the correction; blocked on MD-052
+      - implement the deferred privileged-core low-level function-body syntax in the frontend and applicable backend path after MD-052 is decided; ordinary Sec private-helper frontend is complete independently
       - move __StringSliceUnchecked into core/string.sec as a real source-file-private helper with a direct low-level body
       - remove CKF-STRING-SLICE-UNCHECKED, its temporary OwnerFile fact, and the name-specific Sema, LSP, LLVM, and MLIR compatibility cases
       - connect backing-storage lifetime facts to the finalized owned-string representation
+    governance_reconciliation:
+      - "user scope (2026-10-09): implement ordinary private Sec core helpers, leave MLIR/LLVM bodies and backend paths untouched. This completes the independently specified frontend slice; it does not close the original low-level-syntax requirement, helper migration, compatibility removal or owned-storage lifetime requirement. The five existing remaining requirements remain open (5 to 5; core fragment total was unchanged for that frontend slice; the subsequent compiler-authority item reduces it from 15 to 14). General visibility/module ownership remains with frontend.names-scopes-visibility and frontend.modules in governance/declarations.yaml."
+      - "dependency audit (2026-10-09): the syntax implementation point depends on the preceding syntax-definition point; current core rulebooks authorize low-level bodies without defining their grammar, value/ABI bindings or semantic contracts. MD-052 records this normative blocker. Sec inline assembly is a distinct source construct and supplies neither an inline MLIR nor LLVM IR function-body syntax. No implementation point is closed by this audit; remaining stays 5."
     verification:
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after all ordinary private-helper frontend fixes; compiler, LSP, Sema, formatter and existing backend regressions pass
+      - command: go test -race ./internal/sema/... ./cmd/lsp -run 'Test(OrdinaryPrivateCore|PrivateCoreHelper|DoubleUnderscore|UnderscoreVisibility|CompilerKnownStringSlice)' -count=1
+        result: passed on 2026-10-09; ordinary helper syntax/AST/formatter, source-private direct/generic/value access, shadowing and completion, plus compatibility helper and existing visibility regressions
+      - command: go vet ./... and git diff --check; governance YAML/evidence/unique-owner validation
+        result: passed on 2026-10-09; 46 registered fragments and 304 unique integration IDs; ordinary helper frontend completed, deferred low-level requirements remain 5 and core total remains 15
       - command: go test ./internal/sema -run 'TestCompilerKnown(StringSlice|GlobalRegistry)' -count=1
         result: passed on 2026-09-24 with exact owner-file metadata, same-file acceptance, other-core-file rejection, argument typing, and registry coverage
       - command: go test ./internal/codegen/llvm -run TestGenerateCompilerKnownStringSliceUnchecked -count=1
@@ -106,24 +123,68 @@ integrations:
     area: compiler-known-types-members-interfaces-platform-identities
     status: partial
     repository_baseline: 998d8d1
-    revised: "2026-09-28"
+    revised: "2026-10-09"
     rules:
+      - rules/library/core-library.md
+      - rules/types/temporal.md
+      - rules/declarations/interfaces.md
+      - rules/control-flow/flowcontrol_for.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/compiler/compiler_pipeline.md
       - rules/compiler/compiler_known_members.md
       - rules/compiler/compiler.md
       - rules/compiler/compile_time_evaluation.md
       - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
       - rules/corrections/applied/temporal-now-correction-20260928.md
     code:
+      - internal/sema/call_graph_identity.go
+      - internal/sema/analyzer_arena.go
+      - internal/codegen/llvm/functions.go
+      - internal/codegen/llvm/string_contracts.go
+      - internal/codegen/mlir/string_length.go
+      - internal/sema/parameter_naming.go
+      - cmd/lsp/function_visibility.go
+      - internal/sema/type_declarations.go
+      - internal/sema/compiler_known_synthetic.go
+      - internal/sema/resolved_calls.go
+      - cmd/lsp/compiler_known_definition.go
+      - cmd/lsp/hover.go
+      - cmd/lsp/rename.go
+      - internal/sema/compiler_known_interfaces.go
+      - internal/sema/interface_conformance.go
+      - internal/sema/types.go
+      - internal/sema/analyzer_for_categories.go
+      - internal/sema/function_visibility.go
+      - internal/codegen/readiness/compiler_authority.go
+      - internal/codegen/llvm/generator.go
+      - internal/codegen/mlir/generator.go
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_temporal.go
       - internal/sema/static.go
       - cmd/lsp/main.go
     tests:
+      - internal/sema/corehelpers/generated_identity_test.go
+      - internal/codegen/readiness/authority/generated_identity_test.go
+      - testdata/core/generated_identity
+      - cmd/lsp/function_visibility_test.go
+      - internal/sema/corehelpers/extension_authority_test.go
+      - testdata/core/extension_authority
+      - cmd/lsp/compiler_known_definition_test.go
+      - internal/sema/interfacecatalog/catalog_test.go
+      - testdata/sema/interface_catalog
+      - internal/codegen/readiness/authority/authority_test.go
+      - testdata/codegen/compiler_authority
       - internal/sema/compiler_known_members_test.go
       - internal/sema/temporal/analyzer_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - "deterministic and traceable generated helper/resource identities (2026-10-09): GeneratedIdentityIndex freezes declaration-relative lexical origins and keys compiler-only records by artifact kind, source module/owner, lexical occurrence and resolved representation plan where relevant. Detached records are sorted by identity and retain current source locations separately. Arena frontend creation/owner sites replace the process-wide analysis counter with this stable identity while moves retain the original domain; repeated analysis, reversed source-file order and shifted coordinates preserve IDs, and distinct creation sites remain distinct. LLVM lambda helpers and existing legacy LLVM-dialect overload specializations use the same origin service, include target representation in their keys and publish origin comments. Generated helper symbols occupy a separate emitted namespace; fixed rune-length helpers have canonical names/rule provenance, and explicit linkage collisions are rejected. Existing registry IDs and maintained nominal/synthetic-payload symbols remain canonical; local SSA/block numbering is not an exported semantic identity."
+      - "prevent arbitrary compiler-known extension (2026-10-09): impl registration preserves registry-owned type authority through trusted core forward declarations and concrete named representations. User and forged core-module/path sources cannot add primary or extended impls, methods, properties or nested types to these identities; invalid members never enter the semantic tables. Legitimate loader-proven core extensions and user-owned nominal derivations retain ordinary behavior and acquire no compiler-known method identity. Raw and analyzed legacy backend entry points validate impls targeting registered builtin identities against the current AST/provenance and selected scalar plan, including revoked authority; failures publish source-located errors and no partial output. Impl-target validation and core support predicates were extracted from analyzer.go into the existing type declaration responsibility file."
+      - "core-only underscore services (2026-10-09, user clarification): compiler_known_members.md explicitly states that compiler-provided _-prefixed functions/values are internal core services, while ordinary source declarations retain their existing visibility. _now synthetic content now requires prior navigation from an authorized core use; an ID-only request cannot publish its definition. Registry tests require underscore compiler functions/values to remain Internal. Core-declared underscore helpers also require trusted caller provenance before direct/generic/callable lookup and general/expected-return completion; a forged module core does not grant access. Ordinary user-declared module helpers retain their visibility. Shadowing and confusable checks use the same accessible-function surface."
+      - "shared compiler/LSP member and interface identities (2026-10-09): compiler-owned interface requirements are projected from CompilerKnownInterfaces into the existing member registry view, with canonical signatures and receiver-resolved results. Successful ordinary call resolution publishes the requirement identity; completion, hover, definition and semantic tokens consume the same metadata, and rename rejects compiler-owned requirements while concrete source implementations remain ordinary declarations. CompilerKnownSymbolAt also exposes loader-authorized _now facts through this model, preserving datetime, nondeterministic effects, core-only visibility and the documented UTCWallClock requirement. Interface synthetic definitions can be recovered from their canonical registry IDs after editor restart; internal value definitions require authorized core navigation. Negative tests cover ordinary same-name interface requirements, failed Next arity, untrusted _now and internal completion exclusion."
+      - "canonical compiler-known interface registry/conformance (2026-10-09): CompilerKnownInterfaces supplies Iterator[T], its mutable Next() Option[T] requirement and CKM-ITERATOR-NEXT identity through caller-owned metadata. Builtin installation, ordinary interface/generic-constraint checks and loop dispatch use that one contract; loop method selection reuses the ordinary conformance signature matcher instead of a separate Option/signature check. Registry/analyzer instances have independent mutable interface metadata, and each explicit implements clause gets its own diagnostic anchors rather than mutating a cached specialization. Tests cover concrete loop identity, generic constraints/member lookup, reserved redeclaration, wrong results, multiple missing implementations and isolation."
+      - "compiler authority is distinct from ordinary visibility (2026-10-09): private names and core-looking paths never grant registry authority. Internal callable references require the stable compiler-known identity, loader-proven core source and exact temporary owner, just as direct internal calls do; ordinary private helpers retain ordinary source behavior. Raw LLVM and legacy MLIR entry points validate reserved internal uses against the current AST and target scalar plan before output, rejecting forged paths, wrong core owners, invalid arguments and revoked provenance. Valid internal callable references remain source-valid in their owner, but legacy backends explicitly reject their unavailable callable representation rather than exposing a runtime intrinsic symbol. Existing typed registry, declaration reservation, core-member authority and LSP exclusion remain intact."
       - value.SizeOf and TypeName.SizeOf resolve through authoritative read-only compiler-known property entries with uint results
       - the superseded global SizeOf(TypeName) function is absent from the compiler-known function registry, Sema reservation,
         and LSP completion; ordinary user module functions named SizeOf remain legal
@@ -138,13 +199,52 @@ integrations:
       - preserve _now as an explicit Semantic IR operation and lower it through the selected target/runtime wall-clock service without folding or merging reads
       - carry universal and byte/char/rune sequence ToString identities into explicit Semantic IR operations and maintained lowering, including allocation/effect facts and complete per-type-family fallback formatting semantics
       - audit every compiler-known Sec declaration for complete canonical syntax/owning module and mark compiler-only structures explicitly
-      - keep compiler authority distinct from ordinary _/__ source visibility
-      - expose compiler-known Iterator[T] through one canonical interface registry/conformance path
-      - share compiler-known member/interface identities between compiler and LSP
       - route compiler-known platform/resource identities from the frozen CompilationPlan
-      - prevent user-defined arbitrary compiler-known extension
-      - keep generated helpers/resource identities deterministic and traceable
+    governance_reconciliation:
+      - "generated identity completion (2026-10-09): closes determinism/provenance for currently produced core helper and abstract resource identities, reducing surfaces remaining 6 to 5 and core total 11 to 10. GeneratedIdentity/GeneratedIdentityIndex are explicitly compiler metadata, not Sec declarations, under compiler_pipeline.md §76. Arena records identify abstract frontend creation sites, not runtime allocation instances or epochs; existing lifetime/invalidation and platform/resource-plan requirements retain their separate owners and open scopes. This changes names/provenance of existing backend helpers and introduces no new MLIR operation or inline body syntax."
+      - "arbitrary-extension completion (2026-10-09): registry identity and loader authority govern compiler-owned targets even during forward declaration registration; a named core representation never transfers ownership to user modules. This closes the full arbitrary-extension point: surfaces remaining 7 to 6 and core total 12 to 11. Core-only synthetic value definitions intentionally require authorized navigation again after editor restart; the earlier ID-only recovery claim applies to public interface requirements, not internal value services. Temporal plan/runtime and deferred helper-body requirements remain open."
+      - "compiler/LSP sharing completion (2026-10-09): existing fundamental member/global-function registry consumers and the previously absent interface-requirement/value tooling path now share canonical metadata. This closes one full registry-sharing point: compiler-known-surfaces remaining 8 to 7 and core total 13 to 12. The temporal capability-plan and runtime/IR lowering points remain open; presentation of the normative requirement does not implement or validate target capabilities. No clock service, MLIR syntax or new MLIR operation is introduced."
+      - "Iterator registry completion is the compile-time interface/conformance boundary; it introduces no interface object, virtual dispatch or new MLIR operation. Existing iterator dependency, readiness, ownership and maintained lowering integrations retain their scopes. Compiler-known-surfaces remaining decreases from 9 to 8 and core total from 14 to 13. Broader compiler/LSP registry sharing remains separately listed."
+      - "this closes the compiler-authority/visibility boundary only: no new MLIR operation or inline MLIR/LLVM source syntax is introduced. The existing LLVM string-slice descriptor emission remains the compatibility implementation, and core.string-slice-helper keeps its five low-level syntax, migration, compatibility-removal and lifetime requirements; MD-052 remains open. Internal callable representation is separately deferred until the real helper migration supplies a callable body. Compiler-known-surfaces remaining decreases from 10 to 9, and core total from 15 to 14."
     verification:
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after lexical generated identities, helper namespace/provenance, typed-nil module handling and deterministic allocation-context projections
+      - command: go test ./internal/codegen/readiness/authority -run 'TestGeneratedOverloadsVerify' -count=1 and go test ./internal/codegen/... ./internal/sema/... -count=1
+        result: passed on 2026-10-09; MLIR overload helpers verified and translated, LLVM artifacts cross-compiled for amd64/armv7, and amd64 lambda/overload fixtures executed with expected results while old generated-looking user names remained ordinary source functions
+      - command: go test -race ./internal/sema/corehelpers ./internal/codegen/readiness/authority ./internal/sema -run 'Generated|AllocationContextFacts|AnalyzeIgnoresTypedNil|Arena' -count=1
+        result: passed on 2026-10-09; canonical creation/helper identities, source/definition-order and whitespace variation, target separation, repeated-analyzer projections, provenance isolation, moves and explicit-linkage rejection; generated LLVM/legacy MLIR emitter focused race suites also pass
+      - command: go vet ./...; git diff --check; governance YAML/evidence/unique-owner validation
+        result: passed on 2026-10-09; 46 fragments and 304 unique IDs including legacy entries, surfaces remaining 6 to 5 and core total 11 to 10
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after compiler-owned impl authority, core-only underscore helper visibility and internal synthetic-content fixes; complete compiler, LSP, Sema and backend suites pass
+      - command: go test -race ./internal/sema/corehelpers ./internal/codegen/readiness/authority ./cmd/lsp -run 'Test(RefinedCompilerTypes|CompilerExtension|UnderscoreCompiler|CoreUnderscore|RefinedTypeExtensions|CompilerAuthority|CoreOnlyDefinition|TemporalIntrinsic|IntrinsicDefinition|CompilerInterfaceRequirement|OrdinaryPrivateCore)' -count=1
+        result: passed on 2026-10-09; 16 refined temporal injection cases, trusted extensions and ordinary nominal helpers, forged callers/completion, both scalar plans and raw/analyzed backend authority including revoked provenance
+      - command: go vet ./...; git diff --check; governance YAML/evidence/unique-owner validation
+        result: passed on 2026-10-09; 46 fragments and 304 unique IDs including legacy entries, surfaces remaining 7 to 6 and core total 12 to 11
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after shared compiler/LSP interface and temporal-value metadata; compiler, LSP, Sema and maintained/legacy backend suites pass
+      - command: go test -race ./internal/sema/interfacecatalog ./internal/sema/temporal ./cmd/lsp -run 'Test(InterfaceRequirementToolingFacts|CompilerInterfaceRequirement|TemporalIntrinsic|IntrinsicDefinition|CanonicalIterator|CompilerKnownNow|CompilerKnownMembers|CompilerInterfaceRegistry)' -count=1
+        result: passed on 2026-10-09; canonical requirement identity, specialized completion/hover, synthetic navigation/restart, rename boundaries, temporal authority/effects and registry isolation
+      - command: go vet ./...; git diff --check; governance YAML/evidence/unique-owner validation
+        result: passed on 2026-10-09; 46 fragments, 304 unique IDs including unmigrated legacy entries, surfaces remaining 8 to 7 and core total 13 to 12
+      - command: go test -race ./internal/sema/interfacecatalog ./internal/sema -run 'Test(CanonicalIterator|CompilerInterfaceRegistry|ForCategories|InterfaceConformance)' -count=1
+        result: passed on 2026-10-09 after the behavior-preserving conformance extraction
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after the canonical Iterator registry and conformance changes; compiler, LSP, Sema and maintained/legacy lowering regression suites pass
+      - command: go test -race ./internal/sema/... ./internal/ir/semantic/... ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-09; canonical interface metadata, conformance/iteration facts and downstream maintained lowering pass race verification
+      - command: go test ./internal/sema/interfacecatalog ./internal/sema -run 'Test(CanonicalIterator|CompilerInterfaceRegistry|For|Iterator|Interface|ResolvedForIteration|Generic)' -count=1 and go vet ./...
+        result: passed on 2026-10-09 after extracting explicit interface resolution from analyzer.go into interface_conformance.go; registry isolation, generic constraints, loop identity and independent clause diagnostics pass
+      - command: git diff --check; governance YAML/evidence/unique-owner validation
+        result: passed on 2026-10-09; 46 registered fragments, 304 unique integration IDs, surfaces remaining 9 to 8 and core remaining 14 to 13
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after the final compiler-authority changes; compiler, LSP, Sema, maintained lowering and both legacy codegen regression suites pass
+      - command: go test -race ./internal/codegen/... ./internal/sema/corehelpers -count=1
+        result: passed on 2026-10-09 after the compiler-authority boundary changes, including both scalar plans, stale/revoked proof checks and internal callable reference ownership
+      - command: go test ./internal/codegen/readiness/authority -count=1
+        result: passed on 2026-10-09; forged paths, ordinary users, other trusted files and invalid arguments produce no output; authorized LLVM compiled with Clang for amd64/armv7 and the amd64 fixture executed successfully
+      - command: go vet ./... and git diff --check; governance YAML/evidence/unique-owner validation
+        result: passed on 2026-10-09; 46 registered fragments and 304 unique integration IDs, surfaces remaining 10 to 9 and core remaining 15 to 14
       - command: go test ./internal/sema -run 'CompilerKnown(FundamentalMembers|CanonicalPropertyAndCollectionRestrictions|GlobalRegistryHasStableRequiredIDs)|RemovedGlobalSizeOf' -count=1
         result: passed
       - command: go test ./cmd/lsp -run CompletionUsesCanonicalCompilerKnownGlobalFunctions -count=1

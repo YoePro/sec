@@ -192,7 +192,7 @@ integrations:
       - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
       - ordinary register values remain nonvolatile unless their storage binding supplies stronger semantics
       - impl blocks, methods, properties, and implicit self access without changing register storage width
-      - the complete canonical frontend modifier set is parsed and retained as compiler-owned AST and semantic field facts: read-write, read-only, write-only, write-one-clear/set/toggle, write-zero-clear/set/toggle, read-clear, and read-set; read-write remains the default and legacy clear-on-read is rejected with a focused migration diagnostic
+      - "the complete canonical frontend modifier set is parsed and retained as compiler-owned AST and semantic field facts: read-write, read-only, write-only, write-one-clear/set/toggle, write-zero-clear/set/toggle, read-clear, and read-set; read-write remains the default and legacy clear-on-read is rejected with a focused migration diagnostic"
       - direct frontend access rejects reads from write-only fields, writes to read-only fields, and compound read-modify-write operations on write-only or special-effect fields
       - formatter preservation plus LSP hover and completion expose compiler-owned register access facts without editor-side language reconstruction
       - finite source-order-independent nested register fields occupy the nested nominal width and preserve inner layout, nominal field types, and access semantics across every projection; recursive storage and unsafe whole-nested writes are diagnosed
@@ -607,7 +607,7 @@ integrations:
       - ordinary move-only by-value arguments consume the caller at successful call entry while reference parameters borrow
       - canonical type-position ref and ref mut call parameters remain borrows during successful argument transfer and do not move caller Places
       - standalone discardable call results and compiler-known must-use result categories participate in Sema validation
-      - native final `name: ...T` parameter parsing for ordinary Sec functions, methods, and interface requirements, with parser/Sema rejection of non-final, duplicate, consuming, and reference pack forms
+      - "native final `name: ...T` parameter parsing for ordinary Sec functions, methods, and interface requirements, with parser/Sema rejection of non-final, duplicate, consuming, and reference pack forms"
       - compiler-known call-lifetime variadic pack types that remain distinct from arrays, slices, and foreign varargs and expose read-only Len, indexing, iteration, and re-spread behavior without Ptr
       - variadic pack escape, direct pack reference exposure, mutation, and move-out rejection in Sema
       - direct zero-or-more typed variadic arguments, generic instantiation, runtime-length array/slice/pack spread sources, multiple mixed spread sources, and fixed-arity preference over equally ranked variadic overloads
@@ -727,7 +727,7 @@ integrations:
     area: frontend-name-resolution
     status: partial
     audited: '2026-08-19'
-    updated: '2026-10-01'
+    updated: '2026-10-09'
     repository_baseline: c515862
     summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing,
       visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module,
@@ -736,6 +736,7 @@ integrations:
     rules:
     - rules/foundations/names_scopes_visibility.md
     code:
+    - internal/sema/function_visibility.go
     - internal/sema/analyzer.go
     - internal/sema/generic_naming.go
     - internal/sema/nominal_naming.go
@@ -745,6 +746,9 @@ integrations:
     - internal/lsp/server
     - cmd/lsp/main.go
     tests:
+    - internal/sema/corehelpers/frontend_test.go
+    - cmd/lsp/function_visibility_test.go
+    - testdata/core/private_helpers
     - internal/sema/analyzer_test.go
     - internal/sema/generic_naming_test.go
     - internal/sema/generic_type_shadowing_test.go
@@ -763,6 +767,7 @@ integrations:
     - internal/parser/parser_test.go
     - cmd/lsp/main_test.go
     implemented:
+    - "ordinary module-scope private functions (2026-10-09, core.string-slice-helper frontend slice): direct calls, contextual generic calls and first-class callable binding require the exact declaring source file; trusted core provenance does not grant sibling-file access. Source context is restored across semantic passes, shadowing/confusable surfaces are file-aware, and ordinary/expected-return LSP completion shares the function boundary. Private types/module variables and type-member owner enforcement retain their existing separate work."
     - "unit and type namespaces (2026-10-04): an ordinary type, enum, struct, or interface of one module may use the spelling of a unit declared in another module (core `A`/`K`, stdlib units); the unit entry moves to a separate unit table, its impl block in its own module binds to the unit with its own impl-block key, unit metadata and representation updates go to the unit entry, and the ordinary type keeps its definition, impl, and methods, in either declaration order. Tests: internal/sema/unit_type_namespace_test.go"
     - "visible-declaration shadowing (2026-10-04): one lookup of the unqualified visible scope (the current module's first top-level declaration per name from the module namespace pass, accessible always-available core declarations, and uppercase compiler-known types such as Event; units excluded; declarations of imported modules count only qualified, rule §17) now drives parameters, setter value parameters, generic parameters, and locals. Parameters report S1104 names.parameter-shadows-declaration for visible generic parameters, functions, and module variables and S1040 for types; generic parameters report S1105 names.generic-parameter-shadows-declaration or S1039; locals keep S1057. Every diagnostic points at the hidden declaration when it has a source location. Lowercase always-available type spellings (error, duration, ...) stay usable as bindings, as in `Err(error)`. LSP rename inherits the rules through its re-analysis safety check. Tests: internal/sema/shadowing_visible_declarations_test.go"
     - top-level module declaration conflict checks across types, units, enums, interfaces, function overload groups,
@@ -1029,7 +1034,7 @@ integrations:
     remaining:
       - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
       - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
-      - preserve source-file ownership for private declarations while exposing module-internal declarations across all sibling source files
+      - complete source-file ownership for private types and module variables while exposing module-internal declarations across sibling files; ordinary free-function access is implemented under frontend.names-scopes-visibility (2026-10-09)
       - replace flattened imported AST inclusion with source-file-local import binding tables and module-wide dependency-edge union
       - resolve canonical project, std, and platform ImportRootIdentity values without reserved-root fallback into project sources
       - validate every resolved import destination's module declaration, source membership, and active-plan selection

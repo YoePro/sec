@@ -61,7 +61,7 @@ func TestLengthContractSetConsistencyIncludesInheritanceNotEmptyAndFixedArrays(t
 	}
 }
 
-func TestStringLengthContractsValidateExplicitDefaultsInCanonicalByteUnit(t *testing.T) {
+func TestStringLengthContractsValidateExplicitDefaultsInRuneAndByteUnits(t *testing.T) {
 	errors := analyzeSource(t, fixture(t, "length_contracts_4.sec"))
 	for _, name := range []string{"TooShort", "TooLong", "WrongExact"} {
 		if !errorsContainMessage(errors, "invalid for "+name) {

@@ -1,0 +1,12 @@
+module test
+// Direct elements may repeat internally; unique compares the whole elements.
+type Row int[2]
+type Rows Row[] unique
+type UniqueNumbers int[] unique
+fn Check(value: int) void {
+    let rows: Rows := [[1, 1], [2, 2]]
+    // Unknown direct values receive no fabricated compile-time equality proof.
+    let numbers: UniqueNumbers := [value, value]
+    let empty: UniqueNumbers := []
+    let singleton: UniqueNumbers := [1]
+}

@@ -1,0 +1,9 @@
+module main
+
+type UserDuration duration
+impl UserDuration {
+    fn Inspect() int { return 1 }
+}
+
+fn _ModuleHelper() int { return 2 }
+fn Read() int { return _ModuleHelper() }

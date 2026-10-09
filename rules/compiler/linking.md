@@ -247,7 +247,7 @@ A foreign declaration may select a foreign linkage name:
 
 ```sec
 @link_name("foreign_symbol")
-extern "C" fn SecName(value: C::int) C::int
+extern "C" fn SecName(value: c::int) c::int
 ```
 
 The annotation changes only the foreign/linkage symbol identity. It does not

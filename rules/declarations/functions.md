@@ -1097,11 +1097,11 @@ Those rules belong to `rules/platform/abi.md` and `rules/platform/ffi.md`.
 Native `...T` semantics must not be inferred from C `va_list`, and C varargs must not be inferred from native Sec `...T`.
 
 A C vararg marker is a bare final `...` and is legal only in an `unsafe extern
-"C"` signature or `C::fn` type. Its arguments use target C default promotions,
+"C"` signature or `c::fn` type. Its arguments use target C default promotions,
 do not accept `ref`/`ref mut` directly, and do not support Sec spread.
 
-`C::fn(...) R` is a foreign ABI function-pointer type distinct from native
-`fn`/`mut fn`/`-> fn`. `C::callback(callable)` adapts only an environment-free,
+`c::fn(...) R` is a foreign ABI function-pointer type distinct from native
+`fn`/`mut fn`/`-> fn`. `c::callback(callable)` adapts only an environment-free,
 reusable callable with an exact foreign-facing signature; capturing, mutable,
 and consuming callables are rejected in Sec 0.1.
 

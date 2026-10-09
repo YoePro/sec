@@ -103,7 +103,7 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
-		if member, resolved := analyzer.CompilerKnownMemberAt(token.File, token.Line, token.Column); resolved {
+		if member, resolved := analyzer.CompilerKnownSymbolAt(token.File, token.Line, token.Column); resolved {
 			return compilerKnownMemberHover(nameRange, member), true
 		}
 		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
@@ -114,6 +114,21 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}
 
+	// A local or parameter is presented from the binding Sema resolved at this
+	// exact position. The module-wide Symbols table below is keyed by name
+	// only, so a same-named parameter in another file or function of the
+	// module would otherwise supply the type.
+	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		binding, ok := analyzer.ResolvedBindingAt(token.File, token.Line, token.Column)
+		if !ok {
+			binding, ok = analyzer.ResolvedBindingDeclaredAt(token.File, token.Line, token.Column)
+		}
+		if ok && binding.Name == name && binding.Type.Kind != "" {
+			hover := typedHover(nameRange, binding.Name, binding.Type)
+			hover.Contents.Value += unitDerivationHoverSuffix(analyzer, binding.Type)
+			return hover, true
+		}
+	}
 	if functions := analyzer.Functions()[name]; len(functions) > 0 && !internalCompilerOverloads(functions) {
 		contents := functionHoverContents(functions, program, path)
 		contents += callGraphHoverSuffix(analyzer, uri, text, pos)

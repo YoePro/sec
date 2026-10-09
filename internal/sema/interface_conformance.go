@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
@@ -200,4 +201,56 @@ func functionSignatureHasInvalidType(function Function) bool {
 		}
 	}
 	return false
+}
+
+// resolveImplementedInterfaces resolves explicit interface contracts and
+// anchors compiler-owned requirements at the current implements clause without
+// mutating a cached specialization or another declaration's diagnostic owner.
+// Rules: rules/declarations/interfaces.md — §§4, 9.1, 12;
+// rules/compiler/compiler_known_members.md — Iteration protocol.
+func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targetName string) []Type {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	implemented := []Type{}
+	seen := map[string]lexer.Token{}
+	for _, ref := range refs {
+		typ, ok := a.resolveType(ref)
+		if !ok {
+			continue
+		}
+		if typ.Kind != InterfaceType {
+			a.addErrorAtToken(ref.Token, "implemented type %s on %s is not an interface", typeDisplayName(typ), targetName)
+			continue
+		}
+		// Compiler-known interfaces have no source declaration token. Anchor
+		// conformance diagnostics at the explicit implements clause instead of
+		// leaking a synthetic 0:0 location to CLI and LSP consumers.
+		if typ.Intrinsic {
+			typ.InterfaceMethods = append([]Function(nil), typ.InterfaceMethods...)
+			typ.InterfaceProperties = append([]InterfaceProperty(nil), typ.InterfaceProperties...)
+			typ.InterfaceEvents = append([]InterfaceEvent(nil), typ.InterfaceEvents...)
+			for index := range typ.InterfaceMethods {
+				typ.InterfaceMethods[index].Token = ref.Token
+			}
+			for index := range typ.InterfaceProperties {
+				typ.InterfaceProperties[index].Token = ref.Token
+			}
+			for index := range typ.InterfaceEvents {
+				typ.InterfaceEvents[index].Token = ref.Token
+			}
+		}
+		if previous, exists := seen[typ.Name]; exists {
+			_ = previous
+			a.addErrorAtToken(ref.Token, "duplicate implemented interface %s on %s", typeDisplayName(typ), targetName)
+			continue
+		}
+		if _, recorded := a.implementsClauseTokens[targetName+"\x00"+typ.Name]; !recorded {
+			a.implementsClauseTokens[targetName+"\x00"+typ.Name] = ref.Token
+		}
+		seen[typ.Name] = ref.Token
+		implemented = append(implemented, typ)
+	}
+	return implemented
 }

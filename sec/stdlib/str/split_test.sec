@@ -1,0 +1,313 @@
+module str
+
+/*
+ * Sec Standard Library - str - Split Tests
+ *
+ * File:        stdlib/str/split_test.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-09
+ *
+ * Purpose:
+ * Verify materialized string splitting, including
+ * empty fields, delimiters, and Unicode boundaries.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ * rules/tooling/testing.md
+ */
+
+test "Split separates ASCII fields" {
+    let parts := try Split("Hello,World,Sec", ",")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("Hello", parts[0])
+    testing.ExpectEqual("World", parts[1])
+    testing.ExpectEqual("Sec", parts[2])
+}
+
+test "Split preserves text without separator" {
+    let parts := try Split("Hello World", ",")
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("Hello World", parts[0])
+}
+
+test "Split preserves empty fields" {
+    let parts := try Split(",a,,b,", ",")
+
+    testing.RequireEqual(uint(5), parts.Len)
+    testing.ExpectEqual("", parts[0])
+    testing.ExpectEqual("a", parts[1])
+    testing.ExpectEqual("", parts[2])
+    testing.ExpectEqual("b", parts[3])
+    testing.ExpectEqual("", parts[4])
+}
+
+test "Split handles multibyte separators" {
+    let parts := try Split("one::two::three", "::")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("one", parts[0])
+    testing.ExpectEqual("two", parts[1])
+    testing.ExpectEqual("three", parts[2])
+}
+
+test "Split empty separator uses rune boundaries" {
+    let parts := try Split("Aå🦊", "")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("A", parts[0])
+    testing.ExpectEqual("å", parts[1])
+    testing.ExpectEqual("🦊", parts[2])
+}
+
+test "Split empty input with separator" {
+    let parts := try Split("", ",")
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("", parts[0])
+}
+
+test "Split empty input without separator" {
+    let parts := try Split("", "")
+
+    testing.RequireEqual(uint(0), parts.Len)
+}
+
+test "SplitN limits the number of parts" {
+    let parts := try SplitN("a,b,c,d", ",", 2)
+
+    testing.RequireEqual(uint(2), parts.Len)
+    testing.ExpectEqual("a", parts[0])
+    testing.ExpectEqual("b,c,d", parts[1])
+}
+
+test "SplitN with zero parts" {
+    let parts := try SplitN("a,b,c", ",", 0)
+
+    testing.RequireEqual(uint(0), parts.Len)
+}
+
+test "SplitN with one part" {
+    let parts := try SplitN("a,b,c", ",", 1)
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("a,b,c", parts[0])
+}
+
+test "SplitN preserves empty fields" {
+    let parts := try SplitN(",a,,b,", ",", 3)
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("", parts[0])
+    testing.ExpectEqual("a", parts[1])
+    testing.ExpectEqual(",b,", parts[2])
+}
+
+test "SplitN handles Unicode rune boundaries" {
+    let parts := try SplitN("Aå🦊", "", 2)
+
+    testing.RequireEqual(uint(2), parts.Len)
+    testing.ExpectEqual("A", parts[0])
+    testing.ExpectEqual("å🦊", parts[1])
+}
+
+test "SplitN preserves empty input when maxParts is one" {
+    let parts := try SplitN("", "", 1)
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("", parts[0])
+}
+
+test "SplitAfter retains separators" {
+    let parts := try SplitAfter("a,b,c", ",")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("a,", parts[0])
+    testing.ExpectEqual("b,", parts[1])
+    testing.ExpectEqual("c", parts[2])
+}
+
+test "SplitAfter handles adjacent separators" {
+    let parts := try SplitAfter("a,,b", ",")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("a,", parts[0])
+    testing.ExpectEqual(",", parts[1])
+    testing.ExpectEqual("b", parts[2])
+}
+
+test "SplitAfter preserves trailing empty field" {
+    let parts := try SplitAfter(",a,", ",")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual(",", parts[0])
+    testing.ExpectEqual("a,", parts[1])
+    testing.ExpectEqual("", parts[2])
+}
+
+test "SplitAfter handles multibyte separators" {
+    let parts := try SplitAfter("å🦊ö🦊ä", "🦊")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("å🦊", parts[0])
+    testing.ExpectEqual("ö🦊", parts[1])
+    testing.ExpectEqual("ä", parts[2])
+}
+
+test "SplitAfter handles empty separator" {
+    let parts := try SplitAfter("Aå🦊", "")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("A", parts[0])
+    testing.ExpectEqual("å", parts[1])
+    testing.ExpectEqual("🦊", parts[2])
+}
+
+test "SplitAfterN respects maximum parts" {
+    let parts := try SplitAfterN("a,b,c,d", ",", 2)
+
+    testing.RequireEqual(uint(2), parts.Len)
+    testing.ExpectEqual("a,", parts[0])
+    testing.ExpectEqual("b,c,d", parts[1])
+}
+
+test "SplitAfterN handles zero parts" {
+    let parts := try SplitAfterN("a,b,c", ",", 0)
+
+    testing.RequireEqual(uint(0), parts.Len)
+}
+
+test "SplitAfterN handles one part" {
+    let parts := try SplitAfterN("a,b,c", ",", 1)
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("a,b,c", parts[0])
+}
+
+test "SplitAfterN preserves trailing empty field" {
+    let parts := try SplitAfterN("a,b,", ",", 3)
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("a,", parts[0])
+    testing.ExpectEqual("b,", parts[1])
+    testing.ExpectEqual("", parts[2])
+}
+
+test "SplitAfterN handles multibyte separators" {
+    let parts := try SplitAfterN("å🦊ö🦊ä", "🦊", 2)
+
+    testing.RequireEqual(uint(2), parts.Len)
+    testing.ExpectEqual("å🦊", parts[0])
+    testing.ExpectEqual("ö🦊ä", parts[1])
+}
+
+test "SplitAfterN handles empty separator" {
+    let parts := try SplitAfterN("Aå🦊", "", 2)
+
+    testing.RequireEqual(uint(2), parts.Len)
+    testing.ExpectEqual("A", parts[0])
+    testing.ExpectEqual("å🦊", parts[1])
+}
+
+test "SplitAfterN preserves empty input with one part" {
+    let parts := try SplitAfterN("", "", 1)
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("", parts[0])
+}
+
+test "SplitLines preserves a single line" {
+    let lines := try SplitLines("Hello Sec")
+
+    testing.RequireEqual(uint(1), lines.Len)
+    testing.ExpectEqual("Hello Sec", lines[0])
+}
+
+
+test "Fields separates whitespace" {
+    let parts := try Fields("Hello World Sec")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("Hello", parts[0])
+    testing.ExpectEqual("World", parts[1])
+    testing.ExpectEqual("Sec", parts[2])
+}
+
+test "Fields ignores repeated whitespace" {
+    let parts := try Fields("  Hello \t World \n Sec  ")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("Hello", parts[0])
+    testing.ExpectEqual("World", parts[1])
+    testing.ExpectEqual("Sec", parts[2])
+}
+
+test "Fields handles Unicode whitespace" {
+    let parts := try Fields("Hej\u00A0världen\u3000Sec")
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("Hej", parts[0])
+    testing.ExpectEqual("världen", parts[1])
+    testing.ExpectEqual("Sec", parts[2])
+}
+
+test "Fields handles empty input" {
+    let parts := try Fields("")
+
+    testing.RequireEqual(uint(0), parts.Len)
+}
+
+test "Fields handles whitespace only" {
+    let parts := try Fields(" \t\n ")
+
+    testing.RequireEqual(uint(0), parts.Len)
+}
+
+
+test "FieldsBy splits on commas without empty fields" {
+    let isComma := fn(character: rune) bool {
+        return character == 44r
+    }
+
+    let parts := try FieldsBy(",alpha,,beta,", isComma)
+
+    testing.RequireEqual(uint(2), parts.Len)
+    testing.ExpectEqual("alpha", parts[0])
+    testing.ExpectEqual("beta", parts[1])
+}
+
+test "FieldsBy handles Unicode separators" {
+    let isFox := fn(character: rune) bool {
+        return character == 129418r
+    }
+
+    let parts := try FieldsBy("å🦊ö🦊ä", isFox)
+
+    testing.RequireEqual(uint(3), parts.Len)
+    testing.ExpectEqual("å", parts[0])
+    testing.ExpectEqual("ö", parts[1])
+    testing.ExpectEqual("ä", parts[2])
+}
+
+test "FieldsBy preserves text without matching separators" {
+    let isComma := fn(character: rune) bool {
+        return character == 44r
+    }
+
+    let parts := try FieldsBy("Hello World", isComma)
+
+    testing.RequireEqual(uint(1), parts.Len)
+    testing.ExpectEqual("Hello World", parts[0])
+}
+
+test "FieldsBy handles empty input" {
+    let isComma := fn(character: rune) bool {
+        return character == 44r
+    }
+
+    let parts := try FieldsBy("", isComma)
+
+    testing.RequireEqual(uint(0), parts.Len)
+}

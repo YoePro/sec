@@ -7,6 +7,8 @@ package sema
 
 import (
 	"fmt"
+	"sort"
+
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
@@ -43,12 +45,15 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 	if inferred, ok := a.expressionTypes[expr]; ok && inferred.Name == "Arena" {
 		domain = inferred.ArenaDomainID
 	}
-	if domain == "" {
-		if source, ok := expr.(*ast.Identifier); ok {
-			if sourceSymbol, exists := a.symbols[source.Value]; exists && sourceSymbol.Type.Name == "Arena" {
+	// An owner move carries the borrowed backing with it, whether or not the
+	// domain was already known from the expression type (rules/memory/arena.md
+	// § 4.2(3), § 10(6)).
+	if source, ok := expr.(*ast.Identifier); ok && source.Value != holder {
+		if sourceSymbol, exists := a.symbols[source.Value]; exists && sourceSymbol.Type.Name == "Arena" {
+			if domain == "" {
 				domain = sourceSymbol.Type.ArenaDomainID
-				a.transferBorrowHolder(source.Value, holder)
 			}
+			a.transferBorrowHolder(source.Value, holder)
 		}
 	}
 	if call, ok := expr.(*ast.CallExpression); ok {
@@ -64,18 +69,37 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 		}
 	}
 	if domain == "" {
-		domain = a.newArenaDomainID()
+		domain = a.newArenaDomainID(expressionToken(expr), "binding:"+holder)
 	}
 	symbol.Type.ArenaDomainID = domain
 	a.symbols[holder] = symbol
 }
 
-// newArenaDomainID creates an analysis-local logical identity for a fresh
-// Arena owner. This frontend ID does not implement runtime epoch exhaustion.
-// Rules: rules/memory/arena.md — §§4.2(1–5), 44(3–4).
-func (a *Analyzer) newArenaDomainID() string {
-	a.nextArenaDomainID++
-	return fmt.Sprintf("$arena-domain-%d", a.nextArenaDomainID)
+// newArenaDomainID records the abstract lexical creation/owner site with its
+// callable context. Re-analysis of one site retains its identity; distinct sites
+// stay distinct. Runtime allocation instances and epoch exhaustion remain separate.
+// Rules: rules/memory/arena.md — §§4.2(1–5), 44(3–4); compiler/compiler.md — §71.
+func (a *Analyzer) newArenaDomainID(source lexer.Token, role string) string {
+	record, ok := a.generatedIdentities.Resolve("arena-domain", string(a.currentCallable)+"/"+role, source, "")
+	if !ok {
+		a.addErrorAtToken(source, "Arena domain requires a prepared lexical source origin")
+		return ""
+	}
+	return "$" + record.ID
+}
+
+// GeneratedIdentities returns sorted compiler-owned resource provenance.
+// These are abstract frontend creation-site identities, not runtime allocation IDs.
+// Rules: rules/compiler/compiler.md — §71; compiler_pipeline.md — §76(2);
+// rules/memory/arena.md — §§4.2,44.
+func (a *Analyzer) GeneratedIdentities() []GeneratedIdentity {
+	records := a.generatedIdentities.Records()
+	for index := range records {
+		if records[index].Kind == "arena-domain" {
+			records[index].ID = "$" + records[index].ID
+		}
+	}
+	return records
 }
 
 // checkStaleArenaReference rejects a represented reference or slice whose
@@ -119,8 +143,39 @@ func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) b
 // arenaResultType represents the fallible result of safe typed Arena
 // allocation and owned/growable Arena construction.
 // Rules: rules/memory/arena.md — §§12, 13, 20–21.
+// It is the canonical compiler-known Result, so it compares equal to a
+// declared Result[T, AllocationError] return type.
 func arenaResultType(value Type, err Type) Type {
-	return Type{Name: "Result[" + typeDisplayName(value) + ", " + typeDisplayName(err) + "]", Kind: ResultType, TypeArgs: []Type{value, err}}
+	return compilerKnownResult(value, err)
+}
+
+// validArenaBackingArgument accepts the `ref mut byte[]` backing of
+// Arena.FromBuffer: a mutable reference value to byte storage, or a mutable
+// byte-array or byte-slice Place that the call borrows implicitly as a
+// borrowed parameter does (no call-site `ref mut` marker is required).
+//
+// Rules:
+//   - rules/memory/arena.md — § 10 "Borrowed fixed Arena" (mutable, contiguous, addressable backing)
+//   - rules/analysis/escape_analysis.md — "Call-boundary semantic classification" (call-bounded implicit borrow)
+func (a *Analyzer) validArenaBackingArgument(argument ast.Expression, argumentType Type) bool {
+	if argumentType.Kind == ReferenceType {
+		if argumentType.ReferenceMutable && argumentType.Element != nil && isByteSequenceType(*argumentType.Element) {
+			return true
+		}
+	} else if isByteSequenceType(argumentType) {
+		place, ok := a.callArgumentBorrowPlace(argument)
+		if !ok {
+			a.addErrorAtToken(expressionToken(argument), "Arena.FromBuffer backing must be addressable storage that outlives the Arena, not a temporary %s", typeDisplayName(argumentType))
+			return false
+		}
+		return !a.checkBorrowCreationPlace(place, true, expressionToken(argument))
+	}
+	a.addErrorAtToken(expressionToken(argument), "Arena.FromBuffer requires mutable contiguous byte storage borrowed as ref mut byte[], such as a let mut byte[] or byte[N], got %s", typeDisplayName(argumentType))
+	return false
+}
+
+func isByteSequenceType(typ Type) bool {
+	return (typ.Kind == ArrayType || typ.Kind == SliceType) && typ.Element != nil && typ.Element.Name == "byte"
 }
 
 // arenaConstructorBorrowHolder identifies the temporary holder of a
@@ -199,12 +254,16 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if member.Name == "FromBuffer" {
-		if argumentType.Kind != ReferenceType || !argumentType.ReferenceMutable || argumentType.Element == nil || argumentType.Element.Kind != SliceType || argumentType.Element.Element == nil || argumentType.Element.Element.Name != "byte" {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.FromBuffer requires ref mut byte[], got %s", typeDisplayName(argumentType))
+		if !a.validArenaBackingArgument(expr.Arguments[0], argumentType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if origin, ok := a.directReferenceOrigin(expr.Arguments[0]); ok {
 			origin.Mutable = true
+			a.expressionReferenceOrigins[expr] = origin
+		} else if place, ok := a.callArgumentBorrowPlace(expr.Arguments[0]); ok {
+			// The implicit call-bounded borrow of a backing Place becomes the
+			// Arena's dependency on that storage for its whole lifetime.
+			origin := localOriginWithPlaces(localReferenceOrigin{Name: place.Root, Token: place.RootToken, Mutable: true}, []Place{place})
 			a.expressionReferenceOrigins[expr] = origin
 		}
 		if place, ok := a.resolvePlace(expr.Arguments[0]); ok {
@@ -217,7 +276,7 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 		}
 		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", callCalleeDefinitionToken(expr), false)
 		arena := a.types["Arena"]
-		arena.ArenaDomainID = a.newArenaDomainID()
+		arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
 		return arena, expressionValue{Display: expr.String()}, true
 	}
 	if !a.canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
@@ -230,7 +289,7 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 	}
 	a.recordArenaEffect(effect, "", callCalleeDefinitionToken(expr), true)
 	arena := a.types["Arena"]
-	arena.ArenaDomainID = a.newArenaDomainID()
+	arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
 	return arenaResultType(arena, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 }
 
@@ -250,12 +309,29 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		return Type{}, expressionValue{}, false
 	}
 	symbol, ok := a.symbols[receiver.Value]
-	if !ok || symbol.Type.Name != "Arena" {
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+	// An Arena reached through `ref`/`ref mut` (for example a helper
+	// parameter) supports the same operations; mutating ones require
+	// `ref mut`, and only the owning Arena can be released.
+	// Rules: rules/memory/arena.md — § 68(3)–(4) "fn Fill(arena: ref mut Arena)", § 43 "Release()".
+	throughReference := symbol.Type.Kind == ReferenceType
+	if throughReference {
+		if symbol.Type.Element == nil || symbol.Type.Element.Name != "Arena" {
+			return Type{}, expressionValue{}, false
+		}
+	} else if symbol.Type.Name != "Arena" {
 		return Type{}, expressionValue{}, false
 	}
 	domain := symbol.Type.ArenaDomainID
-	if domain == "" {
-		domain = a.newArenaDomainID()
+	if throughReference {
+		// The referenced Arena belongs to the caller: storage allocated from it
+		// is rooted in the reference parameter, which may be returned, and Reset
+		// through the reference advances that same identity's epoch.
+		domain = receiver.Value
+	} else if domain == "" {
+		domain = a.newArenaDomainID(symbol.Token, "owner:"+receiver.Value)
 		symbol.Type.ArenaDomainID = domain
 		a.symbols[receiver.Value] = symbol
 	}
@@ -281,7 +357,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
-		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
+		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local && !throughReference, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
 		return arenaResultType(refType, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 	case "Alloc":
 		if len(expr.GenericArguments) != 1 {
@@ -318,17 +394,13 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			ReferenceOriginName:        domain,
 			ReferenceOriginDisplayName: receiver.Value,
 			ReferenceOriginToken:       receiver.Token,
-			ReferenceOriginLocal:       symbol.Local,
+			ReferenceOriginLocal:       symbol.Local && !throughReference,
 			ReferenceOriginStorage:     StorageOriginArena,
 			ReferenceOriginGeneration:  a.arenaGenerations[domain],
 		}
 		errType := a.types["AllocationError"]
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
-		return Type{
-			Name:     "Result[" + typeDisplayName(refSliceType) + ", AllocationError]",
-			Kind:     ResultType,
-			TypeArgs: []Type{refSliceType, errType},
-		}, expressionValue{Display: expr.String()}, true
+		return arenaResultType(refSliceType, errType), expressionValue{Display: expr.String()}, true
 	case "Reset":
 		if len(expr.GenericArguments) != 0 {
 			a.addErrorAtToken(expr.Token, "Arena.Reset does not take type arguments")
@@ -357,6 +429,11 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(expr.Token, "Arena.Release expects 0 arguments, got %d", len(expr.Arguments))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		if throughReference {
+			a.addErrorAtTokenWithMetadata(receiver.Token, "", "Release ends the Arena and consumes its owner; call it where the Arena is owned, or use Reset through the reference.",
+				"Arena.Release cannot consume arena %s through a borrowed reference", receiver.Value)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if !a.canWriteThroughSymbol(symbol) {
 			a.addErrorAtToken(receiver.Token, "Arena.Release requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -373,4 +450,82 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 	default:
 		return Type{}, expressionValue{}, false
 	}
+}
+
+// arenaBorrowedBacking returns the backing borrow an Arena owner binding
+// still controls, choosing the earliest source position deterministically.
+func (a *Analyzer) arenaBorrowedBacking(holder string) (borrowRecord, bool) {
+	var records []borrowRecord
+	for _, list := range a.borrows {
+		for _, record := range list {
+			if record.Holder == holder && record.Kind == mutableBorrow {
+				records = append(records, record)
+			}
+		}
+	}
+	if len(records) == 0 {
+		return borrowRecord{}, false
+	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Token.Line != records[j].Token.Line {
+			return records[i].Token.Line < records[j].Token.Line
+		}
+		return records[i].Token.Column < records[j].Token.Column
+	})
+	return records[0], true
+}
+
+const borrowedArenaHelp = "An Arena from Arena.FromBuffer controls its buffer for its whole lifetime, and that dependency cannot travel with the Arena value. Keep the Arena in the function that borrows the buffer and pass it on as ref mut Arena, or Release it first."
+
+// rejectBorrowedArenaMove rejects moving an Arena that controls borrowed
+// backing out of its binding to anything but another local binding (which
+// takes over the borrow before the move is marked). A consuming call, a field
+// store or an aggregate would otherwise end the borrow while the Arena lives.
+//
+// Rules:
+//   - rules/memory/arena.md — § 10(6)–(9) "Borrowed fixed Arena", § 4.2(3), § 45(2)
+func (a *Analyzer) rejectBorrowedArenaMove(name string, token lexer.Token) bool {
+	symbol, ok := a.symbols[name]
+	if !ok || symbol.Type.Name != "Arena" {
+		return false
+	}
+	record, borrowed := a.arenaBorrowedBacking(name)
+	if !borrowed {
+		return false
+	}
+	a.addErrorAtTokenWithMetadataAndPrevious(token, record.Token, "", borrowedArenaHelp,
+		"cannot move arena %s out of its binding while it controls borrowed backing %s", name, record.Root)
+	return true
+}
+
+// rejectBorrowedArenaReturn rejects returning an Arena whose backing is
+// borrowed in this function: the backing must stay live and exclusively
+// controlled for the complete Arena lifetime, which the caller cannot see.
+//
+// Rules:
+//   - rules/memory/arena.md — § 10(8)–(9)
+func (a *Analyzer) rejectBorrowedArenaReturn(value ast.Expression) bool {
+	if move, ok := explicitMoveArgument(value); ok {
+		value = move.Right
+	}
+	switch value := value.(type) {
+	case *ast.Identifier:
+		symbol, ok := a.symbols[value.Value]
+		if !ok || symbol.Type.Name != "Arena" {
+			return false
+		}
+		if record, borrowed := a.arenaBorrowedBacking(value.Value); borrowed {
+			a.addErrorAtTokenWithMetadataAndPrevious(value.Token, record.Token, "", borrowedArenaHelp,
+				"cannot return arena %s: its backing %s is borrowed here and must outlive the Arena", value.Value, record.Root)
+			return true
+		}
+	case *ast.CallExpression:
+		member, ok := value.Callee.(*ast.MemberExpression)
+		if ok && member.Property != nil && member.Property.Value == "FromBuffer" && a.expressionNamesType(member.Object) {
+			a.addErrorAtTokenWithMetadata(value.Token, "", borrowedArenaHelp,
+				"cannot return Arena.FromBuffer(...): its borrowed backing must outlive the Arena")
+			return true
+		}
+	}
+	return false
 }

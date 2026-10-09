@@ -1,0 +1,9 @@
+module main
+
+interface Ordinary {
+    fn Next() int
+}
+
+fn Read[T: Ordinary](value: ref mut T) int {
+    return value.Next()
+}

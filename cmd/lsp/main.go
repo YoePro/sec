@@ -1075,7 +1075,7 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 	}
 	definitions := analyzer.DefinitionsAt(use.File, use.Line, use.Column)
 	if len(definitions) == 0 {
-		if member, compilerKnown := analyzer.CompilerKnownMemberAt(use.File, use.Line, use.Column); compilerKnown {
+		if member, compilerKnown := analyzer.CompilerKnownSymbolAt(use.File, use.Line, use.Column); compilerKnown {
 			return []location{compilerKnownDefinitionLocation(member)}
 		}
 	}
@@ -1275,6 +1275,7 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 	if items, ok := subjectCompletionItems(uri, text, offset, context, firstSourceOverlay(overlays)); ok {
 		return items
 	}
+	context.SourceFile = pathFromURI(uri)
 	return globalCompletionItems(text, analyzer, context)
 }
 
@@ -1613,8 +1614,11 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 		if classification[positionKey] == "keyword" {
 			continue
 		}
-		if member, ok := analyzer.CompilerKnownMemberAt(token.File, token.Line, token.Column); ok {
+		if member, ok := analyzer.CompilerKnownSymbolAt(token.File, token.Line, token.Column); ok {
 			kind := "method"
+			if member.Kind == sema.CompilerKnownValueExpression {
+				kind = "variable readonly"
+			}
 			if member.Kind == sema.CompilerKnownProperty {
 				kind = "property"
 			}
@@ -2987,6 +2991,7 @@ func typeReferenceName(ref *ast.TypeReference) string {
 }
 
 type completionContext struct {
+	SourceFile       string
 	Prefix           string
 	Member           bool
 	DotOffset        int
@@ -3406,16 +3411,20 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 
 	if !context.TypeForm {
 		for name, overloads := range analyzer.Functions() {
-			if initializerOverloads(overloads) || internalCompilerOverloads(overloads) {
+			overloads = sourceVisibleFunctionOverloads(analyzer, overloads, context.SourceFile)
+			if len(overloads) == 0 || initializerOverloads(overloads) || internalCompilerOverloads(overloads) {
 				continue
 			}
 			add(completionItem{Label: name, Kind: 3, Detail: functionCompletionDetail(overloads)})
+		}
+		for _, binding := range visibleLocalBindings(analyzer, text, context) {
+			add(completionItem{Label: binding.Name, Kind: 6, Detail: lspTypeName(binding.Type)})
 		}
 		for name, symbol := range analyzer.Symbols() {
 			if strings.Contains(name, ".") {
 				continue
 			}
-			if symbol.Local && !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context) {
+			if symbol.Local && (!localSymbolInCompletionFile(symbol, context) || !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context)) {
 				continue
 			}
 			add(completionItem{Label: name, Kind: 6, Detail: lspTypeName(symbol.Type)})
@@ -3437,7 +3446,8 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 	}
 
 	for name, overloads := range analyzer.Functions() {
-		if initializerOverloads(overloads) || internalCompilerOverloads(overloads) {
+		overloads = sourceVisibleFunctionOverloads(analyzer, overloads, context.SourceFile)
+		if len(overloads) == 0 || initializerOverloads(overloads) || internalCompilerOverloads(overloads) {
 			continue
 		}
 		for _, function := range overloads {
@@ -3449,11 +3459,16 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 		}
 	}
 
+	for _, binding := range visibleLocalBindings(analyzer, text, context) {
+		if completionTypeMatches(expected, binding.Type) {
+			add(completionItem{Label: binding.Name, Kind: 6, Detail: lspTypeName(binding.Type)})
+		}
+	}
 	for name, symbol := range analyzer.Symbols() {
 		if strings.Contains(name, ".") {
 			continue
 		}
-		if symbol.Local && !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context) {
+		if symbol.Local && (!localSymbolInCompletionFile(symbol, context) || !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context)) {
 			continue
 		}
 		if completionTypeMatches(expected, symbol.Type) {
@@ -3619,6 +3634,49 @@ func matchingBraceOffset(text string, openOffset int) int {
 	return len(text)
 }
 
+// visibleLocalBindings selects, per name, the local or parameter binding of
+// the completed file declared closest before the cursor inside the enclosing
+// function. Sema's Symbols table keeps one entry per name for the whole
+// module, so a same-named parameter of another function or sibling file
+// would otherwise hide the visible binding or supply its type.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Completion"
+//   - rules/foundations/names_scopes_visibility.md — local scopes
+func visibleLocalBindings(analyzer *sema.Analyzer, text string, context completionContext) []sema.ResolvedBinding {
+	if !contextHasFunction(context) {
+		return nil
+	}
+	file := normalizedSourcePath(context.SourceFile)
+	selected := map[string]sema.ResolvedBinding{}
+	offsets := map[string]int{}
+	for _, declaration := range analyzer.ResolvedBindingDeclarations() {
+		if normalizedSourcePath(declaration.File) != file || declaration.Binding.Name == "" || declaration.Binding.Name == "_" {
+			continue
+		}
+		offset := textPositionOffset(text, declaration.Line, declaration.Column)
+		if !symbolVisibleAtCompletion(offset, context) {
+			continue
+		}
+		if previous, seen := offsets[declaration.Binding.Name]; !seen || offset > previous {
+			selected[declaration.Binding.Name] = declaration.Binding
+			offsets[declaration.Binding.Name] = offset
+		}
+	}
+	bindings := make([]sema.ResolvedBinding, 0, len(selected))
+	for _, binding := range selected {
+		bindings = append(bindings, binding)
+	}
+	sort.Slice(bindings, func(i, j int) bool { return bindings[i].Name < bindings[j].Name })
+	return bindings
+}
+
+// localSymbolInCompletionFile reports whether a local from Sema's name table
+// was declared in the completed file; its position is meaningless elsewhere.
+func localSymbolInCompletionFile(symbol sema.Symbol, context completionContext) bool {
+	return normalizedSourcePath(symbol.Token.File) == normalizedSourcePath(context.SourceFile)
+}
+
 func symbolVisibleAtCompletion(symbolOffset int, context completionContext) bool {
 	if !contextHasFunction(context) {
 		return !context.Member
@@ -3693,6 +3751,11 @@ func registerFieldHover(field sema.RegisterField) string {
 //   - rules/tooling/lsp.md — "Hover"
 //   - rules/collections/shaped-types.md — shaped type syntax and static dimensions
 func lspTypeName(typ sema.Type) string {
+	// rules/types/types.md — Named types: fixed carrier arguments do not
+	// create source parameters on a nongeneric named declaration.
+	if typ.Named && typ.FixedNamedArguments {
+		return sema.TypeDisplayName(typ)
+	}
 	if typ.Name != "" {
 		if strings.Contains(typ.Name, "[") {
 			return typ.Name

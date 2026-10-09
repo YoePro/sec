@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-18"
     audited: "2026-08-27"
-    revised: "2026-10-08"
+    revised: "2026-10-09"
     document_revision: "2.0"
     repository_baseline: "20b3606"
     replaces: rules/types/units.txt
@@ -85,6 +85,7 @@ integrations:
       - testdata/units_advanced_valid.sec
       - testdata/units_invalid.sec
     implemented:
+      - "representation audit boundary (2026-10-09, frontend.types-core): Semantic IR and raw/analyzed legacy LLVM/MLIR reject unresolved quantity representations with source locations instead of silently erasing units to numeric carriers; analyzed checks follow nested/imported resolved quantity facts. Full quantity propagation and lowering remain in this integration's existing remaining items."
       - unit declarations support an omitted decimal default carrier or an explicit plain compiler-known numeric scalar default
       - unit identity is retained separately from the selected numeric carrier on resolved numeric types
       - named unit-only types use the declaration default carrier while compound structural unit-only types default to decimal
@@ -305,7 +306,7 @@ integrations:
       - LSP hover and completion display resolved default value and source from the Sema-owned resolver
       - LSP hover abbreviates large fixed-array defaults as a bounded preview such as [0, ...] without materializing or rendering every element
       - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
-      - explicit type defaults are classified in rulebook order: a non-constant default keeps S1008 types.invalid-explicit-default, a default outside the base type keeps mandatory S1060 types.default-not-representable, and a representable default failing a contract keeps mandatory S1059 types.default-violates-contract whose help names the first violated contract in source order
+      - "explicit type defaults are classified in rulebook order: a non-constant default keeps S1008 types.invalid-explicit-default, a default outside the base type keeps mandatory S1060 types.default-not-representable, and a representable default failing a contract keeps mandatory S1059 types.default-violates-contract whose help names the first violated contract in source order"
       - storage sites needing an implicit default distinguish an ambiguous nearest-to-zero tie with mandatory S1061 types.ambiguous-implicit-default naming both equally near values and requesting an explicit default; the type itself stays legal
       - omitted struct fields whose type has an invalid explicit default report mandatory S1063 struct.invalid-defaulted-field instead of the generic S1010
       - omitted union payload fields without a default report mandatory S1062 types.no-default-value, or S1061 when the cause is an ambiguous tie
@@ -313,7 +314,7 @@ integrations:
       - Sema types empty list literals as their list type, rejects zero capacity and capacity mismatches, and resolves list[T] and list[T, Capacity] as defaultable (CollectionDefault) independently of element defaultability, for mutable declarations, omitted struct fields, and nested aggregates; the default displays as `list[T] {}`
       - module-local element types inside collection literals are qualified for multi-module analysis in the CLI and LSP; the formatter writes the canonical `list[T] {}` spacing; Semantic IR and the legacy backends reject list values explicitly
       - the rulebook fixture suite testdata/defaults/default_{values,ranges,in_contract,structs,lists,arrays}_{valid,invalid}.sec covers primitive, range, in-list, struct, list, and array defaults and their failure diagnostics, and pins the resolved default values
-      - float32 and float64 range-derived defaults select the exact nearest representable valid value: the smallest binary value at or above a positive lower bound, or the largest at or below (strictly below when exclusive) a negative upper bound; ties have no implicit default, and named types inherit the width
+      - "float32 and float64 range-derived defaults select the exact nearest representable valid value: the smallest binary value at or above a positive lower bound, or the largest at or below (strictly below when exclusive) a negative upper bound; ties have no implicit default, and named types inherit the width"
       - named array and slice types are presented by their nominal name in diagnostics instead of their structural shape
       - inherited membership values are revalidated against every newly added derived contract and reported with S1011 instead of being filtered (TestInheritedMembershipRevalidatedAgainstDerivedContracts)
       - 'omitted owning dynamic-array fields, including inside omitted nested struct fields, receive typed empty defaults: materialized default expressions record their canonical DefaultValueOf types, and contextually typed array literals (including explicit `[]` field values) record their type, so provenance analysis no longer re-infers a context-free empty literal (previously failed with "cannot infer element type of empty array literal")'
@@ -384,7 +385,7 @@ integrations:
     status: partial
     integrated: "2026-08-09"
     audited: "2026-08-12"
-    revised: "2026-10-08"
+    revised: "2026-10-09"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types/types.md contract.
@@ -393,7 +394,24 @@ integrations:
       - rules/types/default_values.md
       - rules/types/contracts.md
       - rules/library/core-library.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/packages/sec-mlir-dialect_package11.md
+      - rules/mlir/packages/sec-mlir-dialect_package14.md
+      - rules/corrections/applied/semantic-ir-units-correction-20260818.md
     code:
+      - internal/ir/semantic/type_identity.go
+      - internal/ir/semantic/named_scalar.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/codegen/mlir/nominal_readiness.go
+      - internal/codegen/readiness/unit_quantities.go
+      - cmd/lsp/main.go
+      - internal/sema/type_compatibility.go
+      - internal/sema/compiler_known_type_facts.go
+      - internal/sema/analyzer_struct_resolution.go
+      - internal/sema/type_declarations.go
+      - internal/sema/type_references.go
+      - internal/codegen/llvm/characters.go
       - internal/codegen/readiness/float.go
       - cmd/compiler/build_command.go
       - internal/lexer/lexer.go
@@ -406,6 +424,15 @@ integrations:
       - sec/core/char.sec
       - sec/core/rune.sec
     tests:
+      - internal/ir/semantic/nominal/nominal_test.go
+      - testdata/sema/nominal_core
+      - cmd/lsp/default_presentation_test.go
+      - internal/formatter/default_preservation_test.go
+      - testdata/defaults/default_presentation.json
+      - internal/sema/typecompatibility/matrix_test.go
+      - testdata/sema/type_compatibility
+      - internal/codegen/llvm/characters/characters_test.go
+      - testdata/codegen/characters
       - internal/codegen/llvm/float_readiness_test.go
       - cmd/compiler/llvm_float_readiness_test.go
       - testdata/codegen/llvm_platform_float
@@ -426,6 +453,11 @@ integrations:
       - testdata/sema/char_rune_literals_valid.sec
       - testdata/sema/char_rune_literals_invalid.sec
     implemented:
+      - "nominal-core representation/lowering audit (2026-10-09): source fixtures on 32/64-bit plans distinguish supported named scalars, generic structs/unions, Result, Option, error enums and anonymous fixed arrays in Semantic IR/Sec MLIR from unavailable Task, Thread, interface, register, any, temporal, quantity and nominal Result/array-wrapper representations. Supported source identities survive verification and maintained emission; unavailable representations return structured unsupported-lowering diagnostics with source locations rather than changing source validity."
+      - "representation audit fixes (2026-10-09): named scalar lowering uses the resolved declaration base and retains concrete generic arguments; recursive argument identity distinguishes nested specializations and excludes inherited carrier parameters from nongeneric declarations. Verification checks all type-argument references. Legacy MLIR rejects unavailable value signatures instead of emitting void, legacy LLVM rejects general Result instead of keeping only its success carrier (the existing analyzed string-result implementation remains separate), and raw/analyzed legacy APIs plus Semantic IR reject unresolved quantity erasure before publishing output. Identity helpers and audit fixtures/tests live in focused files and a dedicated test subdirectory."
+      - "nominal identity, assignability and explicit conversion relation matrix audit (2026-10-09): typed values retain declared identity at initialization, mutation, calls and returns, including named bool/string/char/rune, array and callable wrappers; contextual literals remain separately shapeable. The source matrix covers 38 scalar identities on 32/64-bit plans at all analysis depths plus generic arguments, fixed representations, array extents, borrowed reference modes, callable capabilities/signatures/variadic shape, enum/union/register, collection/shape/rank, Result/Option/Task/Thread, temporal, raw-pointer and any/error boundaries."
+      - "audit fixes (2026-10-09): unrelated structs, enums, unions and registers cannot gain an explicit conversion from equal carriers; wrapper conversions follow resolved declaration ancestry with exact generic/constant arguments. Dependency ordering resolves generic templates before wrappers, fixed base arguments survive nongeneric references and substitution, nominal identity survives cache keys and source display, compiler-known results retain trusted core refinements, and dynamic-array references match canonical borrowed slices while preserving original provenance. Shared compatibility logic is extracted from analyzer.go; the source matrix and fixtures have dedicated child directories."
+      - "legacy LLVM character literals (2026-10-09, MD-043 §§2–3): analyzed emission snapshots the exact AST character types from Sema; rune literals use i32 even for ASCII/Latin-1 and explicit char contexts use i8. Returns, inferred storage, arguments, named types and match result storage share these facts; raw APIs and stale/missing facts fail explicitly without partial output, and malformed decoded scalars cannot be truncated. Cohesive character lowering is extracted from expressions.go, with tests in a dedicated child directory; Clang compiles both scalar plans and executes the amd64 fixture."
       - "LSP active target/variant switching and distinct-plan per-variant diagnostics are complete under frontend.target-sized-integer-semantics (2026-10-08); target comparison views remain owned by tooling.lsp-multi-target-diagnostics"
       - "legacy LLVM platform-float rejection (2026-10-08, MD-014): all generator entry points reject plain float in signatures, conversions, aliases, nested types, fields and defaults before emission because legacy floating-point lowering is unsupported; inferred binary-float family literals are rejected with structured unsupported-lowering source context, including integer-shaped g literals; plain float is no longer mapped to double by spelling, and explicit float32/float64 signatures retain their fixed widths on 32/64-bit triples"
       - "emit-llvm and build --pipeline llvm preserve existing outputs on rejected platform floats; build diagnostics finish only after backend success or failure, so the rejection is not hidden by an earlier empty JSON success summary; the build driver now has its own focused file"
@@ -454,7 +486,7 @@ integrations:
       - conformance coverage for the canonical ordinary scalar type inventory and compiler-known collection, shaped, rank-support, result, option, task, thread, and raw-pointer identities
       - type and compile-time integer arity validation for list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and non-generic MemorySpace
       - named types over any TypeReference parse, including function types such as `type Callback fn(int, int) int` and capability-prefixed `-> fn(...)`; a same-line type start is no longer mistaken for a following function declaration, while a type name followed by a next-line declaration still reports the missing base type
-      - formatter coverage for every types.md declaration form: let (inferred, mut, typed, defaultable without initializer, multiple declarators), type-first single, mutable, multiple, and parenthesized groups, named types with units, contracts, defaults, generics, and function-type bases, struct, register, union error, enum (including colon and bit underlying), unit, interface, impl, single and grouped imports, extern and ordinary function headers, and type references using ref, ref mut, RawPtr, function types, collections, shaped types, Option, Result, and fixed/owning arrays; canonical spacing comes from parser-confirmed CST roles and the golden fixture is a fixed point
+      - "formatter coverage for every types.md declaration form: let (inferred, mut, typed, defaultable without initializer, multiple declarators), type-first single, mutable, multiple, and parenthesized groups, named types with units, contracts, defaults, generics, and function-type bases, struct, register, union error, enum (including colon and bit underlying), unit, interface, impl, single and grouped imports, extern and ordinary function headers, and type references using ref, ref mut, RawPtr, function types, collections, shaped types, Option, Result, and fixed/owning arrays; canonical spacing comes from parser-confirmed CST roles and the golden fixture is a fixed point"
       - "the previous formatter rewrote valid `int mut: a` into `int mut : a`; type-first colons now bind left"
       - compiler Sema derives target-sized int and uint bounds from the selected ResolvedScalarPlan, and every compile-time integer consumer is audited on 32- and 64-bit plans (frontend.target-sized-integer-semantics)
       - "MD-014 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 6, 2026-10-03): plain float is platform-sized from the same ResolvedScalarPlan.PointerWidthBits fact as int and uint (FloatBits 32 or 64; 64 without a plan), float literals and float arithmetic carriers take that width, and Semantic IR records it on TypeFloat (TestPlainFloatFollowsPlatformWidth); no independent float-width selector exists"
@@ -463,18 +495,41 @@ integrations:
       - "MD-043 (rules/corrections/applied/md043-char-rune-literal-correction-20261008.md, 2026-10-08): a single-quoted character literal is rune by default independently of its value; an explicit char context (declarations, arguments, comparisons, testing equality, membership, range bounds and storage sites) shapes it only for scalars 0..255 through one shapeCharacterLiteral helper and rejects larger scalars such as 'Ω' with mandatory S1138; unsuffixed integer literals do not shape to char and the mismatch help names 65t and char(65); byte, char and rune stay distinct with explicit total byte(char)/char(byte) conversions (TestCharRuneLiteralSemantics, testdata/sema/char_rune_literals_{valid,invalid}.sec)"
     remaining:
       - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
-      - complete the nominal identity, assignability, and explicit conversion matrix audit against rules/types/types.md
       - type runtime-checked scalar conversions such as try rune(codePoint) and try int32(wide) with the decided core ConversionError (OutOfRange, InvalidScalar, PrecisionLoss, ScaleOverflow, NonFinite) and implement their fallible frontend contract (MD-012 decided 2026-10-08, rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md § 4)
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
       - complete fixed-array, owning dynamic-array, borrowed-slice, reference, and defaultability integration under frontend.collections, sema.place-analysis, and frontend.default-values
-      - finish Result, Option, Task, Thread, interface, union, register, unit, and other nominal-core representation/lowering audits without deriving source identity from backend layout
       - complete checked decimal arithmetic lowering and overflow handling
       - decimal division precision and failure policy implementation
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
       - "Semantic IR has no char/rune comparison or ordering operation: int.compare accepts only builtin integers and SEC-MLIR Package 7 explicitly excludes char/rune ordered comparison, so `c == d` and `value in 'a'..'z'` over char or rune report unsupported lowering; the owning lowering package must define the operation before IR emits it"
-      - "the legacy emit-llvm path types a character literal as i8 or i32 from its value instead of the Sema-resolved char/rune type; replace it with the resolved type when the maintained pipeline replaces legacy lowering"
+    governance_reconciliation:
+      - "representation audit completion does not implement every backend representation: collection/array work remains with frontend.collections; register, union and interface work remains with frontend.registers, frontend.unions and frontend.interfaces; task/thread work remains with concurrency.tasks-v2 and concurrency.thread-v2; quantity facts and operations remain with frontend.units-v2; any remains explicitly listed here. Maintained Semantic IR and physical Result/Option/aggregate lowering remain with the integrations in governance/lowering.yaml. Legacy unsupported boundaries are implementation capabilities, not new source-language restrictions."
+      - "audit completion is distinct from runtime conversion implementation: the existing scalar ConversionError frontend remains open; audited missing nominal-core representations retain their specialized implementation owners, as do collection/place/defaultability owners. MD-051 records undocumented legacy numeric-to-string constructor permission; those casts are excluded from normative matrix assertions and characterized separately pending a rulebook decision."
+      - "explicit callable parameter ownership modes and variadic callable type syntax remain with frontend.functions-v2 and frontend.lambda-functions-v2 in governance/declarations.yaml; inferred variadic shape is covered here without claiming those syntax/ownership integrations complete."
     verification:
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 after all representation audit fixes; compiler, LSP, Sema, Semantic IR, maintained Sec MLIR and legacy codegen packages pass
+      - command: go test -race ./internal/ir/semantic/... ./internal/codegen/... ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-09 after the representation audit fixes, including nominal specialization identities, unsupported signatures, quantity entry points and type-argument verification
+      - command: go vet ./... and git diff --check
+        result: passed on 2026-10-09; governance validation confirms 46 registered fragments, 304 unique integration IDs and existing evidence paths; types-core remaining reduced from 10 to 9 and types total from 39 to 38
+      - command: go test -race ./cmd/lsp -run 'TestLSPPresentsEveryDefaultForm' -count=1
+        result: passed on 2026-10-09 after the final nongeneric nominal hover/default presentation adjustment
+      - command: go test ./internal/sema/typecompatibility -count=1
+        result: passed on 2026-10-09; typed scalar boundaries, explicit relation matrix, parameterized aggregate boundaries, contextual literals, inferred variadics and separately characterized MD-051 legacy permission
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09 in the final full-suite rerun after correcting nongeneric named collection default previews and LSP hover; all packages including compiler, LSP, formatter, Sema and codegen pass.
+      - command: go test -race ./internal/sema/... ./internal/codegen/... -count=1 and go vet ./...
+        result: passed on 2026-10-09 for Sema/codegen, including a final race rerun of typecompatibility; go vet ./... also passes after the final LSP presentation adjustment. git diff --check and governance validation pass; 46 registered fragments, 304 unique integration IDs including migration source, evidence paths present; types-core remaining reduced from 11 to 10 and types total from 41 to 40
+      - command: go test ./... -count=1
+        result: passed on 2026-10-09; all packages including compiler and LSP after replacing value-based legacy character widths with Sema facts
+      - command: go test -race ./internal/codegen/llvm/... -count=1 and go vet ./...
+        result: passed on 2026-10-09; git diff --check and governance YAML validation also pass, with 46 registered fragments and 304 unique integration IDs; types-core remaining reduced from 12 to 11 and types total from 42 to 41
+      - command: compiler emit-llvm on linux-amd64/linux-armv7 and build --pipeline llvm on linux-amd64 for testdata/codegen/characters/scalars.sec
+        result: passed on 2026-10-09; CLI outputs preserve Sema char/rune widths, the armv7 module compiles with Clang, and the built amd64 entry point exits successfully
+      - command: go test ./internal/codegen/llvm/... -count=1
+        result: passed on 2026-10-09; char/rune widths on both scalar plans, fail-closed raw/stale facts, invalid char domain and malformed ASTs; Clang compiled armv7/amd64 objects and executed the amd64 calls, storage and match fixture
       - command: go test ./... -count=1
         result: passed on 2026-10-08 after implementing MD-043 rune-default character literals, char context shaping limited to 0..255, separate t-suffix validation and S1138, with char-bound pitfall proofs widened to Latin-1 code points
       - command: go test ./internal/codegen/llvm ./cmd/compiler -count=1
@@ -800,27 +855,51 @@ integrations:
     status: partial
     updated: '2026-09-29'
     audited: '2026-09-29'
-    revised: '2026-10-08'
+    revised: '2026-10-09'
     repository_baseline: 314233c
-    document_revision: "2.0"
-    summary: Tracks canonical named-type contracts. Integer ranges, ordered primitive membership, odd/even/multipleOf,
-      finite/notEmpty/unique marker parsing, minLen/maxLen/exactLen parsing and compile-time consistency, compile-time
+    document_revision: "2.1"
+    summary: Tracks canonical named-type contracts. Integer ranges, ordered primitive, enum and payload-less union membership, odd/even/multipleOf,
+      finite/notEmpty/unique marker parsing, rune/byte length contract parsing and compile-time consistency, compile-time
       primitive checks, contract inheritance, and explicit/default integration have substantial frontend support. The full canonical contract inventory, complete compile-time
       equality membership domain, rejection of obsolete storage-site contracts, complete consistency proofs, runtime
       validation, fallible conversion/assignment, collection/string contracts, diagnostics, Semantic IR, lowering,
       and tooling remain partial.
     rules:
     - rules/types/contracts.md
+    - rules/compiler/compiler_known_members.md
+    - rules/foundations/lexical_structure.md
+    - rules/library/core-library.md
+    - rules/corrections/applied/string-length-contracts-correction-20261009.md
     - rules/types/default_values.md
     - rules/types/types.md
     - rules/declarations/struct.md
+    - rules/declarations/unions.md
+    - rules/declarations/enums.md
+    - rules/compiler/compile_time_evaluation.md
     - rules/collections/collections.md
     - rules/foundations/operators.md
     - rules/foundations/grammar.md
     - rules/errors/errorhandling.md
     - rules/tooling/diagnostics.md
     code:
+    - internal/sema/unique_contracts.go
+    - internal/sema/collectionshape/unique.go
+    - internal/sema/type_references.go
+    - internal/sema/stringcontract/plan.go
+    - internal/sema/string_contracts.go
+    - internal/codegen/llvm/string_contracts.go
+    - internal/codegen/mlir/string_length.go
+    - internal/codegen/readiness/string_contracts.go
+    - sec/core/string.sec
+    - internal/sema/errors.go
+    - internal/sema/type_diagnostic_locations.go
+    - cmd/compiler/sema_diagnostic.go
+    - cmd/lsp/sema_diagnostic.go
     - internal/sema/collectionshape/length.go
+    - internal/sema/nominal_membership.go
+    - internal/sema/membership/value.go
+    - internal/sema/analyzer_struct_resolution.go
+    - internal/sema/type_references.go
     - internal/sema/collection_literals.go
     - internal/sema/try_failure_set.go
     - internal/ast/walk/inspect.go
@@ -855,6 +934,18 @@ integrations:
     - internal/codegen/llvm
     - sec/core/error.sec
     tests:
+    - internal/sema/collectionshape/unique_test.go
+    - testdata/sema/collection_contracts/unique_semantics_valid.sec
+    - testdata/sema/collection_contracts/unique_semantics_invalid.sec
+    - testdata/sema/collection_contracts/unique_elements_invalid.sec
+    - internal/sema/stringcontract/plan_test.go
+    - internal/codegen/llvm/stringcontracts/runtime_test.go
+    - internal/codegen/mlir/stringlength/length_test.go
+    - testdata/sema/string_contracts
+    - testdata/codegen/string_contracts
+    - internal/sema/contractdiagnostics/locations_test.go
+    - testdata/contracts/locations
+    - internal/sema/contract_cte_test.go
     - internal/sema/collectionshape/empty_lists_test.go
     - internal/sema/collectionshape/length_test.go
     - testdata/sema/collection_contracts/
@@ -886,7 +977,10 @@ integrations:
     - internal/parser/regex_contract_test.go
     - internal/sema/regex_contract_test.go
     - internal/sema/default_diagnostics_test.go
-    - internal/sema/enum_membership.go
+    - internal/sema/membership/membership_test.go
+    - internal/lsp/features/defaults/nominal_test.go
+    - testdata/sema/membership/valid.sec
+    - testdata/sema/membership/rejections_invalid.sec
     - testdata/contracts/contract_diagnostic_ids_invalid.sec
     - internal/parser/range_bound_recovery_test.go
     - internal/formatter/named_type_contract_test.go
@@ -897,6 +991,21 @@ integrations:
     - testdata/parser/regex_contract_recovery_invalid.sec
     - internal/sema/contract_conjunction_order_test.go
     implemented:
+    - "unique direct-element equality (2026-10-09): shared FirstDuplicate uses the resolved semantic equality callback and source order rather than representation, spelling, hashing or recursive uniqueness. Sema rejects non-comparable direct elements, including concrete generic instantiations, and proves duplicates using contextual scalar CTE, immutable module bindings, enum members, decoded strings, exact decimals and resolved fixed-array/struct values with omitted scalar/struct defaults. Equality may recursively compare one aggregate value; it never requires that aggregate's own elements to be unique."
+    - "string length units (2026-10-09): explicit user decision makes string Len equal RuneLen (Unicode scalar count), with independent ByteLen UTF-8 encoded byte count; minByteLen/maxByteLen/exactByteLen are string-only reserved contract words shared by lexer, parser, formatter, CST and LSP inventory, and appended public ContractKind variants preserve prior ordinal values. Relevant rulebooks and keyword/editor inventories are synchronized."
+    - "native string runtime validation for valid UTF-8 (2026-10-09): analyzed LLVM bodyless try conversions check complete inherited/local length/notEmpty conjunctions in source order, evaluate the source once, and return canonical ConversionError.Contract with first-failure Kind and DeclarationIndex; forwarding preserves the payload, and string-returning source calls preserve both pointer and byte length. Raw/stale facts and unsupported handled checks remain explicit capability boundaries."
+    - "shared stringcontract package (2026-10-09): immutable arbitrary-precision plans own rune/byte compile-time literal/default proofs and coupled satisfiability, separate from Analyzer bindings and backend emission; source conformance and native/legacy MLIR length execution tests live in focused child packages with Sec fixtures. Native 32/64-bit objects compile, and amd64 executes Unicode, non-BMP, combining-character, embedded-NUL, inherited, source-return and first-failure cases."
+    - "byte-offset core string operations use ByteLen, while byte-array source lengths retain collection Len; RuneLen and ByteLen core properties expose their compiler-owned intrinsics. Legacy MLIR length getters count runes and byte getters preserve bytes; unsupported string validation is rejected before generation instead of erased."
+    - "contract diagnostic provenance (2026-10-09): semantic errors retain an ordered list of additional source locations alongside the compatibility previous link; duplicate membership preserves both the earlier value and the in declaration, and inherited invalid membership preserves both the newly violated contract and original membership declaration. CLI human/JSON and LSP preserve the complete list with source ranges, stable IDs/severity, deduplication and per-file UTF-16 conversion using unsaved overlays; conformance tests live in the focused contractdiagnostics child package."
+    - parser and AST retain obsolete storage-site contract nodes for recovery and migration tooling before Sema rejects them
+    - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): range bounds parse as ordinary Expressions (parseRangeContract; the SignedNumericConstant restriction and its recovery diagnostic are removed) and every contract position (range bounds, in-members, multipleOf, minLen/maxLen/exactLen, regex pattern, default) is evaluated as a SemanticCompileTimeRequiredContext through Analyzer.semanticCompileTimeConstant; immutable module bindings are accepted, mutable or unknown values keep S1066, and calls or property getters receive mandatory S1101 compile-time.execution-unavailable instead of a claim that the source is invalid"
+    - "MD-012 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 4, 2026-10-03): a constant explicit integer conversion into a constrained named type checks the intrinsic representation of the underlying primitive first (reported against that primitive), stops on failure, then checks declared contracts in source order with S1068 (TestCheckedConversionFailureLayers)"
+    - "named-binding primitive operators (2026-10-08): semantic CTE recursively evaluates immutable decimal, binary-floating and text bindings, exact decimal arithmetic/remainder, finite binary-floating arithmetic with each intermediate rounded at the resolved width, primitive comparisons and logical short-circuiting; contract bounds/membership and explicit defaults share these values; non-terminating decimal division, coefficient overflow, zero decimal divisors, mixed decimal/float operands, hidden nominal text coercion and runtime-dependent inputs remain rejected; calls/getters retain S1101 and their separate remaining executor dependency"
+    - "contract source provenance (2026-10-08): each semantic contract and membership value retains its exact defining token through named inheritance; value/default errors link to the specific contract, derived membership failures locate the original value and new constraint, argument errors retain contract/type definition context, checked assignment links to the requiring contract, and pre-existing duplicate-member provenance is preserved; compiler JSON/human diagnostics and LSP cross-file UTF-16 links share these canonical locations"
+    - "specialized Sema package boundary (2026-10-08): internal/sema/constant owns pure literal integer evaluation, shared integer operations, exact numeric operations, decimal coefficient checks and binary-floating endpoints without importing sema; Analyzer adapters own bindings, resolved type contexts and source diagnostics; README.md records the dependency direction, and type/default declaration handling is extracted from contracts.go and analyzer.go"
+    - "nominal membership extension (2026-10-09): payload-less union values and named derivations, including concrete generic unions, participate in ordered in-list contracts through the shared semantic CTE model; immutable value dependencies, inherited conjunctions, current-type and base-type constructors, first-member defaults, explicit defaults and source-linked rejection of known invalid values are covered"
+    - "semantic equality retains the concrete declared value domain and union variant or enum value class; enum aliases with equal backing values are duplicate membership entries, distinct unions/generic instances and sibling named types introduce no hidden coercion, and ordinary calls/getters retain their separate S1101 executor limitation"
+    - "union declarations without payload are resolved before their contract-bearing wrappers, preventing source-order-dependent incomplete domains; default construction and LSP source display use the storage type name, preserving inherited generic arguments without inventing arguments on a nongeneric named type; pure value identity/equality and source conformance tests live in internal/sema/membership"
     - compile-time length validation covers the supported canonical empty list literals through explicit constrained named conversions, inherited and bounded list types, storage, fields, calls, and returns; minLen, maxLen, exactLen, and notEmpty share exact length proofs with strings and arrays, while runtime collection values receive no fabricated length proof
     - list defaultability checks the complete collection contract set before synthesizing an allocation-free zero-length default; invalid constrained list defaults make enclosing structs and nonempty fixed arrays nondefaultable, while valid empty defaults remain independent of element defaultability and bounded capacity
     - proved empty-list conversions retain compile-time contract validation without inventing a runtime failure or panic effect; noPanic regression cases cover valid conversions and aggregate defaults
@@ -909,7 +1018,7 @@ integrations:
     - integer range contracts with inclusive and exclusive upper bounds
     - integer odd and even marker contracts
     - integer multipleOf parsing, nonzero-divisor diagnostic, literal validation, and default integration; a divisor that is not an established compile-time integer is rejected with S1066 instead of silently dropping the contract
-    - enum-based named types accept ordered enum-member membership (`type Primary Color in [Color.Blue, Color.Red]`) with member-identity equality, duplicate and unknown-member rejection, the first listed member as default, and compile-time proof of member values (`Primary.Green` violates the contract with S1068)
+    - enum-based named types accept ordered enum-member membership (`type Primary Color in [Color.Blue, Color.Red]`) with semantic value-class equality, duplicate and unknown-member rejection, the first listed member as default, and compile-time proof of member values (`Primary.Green` violates the contract with S1068)
     - every canonical contract family (range, in, multipleOf, odd, even, minLen, maxLen, exactLen, notEmpty, unique, finite, regex) and the default clause format with one canonical space from parser-confirmed CST roles; contiguous simple named-type groups align base-type and first contract/default anchors within the §9 padding limit, and generic, struct, and union-error headers get single-space separation
     - LSP hover on a contracted named type lists its resolved contracts, including inherited ones, in source order through sema.ContractDisplays; completion and semantic tokens cover every contract word including regex
     - same-line non-numeric range bounds (identifiers, grouped or other expressions) get one focused parser diagnostic per bound and are retained as invalid expressions, so no stray module-scope code or swallowed declaration results
@@ -925,7 +1034,7 @@ integrations:
     - length-contract applicability is restricted to strings and supported collection-shaped named types
     - inherited and local minLen, maxLen, exactLen, and notEmpty constraints participate in one consistency proof
     - fixed-array extents participate in length-contract consistency without host-width narrowing
-    - explicit string defaults are checked against length contracts in the canonical byte-based string Len unit
+    - explicit string defaults are checked against length contracts in canonical RuneLen and ByteLen units
     - compile-time string literals are checked against inherited membership, notEmpty, minLen, maxLen, and exactLen contracts at typed initialization, try assignment, aggregate construction, union payload, explicit conversion, call-argument, and return boundaries
     - typed array literals are checked against inherited minLen, maxLen, exactLen, and notEmpty contracts from the exact arbitrary-precision compact literal length, including fixed-array spreads without re-evaluating source elements
     - unique rejects the first source-ordered proven duplicate among direct compile-time array-literal elements using the same semantic equality as membership; spreads and runtime expressions remain opaque
@@ -935,7 +1044,7 @@ integrations:
     - constrained named string types accept a direct string literal only through the compile-time contract proof; non-literal base strings do not acquire an implicit nominal conversion
     - selected function-call arguments and return values share the compile-time contract boundary check, including existing integer range, divisibility, and parity validation
     - contract applicability diagnostics for currently recognized contract families
-    - contract failure families carry mandatory registered identities with help: S1064 types.inapplicable-contract, S1065 types.unsatisfiable-contract-set (integer and length conjunctions), S1066 types.invalid-contract-argument, S1067 types.incompatible-in-contract-value, S1068 types.value-violates-contract (compile-time integer, string, and array-literal proofs), and S1069 types.constrained-assignment-requires-try; invalid explicit defaults use S1059/S1060 owned by frontend.default-values
+    - "contract failure families carry mandatory registered identities with help: S1064 types.inapplicable-contract, S1065 types.unsatisfiable-contract-set (integer and length conjunctions), S1066 types.invalid-contract-argument, S1067 types.incompatible-in-contract-value, S1068 types.value-violates-contract (compile-time integer, string, and array-literal proofs), and S1069 types.constrained-assignment-requires-try; invalid explicit defaults use S1059/S1060 owned by frontend.default-values"
     - integer literal and supported explicit-conversion contract checks
     - explicit type defaults are checked against represented contracts
     - range, membership, multipleOf, odd, and even participate in the implemented default resolver
@@ -954,30 +1063,19 @@ integrations:
     - "MD-009 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 10, 2026-10-03): `regex` is a reserved contract spelling in the §7.3 inventory (lexed as an identifier, resolved in contract position), unavailable as a user declaration name, with the grammar production RegexContract ::= Contextual(\"regex\") ConstantExpression and no same-line requirement"
     - a missing regex pattern at a line end, EOF, following contract word, or default clause emits one parser diagnostic, retains an InvalidExpression pattern, and preserves the contract list, default clause, and following declarations
     - Sema restricts regex to string named types, requires a compile-time string pattern, retains the escape-decoded pattern as sema.RegexContract, and rejects the declaration with mandatory S1058 types.regex-contract-unavailable plus help instead of silently dropping the unvalidatable contract (MD-010)
-    - "MD-012 public declarations (2026-10-08, rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md § 3): sec/core/error.sec declares ContractKind (Range, In, Odd, Even, MultipleOf, Finite, Regex, MinLen, MaxLen, ExactLen, NotEmpty, Unique), ContractError.Violation { Kind, DeclarationIndex } and ConversionError (OutOfRange, InvalidScalar, PrecisionLoss, ScaleOverflow, NonFinite, Contract(ContractError)) with adjacent member documentation; the compiler-known ContractError identity is refined by this trusted core declaration (isCoreBuiltinDeclaration) instead of a competing compiler shape"
+    - "MD-012 public declarations (2026-10-08, rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md § 3): sec/core/error.sec declares ContractKind (Range, In, Odd, Even, MultipleOf, Finite, Regex, MinLen, MaxLen, ExactLen, NotEmpty, Unique, MinByteLen, MaxByteLen, ExactByteLen), ContractError.Violation { Kind, DeclarationIndex } and ConversionError (OutOfRange, InvalidScalar, PrecisionLoss, ScaleOverflow, NonFinite, Contract(ContractError)) with adjacent member documentation; the compiler-known ContractError identity is refined by this trusted core declaration (isCoreBuiltinDeclaration) instead of a competing compiler shape"
     partial:
-    - membership is currently restricted by implementation to primitive/scalar/enum compile-time constants rather
-      than the full canonical domain of named values with compile-time semantic equality
-    - finite, notEmpty, unique, minLen, maxLen, and exactLen have frontend representation but not complete runtime validation semantics
-    - range bounds are parsed from a narrow numeric-literal form rather than the complete permitted compile-time-constant
-      domain
+    - membership supports primitive/scalar/enum and payload-less union compile-time values; payload-bearing and aggregate
+      construction still requires the canonical semantic CTE executor for the full named-value equality domain
+    - finite and collection notEmpty/unique/length contracts have frontend representation but not complete runtime validation semantics; native bodyless string checks work for valid UTF-8, while MD-050 must settle invalid-string policy
     - explicit-default constant evaluation supports only a subset of the canonical allocation-free compile-time constant
       domain
-    - parser and AST retain obsolete storage-site contract nodes for recovery and migration tooling before Sema rejects them
-    - every contract diagnostic now has a stable ID; related locations pointing at the contract declaration are not yet attached because the diagnostic model only carries a duplicate-style previous location
     - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
-    - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): range bounds parse as ordinary Expressions (parseRangeContract; the SignedNumericConstant restriction and its recovery diagnostic are removed) and every contract position (range bounds, in-members, multipleOf, minLen/maxLen/exactLen, regex pattern, default) is evaluated as a SemanticCompileTimeRequiredContext through Analyzer.semanticCompileTimeConstant; immutable module bindings are accepted, mutable or unknown values keep S1066, and calls or property getters receive mandatory S1101 compile-time.execution-unavailable instead of a claim that the source is invalid"
-    - "MD-012 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 4, 2026-10-03): a constant explicit integer conversion into a constrained named type checks the intrinsic representation of the underlying primitive first (reported against that primitive), stops on failure, then checks declared contracts in source order with S1068 (TestCheckedConversionFailureLayers)"
     - "MD-010 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 2): the regex language moves to a dedicated future regex rulebook; the contract continues to evaluate and retain the pattern and reject the contract with S1058"
-    - "named-binding primitive operators (2026-10-08): semantic CTE recursively evaluates immutable decimal, binary-floating and text bindings, exact decimal arithmetic/remainder, finite binary-floating arithmetic with each intermediate rounded at the resolved width, primitive comparisons and logical short-circuiting; contract bounds/membership and explicit defaults share these values; non-terminating decimal division, coefficient overflow, zero decimal divisors, mixed decimal/float operands, hidden nominal text coercion and runtime-dependent inputs remain rejected; calls/getters retain S1101 and their separate remaining executor dependency"
-    - "contract source provenance (2026-10-08): each semantic contract and membership value retains its exact defining token through named inheritance; value/default errors link to the specific contract, derived membership failures locate the original value and new constraint, argument errors retain contract/type definition context, checked assignment links to the requiring contract, and pre-existing duplicate-member provenance is preserved; compiler JSON/human diagnostics and LSP cross-file UTF-16 links share these canonical locations"
-    - "specialized Sema package boundary (2026-10-08): internal/sema/constant owns pure literal integer evaluation, shared integer operations, exact numeric operations, decimal coefficient checks and binary-floating endpoints without importing sema; Analyzer adapters own bindings, resolved type contexts and source diagnostics; README.md records the dependency direction, and type/default declaration handling is extracted from contracts.go and analyzer.go"
     remaining:
     - define the canonical regular-expression syntax/engine (MD-010), then replace S1058 with compile-time pattern validation, literal/default proofs, and runtime regex validation
-    - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty
+    - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty; native bodyless checks are implemented for valid UTF-8, but invalid UTF-8 and byte-slice boundary policy awaits MD-050 before this requirement can close
     - implement runtime supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
-    - enforce unique using semantic equality on direct elements without recursive uniqueness
-    - extend in-list membership to further named-value families with compile-time semantic equality beyond primitive scalars and enum members (for example unions without payload) without memory-identity comparison or hidden coercion
     - execute calls and property getters in contract arguments once the canonical semantic CTE executor exists (currently S1101 compile-time.execution-unavailable); MD-011 already classifies every contract position as a SemanticCompileTimeRequiredContext
     - implement runtime validation for explicit conversion into constrained named types
     - implement canonical fallible constrained assignment and compound-assignment behavior through try
@@ -986,13 +1084,16 @@ integrations:
     - lower runtime validation and failure paths through the maintained Sec MLIR pipeline
     - "MD-012 runtime channel: make runtime-dependent checked conversions into constrained named types fail with ConversionError, mapping intrinsic failures to their variants and the first violated contract in source order to Contract(ContractError.Violation { Kind, DeclarationIndex }) with zero-based declaration indices; distinguish missing relation, intrinsic failure and contract failure in diagnostics (rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md §§ 4–5)"
     governance_reconciliation:
+    - "unique comparison semantics completion (2026-10-09): this closes the direct-element equality requirement, with 32/64-bit source tests at every analysis depth and callback execution tests including non-reflexive equality and signed zero. The existing runtime collection validation/lowering and shared CTE executor requirements remain open: unknown runtime expressions, spreads and unsupported construction receive no fabricated compile-time proof; map entry semantics are not inferred from key representation. type-contracts-v2 remaining reduced from 11 to 10 and types total from 40 to 39."
+    - "string runtime slice (2026-10-09): native LLVM validation and legacy MLIR rune/byte length getters are implemented and executable; maintained Semantic IR/MLIR contract lowering, handled try, general constrained assignment and other runtime contract families retain their existing remaining owners. MD-050 records the unresolved invalid UTF-8 decision; string runtime remaining is retained until that policy is normative and tested, so type-contracts-v2 remaining stays 11 and types total stays 41."
+    - "partial audit (2026-10-09): the stale numeric-literal-only range parser and single-previous-location diagnostic limitations are removed; completed MD-011 context classification, compile-time conversion precedence, primitive binding operators, source provenance, legacy syntax recovery and package extraction are recorded under implemented. This completes one diagnostic partial and reconciles seven previously completed or stale partial records: partial count 13 to 5; remaining stays 11 and types total stays 41, because runtime/CTE executor/IR work is unchanged."
     - frontend.default-values remains authoritative for detailed default selection/materialization status and should
       not be duplicated here.
     - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
     - "contracts.md status migrated on 2026-10-08: named integer contracts, compile-time literal checks, ordered membership, duplicate detection, and explicit type-default contract checks are recorded under implemented; detailed default selection/materialization stays owned by frontend.default-values"
     - "contracts.md status migrated on 2026-10-08: parser/AST retention of obsolete variable and field contracts for recovery and migration tooling is recorded here, alongside Sema rejection with S1050 and the prohibition on applying those contracts to storage types; membership checks against represented sibling contracts remain recorded under implemented"
     - "contracts.md status migrated on 2026-10-08: runtime validation paths for fallible constrained conversions remain incomplete and are tracked by the existing runtime conversion, Result error type, Semantic IR, and lowering remaining items; migration removes no runtime requirement and does not mark those paths implemented"
-    - regex now has parser, AST, tooling, reservation, and Sema applicability support but no validation semantics (MD-010); the broader compile-time-equality membership domain remains incomplete; the length-contract family now
+    - regex now has parser, AST, tooling, reservation, and Sema applicability support but no validation semantics (MD-010); payload-bearing/aggregate compile-time membership construction remains incomplete; the length-contract family now
       has frontend parsing, applicability, consistency, fixed-array, and explicit-string-default coverage while runtime validation remains incomplete.
     - "types-contracts-v2-governance-sync.yaml (fragment audited 2026-09-25) was merged and re-audited against current code on 2026-10-07; its stable IDs map onto this integration as follows"
     - "types.contracts-v2.range, .odd_even, .multipleOf, .finite, .notEmpty, .unique: parsed and checked as recorded under implemented; the fragment's implemented status is confirmed"
@@ -1020,6 +1121,28 @@ integrations:
     - constrained assignment outside try rejected
     - constrained assignment inside try leaves destination unchanged on failure
     verification:
+    - command: go test ./... -count=1
+      result: passed on 2026-10-09 after direct-element unique equality and generic comparability enforcement; all packages including compiler, LSP, Sema and backends
+    - command: go test -race ./internal/sema/... -count=1 and go vet ./...
+      result: passed on 2026-10-09; pure semantic-comparator tests, contextual constant and aggregate equality, and generic applicability are included
+    - command: go test ./internal/sema/collectionshape -run 'Unique|FirstDuplicate' -count=1
+      result: passed on 2026-10-09; final assertions verify mandatory S1064/S1068 identities, precise source locations and defining provenance on 32/64-bit plans at all analysis depths; git diff --check and governance validation pass with 46 fragments, 304 unique IDs, valid evidence paths, remaining 10 for this ID and 39 for types
+    - command: go test ./internal/codegen/readiness ./internal/codegen/llvm/... ./internal/sema/stringcontract ./internal/lexer -count=1; Python YAML validation; git diff --check
+      result: passed on 2026-10-09 after canonical core ContractKind provenance checks and recursive unsupported MLIR callable/union facts; 46 fragments, 304 unique integration IDs, evidence paths present, remaining stays 11 for this ID and 41 for types pending MD-050
+    - command: go test ./... -count=1; go test -race ./internal/sema/... ./internal/codegen/llvm/... ./internal/codegen/mlir/... ./internal/codegen/readiness ./internal/lexer -count=1; go vet ./...
+      result: passed on 2026-10-09 with native rune/byte string checks and real Clang execution, 32/64-bit target object compilation, real legacy MLIR verification/translation/length execution, compile-time Unicode and combined-unit satisfiability, lexer reservation and structured unsupported-backend boundaries
+    - command: go test ./... -count=1
+      result: passed on 2026-10-09 after ordered multi-location contract diagnostics; cross-file duplicate/inherited membership fixtures and CLI/LSP unsaved UTF-16 range transport are covered
+    - command: go test -race ./internal/sema/... ./cmd/compiler ./cmd/lsp -run 'Test(TypeDiagnostic|Contract|RelatedLocation|DefaultDiagnostics|SemaDiagnostic)' -count=1
+      result: passed on 2026-10-09; previous-location compatibility, deduplication, stable IDs/severity and extra contract links all retain canonical provenance
+    - command: go vet ./... and git diff --check and Python YAML validation
+      result: passed on 2026-10-09; 46 registered fragments, 304 unique integration IDs and evidence paths verified; type-contracts-v2 partial reduced from 13 to 5, remaining stays 11 and types total stays 41
+    - command: go test ./... -count=1
+      result: passed on 2026-10-09 with payload-less and generic union membership, shared nominal CTE/equality, source-order-independent domain resolution, named ancestry and explicit/default source validation
+    - command: go test -race ./internal/sema ./internal/sema/membership ./internal/lsp/features/defaults -count=1
+      result: passed on 2026-10-09; nominal source conformance tests cover duplicates, enum aliases, different owners and generic arguments, inherited conjunctions, immutable dependencies, unavailable CTE execution and source edits using the actual storage type
+    - command: go vet ./... and Python YAML validation and git diff --check
+      result: passed on 2026-10-09; 46 registered fragments and 304 unique IDs including the legacy root, evidence paths present; type-contracts-v2 remaining reduced from 12 to 11 and types total from 43 to 42
     - command: go test ./...; go vet ./...
       result: passed on 2026-10-08 after empty-list contract proofs and collectionshape package extraction
     - command: Python YAML validation and git diff --check
@@ -1245,9 +1368,7 @@ integrations:
     - lowering.sec-mlir-scalar-layout remains implemented and authoritative for target-aware scalar physical layout.
     - lowering.sec-mlir-checked-integers and lowering.sec-mlir-checked-integer-arith remain implemented for their
       documented P7/P8 scope.
-    - frontend.types-core currently says that the nominal identity, assignability, and conversion matrix still needs
-      audit, but it does not explicitly record target-unaware int/uint semantic bounds or the conflicting legacy backend
-      width mappings.
+    - "reconciled 2026-10-09: frontend.types-core now records the completed nominal identity, assignability and conversion relation audit; target-sized semantic bounds and legacy backend width fixes remain authoritative under this target-sized-integer-semantics integration. Fallible scalar conversion typing/runtime validation retains its separate open owner."
     required_tests:
     - int maximum and overflow on 32-bit target
     - int minimum and underflow on 32-bit target

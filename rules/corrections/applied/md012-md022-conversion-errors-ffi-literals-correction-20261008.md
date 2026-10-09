@@ -7,6 +7,7 @@
 - **Sec language version:** 0.1
 - **Proposed canonical path:** `rules/corrections/pending/md012-md022-conversion-errors-ffi-literals-correction-20261008.md`
 - **Decision IDs:** `MD-012`, `MD-022`
+- **C qualification:** every `C::` spelling in this correction was migrated to `c::` on 2026-10-09 by MD-020 (`rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 6.6); the semantics are unchanged
 - **Amends:** `rules/types/contracts.md`, `rules/types/types.md`, `rules/errors/errorhandling.md`, `rules/errors/runtime_checks.md`, `rules/platform/ffi.md`
 - **Canonical source owning the new public declarations:** `sec/core/error.sec` (`module core`)
 - **Related decision:** `MD-043` (`char`/`byte` domain and `rune` literal default)
@@ -14,7 +15,7 @@
 
 ## 1. Decision scope
 
-1.1. `MD-022` is resolved by defining contextual shaping for `C::bool` and C character scalars while preserving explicit conversions between distinct Sec/C scalar types.
+1.1. `MD-022` is resolved by defining contextual shaping for `c::bool` and C character scalars while preserving explicit conversions between distinct Sec/C scalar types.
 
 1.2. `MD-012` is resolved by one public error channel, `ConversionError`, for checked conversion, with independently meaningful `ContractError` for named-type contract violations.
 
@@ -24,44 +25,44 @@
 
 ## 2. MD-022 — Contextual C scalar literal shaping
 
-2.1. An untyped boolean literal `true` or `false` can be shaped to `C::bool` when the target type is known. This is literal shaping, not an implicit conversion from a previously typed `bool` value.
+2.1. An untyped boolean literal `true` or `false` can be shaped to `c::bool` when the target type is known. This is literal shaping, not an implicit conversion from a previously typed `bool` value.
 
 ```sec
 let a: bool := true
-let b: C::bool := true
-let c: C::bool := false
+let b: c::bool := true
+let c: c::bool := false
 
 let source: bool := true
-let invalid: C::bool := source   // Invalid: different nominal scalar type.
-let converted := C::bool(source) // Valid explicit conversion.
+let invalid: c::bool := source   // Invalid: different nominal scalar type.
+let converted := c::bool(source) // Valid explicit conversion.
 ```
 
-2.2. A single-quoted character literal defaults to `rune` as determined by MD-043. In an explicit `C::char`, `C::schar`, or `C::uchar` target context, the *literal* may instead be shaped to that C scalar when the decoded Unicode scalar's **numeric value** is representable by that target's C ABI integer range.
+2.2. A single-quoted character literal defaults to `rune` as determined by MD-043. In an explicit `c::char`, `c::schar`, or `c::uchar` target context, the *literal* may instead be shaped to that C scalar when the decoded Unicode scalar's **numeric value** is representable by that target's C ABI integer range.
 
-2.3. Literal shaping does not perform UTF-8, Latin-1, locale, platform-codepage, or other text encoding. The scalar's code-point number is the candidate integer value. The active ABI model controls `C::char` signedness and all C character scalar limits. No first-byte-of-UTF-8 fallback is permitted.
+2.3. Literal shaping does not perform UTF-8, Latin-1, locale, platform-codepage, or other text encoding. The scalar's code-point number is the candidate integer value. The active ABI model controls `c::char` signedness and all C character scalar limits. No first-byte-of-UTF-8 fallback is permitted.
 
 ```sec
-let a: C::char := 'A'    // Valid on an ABI that represents 65.
-let b: C::schar := 'B'   // Valid when 66 is representable.
-let c: C::uchar := 'é'   // Valid when 233 is representable.
+let a: c::char := 'A'    // Valid on an ABI that represents 65.
+let b: c::schar := 'B'   // Valid when 66 is representable.
+let c: c::uchar := 'é'   // Valid when 233 is representable.
 
 // These are compile-time errors when the target C scalar cannot
 // represent the decoded code-point number:
-let invalidA: C::char := 'é'    // Invalid on signed 8-bit C::char.
-let invalidB: C::uchar := 'π'   // Invalid on 8-bit C::uchar.
+let invalidA: c::char := 'é'    // Invalid on signed 8-bit c::char.
+let invalidB: c::uchar := 'π'   // Invalid on 8-bit c::uchar.
 ```
 
-2.4. A typed `rune`, typed `char`, typed `bool`, or typed `C::` scalar does **not** implicitly change to another nominal `C::` scalar through assignment or argument passing, even when the underlying representations coincide. Use the target-type conversion syntax.
+2.4. A typed `rune`, typed `char`, typed `bool`, or typed `c::` scalar does **not** implicitly change to another nominal `c::` scalar through assignment or argument passing, even when the underlying representations coincide. Use the target-type conversion syntax.
 
 ```sec
-let a: C::int := 42
-let invalid: C::long := a
-let b := C::long(a) // Checked if the complete source domain does not fit.
+let a: c::int := 42
+let invalid: c::long := a
+let b := c::long(a) // Checked if the complete source domain does not fit.
 ```
 
 2.5. Explicit C-to-C, C-to-Sec and Sec-to-C conversions use the established whole-source-domain proof rule: if the complete source type fits, the conversion is infallible; otherwise a runtime-dependent conversion uses the checked conversion mechanism and may require `try`. Compile-time-known nonrepresentable values are rejected during semantic analysis.
 
-2.6. Character literal shaping is **not** a grant of general implicit scalar conversion. The stricter `char` integer-literal rule from MD-043 remains: `let c: char := 65` is invalid and `65t` is the explicit numeric char literal. Ordinary representable integer literal shaping for `C::` numeric targets remains as already defined by FFI § 8.
+2.6. Character literal shaping is **not** a grant of general implicit scalar conversion. The stricter `char` integer-literal rule from MD-043 remains: `let c: char := 65` is invalid and `65t` is the explicit numeric char literal. Ordinary representable integer literal shaping for `c::` numeric targets remains as already defined by FFI § 8.
 
 ## 3. MD-012 — Canonical public declarations
 
@@ -190,7 +191,7 @@ fn Convert(value: int) Result[Percent, ConversionError] {
 
 5.3. Diagnostics must distinguish an undefined conversion relation, an intrinsic domain failure, and a failed declared contract, and identify the destination type and the offending value when the value is known.
 
-5.4. Compiler tests must cover exact widening, checked narrowing, invalid Unicode scalar conversions, decimal precision/scale failures, intrinsic non-finite rejection, every `ContractKind`, first-violation source ordering, compile-time-known failures, `C::bool` literal shaping, C character ABI signedness, and rejection of implicit typed `C::` conversions.
+5.4. Compiler tests must cover exact widening, checked narrowing, invalid Unicode scalar conversions, decimal precision/scale failures, intrinsic non-finite rejection, every `ContractKind`, first-violation source ordering, compile-time-known failures, `c::bool` literal shaping, C character ABI signedness, and rejection of implicit typed `c::` conversions.
 
 ## 6. Required rulebook and code synchronization
 
@@ -200,7 +201,7 @@ fn Convert(value: int) Result[Percent, ConversionError] {
 
 6.3. Update `rules/types/types.md`, `rules/errors/errorhandling.md`, and `rules/errors/runtime_checks.md` so intrinsic conversion failures and contract failures use `ConversionError` consistently and compile-time diagnostic precedence is preserved.
 
-6.4. Update `rules/platform/ffi.md` § 8 to specify `C::bool`, `C::char`, `C::schar`, and `C::uchar` literal shaping; keep §§ 5–9's nominal type identity and ABI-compatibility requirements intact.
+6.4. Update `rules/platform/ffi.md` § 8 to specify `c::bool`, `c::char`, `c::schar`, and `c::uchar` literal shaping; keep §§ 5–9's nominal type identity and ABI-compatibility requirements intact.
 
 6.5. Synchronize compiler registration, Semantic IR, diagnostics, core API documentation, tests, and the appropriate governance fragments. Do not claim implemented status before verified tests establish it.
 

@@ -10,30 +10,37 @@ import (
 	"sec/internal/codegen/targetplan"
 	"sec/internal/ir/semantic"
 	"sec/internal/layout"
+	"sec/internal/sema"
 )
 
 type Generator struct {
-	out              strings.Builder
-	lambdaDefs       strings.Builder
-	activeOut        *strings.Builder
-	globals          strings.Builder
-	label            int
-	temp             int
-	stringID         int
-	lambdaID         int
-	needsPuts        bool
-	needsDecimal     bool
-	locals           map[string]local
-	functions        map[string]*ast.FunctionDeclaration
-	typeAliases      map[string]*ast.TypeReference
-	enums            map[string]enumInfo
-	loops            []loopContext
-	returnType       string
-	targetTriple     string
-	scalarPlan       layout.ResolvedScalarPlan
-	blockOpen        bool
-	typeFailure      error
-	resolvingAliases map[string]bool
+	out                   strings.Builder
+	lambdaDefs            strings.Builder
+	activeOut             *strings.Builder
+	globals               strings.Builder
+	label                 int
+	temp                  int
+	stringID              int
+	generatedIdentities   *sema.GeneratedIdentityIndex
+	needsPuts             bool
+	needsDecimal          bool
+	locals                map[string]local
+	functions             map[string]*ast.FunctionDeclaration
+	typeAliases           map[string]*ast.TypeReference
+	enums                 map[string]enumInfo
+	loops                 []loopContext
+	returnType            string
+	targetTriple          string
+	scalarPlan            layout.ResolvedScalarPlan
+	blockOpen             bool
+	typeFailure           error
+	resolvingAliases      map[string]bool
+	characterTypes        map[*ast.CharLiteral]characterCarrier
+	stringFacts           *stringFacts
+	stringTry             bool
+	needsRuneLength       bool
+	needsStringResult     bool
+	needsStringDescriptor bool
 }
 
 type loopContext struct {
@@ -71,12 +78,15 @@ func GenerateWithTriple(program *ast.Program, triple string) (string, error) {
 }
 
 // Generate emits legacy LLVM only after resolving the canonical scalar plan and
-// checking contract and floating-point
-// prerequisites. Each invocation discards buffers from earlier failed attempts.
+// checking contract and floating-point prerequisites. Character emission consumes
+// analyzed type facts. Each invocation discards buffers and character facts from
+// earlier attempts.
 // Rules: rules/types/contracts.md — Core rule and Mutation;
-// rules/types/types.md — "int and uint", "Binary floating-point types"; MD-014 §6;
+// rules/types/types.md — "int and uint", "Binary floating-point types",
+// "Character literal"; MD-014 §6; MD-043 §§2–3;
 // rules/compiler/compiler_pipeline.md — lowering prerequisites.
 func (g *Generator) Generate(program *ast.Program) (string, error) {
+	defer func() { g.characterTypes = nil; g.stringFacts = nil }()
 	if err := readiness.RejectInstant(program); err != nil {
 		return "", err
 	}
@@ -84,8 +94,14 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 		return "", err
 	}
 	configuredTriple := g.targetTriple
-	*g = Generator{targetTriple: configuredTriple}
-	if err := rejectASTContracts(program); err != nil {
+	characters := g.characterTypes
+	facts := g.stringFacts
+	*g = Generator{targetTriple: configuredTriple, characterTypes: characters, stringFacts: facts}
+	g.generatedIdentities = sema.NewGeneratedIdentityIndex(program)
+	if err := g.stringContractASTGate(program); err != nil {
+		return "", err
+	}
+	if err := readiness.RejectUnitQuantities(program, nil, "legacy LLVM"); err != nil {
 		return "", err
 	}
 	if err := readiness.RejectPlatformFloat(program, "LLVM"); err != nil {
@@ -94,6 +110,9 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	plan, err := targetplan.Plan(g.targetTriple)
 	if err != nil {
 		return "", &semantic.UnsupportedFeatureError{Feature: err.Error()}
+	}
+	if err := readiness.ValidateCompilerAuthority(program, plan, "LLVM"); err != nil {
+		return "", err
 	}
 	g.scalarPlan = plan
 	g.targetTriple = plan.LLVMTriple
@@ -133,6 +152,9 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	// Rules: rules/types/contracts.md — Core rule and Composition.
 	if err := astwalk.Inspect(program, func(node any) error {
 		if ref, ok := node.(*ast.TypeReference); ok {
+			if g.stringFacts != nil && g.stringFacts.errorRefs[ref] {
+				return nil
+			}
 			g.llvmType(ref)
 			return g.typeFailure
 		}
@@ -159,6 +181,20 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	result.WriteString(fmt.Sprintf("target triple = %q\n\n", g.scalarPlan.LLVMTriple))
 	if g.needsDecimal {
 		result.WriteString(llvmDecimalType + " = type { i64, i8 }\n\n")
+	}
+	if g.needsStringDescriptor {
+		result.WriteString("%sec.string = type { ptr, i64 }\n\n")
+	}
+	if g.needsStringResult {
+		result.WriteString(stringResultType + " = type { i1, ptr, i64, " + g.nativeIntegerType() + ", " + g.nativeIntegerType() + " }\n\n")
+	}
+	if g.needsRuneLength {
+		for _, declaration := range g.functions {
+			if declaration.LinkName == ".sec.generated.string_rune_length" {
+				return "", fmt.Errorf("generated rune-length helper conflicts with source linkage")
+			}
+		}
+		result.WriteString(runeLengthLLVM)
 	}
 	result.WriteString(g.globals.String())
 	if g.globals.Len() > 0 {

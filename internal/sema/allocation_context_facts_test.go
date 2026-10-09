@@ -100,21 +100,13 @@ func TestAllocationContextFacts(t *testing.T) {
 	if errs := a.Analyze(program); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	// Domain tokens are local to the current semantic snapshot; a reused
-	// analyzer deliberately allocates fresh identities for new live domains.
-	oldDomains := map[string]bool{}
-	for _, fact := range before {
-		if fact.SelectedDomain != "" {
-			oldDomains[fact.SelectedDomain] = true
-		}
-		if fact.CreatedDomain != "" {
-			oldDomains[fact.CreatedDomain] = true
-		}
-	}
-	for _, fact := range a.AllocationContextFacts() {
-		if oldDomains[fact.SelectedDomain] || oldDomains[fact.CreatedDomain] {
-			t.Fatal("stale domain identity", fact)
-		}
+	// Compiler metadata identifies abstract creation sites deterministically,
+	// independently of whether the analyzer instance is fresh or reused. These
+	// are not runtime allocation identities or permission to reuse old live facts.
+	// Rules: compiler/compiler.md §71; compiler_pipeline.md §76;
+	// memory/arena.md §§4.2,44.
+	if !reflect.DeepEqual(before, a.AllocationContextFacts()) {
+		t.Fatal("unstable reused-analyzer context projection")
 	}
 	// The projection must not rerun inference or alter semantic result types.
 	for expression, typ := range a.expressionTypes {

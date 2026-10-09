@@ -155,15 +155,15 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 
-	if typ.Kind == ResultType && len(ref.TypeArgs) != 2 {
+	if typ.Name == "Result" && len(ref.TypeArgs) != 2 {
 		a.addErrorAtToken(ref.Token, "Result requires exactly 2 type arguments, got %d", len(ref.TypeArgs))
 		return Type{Kind: InvalidType}, false
 	}
-	if typ.Kind != ResultType && len(typ.GenericParameters) == 0 && len(ref.TypeArgs) > 0 {
+	if typ.Name != "Result" && len(typ.GenericParameters) == 0 && len(ref.TypeArgs) > 0 {
 		a.addErrorAtToken(ref.Token, "%s is not generic", ref.Name)
 		return Type{Kind: InvalidType}, false
 	}
-	if typ.Kind != ResultType && len(typ.GenericParameters) > 0 && len(ref.TypeArgs) == 0 {
+	if typ.Name != "Result" && len(typ.GenericParameters) > 0 && len(ref.TypeArgs) == 0 {
 		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got 0", ref.Name, len(typ.GenericParameters))
 		return Type{Kind: InvalidType}, false
 	}
@@ -176,10 +176,10 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 
-	// A nongeneric named list already fixes its element and capacity.
-	// Its empty argument spelling must preserve those inherited facts.
-	// Rules: rules/types/default_values.md — Named types and List defaults.
-	if !(typ.Named && typ.EmptyListDefault && len(ref.TypeArgs) == 0 && len(ref.ConstArgs) == 0) {
+	// Nongeneric named derivations already fix their inherited arguments.
+	// An empty spelling preserves those complete representation facts.
+	// Rules: rules/types/types.md — Named types, Generic and parameterized types.
+	if !(typ.Named && len(typ.GenericParameters) == 0 && len(ref.TypeArgs) == 0 && len(ref.ConstArgs) == 0) {
 		typ.TypeArgs = typeArgs
 		typ.ConstArgs = constArgs
 	}
@@ -224,6 +224,18 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 			return Type{Kind: InvalidType}, false
 		}
 		typ = a.instantiateGenericType(typ)
+	}
+	// Concrete generic arguments must satisfy the same unique equality domain
+	// as a nongeneric declaration; template deferral cannot bypass applicability.
+	// Rules: rules/types/contracts.md — unique; declarations/generics.md — Substitution.
+	for _, contract := range typ.Contracts {
+		if marker, ok := contract.(MarkerContract); ok && marker.Name == "unique" {
+			start := len(a.errors)
+			if !a.validateUniqueEquality(typ, ref.Token) {
+				a.relateErrorsSince(start, marker.Token, "contract declaration")
+				return Type{Kind: InvalidType}, false
+			}
+		}
 	}
 	return typ, true
 }

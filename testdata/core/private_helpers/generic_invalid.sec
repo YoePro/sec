@@ -1,0 +1,5 @@
+module core
+
+fn CrossFileGenericCall() int {
+    return __Identity(1)
+}

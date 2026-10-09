@@ -1,0 +1,15 @@
+module main
+
+fn __sec_lambda_0() int { return 3 }
+
+fn First() int {
+    let callback := fn(value: int) int { return value + 1 }
+    return callback(40)
+}
+
+fn Second() int {
+    let callback := fn(value: int) int { return value * 2 }
+    return callback(5)
+}
+
+fn main() int { return First() + __sec_lambda_0() }

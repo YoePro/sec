@@ -1,0 +1,64 @@
+module main
+
+// rules/memory/arena.md § 10: Arena.FromBuffer borrows mutable byte storage
+// exclusively for the Arena lifetime; Release, scope end and local moves keep
+// the dependency exact.
+
+fn ImplicitBorrow() byte {
+    let mut buffer: byte[] := [0u, 0u, 0u, 0u]
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Release()
+    return buffer[0]
+}
+
+fn FixedBacking() void {
+    let mut buffer: byte[4] := [0u, 0u, 0u, 0u]
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Reset()
+}
+
+fn ExplicitMarker() void {
+    let mut buffer: byte[] := [0u, 0u]
+    let mut arena := Arena.FromBuffer(ref mut buffer)
+    arena.Reset()
+}
+
+fn ScopeEndsBorrow() byte {
+    let mut buffer: byte[] := [0u, 0u]
+    if true {
+        let mut arena := Arena.FromBuffer(buffer)
+        arena.Reset()
+    }
+    return buffer[0]
+}
+
+fn LocalMoveCarriesBorrow() byte {
+    let mut buffer: byte[] := [0u, 0u]
+    let arena := Arena.FromBuffer(buffer)
+    let mut owner :<- arena
+    owner.Release()
+    return buffer[0]
+}
+
+fn Fill(arena: ref mut Arena) void {
+    arena.Reset()
+}
+
+fn BorrowArenaToHelper() byte {
+    let mut buffer: byte[] := [0u, 0u]
+    let mut arena := Arena.FromBuffer(buffer)
+    Fill(arena)
+    arena.Release()
+    return buffer[0]
+}
+
+// rules/memory/arena.md § 68(3)–(4): an Arena reached through ref mut
+// allocates storage rooted in the caller's Arena.
+fn FillThroughReference(arena: ref mut Arena) Result[ref mut byte[], AllocationError] {
+    return arena.Alloc[byte](1024u)
+}
+
+fn BindThenReturn(arena: ref mut Arena) Result[ref mut byte[], AllocationError] {
+    let values := try arena.Alloc[byte](4u)
+    return Ok(values)
+}

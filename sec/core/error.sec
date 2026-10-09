@@ -92,6 +92,15 @@ enum ContractKind {
 
     // The value contains non-unique direct elements.
     Unique,
+
+    // The string's encoded byte count is below the required minimum.
+    MinByteLen,
+
+    // The string's encoded byte count exceeds the required maximum.
+    MaxByteLen,
+
+    // The string's encoded byte count differs from the required exact count.
+    ExactByteLen,
 }
 
 // Describes a failure of a declared named-type contract.

@@ -1,6 +1,7 @@
 package mlir
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -393,9 +394,9 @@ fn main() int {
 	}
 
 	for _, want := range []string{
-		`llvm.func @pick__sec_arity_1`,
-		`llvm.func @pick__sec_arity_2`,
-		`llvm.call @pick__sec_arity_2`,
+		`llvm.func @".sec.generated.overload-`,
+		`// sec-generated overload-`,
+		`llvm.call @".sec.generated.overload-`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
@@ -1850,13 +1851,18 @@ fn main() int {
 }
 
 func TestGenerateCompilerKnownStringSliceUnchecked(t *testing.T) {
-	program := parseTestProgram(t, `module main
+	data, err := os.ReadFile("../../../testdata/codegen/compiler_authority/helper.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := "sec/core/string.sec"
+	p := parser.New(lexer.NewWithFile(string(data), owner))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatal(p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{owner: ast.SourceCore}
 
-fn main() int {
-	__StringSliceUnchecked("hello", 1u, 4u)
-	return 0
-}
-`)
 	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
 	if err != nil {
 		t.Fatalf("GenerateWithTriple returned error: %v", err)

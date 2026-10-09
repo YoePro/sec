@@ -734,6 +734,11 @@ precedence still applies: `!state is Idle` means `(!state) is Idle`.
 Explicit Language Corrections may rewrite both bad-practice forms when the
 rewrite is unambiguous and semantics-preserving.
 
+The foreign null tests `pointer is null` and `pointer is not null` are state
+tests at this level owned by `rules/platform/ffi.md` § 11: they are valid only
+inside `unsafe` with a raw-pointer operand, `is not null` is their canonical
+negated spelling, and `== null`/`!= null` are invalid (MD-024).
+
 The positive Option binding `if option is Some(value)` remains a narrow Sec 0.1
 condition facility (`rules/control-flow/flowcontrol_if.md` § 12). It is not a
 general stored or returned bool expression, it does not generalize to other

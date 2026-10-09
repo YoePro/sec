@@ -668,7 +668,7 @@ func TestContextualKeywordSpellingsRemainIdentifiers(t *testing.T) {
 }
 
 func TestSupportedContractWordInventoryIsContextual(t *testing.T) {
-	want := []string{"multipleOf", "minLen", "maxLen", "exactLen", "notEmpty", "unique", "finite", "odd", "even", "regex"}
+	want := []string{"multipleOf", "minLen", "maxLen", "exactLen", "minByteLen", "maxByteLen", "exactByteLen", "notEmpty", "unique", "finite", "odd", "even", "regex"}
 	got := ContractWords()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ContractWords() = %v, want %v", got, want)
@@ -682,12 +682,12 @@ func TestSupportedContractWordInventoryIsContextual(t *testing.T) {
 			t.Errorf("lookupIdent(%q) = %s, want IDENT", spelling, tokenType)
 		}
 	}
-	for _, spelling := range want[:4] {
+	for _, spelling := range want[:7] {
 		if role := ContractWordRoleOf(spelling); role != ValueContractWord {
 			t.Errorf("%s role = %v, want ValueContractWord", spelling, role)
 		}
 	}
-	for _, spelling := range want[4:9] {
+	for _, spelling := range want[7:12] {
 		if role := ContractWordRoleOf(spelling); role != MarkerContractWord {
 			t.Errorf("%s role = %v, want MarkerContractWord", spelling, role)
 		}

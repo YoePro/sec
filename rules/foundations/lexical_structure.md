@@ -609,6 +609,7 @@ match
 module
 mut
 new
+null
 panic
 property
 range
@@ -635,6 +636,11 @@ Some listed words are not yet fully implemented. A word may remain reserved when
 its language role has already been deliberately established even if implementation
 is incomplete. A spelling must not be reserved merely because it might be useful
 for unspecified future syntax.
+
+`null` is reserved so that no user binding can shadow the foreign/raw-pointer
+sentinel. It is not a general value: Sema permits it, and the `is null` /
+`is not null` tests, only inside `unsafe` as defined by `rules/platform/ffi.md`
+§ 11 (MD-024, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 5.2).
 
 Lowercase `arena` is an ordinary identifier as required by `arena.md`. Lowercase
 `sec` names the language or tool only in prose and command contexts; it is an
@@ -699,15 +705,22 @@ Compiler-known contract spellings are reserved:
 ```text
 even
 exactLen
+exactByteLen
 finite
 maxLen
+maxByteLen
 minLen
+minByteLen
 multipleOf
 notEmpty
 odd
 regex
 unique
 ```
+
+`minByteLen`, `maxByteLen`, and `exactByteLen` are reserved string-only
+length contracts; their unit is `ByteLen`. `minLen`, `maxLen`, and `exactLen`
+use `RuneLen` on strings. See `rules/types/contracts.md` revision 2.1.
 
 Additional contract words must be added to this rulebook when they become
 canonical.
@@ -1740,6 +1753,7 @@ literal:
 ```text
 ,       comma
 :       colon
+::      foreign qualification separator (c::int, c::stddef::size_t)
 ?       question mark
 @       attribute marker
 #       reserved directive marker
@@ -1750,6 +1764,12 @@ literal:
 ```
 
 `@` begins attribute syntax as defined by `attributes.md`.
+
+`::` is one token. It appears only in C foreign qualification such as `c::int`,
+`c::stddef::size_t`, `c::fn(...)`, `c::flex[T]`, and `c::callback(...)`, and
+contains no whitespace inside or around it: `c :: int` and `c: :int` are not a
+qualification, and the lexer never joins separated `:` tokens into `::`
+(MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 2.4).
 
 `#` is reserved for compiler or source-directive syntax.
 
@@ -1776,6 +1796,7 @@ Examples:
 -- before -
 :<- before :
 := before :
+:: before :
 <- before <
 => before =
 -> before -

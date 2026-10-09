@@ -115,6 +115,14 @@ types.
 
 The core library may do so because it is compiled as a trusted language module.
 
+A `_...` function declared in trusted core is internal to core; using it requires
+trusted core source as well as its ordinary module visibility. A user source
+that spells its module `core`, or imitates a core file path, does not acquire
+that access. `__...` functions additionally retain their source-file-private
+owner boundary. Ordinary user-declared underscore functions keep the usual
+module-internal/private visibility rules.
+
+
 Core may also keep narrow representation-sensitive behavior in private
 `__...` helpers. Such a helper may use a direct MLIR/LLVM body when ordinary Sec
 cannot express the operation, while the public checked operation remains
@@ -381,26 +389,30 @@ The compiler defines:
 - string representation,
 - string lifetime rules,
 - equality and comparison primitives when needed,
-- byte length,
+- Unicode-scalar length (`Len`/`RuneLen`) and encoded byte length (`ByteLen`),
 - raw byte pointer access,
 - indexing and slicing primitives where supported.
 
 ## 5.1 Intrinsic members
 
 ```sec
-property len: uint {
-    get
-}
+property Len: uint { get }
+property RuneLen: uint { get }
+property ByteLen: uint { get }
 
 unsafe property ptr: RawPtr[byte] {
     get
 }
 ```
 
-`len` is the byte length unless a later language rule explicitly changes it.
+`Len` equals `RuneLen` and counts Unicode scalar values. `ByteLen` counts
+encoded UTF-8 bytes. All three are compiler-owned, read-only properties;
+privileged core declarations cannot change their units. Byte pointer arithmetic,
+byte offsets and byte slices explicitly use `ByteLen`.
 
-The compiler-known `len(text)` function returns that same byte length as an
-`int` for index arithmetic.
+The compatibility lowercase `.len` and compiler-known `len(text)` count runes;
+`len(text)` retains its `int` result. This supersedes the earlier byte-count
+meaning (string-length-contracts-correction-20261009).
 
 ## 5.2 Required associated functions
 

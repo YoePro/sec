@@ -777,6 +777,12 @@ extern "C" fn write(
 
 § 16(19) The formatter does not reorder modifiers independently of grammar.
 
+§ 16(20) Valid C foreign qualification is always emitted as `c::name` or `c::namespace::name`, including `c::fn(...)`, `c::flex[T]`, and `c::callback(...)`, with no space inside or around `::`. Formatting is idempotent. The formatter does not rewrite separated `:` tokens into `::`, does not change the meaning of invalid source, and does not rewrite the removed `C::` spelling into `c::` unless an explicitly enabled Language Correction defines that migration (MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` §§ 2.5, 7.2):
+
+```sec
+extern "C" fn GetVersion(length: c::stddef::size_t) c::int
+```
+
 ---
 
 ## § 17. Calls, expressions, chains, indexing, and slicing
@@ -1512,6 +1518,8 @@ Status.Ready
 ```
 
 § 27(13) `::` is not blindly replaced everywhere. Special foreign roots, namespaces, or library names require either an explicit known-symbol mapping or no correction.
+
+§ 27(13a) The C foreign qualification `c::` is canonical Sec syntax, not foreign-language muscle memory. § 27(12) never rewrites `c::name`, `c::namespace::name`, `c::fn`, `c::flex`, or `c::callback` into member access.
 
 § 27(14) A known foreign symbol mapping must name a real canonical Sec symbol. The correction engine must not implement a general rule such as removing every `std::` prefix.
 

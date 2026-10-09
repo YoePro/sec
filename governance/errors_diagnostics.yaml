@@ -45,7 +45,7 @@ integrations:
       - CLI prints the stable code and help; LSP publishes the same Sema code and help
       - the canonical sec diagnostics S3001 detail command exposes S3001 identity, family, default severity, mandatory/configurable state, and active status from the central registry
     remaining:
-      - route additional proven-unreachable paths through the same canonical S3001 diagnostic where their flow proof exists, beyond the constant-condition and stable-binding relational subsets: match and switch arms decided by path facts, member reads with mutation-aware invalidation, and per-binding instead of whole-function stability
+      - "route additional proven-unreachable paths through the same canonical S3001 diagnostic where their flow proof exists, beyond the constant-condition and stable-binding relational subsets: match and switch arms decided by path facts, member reads with mutation-aware invalidation, and per-binding instead of whole-function stability"
       - implement structured localization, richer extended rule explanations, and machine-readable emitted-diagnostic output
     corrections_applied:
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
@@ -173,6 +174,11 @@ func prepareGraphSyntaxOrigins(program *ast.Program) map[sourceTokenKey]string {
 			record := value.Elem()
 			for _, fieldName := range []string{"Name", "Target"} {
 				field := record.FieldByName(fieldName)
+				// Parser recovery keeps a declaration whose name was not
+				// written yet (such as `test {` while typing) with a nil node.
+				if field.IsValid() && (field.Kind() == reflect.Pointer || field.Kind() == reflect.Interface) && field.IsNil() {
+					continue
+				}
 				if field.IsValid() && field.CanInterface() {
 					if expression, ok := field.Interface().(interface{ String() string }); ok {
 						owner += "/" + expression.String()
@@ -325,4 +331,74 @@ func (g *CallGraph) ForCompilationPlan(scope CallGraphScope) (*CallGraph, error)
 		result.blockEffects[callable(id)] = append([]BlockEffectSite(nil), facts...)
 	}
 	return result, nil
+}
+
+// GeneratedIdentity is compiler metadata, never a Sec declaration. Source is
+// navigable provenance; Kind, Owner, Origin and Target define the stable key.
+// Rules: rules/compiler/compiler_pipeline.md — §§76(2),103(1–4);
+// rules/compiler/compiler.md — §71.
+type GeneratedIdentity struct {
+	ID     string
+	Kind   string
+	Owner  string
+	Origin string
+	Target string
+	Source lexer.Token
+}
+
+// GeneratedIdentityIndex uses lexical declaration/occurrence origins rather
+// than registration order, source coordinates or process-local pointers.
+// Rules: rules/compiler/compiler.md — §71; compiler_pipeline.md — §§76,103.
+type GeneratedIdentityIndex struct {
+	origins map[sourceTokenKey]string
+	modules map[string]string
+	records map[string]GeneratedIdentity
+}
+
+// NewGeneratedIdentityIndex freezes syntax origins before analysis/emission.
+// Rules: rules/compiler/compiler_pipeline.md — §§76,103; compiler.md — §71.
+func NewGeneratedIdentityIndex(program *ast.Program) *GeneratedIdentityIndex {
+	index := &GeneratedIdentityIndex{origins: prepareGraphSyntaxOrigins(program), modules: map[string]string{}, records: map[string]GeneratedIdentity{}}
+	if program != nil {
+		for _, statement := range program.Statements {
+			if module, ok := statement.(*ast.ModuleStatement); ok && module != nil {
+				index.modules[module.Token.File] = module.Path
+			}
+		}
+	}
+	return index
+}
+
+// Resolve returns one compiler-owned identity and its provenance. Coordinates
+// are a lookup into current syntax, never part of a prepared lexical identity.
+// Missing syntax origins are diagnosed rather than inventing a shared identity.
+// Target is supplied by the resolved plan when representation affects the helper.
+// Rules: rules/compiler/compiler.md — §71; compiler_pipeline.md — §103.
+func (i *GeneratedIdentityIndex) Resolve(kind, owner string, source lexer.Token, target string) (GeneratedIdentity, bool) {
+	if i == nil {
+		return GeneratedIdentity{}, false
+	}
+	origin, ok := i.origins[sourceTokenLocation(source)]
+	if !ok {
+		return GeneratedIdentity{}, false
+	}
+	owner = i.modules[source.File] + "/" + owner
+	key, _ := json.Marshal([]string{kind, owner, origin, target})
+	record := GeneratedIdentity{ID: kind + "-" + graphIdentityDigest(key), Kind: kind, Owner: owner, Origin: origin, Target: target, Source: source}
+	i.records[record.ID] = record
+	return record, true
+}
+
+// Records returns detached provenance in canonical identity order.
+// Rules: rules/compiler/compiler_pipeline.md — §§76(2),103(3); compiler.md — §71.
+func (i *GeneratedIdentityIndex) Records() []GeneratedIdentity {
+	if i == nil {
+		return nil
+	}
+	records := make([]GeneratedIdentity, 0, len(i.records))
+	for _, record := range i.records {
+		records = append(records, record)
+	}
+	sort.Slice(records, func(a, b int) bool { return records[a].ID < records[b].ID })
+	return records
 }

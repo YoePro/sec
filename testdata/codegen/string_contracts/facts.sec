@@ -1,0 +1,7 @@
+module main
+type Text string maxLen 2
+fn main() int {
+    let text := Text("é")
+    discard text
+    return 0
+}

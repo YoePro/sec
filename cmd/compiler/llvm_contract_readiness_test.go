@@ -12,7 +12,7 @@ import (
 // Rules: rules/types/contracts.md — Mutation and Conversion failure layers;
 // rules/compiler/compiler_pipeline.md — lowering prerequisites.
 func TestLegacyLLVMContractReadinessCLI(t *testing.T) {
-	for _, name := range []string{"range", "membership", "multiple", "parity", "finite", "length", "markers", "nested"} {
+	for _, name := range []string{"range", "membership", "multiple", "parity", "finite", "markers", "nested"} {
 		t.Run(name, func(t *testing.T) {
 			file := "../../testdata/codegen/llvm_contracts/" + name + ".sec"
 			_, output, code := runCLIForDiagnostics(t, "sema", file, "--diagnostic-format=json")
@@ -50,6 +50,16 @@ func TestLegacyLLVMContractReadinessCLI(t *testing.T) {
 	}
 	stdout, output, code := runCLIForDiagnostics(t, "emit-llvm", "../../testdata/codegen/llvm_contracts/plain.sec", "-o", "-", "--diagnostic-format=json")
 	if code != 0 || !strings.Contains(stdout, "define i32 @Identity") {
+		t.Fatal(code, stdout, output)
+	}
+}
+
+// Rules: rules/types/contracts.md — String and collection contracts.
+// Complete analyzed string length conjunctions pass the native LLVM output gate;
+// raw generator entry points still require exact Sema facts.
+func TestLegacyLLVMStringLengthReadinessCLI(t *testing.T) {
+	stdout, output, code := runCLIForDiagnostics(t, "emit-llvm", "../../testdata/codegen/llvm_contracts/length.sec", "-o", "-", "--diagnostic-format=json")
+	if code != 0 || !strings.Contains(stdout, "define i64 @main") {
 		t.Fatal(code, stdout, output)
 	}
 }

@@ -15,11 +15,14 @@ import (
 // GenerateAnalyzed checks canonical contract facts, including inherited and
 // imported types absent from this AST, before selecting legacy LLVM lowering.
 // Target-sized Sema facts must agree with the canonical selected scalar plan.
-// The backend cannot preserve runtime validation, so it rejects contracted
-// types rather than erasing their invariants into primitive LLVM types.
+// Character literals retain their exact Sema-resolved char/rune representation.
+// Complete string-length conjunctions support native bodyless checked conversions;
+// other contract families are rejected before their invariants can be erased.
 // Rules: rules/types/contracts.md — Mutation and Conversion failure layers;
 // rules/compiler/compiler_pipeline.md — lowering prerequisites;
-// rules/types/types.md — "int and uint"; correction5.md — canonical scalar facts.
+// rules/types/types.md — "int and uint", "Character literal", "Context shaping";
+// correction5.md — canonical scalar facts;
+// rules/corrections/applied/md043-char-rune-literal-correction-20261008.md — §§2–3.
 func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple string) (string, error) {
 	if analyzer == nil || program == nil {
 		return "", unsupportedContract("missing analyzed type-contract facts", lexer.Token{})
@@ -47,11 +50,14 @@ func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple stri
 		} else if reference, ok := node.(*ast.TypeReference); ok {
 			typ, token = types[reference.Name], reference.Token
 		}
-		if typeNeedsContractValidation(&typ, map[*sema.Type]bool{}) {
+		if typeNeedsUnsupportedContractValidation(&typ, map[*sema.Type]bool{}, true) {
 			return unsupportedContract("type contract validation for "+typ.Name, token)
 		}
 		return nil
 	}); err != nil {
+		return "", err
+	}
+	if err := readiness.RejectUnitQuantities(&output, analyzer, "legacy LLVM"); err != nil {
 		return "", err
 	}
 	plan, err := targetplan.Plan(triple)
@@ -71,7 +77,19 @@ func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple stri
 			return "", unsupportedContract("analyzed "+name+" width does not match selected target scalar plan", lexer.Token{})
 		}
 	}
-	return GenerateWithTriple(&output, triple)
+	characters, err := resolvedCharacterCarriers(&output, analyzer)
+	if err != nil {
+		return "", err
+	}
+	g := NewGenerator()
+	g.targetTriple = triple
+	facts, err := resolvedStringFacts(&output, analyzer)
+	if err != nil {
+		return "", err
+	}
+	g.stringFacts = facts
+	g.characterTypes = characters
+	return g.Generate(&output)
 }
 
 // typeNeedsContractValidation retains nested aggregate, sequence, union and
@@ -79,38 +97,47 @@ func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple stri
 // Rules: rules/types/contracts.md — Core rule and Composition;
 // rules/types/default_values.md — Defaults and contracts.
 func typeNeedsContractValidation(typ *sema.Type, visited map[*sema.Type]bool) bool {
+	return typeNeedsUnsupportedContractValidation(typ, visited, false)
+}
+
+// typeNeedsUnsupportedContractValidation permits only complete supported string
+// length conjunctions when exact analyzed facts are available.
+// Rules: rules/types/contracts.md — Composition, String and collection contracts.
+func typeNeedsUnsupportedContractValidation(typ *sema.Type, visited map[*sema.Type]bool, allowString bool) bool {
 	if typ == nil || visited[typ] {
 		return false
 	}
 	visited[typ] = true
 	if len(typ.Contracts) > 0 {
-		return true
+		if _, supported := sema.StringLengthContractPlan(*typ); !allowString || !supported {
+			return true
+		}
 	}
-	if typeNeedsContractValidation(typ.Element, visited) || typeNeedsContractValidation(typ.FunctionReturnType, visited) {
+	if typeNeedsUnsupportedContractValidation(typ.Element, visited, allowString) || typeNeedsUnsupportedContractValidation(typ.FunctionReturnType, visited, allowString) {
 		return true
 	}
 	for i := range typ.Fields {
-		if typeNeedsContractValidation(&typ.Fields[i].Type, visited) {
+		if typeNeedsUnsupportedContractValidation(&typ.Fields[i].Type, visited, allowString) {
 			return true
 		}
 	}
 	for i := range typ.TypeArgs {
-		if typeNeedsContractValidation(&typ.TypeArgs[i], visited) {
+		if typeNeedsUnsupportedContractValidation(&typ.TypeArgs[i], visited, allowString) {
 			return true
 		}
 	}
 	for i := range typ.FunctionParameterTypes {
-		if typeNeedsContractValidation(&typ.FunctionParameterTypes[i], visited) {
+		if typeNeedsUnsupportedContractValidation(&typ.FunctionParameterTypes[i], visited, allowString) {
 			return true
 		}
 	}
 	for i := range typ.UnionVariants {
 		variant := &typ.UnionVariants[i]
-		if typeNeedsContractValidation(variant.Payload, visited) {
+		if typeNeedsUnsupportedContractValidation(variant.Payload, visited, allowString) {
 			return true
 		}
 		for j := range variant.PayloadFields {
-			if typeNeedsContractValidation(&variant.PayloadFields[j].Type, visited) {
+			if typeNeedsUnsupportedContractValidation(&variant.PayloadFields[j].Type, visited, allowString) {
 				return true
 			}
 		}

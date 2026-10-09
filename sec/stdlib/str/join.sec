@@ -30,7 +30,34 @@ fn Join(values: Iterator[string], separator: string) Result[string, CollectionEr
 }
 
 fn Join(values: ref string[], separator: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut totalBytes: uint := 0
+    let mut count: uint := 0
+
+    // Calculate the required UTF-8 byte capacity.
+    for value in values {
+        totalBytes += value.Len
+
+        if count > 0 {
+            totalBytes += separator.Len
+        }
+
+        count += 1
+    }
+
+    // Construct the output with the required capacity.
+    let mut builder := try new Builder(totalBytes)
+    let mut first := true
+
+    for value in values {
+        if !first {
+            try builder.Append(separator)
+        }
+
+        try builder.Append(value)
+        first = false
+    }
+
+    return builder.Finish()
 }
 
 fn Concat(values: Iterator[string]) Result[string, CollectionError] {

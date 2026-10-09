@@ -75,6 +75,7 @@ var semanticOccurrenceFields = []diagnosticCatalogField{
 	{Name: "PreviousLine", Type: "int", Required: false, Description: "One-based related source line."},
 	{Name: "PreviousColumn", Type: "int", Required: false, Description: "One-based related source column."},
 	{Name: "RelatedLabel", Type: "string", Required: false, Description: "Label of the related location, such as interface requirement; empty means previous declaration."},
+	{Name: "Related", Type: "[]RelatedLocation", Required: false, Description: "Additional ordered source locations; preserved alongside the previous-declaration link in CLI and LSP diagnostics."},
 	{Name: "EscapeCauses", Type: "[]EscapeCausePath", Required: false, Description: "Ordered canonical origin-to-sink escape explanations with mode, destination, source-mapped steps and explicit incomplete coverage; transported as notes and related locations."},
 	{Name: "AllocationCause", Type: "*AllocationCausePath", Required: false, Description: "Canonical synchronous allocation-policy witness with distinct definite/unknown evidence, root, call sites, introducing callee/operation and explicit incomplete source coverage; transported as ordered notes and navigable related locations."},
 }

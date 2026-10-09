@@ -1,0 +1,5 @@
+module core
+
+fn CrossFileCall() int {
+    return __Increment(1)
+}

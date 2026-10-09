@@ -6,6 +6,7 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/sema/constant"
+	"sec/internal/sema/membership"
 )
 
 // compileTimeOperatorExpression keeps numeric contextual evaluation ahead of
@@ -75,6 +76,16 @@ func (a *Analyzer) prepareCompileTimeConstant(value DefaultConstant, context Typ
 // Rules: rules/foundations/operators.md — arithmetic, comparisons, logical
 // operators and String concatenation; rules/compiler/compile_time_evaluation.md — §2(3).
 func (a *Analyzer) compileTimeBinary(op string, left, right DefaultConstant) (DefaultConstant, compileTimeOutcome) {
+	if left.Nominal.Owner != "" || right.Nominal.Owner != "" {
+		if left.Kind != right.Kind || left.Nominal.Type != right.Nominal.Type || left.Nominal.Owner != right.Nominal.Owner || op != "==" && op != "!=" {
+			return DefaultConstant{}, compileTimeNotConstant
+		}
+		equal := membership.Equal(left.Nominal, right.Nominal)
+		if op == "!=" {
+			equal = !equal
+		}
+		return DefaultConstant{Kind: BoolType, Bool: equal, Lexeme: strconv.FormatBool(equal)}, compileTimeEvaluated
+	}
 	isText := func(v DefaultConstant) bool { return v.Kind == StringType || v.Kind == CharType || v.Kind == RuneType }
 	if isText(left) && isText(right) {
 		if left.NominalText || right.NominalText {

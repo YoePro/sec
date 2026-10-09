@@ -7,6 +7,7 @@ import (
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/sema/collectionshape"
+	"sec/internal/sema/stringcontract"
 )
 
 // isLengthContractName identifies the integer-valued string and collection
@@ -15,7 +16,7 @@ import (
 // Rule: rules/types/contracts.md — "String and collection contracts".
 func isLengthContractName(name string) bool {
 	switch name {
-	case "minLen", "maxLen", "exactLen":
+	case "minLen", "maxLen", "exactLen", "minByteLen", "maxByteLen", "exactByteLen":
 		return true
 	default:
 		return false
@@ -51,6 +52,25 @@ func (a *Analyzer) checkLengthContractSetConsistency(typ Type, contractNode ast.
 		return
 	}
 
+	if typ.Kind == StringType {
+		requirements := []stringcontract.Requirement{}
+		for index, contract := range typ.Contracts {
+			switch c := contract.(type) {
+			case LengthContract:
+				requirements = append(requirements, stringcontract.Requirement{Kind: c.Name, Bound: c.Value.String(), DeclarationIndex: uint64(index)})
+			case MarkerContract:
+				if c.Name == "notEmpty" {
+					requirements = append(requirements, stringcontract.Requirement{Kind: c.Name, DeclarationIndex: uint64(index)})
+				}
+			}
+		}
+		plan, err := stringcontract.New(requirements)
+		if err != nil || !plan.Satisfiable() {
+			a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "length contracts cannot be satisfied together for %s", typeName)
+		}
+		return
+	}
+
 	var bounds collectionshape.Bounds
 	valid := true
 	for _, contract := range typ.Contracts {
@@ -73,10 +93,16 @@ func (a *Analyzer) checkLengthContractSetConsistency(typ Type, contractNode ast.
 	}
 }
 
-// stringLengthSatisfiesContract uses the same byte-count unit as the
-// compiler-known string.Len property and trusted core's ByteLen projection.
+// stringLengthSatisfiesContract counts Unicode scalars for Len contracts and
+// UTF-8 bytes for explicit ByteLen contracts.
+// Rules: rules/types/contracts.md — String and collection contracts (revision 2.1).
 func stringLengthSatisfiesContract(value string, contract LengthContract) bool {
-	return knownLengthSatisfiesContract(new(big.Int).SetUint64(uint64(len(value))), contract)
+	plan, err := stringcontract.New([]stringcontract.Requirement{{Kind: contract.Name, Bound: contract.Value.String()}})
+	if err != nil {
+		return false
+	}
+	_, valid := plan.Validate(value)
+	return valid
 }
 
 // knownLengthSatisfiesContract compares one exact, nonnegative semantic length

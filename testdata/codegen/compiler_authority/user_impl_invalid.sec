@@ -1,0 +1,5 @@
+module core
+
+impl int {
+    fn Hijack() int { return 2 }
+}

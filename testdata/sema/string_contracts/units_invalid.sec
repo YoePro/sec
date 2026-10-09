@@ -1,0 +1,12 @@
+module main
+
+type BadRune string exactLen 2 default "é"
+type BadByte string exactByteLen 1 default "é"
+type Cross string exactLen 2 maxByteLen 1
+type EmptyCross string notEmpty exactByteLen 0
+type TooManyBytes string exactLen 1 minByteLen 5
+type ArrayBytes int[2] exactByteLen 8
+type Negative string minByteLen -1
+type Reserved string
+let maxByteLen := 1
+fn main() int { return 0 }

@@ -295,6 +295,10 @@ func newProblems(before, after []Problem) []Problem {
 type governanceIndex struct {
 	statuses  map[string]bool // nil when index.yaml has no status_values
 	fragments map[string]bool // nil when index.yaml has no fragments list
+	// library names fragments with implementation_scope: library, whose
+	// integrations are not compiler implementation and stay out of the
+	// implementation statistics.
+	library map[string]bool
 }
 
 func loadIndex(dir string) governanceIndex {
@@ -313,7 +317,14 @@ func loadIndex(dir string) governanceIndex {
 		index.fragments = map[string]bool{}
 		for _, entry := range list.Content {
 			if path := mappingValue(entry, "path"); path != nil && path.Kind == yaml.ScalarNode {
-				index.fragments[filepath.ToSlash(filepath.Clean(path.Value))] = true
+				fragment := filepath.ToSlash(filepath.Clean(path.Value))
+				index.fragments[fragment] = true
+				if scope := mappingValue(entry, "implementation_scope"); scope != nil && scope.Value == "library" {
+					if index.library == nil {
+						index.library = map[string]bool{}
+					}
+					index.library[fragment] = true
+				}
 			}
 		}
 	}

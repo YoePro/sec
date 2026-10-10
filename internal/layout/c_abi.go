@@ -24,7 +24,7 @@ const (
 	CScalarBool     CScalarKind = "bool"
 )
 
-// CScalar is the resolved representation of one C:: fundamental type under
+// CScalar is the resolved representation of one c:: fundamental type under
 // one C ABI model. ValueBits is the semantic precision; StorageBits is the
 // physical object size, which exceeds ValueBits for x87 long double.
 type CScalar struct {
@@ -56,7 +56,7 @@ type CABIModel struct {
 	DataModelSpelling string
 }
 
-// CFundamentalTypeNames lists the compiler-known C:: fundamental scalar
+// CFundamentalTypeNames lists the compiler-known c:: fundamental scalar
 // names in ffi.md §5 order.
 func CFundamentalTypeNames() []string {
 	return []string{
@@ -92,14 +92,14 @@ func (m CABIModel) Validate() error {
 	return nil
 }
 
-// Fundamental resolves one C:: fundamental name. Plain C char keeps its own
+// Fundamental resolves one c:: fundamental name. Plain C char keeps its own
 // identity while sharing the target-selected signedness of schar or uchar.
 func (m CABIModel) Fundamental(name string) (CScalar, bool) {
 	if !m.Defined() {
 		return CScalar{}, false
 	}
 	integer := func(kind CScalarKind, bits uint16) (CScalar, bool) {
-		return CScalar{Name: "C::" + name, Kind: kind, ValueBits: bits, StorageBits: bits}, true
+		return CScalar{Name: "c::" + name, Kind: kind, ValueBits: bits, StorageBits: bits}, true
 	}
 	switch name {
 	case "char":
@@ -128,13 +128,13 @@ func (m CABIModel) Fundamental(name string) (CScalar, bool) {
 	case "ulong_long":
 		return integer(CScalarUnsigned, m.LongLongBits)
 	case "float":
-		return CScalar{Name: "C::float", Kind: CScalarFloat, ValueBits: 32, StorageBits: 32, Float: CFloatBinary32}, true
+		return CScalar{Name: "c::float", Kind: CScalarFloat, ValueBits: 32, StorageBits: 32, Float: CFloatBinary32}, true
 	case "double":
-		return CScalar{Name: "C::double", Kind: CScalarFloat, ValueBits: 64, StorageBits: 64, Float: CFloatBinary64}, true
+		return CScalar{Name: "c::double", Kind: CScalarFloat, ValueBits: 64, StorageBits: 64, Float: CFloatBinary64}, true
 	case "long_double":
-		return CScalar{Name: "C::long_double", Kind: CScalarFloat, ValueBits: floatValueBits(m.LongDouble), StorageBits: m.LongDoubleStorage, Float: m.LongDouble}, true
+		return CScalar{Name: "c::long_double", Kind: CScalarFloat, ValueBits: floatValueBits(m.LongDouble), StorageBits: m.LongDoubleStorage, Float: m.LongDouble}, true
 	case "bool":
-		return CScalar{Name: "C::bool", Kind: CScalarBool, ValueBits: 1, StorageBits: m.BoolBits}, true
+		return CScalar{Name: "c::bool", Kind: CScalarBool, ValueBits: 1, StorageBits: m.BoolBits}, true
 	}
 	return CScalar{}, false
 }

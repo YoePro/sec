@@ -532,6 +532,20 @@ The purpose is not merely to reject invalid programs, but to explain why code is
 
 ## Compiler architecture
 
+Compiler inspection commands identify the representation they emit:
+
+| Command | Output boundary | Verification |
+| --- | --- | --- |
+| `sec emit-ir` | Textual Semantic IR | Verified before publication |
+| `sec emit-sec-mlir` | Sec dialect MLIR | Verified with `sec-mlir-opt` before publication |
+| `sec emit-mlir` | LLVM dialect MLIR from the existing backend | `--verify` runs `mlir-opt` before publication |
+| `sec emit-llvm` | LLVM IR | Generated for the selected target |
+
+Both MLIR commands include comments naming their boundary and selected target.
+`emit-sec-mlir` also retains the dialect schema attribute. These comments are
+compatible with MLIR parsing and translation. `emit-mlir` has a fixed LLVM
+dialect boundary; it does not switch between Sec and partially lowered MLIR.
+
 The implementation is structured around:
 
 ```text

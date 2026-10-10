@@ -178,8 +178,13 @@ impl string {
         if index >= self.ByteLen {
             return Err(IndexError.OutOfBounds)
         }
+        let offset := try int(index) {
+            Err(_) => {
+                return Err(IndexError.OutOfBounds)
+            }
+        }
         unsafe {
-            return Ok(self.Ptr.Offset(int(index)).Read())
+            return Ok(self.Ptr.Offset(offset).Read())
         }
     }
 
@@ -204,7 +209,11 @@ impl string {
             panic "String index is out of bounds"
         }
         unsafe {
-            return self.Ptr.Offset(int(index)).Read()
+            return self.Ptr.Offset(try int(index) {
+                Err(_) => {
+                    panic "String index is out of bounds"
+                }
+            }).Read()
         }
     }
 
@@ -215,7 +224,11 @@ impl string {
         }
 
         unsafe {
-            return char(self.Ptr.Offset(int(index)).Read())
+            return char(self.Ptr.Offset(try int(index) {
+                Err(_) => {
+                    panic "String index is out of bounds"
+                }
+            }).Read())
         }
     }
 

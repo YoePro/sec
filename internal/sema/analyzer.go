@@ -75,13 +75,27 @@ type Analyzer struct {
 	// runtime string materializations and the try that protects each (MD-004).
 	stringMaterializationSites      map[ast.Expression]stringMaterializationSite
 	protectedStringMaterializations map[ast.Expression]bool
-	resolvedForIterations           map[*ast.ForStatement]ResolvedForIteration
-	iteratorLoweringRequirements    map[*ast.ForStatement]*iteratorLoweringRequirement
-	iteratorLoweringProgram         *ast.Program
-	activeCollectionIterations      []activeCollectionIteration
-	iterationDependencies           map[*ast.ForStatement]ForIterationDependencies
-	activeIterationDependencies     []activeIterationDependency
-	iterationDependencyProbe        bool
+	// checkedConversions and protectedCheckedConversions track explicit
+	// scalar conversions that may fail at run time and the subset a try
+	// protects (rules/types/types.md "Explicit conversions"; ffi.md §8).
+	checkedConversions          map[*ast.CallExpression]checkedConversion
+	protectedCheckedConversions map[*ast.CallExpression]bool
+	// arenaGenericRequirements and genericInstantiations check deferred
+	// typed Arena allocations per specialization.
+	arenaGenericRequirements map[sourceTokenKey][]arenaGenericRequirement
+	genericInstantiations    map[sourceTokenKey]genericInstantiation
+	genericConstraintCalls   map[sourceTokenKey][]genericConstraintCall
+	// fallibleConversionRelations holds conversions whose type domains can
+	// fail even when a value proof makes them safe on this target.
+	fallibleConversionRelations  map[*ast.CallExpression]ConversionFailureKind
+	resolvedForIterations        map[*ast.ForStatement]ResolvedForIteration
+	iteratorLoweringRequirements map[*ast.ForStatement]*iteratorLoweringRequirement
+	iteratorLoweringProgram      *ast.Program
+	interfaceConformanceFacts    []InterfaceConformanceFact
+	activeCollectionIterations   []activeCollectionIteration
+	iterationDependencies        map[*ast.ForStatement]ForIterationDependencies
+	activeIterationDependencies  []activeIterationDependency
+	iterationDependencyProbe     bool
 	// cABIModel is the active target's C ABI data model; empty when the
 	// analyzer has no target plan or the target defines no C ABI.
 	cABIModel                   layout.CABIModel
@@ -217,7 +231,7 @@ type Analyzer struct {
 	inLambda                  bool
 	lambdaOuterSymbols        map[string]Symbol
 	inUnsafe                  bool
-	inSwitchCaseBody          bool
+	switchCaseBody            *ast.BlockStatement
 	inDeferBlock              bool
 	deferOuterSymbols         map[string]Symbol
 	deferCaptures             map[string]borrowRecord
@@ -277,20 +291,72 @@ type localReferenceOrigin struct {
 	Contained map[string]localReferenceOrigin
 }
 
+// loopEdgeState is one structured snapshot of every loop-carried semantic
+// domain at a break or continue edge: definite assignment, move state,
+// close-tracked resources, borrows, local reference origins and ArenaDomain
+// generations. Every edge records every domain, so adding a domain cannot
+// leave one edge kind without it.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_while.md — §§28–29 loop-carried state
+//   - rules/control-flow/flowcontrol_for.md — §§30–31, 42
+//   - rules/corrections/applied/correction25-20260823.md — Part I
+type loopEdgeState struct {
+	assigned           map[string]bool
+	moved              map[string]lexer.Token
+	moveReasons        map[string]string
+	closedResources    map[string]lexer.Token
+	borrows            map[string][]borrowRecord
+	localRefContainers map[string]localReferenceOrigin
+	arenaGenerations   map[string]int
+}
+
+// loopBreakFrame collects the edge states of the nearest active loop.
 type loopBreakFrame struct {
-	assignments                []map[string]bool
-	moved                      []map[string]lexer.Token
-	moveReasons                []map[string]string
-	continueMoved              []map[string]lexer.Token
-	continueReasons            []map[string]string
-	closedResources            []map[string]lexer.Token
-	continueClosedResources    []map[string]lexer.Token
-	borrows                    []map[string][]borrowRecord
-	localRefContainers         []map[string]localReferenceOrigin
-	continueBorrows            []map[string][]borrowRecord
-	continueLocalRefContainers []map[string]localReferenceOrigin
-	arenaGenerations           []map[string]int
-	continueArenaGenerations   []map[string]int
+	breaks    []loopEdgeState
+	continues []loopEdgeState
+}
+
+// edges returns the break edges followed by the continue edges.
+func (f loopBreakFrame) edges() []loopEdgeState {
+	return append(append([]loopEdgeState(nil), f.breaks...), f.continues...)
+}
+
+func (f loopBreakFrame) breakAssigned() []map[string]bool {
+	out := make([]map[string]bool, 0, len(f.breaks))
+	for _, edge := range f.breaks {
+		out = append(out, edge.assigned)
+	}
+	return out
+}
+
+func (f loopBreakFrame) breakArenaGenerations() []map[string]int {
+	out := make([]map[string]int, 0, len(f.breaks))
+	for _, edge := range f.breaks {
+		out = append(out, edge.arenaGenerations)
+	}
+	return out
+}
+
+func (a *Analyzer) captureLoopEdgeState() loopEdgeState {
+	return loopEdgeState{
+		assigned:           copyAssigned(a.assigned),
+		moved:              copyMoved(a.moved),
+		moveReasons:        copyMoveReasons(a.moveReasons),
+		closedResources:    copyMoved(a.closedResources),
+		borrows:            copyBorrows(a.borrows),
+		localRefContainers: copyLocalRefContainers(a.localRefContainers),
+		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+	}
+}
+
+// clearBinding removes a scoped binding from every domain of the edge.
+func (e loopEdgeState) clearBinding(name string, clearMoves bool) {
+	if clearMoves {
+		clearRootPlaceStateMaps(e.moved, e.moveReasons, name)
+	}
+	delete(e.closedResources, name)
+	clearLoopBindingReferenceState(e.borrows, e.localRefContainers, name)
 }
 
 type genericInstanceKey struct {
@@ -382,9 +448,16 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.confusableModuleIndex = map[string]map[string][]confusableDeclaration{}
 	a.stringMaterializationSites = map[ast.Expression]stringMaterializationSite{}
 	a.protectedStringMaterializations = map[ast.Expression]bool{}
+	a.checkedConversions = map[*ast.CallExpression]checkedConversion{}
+	a.protectedCheckedConversions = map[*ast.CallExpression]bool{}
+	a.arenaGenericRequirements = map[sourceTokenKey][]arenaGenericRequirement{}
+	a.genericInstantiations = map[sourceTokenKey]genericInstantiation{}
+	a.genericConstraintCalls = map[sourceTokenKey][]genericConstraintCall{}
+	a.fallibleConversionRelations = map[*ast.CallExpression]ConversionFailureKind{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.iteratorLoweringRequirements = map[*ast.ForStatement]*iteratorLoweringRequirement{}
 	a.iteratorLoweringProgram = nil
+	a.interfaceConformanceFacts = nil
 	a.activeCollectionIterations = nil
 	a.iterationDependencies = map[*ast.ForStatement]ForIterationDependencies{}
 	a.activeIterationDependencies = nil
@@ -490,7 +563,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.inLambda = false
 	a.lambdaOuterSymbols = nil
 	a.inUnsafe = false
-	a.inSwitchCaseBody = false
+	a.switchCaseBody = nil
 	a.inDeferBlock = false
 	a.suppressPlaceRootRead = 0
 	a.loopBackedgePlaces = nil
@@ -2389,7 +2462,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.addErrorAtToken(stmt.Token, "fallthrough is not allowed inside defer")
 			return
 		}
-		if !a.inSwitchCaseBody {
+		if !a.isDirectSwitchFallthrough(stmt) {
 			a.addErrorAtToken(stmt.Token, "fallthrough is only valid directly inside a switch case")
 		}
 	case *ast.BreakStatement:
@@ -3029,35 +3102,26 @@ type activeConditionFact struct {
 	resultSource  lexer.Token
 }
 
+// loopIterationAnalysisState is the loop-header snapshot: the same
+// structured loopEdgeState every break and continue edge carries, plus the
+// lexical scope state needed to replay the body.
 type loopIterationAnalysisState struct {
-	symbols            map[string]Symbol
-	completionSymbols  map[string]Symbol
-	definitionTokens   map[sourceTokenKey][]lexer.Token
-	constInts          map[string]*big.Int
-	assigned           map[string]bool
-	moved              map[string]lexer.Token
-	moveReasons        map[string]string
-	closedResources    map[string]lexer.Token
-	borrows            map[string][]borrowRecord
-	localRefContainers map[string]localReferenceOrigin
-	arenaGenerations   map[string]int
-	scopeDepth         int
+	loopEdgeState
+	symbols           map[string]Symbol
+	completionSymbols map[string]Symbol
+	definitionTokens  map[sourceTokenKey][]lexer.Token
+	constInts         map[string]*big.Int
+	scopeDepth        int
 }
 
 func (a *Analyzer) captureLoopIterationAnalysisState() loopIterationAnalysisState {
 	return loopIterationAnalysisState{
-		symbols:            copySymbols(a.symbols),
-		completionSymbols:  copySymbols(a.completionSymbols),
-		definitionTokens:   copyDefinitionTokens(a.definitionTokens),
-		constInts:          copyConstInts(a.constInts),
-		assigned:           copyAssigned(a.assigned),
-		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
-		closedResources:    copyMoved(a.closedResources),
-		borrows:            copyBorrows(a.borrows),
-		localRefContainers: copyLocalRefContainers(a.localRefContainers),
-		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		scopeDepth:         a.scopeDepth,
+		loopEdgeState:     a.captureLoopEdgeState(),
+		symbols:           copySymbols(a.symbols),
+		completionSymbols: copySymbols(a.completionSymbols),
+		definitionTokens:  copyDefinitionTokens(a.definitionTokens),
+		constInts:         copyConstInts(a.constInts),
+		scopeDepth:        a.scopeDepth,
 	}
 }
 
@@ -6450,15 +6514,9 @@ func clearLoopBindingReferenceState(borrows map[string][]borrowRecord, origins m
 }
 
 func (a *Analyzer) clearScopedBindingFromLoopEdges(name string) {
-	for frameIndex := range a.loopBreakFrames {
-		frame := &a.loopBreakFrames[frameIndex]
-		for index := range frame.borrows {
-			delete(frame.closedResources[index], name)
-			clearLoopBindingReferenceState(frame.borrows[index], frame.localRefContainers[index], name)
-		}
-		for index := range frame.continueBorrows {
-			delete(frame.continueClosedResources[index], name)
-			clearLoopBindingReferenceState(frame.continueBorrows[index], frame.continueLocalRefContainers[index], name)
+	for _, frame := range a.loopBreakFrames {
+		for _, edge := range frame.edges() {
+			edge.clearBinding(name, false)
 		}
 	}
 }
@@ -6537,13 +6595,7 @@ func (a *Analyzer) recordLoopBreak() {
 		return
 	}
 	top := len(a.loopBreakFrames) - 1
-	a.loopBreakFrames[top].assignments = append(a.loopBreakFrames[top].assignments, copyAssigned(a.assigned))
-	a.loopBreakFrames[top].moved = append(a.loopBreakFrames[top].moved, copyMoved(a.moved))
-	a.loopBreakFrames[top].moveReasons = append(a.loopBreakFrames[top].moveReasons, copyMoveReasons(a.moveReasons))
-	a.loopBreakFrames[top].closedResources = append(a.loopBreakFrames[top].closedResources, copyMoved(a.closedResources))
-	a.loopBreakFrames[top].borrows = append(a.loopBreakFrames[top].borrows, copyBorrows(a.borrows))
-	a.loopBreakFrames[top].localRefContainers = append(a.loopBreakFrames[top].localRefContainers, copyLocalRefContainers(a.localRefContainers))
-	a.loopBreakFrames[top].arenaGenerations = append(a.loopBreakFrames[top].arenaGenerations, copyArenaGenerations(a.arenaGenerations))
+	a.loopBreakFrames[top].breaks = append(a.loopBreakFrames[top].breaks, a.captureLoopEdgeState())
 }
 
 // recordLoopContinue snapshots all represented flow domains, including Arena
@@ -6556,14 +6608,10 @@ func (a *Analyzer) recordLoopContinue() {
 		return
 	}
 	top := len(a.loopBreakFrames) - 1
-	a.loopBreakFrames[top].continueMoved = append(a.loopBreakFrames[top].continueMoved, copyMoved(a.moved))
-	a.loopBreakFrames[top].continueReasons = append(a.loopBreakFrames[top].continueReasons, copyMoveReasons(a.moveReasons))
-	a.loopBreakFrames[top].continueClosedResources = append(a.loopBreakFrames[top].continueClosedResources, copyMoved(a.closedResources))
-	a.loopBreakFrames[top].continueBorrows = append(a.loopBreakFrames[top].continueBorrows, copyBorrows(a.borrows))
-	a.loopBreakFrames[top].continueLocalRefContainers = append(a.loopBreakFrames[top].continueLocalRefContainers, copyLocalRefContainers(a.localRefContainers))
 	// rules/control-flow/flowcontrol_while.md and flowcontrol_for.md;
-	// correction25.md: every continue edge carries the complete Arena epoch.
-	a.loopBreakFrames[top].continueArenaGenerations = append(a.loopBreakFrames[top].continueArenaGenerations, copyArenaGenerations(a.arenaGenerations))
+	// correction25.md: every continue edge carries the complete state,
+	// including the Arena epoch.
+	a.loopBreakFrames[top].continues = append(a.loopBreakFrames[top].continues, a.captureLoopEdgeState())
 }
 
 func mergeMoveStateInto(mergedMoved map[string]lexer.Token, mergedReasons map[string]string, moved map[string]lexer.Token, reasons map[string]string) {
@@ -6585,19 +6633,11 @@ func mergeLoopMoveState(beforeMoved map[string]lexer.Token, beforeReasons map[st
 	mergedReasons := map[string]string{}
 	mergeMoveStateInto(mergedMoved, mergedReasons, beforeMoved, beforeReasons)
 	mergeMoveStateInto(mergedMoved, mergedReasons, loopMoved, loopReasons)
-	for index, moved := range breaks.continueMoved {
-		var reasons map[string]string
-		if index < len(breaks.continueReasons) {
-			reasons = breaks.continueReasons[index]
-		}
-		mergeMoveStateInto(mergedMoved, mergedReasons, moved, reasons)
+	for _, edge := range breaks.continues {
+		mergeMoveStateInto(mergedMoved, mergedReasons, edge.moved, edge.moveReasons)
 	}
-	for index, moved := range breaks.moved {
-		var reasons map[string]string
-		if index < len(breaks.moveReasons) {
-			reasons = breaks.moveReasons[index]
-		}
-		mergeMoveStateInto(mergedMoved, mergedReasons, moved, reasons)
+	for _, edge := range breaks.breaks {
+		mergeMoveStateInto(mergedMoved, mergedReasons, edge.moved, edge.moveReasons)
 	}
 	return mergedMoved, mergedReasons
 }
@@ -6608,12 +6648,8 @@ func loopBackedgeMoveState(entryMoved map[string]lexer.Token, entryReasons map[s
 	if bodyFallsThrough {
 		mergeMoveStateInto(headerMoved, headerReasons, loopMoved, loopReasons)
 	}
-	for index, moved := range frame.continueMoved {
-		var reasons map[string]string
-		if index < len(frame.continueReasons) {
-			reasons = frame.continueReasons[index]
-		}
-		mergeMoveStateInto(headerMoved, headerReasons, moved, reasons)
+	for _, edge := range frame.continues {
+		mergeMoveStateInto(headerMoved, headerReasons, edge.moved, edge.moveReasons)
 	}
 	return headerMoved, headerReasons
 }
@@ -6623,23 +6659,31 @@ func loopBackedgeClosedResourceState(entry, loop map[string]lexer.Token, frame l
 	if bodyFallsThrough {
 		states = append(states, loop)
 	}
-	states = append(states, frame.continueClosedResources...)
+	for _, edge := range frame.continues {
+		states = append(states, edge.closedResources)
+	}
 	return intersectTokenStates(states...)
 }
 
 func mergeLoopClosedResourceState(entry, loop map[string]lexer.Token, frame loopBreakFrame, bodyFallsThrough, conditionAlwaysTrue bool) map[string]lexer.Token {
+	breaks := make([]map[string]lexer.Token, 0, len(frame.breaks))
+	for _, edge := range frame.breaks {
+		breaks = append(breaks, edge.closedResources)
+	}
 	if conditionAlwaysTrue {
-		if len(frame.closedResources) == 0 {
+		if len(breaks) == 0 {
 			return copyMoved(entry)
 		}
-		return intersectTokenStates(frame.closedResources...)
+		return intersectTokenStates(breaks...)
 	}
 	states := []map[string]lexer.Token{entry}
 	if bodyFallsThrough {
 		states = append(states, loop)
 	}
-	states = append(states, frame.continueClosedResources...)
-	states = append(states, frame.closedResources...)
+	for _, edge := range frame.continues {
+		states = append(states, edge.closedResources)
+	}
+	states = append(states, breaks...)
 	return intersectTokenStates(states...)
 }
 
@@ -6648,7 +6692,9 @@ func loopBackedgeBorrowState(entry map[string][]borrowRecord, loop map[string][]
 	if bodyFallsThrough {
 		states = append(states, loop)
 	}
-	states = append(states, frame.continueBorrows...)
+	for _, edge := range frame.continues {
+		states = append(states, edge.borrows)
+	}
 	merged := mergeBorrowStates(states...)
 	for root, records := range merged {
 		entryRecords := entry[root]
@@ -6662,8 +6708,9 @@ func loopBackedgeBorrowState(entry map[string][]borrowRecord, loop map[string][]
 
 func mergeLoopBorrowState(entry map[string][]borrowRecord, loop map[string][]borrowRecord, frame loopBreakFrame) map[string][]borrowRecord {
 	states := []map[string][]borrowRecord{entry, loop}
-	states = append(states, frame.continueBorrows...)
-	states = append(states, frame.borrows...)
+	for _, edge := range frame.edges() {
+		states = append(states, edge.borrows)
+	}
 	merged := mergeBorrowStates(states...)
 	for root, records := range merged {
 		for index := range records {
@@ -6695,14 +6742,17 @@ func loopBackedgeReferenceState(entry map[string]localReferenceOrigin, loop map[
 	if bodyFallsThrough {
 		states = append(states, loop)
 	}
-	states = append(states, frame.continueLocalRefContainers...)
+	for _, edge := range frame.continues {
+		states = append(states, edge.localRefContainers)
+	}
 	return mergeReferenceOriginStates(states...)
 }
 
 func mergeLoopReferenceState(entry map[string]localReferenceOrigin, loop map[string]localReferenceOrigin, frame loopBreakFrame) map[string]localReferenceOrigin {
 	states := []map[string]localReferenceOrigin{entry, loop}
-	states = append(states, frame.continueLocalRefContainers...)
-	states = append(states, frame.localRefContainers...)
+	for _, edge := range frame.edges() {
+		states = append(states, edge.localRefContainers)
+	}
 	return mergeReferenceOriginStates(states...)
 }
 
@@ -8764,126 +8814,6 @@ func (a *Analyzer) validateUnitConversionDimensions(targetName string, fn *ast.F
 		targetName,
 		typeDisplayName(source),
 	)
-	return false
-}
-
-func (a *Analyzer) validateInterfaceConformance() {
-	a.resolveInterfaceSetterContracts()
-	names := make([]string, 0, len(a.types))
-	for name := range a.types {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		typ := a.types[name]
-		if typ.Kind == InvalidType || len(typ.Implements) == 0 {
-			continue
-		}
-		if typ.Kind == InterfaceType {
-			continue
-		}
-		for _, iface := range typ.Implements {
-			if a.invalidInterfaceInheritance[iface.Name] {
-				continue
-			}
-			a.validateTypeImplementsInterface(typ, iface)
-		}
-	}
-}
-
-func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
-	clause, hasClause := a.implementsClauseTokens[typ.Name+"\x00"+iface.Name]
-	for _, required := range iface.InterfaceMethods {
-		methods := a.functions[typ.Name+"."+required.Name]
-		if len(methods) == 0 {
-			anchor := required.Token
-			if hasClause {
-				anchor = clause
-			}
-			a.addInterfaceConformanceError(anchor, required.Token, diagnostics.InterfaceMemberMissing,
-				"declare "+interfaceRequirementDisplay(substituteInterfaceSelf(required, typ))+" in the impl of "+typ.Name,
-				"type %s implements %s but is missing method %s", typ.Name, iface.Name, required.Name)
-			continue
-		}
-		if !hasCompatibleInterfaceMethod(typ, iface, methods, required) {
-			method := closestInterfaceCandidate(methods, required)
-			// An unresolved type is already diagnosed where it is written;
-			// comparing against it would only report a cascade.
-			if functionSignatureHasInvalidType(required) || functionSignatureHasInvalidType(method) {
-				continue
-			}
-			anchor := method.Token
-			if !validDefinitionToken(anchor) {
-				anchor = required.Token
-			}
-			expected := substituteInterfaceSelf(required, typ)
-			a.addInterfaceConformanceError(anchor, required.Token, diagnostics.InterfaceMemberIncompatible,
-				"interface "+iface.Name+" requires "+interfaceRequirementDisplay(expected),
-				"type %s method %s does not match interface %s: %s", typ.Name, required.Name, iface.Name, interfaceMethodMismatch(method, expected))
-		}
-	}
-
-	for _, required := range iface.InterfaceProperties {
-		property, ok := lookupProperty(typ, required.Name)
-		if !ok {
-			a.addInterfaceConformanceError(a.interfaceClauseAnchor(typ, iface, required.Token), required.Token, diagnostics.InterfaceMemberMissing, "declare the property in the impl of "+typ.Name, "type %s implements %s but is missing property %s", typ.Name, iface.Name, required.Name)
-			continue
-		}
-		if !sameConcreteType(property.Type, required.Type) {
-			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Type), iface.Name, typeDisplayName(property.Type))
-			continue
-		}
-		// rules/declarations/properties.md, section 10. Interface
-		// conformance includes the static-versus-instance category.
-		if property.Static != required.Static {
-			requiredKind, actualKind := "instance", "static"
-			if required.Static {
-				requiredKind, actualKind = "static", "instance"
-			}
-			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must be %s for interface %s, got %s property", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
-			continue
-		}
-		if required.RequiresGet && !property.HasGetter {
-			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide get for interface %s", typ.Name, required.Name, iface.Name)
-		}
-		if required.RequiresSet && !property.HasSetter {
-			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide set for interface %s", typ.Name, required.Name, iface.Name)
-		} else if required.RequiresSet && property.Fallible != required.SetterFallible {
-			requiredKind := "infallible"
-			actualKind := "fallible"
-			if required.SetterFallible {
-				requiredKind, actualKind = "fallible", "infallible"
-			}
-			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide %s setter for interface %s, got %s setter", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
-		} else if contract := a.interfaceSetterErrors[iface.Name+"."+required.Name]; required.RequiresSet && required.SetterFallible && !setterErrorContractSatisfied(property, contract) {
-			a.addInterfaceConformanceError(interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s setter error %s does not satisfy %s required by interface %s",
-				typ.Name, required.Name, typeDisplayName(*property.Error), typeDisplayName(*contract), iface.Name)
-		}
-	}
-
-	for _, required := range iface.InterfaceEvents {
-		event, ok := lookupEvent(typ, required.Name)
-		if !ok {
-			a.addInterfaceConformanceError(a.interfaceClauseAnchor(typ, iface, required.Token), required.Token, diagnostics.InterfaceMemberMissing, "declare the event in the impl of "+typ.Name, "type %s implements %s but is missing event %s", typ.Name, iface.Name, required.Name)
-			continue
-		}
-		if !sameConcreteType(event.Payload, required.Payload) {
-			a.addInterfaceConformanceError(interfaceMemberAnchor(event.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s event %s payload must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Payload), iface.Name, typeDisplayName(event.Payload))
-		}
-	}
-}
-
-func hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, required Function) bool {
-	required = substituteInterfaceSelf(required, typ)
-	for _, method := range methods {
-		if compatibleInterfaceMethodSignature(method, required) &&
-			method.Static == required.Static &&
-			(required.ReceiverMutable || !method.ReceiverMutable) &&
-			sameConcreteType(method.ReturnType, required.ReturnType) {
-			return true
-		}
-	}
 	return false
 }
 
@@ -12733,7 +12663,12 @@ func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*as
 
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
-		if !parameterOK || !inferGenericTypeSubstitutionWithFixed(parameter.Type, argType, substitution, fixed) {
+		pattern := parameter.Type
+		if parameterOK && pattern.Kind == ReferenceType && pattern.Element != nil && argType.Kind != ReferenceType {
+			// Implicit call-site borrow (borrowing.md §15.2).
+			pattern = *pattern.Element
+		}
+		if !parameterOK || !inferGenericTypeSubstitutionWithFixed(pattern, argType, substitution, fixed) {
 			return Function{}, true, false
 		}
 	}
@@ -12758,6 +12693,10 @@ func (a *Analyzer) instantiateGenericFunction(function Function, substitution ma
 	}
 
 	out := function
+	out.GenericSubstitution = make(map[string]Type, len(substitution))
+	for name, typ := range substitution {
+		out.GenericSubstitution[name] = typ
+	}
 	out.GenericParameters = nil
 	out.GenericConstraints = make([]GenericConstraint, 0, len(function.GenericConstraints))
 	for _, constraint := range function.GenericConstraints {
@@ -12791,6 +12730,12 @@ func (a *Analyzer) genericFunctionConstraintFailure(function Function, substitut
 			continue
 		}
 		required := substituteGenericType(constraint.Interface, substitution)
+		if genericArgumentGuaranteesConstraint(argument, required) {
+			// A forwarded template parameter satisfies the constraint its own
+			// declaration guarantees; each concrete specialization was checked
+			// at its call (rules/declarations/generics.md — §14).
+			continue
+		}
 		if !a.hasValidExplicitInterfaceConformance(argument, required) {
 			return &GenericConstraintFailure{
 				Parameter: constraint.Parameter,
@@ -12800,6 +12745,21 @@ func (a *Analyzer) genericFunctionConstraintFailure(function Function, substitut
 		}
 	}
 	return nil
+}
+
+// genericArgumentGuaranteesConstraint reports whether a template parameter
+// used as a generic argument already carries the required interface among
+// its own declared constraints.
+func genericArgumentGuaranteesConstraint(argument, required Type) bool {
+	if argument.Kind != GenericType {
+		return false
+	}
+	for _, constraint := range argument.GenericConstraints {
+		if sameConcreteType(constraint.Interface, required) {
+			return true
+		}
+	}
+	return false
 }
 
 func genericTypeInstanceKey(typ Type) genericInstanceKey {
@@ -12854,6 +12814,9 @@ func (a *Analyzer) resolveFunctionValueInitializer(target Type, expr ast.Express
 
 	if len(matches) == 1 {
 		a.bindDefinition(ident.Token, matches[0].Token)
+		if a.rejectUnsafeFunctionValue(ident, matches[0]) {
+			return Type{Kind: InvalidType}, true
+		}
 		a.recordNamedCallableIdentity(ident, matches[0])
 		return functionTypeFromFunction(matches[0]), true
 	}

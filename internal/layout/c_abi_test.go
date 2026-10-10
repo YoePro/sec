@@ -2,7 +2,7 @@ package layout
 
 import "testing"
 
-// Every registered C ABI model is coherent and resolves every C::
+// Every registered C ABI model is coherent and resolves every c::
 // fundamental; data model, char signedness, and long double format come from
 // the model rather than from the Sec spelling.
 //
@@ -17,12 +17,12 @@ func TestCABIModelsResolveEveryFundamental(t *testing.T) {
 		}
 		for _, name := range CFundamentalTypeNames() {
 			scalar, ok := model.Fundamental(name)
-			if !ok || scalar.Name != "C::"+name || scalar.StorageBits < scalar.ValueBits && scalar.Kind != CScalarBool {
+			if !ok || scalar.Name != "c::"+name || scalar.StorageBits < scalar.ValueBits && scalar.Kind != CScalarBool {
 				t.Fatalf("%s %s = %+v, %v", model.Name, name, scalar, ok)
 			}
 		}
 		if _, ok := model.Fundamental("size_t"); ok {
-			t.Fatalf("%s resolved size_t as a fundamental C:: type", model.Name)
+			t.Fatalf("%s resolved size_t as a fundamental c:: type", model.Name)
 		}
 	}
 	checks := []struct {
@@ -50,7 +50,7 @@ func TestCABIModelsResolveEveryFundamental(t *testing.T) {
 	for _, check := range checks {
 		scalar, _ := check.model.Fundamental(check.name)
 		if scalar.Kind != check.kind || scalar.ValueBits != check.bits {
-			t.Fatalf("%s C::%s = %+v, want %s %d bits", check.model.Name, check.name, scalar, check.kind, check.bits)
+			t.Fatalf("%s c::%s = %+v, want %s %d bits", check.model.Name, check.name, scalar, check.kind, check.bits)
 		}
 	}
 	if x87, _ := CModelSysVX8664.Fundamental("long_double"); x87.StorageBits != 128 {

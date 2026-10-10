@@ -78,6 +78,7 @@ const (
 	ParserAssertMessageSeparator                  = "P2032"
 	ParserAssertMissingCondition                  = "P2033"
 	ParserLegacyTryMatchWrapper                   = "P2034"
+	ParserRemovedUppercaseForeignQualifier        = "P2035"
 	MissingModuleDeclaration                      = "S1001"
 	DuplicateModuleDeclaration                    = "S1002"
 	ModuleDeclarationConflict                     = "S1003"
@@ -223,7 +224,25 @@ const (
 	// literal shaped by char context whose value is outside char's 0..255.
 	// Rules: rules/types/types.md — "char"; rules/foundations/lexical_structure.md
 	// — §12.7, §13; rules/corrections/applied/md043-char-rune-literal-correction-20261008.md — §6.3.
-	CharLiteralOutOfRange        = "S1138"
+	CharLiteralOutOfRange = "S1138"
+	// CheckedConversionRequiresTry rejects an explicit scalar conversion that
+	// may fail at run time unless try converts its failure into ConversionError.
+	// Rules: rules/types/types.md — "Explicit conversions"; rules/platform/ffi.md — §8;
+	// rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md — §2.5, §4.8.
+	CheckedConversionRequiresTry = "S1139"
+	// TypeNameUsedAsValue rejects a compiler-known type name such as list in
+	// value position. Rules: rules/types/types.md — compiler-known types.
+	TypeNameUsedAsValue = "S1140"
+	// UnsafeFunctionValueMismatch rejects using an unsafe function as a
+	// function value: Sec has no unsafe function type, so the value would be a
+	// safe callable that erases the caller obligations.
+	// Rules: rules/memory/unsafe.md — §39(1), §39(2), §39(4), §50(2).
+	UnsafeFunctionValueMismatch = "S1141"
+	// RawPointerNullDereference rejects a raw-pointer read or write whose
+	// receiver the compiler proves null; unsafe does not make it valid.
+	// Rules: rules/memory/raw_pointers.md — § 7(6)-(8), § 34;
+	// rules/memory/unsafe.md — § 8(6), § 21(2), § 50(2).
+	RawPointerNullDereference    = "S1142"
 	UnreachableStatement         = "S3001"
 	UseAfterDiscard              = "S4001"
 	LargeValueParameter          = "A2001"
@@ -233,18 +252,22 @@ const (
 )
 
 var registry = map[string]Definition{
-	DefaultCycle:                {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
-	BackendDefaultLeftUndefined: {ID: BackendDefaultLeftUndefined, Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
-	CharLiteralOutOfRange:       {ID: CharLiteralOutOfRange, Name: "literal.char-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
-	UnitPolymorphismReserved:    {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
-	PitfallAdvisory:             {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
-	IndexOutOfBounds:            {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeLocalStorage:          {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeOuterPlace:            {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeMatchPayload:          {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeClosureCapture:        {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeProvenanceUnknown:     {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeVariadicPack:          {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	DefaultCycle:                 {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	BackendDefaultLeftUndefined:  {ID: BackendDefaultLeftUndefined, Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
+	CharLiteralOutOfRange:        {ID: CharLiteralOutOfRange, Name: "literal.char-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
+	CheckedConversionRequiresTry: {ID: CheckedConversionRequiresTry, Name: "types.checked-conversion-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	TypeNameUsedAsValue:          {ID: TypeNameUsedAsValue, Name: "types.type-name-used-as-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	UnsafeFunctionValueMismatch:  {ID: UnsafeFunctionValueMismatch, Name: "unsafe.function-value-mismatch", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	RawPointerNullDereference:    {ID: RawPointerNullDereference, Name: "unsafe.raw-pointer-null", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	UnitPolymorphismReserved:     {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
+	PitfallAdvisory:              {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
+	IndexOutOfBounds:             {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeLocalStorage:           {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeOuterPlace:             {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeMatchPayload:           {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeClosureCapture:         {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeProvenanceUnknown:      {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeVariadicPack:           {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 
 	ArenaResetLiveDependency:                      {ID: ArenaResetLiveDependency, Name: "arena.reset-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
 	ArenaReleaseLiveDependency:                    {ID: ArenaReleaseLiveDependency, Name: "arena.release-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
@@ -409,6 +432,8 @@ var registry = map[string]Definition{
 	ParserAssertMessageSeparator:        parserDefinition(ParserAssertMessageSeparator, "parser.assert-message-separator"),
 	ParserAssertMissingCondition:        parserDefinition(ParserAssertMissingCondition, "parser.assert-missing-condition"),
 	ParserLegacyTryMatchWrapper:         parserDefinition(ParserLegacyTryMatchWrapper, "parser.legacy-try-match-wrapper"),
+	// rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md §2.1
+	ParserRemovedUppercaseForeignQualifier: parserDefinition(ParserRemovedUppercaseForeignQualifier, "parser.removed-uppercase-foreign-qualifier"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",

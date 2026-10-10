@@ -62,6 +62,7 @@ type tryFailureSetContext struct {
 //   - rules/errors/runtime_checks.md — "What try converts": "Within its expression subtree, try converts language-defined checks"
 //   - rules/errors/errorhandling.md — §9 "Operands accepted by try", §13 "try expression boundaries"
 func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoint {
+	root := expr
 	points := []TryFailurePoint{}
 	var visit func(ast.Expression)
 	visit = func(expr ast.Expression) {
@@ -110,6 +111,7 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 				}
 				points = append(points, TryFailurePoint{Kind: TryFailureContract, ErrorType: errorType, Expression: node, Token: node.Token})
 			}
+			points = a.appendCheckedConversionPoint(points, node, ast.Expression(node) == root)
 		case *ast.ConversionExpression:
 			visit(node.Value)
 		case *ast.NewExpression:

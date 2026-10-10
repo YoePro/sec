@@ -37,7 +37,11 @@ func TestNullSentinelInRawPointerContexts(t *testing.T) {
 		"unsafe {\n        let value: RawPtr[Device] := null\n        discard value\n    }",
 		"unsafe {\n        let mut value: RawPtr[Device] := raw\n        value = null\n        discard value\n    }",
 		"unsafe {\n        Use(null)\n    }",
-		"let null := 5\n    discard null",
+		// MD-024 §5.3: is not null is the canonical negated test, and both
+		// tests are ordinary bool expressions anywhere inside unsafe.
+		"unsafe {\n        if raw is not null {\n            return\n        }\n    }",
+		"unsafe {\n        let missing: bool := raw is null\n        let present: bool := raw is not null\n        discard missing\n        discard present\n    }",
+		"unsafe {\n        let both := raw is not null && count > 0\n        discard both\n    }",
 	} {
 		if errors := analyzeNullFixture(t, body); len(errors) != 0 {
 			t.Fatalf("%q errors = %v, want none", body, errors)
@@ -58,6 +62,9 @@ func TestNullSentinelMisuseUsesOwningDiagnostics(t *testing.T) {
 		{"unsafe {\n        if raw == null {\n            return\n        }\n    }", diagnostics.NullEquality, "use is null"},
 		{"if null != raw {\n        return\n    }", diagnostics.NullEquality, "use is null"},
 		{"unsafe {\n        if count is null {\n            return\n        }\n    }", diagnostics.NullTestRequiresRawPointer, "got int"},
+		{"let present := raw is not null\n    discard present", diagnostics.NullOutsideUnsafe, "is not null uses the unsafe raw-pointer sentinel"},
+		{"unsafe {\n        if count is not null {\n            return\n        }\n    }", diagnostics.NullTestRequiresRawPointer, "is not null requires a RawPtr[T] subject, got int"},
+		{"unsafe {\n        let optional: Option[int] := null\n        discard optional\n    }", diagnostics.NullWithoutRawPointerContext, "null is not an Option value; use None"},
 	}
 	for _, test := range tests {
 		errors := analyzeNullFixture(t, test.body)

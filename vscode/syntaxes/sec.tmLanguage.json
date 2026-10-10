@@ -246,6 +246,10 @@
           "match": "\\b(?:true|false)\\b"
         },
         {
+          "name": "constant.language.null.sec",
+          "match": "\\bnull\\b"
+        },
+        {
           "name": "constant.language.option.sec",
           "match": "\\b(?:Some|None|Ok|Err)\\b"
         },

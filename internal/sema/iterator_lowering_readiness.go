@@ -48,6 +48,9 @@ type iteratorLoweringRequirement struct {
 	conformance                                    string
 	next                                           CallableID
 	reachable, required, invalid, conformanceValid bool
+	// genericTemplate marks a loop over a generic parameter constrained by
+	// Iterator[T]; it has no concrete Next until specialization.
+	genericTemplate bool
 }
 
 // beginIteratorLoweringRequirement records a final-body obligation before
@@ -90,6 +93,8 @@ func (a *Analyzer) ValidateIteratorLoweringReadiness(program *ast.Program, modul
 		if requirement.invalid || !requirement.conformanceValid {
 			issue.Classification = "Invalid"
 			issue.Reason = "iterator conformance, source, binding or body failed semantic validation"
+		} else if requirement.genericTemplate {
+			issue.Reason = "iteration over a generic parameter constrained by Iterator[T] is lowered per specialization, and generic specialization lowering is not available yet"
 		} else {
 			issue.Reason = a.iteratorPlanReadinessReason(stmt, requirement)
 		}

@@ -31,9 +31,46 @@ module str
 
 // TODO: Implement stdlib/str/case.sec
 
+/**
+ * Converts a UTF-8 string to lowercase using full Unicode casing.
+ *
+ * Description:
+ * Applies locale-independent Unicode lowercase mappings to the
+ * complete input string. Supports mappings that expand one rune
+ * into multiple runes and context-sensitive mappings such as
+ * Greek final sigma.
+ *
+ * Uses the repository's canonical Unicode data and preserves
+ * input order without performing Unicode normalization.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to convert.
+ *
+ * Returns:
+ * A newly materialized lowercase UTF-8 string.
+ * An empty input produces an empty string.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing
+ *     the resulting string.
+ *
+ * Allocation:
+ * Materializes a new string using growable storage.
+ *
+ * Unicode:
+ * Uses full default Unicode lowercase mappings and
+ * locale-independent contextual casing rules.
+ */
 fn ToLower(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.Len)
+
+    for character in value {
+        try builder.Append(character.ToLower())
+    }
+
+    return builder.Finish()
 }
+
 fn ToUpper(value: string) Result[string, CollectionError] {
     return Err(CollectionError.AllocationFailed)
 }

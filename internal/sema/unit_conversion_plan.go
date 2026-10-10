@@ -228,6 +228,9 @@ func (a *Analyzer) canInitialize(target, value Type, expr ast.Expression) bool {
 			return typ.Kind != InvalidType
 		}
 	}
+	if accepted, handled := a.shapeForeignCharacterLiteral(expr, target); handled {
+		return accepted
+	}
 	if !a.canInitializeUnrecorded(target, value, expr) {
 		return false
 	}

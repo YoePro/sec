@@ -48,7 +48,8 @@ func loopBackedgeArenaGenerationState(entry, loop map[string]int, frame loopBrea
 	if bodyFallsThrough {
 		mergeArenaGenerationMaxInto(header, loop)
 	}
-	for _, generations := range frame.continueArenaGenerations {
+	for _, edge := range frame.continues {
+		generations := edge.arenaGenerations
 		mergeArenaGenerationMaxInto(header, generations)
 	}
 	return header

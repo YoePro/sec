@@ -5,15 +5,11 @@ import (
 	"sec/internal/diagnostics"
 )
 
-// isNullSentinel reports the source sentinel `null` when no ordinary binding
-// of that name is visible.
+// isNullSentinel reports the reserved source sentinel `null`. null is a hard
+// keyword (MD-024 §5.2), so no binding can shadow it.
 func (a *Analyzer) isNullSentinel(expr ast.Expression) bool {
 	identifier, ok := expr.(*ast.Identifier)
-	if !ok || identifier.Value != "null" || len(identifier.ForeignSeparators) != 0 {
-		return false
-	}
-	_, shadowed := a.symbols["null"]
-	return !shadowed
+	return ok && identifier.Value == "null" && len(identifier.ForeignSeparators) == 0
 }
 
 // inferNullSentinel types the raw-pointer sentinel. null is not an ordinary
@@ -34,24 +30,37 @@ func (a *Analyzer) inferNullSentinel(expr *ast.Identifier) (Type, expressionValu
 	if ok && expected.Kind == RawPtrType {
 		return expected, expressionValue{Display: expr.String()}
 	}
+	if ok && isOptionType(expected) {
+		// MD-024 §5.6: Option absence is None, never the foreign sentinel.
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.NullWithoutRawPointerContext,
+			"Write None for an absent Option value; null exists only for RawPtr[T] at unsafe foreign boundaries.",
+			"null is not an Option value; use None")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.NullWithoutRawPointerContext,
 		"Give the target an explicit RawPtr[T] type, for example let value: RawPtr[Device] := null.",
 		"null has no standalone type; it needs a RawPtr[T] target context")
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 
-// inferNullTestExpression validates `subject is null`: an unsafe-only test on
-// a RawPtr[T] subject that yields bool without dereferencing the pointer.
+// inferNullTestExpression validates `subject is null` and `subject is not
+// null`: unsafe-only tests on a RawPtr[T] subject that yield bool in any
+// boolean-expression position without dereferencing the pointer.
 //
 // Rules:
 //   - rules/platform/ffi.md — §11 "Null testing uses is"; "Invalid" outside unsafe
 //   - rules/memory/raw_pointers.md — § 7(3) testing a null raw pointer is permitted
+//   - rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md — §5.3–5.5
 func (a *Analyzer) inferNullTestExpression(expr *ast.NullTestExpression) (Type, expressionValue) {
 	boolType := Type{Name: "bool", Kind: BoolType}
+	test := "is null"
+	if expr.Negated {
+		test = "is not null"
+	}
 	if !a.inUnsafe {
 		a.addErrorAtTokenWithMetadata(expr.NullToken, diagnostics.NullOutsideUnsafe,
 			"Move the test into an unsafe { } block.",
-			"is null uses the unsafe raw-pointer sentinel and may be written only inside an unsafe context")
+			"%s uses the unsafe raw-pointer sentinel and may be written only inside an unsafe context", test)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	subject, _ := a.inferExpression(expr.Subject)
@@ -61,7 +70,7 @@ func (a *Analyzer) inferNullTestExpression(expr *ast.NullTestExpression) (Type, 
 	if subject.Kind != RawPtrType {
 		a.addErrorAtTokenWithMetadata(expressionToken(expr.Subject), diagnostics.NullTestRequiresRawPointer,
 			"Only RawPtr[T] values can be null; safe references and other values are never null.",
-			"is null requires a RawPtr[T] subject, got %s", typeDisplayName(subject))
+			"%s requires a RawPtr[T] subject, got %s", test, typeDisplayName(subject))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	return boolType, expressionValue{Display: expr.String()}

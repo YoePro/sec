@@ -71,6 +71,16 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 	if value, constant := a.constantConditionIntegerValue(expr); constant {
 		return value, value, true
 	}
+	if minimum, maximum, ok := a.bitwiseInterval(expr); ok {
+		return minimum, maximum, true
+	}
+	if id, ok := expr.(*ast.Identifier); ok {
+		if symbol, found := a.symbols[id.Value]; found && !symbol.Mutable && !symbol.Volatile && symbol.IntegerMinimum != nil && symbol.IntegerMaximum != nil {
+			minimum, maximum := new(big.Int).Set(symbol.IntegerMinimum), new(big.Int).Set(symbol.IntegerMaximum)
+			a.refineIntervalByDominatingFacts(expr, minimum, maximum)
+			return minimum, maximum, true
+		}
+	}
 	if infix, ok := expr.(*ast.InfixExpression); ok && (infix.Operator == "+" || infix.Operator == "-") {
 		leftMin, leftMax, leftKnown := a.integerInterval(infix.Left)
 		rightMin, rightMax, rightKnown := a.integerInterval(infix.Right)
@@ -191,6 +201,159 @@ func (a *Analyzer) refineIntervalByDominatingFacts(expr ast.Expression, minimum,
 			lowerMax(maximum, constant)
 		}
 	}
+	// Range membership and disjunctions of bounded conditions, on both
+	// logical edges (rules/foundations/operators.md — "Range membership").
+	for _, active := range a.activeConditionFacts {
+		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil {
+			continue
+		}
+		low, high, ok := a.conditionBounds(active.fact.Condition, subject, active.fact.Kind != ConditionFactLogicalRHSFalse)
+		if !ok {
+			continue
+		}
+		if low != nil {
+			raiseMin(minimum, low)
+		}
+		if high != nil {
+			lowerMax(maximum, high)
+		}
+	}
+}
+
+// conditionBounds derives an interval for subject that holds when condition
+// evaluates to truth: comparisons with constants, `in` and `not in` with a
+// constant range, conjunctions, and disjunctions (whose bound is the hull of
+// both sides). nil bounds are unbounded; ok=false means no information.
+func (a *Analyzer) conditionBounds(condition ast.Expression, subject string, truth bool) (*big.Int, *big.Int, bool) {
+	infix, ok := condition.(*ast.InfixExpression)
+	if !ok || infix == nil {
+		if prefix, isPrefix := condition.(*ast.PrefixExpression); isPrefix && prefix.Operator == "!" {
+			return a.conditionBounds(prefix.Right, subject, !truth)
+		}
+		return nil, nil, false
+	}
+	switch infix.Operator {
+	case "&&", "||":
+		conjunction := (infix.Operator == "&&") == truth
+		leftLow, leftHigh, leftOK := a.conditionBounds(infix.Left, subject, truth)
+		rightLow, rightHigh, rightOK := a.conditionBounds(infix.Right, subject, truth)
+		if conjunction {
+			switch {
+			case leftOK && rightOK:
+				return tighterLow(leftLow, rightLow), tighterHigh(leftHigh, rightHigh), true
+			case leftOK:
+				return leftLow, leftHigh, true
+			case rightOK:
+				return rightLow, rightHigh, true
+			}
+			return nil, nil, false
+		}
+		if !leftOK || !rightOK {
+			return nil, nil, false
+		}
+		return looserLow(leftLow, rightLow), looserHigh(leftHigh, rightHigh), true
+	case "in", "not in":
+		if spelling, pure := relationOperandSpelling(infix.Left); !pure || spelling != subject {
+			return nil, nil, false
+		}
+		if (infix.Operator == "in") != truth {
+			return nil, nil, false
+		}
+		bounds, isRange := infix.Right.(*ast.RangeExpression)
+		if !isRange || bounds.Start == nil || bounds.End == nil {
+			return nil, nil, false
+		}
+		low, lowKnown := a.scalarBoundConstant(bounds.Start)
+		high, highKnown := a.scalarBoundConstant(bounds.End)
+		if !lowKnown || !highKnown {
+			return nil, nil, false
+		}
+		if bounds.Exclusive {
+			high = new(big.Int).Sub(high, big.NewInt(1))
+		}
+		return low, high, true
+	case "<", "<=", ">", ">=", "==":
+		operator := infix.Operator
+		var constant *big.Int
+		if spelling, pure := relationOperandSpelling(infix.Left); pure && spelling == subject {
+			value, known := a.scalarBoundConstant(infix.Right)
+			if !known {
+				return nil, nil, false
+			}
+			constant = value
+		} else if spelling, pure := relationOperandSpelling(infix.Right); pure && spelling == subject {
+			value, known := a.scalarBoundConstant(infix.Left)
+			if !known {
+				return nil, nil, false
+			}
+			constant = value
+			operator = mirroredRelation(operator)
+		} else {
+			return nil, nil, false
+		}
+		if !truth {
+			switch operator {
+			case "<":
+				operator = ">="
+			case "<=":
+				operator = ">"
+			case ">":
+				operator = "<="
+			case ">=":
+				operator = "<"
+			default:
+				return nil, nil, false
+			}
+		}
+		one := big.NewInt(1)
+		switch operator {
+		case "<":
+			return nil, new(big.Int).Sub(constant, one), true
+		case "<=":
+			return nil, constant, true
+		case ">":
+			return new(big.Int).Add(constant, one), nil, true
+		case ">=":
+			return constant, nil, true
+		case "==":
+			return constant, constant, true
+		}
+	}
+	return nil, nil, false
+}
+
+func tighterLow(a, b *big.Int) *big.Int {
+	if a == nil || b != nil && b.Cmp(a) > 0 {
+		return b
+	}
+	return a
+}
+
+func tighterHigh(a, b *big.Int) *big.Int {
+	if a == nil || b != nil && b.Cmp(a) < 0 {
+		return b
+	}
+	return a
+}
+
+func looserLow(a, b *big.Int) *big.Int {
+	if a == nil || b == nil {
+		return nil
+	}
+	if b.Cmp(a) < 0 {
+		return b
+	}
+	return a
+}
+
+func looserHigh(a, b *big.Int) *big.Int {
+	if a == nil || b == nil {
+		return nil
+	}
+	if b.Cmp(a) > 0 {
+		return b
+	}
+	return a
 }
 
 func lowerMax(maximum, candidate *big.Int) {
@@ -419,4 +582,131 @@ func relationPath(edges map[string][]relationEdge, from string, to string) (reac
 		}
 	}
 	return reachable, false
+}
+
+// recordIntegerBindingInterval snapshots the proven interval of an immutable
+// integer initializer on its symbol, so later reads of the binding keep the
+// proof (for example a checked conversion of int(value) where value: char).
+// Symbols carry the fact through lexical scope copies; mutable and volatile
+// bindings never get one.
+// Rules: rules/types/types.md — "Explicit conversions" (proven conversions need no runtime check);
+// rules/foundations/names_scopes_visibility.md — Lexical scopes.
+func (a *Analyzer) recordIntegerBindingInterval(name string, expr ast.Expression) {
+	symbol, ok := a.symbols[name]
+	if !ok || symbol.Mutable || symbol.Volatile || !isIntegerType(symbol.Type) {
+		return
+	}
+	minimum, maximum, known := a.integerInterval(expr)
+	if !known {
+		if call, isCall := expr.(*ast.CallExpression); isCall && len(call.Arguments) == 1 {
+			if source, typed := a.expressionTypes[call.Arguments[0]]; typed {
+				minimum, maximum, known = scalarIntegerDomain(source)
+			}
+		}
+	}
+	if !known {
+		return
+	}
+	if typeMin, typeMax, ok := integerTypeInterval(symbol.Type); ok {
+		if typeMin.Cmp(minimum) > 0 {
+			minimum = typeMin
+		}
+		if typeMax.Cmp(maximum) < 0 {
+			maximum = typeMax
+		}
+	}
+	symbol.IntegerMinimum, symbol.IntegerMaximum = minimum, maximum
+	a.symbols[name] = symbol
+}
+
+// bitwiseInterval bounds &, |, ^ and the result of a conversion call over
+// non-negative operands: x & y is at most min(max x, max y), and x | y and
+// x ^ y stay below the next power of two of the larger maximum.
+func (a *Analyzer) bitwiseInterval(expr ast.Expression) (*big.Int, *big.Int, bool) {
+	if call, ok := expr.(*ast.CallExpression); ok && len(call.Arguments) == 1 {
+		target, typed := a.expressionTypes[call]
+		if !typed || !isIntegerType(target) {
+			return nil, nil, false
+		}
+		if _, checked := a.checkedConversions[call]; checked {
+			return nil, nil, false
+		}
+		source, ok := a.expressionTypes[call.Arguments[0]]
+		if !ok {
+			return nil, nil, false
+		}
+		if isIntegerType(source) {
+			// An infallible integer conversion preserves the value.
+			if !a.isExplicitConversionExpression(call) {
+				return nil, nil, false
+			}
+			return a.integerInterval(call.Arguments[0])
+		}
+		minimum, maximum, known := scalarIntegerDomain(source)
+		if known {
+			a.refineIntervalByDominatingFacts(call.Arguments[0], minimum, maximum)
+		}
+		return minimum, maximum, known
+	}
+	infix, ok := expr.(*ast.InfixExpression)
+	if ok && infix.Operator == "<<" {
+		// A non-negative value shifted left by a constant amount.
+		shift, constant := a.integerConstantValue(infix.Right)
+		valueMin, valueMax, known := a.integerInterval(infix.Left)
+		if !constant || !known || shift.Sign() < 0 || shift.BitLen() > 16 || valueMin.Sign() < 0 {
+			return nil, nil, false
+		}
+		amount := uint(shift.Int64())
+		return new(big.Int).Lsh(valueMin, amount), new(big.Int).Lsh(valueMax, amount), true
+	}
+	if !ok || (infix.Operator != "&" && infix.Operator != "|" && infix.Operator != "^") {
+		return nil, nil, false
+	}
+	if infix.Operator == "&" {
+		// In two's complement, masking with a non-negative constant yields a
+		// value in 0..mask whatever the other operand's sign.
+		for _, side := range []ast.Expression{infix.Left, infix.Right} {
+			if mask, constant := a.integerConstantValue(side); constant && mask.Sign() >= 0 {
+				return big.NewInt(0), mask, true
+			}
+		}
+	}
+	leftMin, leftMax, leftKnown := a.integerInterval(infix.Left)
+	rightMin, rightMax, rightKnown := a.integerInterval(infix.Right)
+	if !leftKnown || !rightKnown || leftMin.Sign() < 0 || rightMin.Sign() < 0 {
+		return nil, nil, false
+	}
+	if infix.Operator == "&" {
+		maximum := leftMax
+		if rightMax.Cmp(maximum) < 0 {
+			maximum = rightMax
+		}
+		return big.NewInt(0), new(big.Int).Set(maximum), true
+	}
+	larger := leftMax
+	if rightMax.Cmp(larger) > 0 {
+		larger = rightMax
+	}
+	bound := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(larger.BitLen())), big.NewInt(1))
+	return big.NewInt(0), bound, true
+}
+
+// scalarBoundConstant evaluates a constant bound of a range or comparison
+// condition, including the code value of t- and r-suffixed literals and of
+// single-quoted character literals, so conditions on char and rune values
+// also bound their integer conversions.
+func (a *Analyzer) scalarBoundConstant(expr ast.Expression) (*big.Int, bool) {
+	switch literal := expr.(type) {
+	case *ast.IntegerLiteral:
+		if suffix := literal.Suffix(); suffix == "t" || suffix == "r" {
+			lexeme, _ := ast.SplitNumericLiteralSuffix(literal.Token.Lexeme)
+			return ast.ParseIntegerLiteralLexeme(lexeme)
+		}
+	case *ast.CharLiteral:
+		if scalar, ok := characterLiteralScalar(literal); ok {
+			return big.NewInt(int64(scalar)), true
+		}
+		return nil, false
+	}
+	return a.constantConditionIntegerValue(expr)
 }

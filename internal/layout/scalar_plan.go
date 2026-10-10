@@ -22,7 +22,7 @@ type ResolvedScalarPlan struct {
 	PointerWidthBits uint16
 	Endianness       Endianness
 	// CABI is the target's resolved C ABI data model. It is empty for targets
-	// that supply no C ABI, in which case C:: types cannot be resolved.
+	// that supply no C ABI, in which case c:: types cannot be resolved.
 	CABI CABIModel
 }
 

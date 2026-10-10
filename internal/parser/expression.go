@@ -85,6 +85,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.TRUE, lexer.FALSE:
 		left = p.parseBooleanLiteral()
 
+	case lexer.NULL:
+		// rules/platform/ffi.md §11; MD-024: the reserved raw-pointer sentinel
+		// keeps its identifier-shaped AST so Sema validates its unsafe-only,
+		// target-typed use in one place.
+		left = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+
 	case lexer.PLUS, lexer.MINUS, lexer.NOT, lexer.BIT_NOT, lexer.MOVE_ASSIGN:
 		left = p.parsePrefixExpression()
 
@@ -1518,10 +1524,16 @@ func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expressio
 // recovery event, so batch compilation stays blocked while tooling keeps the
 // partial expression and its enclosing declarations.
 //
+// A direct switch case with shorthand/destructuring fields is rejected as a
+// pattern and recovered as one balanced region instead of emitting colon errors.
+//
 // Rules:
+//   - rules/control-flow/flowcontrol_switch.md — §§28, 35, 40
+//   - rules/foundations/grammar.md — "StructLiteralItem"
 //   - rules/compiler/parser_recovery.md — "Struct literal recovery"
 //   - rules/compiler/parser_recovery.md — "Missing closing brace"
 func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expression {
+	switchCase := ref.Token == p.switchCaseStart && ref.Token.Type != ""
 	lit := &ast.StructLiteral{
 		Token: ref.Token,
 		Type:  ref,
@@ -1538,6 +1550,9 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 			break
 		}
 		p.nextToken()
+		if switchCase && p.curToken.Type == lexer.UNDERSCORE {
+			return p.recoverSwitchStructPattern(ref)
+		}
 		value := p.parseExpression(LOWEST)
 		if value == nil {
 			return nil
@@ -1556,10 +1571,16 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 		} else {
 			name, ok := value.(*ast.Identifier)
 			if !ok {
+				if switchCase {
+					return p.recoverSwitchStructPattern(ref)
+				}
 				p.addError("expected struct literal field name or spread expression at %d:%d", expressionToken(value).Line, expressionToken(value).Column)
 				return nil
 			}
 			field.Name = name
+			if switchCase && p.peekToken.Type != lexer.COLON {
+				return p.recoverSwitchStructPattern(ref)
+			}
 			if !p.expectPeek(lexer.COLON) {
 				return nil
 			}
@@ -1685,7 +1706,7 @@ func (p *Parser) parseRefExpression() ast.Expression {
 }
 
 func (p *Parser) parseIdentifierExpression() ast.Expression {
-	// rules/platform/ffi.md §8: C::int(value) is an explicit conversion whose
+	// rules/platform/ffi.md §8: c::int(value) is an explicit conversion whose
 	// callee is the foreign-qualified type name.
 	if p.atForeignQualifier() {
 		foreign := p.parseForeignQualifiedName()
@@ -2047,6 +2068,7 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.INTERPSTRING,
 		lexer.TRUE,
 		lexer.FALSE,
+		lexer.NULL,
 		lexer.PLUS,
 		lexer.MINUS,
 		lexer.NOT,
@@ -2115,7 +2137,8 @@ func (p *Parser) contextualIsAhead() bool {
 	state := p.l.Snapshot()
 	next := p.l.NextToken()
 	p.l.Restore(state)
-	return next.Type == lexer.IDENT
+	// MD-024: null is a reserved keyword token, still a valid is-test operand.
+	return next.Type == lexer.IDENT || next.Type == lexer.NULL
 }
 
 func (p *Parser) contextualMatrixMultiplyAhead() bool {

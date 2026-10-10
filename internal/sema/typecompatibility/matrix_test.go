@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"sec/internal/diagnostics"
 	"sec/internal/layout"
 	"sec/internal/lexer"
 	"sec/internal/parser"
@@ -106,6 +107,16 @@ func matrix(t *testing.T, fixture string, allowed func(scalar, scalar) bool, fai
 						t.Fatal(p.Errors())
 					}
 					errors := sema.NewAnalyzerWithScalarPlanAndDepth(layout.ResolvedScalarPlan{PointerWidthBits: width}, depth).Analyze(program)
+					// A legal conversion that may fail at run time requires try
+					// (S1139); that runtime validation is not part of the relation
+					// this matrix audits.
+					relationErrors := errors[:0:0]
+					for _, e := range errors {
+						if e.ID != diagnostics.CheckedConversionRequiresTry {
+							relationErrors = append(relationErrors, e)
+						}
+					}
+					errors = relationErrors
 					want := failures
 					if allowed(target, source) {
 						want = 0

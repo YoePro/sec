@@ -139,3 +139,40 @@ integrations:
         result: passed on 2026-10-02 with no io diagnostics; only the known S1040 core date/duration parameter shadowing remains
       - command: go test ./internal/sema -run TestInterfaceRequirementsAcceptDeclaredErrorTypes -count=1
         result: passed on 2026-10-02
+  - id: stdlib.unicode-tables
+    area: standard-library
+    status: partial
+    integrated: "2026-10-10"
+    summary: >-
+      Generates the sec/stdlib/unicode tables with cmd/unicodegen from a
+      version-locked Unicode Character Database instead of Go's built-in
+      unicode package, so the library follows Unicode 18.0.0 rather than the
+      Unicode version of the Go toolchain.
+    rules:
+      - sec/stdlib/unicode/unicode.sec
+    code:
+      - cmd/unicodegen/main.go
+      - cmd/unicodegen/ucd.go
+      - third_party/unicode/18.0.0/ucd/UnicodeData.txt
+      - third_party/unicode/18.0.0/ucd/SpecialCasing.txt
+      - third_party/unicode/18.0.0/ucd/DerivedCoreProperties.txt
+      - third_party/unicode/18.0.0/ucd/CaseFolding.txt
+      - sec/stdlib/unicode/unicode.sec
+    implemented:
+      - "version lock: unicodeVersion 18.0.0, a -input UCD directory (default third_party/unicode/18.0.0/ucd), SHA-256 pinning of all four official files, and # Name-18.0.0.txt header checks for the versioned files"
+      - "UnicodeData.txt: General_Category with First/Last range expansion and Cn for unassigned code points; simple upper/lower/title mappings with the UAX #44 defaults (identity, title falls back to upper)"
+      - "SpecialCasing.txt: full lower/title/upper sequences with language and context conditions; commented-out entries ignored"
+      - "DerivedCoreProperties.txt: Cased and Case_Ignorable as sorted merged ranges"
+      - "CaseFolding.txt: simple (C+S), full (C+F) and Turkic (T) case folding"
+      - "IsLetter tables generated from UCD 18.0.0 General_Category L (Lu, Ll, Lt, Lm, Lo): 694 maximal ranges; every Go unicode 15.0.0 letter is kept and 22068 letters are added"
+    remaining:
+      - decide and generate the Sec casing API and tables (simple and full upper/lower/title mapping, SpecialCasing conditions, Cased/Case_Ignorable contexts, case folding) from the parsed data
+      - add executable standard-library behavior tests for the generated unicode module
+    tests:
+      - cmd/unicodegen/main_test.go
+      - cmd/unicodegen/ucd_test.go
+    verification:
+      - command: go test ./cmd/unicodegen -count=1
+        result: passed on 2026-10-10 with fixture parsing of all four files, malformed-input and wrong-version rejection, tampered-file hash rejection, Unicode 18.0.0 data facts, Go unicode 15.0.0 letter preservation and the generated unicode.sec being current
+      - command: go run ./cmd/compiler sema sec/stdlib/unicode/unicode.sec
+        result: passed with 0 errors and 0 warnings on 2026-10-10

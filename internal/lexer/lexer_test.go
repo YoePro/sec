@@ -623,7 +623,7 @@ func TestHardKeywordLookupMatchesRulebook(t *testing.T) {
 		"free": FREE, "get": GET, "if": IF, "impl": IMPL,
 		"implements": IMPLEMENTS, "import": IMPORT, "in": IN, "interface": INTERFACE,
 		"let": LET, "match": MATCH, "module": MODULE, "mut": MUT,
-		"new": NEW, "panic": PANIC, "property": PROPERTY, "range": RANGE_KW,
+		"new": NEW, "null": NULL, "panic": PANIC, "property": PROPERTY, "range": RANGE_KW,
 		"ref": REF, "require": REQUIRE, "return": RETURN, "select": SELECT,
 		"self": SELF, "spawn": SPAWN, "static": STATIC, "struct": STRUCT,
 		"switch": SWITCH, "true": TRUE, "try": TRY, "type": TYPE,
@@ -1534,4 +1534,28 @@ func TestUnescapedInterpolationClosingBraceRecovery(t *testing.T) {
 	if strings.Join(ids, ",") != "L1021,L1019" {
 		t.Fatalf("unterminated diagnostics = %v, want L1021 then L1019", ids)
 	}
+}
+
+// `::` is one longest-match token after :<- and := (MD-020 §2.4); separated
+// colons stay separate and null is a hard keyword (MD-024 §5.2).
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §7.1, §16.6
+//   - rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md — §2.4, §5.2, §7.1
+func TestDoubleColonAndNullTokens(t *testing.T) {
+	input := "c::stddef::size_t x := y z :<- w c: :int c :: int ::: null"
+	tests := []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{IDENT, "c"}, {DOUBLE_COLON, "::"}, {IDENT, "stddef"}, {DOUBLE_COLON, "::"}, {IDENT, "size_t"},
+		{IDENT, "x"}, {DECLARE, ":="}, {IDENT, "y"},
+		{IDENT, "z"}, {MOVE_DECLARE, ":<-"}, {IDENT, "w"},
+		{IDENT, "c"}, {COLON, ":"}, {COLON, ":"}, {IDENT, "int"},
+		{IDENT, "c"}, {DOUBLE_COLON, "::"}, {IDENT, "int"},
+		{DOUBLE_COLON, "::"}, {COLON, ":"},
+		{NULL, "null"},
+		{EOF, ""},
+	}
+	assertTokens(t, input, tests)
 }

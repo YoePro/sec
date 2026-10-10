@@ -1,0 +1,5 @@
+module main
+fn Bad(flag: bool) void {
+ switch flag { case true: fallthrough }
+}
+fn main() void {}

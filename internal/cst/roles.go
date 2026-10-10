@@ -66,7 +66,7 @@ const (
 	// expression, including the <- consuming call-site marker.
 	PrefixOperator Role = "prefix-operator"
 	// ForeignQualifierSeparator marks each ':' of a parser-confirmed `::` in
-	// a C:: or c:: foreign-qualified name. The qualification is one contiguous
+	// a c:: foreign-qualified name. The qualification is one contiguous
 	// name: no space separates the family, separators, and segments.
 	//
 	// Rules: rules/platform/ffi.md §5-6; rules/foundations/grammar.md ForeignTypeReference.

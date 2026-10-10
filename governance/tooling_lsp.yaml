@@ -559,13 +559,17 @@ integrations:
       - the lens command sec.showLocations (VS Code peek references) lists failing implementation members or the implementing types
       - "results are cached by a hash over the module's sources and the active text (stdlib/os interface: about 1.9 s cold over 18 targets, about 10 ms cached)"
       - an unresolved parameter type in an interface requirement is kept as an invalid type and neither the requirement nor an implementation with unresolved types reports a conformance cascade
+      - Conformance lenses consume compiler-owned InterfaceConformances snapshots keyed by exact interface declaration identity, including member names and validity states; no local Implements scan or diagnostic-text inference remains, and unresolved conformance is not presented as valid.
     remaining:
       - codeLens/resolve so the cross-target analysis runs lazily and off the request path
       - lenses on implementing types showing their conformance on other targets
       - the same cross-target conformance report in sec analyse
     verification:
+      - command: go test ./cmd/lsp -run 'InterfaceLensConsumes|InterfaceConformanceLens' -count=1
+        result: passed on 2026-10-10 with compiler-owned conformance snapshots instead of LSP inference from Implements or diagnostic text; same-name-prefix and unresolved-requirement regressions covered
       - command: go test ./cmd/lsp -run InterfaceConformanceLens -count=1
         result: passed on 2026-10-04 for a module with linux and windows implementations, conforming on both and failing on windows only with the failing location
+    revised: "2026-10-10"
 
   - id: tooling.lsp-multi-target-diagnostics
     area: tooling-lsp

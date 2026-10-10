@@ -14,6 +14,8 @@ func runCLI(args []string, out, errOut io.Writer) error {
 			return command(args[1:], out, errOut)
 		}
 	}
+
+	// Get the different arguments
 	flags := flag.NewFlagSet("yamlstatus", flag.ContinueOnError)
 	flags.SetOutput(errOut)
 	dir := flags.String("dir", "governance", "Governance directory")
@@ -23,6 +25,7 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	point := flags.Int("point", 0, "Choose a remaining point by its 1-based index (requires -id)")
 	exclude := flags.String("exclude", "", "Exclude points containing this text (case insensitive)")
 	jsonOutput := flags.Bool("json", false, "Print selected point and integration context as JSON")
+	verbose := flags.Bool("verbose", false, "Show all data otherwise just the most relevant.")
 	flags.Usage = func() {
 		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.")
 		flags.PrintDefaults()
@@ -71,7 +74,7 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	}
 	if !selection {
 		fmt.Fprintf(out, "Governance directory: %s\n", *dir)
-		printResults(out, stats)
+		printResults(out, stats, *verbose)
 		return nil
 	}
 	selected, err := selectPoint(stats.Entries, *id, *point, *exclude, *random)

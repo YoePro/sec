@@ -1,0 +1,14 @@
+module main
+fn Handle(value: int) int {
+    switch value {
+    case 0, Move { ref x, ref mut y }, 2:
+        return 10
+    case 3:
+        return 20
+    default:
+        return 30
+    }
+}
+fn Following() int {
+    return 40
+}

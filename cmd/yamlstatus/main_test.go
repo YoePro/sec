@@ -88,7 +88,7 @@ func TestEnglishOutputAndSortedFields(t *testing.T) {
 		TotalObjects: 2,
 		StatusCounts: map[string]int{"partial": 2},
 		FieldCounts:  map[string]int{"zebra": 1, "alpha": 2},
-	})
+	}, true)
 	text := output.String()
 	for _, expected := range []string{"IMPLEMENTATION STATISTICS", "Total integrations:", "Integration statuses:", "Checklist items:", "Remaining:"} {
 		if !strings.Contains(text, expected) {

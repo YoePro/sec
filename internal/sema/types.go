@@ -572,6 +572,10 @@ type UnitDefinition struct {
 }
 
 type Function struct {
+	// GenericSubstitution is the concrete (or forwarded) template argument
+	// map of an instantiated generic function; nil for templates and
+	// ordinary functions.
+	GenericSubstitution      map[string]Type
 	Name                     string
 	Module                   string
 	CompilerKnownID          string
@@ -822,9 +826,17 @@ type DecimalValue struct {
 type Symbol struct {
 	// FloatingConstant is an immutable finite value in this binding's unit coordinates.
 	FloatingConstant *big.Rat
-	Name             string
-	Type             Type
-	Mutable          bool
+	// IntegerMinimum and IntegerMaximum bound an immutable integer binding by
+	// the proven interval of its initializer (nil when unknown).
+	IntegerMinimum *big.Int
+	IntegerMaximum *big.Int
+	// RawPointerNull marks an immutable RawPtr[T] binding initialized with
+	// the null sentinel, so every dereference through it is a proven null
+	// dereference (rules/memory/raw_pointers.md — § 7(8)).
+	RawPointerNull bool
+	Name           string
+	Type           Type
+	Mutable        bool
 	// ImplicitMember marks the short-name alias injected for an impl member.
 	// A lexical declaration may shadow such an alias without redeclaring the
 	// underlying field, property or event.

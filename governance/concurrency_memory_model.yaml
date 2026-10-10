@@ -1,4 +1,58 @@
 schema_version: 1
 area: concurrency-memory-model
 purpose: Shared-memory visibility and concurrency memory-model rules.
-integrations: []
+integrations:
+  - id: concurrency.memory-model-v2
+    area: shared-memory-ordering
+    rulebook: rules/concurrency/concurrency_memory_model.md
+    status: partial
+    normative:
+    - Happens-before is built from program order and canonical synchronizes-with edges.
+    - Every atomic object has its own total modification order.
+    - Modification order is per atomic object, not one global atomic modification order.
+    - Successful RMW operations participate as modifications.
+    - Failed CompareExchange is read-only and does not participate as a modification.
+    - A release sequence begins with a release modification and continues only through a contiguous RMW chain on the same atomic object.
+    - A plain Store breaks the preceding release sequence.
+    - Acquire can synchronize through a release sequence when it observes a value carried by that sequence.
+    - atomic.Fence(Acquire/Release/AcqRel/SeqCst) is normative in v0.1; Relaxed fence is invalid.
+    - Fence synchronization requires qualifying atomic communication; fences do not synchronize merely by existing.
+    - SeqCst operations/fences participate in one global SeqCst order.
+    - Volatile is not synchronization.
+    - Task/thread completion synchronization publishes valid prior effects.
+    - Ordinary unsynchronized data races are invalid Sec behavior.
+    remaining:
+    - Represent per-atomic modification order and RMW coherence in analysis/IR facts.
+    - Represent release-sequence head and RMW-chain semantics.
+    - Implement fence/atomic, atomic/fence and fence/fence synchronization patterns.
+    - Preserve SeqCst total-order constraints through optimization/lowering.
+    - Preserve spawn and task/thread completion publication.
+    - Integrate canonical memory-model facts into data-race analysis.
+    - Preserve FFI/platform synchronization without name-based inference.
+    required_tests:
+    - id: per-atomic-modification-order
+      expectation: Each atomic object has coherent total modification order independent from unrelated atomics.
+    - id: successful-cas-rmw
+      expectation: Successful CompareExchange is a modification/RMW.
+    - id: failed-cas-read-only
+      expectation: Failed CompareExchange adds no modification and does not extend release sequence.
+    - id: release-sequence-rmw
+      expectation: Relaxed RMW can extend a release sequence headed by release modification.
+    - id: release-sequence-store-break
+      expectation: Plain Store terminates the preceding release sequence.
+    - id: release-fence-acquire
+      expectation: Release fence can synchronize through qualifying atomic write/read communication.
+    - id: release-acquire-fence
+      expectation: Acquire fence can synchronize when preceding atomic read observes qualifying release-carried value.
+    - id: fence-fence-carrier
+      expectation: Fence-to-fence synchronization requires qualifying atomic carrier.
+    - id: relaxed-fence-invalid
+      expectation: MemoryOrder.Relaxed is rejected for atomic.Fence.
+    - id: seqcst-order
+      expectation: SeqCst atomics/fences remain consistent with one global sequentially consistent order.
+    - id: volatile-not-sync
+      expectation: Volatile never establishes Sec synchronizes-with by itself.
+    - id: completion-publication
+      expectation: Successful task/thread completion wait observes validly published prior effects.
+    corrections_applied:
+    - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md

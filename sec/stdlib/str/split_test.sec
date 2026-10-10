@@ -225,7 +225,6 @@ test "SplitLines preserves a single line" {
     testing.ExpectEqual("Hello Sec", lines[0])
 }
 
-
 test "Fields separates whitespace" {
     let parts := try Fields("Hello World Sec")
 
@@ -245,7 +244,7 @@ test "Fields ignores repeated whitespace" {
 }
 
 test "Fields handles Unicode whitespace" {
-    let parts := try Fields("Hej\u00A0världen\u3000Sec")
+    let parts := try Fields("Hej\u{00A0}världen\u{3000}Sec")
 
     testing.RequireEqual(uint(3), parts.Len)
     testing.ExpectEqual("Hej", parts[0])
@@ -264,7 +263,6 @@ test "Fields handles whitespace only" {
 
     testing.RequireEqual(uint(0), parts.Len)
 }
-
 
 test "FieldsBy splits on commas without empty fields" {
     let isComma := fn(character: rune) bool {

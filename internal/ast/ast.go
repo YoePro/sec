@@ -470,7 +470,7 @@ type Identifier struct {
 	Token lexer.Token
 	Value string
 	// ForeignSeparators holds the two adjacent ':' tokens of every `::` in a
-	// foreign-qualified name such as C::int or c::stddef::size_t, so the CST
+	// foreign-qualified name such as c::int or c::stddef::size_t, so the CST
 	// can keep the qualification contiguous. Token spans the complete name.
 	ForeignSeparators []lexer.Token
 }
@@ -494,7 +494,7 @@ func (i *Identifier) String() string {
 //	ref byte[]
 type TypeReference struct {
 	Token lexer.Token
-	// ForeignSeparators holds the ':' tokens of every `::` in a C:: or c::
+	// ForeignSeparators holds the ':' tokens of every `::` in a c::
 	// foreign-qualified type name (rules/platform/ffi.md §5-6).
 	ForeignSeparators []lexer.Token
 	// Invalid marks a recovered type reference that must resolve to ErrorType
@@ -1725,7 +1725,9 @@ type NullTestExpression struct {
 	Token     lexer.Token
 	Subject   Expression
 	NullToken lexer.Token
-	Group     *StateTestGroup
+	// Negated marks `subject is not null` (MD-024 §5.3).
+	Negated bool
+	Group   *StateTestGroup
 }
 
 func (nt *NullTestExpression) expressionNode() {}
@@ -1735,6 +1737,9 @@ func (nt *NullTestExpression) TokenLiteral() string { return nt.Token.Lexeme }
 func (nt *NullTestExpression) String() string {
 	if nt == nil || nt.Subject == nil {
 		return ""
+	}
+	if nt.Negated {
+		return nt.Subject.String() + " is not null"
 	}
 	return nt.Subject.String() + " is null"
 }

@@ -133,7 +133,7 @@ func TestAnalyseCLIProcess(t *testing.T) {
 }
 
 // Every registered target's C ABI model is coherent with its scalar plan, and
-// C:: widths follow the --target CompilationPlan end to end.
+// c:: widths follow the --target CompilationPlan end to end.
 //
 // Rules:
 //   - rules/platform/ffi.md — §5, §49 "Target and ABI validation"
@@ -154,7 +154,7 @@ func TestTargetsCarryCoherentCABIModels(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "clong.sec")
-	if err := os.WriteFile(path, []byte("module main\nfn main() void {\n    let wide: C::long := 3000000000\n    discard wide\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("module main\nfn main() void {\n    let wide: c::long := 3000000000\n    discard wide\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
@@ -163,7 +163,7 @@ func TestTargetsCarryCoherentCABIModels(t *testing.T) {
 		want   string
 	}{
 		{"linux-amd64", 0, "results: 0 errors"},
-		{"windows-amd64", 3, "value 3000000000 overflows C::long"},
+		{"windows-amd64", 3, "value 3000000000 overflows c::long"},
 	} {
 		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--target", test.target, path}
 		cmd := exec.Command(os.Args[0], args...)

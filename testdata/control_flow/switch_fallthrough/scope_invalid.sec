@@ -1,0 +1,7 @@
+module main
+fn Bad(flag: bool) void {
+ switch flag { case true: let local := 1
+ fallthrough
+ default: discard local }
+}
+fn main() void {}

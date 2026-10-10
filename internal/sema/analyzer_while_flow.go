@@ -115,8 +115,8 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		}
 	}
 	conditionAlwaysTrue := constantConditionKnown && constantCondition
-	if conditionAlwaysTrue && hasReachableBreak && len(breakFrame.assignments) > 0 {
-		a.assigned = mergeBreakAssigned(previousAssigned, breakFrame.assignments)
+	if conditionAlwaysTrue && hasReachableBreak && len(breakFrame.breaks) > 0 {
+		a.assigned = mergeBreakAssigned(previousAssigned, breakFrame.breakAssigned())
 	} else {
 		a.assigned = previousAssigned
 	}
@@ -133,7 +133,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, conditionAlwaysTrue)
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
-	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
+	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.breakArenaGenerations())
 	a.loopDepth = previousLoopDepth
 }
 

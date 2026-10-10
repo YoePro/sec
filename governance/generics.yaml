@@ -10,15 +10,15 @@ integrations:
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
-      monomorphization. Generic structs, functions, unions, enums, interfaces, impl
-      scopes, inference, substitution, nominal instance caching, and basic
+      monomorphization. Generic structs, functions, unions, enums, interfaces,
+      impl scopes, inference, substitution, nominal instance caching, and basic
       constraint declaration validation have substantial frontend support;
       ordered multi-constraint conjunctions, explicit generic function and
       concrete generic-type conformance checks, and constraint-guaranteed
       instance method lookup in generic bodies now have frontend support, and
       LSP hover presents ordered constraint sets from compiler facts;
-      method-level generics, complete specialization identity, and
-      concrete-only backend lowering remain incomplete.
+      method-level generics, complete specialization identity, and concrete-only
+      backend lowering remain incomplete.
     rules:
       - rules/declarations/generics.md
       - rules/declarations/enums.md
@@ -57,6 +57,7 @@ integrations:
       - cmd/lsp/generic_constraint_hover_test.go
       - testdata/generics_valid.sec
       - testdata/generics_invalid.sec
+      - internal/sema/generic_call_resolution_test.go
     implemented:
       - generic parameter parsing on type, function, and interface declarations
       - generic type-argument parsing, nested generic references, and attached explicit generic calls
@@ -75,8 +76,7 @@ integrations:
       - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
       - focused rejection of method-level generic parameters on interface requirements without follow-on unknown-type diagnostics
       - concrete generic interface method, property, and event type substitution, exercised by compiler-known Iterator[T] conformance
-      - local generic interface inheritance composes method, property, and event requirements from the resolved concrete parent
-        specialization instead of reloading its unspecialized template
+      - local generic interface inheritance composes method, property, and event requirements from the resolved concrete parent specialization instead of reloading its unspecialized template
       - rejection of unknown constraints and constraints that do not name interfaces
       - generic function templates retain their resolved interface constraint and recheck every explicit or inferred concrete substitution
       - generic function constraint satisfaction requires valid explicit conformance rather than structural member matching, including concrete generic-interface identity and inherited interface guarantees
@@ -91,6 +91,9 @@ integrations:
       - generic impl target parameters are the target declaration's own parameters and keep its ordered constraint conjunction in the impl scope, so impl method parameters and locals typed by them may call constraint-guaranteed instance methods while unconstrained parameters gain none; their facts name the owning impl target and LSP hover presents the inherited constraints at the impl target and every use
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
       - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
+      - "expected-type generic calls (2026-10-10): a generic call selected through its expected type (return values, typed let initializers) now gets the same unsafe, ownership, implicit-borrow, resolved-call and call-graph treatment as the main call path; previously such calls skipped borrow and move validation and were missing from the call graph, so their effects were invisible to @noPanic/@noAlloc/@noBlock"
+      - "generic argument inference through implicit call-site borrows (2026-10-10): a ref or ref mut T parameter infers T from an owned argument's type (borrowing.md §15.2); borrow authority is still checked on the instantiated call"
+      - "forwarded constraints and overload fallback (2026-10-10): a template parameter passed as a generic argument satisfies a constraint that its own declaration guarantees (Concat[I: Iterator[string]] calling Join[I: Iterator[string]]), and a call selected through its expected type no longer reports a generic candidate's constraint failure while non-generic overloads remain for the main call path; both surfaced in sec/stdlib/str/join.sec"
     remaining:
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
       - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
@@ -115,6 +118,8 @@ integrations:
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
       - const or value generics without a separate normative rulebook and syntax
     verification:
+      - command: go test ./... -count=1
+        result: passed on 2026-10-10 after expected-type generic call validation and implicit-borrow generic inference
       - command: go test ./internal/parser ./internal/sema -run 'Generic|Generics' -count=1
         result: passed
       - command: go test ./cmd/lsp -run TestAnalyzeRejectsMethodGenericInterfaceRequirement -count=1
@@ -143,7 +148,7 @@ integrations:
     status: partial
     integrated: "2026-09-04"
     document_revision: "1.1"
-    repository_baseline: "69d8b57"
+    repository_baseline: 69d8b57
     summary: >-
       Tracks the verified Sec 0.1 closure and lowering boundary from canonical
       concrete specializations supplied by compiler.monomorphization into
@@ -236,17 +241,17 @@ integrations:
     integrated: "2026-09-04"
     reviewed: "2026-09-04"
     document_revision: "1.0"
-    repository_baseline: "777beb8"
+    repository_baseline: 777beb8
     summary: >-
       Tracks canonical demand-driven monomorphization from validated generic
-      templates through concrete semantic instantiation, specialization identity,
-      recursive demand, analysis integration, generic closure, physical
-      implementation sharing, separate compilation, ABI/FFI boundaries,
+      templates through concrete semantic instantiation, specialization
+      identity, recursive demand, analysis integration, generic closure,
+      physical implementation sharing, separate compilation, ABI/FFI boundaries,
       incremental reuse, diagnostics, and deterministic termination/resource
       behavior. Existing frontend generic parsing, inference, substitution,
-      nominal instance caching, generic enums, and selected recursion diagnostics
-      provide a partial foundation; the complete cross-module specialization and
-      realization model remains incomplete.
+      nominal instance caching, generic enums, and selected recursion
+      diagnostics provide a partial foundation; the complete cross-module
+      specialization and realization model remains incomplete.
     rules:
       - rules/compiler/monomorphization.md
       - rules/declarations/generics.md
@@ -322,69 +327,61 @@ integrations:
   - id: frontend.generic-union-recursive-storage
     area: frontend-generics-and-representation
     status: partial
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-14'
-    document_last_updated: '2026-08-14'
-    summary: Generic struct and union inline-storage edges are checked before type resolution for direct, fixed-array-mediated,
-      and changing-argument recursion. Concrete generic union payloads are checked again after substitution. Complete
-      cross-template forward-reference finalization and storage-cycle reporting remain partial. This entry covers
-      represented recursive storage, not the canonical InstantiationGraph or general monomorphization termination model.
+    document_revision: "2.0"
+    document_created: "2026-08-14"
+    document_last_updated: "2026-08-14"
+    summary: Generic struct and union inline-storage edges are checked before type resolution for direct, fixed-array-mediated, and changing-argument recursion. Concrete generic union payloads are checked again after substitution. Complete cross-template forward-reference finalization and storage-cycle reporting remain partial. This entry covers represented recursive storage, not the canonical InstantiationGraph or general monomorphization termination model.
     rules:
-    - rules/declarations/generics.md
-    - rules/declarations/unions.md
-    - rules/declarations/struct.md
-    - rules/collections/collections.md
-    - rules/compiler/semantic_ir.md
-    - rules/compiler/monomorphization.md
-    - rules/memory/layout.md
+      - rules/declarations/generics.md
+      - rules/declarations/unions.md
+      - rules/declarations/struct.md
+      - rules/collections/collections.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/monomorphization.md
+      - rules/memory/layout.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
     tests:
-    - internal/sema/analyzer_test.go
-    - testdata/generics_valid.sec
-    - testdata/generics_invalid.sec
+      - internal/sema/analyzer_test.go
+      - testdata/generics_valid.sec
+      - testdata/generics_invalid.sec
     implemented:
-    - generic declaration name and arity pre-registration
-    - generic struct template parameter scopes
-    - generic struct direct recursive-storage diagnostic
-    - generic struct fixed-array-mediated recursive-storage diagnostic
-    - generic struct changing-argument non-convergence diagnostic for the implemented forms
-    - generic struct selected finite-indirection cases remain accepted
-    - generic union template registration
-    - generic union ordinary payload substitution for non-recursive examples
-    - generic union direct-payload construction and payload type checking for ordinary concrete instances
-    - canonical generic type instance caching by declaration identity and ordered arguments
-    - generic union direct and named payload recursive-storage diagnostics
-    - generic union fixed-array-mediated and changing-argument recursion diagnostics
-    - post-substitution recursive-storage checks for concrete union payloads
+      - generic declaration name and arity pre-registration
+      - generic struct template parameter scopes
+      - generic struct direct recursive-storage diagnostic
+      - generic struct fixed-array-mediated recursive-storage diagnostic
+      - generic struct changing-argument non-convergence diagnostic for the implemented forms
+      - generic struct selected finite-indirection cases remain accepted
+      - generic union template registration
+      - generic union ordinary payload substitution for non-recursive examples
+      - generic union direct-payload construction and payload type checking for ordinary concrete instances
+      - canonical generic type instance caching by declaration identity and ordered arguments
+      - generic union direct and named payload recursive-storage diagnostics
+      - generic union fixed-array-mediated and changing-argument recursion diagnostics
+      - post-substitution recursive-storage checks for concrete union payloads
     partial:
-    - generic type references encountered before a referenced generic declaration has completed body analysis can
-      retain InvalidType template metadata, requiring a broader forward-template finalization audit
+      - generic type references encountered before a referenced generic declaration has completed body analysis can retain InvalidType template metadata, requiring a broader forward-template finalization audit
     remaining:
-    - ensure no representation-dependent accepted generic instance contains unresolved InvalidType field or variant
-      metadata
-    - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete
-      predeclaration skeletons
-    - evolve recursive storage diagnostics from the current local cases to complete layout/storage dependency paths
-      without conflating them with canonical InstantiationKey non-convergence
-    - preserve finite reference/slice/container boundaries according to their owning representation rules
+      - ensure no representation-dependent accepted generic instance contains unresolved InvalidType field or variant metadata
+      - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete predeclaration skeletons
+      - evolve recursive storage diagnostics from the current local cases to complete layout/storage dependency paths without conflating them with canonical InstantiationKey non-convergence
+      - preserve finite reference/slice/container boundaries according to their owning representation rules
     bug_reference:
-    - correction8.md
+      - correction8.md
     governance_reconciliation:
-    - Keep generic struct/union storage-cycle checks and represented payload substitution scoped to this entry.
-    - General canonical specialization demand, finite-key cycles, proven non-convergence, and compiler resource limits
-      are owned by compiler.monomorphization and must not be inferred complete from these storage checks.
+      - Keep generic struct/union storage-cycle checks and represented payload substitution scoped to this entry.
+      - General canonical specialization demand, finite-key cycles, proven non-convergence, and compiler resource limits are owned by compiler.monomorphization and must not be inferred complete from these storage checks.
     required_tests:
-    - direct recursive generic union payload rejected
-    - recursive generic union named payload field rejected
-    - fixed-array recursive generic union payload rejected
-    - changing-argument recursive generic union rejected
-    - recursive generic union through valid ref indirection accepted
-    - recursive generic union through finite supported container boundary classified correctly
-    - concrete generic union instance contains no unresolved InvalidType payload
-    - forward generic type reference cannot leave unresolved InvalidType storage metadata
-    - existing generic struct recursion tests remain green
-    - existing Maybe[T] generic union substitution and construction tests remain green
+      - direct recursive generic union payload rejected
+      - recursive generic union named payload field rejected
+      - fixed-array recursive generic union payload rejected
+      - changing-argument recursive generic union rejected
+      - recursive generic union through valid ref indirection accepted
+      - recursive generic union through finite supported container boundary classified correctly
+      - concrete generic union instance contains no unresolved InvalidType payload
+      - forward generic type reference cannot leave unresolved InvalidType storage metadata
+      - existing generic struct recursion tests remain green
+      - existing Maybe[T] generic union substitution and construction tests remain green

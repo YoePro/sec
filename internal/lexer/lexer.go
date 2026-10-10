@@ -56,25 +56,27 @@ const (
 	MATCH       TokenType = "MATCH"
 	MUT         TokenType = "MUT"
 	NEW         TokenType = "NEW"
-	PANIC       TokenType = "PANIC"
-	PROPERTY    TokenType = "PROPERTY"
-	REF         TokenType = "REF"
-	RETURN      TokenType = "RETURN"
-	REQUIRE     TokenType = "REQUIRE"
-	SELF        TokenType = "SELF"
-	SELECT      TokenType = "SELECT"
-	SPAWN       TokenType = "SPAWN"
-	STATIC      TokenType = "STATIC"
-	STRUCT      TokenType = "STRUCT"
-	SWITCH      TokenType = "SWITCH"
-	TRUE        TokenType = "TRUE"
-	TRY         TokenType = "TRY"
-	TYPE        TokenType = "TYPE"
-	UNIT        TokenType = "UNIT"
-	UNION       TokenType = "UNION"
-	UNSAFE      TokenType = "UNSAFE"
-	WHERE       TokenType = "WHERE"
-	WHILE       TokenType = "WHILE"
+	// 2026-10-10 09:00 CEST: null is a hard keyword (MD-024, ffi.md §11).
+	NULL     TokenType = "NULL"
+	PANIC    TokenType = "PANIC"
+	PROPERTY TokenType = "PROPERTY"
+	REF      TokenType = "REF"
+	RETURN   TokenType = "RETURN"
+	REQUIRE  TokenType = "REQUIRE"
+	SELF     TokenType = "SELF"
+	SELECT   TokenType = "SELECT"
+	SPAWN    TokenType = "SPAWN"
+	STATIC   TokenType = "STATIC"
+	STRUCT   TokenType = "STRUCT"
+	SWITCH   TokenType = "SWITCH"
+	TRUE     TokenType = "TRUE"
+	TRY      TokenType = "TRY"
+	TYPE     TokenType = "TYPE"
+	UNIT     TokenType = "UNIT"
+	UNION    TokenType = "UNION"
+	UNSAFE   TokenType = "UNSAFE"
+	WHERE    TokenType = "WHERE"
+	WHILE    TokenType = "WHILE"
 
 	ASSIGN        TokenType = "ASSIGN"
 	DECLARE       TokenType = "DECLARE"
@@ -125,19 +127,21 @@ const (
 	RANGE_EXCLUSIVE TokenType = "RANGE_EXCLUSIVE" // ..<
 	SPREAD          TokenType = "SPREAD"          // ...
 
-	COMMA      TokenType = "COMMA"      // ,
-	COLON      TokenType = "COLON"      // :
-	SEMICOLON  TokenType = "SEMICOLON"  // ;
-	QUESTION   TokenType = "QUESTION"   // ?
-	UNDERSCORE TokenType = "UNDERSCORE" // _
-	AT         TokenType = "AT"         // @
-	HASH       TokenType = "HASH"       // #
-	LPAREN     TokenType = "LPAREN"     // (
-	RPAREN     TokenType = "RPAREN"     // )
-	LBRACE     TokenType = "LBRACE"     // {
-	RBRACE     TokenType = "RBRACE"     // }
-	LBRACKET   TokenType = "LBRACKET"   // [
-	RBRACKET   TokenType = "RBRACKET"   // ]
+	COMMA TokenType = "COMMA" // ,
+	COLON TokenType = "COLON" // :
+	// 2026-10-10 09:00 CEST: :: is one foreign-qualification token (MD-020).
+	DOUBLE_COLON TokenType = "DOUBLE_COLON" // ::
+	SEMICOLON    TokenType = "SEMICOLON"    // ;
+	QUESTION     TokenType = "QUESTION"     // ?
+	UNDERSCORE   TokenType = "UNDERSCORE"   // _
+	AT           TokenType = "AT"           // @
+	HASH         TokenType = "HASH"         // #
+	LPAREN       TokenType = "LPAREN"       // (
+	RPAREN       TokenType = "RPAREN"       // )
+	LBRACE       TokenType = "LBRACE"       // {
+	RBRACE       TokenType = "RBRACE"       // }
+	LBRACKET     TokenType = "LBRACKET"     // [
+	RBRACKET     TokenType = "RBRACKET"     // ]
 
 	COMMENT TokenType = "COMMENT"
 
@@ -233,6 +237,13 @@ func (l *Lexer) NextToken() Token {
 		}
 		if l.peekNext() == '=' {
 			return l.readTwo(DECLARE)
+		}
+		// 2026-10-10 09:00 CEST: lex :: as one token with longest-match
+		// precedence over a single ':' after :<- and := (MD-020,
+		// rules/foundations/lexical_structure.md §16.6). Separated colons
+		// stay separate COLON tokens.
+		if l.peekNext() == ':' {
+			return l.readTwo(DOUBLE_COLON)
 		}
 		return l.readOne(COLON)
 
@@ -1269,6 +1280,10 @@ func lookupIdent(s string) TokenType {
 		return MUT
 	case "new":
 		return NEW
+	// 2026-10-10 09:00 CEST: reserve null so no binding can shadow the
+	// unsafe foreign/raw-pointer sentinel (MD-024, lexical_structure.md §7.1).
+	case "null":
+		return NULL
 	case "panic":
 		return PANIC
 	case "property":

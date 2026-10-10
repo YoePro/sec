@@ -1,0 +1,3 @@
+module main
+fn Answer() int { return 42 }
+fn main() int { return Answer() }

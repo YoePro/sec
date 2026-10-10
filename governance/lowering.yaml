@@ -206,6 +206,387 @@ integrations:
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (78/78)
 
+  - id: lowering.sec-mlir-package14
+    package: SEC-MLIR-P14
+    name: Fixed Array Semantic Value Representation
+    area: frontend-semantic-ir-sec-mlir-and-lowering
+    status: implemented
+    implementation_phase: complete
+    integrated: "2026-09-02"
+    baseline: repository HEAD 069c111b96714ee4c9423f5f7a64d1e7a6045f31 with completed SEC-MLIR-P13 schema 9
+    repository_head: 475add863959208ea2af90dfe0c8755352617ec8
+    audited_state: repository HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the pending P14-48 and P14-70 through P14-77 completion diff
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    lit_toolchain: lit 24.0.0dev
+    summary: >-
+      Implements canonical arbitrary-precision fixed-array shapes, compact Sema
+      literal/default/index plans, verified fixed-array Semantic IR, and the
+      high-level schema-10 Sec MLIR type, operations, emitter, guard verifier,
+      and target-scalar compatibility. Package 14 introduces no mandatory
+      runtime or physical array representation.
+    integrated_surface:
+      frontend_and_sema: >-
+        Explicit fixed/dynamic shape, exact decimal length identity,
+        plan-specific target-uint validation, compact literal/spread/default
+        facts, exact bounds classification and proof provenance, typed
+        IndexError fallibility, bounds effects, noPanic enforcement, and
+        explicit ownership diagnostics.
+      semantic_ir: >-
+        Canonical fixed-array types; compact construct/default/length,
+        bounds-predicate, guarded/proven extract, trivial replace, and bounds
+        failure operations; high-level trivial storage; nested transactional
+        replacement; complete type, operation, CFG, and no-partial-module
+        verification.
+      sec_mlir_schema10: >-
+        High-level !sec.array with canonical arbitrary-precision StringAttr
+        length; all six sec.array operations plus terminating sec.fail.bounds;
+        schema-10 metadata and local verifiers; the registered array-index guard
+        dominance/SSA verifier.
+      lowering_and_compatibility: >-
+        Deterministic Go emission for 32-bit and 64-bit plans, recursive P6
+        target-scalar conversion, P8 wrapper boundary, P11/P12 union values,
+        P13 struct nesting, schema-9 compatibility, and maintained legacy array
+        paths behind explicit representability checks.
+      safety_boundary: >-
+        Dynamic arrays, slices, element references, array-to-slice borrowing,
+        move-out, semantic-copy/non-trivial ownership, equality/membership
+        lowering, foreign array ABI, physical layout, MemRef, LLVM arrays, GEP,
+        allocation, and runtime helpers remain explicitly rejected or deferred.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package14.md
+      - rules/mlir/packages/sec-mlir-dialect_package14.yaml
+      - rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md
+      - rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md
+      - rules/collections/collections.md
+      - rules/declarations/spread.md
+      - rules/types/default_values.md
+      - rules/errors/runtime_checks.md
+      - rules/errors/errorhandling.md
+      - rules/library/core-library.md
+      - rules/compiler/semantic_ir.md
+      - rules/analysis/effect_analysis.md
+      - rules/memory/ownership.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/mlir/packages/sec-mlir-dialect_package17.md
+      - package14-todo.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/defaults.go
+      - internal/sema/place.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/escape_analysis.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/printer.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/codegen/mlir/generator.go
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - cmd/lsp/main_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/array_shape_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/sema/effect_analysis_test.go
+      - internal/ir/semantic/package14_test.go
+      - internal/ir/semantic/package13_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/ir/test_arrays_basic.sec
+      - testdata/semantic_ir/fixed_array_index_plans.sec
+      - testdata/semantic_ir/fixed_array_index_plans_invalid.sec
+      - testdata/semantic_ir/fixed_array_defaults.sec
+      - testdata/semantic_ir/fixed_array_defaults_deferred.sec
+      - testdata/semantic_ir/package14_schema10_integration.sec
+      - testdata/semantic_ir/package14_unsupported/
+      - mlir/test/Dialect/Sec/schema10-array-type.mlir
+      - mlir/test/Dialect/Sec/invalid-schema10-array-type.mlir
+      - mlir/test/Dialect/Sec/schema10-array-construct.mlir
+      - mlir/test/Dialect/Sec/invalid-schema10-array-construct.mlir
+      - mlir/test/Dialect/Sec/schema10-array-ops.mlir
+      - mlir/test/Dialect/Sec/invalid-schema10-array-ops.mlir
+      - mlir/test/Dialect/Sec/schema10-module-metadata.mlir
+      - mlir/test/Dialect/Sec/invalid-schema11-module-metadata.mlir
+      - mlir/test/Dialect/Sec/schema9-structs.mlir
+      - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
+      - mlir/test/Analysis/schema10-array-index-guards.mlir
+      - mlir/test/Analysis/invalid-schema10-array-index-guards.mlir
+      - mlir/test/Conversion/SecToCore/schema10-array-scalar-layout-32.mlir
+      - mlir/test/Conversion/SecToCore/schema10-array-scalar-layout-64.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout-64.mlir
+      - mlir/test/Conversion/SecIntegerToArith/schema10-array-boundary.mlir
+    implemented:
+      - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
+      - canonical fixed-array literal spread wording synchronized in collections and spread rulebooks
+      - fixed-index failure synchronized to the concrete error IndexError.OutOfBounds
+      - schema-v10 dialect, lowering-v10, and fixed-array Semantic IR rulebooks installed
+      - existing parser and AST support for postfix fixed-array types, literals, spreads, and index expressions
+      - existing Sema support for selected fixed-array inference, compact checked spread length accounting, constant bounds diagnostics, defaults, copy/destruction classification, Places, iteration, and call spread
+      - existing legacy physical MLIR fixed-array iteration retained as a compatibility path and explicitly excluded as P14 semantic authority
+      - absolute SEC_MLIR_BIN resolution shared by Package 13 and Package 14 acceptance tests
+      - green pre-P14 repository gates for Go, vet, and all 78 Sec MLIR tests
+      - explicit fixed/dynamic Sema array shape with immutable exact decimal fixed length and defensive big.Int access
+      - AST length expressions retained as authority with int64 populated only as a checked compatibility cache
+      - exact array type identity, display, generic matching, equality, bounds/slice checks, and target-shaped diagnostics
+      - shape-aware defaults, copy/destruction, membership, Place, compiler-known members, call spread, escape snapshots, and LSP type presentation
+      - compact arbitrary-precision array-literal spread accounting and exact compact fixed-array defaults with bounded legacy expansion
+      - zero-length fixed-array defaults without inspecting or constructing an element default
+      - independent 32-bit and 64-bit target-uint validation of one resolved array fact
+      - explicit unsupported diagnostic at the legacy LLVM-array layout boundary for lengths outside int64
+      - Package 14 section-90 frontend length and target-plan regression matrix
+      - immutable compact ResolvedArrayLiteralPlan data model with exact per-source-entry lengths, Sema-owned defensive copies, and a read-only query that performs no inference, expansion, or analyzer mutation
+      - authoritative array-literal analysis publishes source-ordered plans for inferred, target-shaped, spread-containing, and target-required empty fixed-array literals while result typing consumes the same plan
+      - multiple fixed-array literal spreads retain distinct source indices, exact big.Int contribution lengths, runtime/mismatch rejection, and O(source entries) plans for conceptual lengths above host int64
+      - array-literal transfer actions derive from compiler-owned copy classification; P14 admits construct-direct/copy-trivial and explicitly rejects semantic-copy, move, and borrow actions at the Semantic IR boundary
+      - complete section-91/93 compact default matrix for scalar, wide, struct, nested, zero-length non-defaultable, positive non-defaultable, and huge fixed arrays
+      - source-to-Semantic-IR compact array.default lowering with exact lengths, no undef/poison substitute, and package-tagged rejection without a partial module for deferred non-trivial ownership
+      - complete Package 14 Semantic IR value-layer printer/verifier matrix for empty, scalar-wide, nested, struct, enum, compact huge, exact segment-sum, default, length, bounds, projection, replacement, guard, and failure operations
+      - source-built ordinary fixed-array reads consume ResolvedArrayIndexPlan facts, preserve array-before-index exactly-once evaluation, and emit either proof-carrying extraction or one guarded runtime bounds CFG
+      - runtime ordinary indexing preserves signed int128, unsigned uint128, target uint, and zero-length semantics and terminates failure in fixed-array-index fail.bounds
+      - compiler-owned effect summaries record direct and transitive may-panic-bounds for runtime ordinary indexes while constant/range-proven indexes contribute no bounds panic
+      - compact Sema array-literal plans lower source-order element/spread entries directly to one array.construct segment each without expansion
+      - P5 high-level storage admits recursively trivial fixed arrays and lowers explicit, defaulted, spread-containing, and nested mutable locals through storage declare/init/load without selecting MemRef or LLVM array layout
+      - non-trivial fixed-array literal and storage boundaries return Package 14 UnsupportedFeatureError without a partial module, placeholder, undef, or poison
+      - simple-root mutable local indexed assignment lowers transactionally for proven-safe and runtime-checked plans with bounds-before-RHS ordering, exact guard SSA reuse, proof provenance, one RHS evaluation, one array.replace, and one root storage.store
+      - nested fixed-array and stored-struct assignment paths evaluate root/index projections once, guard root-to-leaf, rebuild with array.replace and struct.replace-field leaf-to-root, and commit exactly one root store after the RHS completes
+      - Package 14 section-99 replacement matrix covers scalar and int128 elements, runtime guards, two-dimensional arrays, struct-in-array, array-in-struct, RHS ordering, one store, high-level storage, and non-trivial rejection
+      - schema-10 !sec.array<T, "N"> is registered as a high-level ODS/C++ type with exact canonical decimal StringAttr identity, arbitrary-precision lengths, nested arrays and struct elements, and no physical layout selection
+      - the !sec.array verifier rejects empty, signed, whitespace-padded, and unnecessarily zero-prefixed lengths plus storage/function element types while accepting canonical zero and lengths above uint64
+      - schema-10 sec.array.construct preserves one operand per source segment and verifies exact kind/length/action arrays, element and spread types, canonical arbitrary-precision lengths, spread-length identity, and an overflow-free exact sum equal to the result length
+      - try fixed-array indexing publishes distinct bounds-propagation and handled-bounds Sema facts, converts runtime failure to IndexError.OutOfBounds, and removes the index check's MayBoundsPanic effect
+      - source-built fallible bounds CFG evaluates array/index once, shares one guard with extraction, emits typed Result.err propagation or local enum handler flow, and contains no fail.bounds endpoint
+      - validated fallible bounds flow removes only its own MayBoundsPanic site while preserving transitive panic effects from array/index operands and handler bodies; invalid try constructs retain the ordinary bounds effect
+      - unsafe blocks do not bypass fixed-array runtime bounds checks or their MayBoundsPanic effect
+      - argument-free @noPanic is parsed on functions and methods and verified against transitive callable panic summaries with a cause chain and introducing source location
+      - "@noPanic accepts proven-safe and otherwise panic-free fallible fixed-array indexing while rejecting ordinary dynamic indexing, panic-capable operands, and unsafe-block attempts to bypass the guarantee"
+      - the standalone compiler-owned IndexError fallback converges with the trusted sec/core declaration while ordinary source redeclaration remains rejected
+      - Semantic IR TypeArray keyed by element TypeID plus canonical exact decimal length, with deterministic interning, formatting, and verifier diagnostics
+      - Semantic IR builder admits fixed-array function parameter and return types at Package 14, keeps dynamic array types gated as UnsupportedFeatureError, and does not introduce array operations before P14-29
+      - Semantic IR array.construct, array.default, and array.len operation records with compact segment metadata, exact length strings, P14 action gating, formatter output, and verifier checks
+      - Semantic IR array.index-in-bounds, array.extract, and array.replace records preserving source index signedness, explicit proof/check metadata, and trivial ownership boundaries
+      - fixed-array runtime projection verification requires a named dominating guard for the same array/index SSA pair and rejects any projection reachable from the guard's false edge
+      - terminating Semantic IR fail.bounds endpoint for ordinary indexing plus explicit core::IndexError.OutOfBounds and Result.err validation for fallible bounds paths
+      - immutable read-only ResolvedArrayIndexPlan facts preserve exact array length, array/element/index types, signedness, use/action, proof/check kind, failure mode, and runtime IndexError typing without downstream AST reconstruction
+      - arbitrary-precision constant index plans cover valid uint256 values above host int64 and exact negative, at-length, and above-length rejection; remaining indexes preserve their signed or unsigned source type as runtime-checked
+      - named integer ranges wholly contained in 0..<N produce explicit range-proven index plans while zero-length arrays remain runtime-checked unless rejected as an invalid constant
+      - dominating branch and assertion conditions publish explicit branch or analysis index-proof provenance; inline range contracts retain contract provenance, binding identity prevents textual shadowing, and intervening assignments invalidate value proofs conservatively
+      - source-built branch-proven extraction consumes the Sema proof in verified Semantic IR without array.index-in-bounds or fail.bounds while incomplete, disjunctive, out-of-scope, mutated, and zero-length cases remain runtime-checked
+      - Package 14 source-builder unsupported boundary for non-trivial array literals returns UnsupportedFeatureError without returning a partial module or placeholder operation
+      - Package 6 scalar-layout resolution recursively converts target-sized int/uint through fixed-array elements, nested arrays, type arguments, and surrounding P13 struct fields while preserving exact lengths, nominal identities, field tags, and high-level array operations on both 32-bit and 64-bit plans
+      - Package 8 checked-integer lowering normalizes ordinary scalar operations to signless Arith without recursing through fixed-array wrappers or lowering zero-length, spread, or nested sec.array.construct operations
+      - Package 13 integration preserves exact nominal struct identities for struct-in-array and array-in-struct values, including int128/uint256 fields, compact recursive defaults, guarded nested replacement, leaf-to-root rebuild, and one root commit
+      - Package 11/12 integration admits copy-trivial fixed arrays as union payloads and match values while retaining ordinary union-variant patterns, copy-trivial transfer, compact fallback construction, and the existing matching-variant projection guard
+      - schema-10 sec.array.default, sec.array.len, sec.array.index_in_bounds, sec.array.extract, sec.array.replace, and terminating sec.fail.bounds operations with exact local type, signedness, bounds-metadata, action, and result-identity verifiers
+      - sec-verify-array-index-guards enforces same-array/index SSA identity, immediate single-use predicate branching, dedicated true-edge dominance, and closed proven-safe provenance for schema-10 extraction and replacement
+      - generated high-level modules use schema 10 while schemas 1 through 9 remain accepted regression inputs and schema 11 remains rejected
+      - Go schema-10 emission preserves exact nested array types, compact ordered construction segments and actions, defaults, length, source-typed bounds predicates, proof metadata, guarded extraction/replacement, bounds failure, locations, and high-level storage
+      - schema-10 emission independently rejects nested fixed-array lengths that overflow the selected 32-bit or 64-bit target uint without host-width conversion
+      - the complete Package 14 section-100/101 dialect matrix covers canonical and invalid array types, compact construction, every array operation, guard dominance and SSA identity, proven provenance, and schema-9 compatibility
+      - compiler-known fixed-array Len lowers from its resolved Sema receiver fact to compact foldable ArrayLengthOp with exact decimal length
+      - one unedited source fixture covers every section-102 case through parsing, target-aware Sema, verified Semantic IR, and deterministic schema-10 emission
+      - the complete source-built section-102 module passes the absolute sec-mlir-opt guard-verification and scalar-layout pipeline on 32-bit and 64-bit CompilationPlans while preserving high-level arrays and introducing no unresolved cast, physical array layout, runtime helper, or LLVM dialect
+      - Package 6 scalar-layout conversion covers every schema-10 fixed-array operation, including default, length, bounds predicate, extraction, and replacement rather than only construction
+      - Package 14 explicitly rejects deferred move-only spread/read, indexed move-out, element borrow, non-trivial replacement/destruction, dynamic-array, slice, and array-to-slice source paths without returning partial Semantic IR
+      - the fixed-array spread action adapter admits only copy-trivial and explicitly rejects semantic-copy, move, shared-borrow, and mutable-borrow actions; semantic-copy is tested at this immutable boundary because no current source type resolves to CopySemantic
+      - ordinary indexed return of a non-copyable element is rejected by canonical Sema ownership diagnostics and published by the LSP for both direct and Result-wrapped terminal returns, while language-valid P14 lowering boundaries remain free of false frontend errors
+      - source-valid fixed-array equality, inequality, and membership receive explicit Package 14 Semantic IR boundary errors without partial modules instead of falling through a generic unsupported-operator path
+      - schema-10 emission explicitly rejects verified foreign fixed-array parameter/result ABI and physical LayoutRef requests on array-containing structs or unions without computing layout
+      - successful source-built Package 14 modules prove exact full construction coverage and compact defaults, and contain no unreadable placeholder, hidden allocation, physical array layout, hard-coded signless i64 array index, trap, runtime symbol, mandatory helper call, or LLVM dialect on either 32-bit or 64-bit plans
+      - repeated fresh source builds prove canonical decimal lengths, lexicographic source metadata, source-declaration function order, nested type printing, compact spread segment order, stable diagnostics, and byte-identical per-plan 32/64 schema output independent of build and target-validation order
+      - all 56 Package 14 section-107 acceptance criteria are mapped individually to named focused tests or exact implementation and rule locations without promoting the still-partial package from aggregate suite success
+      - the complete sections-95-through-98 indexing matrix covers exact constant widths and failures, proof provenance, signed/unsigned runtime boundaries and SSA guard reuse, fallible int32/int128 propagation, exact and catch-all handlers, effects, noPanic, and absence of partial or fallible fail.bounds IR
+    remaining: []
+    post_implementation_acceptance: []
+    deferred:
+      - Package 15 element references and canonical Places
+      - Package 16 slices and array-to-slice borrowing
+      - Package 17 move-out, semantic copy, and non-trivial array ownership/destruction
+      - equality and membership lowering
+      - physical array layout, aggregate ABI, foreign ABI, MemRef, LLVM, and runtime helpers
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (82/82), including schema-10 array type/construct round-trip and verifier failures
+      - command: go test ./internal/lowering/secmlir -run TestConfiguredSecMLIRBinRequiresAbsolutePathForPackage13And14 -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(ResolvedArrayLiteralPlan|ArrayLiteralAnalysisPopulatesAuthoritativePlans)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'TestArrayLiteralPlans' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(ResolvedFixedArrayIndexPlans|FixedArrayIndexPlansRejectExactWideBounds)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14|TestTypeTableInternsStructuralIdentity' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run TestPackage14 -count=1
+        result: passed
+      - command: go test ./internal/sema ./internal/ir/semantic -run 'Test(Package14|ArraySpreadTransferActionVocabulary)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14Array(ConstructionTypeAndWidthMatrix|OperationVerifierMatrix|ConstructDefaultAndLengthVerifyAndFormat)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(FixedArrayBoundsEffectsDistinguishRuntimeAndProvenIndexes|ResolvedFixedArrayIndexPlans)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsOrdinaryArrayIndexControlFlowAndOrder|ArrayIndex)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsTrivialMutableFixedArrayStorage|RejectsNonTrivialFixedArrayStorageWithoutPartialModule|UnsupportedArrayLiteralReturnsNoPartialModule|BuildsCompactFixedArrayDefaultMatrix)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsTransactionalIndexedLocalReplacement -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14Builds(NestedArrayStructReplacementMatrix|TransactionalIndexedLocalReplacement)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run TestFixedArrayBoundsTryPublishesTypedFlowAndRemovesPanicEffect -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(FallibleFixedArrayBoundsRetainOnlyOperandEffects|InvalidBoundsTryDoesNotBecomePositiveNoPanicEvidence|FixedArrayBoundsEffectsDistinguishRuntimeAndProvenIndexes)' -count=1
+        result: passed
+      - command: go test ./internal/parser -run TestParseNoPanicFunctionAndMethodAttributes -count=1
+        result: passed
+      - command: go test ./internal/sema -run TestNoPanicFixedArrayIndexGuarantees -count=1
+        result: passed
+      - command: go test ./...
+        result: passed after trusted core IndexError integration
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsFallibleBoundsPropagationAndLocalHandler -count=1
+        result: passed
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-scalar-layout-(32|64)' $PWD/build/sec-mlir/test
+        result: passed (2/2), resolving nested array and struct-wrapped target-sized elements for 32-bit and 64-bit plans
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+        result: passed (84/84) after Package 6 fixed-array scalar-layout integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-boundary' $PWD/build/sec-mlir/test
+        result: passed (1/1), lowering ordinary checked arithmetic while preserving signed and unsigned fixed-array wrappers and operations
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+        result: passed (85/85) after Package 8 fixed-array normalization-boundary coverage
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsNestedArrayStructReplacementMatrix|BuildsCompactFixedArrayDefaultMatrix)' -count=1 -v
+        result: passed, preserving exact Pair/Holder identities, wide nested fields, recursive defaults, and both array/struct replacement directions
+      - command: go test ./... && go vet ./...
+        result: passed after Package 13 fixed-array nesting integration coverage
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsArrayUnionPayloadAndMatchValues -count=1 -v
+        result: passed, including negative matching-variant guard enforcement for an int128[2] union payload
+      - command: go test ./... && go vet ./...
+        result: passed after Package 11/12 fixed-array union and match value integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-ops' $PWD/build/sec-mlir/test
+        result: passed (2/2), covering round-trip and local verifier failures for every P14-57 operation
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+        result: passed (87/87) after the complete schema-10 fixed-array operation set
+      - command: go test ./internal/sema -run TestResolvedFixedArrayIndexRefinementProofs -count=1 -v
+        result: passed, covering branch, assertion/analysis and contract provenance plus incomplete, disjunctive, out-of-scope, mutated and zero-length negative cases
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsBranchRefinedArrayIndexWithoutBoundsFailure -count=1 -v
+        result: passed, consuming branch proof provenance without array bounds or failure operations
+      - command: go test ./... && go vet ./...
+        result: passed after P14-40 refinement integration
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (87/87) after P14-40 refinement integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
+        result: passed (2/2), covering runtime extract/replace, proven-safe access, SSA mismatches, false-edge use, and post-merge use
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (89/89) after P14-58 array-index guard verification
+      - command: go test ./... && go vet ./...
+        result: passed after P14-58 array-index guard verification
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'TestEmitPackage(13Structs|14Arrays|14ArrayLength)' -count=1 -v
+        result: passed on 32-bit and 64-bit plans, including schema-10 verifier execution and schema-9 struct compatibility
+      - command: go test ./... && go vet ./...
+        result: passed after P14-54/P14-59 schema-10 emission and version-gate integration
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-54/P14-59 schema-10 emission and version-gate integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
+        result: passed (2/2) for the complete section-101 extract/replace guard, edge-dominance, SSA-identity, and proven-provenance matrix
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after the P14-60 section-100/101 audit
+      - command: go test ./internal/lowering/secmlir -run TestEmitPackage14SourceIntegrationMatrix -count=1 -v
+        result: passed for every Package 14 section-102 source-to-Sema-to-verified-Semantic-IR-to-schema-10 case
+      - command: go test ./... && go vet ./...
+        result: passed after P14-65 source integration and fixed-array Len builder connection
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans -count=1 -v
+        result: passed on 32-bit and 64-bit CompilationPlans after complete schema-10 fixed-array operation scalar conversion
+      - command: go test ./... && go vet ./...
+        result: passed after P14-66 absolute 32-bit and 64-bit source-module pipeline integration
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-66 complete fixed-array operation scalar conversion
+      - command: go test ./internal/ir/semantic -run 'TestPackage14RejectsDeferredArray(SourcePathsWithoutPartialIR|SpreadActions)' -count=1 -v
+        result: passed for all Package 14 deferred ownership, dynamic-array, slice, and array-to-slice boundaries without partial Semantic IR
+      - command: go test ./... && go vet ./...
+        result: passed after P14-67 unsupported source-pipeline boundary coverage
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-67 unsupported source-pipeline boundary coverage
+      - command: go test ./internal/lowering/secmlir -run TestPackage14SuccessfulModuleContainsNoPhysicalArrayShortcut -count=1 -v
+        result: passed on 32-bit and 64-bit plans with complete readable arrays and no physical/runtime shortcut
+      - command: go test ./... && go vet ./...
+        result: passed after P14-69 successful-module architecture-boundary coverage
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-69 successful-module architecture-boundary coverage
+      - command: go test ./cmd/lsp -run 'TestAnalyze(PublishesMoveOnlyIndexed(ReturnDiagnostic|ResultReturnDiagnostics)|Package14UnsupportedFixturesRespectFrontendBoundary)' -count=1
+        result: passed, publishing the four frontend ownership failures including both Result arms and leaving seven language-valid Package 14 lowering boundaries diagnostic-free
+      - command: go test ./... && go vet ./...
+        result: passed after direct and Result-wrapped indexed-return ownership diagnostics were connected to LSP with variadic-pack diagnostic priority preserved
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after the frontend/LSP diagnostic correction
+      - command: go test ./internal/ir/semantic -run TestPackage14RejectsDeferredArrayOperatorsAtSemanticIRBoundary -count=1
+        result: passed for source-valid fixed-array equality, inequality, and membership with exact Package 14 boundary diagnostics and no partial Semantic IR
+      - command: go test ./internal/lowering/secmlir -run 'TestPackage14Rejects(ForeignFixedArrayABI|PhysicalFixedArrayLayoutRequest)' -count=1
+        result: passed for foreign parameter/result ABI and struct/union physical-layout requests containing fixed arrays
+      - command: go test ./... && go vet ./...
+        result: passed after P14-68 unsupported operator, ABI, and physical-layout boundaries
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-68 schema-10 emitter boundary validation
+      - command: go test ./internal/sema -run TestPackage14ArrayDiagnosticsAreDeterministicAcrossPlans -count=1
+        result: passed across twelve alternating uint32/uint64 analyses with stable source-ordered exact-decimal diagnostics per plan
+      - command: go test ./internal/lowering/secmlir -run TestPackage14SourceBuildAndMultiOutputAreDeterministic -count=1
+        result: passed across twelve fresh source builds, permuted source metadata, alternating 32/64 emission order, stable nested type/segment order, and byte-identical per-plan output
+      - command: go test ./... && go vet ./...
+        result: passed after P14-70 determinism coverage
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-70 determinism coverage
+      - command: isolated detached snapshot 8b2266b8da6d18c9daaf42eb20fe86bda8d743fd (tree 42802a3733a0d5032390ea355e14c6d2ebed814f) from HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the exact pending P14-70/P14-71 files; go test ./...
+        result: passed in a clean worktree before and after execution
+      - command: isolated detached snapshot 8b2266b8da6d18c9daaf42eb20fe86bda8d743fd (tree 42802a3733a0d5032390ea355e14c6d2ebed814f) from HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the exact pending P14-70/P14-71 files; go vet ./...
+        result: passed in a clean worktree before and after execution
+      - command: build/sec-mlir/bin/sec-mlir-opt --version; /home/jonas/mlir/llvm-project/build/bin/llvm-lit --version
+        result: LLVM 24.0.0git optimized build with assertions; lit 24.0.0dev
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) for P14-73
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema(9|10|11)' /home/jonas/small-projects/sec/build/sec-mlir/test
+        result: passed all 17 selected adjacent schema-9, schema-10, and schema-11 regressions (74 unrelated tests excluded)
+      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./internal/lowering/secmlir -run '^TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans$' -count=1 -v
+        result: passed 32-bit and 64-bit source-to-Sema-to-verified-Semantic-IR-to-schema-10 guard-verification and scalar-lowering pipelines for P14-74
+      - command: go test ./internal/sema -run 'Test(Package14Section95ConstantIndexMatrix|FixedArrayIndexPlansRejectExactWideBounds|ResolvedFixedArrayIndexRefinementProofs|FixedArrayBoundsTryPublishesTypedFlowAndRemovesPanicEffect|NoPanicFixedArrayIndexGuarantees|FallibleFixedArrayBoundsRetainOnlyOperandEffects)' -count=1 -v
+        result: passed the focused P14-48 Sema constant, proof, fallible, effect, and noPanic matrix
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(Section97RuntimeBoundaryMatrix|RejectsCompileTimeInvalidIndexWithoutPartialIR|BuildsOrdinaryArrayIndexControlFlowAndOrder|BuildsBranchRefinedArrayIndexWithoutBoundsFailure|BuildsFallibleBoundsPropagationAndLocalHandler)' -count=1 -v
+        result: passed the focused P14-48 verified Semantic IR runtime, no-partial-module, proven, and fallible matrix
+      - command: go test ./... && go vet ./...
+        result: passed after completing P14-48
+      - command: GIT_INDEX_FILE=<isolated temporary P14 index> git diff --cached --check HEAD
+        result: passed for the complete P14 handoff diff, including the new acceptance matrix and implementation report
+      - command: python3 inline governance audit of implementation-status.yaml and the section-108 report
+        result: passed with 164 unique integration IDs, implemented status, existing referenced paths, and exactly 41 ordered report items
+      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./...
+        result: passed for P14-77
+      - command: go vet ./...
+        result: passed for P14-77
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) for P14-77 final handoff
+
   - id: lowering.sec-mlir-package15
     package: SEC-MLIR-P15
     name: Safe Place and Direct Reference Semantic Core
@@ -312,3 +693,770 @@ integrations:
         result: passed with zero errors and zero warnings
       - command: go test ./internal/sema -run 'Relationship|PlacesOverlap' -count=1
         result: passed
+  - id: lowering.sec-mlir-schema-2
+    area: semantic-ir-lowering
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements SEC-MLIR-P4 as the first verified Semantic IR v1 to Sec MLIR
+      bridge. The emitter consumes only canonical Semantic IR, emits dialect
+      schema 2, and publishes CLI output only after verification by the real
+      Sec MLIR toolchain.
+    rules:
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/packages/sec-mlir-dialect_package4.md
+      - rules/mlir/packages/sec-mlir-dialect_package4.yaml
+    code:
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - internal/lowering/secmlir/errors.go
+      - cmd/compiler/main.go
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/include/sec/Dialect/Sec/SecOps.h
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/emit_sec_mlir_test.go
+      - mlir/test/Dialect/Sec
+    implemented:
+      - Sec MLIR dialect schema 2 while retaining schema 1 parsing and regression coverage
+      - semantic scalar types and non-nested !sec.storage<T> with dialect verification
+      - exact integer, boolean, float, decimal, and string constant operations
+      - semantic storage declare, init, load, and store operations
+      - distinct direct and foreign call operations with symbol, signature, extern-kind, and argument-action verification
+      - func.func, func.return, cf.br, cf.cond_br, and MLIR block arguments for standard control flow
+      - required module, function, source, storage, and call metadata verification
+      - deterministic Semantic IR type, function, block, value, storage, and source-location emission
+      - Semantic IR dependency boundary and UnsupportedLoweringError for verified unsupported constructs
+      - emit-sec-mlir CLI pipeline with target filtering, Package 3 Semantic IR construction, temporary output, VerifySec, and verification-before-publication
+      - unchanged legacy emit-mlir and LLVM code-generation paths
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed with 25 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run TestEmittedModuleVerifiesWithRealTool -count=1
+        result: passed
+      - command: emit-sec-mlir over representative Package 2 and 3 fixtures followed by sec-mlir-opt verification
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+  - id: lowering.sec-mlir-trivial-core
+    area: mlir-dialect-conversion
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements SEC-MLIR-P5 as a deliberately partial dialect conversion.
+      Fully discharged boolean, trivial-storage, and ordinary direct-call
+      semantics lower to core MLIR while unresolved Sec representation and ABI
+      obligations remain explicit.
+    rules:
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/packages/sec-mlir-dialect_package5.md
+      - rules/mlir/packages/sec-mlir-dialect_package5.yaml
+    code:
+      - mlir/include/sec/Conversion/SecToCore/Passes.h
+      - mlir/include/sec/Conversion/SecToCore/Passes.td
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - mlir/test/Conversion/SecToCore
+      - internal/lowering/secmlir/emitter_test.go
+    implemented:
+      - independently registered --sec-lower-trivial-core module pass
+      - MLIR Dialect Conversion through TypeConverter, ConversionTarget, rewrite patterns, and applyPartialConversion
+      - sec.const.bool to location-preserving arith.constant i1 conversion
+      - narrow !sec.storage<T> to rank-zero memref<T> conversion for fixed-width 8/16/32/64/128/256-bit integer, f32, and f64 elements
+      - corrected exclusion of i1 from generic storage lowering because addressable bool occupies one byte
+      - storage declare, init, load, and store conversion to memref.alloca, memref.store, and memref.load
+      - storage provenance attributes and source locations preserved without memref.dealloc
+      - sec.call.direct conversion to func.call with exact symbol, operand, result, and location preservation
+      - copy-trivial argument actions validated and discharged while sec.call.foreign remains explicit
+      - target-sized, named, distinct, decimal, string, char, rune, never, shaped, and custom storage remains Sec MLIR
+      - integer, float, decimal, and string constants remain Sec operations
+      - deterministic and idempotent mixed-dialect output without unrealized conversion casts or LLVM operations
+      - explicit failure for storage handles that cannot be converted consistently across a forbidden boundary
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed with 32 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -count=1
+        result: passed including real Package 4 to Package 5 integration
+      - command: sec-mlir-opt --help
+        result: exposes --sec-lower-trivial-core
+      - command: emit-sec-mlir fixtures for bool, direct call, and foreign call followed by --sec-lower-trivial-core
+        result: passed with expected partial conversion and no LLVM dialect
+      - command: validate implementation-status.yaml with duplicate-key rejection
+        result: passed
+  - id: lowering.sec-mlir-scalar-layout
+    area: semantic-ir-and-mlir-dialect-conversion
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements the complete SEC-MLIR-P6 target-plan and scalar-layout
+      vertical. Package 8 now performs the previously deferred operation-aware
+      signless normalization and exact signed/unsigned constant discharge.
+    rules:
+      - rules/memory/layout.md
+      - rules/types/types.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/packages/sec-mlir-dialect_package6.md
+      - rules/mlir/packages/sec-mlir-dialect_package6.yaml
+    code:
+      - internal/layout/scalar_plan.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - cmd/compiler/target.go
+      - cmd/compiler/main.go
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/include/sec/Conversion/SecToCore/Passes.td
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - internal/layout/scalar_plan_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/main_test.go
+      - mlir/test/Dialect/Sec
+      - mlir/test/Conversion/SecToCore
+      - testdata/semantic_ir/wide_scalars.sec
+    implemented:
+      - Semantic IR v1 coverage for int128, int256, uint128, uint256, and a distinct decimal128 family
+      - corrected exact 128/256-bit width inference, arbitrary-precision constants, storage, and direct calls
+      - Sec MLIR schema 3 with !sec.decimal128 and exact wide integer and decimal-family verification
+      - canonical frontend-neutral ResolvedScalarPlan with explicit target, ABI, profile, pointer-width, and endianness facts
+      - explicit target scalar facts for known 32-bit and 64-bit compiler targets while any-architecture targets remain unresolved
+      - schema-3 emitter target metadata and explicit DLTI index-width emission for every compiler-generated module
+      - DLTI, Arith, MemRef, Func, and ControlFlow registration in sec-mlir-opt
+      - independently registered --sec-resolve-scalar-layout dialect-conversion pass using one DataLayout query
+      - "!sec.int, !sec.uint, !sec.float, !sec.char, and !sec.rune resolution without host-width inference or signedness erasure"
+      - named and distinct base conversion while preserving identity wrappers
+      - function signature, all block argument, func.call, return, control-flow, direct-call, and foreign-call type conversion
+      - corrected bool storage lowering from semantic i1 through rank-zero memref<i8> with extui and trunci boundaries
+      - explicit rejection of provenance-marked legacy memref<i1> bool storage
+      - corrected trivial storage coverage for fixed 8/16/32/64/128/256-bit integer types while excluding i1
+      - registered idempotent --sec-lower-scalar-core pipeline in trivial-core, scalar-layout, trivial-core order
+      - signless plain sec.const.int lowering to arith.constant with arbitrary-precision range validation
+      - signed and unsigned integer constants retained as sec.const.int after width resolution to preserve verifiable signedness
+      - scalar-kind provenance on plain builtin function boundaries and automatic storage before representation erasure
+      - exact signed/unsigned integer constant discharge after Package 8 selects signless core representation
+      - float and both decimal families remain high-level; foreign calls remain semantically explicit; no LLVM dialect is emitted
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed with 43 tests under LLVM/MLIR 24.0.0git
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -count=1
+        result: passed including idempotent 32-bit and 64-bit scalar-core integration
+      - command: emit-sec-mlir testdata/semantic_ir/wide_scalars.sec followed by --sec-lower-scalar-core
+        result: passed with si128 storage, ui256 calls, and high-level decimal128
+      - command: validate implementation-status.yaml with duplicate-key rejection
+        result: passed
+  - id: lowering.sec-mlir-typed-arithmetic-failure
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: partial
+    integrated: "2026-08-10"
+    summary: >-
+      Implements the Package 9 typed arithmetic failure path from compiler-known
+      ArithmeticError and resolved naked arithmetic try facts through Semantic IR
+      Result construction, Sec MLIR schema 5, guard verification, and exact
+      dynamic failure-reason computation. General callable effect summaries and
+      @noPanic validation remain outside this vertical slice.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package9.md
+      - rules/mlir/packages/sec-mlir-dialect_package9.yaml
+      - rules/library/core-library.md
+      - rules/errors/runtime_checks.md
+      - rules/analysis/effect_analysis.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+    code:
+      - internal/parser/expression.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/sema/effect_analysis_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - testdata/semantic_ir/typed_arithmetic_try.sec
+      - mlir/test/Dialect/Sec/schema5-typed-arithmetic-flow.mlir
+      - mlir/test/Dialect/Sec/invalid-schema5-typed-arithmetic-flow.mlir
+      - mlir/test/Conversion/SecIntegerToArith/schema5-reasons.mlir
+    implemented:
+      - compiler-known exact ArithmeticError enum with Overflow, DivisionByZero, and InvalidShift
+      - parser binding of try to the complete following arithmetic expression
+      - read-only ResolvedTryOf facts for ordinary Result propagation, handled Result, and arithmetic propagation
+      - bodyless try diagnostics explain the implicit return Err propagation, name the incompatible enclosing return type, and suggest either a local handler or the exact compatible Result return shape
+      - exact Result[U, ArithmeticError] requirement with mentor diagnostics for non-Result and other-error returns
+      - naked checked arithmetic try across active 8/16/32/64/128/256-bit integer families
+      - Semantic IR arithmetic-failure-reason, core-error, and Result types without physical layout
+      - checked integer result, failed, and typed reason triples with explicit reason block arguments
+      - ordinary sec.fail.arithmetic and fallible ArithmeticErrorFromReason, ResultErr, return paths
+      - ResultOk construction for successful Result returns
+      - Sec MLIR schema 5 reason/core-error/Result types and reason/error/Result operations
+      - schema-aware operation and checked-guard verification retaining schema-4 fixture compatibility
+      - exact dynamic reason selection with zero-divisor and invalid-shift precedence
+      - signless Arith conversion preserving typed reason SSA flow and introducing no mandatory runtime
+      - compiler-owned callable effect summaries record direct arithmetic MayPanic sites and deterministic transitive synchronous cause paths
+      - resolved handled and propagated arithmetic try removes only its own checked-arithmetic panic effect while preserving panic effects from operand calls and nested argument evaluation
+      - invalid arithmetic try is never accepted as positive panic-free evidence
+    remaining:
+      - complete the remaining MayPanic sources, unknown/foreign contracts, cleanup effects, and attribute diagnostics required for full transitive @noPanic verification; arithmetic-try transformation and operand-call preservation are now represented in the canonical callable summary
+    deferred:
+      - physical Result and ArithmeticError layout belongs to its dedicated ABI/layout package
+    verification:
+      - command: ninja -C build/sec-mlir check-sec-mlir
+        result: passed, 61 tests under LLVM/MLIR 24.0.0git
+      - command: go test ./...
+        result: passed
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/typed_arithmetic_try.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package9.mlir
+        result: passed with schema-v5 checked-guard verification
+      - command: go test ./internal/sema -run 'TestArithmeticTry|TestInvalidArithmeticTry' -v
+        result: passed with direct, handled, transitive operand-call, ordinary Result try, and invalid-try effect coverage
+  - id: lowering.sec-mlir-local-try-handlers
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-10"
+    repository_baseline: a5d5cd4a0557
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    summary: >-
+      Implements SEC-MLIR Package 10 from immutable Sema handler plans through
+      Semantic IR Result discrimination and ordered local handler CFG to Sec
+      MLIR schema 6 operations, provenance, and dedicated guard verifiers.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package10.md
+      - rules/mlir/packages/sec-mlir-dialect_package10.yaml
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/ir/semantic/package10_test.go
+      - cmd/compiler/emit_sec_mlir_package10_test.go
+      - internal/mlir/toolchain_test.go
+      - mlir/test/Dialect/Sec/schema6-result-handlers.mlir
+      - mlir/test/Dialect/Sec/invalid-schema6-result-guard.mlir
+      - mlir/test/Dialect/Sec/invalid-schema6-try-handlers.mlir
+    implemented:
+      - immutable ResolvedTryPlan facts with source order, resolved pattern kind, exact binding type, flow classification, explicit-Ok state, and exhaustiveness
+      - structural handler-flow analysis without return-token scanning
+      - stable immutable BindingID facts for Ok and Err handler-local bindings
+      - canonical naked Result propagation using ResultIsErr, ResultUnwrapErr, ResultErr, return, and ResultUnwrapOk
+      - one shared local-handler builder for ordinary Result and checked arithmetic entries
+      - implicit Ok, explicit Ok binding, explicit Ok discard, specific Err variants, and Err catch-all bindings
+      - source-ordered CoreErrorIsVariant dispatch and final unmatched routing for proven exhaustive variant-only ArithmeticError handlers
+      - typed SSA merge parameters for fallback expressions and normal lowering of handler return bodies
+      - direct arithmetic failure-reason conversion to ArithmeticError without a temporary Result container
+      - Semantic IR Result-guard and try-handler provenance verification
+      - Sec MLIR schema 6 Result test/projection and core-error variant operations with local type verifiers
+      - sec-verify-result-guards and sec-verify-try-handlers function passes
+      - compiler Sec-MLIR verification invokes checked-integer, Result-guard, and try-handler passes together
+      - schema-6 checked-integer guard acceptance for local arithmetic handler dispatch while retaining schema 1 through 5 parsing
+      - end-to-end source-to-Sec-MLIR verification for ordinary Result and arithmetic handlers
+      - schema-7 Package 11 extends the handler path with user-defined fieldless enum errors while preserving ordinary ArithmeticError handling
+    deferred:
+      - physical Result and legacy core-error representation belongs to its dedicated ABI/layout package
+      - union payload try patterns and nontrivial owned handler payloads belong to later match and ownership packages
+    verification:
+      - command: ninja -C build/sec-mlir check-sec-mlir
+        result: passed, 64 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run Package10 -v
+        result: passed with schema-6 guard and handler passes
+      - command: go test ./internal/sema ./internal/ir/semantic
+        result: passed
+      - command: go test ./... && go vet ./...
+        result: passed
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir ./cmd/compiler ./internal/mlir
+        result: passed with real sec-mlir-opt integration
+  - id: lowering.sec-mlir-enum-union-values
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-11"
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    summary: >-
+      Implements SEC-MLIR Package 11 as schema 7: nominal enums retain exact
+      case identity and arbitrary-precision values, concrete tagged unions
+      retain stable semantic variants and payload shapes, and both flow from
+      immutable Sema facts through Semantic IR into verified high-level MLIR
+      without selecting runtime representation or physical union layout.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package11.md
+      - rules/mlir/packages/sec-mlir-dialect_package11.yaml
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/memory/copy_move.md
+      - rules/memory/layout.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - mlir/include/sec/Dialect/Sec/SecAttributes.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecAttributes.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - internal/ir/semantic/package11_test.go
+      - internal/ir/semantic/package11_verifier_test.go
+      - cmd/compiler/emit_sec_mlir_package11_test.go
+      - testdata/semantic_ir/enum_union_values.sec
+      - mlir/test/Dialect/Sec/schema7-enum-union.mlir
+      - mlir/test/Dialect/Sec/invalid-schema7-enum-types.mlir
+      - mlir/test/Dialect/Sec/invalid-schema7-try-exhaustiveness.mlir
+      - mlir/test/Dialect/Sec/invalid-union-guards.mlir
+      - mlir/test/Dialect/Sec/invalid-union-guard-matrix.mlir
+      - mlir/test/Conversion/SecToCore/schema7-enum-union-scalar-layout.mlir
+    implemented:
+      - immutable Sema queries for declared enum cases, explicit enum conversions, and concrete union constructions with stable source and canonical field order
+      - expected-type union inference records the resolved concrete expression type for downstream compiler consumers and the LSP
+      - Semantic IR enum and union identities, definitions, cases, variants, payload fields, concrete generic arguments, copy classification, destruction classification, and source provenance
+      - arbitrary-precision enum case values and distinct declaration ordinals for numeric aliases
+      - fixed-width enum case values are verified against signed or unsigned underlying bounds, while target-sized bounds remain target-plan dependent
+      - bit-backed enum definitions require an exact-width unsigned underlying type across Semantic IR and Sec MLIR, including the bit[1] and bit[256] boundaries
+      - enum constants, explicit integer-to-enum conversion, Sema-proven infallible enum-to-integer conversion, and same-enum equality and inequality
+      - empty, single-payload, and named-field union construction with explicit copy-trivial payload actions
+      - source-order field evaluation followed by deterministic declaration-order construction operands
+      - union active-variant tests and single/named payload projections as explicit high-level operations
+      - Semantic IR definition, operation, ownership-boundary, canonical guard, and matching-variant projection verification
+      - Semantic IR verifier agreement between enum and union TypeID metadata, declaration name, and nominal SymbolID identity
+      - exact concrete generic union type-argument identity rather than arity-only acceptance
+      - canonical union copy-classification validation for trivial, semantic, move-only, conditional, and non-copyable metadata
+      - Sec MLIR schema 7 enum-case, union-field, and union-variant attributes plus self-contained enum and union types
+      - schema 7 enum and union operations with local shape, type, index, field, predicate, and payload-action verification
+      - sec-verify-union-guards rejects unguarded projections and requires every union variant test to immediately feed its conditional branch
+      - concrete generic union type arguments use MLIR type attributes and empty non-generic argument lists round-trip correctly
+      - scalar-layout conversion preserves enum identity while converting its semantic underlying scalar and recursively maps concrete union type arguments and payload types without choosing physical layout
+      - ArithmeticError and user fieldless error enums use ordinary enum constants and equality in new schema-7 handler output while schema-6 core-error input remains accepted
+      - schema-7 enum handler merges carry Sema's generic exhaustiveness proof instead of relying on hard-coded ArithmeticError case names
+      - compiler emission defaults to Package 11 and invokes union-guard verification without introducing a runtime or physical tagged-union layout
+      - end-to-end enum aliases, 128/256-bit values, bit-backed enum types, generic Option values, union payload shapes, and real sec-mlir-opt round trips
+      - Package 11 enum conversion fixtures remain inside the Sema-proven infallible boundary after runtime integer-to-enum conversion became Result-valued
+    deferred:
+      - Result-valued runtime integer-to-enum validation and EnumValueError control flow remain outside Package 11's Sema-proven conversion boundary
+      - enum and union match CFG lowering belongs to Package 12
+      - physical union tag and payload layout, ABI lowering, destruction dispatch, and LLVM representation remain later packages
+      - ownership-sensitive union payload moves, semantic copies, partial moves, and nontrivial destruction remain explicit unsupported boundaries
+      - enum ordering and arithmetic and union equality or ordering are not introduced by Package 11
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 74 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run Package11 -count=1
+        result: passed with real sec-mlir-opt verification
+      - command: go vet ./...
+        result: passed
+      - command: go test ./...
+        result: >-
+          Package 11 passes; the repository-wide run remains red after the
+          updated enum and contract rules because platform/linux/file.sec still
+          treats runtime LinuxError conversion as infallible and three Sema
+          contract tests retain pre-discard-analysis diagnostic counts.
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/enum_union_values.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p11.mlir
+        result: passed through parse, Sema, Semantic IR, schema-7 emission, and all Sec verification passes
+      - command: go test ./internal/ir/semantic ./cmd/compiler -run Package11 -count=1
+        result: passed with nominal identity, concrete type-argument, copy-classification, and updated enum-conversion coverage
+  - id: lowering.sec-mlir-match-cfg
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-18"
+    summary: >-
+      Completes the dependency-bounded SEC-MLIR Package 12 CFG for enum, union,
+      Result, and Option matches, including copy-trivial payloads, guards,
+      expression merges, statement continuations, terminating arms, and
+      schema-8 verification. Newer match revision-2 ownership, field, and empty
+      initialization-state features remain tracked by the frontend match item.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package12.md
+      - rules/mlir/packages/sec-mlir-dialect_package12.yaml
+      - rules/control-flow/flowcontrol_match.md
+      - rules/declarations/enums.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_match_v1.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+    code:
+      - internal/sema/semantic_facts.go
+      - internal/sema/analyzer.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - internal/mlir/toolchain.go
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/sema/analyzer_test.go
+      - internal/ir/semantic/package12_test.go
+      - mlir/test/Dialect/Sec/schema8-unreachable.mlir
+      - mlir/test/Dialect/Sec/invalid-schema8-unreachable.mlir
+      - mlir/test/Analysis/schema8-match-cfg.mlir
+      - mlir/test/Analysis/invalid-schema8-match-cfg.mlir
+      - testdata/semantic_ir/match_cfg.sec
+    implemented:
+      - enum match aliases normalize to arbitrary-precision numeric value classes for duplicate and unreachable analysis
+      - enum exhaustiveness distinguishes closed declared numeric value classes from complete open bit-backed domains and accepts finite complete bit domains by cardinality proof
+      - ResolvedMatchPlanOf exposes immutable subject, arm, binding, guard, flow, result and residual-coverage facts without re-analysis
+      - Semantic IR UnreachableOp requires synthesized provenance and a non-empty reason
+      - schema 8 accepts and verifies sec.unreachable while schemas 1 through 7 remain accepted inputs
+      - compiler-generated Sec MLIR now identifies as schema 8
+      - Semantic IR MatchRecord and MatchArmRecord retain function-local identity, shared subject, source indexes, pattern/guard/body blocks, numeric enum values, flow, merge and locations
+      - the Package 12 builder consumes ResolvedMatchPlan for enum, union, Result, and Option matches, evaluates the subject once, and emits source-order tests with guard-false continuation
+      - payload-less union variants, copy-trivial single payload bindings, and payload discard lower through the Package 11 union operations
+      - Result Ok and Err matching lowers through Package 10 predicates and projections, including reversed Ok edges, repeated guarded variants, and discard without mandatory unwrap
+      - Option Some and None use the canonical compiler-known union definition and the same verified union CFG
+      - continuing expression arms join through one typed SSA merge parameter while return arms remain merge-free
+      - match statements join continuing arms through a zero-argument continuation and omit that block when every arm terminates
+      - return and failure terminators carry body-exit provenance, while ignored statement-arm values are limited to trivial copyable and trivially destructible values
+      - complete finite enum chains retain the final test and terminate its impossible false edge with exhaustive-match-fallthrough
+      - schema-8 emission attaches match ID, arm index, stage and pattern-kind provenance to tests, projections, guards, exits, and residuals
+      - --sec-verify-match-cfg validates complete provenance, source arm order, a shared enum, union, Option, or Result subject, immediate test branches, guard form, catch-all finality, common merge arity, terminating exits, and exhaustive residual
+      - Result guard verification preserves the strict Package 10 try shape while accepting match-specific edge direction and payload discard
+      - union payload verification accepts projections only in the dedicated matching successor selected by the corresponding variant test
+      - the package document and YAML are synchronized with flowcontrol_match.md revision 2.0 and distinguish payload-less variants from compiler-known empty initialization state
+      - the standard Sec verification toolchain invokes the match-CFG verifier
+    remaining:
+      - compiler-known empty initialization-state matching awaits a distinct resolved frontend fact and is not the payload-less variant support completed here
+      - shallow named-field and struct-like whole-payload binding await canonical struct semantic values and field-binding facts
+      - ref, ref mut, move, temporary-forward, semantic-copy, and conditional-copy payload actions await ownership commit, cleanup, and destruction IR
+      - contextual value-producing arm blocks await resolved final-value facts for every continuing block path
+      - loop-control arms await loop Semantic IR targets and cleanup edges
+      - general literal and range patterns are intentionally not lowered because canonical match revision 2.0 assigns them to switch
+    verification:
+      - command: go test ./internal/sema -run 'TestMatch|TestErrorHandlingMatch|TestResolvedMatchPlan' -count=1
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 74 tests under LLVM/MLIR 24.0.0git
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/match_cfg.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p12-match.mlir
+        result: passed through Sema-resolved plan, Semantic IR match CFG, schema-8 emission and sec-verify-match-cfg
+      - command: go test ./...
+        result: >-
+          Package 12 paths pass. The repository-wide run remains red in two
+          compiler IO API tests because runtime LinuxError conversion is
+          fallible, in three existing contract tests whose expected diagnostic
+          counts predate discard analysis, and in TestBitEnumFixtures because
+          the currently edited fixture has a parser error at line 32.
+      - command: go vet ./...
+        result: passed
+  - id: lowering.sec-mlir-checked-integers
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements Package 7's checked builtin-integer foundation from immutable
+      Sema operator facts through canonical Semantic IR failure CFG. The current
+      representation has subsequently evolved to Package 9 schema v5 typed
+      reasons; Package 8 owns Arith lowering and signless normalization.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package7.md
+      - rules/mlir/packages/sec-mlir-dialect_package7.yaml
+      - rules/foundations/operators.md
+      - rules/errors/runtime_checks.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+    code:
+      - internal/sema/semantic_facts.go
+      - internal/sema/analyzer.go
+      - internal/sema/constants.go
+      - internal/diagnostics/diagnostics.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/include/sec/Conversion/SecToCore/Passes.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - internal/mlir/toolchain_test.go
+      - cmd/compiler/emit_sec_mlir_test.go
+      - testdata/semantic_ir/checked_integer_ops.sec
+      - mlir/test/Dialect/Sec/checked-integers-roundtrip.mlir
+      - mlir/test/Dialect/Sec/checked-integer-guard.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-type.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-negation.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-guard.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-guards.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-operations.mlir
+      - mlir/test/Conversion/SecToCore/schema4-checked-integer-layout.mlir
+      - mlir/test/Conversion/SecToCore/schema4-checked-integer-layout-32.mlir
+    implemented:
+      - read-only ResolvedOperatorOf facts recorded during successful Sema without query-time inference
+      - closed builtin-integer classifications for unary plus, checked negation, checked arithmetic, bitwise operations, signed/unsigned checked shifts, and six comparisons
+      - active integer width coverage for 8, 16, 32, 64, 128, 256, int, uint, and byte families
+      - Semantic IR operations with explicit semantic kinds rather than AST operator strings
+      - checked result, bool failure, and typed reason triples for negation, arithmetic, and shifts after the Package 9 evolution
+      - dedicated immediate failure and success blocks for every checked operation
+      - overflow, division, remainder, and shift arithmetic-failure terminators with source operator provenance
+      - Semantic IR verification of integer categories, signedness, result types, enums, failure categories, and canonical checked guard structure
+      - deterministic Semantic IR formatting for multi-result integer operations
+      - Sec MLIR checked integer operations and sec.fail.arithmetic, currently emitted as schema version 6 with schema-4 and schema-5 parsing compatibility
+      - ODS operation definitions and custom verifiers rejecting named, distinct, signless, i1, mismatched, and invalid-signedness operands
+      - dedicated sec/Analysis sec-verify-checked-integer-guards function pass with immediate-use, dedicated-failure-block, category, operator, and result-use validation
+      - compiler verification invokes the checked-integer guard pass for emitted Sec MLIR
+      - scalar-layout conversion preserves schema-v4 operation meaning and failure CFG while resolving target-sized signed and unsigned types
+      - trivial-core lowering leaves checked integer semantics explicit
+      - compile-time rejection of proven integer overflow, underflow, zero division/remainder, signed minimum divided or remaindered by minus one, invalid shifts, signed shift overflow, and signed-minimum negation
+      - focused UnsupportedFeatureError boundaries for try, float, decimal, named, unit-bearing, and compound-assignment arithmetic
+      - complete schema-v4 enum, active-width, malformed-operation, and checked-guard G01-G12 regression matrices
+      - end-to-end Sec source emission and real sec-mlir-opt verification before and after scalar-core lowering for 32-bit and 64-bit target plans
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 52 tests
+      - command: go test ./...
+        result: passed
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/checked_integer_ops.sec --target linux-armv7 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package7-armv7.mlir
+        result: passed with schema-v4 guard verification
+      - command: build/sec-mlir/bin/sec-mlir-opt --sec-verify-checked-integer-guards --sec-lower-scalar-core --sec-verify-checked-integer-guards /tmp/sec-package7-armv7.mlir
+        result: passed; target-sized int resolved to si32 and wide integer widths were preserved
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/checked_integer_ops.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package7-amd64.mlir
+        result: passed with schema-v4 guard verification
+      - command: build/sec-mlir/bin/sec-mlir-opt --sec-verify-checked-integer-guards --sec-lower-scalar-core --sec-verify-checked-integer-guards /tmp/sec-package7-amd64.mlir
+        result: passed; target-sized int resolved to si64 and wide integer widths were preserved
+      - command: validate implementation-status.yaml
+        result: passed
+  - id: lowering.sec-mlir-checked-integer-arith
+    area: mlir-dialect-conversion
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements SEC-MLIR-P8 by lowering every builtin integer semantic
+      operation to total signless Arith computations while preserving explicit
+      failure flags, Package 9 typed reasons, failure CFG, scalar provenance,
+      nominal identity, and foreign-call boundaries.
+    rules:
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/packages/sec-mlir-dialect_package8.md
+      - rules/mlir/packages/sec-mlir-dialect_package8.yaml
+    code:
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Conversion/SecIntegerToArith/Passes.h
+      - mlir/include/sec/Conversion/SecIntegerToArith/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - internal/lowering/secmlir/emitter_test.go
+      - mlir/test/Conversion/SecIntegerToArith/arithmetic.mlir
+      - mlir/test/Conversion/SecIntegerToArith/widths-constants-idempotent.mlir
+      - mlir/test/Conversion/SecIntegerToArith/provenance-storage-calls.mlir
+      - mlir/test/Conversion/SecIntegerToArith/pipeline-storage-provenance.mlir
+      - mlir/test/Conversion/SecIntegerToArith/invalid-preconditions.mlir
+      - mlir/test/Conversion/SecIntegerToArith/apint-differential.mlir
+      - mlir/test/Support/APIntDifferential.cpp
+      - testdata/semantic_ir/checked_integer_ops.sec
+    implemented:
+      - independently registered --sec-lower-checked-integers conversion pass
+      - registered --sec-lower-integer-core pipeline after trivial-core and target-aware scalar-layout resolution
+      - shared Package 7 checked-guard verifier invoked as a mandatory precondition
+      - plain siN/uiN normalization to signless iN for widths 8, 16, 32, 64, 128, and 256 without host-width arithmetic
+      - compatible function, block, return, branch, direct-call, foreign-call, constant, and Sec-origin rank-zero storage conversion
+      - mandatory extern and preserved storage/function sec.scalar_kind provenance
+      - closed scalar-kind compatibility validation for normalized extern integer arguments, extern integer results, and Sec-origin integer storage
+      - end-to-end integer-core pipeline preservation of storage scalar provenance through trivial-core, scalar-layout, and signless conversion
+      - exact APInt conversion of arbitrary-width signed and unsigned constants
+      - checked signed and unsigned add, subtract, and multiply using exact widening and explicit range tests
+      - checked negation and signedness-correct comparisons
+      - total signed and unsigned divide/remainder through safe-divisor substitution
+      - total shifts through safe-count normalization, arithmetic/logical right shift selection, and representability-checked signed left shift
+      - exact Package 9 dynamic reason selection where zero divisor takes precedence over overflow and invalid shift takes precedence over signed-left representability overflow
+      - bitwise and unary-plus lowering without overflow assumptions
+      - explicit preservation of sec.fail.arithmetic, foreign calls, named/distinct types, and failure CFG
+      - output free of schema-v4 sec.int operations, unrealized casts, poison assumption flags, and LLVM operations
+      - idempotent conversion and APInt differential coverage over representative and deterministic random values at every active width
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 58 tests under LLVM/MLIR 24.0.0git
+      - command: go test ./...
+        result: passed
+      - command: emit-sec-mlir checked_integer_ops.sec for linux-armv7 and linux-amd64 followed by --sec-lower-integer-core
+        result: passed; target int became i32/i64 respectively, all sec.int operations were discharged, explicit arithmetic failures remained, and no unrealized cast, poison flag, or LLVM operation was emitted
+  - id: lowering.abi-model
+    area: platform-and-lowering
+    status: planned
+    integrated: "2026-08-16"
+    document_revision: "1"
+    summary: >-
+      Adds the canonical Sec ABI model selected by each CompilationPlan,
+      including Sec, C, and system calling-convention resolution,
+      target-neutral parameter and return classification,
+      aggregate/direct/indirect transport, MLIR-stage CallABIPlan construction
+      and verification, native-versus-foreign representation boundaries, ABI
+      signatures and fingerprints, and separate-compilation compatibility
+      without duplicating FFI legality or source ownership semantics.
+    rules:
+      - rules/platform/abi.md
+      - rules/platform/platform_model.md
+      - rules/platform/ffi.md
+      - rules/memory/layout.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/raw_pointers.md
+      - rules/declarations/functions.md
+      - rules/projects/modules.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir.md
+    remaining:
+      - add canonical ABIIdentity and ABIModel selection to CompilationPlan and make downstream consumers use that resolved model instead of inferring ABI behavior from OS, architecture, target triple, host, or backend defaults
+      - resolve Sec, C, and system calling-convention families independently and allow system to reuse C only where the active CompilationPlan explicitly declares physical equivalence
+      - define canonical target-neutral ABIArgInfo and ABIValuePart representations for direct, indirect, ignored, split, alignment-sensitive, extension, and transport-attribute classification
+      - separate semantic type identity, resolved physical representation, ABI transport representation, ABI signature identity, and final linker symbol identity throughout frontend and lowering metadata
+      - implement position-sensitive ABI classification for parameters, returns, and foreign variadic arguments
+      - implement scalar transport rules including sign and zero extension and target-dependent machine classes without treating ABI extension as a Sec numeric conversion
+      - implement aggregate classification from canonical ResolvedLayout plus ABI-specific field and category rules without a universal size-only register threshold
+      - represent indirect parameters and hidden return storage as compiler ABI machinery without introducing source RawPtr, ownership, borrow, lifetime, copy, or move semantics
+      - consume complete resolved native Sec safe-reference representations rather than hard-coding ref T as one native pointer
+      - classify RawPtr values using the active address-space raw-pointer representation without attaching ownership, lifetime, bounds, or non-null guarantees
+      - classify native Sec descriptors, structs, enums, tagged unions, Result, Option, and callable values from their canonical resolved representations without recreating their layout rules in the ABI subsystem
+      - keep ABI physical representability separate from FFI source-position legality and reject any implicit string, slice, list, or collection decomposition that is not explicitly defined by FFI
+      - "resolve compiler-known C scalar physical representation through the active C ABI and keep C:: identities distinct from physically similar Sec scalar types"
+      - integrate C struct, union, enum, bitfield, flexible-array, function-pointer, and foreign-vararg representation and classification with one coherent C ABI identity while leaving legality to ffi.md
+      - implement verified FFI ref and ref mut boundary adaptation from call-bounded Sec borrow semantics to the selected foreign address representation without changing native Sec reference representation
+      - implement native callable and C::fn as distinct representation families and construct callback thunks as explicit two-sided ABI bridges validated by FFI and Sema
+      - make callback and other ABI bridges materialize only semantic adaptations already approved by owning rules and never invent conversions or ownership changes to fit a foreign signature
+      - build whole-call assignment state after classification so register and resource exhaustion, stack fallback, split-value rules, hidden parameters, and outgoing stack layout follow the selected ABI
+      - represent stack argument offsets, sizes, alignments, and call-stack requirements explicitly in the final ABI plan rather than recomputing them approximately in later lowering
+      - keep target-neutral ABI classification independent of Sec MLIR and LLVM encoding and avoid requiring concrete physical register names unless an owning target rule needs them
+      - retain high-level semantic callable shape and calling-convention intent before Sec MLIR ABI lowering rather than materializing the final physical signature prematurely
+      - construct and verify CallABIPlan objects during the canonical Sec MLIR ABI-lowering stage from resolved semantic representations and the active ABIModel
+      - verify ABI-lowered Sec MLIR functions and calls against CallABIPlan for calling convention, return transport, hidden parameters, parameter part ordering, stack placement, variadic state, and required attributes
+      - prevent lower MLIR, LLVM dialect, LLVM IR, and backend stages from reclassifying a competing Sec ABI after the canonical ABI plan has been verified
+      - derive deterministic canonical ABISignature values for every concrete callable crossing a binary ABI boundary
+      - derive stable ABI fingerprints from canonical physical contract facts and ABI and schema identity while excluding source locations, display names, and other presentation-only metadata
+      - implement semantic ABI compatibility checks distinct from Sec type and callable compatibility and permit fingerprint equality only as an implementation optimization for canonical contract comparison
+      - persist sufficient semantic declaration identity, semantic signature identity, ABI signature, ABI fingerprint, ABI schema and model identity, and CompilationPlan ABI identity for separate compilation
+      - reject stale or incompatible native Sec artifacts before or during linking when persisted ABI metadata proves caller and callee physical contracts are incompatible
+      - introduce a native Sec ABI schema and version identity without promising binary compatibility across arbitrary Sec 0.1 compiler revisions
+      - keep native Sec ABI schema identity distinct from selected C and system ABI identity
+      - invalidate ABI-dependent lowering and artifacts when layout, parameter or result signature, calling convention, reference representation, ABI model or schema, hidden parameters, target, or other ABI-relevant CompilationPlan facts change
+      - avoid downstream ABI invalidation solely for implementation-body edits that preserve the complete canonical ABI contract where dependency tracking can prove equivalence
+      - preserve semantic-to-physical parameter and result correspondence for diagnostics and debug-information generation even when ABI lowering introduces hidden storage, widened transports, split parts, or machine-only temporaries
+      - add deterministic scalar, aggregate, reference, descriptor, C ABI, system ABI, callback, variadic, hidden-parameter, stack-layout, separate-compilation, stale-artifact, multi-Variant, and MLIR-boundary regression tests
+      - add cross-compilation tests proving ABI selection and classification come from the CompilationPlan rather than the compiler host
+      - add determinism tests proving identical ABI classification, CallABIPlan, ABISignature, ABIFingerprint, and diagnostics independent of map order, source traversal, and compiler worker scheduling
+      - update implementation-status verification commands when the first canonical ABI-model vertical slice is integrated
+    excluded:
+      - source ownership, borrow, copy, move, and destruction semantics
+      - FFI source-position legality and foreign resource ownership
+      - general storage-layout ownership
+      - linker symbol spelling, mangling, dead stripping, and export policy
+      - stable native Sec ABI compatibility across arbitrary compiler releases
+      - implicit string or collection decomposition for C ABI
+      - hard-coded physical register names in the target-neutral ABI classification model
+  - id: lowering.semantic-ir-v2
+    area: semantic-ir-to-sec-mlir
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - multiple Semantic IR packages lower into versioned Sec MLIR schemas
+    - struct semantic values and current checked arithmetic/errorhandling slices have end-to-end lowering coverage
+    remaining:
+    - lower canonical iterator semantics without runtime-dispatch or closed-whitelist assumptions
+    - lower collection/shaped semantic operations
+    - lower Arena state/domain/epoch and allocation-context operations
+    - lower task/thread/channel/synchronization operations
+    - lower reference/storage invalidation and profile-selected checks
+    - lower panic/assert/check semantics without inventing exception unwinding
+    - lower complete effect/volatile/hardware/interrupt contracts
+    - prevent backend metadata assumptions stronger than Semantic IR proof
+    - ensure lowering never re-runs source semantic resolution
+    required_tests:
+    - Iterator[T] static target reaches Sec MLIR
+    - Arena epoch semantics preserved
+    - panic and Result remain distinct
+    - task/thread ownership transfer preserved
+    - hardware transaction plan preserved
+    - no hidden allocation introduced
+  - id: lowering.compiler-pipeline
+    area: sec-mlir-to-target-pipeline
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - P1-P14 establish versioned Sec MLIR schemas and verified vertical lowering slices
+    - real sec-mlir-opt/MLIR verification is used for represented package paths
+    - target-plan scalar/layout support exists for 32-bit and 64-bit plans
+    - legacy direct LLVM paths remain for represented compatibility subsets
+    remaining:
+    - make Sec MLIR the canonical complete lowering path for all maintained language features
+    - retire or clearly isolate legacy direct LLVM semantic duplication
+    - ensure every emitted Sec MLIR artifact is verified before publication
+    - complete lower-dialect/LLVM/object/link coverage for currently frontend-valid unsupported features
+    - ensure backend attributes never exceed Semantic IR proof
+    - integrate inline assembly through the canonical resolved contract once its rulebook is finalized

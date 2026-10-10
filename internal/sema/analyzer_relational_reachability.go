@@ -23,6 +23,16 @@ func (a *Analyzer) pureIntegerCondition(condition ast.Expression) bool {
 		return a.pureIntegerCondition(infix.Left) && a.pureIntegerCondition(infix.Right)
 	case "<", "<=", ">", ">=", "==", "!=":
 		return a.pureIntegerOperand(infix.Left) && a.pureIntegerOperand(infix.Right)
+	case "in", "not in":
+		// Membership in a constant integer range negates exactly into the
+		// opposite membership (rules/foundations/operators.md — "Range membership").
+		bounds, isRange := infix.Right.(*ast.RangeExpression)
+		if !isRange || bounds.Start == nil || bounds.End == nil || !a.pureIntegerOperand(infix.Left) {
+			return false
+		}
+		_, startConstant := a.constantConditionIntegerValue(bounds.Start)
+		_, endConstant := a.constantConditionIntegerValue(bounds.End)
+		return startConstant && endConstant
 	}
 	return false
 }
@@ -59,7 +69,7 @@ func negatedIntegerCondition(condition ast.Expression) ast.Expression {
 	case "||":
 		return &ast.InfixExpression{Token: infix.Token, Left: negatedIntegerCondition(infix.Left), Operator: "&&", Right: negatedIntegerCondition(infix.Right)}
 	}
-	complement := map[string]string{"<": ">=", "<=": ">", ">": "<=", ">=": "<", "==": "!=", "!=": "=="}[infix.Operator]
+	complement := map[string]string{"<": ">=", "<=": ">", ">": "<=", ">=": "<", "==": "!=", "!=": "==", "in": "not in", "not in": "in"}[infix.Operator]
 	return &ast.InfixExpression{Token: infix.Token, Left: infix.Left, Operator: complement, Right: infix.Right}
 }
 
@@ -115,6 +125,8 @@ func (a *Analyzer) recordPathConditionFact(condition ast.Expression, holds bool)
 		// Only a pure integer condition or a variant test on a binding has
 		// a sound negation.
 		if negated, ok := negatedVariantStateTest(condition); ok {
+			condition = negated
+		} else if negated, ok := negatedNullTest(condition); ok {
 			condition = negated
 		} else if a.pureIntegerCondition(condition) {
 			condition = negatedIntegerCondition(condition)

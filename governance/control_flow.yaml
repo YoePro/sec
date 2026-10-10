@@ -5,126 +5,120 @@ integrations:
   - id: frontend.defer-cleanup-state-isolation
     area: frontend-control-flow-and-lifetime
     status: partial
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-16'
-    document_last_updated: '2026-08-16'
-    summary: Defer registration analysis now isolates Arena generations and current resource-close state along with
-      symbols, assignment, move, borrow, and reference state. Cleanup-time effects still require explicit Semantic IR
-      representation and application on cleanup edges.
+    document_revision: "2.0"
+    document_created: "2026-08-16"
+    document_last_updated: "2026-08-16"
+    summary: Defer registration analysis now isolates Arena generations and current resource-close state along with symbols, assignment, move, borrow, and reference state. Cleanup-time effects still require explicit Semantic IR representation and application on cleanup edges.
     rules:
-    - rules/control-flow/defer.md
-    - rules/memory/ownership.md
-    - rules/memory/borrowing.md
-    - rules/memory/lifetime_analysis.md
-    - rules/compiler/semantic_ir.md
+      - rules/control-flow/defer.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/semantic_facts.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/sema/copy_move_test.go
-    - internal/sema/destruction_test.go
-    - testdata/defer_valid.sec
-    - testdata/defer_invalid.sec
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - testdata/defer_valid.sec
+      - testdata/defer_invalid.sec
     implemented:
-    - defer body is analyzed in copied symbol state
-    - defer body is analyzed in copied definite-assignment state
-    - defer body is analyzed in copied move/move-reason state
-    - defer body is analyzed in copied borrow state
-    - defer body is analyzed in copied local-reference-container state
-    - defer body is analyzed in copied Arena-generation and current resource-close state
-    - captured outer uses are converted to pending deferred-use borrow records after defer-body analysis
-    - immediate Arena.Reset and Arena.Release increment arena generation so older arena-derived references become
-      stale
+      - defer body is analyzed in copied symbol state
+      - defer body is analyzed in copied definite-assignment state
+      - defer body is analyzed in copied move/move-reason state
+      - defer body is analyzed in copied borrow state
+      - defer body is analyzed in copied local-reference-container state
+      - defer body is analyzed in copied Arena-generation and current resource-close state
+      - captured outer uses are converted to pending deferred-use borrow records after defer-body analysis
+      - immediate Arena.Reset and Arena.Release increment arena generation so older arena-derived references become stale
     partial:
-    - deferred cleanup effects are not yet represented independently for later cleanup-edge consumers
+      - deferred cleanup effects are not yet represented independently for later cleanup-edge consumers
     remaining:
-    - isolate arena generation state while validating a deferred body
-    - represent deferred Arena.Reset/Release invalidation as a future cleanup effect rather than mutating the ordinary
-      continuation
-    - audit every mutable Sema flow domain touched by defer-body analysis for registration-time versus cleanup-time
-      semantics
-    - separate current resource lifecycle state from registered future cleanup where the present closedResources model
-      conflates them
-    - preserve deferred cleanup effects explicitly in resolved Sema/Semantic IR facts with registration point and
-      canonical cleanup order
-    - apply arena/resource invalidation only on cleanup edges in later flow analysis and lowering
-    - add focused regression coverage for ordinary use between defer registration and cleanup
+      - isolate arena generation state while validating a deferred body
+      - represent deferred Arena.Reset/Release invalidation as a future cleanup effect rather than mutating the ordinary continuation
+      - audit every mutable Sema flow domain touched by defer-body analysis for registration-time versus cleanup-time semantics
+      - separate current resource lifecycle state from registered future cleanup where the present closedResources model conflates them
+      - preserve deferred cleanup effects explicitly in resolved Sema/Semantic IR facts with registration point and canonical cleanup order
+      - apply arena/resource invalidation only on cleanup edges in later flow analysis and lowering
+      - add focused regression coverage for ordinary use between defer registration and cleanup
     bug_reference:
-    - correction18.md
+      - correction18.md
     governance_reconciliation:
-    - 'Keep frontend.defer-v2 partial. Qualify the implemented registration and delayed-use statements: pending outer-value
-      use restrictions are represented, but cleanup-time state mutation is not completely isolated from registration-time
-      analysis.'
-    - Add "isolate cleanup-time state mutations such as Arena.Reset/Release generation invalidation from ordinary
-      post-registration flow state" to remaining work.
-    - Existing remaining work for unified cleanup order, callable contexts, dynamic loop registration, Semantic IR,
-      and backend lowering remains unchanged.
+      - "Keep frontend.defer-v2 partial. Qualify the implemented registration and delayed-use statements: pending outer-value use restrictions are represented, but cleanup-time state mutation is not completely isolated from registration-time analysis."
+      - Add "isolate cleanup-time state mutations such as Arena.Reset/Release generation invalidation from ordinary post-registration flow state" to remaining work.
+      - Existing remaining work for unified cleanup order, callable contexts, dynamic loop registration, Semantic IR, and backend lowering remains unchanged.
     required_tests:
-    - deferred Arena.Reset does not stale a pre-existing arena reference before cleanup
-    - immediate Arena.Reset still stales an older arena reference
-    - deferred Arena.Release does not advance current arena generation before cleanup
-    - multiple deferred arena invalidations do not mutate current generation at registration
-    - conditional deferred arena invalidation does not leak into ordinary continuation
-    - cleanup-time arena invalidation retains canonical LIFO ordering
+      - deferred Arena.Reset does not stale a pre-existing arena reference before cleanup
+      - immediate Arena.Reset still stales an older arena reference
+      - deferred Arena.Release does not advance current arena generation before cleanup
+      - multiple deferred arena invalidations do not mutate current generation at registration
+      - conditional deferred arena invalidation does not leak into ordinary continuation
+      - cleanup-time arena invalidation retains canonical LIFO ordering
 
   - id: frontend.loop-arena-generation-fixed-point
     area: frontend-control-flow-and-reference-validity
     status: implemented
-    audited: '2026-08-20'
+    audited: "2026-08-20"
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_while.md
-    primary_document_revision: '2.0'
+    primary_document_revision: "2.0"
     related_documents:
-    - rules/control-flow/flowcontrol_for.md
-    - rules/memory/reference_model.md
-    - rules/compiler/rules_implementations.txt
-    summary: Loop fixed-point analysis carries ArenaDomain generations with move state, resources, borrows, and local
-      reference origins. Fallthrough and continue backedges merge generations into the loop header, generation changes
-      participate in convergence, and replay uses the merged header state for both while and for loops.
+      - rules/control-flow/flowcontrol_for.md
+      - rules/memory/reference_model.md
+      - rules/compiler/rules_implementations.txt
+    summary: Loop fixed-point analysis carries ArenaDomain generations with move state, resources, borrows, and local reference origins. Fallthrough and continue backedges merge generations into the loop header, generation changes participate in convergence, and replay uses the merged header state for both while and for loops.
     code:
-    - internal/sema/analyzer.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_for.go
+      - internal/sema/analyzer_while_flow.go
+      - internal/sema/analyzer_arena_flow.go
     implemented:
-    - arena reset/release advance current Sema arena generation
-    - stale arena-reference checks compare reference generation to current arena generation
-    - loop fixed-point state carries move state
-    - loop fixed-point state carries close-tracked resource state
-    - loop fixed-point state carries borrow state
-    - loop fixed-point state carries local reference-origin state
-    - break edges record arena generation for post-loop merging
-    - post-loop arena generations are conservatively merged
-    - loop header/backedge state carries ArenaDomain generations
-    - continue edges snapshot and merge ArenaDomain generations
-    - fixed-point convergence compares generation maps
-    - replay restores the merged header generation state
-    - while and for use the corrected shared fixed-point helper
-    remaining:
-    - prefer one structured LoopEdgeState carrying every tracked semantic domain
+      - arena reset/release advance current Sema arena generation
+      - stale arena-reference checks compare reference generation to current arena generation
+      - loop fixed-point state carries move state
+      - loop fixed-point state carries close-tracked resource state
+      - loop fixed-point state carries borrow state
+      - loop fixed-point state carries local reference-origin state
+      - break edges record arena generation for post-loop merging
+      - post-loop arena generations are conservatively merged
+      - loop header/backedge state carries ArenaDomain generations
+      - continue edges snapshot and merge ArenaDomain generations
+      - fixed-point convergence compares generation maps
+      - replay restores the merged header generation state
+      - while and for use the corrected shared fixed-point helper
+      - "one structured loop edge state (2026-10-10): loopEdgeState carries every loop-carried domain (definite assignment, move state and reasons, close-tracked resources, borrows, local reference origins, ArenaDomain generations); every break and continue edge records a complete loopEdgeState, the loop-header snapshot embeds the same structure, and every merge, backedge and scoped-binding cleanup consumes edges instead of thirteen parallel per-domain lists, so a new domain cannot be carried on one edge kind and forgotten on another"
+    remaining: []
     bug_reference:
-    - correction25.md
+      - correction25.md
     governance_reconciliation:
-    - Add loop-carried arena-generation validity to frontend.while-statements-v2 remaining work. The existing generic
-      loop/fixed-point claims do not document this omitted semantic state.
-    - Add the same shared-helper limitation to for-loop governance where loop-header fixed-point support is described.
-    - correction21.md continues to own nested break-target return/fallthrough analysis; correction22.md continues
-      to own logical short-circuit frontend runtime-state analysis.
+      - Add loop-carried arena-generation validity to frontend.while-statements-v2 remaining work. The existing generic loop/fixed-point claims do not document this omitted semantic state.
+      - Add the same shared-helper limitation to for-loop governance where loop-header fixed-point support is described.
+      - correction21.md continues to own nested break-target return/fallthrough analysis; correction22.md continues to own logical short-circuit frontend runtime-state analysis.
     required_tests:
-    - while second iteration sees Arena.Reset from first iteration
-    - for second iteration sees Arena.Reset from first iteration
-    - while continue edge carries arena generation
-    - for continue edge carries arena generation
-    - Arena.Release has identical generation behavior
-    - break-only arena generation affects exit but not nonexistent backedge
-    - nested loops preserve generation on the correct loop edge
+      - while second iteration sees Arena.Reset from first iteration
+      - for second iteration sees Arena.Reset from first iteration
+      - while continue edge carries arena generation
+      - for continue edge carries arena generation
+      - Arena.Release has identical generation behavior
+      - break-only arena generation affects exit but not nonexistent backedge
+      - nested loops preserve generation on the correct loop edge
+    tests:
+      - internal/sema/loop_edge_state_test.go
+    verification:
+      - command: go test ./... -count=1
+        result: passed on 2026-10-10 after the loopEdgeState refactor with unchanged loop, arena-generation, move, resource, borrow and reference-origin behavior; TestLoopEdgesCarryEveryDomain guards that every edge records every domain; remaining reduced from 1 to 0
+    revised: "2026-10-10"
 
   - id: frontend.discard-v2
     area: frontend-ownership-and-lowering
     status: partial
     integrated: "2026-09-04"
     document_revision: "2.0"
-    repository_baseline: "56be75d"
+    repository_baseline: 56be75d
     summary: >-
       Tracks revision-2.0 explicit and implicit discard semantics. The lexer,
       parser, AST, semantic analysis, compiler dump, and current backend path
@@ -266,13 +260,14 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run Discard -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
+
   - id: frontend.defer-v2
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-16"
     revised: "2026-09-26"
     document_revision: "2.0"
-    repository_baseline: "56be75d"
+    repository_baseline: 56be75d
     replaces: rules/control-flow/defer.txt
     summary: >-
       Tracks revision-2.0 invocation-scoped deferred cleanup. The parser and
@@ -430,20 +425,20 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-26"
-    revised: "2026-10-01"
+    revised: "2026-10-10"
     document_revision: "2.0"
-    repository_baseline: "0f92cf4"
+    repository_baseline: 0f92cf4
     replaces: rules/control-flow/flowcontrol_if.txt
     summary: >-
       Tracks revision-2.0 if, else-if, and else semantics. The established
       parser and Sema cover mandatory branch blocks, boolean-only conditions,
-      ordinary logical/comparison/membership expressions, source-ordered
-      branch evaluation, lexical branch scopes, definite-assignment merging,
-      terminating branches, comparison-chain rejection, and proven
-      unreachable statements. Sema now publishes immutable true/false path
-      execution and continuation facts for return checking and later analyses.
-      State-test/FFI boundaries and the complete revision-2.0 regression matrix
-      still require synchronization.
+      ordinary logical/comparison/membership expressions, source-ordered branch
+      evaluation, lexical branch scopes, definite-assignment merging,
+      terminating branches, comparison-chain rejection, and proven unreachable
+      statements. Sema now publishes immutable true/false path execution and
+      continuation facts for return checking and later analyses. State-test/FFI
+      boundaries and the complete revision-2.0 regression matrix still require
+      synchronization.
     rules:
       - rules/control-flow/flowcontrol_if.md
       - rules/foundations/grammar.md
@@ -474,6 +469,9 @@ integrations:
       - testdata/parser/condition_pattern_binding_invalid.sec
       - testdata/sema/union_state_tests_valid.sec
       - testdata/basic_types_valid.sec
+      - internal/codegen/readiness/controlflow/if_lazy_test.go
+      - testdata/control_flow/if_lazy/evaluation.sec
+      - testdata/control_flow/if_lazy/harness.c
     implemented:
       - "Semantic IR if join (2026-10-06): an if without else whose body continues now branches to the merge block exactly once; the former code reused the then-branch end as the else end and emitted a second branch, so every such if produced invalid Semantic IR (TestIfWithoutElseJoinsOnce)"
       - if, else-if, and else syntax with mandatory braces
@@ -496,11 +494,11 @@ integrations:
       - mutable dependence is transitive for constant conditions; an immutable binding initialized from a mutable binding's current value (Symbol.TransientConstant) never proves a condition constant, so loop-body branches over such values stay runtime conditions
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
       - "MD-006 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 7, 2026-10-03): non-binding is state tests are ordinary bool expressions at the non-chainable equality level in every expression context (let, return, &&/||, arguments); `is not` negates variant, empty, Some, None, and available tests; ungrouped chaining with == or != is rejected; `(test) == true` (A2002) and `!(test)` (A2003) are bad-practice warnings with explicit Language Corrections; `is Some(binding)` binds only as the complete if condition, while `is not Some(value)` and `!(option is Some(value))` receive focused parser diagnostics; negated tests keep data-flow refinement"
+      - "executable lazy-if regression matrix (2026-10-10): 20 exact side-effect traces cover dynamic AND/OR, nested grouping, first/second/third/else branch selection and logical conditions throughout else-if chains; LLVM and existing MLIR verify and compile for amd64 and armv7 at O0/O2, and every host executable checks condition frequency, left-to-right ordering, skipped RHS/later-condition calls and exactly one selected body"
     remaining:
       - "MD-006 lowering: the legacy LLVM generator and Semantic IR do not lower state tests outside the existing if/while condition forms; they reject them explicitly"
       - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
-      - complete focused tests for short-circuit side effects and lazy source-order evaluation across else-if chains
       - add explicit try Result[bool, E] acceptance and non-bool successful-result rejection coverage
       - complete the revision-2.0 parser, Sema, flow-analysis, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     required_tests:
@@ -521,6 +519,12 @@ integrations:
       - definite assignment fails when a continuing path does not assign
       - proven unreachable statements follow the canonical unreachable-code diagnostic policy
     verification:
+      - command: go vet ./internal/codegen/readiness/controlflow
+        result: passed on 2026-10-10
+      - command: go test ./internal/sema -run 'ResolvedIfFlow|ResolvedLogicalFlow|LogicalShortCircuit|FoldedBooleanConditions' -count=1
+        result: passed on 2026-10-10
+      - command: go test -race ./internal/codegen/readiness/controlflow -count=1 -v
+        result: passed on 2026-10-10 with no skipped subtests; 20 observable lazy-if scenarios run through LLVM and existing MLIR at O0/O2 on amd64, with armv7 cross-target object validation; remaining reduced from 6 to 5, control_flow remaining from 112 to 111
       - command: go test ./internal/parser -run 'If|ComparisonChaining' -count=1
         result: passed
       - command: go test ./internal/sema -run 'IfConditionMustBeBool|IfBranchesCanSatisfyFunctionReturn|ComparisonChainingIsRejected|IfBranch|DefiniteAssignment' -count=1
@@ -541,16 +545,16 @@ integrations:
     reviewed: "2026-09-22"
     revised: "2026-10-05"
     document_revision: "2.0"
-    repository_baseline: "56be75d"
+    repository_baseline: 56be75d
     replaces: rules/control-flow/flowcontrol_while.txt
     summary: >-
       Tracks revision-2.0 condition-controlled while loops. The established
-      frontend covers while syntax, boolean-only conditions, lexical body
-      scope, nearest-loop break and continue tracking, zero-iteration flow,
+      frontend covers while syntax, boolean-only conditions, lexical body scope,
+      nearest-loop break and continue tracking, zero-iteration flow,
       non-continuing while-true loops, reachable-break continuations, and
       backend condition/body/end control flow. State-test integration,
-      switch-nested loop targets, fully general post-loop assignment proof,
-      and the complete revision-2.0 diagnostic matrix remain incomplete.
+      switch-nested loop targets, fully general post-loop assignment proof, and
+      the complete revision-2.0 diagnostic matrix remain incomplete.
     rules:
       - rules/control-flow/flowcontrol_while.md
       - rules/control-flow/flowcontrol_if.md
@@ -694,18 +698,9 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     document_revision: "2.0"
-    repository_baseline: "56be75d"
+    repository_baseline: 56be75d
     replaces: rules/control-flow/flowcontrol_switch.txt
-    summary: >-
-      Tracks revision-2.0 subject and subjectless switch statements. Parser
-      and Sema support ordered value, range, relational, and comma-separated
-      alternatives, default and explicit fallthrough validation, independent
-      case scopes, continuing-path assignment merges, termination analysis,
-      compiler-owned ResolvedSwitchFlow coverage facts, and substantial
-      compile-time duplicate and coverage diagnostics. LLVM
-      covers the currently supported expression families, while MLIR covers
-      integer and bool subject switches; broader lowering, cleanup edges, and
-      the complete statement-only and loop-control boundary matrix remain.
+    summary: Tracks revision-2.0 subject and subjectless switch statements. Parser and Sema support ordered value, range, relational, and comma-separated alternatives, default and explicit fallthrough validation, independent case scopes, continuing-path assignment merges, termination analysis, compiler-owned ResolvedSwitchFlow coverage facts, and substantial compile-time duplicate and coverage diagnostics. LLVM covers the currently supported expression families and lazy subjectless alternatives. MLIR covers integer and bool subject switches, subjectless boolean switches with reached-only comma alternatives, and explicit body-to-body fallthrough with independent scopes; broader lowering, cleanup edges, and the complete regression matrix remain.
     rules:
       - rules/control-flow/flowcontrol_switch.md
       - rules/control-flow/flowcontrol_if.md
@@ -727,6 +722,9 @@ integrations:
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
       - internal/diagnostics/diagnostics.go
+      - internal/parser/switch_case.go
+      - internal/codegen/mlir/switch.go
+      - internal/codegen/llvm/switch.go
     tests:
       - internal/parser/parser_test.go
       - internal/parser/switch_recovery_test.go
@@ -743,6 +741,15 @@ integrations:
       - internal/codegen/llvm/generator_test.go
       - testdata/switch_valid.sec
       - testdata/switch_invalid.sec
+      - internal/parser/switch_struct_pattern_test.go
+      - cmd/compiler/switch_pattern_diagnostic_test.go
+      - cmd/lsp/switch_pattern_diagnostic_test.go
+      - testdata/parser/switch_patterns
+      - internal/codegen/readiness/controlflow/subjectless_switch_test.go
+      - testdata/control_flow/subjectless_switch/evaluation.sec
+      - testdata/control_flow/subjectless_switch/harness.c
+      - internal/codegen/readiness/controlflow/switch_fallthrough_test.go
+      - testdata/control_flow/switch_fallthrough
     implemented:
       - subject and subjectless switch parsing with AST source-order retention
       - value, range, relational, and comma-separated case alternatives
@@ -767,15 +774,16 @@ integrations:
       - variant payload binding (Ok, Err, Some, bare subject-union variants, and qualified Union.Variant callees with an unbound or underscore payload argument) and bare underscore wildcard items report mandatory S1056/switch.pattern-binding with match or default help instead of undefined-name cascades; constructed values with resolvable arguments remain value cases
       - break and continue directly inside switch are rejected outside loops and resolve to the enclosing loop inside one, with a nested-switch break recorded as a reachable loop exit
       - switch statement analysis lives in internal/sema/analyzer_switch.go with per-function rulebook traceability
+      - struct-shaped switch case destructuring (bare or qualified type heads, shorthand fields, wildcard and reference fields) reports one focused P2009 parser.invalid-pattern with match help; balanced recovery preserves comma alternatives, clause bodies, later clauses and declarations, while explicit struct-value fields, spreads, nested values and empty literals retain ordinary expression parsing
+      - subjectless switch is lowered through the existing MLIR backend with one conditional edge per comma alternative, source-order reached-only evaluation, first-match selection, optional default/unmatched continuation, normal case completion, independent case scopes and enclosing-loop control; LLVM subjectless comma alternatives use the same lazy edge model after executable traces exposed eager evaluation
+      - explicit fallthrough lowers through the existing MLIR backend as a direct edge to the immediate successor body, bypassing destination tests and supporting chained and nested switches, default successors and terminal returns; case bodies retain sibling lexical scopes, trailing comments are accepted, and invalid final/default/non-final-position transfers remain rejected
+      - fallthrough placement authority is tied to membership in the current AST case body instead of an inherited boolean context, so nested if, loop, lambda and unsafe blocks cannot transfer to an enclosing case while a nested switch retains its own valid successor
     remaining:
       - add focused lowering tests proving nested switch break and continue resolve only to an enclosing loop
-      - give struct-shaped variant destructuring in switch case items (for example case Move { x, y }:) a focused pattern diagnostic; it currently produces a parser cascade because the struct-literal value form and shorthand field rules do not yet distinguish it
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
-      - lower subjectless switch through MLIR
       - lower range and relational switch cases through MLIR
-      - lower explicit fallthrough through MLIR
       - lower string and other currently unsupported subject types through MLIR
       - extend compile-time coverage to computed string constants beyond direct literals
       - implement full unit-aware and named-semantic-type-aware overlap reasoning
@@ -811,6 +819,28 @@ integrations:
       - definite assignment includes unmatched path when coverage is incomplete
       - terminating switch recognized when every reachable path terminates
     verification:
+      - command: go vet ./...
+        result: passed on 2026-10-10 after explicit MLIR fallthrough lowering and direct-case Sema placement validation
+      - command: go test ./... -count=1
+        result: passed on 2026-10-10 after explicit MLIR fallthrough lowering and direct-case Sema placement validation
+      - command: go test ./internal/codegen/mlir ./internal/codegen/llvm -run 'Switch|Match' -count=1
+        result: passed on 2026-10-10 after fallthrough lowering and restoring match-statement emission alongside other match methods
+      - command: go test -race ./internal/codegen/readiness/controlflow ./internal/sema -run 'Switch|Fallthrough' -count=1
+        result: passed on 2026-10-10; 15 executable fallthrough traces verify body-to-body transfer and skipped successor tests through LLVM/MLIR at O0/O2 on amd64 with armv7 objects, and eight invalid fixtures verify placement and lexical scope; remaining reduced from 12 to 11, control_flow remaining from 110 to 109
+      - command: go vet ./...
+        result: passed on 2026-10-10 after subjectless switch lowering
+      - command: go test ./... -count=1
+        result: passed on 2026-10-10 after subjectless MLIR switch lowering, lazy LLVM comma-alternative correction and cohesive switch emitter extraction
+      - command: go test -race ./internal/codegen/readiness/controlflow -count=1 -v
+        result: passed on 2026-10-10 with no skipped subtests; 17 observable subjectless-switch scenarios and the existing 20 lazy-if scenarios run through LLVM and MLIR at O0/O2 on amd64, with armv7 object validation; switch remaining reduced from 13 to 12, control_flow remaining from 111 to 110
+      - command: go test ./internal/codegen/llvm ./internal/codegen/mlir -run Switch -count=1
+        result: passed on 2026-10-10; existing subject-valued switches retain their supported behavior and unsupported range/fallthrough forms remain gated in MLIR
+      - command: go test ./... -count=1
+        result: passed on 2026-10-10 after focused struct-pattern recovery was implemented; frontend.switch-statements-v2 remaining reduced from 14 to 13, control_flow fragment remaining from 113 to 112
+      - command: go vet ./...
+        result: passed on 2026-10-10
+      - command: go test -race ./internal/parser ./cmd/compiler ./cmd/lsp -run 'SwitchStruct|SwitchCaseGuard|SwitchWildcard' -count=1
+        result: passed on 2026-10-10; seven struct-pattern fixtures produce exactly one focused parser error, recovery retains subsequent alternatives and declarations, valid struct-value cases still parse, and CLI/LSP preserve the error identity, location and match help
       - command: go test ./internal/parser -run Switch -count=1
         result: passed
       - command: go test ./internal/sema -run Switch -count=1
@@ -823,6 +853,7 @@ integrations:
         result: passed on 2026-10-01; value use, guards, payload binding, wildcard items, and loop-control targeting produce focused diagnostics without cascades
       - command: go test ./internal/formatter -run Switch -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
+    revised: "2026-10-10"
 
   - id: frontend.match-v2
     area: frontend-control-flow-ownership-and-lowering
@@ -830,7 +861,7 @@ integrations:
     integrated: "2026-08-17"
     audited: "2026-08-18"
     document_revision: "2.0"
-    repository_baseline: "56be75d"
+    repository_baseline: 56be75d
     replaces: rules/control-flow/flowcontrol_match.txt
     summary: >-
       Tracks revision-2.0 exhaustive structural and variant matching. The AST,
@@ -1038,19 +1069,19 @@ integrations:
     status: partial
     integrated: "2026-09-03"
     document_revision: "2.1"
-    repository_baseline: "998d8d1"
+    repository_baseline: 998d8d1
     replaces: rules/control-flow/flowcontrol_for.txt
     summary: >-
       Tracks revision-2.1 infinite, finite-range, and compiler-known iterable
       loops. The established parser and Sema cover plain/discard bindings,
-      sequential index/value and map key/value arity, iterable inference,
-      finite range validation, immutable lexical bindings, loop-control flow,
-      zero/non-continuing path analysis, and explicit compiler-known
-      Iterator[T] conformance with a Sema-owned static Next plan. LLVM lowers infinite and integer
-      range loops; MLIR additionally lowers fixed arrays and explicit floating
-      ranges. Explicit ref/ref-mut binding modes, copy-only value iteration,
-      canonical ascending default steps, structural iteration borrows, and
-      broad collection lowering remain incomplete.
+      sequential index/value and map key/value arity, iterable inference, finite
+      range validation, immutable lexical bindings, loop-control flow,
+      zero/non-continuing path analysis, and explicit compiler-known Iterator[T]
+      conformance with a Sema-owned static Next plan. LLVM lowers infinite and
+      integer range loops; MLIR additionally lowers fixed arrays and explicit
+      floating ranges. Explicit ref/ref-mut binding modes, copy-only value
+      iteration, canonical ascending default steps, structural iteration
+      borrows, and broad collection lowering remain incomplete.
     rules:
       - rules/control-flow/flowcontrol_for.md
       - rules/declarations/interfaces.md
@@ -1078,6 +1109,9 @@ integrations:
       - internal/codegen/llvm/statements.go
       - sec/core/string.sec
       - internal/sema/analyzer_for.go
+      - internal/sema/analyzer_for_categories.go
+      - internal/sema/iterator_lowering_readiness.go
+      - internal/sema/analyzer_inference.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -1095,6 +1129,7 @@ integrations:
       - testdata/sema/for_binding_modes_valid.sec
       - testdata/sema/for_binding_modes_invalid.sec
       - internal/sema/for_structural_mutation_test.go
+      - internal/sema/generic_iterator_parameters_test.go
     implemented:
       - infinite for block syntax
       - iterable for binding in expression block syntax
@@ -1133,6 +1168,7 @@ integrations:
       - the legacy MLIR generator rejects reference loop bindings explicitly instead of lowering them as copies
       - for statement analysis lives in internal/sema/analyzer_for.go with per-function rulebook traceability
       - while a loop iterates reusable dynamic-array, list, map, or set storage, a compiler-known structural operation (selected by the registry StructuralMutation contract, never by name) or an assignment on the iterated collection or any storage enclosing it is rejected with mandatory S1075 for.structural-mutation-during-iteration, the operation, both Places, help, and the loop location; element assignment, mutation inside one element or through a ref mut binding, sibling storage, ranges, and code after the loop remain valid
+      - "generic iterator parameters (2026-10-10): a for loop over a generic parameter constrained by Iterator[T], by value (fn F[I: Iterator[T]](values: I)) or as ref mut I, takes its element type and Next requirement from the constraint without an interface value or dispatch; each specialization resolves the concrete Next statically, a ref mut I parameter infers I from an owned mutable argument through the implicit call-site borrow (borrowing.md §15.2), and lowering readiness reports such template loops as Unproven (per-specialization lowering) instead of Invalid"
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
@@ -1151,6 +1187,7 @@ integrations:
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
       - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
+      - "a direct Iterator[T] parameter type as written by stdlib_str.md (fn Join(values: Iterator[string], ...)) is blocked on MD-057; the explicit generic forms are implemented"
     excluded:
       - condition-only and C-style for loops
       - consuming for bindings or move-source iteration in Sec 0.1
@@ -1203,6 +1240,8 @@ integrations:
       - reachable break restores a continuing post-loop path
       - break and continue execute required cleanup edges
     verification:
+      - command: go test ./internal/sema -run TestGenericIteratorParameter -count=1
+        result: passed on 2026-10-10 with by-value and ref mut generic iterator parameters, element typing, constraint failure, and the implicit mutable borrow check in return position
       - command: go test ./internal/sema -run 'Iterator|TestResolvedForIteration|TestForCompilerKnown' -count=1
         result: passed on 2026-09-03
       - command: go test ./cmd/lsp -run 'TestAnalyzeCoreStringRecognizesCompilerKnownIterator|TestAnalyzeUsesCoreStringSplitIteratorInForLoop|TestCompletionIncludesIntrinsicTypesInTypePosition' -count=1
@@ -1223,385 +1262,355 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/sema ./internal/codegen/mlir -run 'Test(ForBindingModesAndConsumingForms|ForBindingModesAccepted|ForBindingModeDiagnostics|ForRangeStepRequirements|LegacyGeneratorRejectsReferenceLoopBindings)' -count=1
         result: passed on 2026-10-01; binding modes, consuming-form rejection, category and authority validation, plain-binding copyability, float/decimal and unsigned step rules, and the legacy MLIR guard are covered
-      - command: "go test ./internal/sema -run 'StructuralMutation|NonStructuralMutation' -count=1"
+      - command: go test ./internal/sema -run 'StructuralMutation|NonStructuralMutation' -count=1
         result: passed on 2026-10-02 with Append/Clear/RemoveAt/Remove/Add, whole and enclosing replacement, field and reference-parameter sources, and outer-loop sources from inner loops rejected, and eight structurally safe forms accepted
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-02 after the structural-stability check
+    revised: "2026-10-10"
+
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow
     status: implemented
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_for.md
-    primary_document_revision: '2.0'
-    primary_document_created: '2026-08-16'
-    primary_document_last_updated: '2026-08-16'
+    primary_document_revision: "2.0"
+    primary_document_created: "2026-08-16"
+    primary_document_last_updated: "2026-08-16"
     related_document: rules/control-flow/flowcontrol_while.md
-    summary: Implements current-loop-targeted infinite-loop exit classification for for and while true. The query
-      stops at nested loop ownership boundaries, remains transparent through switch/select/unsafe containers, and
-      excludes breaks in constant-unreachable if branches.
+    summary: Implements current-loop-targeted infinite-loop exit classification for for and while true. The query stops at nested loop ownership boundaries, remains transparent through switch/select/unsafe containers, and excludes breaks in constant-unreachable if branches.
     rules:
-    - rules/control-flow/flowcontrol_for.md
-    - rules/control-flow/flowcontrol_while.md
-    - rules/control-flow/flowcontrol_switch.md
-    - rules/compiler/semantic_ir.md
+      - rules/control-flow/flowcontrol_for.md
+      - rules/control-flow/flowcontrol_while.md
+      - rules/control-flow/flowcontrol_switch.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
+      - internal/sema/analyzer.go
     tests:
-    - internal/sema/analyzer_test.go
-    - testdata/for_valid.sec
-    - testdata/for_invalid.sec
-    - testdata/while_valid.sec
-    - testdata/while_invalid.sec
+      - internal/sema/analyzer_test.go
+      - testdata/for_valid.sec
+      - testdata/for_invalid.sec
+      - testdata/while_valid.sec
+      - testdata/while_invalid.sec
     implemented:
-    - break statements are validated against active loop context
-    - break analysis records state in the nearest active loop break frame
-    - direct break from an infinite for creates a continuing post-loop path
-    - direct break from while true creates a continuing post-loop path
-    - break inside switch nested in a loop semantically targets the surrounding loop
-    - infinite for with no syntactically discovered break is classified non-continuing
-    - while true with no syntactically discovered break is classified non-continuing
-    - outer-loop break search stops at nested for and while boundaries
-    - nested for and while breaks no longer make an outer infinite loop appear continuing
-    - switch remains transparent because it creates no Sec break target
-    - constant-unreachable if branches do not create false loop exits
+      - break statements are validated against active loop context
+      - break analysis records state in the nearest active loop break frame
+      - direct break from an infinite for creates a continuing post-loop path
+      - direct break from while true creates a continuing post-loop path
+      - break inside switch nested in a loop semantically targets the surrounding loop
+      - infinite for with no syntactically discovered break is classified non-continuing
+      - while true with no syntactically discovered break is classified non-continuing
+      - outer-loop break search stops at nested for and while boundaries
+      - nested for and while breaks no longer make an outer infinite loop appear continuing
+      - switch remains transparent because it creates no Sec break target
+      - constant-unreachable if branches do not create false loop exits
     verification:
       - command: go test ./internal/sema -run 'Test(NestedWhileBreak|NestedForBreak|UnreachableBreakDoesNotExit)' -count=1
         result: passed
       - command: go test ./internal/sema -run 'Test(ResolvedWhileFlowRetainsFoldedConditionAndExitFacts|FoldedTrueWhileControlsReturnAndReachability|NestedWhileBreakDoesNotExitInfiniteOuterWhile|UnreachableBreakDoesNotExitInfiniteWhile|WhileTrueBreakCarriesDefiniteAssignment)' -count=1
         result: passed on 2026-10-01; folded true, false, and runtime conditions publish stable flow facts, current-loop break reachability excludes impossible and nested breaks, and return plus enclosing-branch flow consume the same decision
     bug_reference:
-    - correction21.md
+      - correction21.md
     governance_reconciliation:
-    - 'Narrow frontend.for-loops-v2''s implemented claim "infinite-loop non-continuation without reachable break":
-      direct/current-loop cases are represented, but nested-loop break target identity is not preserved by the return/fallthrough
-      helper.'
-    - Add the same limitation to frontend.while-statements-v2. Its required matrix already says "nested break does
-      not exit outer loop", but the shared blockContainsBreak() helper violates that rule for return-path classification.
-    - Keep actual nearest-loop break-frame tracking as implemented; the defect is the secondary AST-based break-presence
-      query.
-    - Keep switch-nested break targeting the surrounding loop. The correction must not introduce a C-style switch
-      break target.
+      - "Narrow frontend.for-loops-v2's implemented claim \"infinite-loop non-continuation without reachable break\": direct/current-loop cases are represented, but nested-loop break target identity is not preserved by the return/fallthrough helper."
+      - Add the same limitation to frontend.while-statements-v2. Its required matrix already says "nested break does not exit outer loop", but the shared blockContainsBreak() helper violates that rule for return-path classification.
+      - Keep actual nearest-loop break-frame tracking as implemented; the defect is the secondary AST-based break-presence query.
+      - Keep switch-nested break targeting the surrounding loop. The correction must not introduce a C-style switch break target.
     required_tests:
-    - outer infinite for with nested for break remains non-continuing
-    - outer infinite for with nested while break remains non-continuing
-    - outer while true with nested for break remains non-continuing
-    - outer while true with nested while break remains non-continuing
-    - direct outer-loop break creates continuation
-    - break inside if directly belonging to outer loop creates continuation
-    - break inside switch nested in outer loop creates continuation
-    - code after outer infinite loop with only nested-loop breaks is unreachable
-    - non-void function ending in such outer loop satisfies return analysis
+      - outer infinite for with nested for break remains non-continuing
+      - outer infinite for with nested while break remains non-continuing
+      - outer while true with nested for break remains non-continuing
+      - outer while true with nested while break remains non-continuing
+      - direct outer-loop break creates continuation
+      - break inside if directly belonging to outer loop creates continuation
+      - break inside switch nested in outer loop creates continuation
+      - code after outer infinite loop with only nested-loop breaks is unreachable
+      - non-void function ending in such outer loop satisfies return analysis
 
   - id: frontend.discard-aggregate-temporary-ownership
     area: frontend-ownership-and-discard
     status: partial
-    audited: '2026-08-19'
-    revised: '2026-09-24'
+    audited: "2026-08-19"
+    revised: "2026-09-24"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-07-31'
-    document_last_updated_metadata: '2026-08-16'
+    document_revision: "2.0"
+    document_created: "2026-07-31"
+    document_last_updated_metadata: "2026-08-16"
     document_later_sync_commit: 20b3606
-    document_later_sync_date: '2026-08-17'
-    summary: Aggregate temporaries accepted by explicit discard now commit the same represented construction-time
-      ownership moves as ordinary aggregate initialization while preserving selected call-parameter semantics.
+    document_later_sync_date: "2026-08-17"
+    summary: Aggregate temporaries accepted by explicit discard now commit the same represented construction-time ownership moves as ordinary aggregate initialization while preserving selected call-parameter semantics.
     rules:
-    - rules/control-flow/discard.md
-    - rules/memory/ownership.md
-    - rules/memory/copy_move.md
-    - rules/memory/destruction.md
-    - rules/declarations/struct.md
-    - rules/declarations/unions.md
-    - rules/compiler/semantic_ir.md
+      - rules/control-flow/discard.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/declarations/struct.md
+      - rules/declarations/unions.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/semantic_facts.go
-    - internal/ir/semantic
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/sema/copy_move_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
     implemented:
-    - explicit discard of a local identifier consumes the binding even when the value is copyable
-    - explicit discard of a move-only local identifier makes it unavailable
-    - discard checks pending deferred use and active borrow conflicts for simple identifier bindings
-    - discard of ref and ref mut local holders ends the holder
-    - explicit discard of function and method result temporaries is accepted when the result type is discardable
-    - explicit discard of named try/match error bindings is accepted in the current frontend
-    - current tests include Err(error) handler bodies containing discard error
-    - bare discard _ is rejected
-    - discarded struct and array literals commit represented move-only source transfers before terminal discard
-    - discard does not recursively reinterpret ordinary call arguments as aggregate ownership transfers
+      - explicit discard of a local identifier consumes the binding even when the value is copyable
+      - explicit discard of a move-only local identifier makes it unavailable
+      - discard checks pending deferred use and active borrow conflicts for simple identifier bindings
+      - discard of ref and ref mut local holders ends the holder
+      - explicit discard of function and method result temporaries is accepted when the result type is discardable
+      - explicit discard of named try/match error bindings is accepted in the current frontend
+      - current tests include Err(error) handler bodies containing discard error
+      - bare discard _ is rejected
+      - discarded struct and array literals commit represented move-only source transfers before terminal discard
+      - discard does not recursively reinterpret ordinary call arguments as aggregate ownership transfers
     partial:
-    - ownership preparation of the operand result and terminal destruction of that result are not represented as separate
-      resolved semantic actions
+      - ownership preparation of the operand result and terminal destruction of that result are not represented as separate resolved semantic actions
     remaining:
-    - integrate union constructor payload preparation through the separately tracked union constructor correction
-    - preserve borrow, deferred-use, and source availability diagnostics for ownership transfers into discarded temporaries
-    - represent operand preparation followed by explicit DiscardValue in Semantic IR
-    - lower the resolved destruction plan without double destruction
+      - integrate union constructor payload preparation through the separately tracked union constructor correction
+      - preserve borrow, deferred-use, and source availability diagnostics for ownership transfers into discarded temporaries
+      - represent operand preparation followed by explicit DiscardValue in Semantic IR
+      - lower the resolved destruction plan without double destruction
     bug_reference:
-    - correction19.md
+      - correction19.md
     governance_reconciliation:
-    - Keep arbitrary Place discard as remaining; aggregate temporary ownership preparation is a distinct frontend
-      gap because the discarded operand is a temporary value rather than a user Place.
-    - Add named try/match error-binding discard to implemented status. At c515862, analyzer tests exercise Err(error)
-      => { discard error } successfully.
-    - Err(_) support is a separate match/try issue tracked by correction20.md and must not be described as intentionally
-      invalid by discard governance.
-    - Removed legacy remaining claims for struct and array move preparation and call-parameter preservation because
-      the same migrated entry already records those frontend behaviors as implemented.
+      - Keep arbitrary Place discard as remaining; aggregate temporary ownership preparation is a distinct frontend gap because the discarded operand is a temporary value rather than a user Place.
+      - Add named try/match error-binding discard to implemented status. At c515862, analyzer tests exercise Err(error) => { discard error } successfully.
+      - Err(_) support is a separate match/try issue tracked by correction20.md and must not be described as intentionally invalid by discard governance.
+      - Removed legacy remaining claims for struct and array move preparation and call-parameter preservation because the same migrated entry already records those frontend behaviors as implemented.
     required_tests:
-    - discarded move-only struct temporary makes transferred source unavailable
-    - discarded move-only array temporary makes transferred sources unavailable
-    - copyable aggregate discard does not consume reusable copyable source bindings merely through field reads
-    - borrow conflict blocks move into discarded aggregate
-    - deferred-use conflict blocks move into discarded aggregate
-    - function-call discard preserves selected parameter ownership semantics
-    - named Err(error) discard remains valid
-    - discard _ remains invalid
+      - discarded move-only struct temporary makes transferred source unavailable
+      - discarded move-only array temporary makes transferred sources unavailable
+      - copyable aggregate discard does not consume reusable copyable source bindings merely through field reads
+      - borrow conflict blocks move into discarded aggregate
+      - deferred-use conflict blocks move into discarded aggregate
+      - function-call discard preserves selected parameter ownership semantics
+      - named Err(error) discard remains valid
+      - discard _ remains invalid
 
   - id: frontend.logical-short-circuit-flow
     area: frontend-expression-control-flow
     status: partial
-    audited: '2026-08-19'
-    revised: '2026-10-01'
+    audited: "2026-08-19"
+    revised: "2026-10-01"
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_if.md
-    document_revision: '2.0'
-    document_created: '2026-08-16'
-    document_last_updated: '2026-08-16'
-    summary: Logical operators use a dedicated Sema flow path. Proven-skipped RHS expressions retain static diagnostics
-      without committing runtime state or reachable call-graph effects; conditionally executed RHS state is merged with
-      the bypass path.
+    document_revision: "2.0"
+    document_created: "2026-08-16"
+    document_last_updated: "2026-08-16"
+    summary: Logical operators use a dedicated Sema flow path. Proven-skipped RHS expressions retain static diagnostics without committing runtime state or reachable call-graph effects; conditionally executed RHS state is merged with the bypass path.
     rules:
-    - rules/control-flow/flowcontrol_if.md
-    - rules/control-flow/flowcontrol_while.md
-    - rules/foundations/operators.md
-    - rules/memory/ownership.md
-    - rules/memory/borrowing.md
-    - rules/compiler/semantic_ir.md
+      - rules/control-flow/flowcontrol_if.md
+      - rules/control-flow/flowcontrol_while.md
+      - rules/foundations/operators.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/analyzer_integer_refinement.go
-    - internal/sema/analyzer_logical.go
-    - internal/sema/call_graph.go
-    - internal/sema/semantic_facts.go
-    - internal/ir/semantic
-    - internal/lowering/secmlir
-    - internal/codegen/mlir/generator.go
-    - internal/codegen/llvm/statements.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_integer_refinement.go
+      - internal/sema/analyzer_logical.go
+      - internal/sema/call_graph.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/sema/analyzer_logical_test.go
-    - internal/sema/copy_move_test.go
-    - internal/codegen/mlir/generator_test.go
-    - internal/codegen/llvm/generator_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_logical_test.go
+      - internal/sema/copy_move_test.go
+      - internal/codegen/mlir/generator_test.go
+      - internal/codegen/llvm/generator_test.go
     implemented:
-    - logical bool operand type validation
-    - logical expression result type bool
-    - maintained backend lowering has left-to-right short-circuit branch structure
-    - if branch bodies use callGraphPathReachable for literal and compiler-folded unreachable branches
-    - folded-false while bodies use the same reachability gate while retaining static semantic diagnostics
-    - consuming call arguments update caller ownership state when the call is on the analyzed live path
-    - false && RHS and true || RHS restore ownership, resource, borrow, reference, and Arena state after static checking
-    - proven-skipped RHS calls are excluded from reachable call-graph recording
-    - the shared compile-time boolean evaluator classifies folded integer comparisons, boolean equality, negation, conjunction, and disjunction as never- or always-executed RHS paths without re-inferring the left operand
-    - compiler-folded skipped RHS expressions preserve static checking while restoring ownership, resource, borrow, reference-origin, and Arena state and excluding call and panic-effect publication
-    - non-constant RHS execution is merged with the short-circuit bypass state
-    - successful logical expressions publish a canonical ResolvedLogicalFlow with operand and result types
-    - ResolvedLogicalFlow records whether the RHS is never, always, or conditionally executed
-    - ResolvedLogicalFlow records the selected left-value edge and short-circuit result for later consumers
-    - left and right operands are each inferred once in source order by the dedicated logical flow path
-    - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
-    - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining S1023 warnings for insufficient guards
+      - logical bool operand type validation
+      - logical expression result type bool
+      - maintained backend lowering has left-to-right short-circuit branch structure
+      - if branch bodies use callGraphPathReachable for literal and compiler-folded unreachable branches
+      - folded-false while bodies use the same reachability gate while retaining static semantic diagnostics
+      - consuming call arguments update caller ownership state when the call is on the analyzed live path
+      - false && RHS and true || RHS restore ownership, resource, borrow, reference, and Arena state after static checking
+      - proven-skipped RHS calls are excluded from reachable call-graph recording
+      - the shared compile-time boolean evaluator classifies folded integer comparisons, boolean equality, negation, conjunction, and disjunction as never- or always-executed RHS paths without re-inferring the left operand
+      - compiler-folded skipped RHS expressions preserve static checking while restoring ownership, resource, borrow, reference-origin, and Arena state and excluding call and panic-effect publication
+      - non-constant RHS execution is merged with the short-circuit bypass state
+      - successful logical expressions publish a canonical ResolvedLogicalFlow with operand and result types
+      - ResolvedLogicalFlow records whether the RHS is never, always, or conditionally executed
+      - ResolvedLogicalFlow records the selected left-value edge and short-circuit result for later consumers
+      - left and right operands are each inferred once in source order by the dedicated logical flow path
+      - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
+      - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining S1023 warnings for insufficient guards
     remaining:
-    - extend canonical compile-time bool proof beyond the current immutable-integer and boolean operator subset
-    - consume ResolvedLogicalFlow in Semantic IR and all maintained lowering paths
-    - add ownership, resource, arena, call-graph, nested-expression, and cross-context regression coverage
+      - extend canonical compile-time bool proof beyond the current immutable-integer and boolean operator subset
+      - consume ResolvedLogicalFlow in Semantic IR and all maintained lowering paths
+      - add ownership, resource, arena, call-graph, nested-expression, and cross-context regression coverage
     bug_reference:
-    - correction22.md
+      - correction22.md
     governance_reconciliation:
-    - The original audit narrowed frontend.if-statements-v2 because frontend runtime-state analysis was eager; correction22
-      subsequently introduced the dedicated Sema flow path and this entry now records that applied correction.
-    - Focused short-circuit side-effect tests cover the applied frontend correction; explicit Semantic IR consumption
-      and broader cross-context coverage remain separate work.
-    - Keep bool-only operand checking and lazy backend control-flow lowering as implemented.
-    - Removed legacy remaining claims for the dedicated flow path, skipped-RHS isolation, conditional state merging,
-      and call-graph exclusion because the migrated entry already records those corrections as implemented.
-    - The 2026-09-24 frontend step publishes the selected RHS edge as ResolvedLogicalFlow without extending backend scope.
+      - The original audit narrowed frontend.if-statements-v2 because frontend runtime-state analysis was eager; correction22 subsequently introduced the dedicated Sema flow path and this entry now records that applied correction.
+      - Focused short-circuit side-effect tests cover the applied frontend correction; explicit Semantic IR consumption and broader cross-context coverage remain separate work.
+      - Keep bool-only operand checking and lazy backend control-flow lowering as implemented.
+      - Removed legacy remaining claims for the dedicated flow path, skipped-RHS isolation, conditional state merging, and call-graph exclusion because the migrated entry already records those corrections as implemented.
+      - The 2026-09-24 frontend step publishes the selected RHS edge as ResolvedLogicalFlow without extending backend scope.
     verification:
-    - command: go test ./internal/sema -run 'TestResolvedLogicalFlowRecordsSelectedRHSEdge|TestLogicalShortCircuitDoesNotCommitImpossibleMove|TestLogicalOperatorsRequireBool' -count=1
-      result: passed on 2026-09-24
-    - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|FoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects)' -count=1
-      result: passed on 2026-10-01; compiler-folded if and while paths feed canonical reachability without suppressing static checking
-    - command: go test ./internal/sema -run 'Test(ResolvedLogicalFlowRecordsSelectedRHSEdge|FoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects|LogicalShortCircuitDoesNotCommitImpossibleMove)' -count=1
-      result: passed on 2026-10-01; literal and folded left operands publish exact RHS execution facts while skipped moves, calls, and panic effects remain outside the continuing path
+      - command: go test ./internal/sema -run 'TestResolvedLogicalFlowRecordsSelectedRHSEdge|TestLogicalShortCircuitDoesNotCommitImpossibleMove|TestLogicalOperatorsRequireBool' -count=1
+        result: passed on 2026-09-24
+      - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|FoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects)' -count=1
+        result: passed on 2026-10-01; compiler-folded if and while paths feed canonical reachability without suppressing static checking
+      - command: go test ./internal/sema -run 'Test(ResolvedLogicalFlowRecordsSelectedRHSEdge|FoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects|LogicalShortCircuitDoesNotCommitImpossibleMove)' -count=1
+        result: passed on 2026-10-01; literal and folded left operands publish exact RHS execution facts while skipped moves, calls, and panic effects remain outside the continuing path
     required_tests:
-    - false && consuming-call leaves source available
-    - true || consuming-call leaves source available
-    - true && consuming-call consumes source
-    - false || consuming-call consumes source
-    - proven skipped RHS does not advance arena generation
-    - proven skipped RHS does not close resource state
-    - proven skipped RHS does not register reachable call/effect
-    - non-literal logical RHS is represented only on its selected CFG edge
-    - nested logical expressions preserve left-to-right short-circuit flow
-    - while and non-if expression contexts use identical short-circuit semantics
+      - false && consuming-call leaves source available
+      - true || consuming-call leaves source available
+      - true && consuming-call consumes source
+      - false || consuming-call consumes source
+      - proven skipped RHS does not advance arena generation
+      - proven skipped RHS does not close resource state
+      - proven skipped RHS does not register reachable call/effect
+      - non-literal logical RHS is represented only on its selected CFG edge
+      - nested logical expressions preserve left-to-right short-circuit flow
+      - while and non-if expression contexts use identical short-circuit semantics
 
   - id: frontend.match-termination-consistency
     area: frontend-control-flow
     status: partial
-    audited: '2026-08-19'
-    revised: '2026-09-24'
+    audited: "2026-08-19"
+    revised: "2026-09-24"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-17'
-    document_last_updated: '2026-08-17'
-    summary: Statement-match termination, function return checks, and nested match arm flow consume the canonical
-      ResolvedMatchPlan rather than rebuilding coverage from pattern spellings. Union, Option, Result, enum aliases,
-      and complete open-bit domains therefore share the primary match analyzer's normalized coverage.
+    document_revision: "2.0"
+    document_created: "2026-08-17"
+    document_last_updated: "2026-08-17"
+    summary: Statement-match termination, function return checks, and nested match arm flow consume the canonical ResolvedMatchPlan rather than rebuilding coverage from pattern spellings. Union, Option, Result, enum aliases, and complete open-bit domains therefore share the primary match analyzer's normalized coverage.
     rules:
-    - rules/control-flow/flowcontrol_match.md
-    - rules/declarations/unions.md
-    - rules/declarations/enums.md
-    - rules/compiler/semantic_ir.md
-    - rules/mlir/packages/sec-mlir-dialect_package12.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/declarations/unions.md
+      - rules/declarations/enums.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/packages/sec-mlir-dialect_package12.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/semantic_facts.go
-    - internal/ir/semantic/model.go
-    - internal/ir/semantic/builder.go
-    - internal/lowering/secmlir/emitter.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/sema/semantic_facts_test.go
-    - internal/ir/semantic/package12_test.go
-    - testdata/match_valid.sec
-    - testdata/semantic_ir/match_cfg.sec
+      - internal/sema/analyzer_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/package12_test.go
+      - testdata/match_valid.sec
+      - testdata/semantic_ir/match_cfg.sec
     implemented:
-    - canonical analyzeMatch coverage for Result
-    - canonical analyzeMatch coverage for UnionType including Option
-    - enum match coverage normalized to arbitrary-precision numeric value classes
-    - open bit-backed enum complete-domain coverage in matchCoverageComplete
-    - ResolvedMatchPlan records exhaustive status for successful supported matches
-    - ResolvedMatchArm records source arm flow in the current supported subset
-    - Result statement match with all-returning arms is recognized by the dedicated legacy return helper
-    - Package 12 consumes ResolvedMatchPlan for enum, union, Result, and Option CFG
-    - statement termination consumes ResolvedMatchPlan.Exhaustive and resolved arm flow
-    - nested analyzed match statements participate in analyzer-aware block fallthrough and return queries
+      - canonical analyzeMatch coverage for Result
+      - canonical analyzeMatch coverage for UnionType including Option
+      - enum match coverage normalized to arbitrary-precision numeric value classes
+      - open bit-backed enum complete-domain coverage in matchCoverageComplete
+      - ResolvedMatchPlan records exhaustive status for successful supported matches
+      - ResolvedMatchArm records source arm flow in the current supported subset
+      - Result statement match with all-returning arms is recognized by the dedicated legacy return helper
+      - Package 12 consumes ResolvedMatchPlan for enum, union, Result, and Option CFG
+      - statement termination consumes ResolvedMatchPlan.Exhaustive and resolved arm flow
+      - nested analyzed match statements participate in analyzer-aware block fallthrough and return queries
     remaining:
-    - replace package-level structural flow reconstruction with compiler-owned resolved statement-flow facts
-    - ensure function return, unreachable-code, cleanup, Semantic IR, and lowering consume one canonical match flow
-      result
-    - add union, Option, alias-enum, open-bit-enum, and nested-match termination regression coverage
+      - replace package-level structural flow reconstruction with compiler-owned resolved statement-flow facts
+      - ensure function return, unreachable-code, cleanup, Semantic IR, and lowering consume one canonical match flow result
+      - add union, Option, alias-enum, open-bit-enum, and nested-match termination regression coverage
     bug_reference:
-    - correction23.md
+      - correction23.md
     governance_reconciliation:
-    - Keep frontend.match-v2's canonical analyzeMatch coverage and Package 12 ResolvedMatchPlan CFG support as implemented.
-      Add a separate partial item for frontend statement termination/return consumers that still reconstruct coverage
-      independently.
-    - Qualify broad statement/all-terminating control-flow wording until exhaustive UnionType/Option and enum-alias
-      statement matches are recognized consistently by function return analysis.
-    - Do not duplicate the Err(_) rulebook/Sema issue here; that is tracked by correction20.md.
-    - Existing remaining work for compiler-known empty, field patterns, guarded move commit, statement-result discardability,
-      non-trivial ownership lowering, and LSP remains unchanged.
-    - Reconciled the legacy implemented status to partial because its own remaining list still requires one canonical
-      statement-flow fact across return, reachability, cleanup, Semantic IR, and lowering consumers.
+      - Keep frontend.match-v2's canonical analyzeMatch coverage and Package 12 ResolvedMatchPlan CFG support as implemented. Add a separate partial item for frontend statement termination/return consumers that still reconstruct coverage independently.
+      - Qualify broad statement/all-terminating control-flow wording until exhaustive UnionType/Option and enum-alias statement matches are recognized consistently by function return analysis.
+      - Do not duplicate the Err(_) rulebook/Sema issue here; that is tracked by correction20.md.
+      - Existing remaining work for compiler-known empty, field patterns, guarded move commit, statement-result discardability, non-trivial ownership lowering, and LSP remains unchanged.
+      - Reconciled the legacy implemented status to partial because its own remaining list still requires one canonical statement-flow fact across return, reachability, cleanup, Semantic IR, and lowering consumers.
     required_tests:
-    - exhaustive Option statement match with all returns satisfies function return
-    - exhaustive ordinary union statement match with all returns satisfies function return
-    - code after exhaustive all-returning union match is unreachable
-    - enum alias statement match uses normalized numeric classes for termination
-    - complete bit-backed enum statement match is recognized as non-continuing
-    - duplicate alias arm remains rejected
-    - nested exhaustive match can terminate an outer match arm
-    - ResolvedMatchPlan exhaustiveness agrees with function-return analysis
+      - exhaustive Option statement match with all returns satisfies function return
+      - exhaustive ordinary union statement match with all returns satisfies function return
+      - code after exhaustive all-returning union match is unreachable
+      - enum alias statement match uses normalized numeric classes for termination
+      - complete bit-backed enum statement match is recognized as non-continuing
+      - duplicate alias arm remains rejected
+      - nested exhaustive match can terminate an outer match arm
+      - ResolvedMatchPlan exhaustiveness agrees with function-return analysis
+
   - id: frontend.switch-cfg-and-enum-coverage
     area: frontend-control-flow
     status: partial
-    audited: '2026-08-20'
-    revised: '2026-09-26'
+    audited: "2026-08-20"
+    revised: "2026-09-26"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-16'
-    document_last_updated: '2026-08-16'
-    summary: Supplements frontend.switch-statements-v2 with path-sensitive case evaluation, fallthrough flow, and
-      enum value-class coverage. The four defects identified by correction24 now have frontend implementations,
-      including stable enum-alias duplicate diagnostics with previous-case provenance. A durable cross-layer
-      ResolvedSwitchPlan and fully split comma-alternative CFG remain incomplete.
+    document_revision: "2.0"
+    document_created: "2026-08-16"
+    document_last_updated: "2026-08-16"
+    summary: Supplements frontend.switch-statements-v2 with path-sensitive case evaluation, fallthrough flow, and enum value-class coverage. The four defects identified by correction24 now have frontend implementations, including stable enum-alias duplicate diagnostics with previous-case provenance. A durable cross-layer ResolvedSwitchPlan and fully split comma-alternative CFG remain incomplete.
     rules:
-    - rules/control-flow/flowcontrol_switch.md
-    - rules/control-flow/flowcontrol_if.md
-    - rules/declarations/enums.md
-    - rules/memory/ownership.md
-    - rules/memory/borrowing.md
-    - rules/compiler/semantic_ir.md
+      - rules/control-flow/flowcontrol_switch.md
+      - rules/control-flow/flowcontrol_if.md
+      - rules/declarations/enums.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/analyzer_switch_coverage.go
-    - internal/sema/analyzer_switch_flow.go
-    - internal/codegen/mlir/generator.go
-    - internal/codegen/llvm/statements.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_switch_coverage.go
+      - internal/sema/analyzer_switch_flow.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/sema/analyzer_switch_flow_test.go
-    - internal/sema/switch_coverage_test.go
-    - internal/sema/copy_move_test.go
-    - internal/sema/destruction_test.go
-    - internal/codegen/mlir/generator_test.go
-    - internal/codegen/llvm/generator_test.go
-    - testdata/switch_valid.sec
-    - testdata/switch_invalid.sec
+      - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_switch_flow_test.go
+      - internal/sema/switch_coverage_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - internal/codegen/mlir/generator_test.go
+      - internal/codegen/llvm/generator_test.go
+      - testdata/switch_valid.sec
+      - testdata/switch_invalid.sec
     implemented:
-    - switch subject expression is inferred once
-    - subject and subjectless switch syntax and source order are preserved
-    - value, range, relational, and comma-separated alternatives are represented
-    - direct fallthrough placement/final/successor validation
-    - independent lexical symbol scopes for case bodies
-    - compile-time integer/bool/direct-string duplicate checks
-    - integer range overlap and value-covered-by-range diagnostics
-    - bool true+false coverage removes the unmatched path
-    - backend subsets contain ordered/lazy switch control-flow lowering
-    - case-test effects follow the source-order unmatched path instead of being committed before every body
-    - fallthrough state is merged into the destination body while destination tests remain on the direct-selection path
-    - enum case identity and warnings use canonical numeric value classes
-    - duplicate enum-alias cases emit stable S1015 diagnostics that identify the earlier equivalent value-class case
-    - complete closed-enum coverage removes the unmatched path and participates in return analysis
-    - immutable ResolvedSwitchFlow facts retain resolved subject type, exhaustive versus unmatched continuation, source-ordered clause summaries, and explicit fallthrough; ordinary function and lambda return analysis consume recorded exhaustiveness instead of rebuilding enum coverage from AST spellings
+      - switch subject expression is inferred once
+      - subject and subjectless switch syntax and source order are preserved
+      - value, range, relational, and comma-separated alternatives are represented
+      - direct fallthrough placement/final/successor validation
+      - independent lexical symbol scopes for case bodies
+      - compile-time integer/bool/direct-string duplicate checks
+      - integer range overlap and value-covered-by-range diagnostics
+      - bool true+false coverage removes the unmatched path
+      - backend subsets contain ordered/lazy switch control-flow lowering
+      - case-test effects follow the source-order unmatched path instead of being committed before every body
+      - fallthrough state is merged into the destination body while destination tests remain on the direct-selection path
+      - enum case identity and warnings use canonical numeric value classes
+      - duplicate enum-alias cases emit stable S1015 diagnostics that identify the earlier equivalent value-class case
+      - complete closed-enum coverage removes the unmatched path and participates in return analysis
+      - immutable ResolvedSwitchFlow facts retain resolved subject type, exhaustive versus unmatched continuation, source-ordered clause summaries, and explicit fallthrough; ordinary function and lambda return analysis consume recorded exhaustiveness instead of rebuilding enum coverage from AST spellings
     partial:
-    - comma-separated alternatives retain conservative aggregate frontend state rather than an explicit per-alternative
-      resolved CFG edge
-    - a durable frontend ResolvedSwitchFlow exists, but the full cross-layer ResolvedSwitchPlan and per-alternative CFG are not yet published to Semantic IR
+      - comma-separated alternatives retain conservative aggregate frontend state rather than an explicit per-alternative resolved CFG edge
+      - a durable frontend ResolvedSwitchFlow exists, but the full cross-layer ResolvedSwitchPlan and per-alternative CFG are not yet published to Semantic IR
     remaining:
-    - build a canonical path-sensitive resolved switch CFG
-    - preserve source-order and comma-alternative short-circuit state
-    - make definite assignment, ownership, resources, borrows, termination, call/effect reachability, Semantic IR,
-      diagnostics, and lowering consume the same resolved switch plan
-    - complete the remaining lazy-case, fallthrough-state, enum-exhaustiveness, and open-bit-domain regression matrix
+      - build a canonical path-sensitive resolved switch CFG
+      - preserve source-order and comma-alternative short-circuit state
+      - make definite assignment, ownership, resources, borrows, termination, call/effect reachability, Semantic IR, diagnostics, and lowering consume the same resolved switch plan
+      - complete the remaining lazy-case, fallthrough-state, enum-exhaustiveness, and open-bit-domain regression matrix
     bug_reference:
-    - correction24.md
+      - correction24.md
     governance_reconciliation:
-    - 'correction24 is applied in the frontend: lazy case-test state, fallthrough entry state, canonical enum value
-      classes, and closed-enum unmatched-path removal are implemented without claiming a durable cross-layer CFG.'
-    - 'Keep integer/bool/direct-string duplicate and integer-range coverage as implemented; enum alias/value-class
-      duplicates additionally retain stable diagnostic identity and earlier-case provenance.'
-    - Existing remaining backend, cleanup, unit, diagnostics, formatter, LSP, and loop-control work remains unchanged.
+      - "correction24 is applied in the frontend: lazy case-test state, fallthrough entry state, canonical enum value classes, and closed-enum unmatched-path removal are implemented without claiming a durable cross-layer CFG."
+      - Keep integer/bool/direct-string duplicate and integer-range coverage as implemented; enum alias/value-class duplicates additionally retain stable diagnostic identity and earlier-case provenance.
+      - Existing remaining backend, cleanup, unit, diagnostics, formatter, LSP, and loop-control work remains unchanged.
     required_tests:
-    - skipped later consuming case call leaves source available
-    - skipped later case call does not register reachable effect
-    - subjectless comma alternatives short-circuit frontend state
-    - move in fallthrough source remains moved after destination continuation
-    - destination body merges direct and fallthrough ownership state
-    - assignment/resource/arena/borrow state propagates across fallthrough
-    - destination tests are skipped on fallthrough edge
-    - enum numeric aliases are duplicate switch cases
-    - enum warning reasons by unique runtime value class
-    - complete closed-enum switch removes unmatched path
-    - complete closed-enum all-returning switch satisfies function return analysis
-    - open bit-backed declared members alone remain non-exhaustive
+      - skipped later consuming case call leaves source available
+      - skipped later case call does not register reachable effect
+      - subjectless comma alternatives short-circuit frontend state
+      - move in fallthrough source remains moved after destination continuation
+      - destination body merges direct and fallthrough ownership state
+      - assignment/resource/arena/borrow state propagates across fallthrough
+      - destination tests are skipped on fallthrough edge
+      - enum numeric aliases are duplicate switch cases
+      - enum warning reasons by unique runtime value class
+      - complete closed-enum switch removes unmatched path
+      - complete closed-enum all-returning switch satisfies function return analysis
+      - open bit-backed declared members alone remain non-exhaustive
     verification:
-    - command: go test ./internal/sema -run 'Switch(EnumAliasDuplicate|WarnsAboutMissingEnumValues|ConstantCoverage|BoolSwitch)' -count=1
-      result: passed on 2026-09-26 with canonical enum value-class warnings and S1015 duplicate-alias provenance
-    - command: go test ./internal/sema -run 'ResolvedSwitchFlow|SwitchFallthroughIntoReturningCase|BoolSwitchCanBeExhaustive|SwitchEnumAliasDuplicate' -count=1
-      result: passed on 2026-09-26 with immutable flow facts, function and lambda closed-enum exhaustiveness reuse, explicit fallthrough retention, and unmatched-path preservation
+      - command: go test ./internal/sema -run 'Switch(EnumAliasDuplicate|WarnsAboutMissingEnumValues|ConstantCoverage|BoolSwitch)' -count=1
+        result: passed on 2026-09-26 with canonical enum value-class warnings and S1015 duplicate-alias provenance
+      - command: go test ./internal/sema -run 'ResolvedSwitchFlow|SwitchFallthroughIntoReturningCase|BoolSwitchCanBeExhaustive|SwitchEnumAliasDuplicate' -count=1
+        result: passed on 2026-09-26 with immutable flow facts, function and lambda closed-enum exhaustiveness reuse, explicit fallthrough retention, and unmatched-path preservation

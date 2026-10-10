@@ -1,0 +1,108 @@
+module main
+
+extern "C" fn probe(tag: int32, answer: int32) int32
+extern "C" fn touch(tag: int32) void
+extern "C" fn run_tests() int32
+
+fn Subject(value: int32) int32 {
+    unsafe {
+        switch probe(1, value) {
+        case 1:
+            touch(10)
+            fallthrough
+        case probe(2, 2):
+            touch(20)
+            fallthrough
+        case probe(3, 3):
+            touch(30)
+        default:
+            touch(40)
+        }
+        touch(50)
+    }
+    return 0
+}
+
+fn Subjectless(a: int32, b: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            touch(10)
+            fallthrough // trailing comments do not change placement
+        case probe(2, b) == 1:
+            touch(20)
+            fallthrough
+        default:
+            touch(30)
+        }
+        touch(40)
+    }
+    return 0
+}
+
+fn EmptyFallthrough(a: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            fallthrough
+        default:
+            touch(20)
+        }
+    }
+    return 0
+}
+
+fn Returning(a: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            touch(10)
+            fallthrough
+        default:
+            touch(20)
+            return 30
+        }
+    }
+}
+
+fn Nested(a: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            switch {
+            case probe(2, a) == 1:
+                touch(10)
+                fallthrough
+            default:
+                touch(20)
+            }
+            touch(30)
+            fallthrough
+        default:
+            touch(40)
+        }
+    }
+    return 0
+}
+
+fn SiblingScopes(a: int32) int32 {
+    let mut result: int32 := 0
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            let local: int32 := 10
+            result = local
+            touch(local)
+            fallthrough
+        default:
+            let local: int32 := 20
+            result += local
+            touch(local)
+        }
+    }
+    return result
+}
+
+fn main() int {
+    unsafe { return int(run_tests()) }
+}

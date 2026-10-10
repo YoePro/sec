@@ -50,6 +50,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}()
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := iteratorHover(text, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := attributeHover(text, program, analyzer, token); ok {
 			return hover, true
 		}

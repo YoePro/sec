@@ -165,14 +165,15 @@ func interfaceMemberAnchor(member lexer.Token, fallback lexer.Token) lexer.Token
 }
 
 // addInterfaceConformanceError reports a conformance failure at the
-// implementation with the interface requirement as related location.
+// implementation with the interface requirement as related location, returning
+// that same diagnostic for the structured conformance fact.
 //
 // Rules:
 //   - rules/declarations/interfaces.md — 12 "Diagnostics"
 //   - rules/tooling/diagnostics.md — related locations
-func (a *Analyzer) addInterfaceConformanceError(token lexer.Token, requirement lexer.Token, id string, help string, format string, args ...any) {
+func (a *Analyzer) addInterfaceConformanceError(token lexer.Token, requirement lexer.Token, id string, help string, format string, args ...any) Error {
 	endLine, endColumn := token.EndPosition()
-	a.appendError(Error{
+	diagnostic := Error{
 		ID:             id,
 		Severity:       diagnostics.SeverityError,
 		Help:           help,
@@ -186,7 +187,9 @@ func (a *Analyzer) addInterfaceConformanceError(token lexer.Token, requirement l
 		PreviousLine:   requirement.Line,
 		PreviousColumn: requirement.Column,
 		RelatedLabel:   "interface requirement",
-	})
+	}
+	a.appendError(diagnostic)
+	return diagnostic
 }
 
 // functionSignatureHasInvalidType reports a parameter or result type that did

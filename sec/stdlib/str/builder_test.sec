@@ -1,0 +1,278 @@
+module str
+
+/*
+ * Sec Standard Library - str - Builder tests
+ *
+ * File:        stdlib/str/builder_test.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-10
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Verify mutable UTF-8 construction, byte counts, capacity,
+ * append operations, line endings, repetition, and clearing.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ *
+ * Dependencies:
+ * Builder.init() and Builder.Finish() must be implemented
+ * before the full test suite can execute.
+ */
+
+// ------------------------------------------------------------
+// Construction and properties
+// ------------------------------------------------------------
+
+test "Builder starts empty" {
+    let builder := try new Builder(0)
+
+    testing.ExpectEqual(uint(0), builder.ByteCount)
+    testing.ExpectEqual(uint(0), builder.Capacity)
+    testing.ExpectEqual(true, builder.IsEmpty)
+}
+
+test "Builder tracks byte count" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Hello")
+
+    testing.ExpectEqual(uint(5), builder.ByteCount)
+    testing.ExpectEqual(false, builder.IsEmpty)
+    testing.Expect(builder.Capacity >= builder.ByteCount)
+}
+
+// ------------------------------------------------------------
+// Append(string)
+// ------------------------------------------------------------
+
+test "Builder appends ASCII strings" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Hello")
+    try builder.Append(" ")
+    try builder.Append("World")
+
+    testing.ExpectEqual(uint(11), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("Hello World", result)
+}
+
+test "Builder appends empty strings" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("")
+    testing.ExpectEqual(uint(0), builder.ByteCount)
+
+    try builder.Append("Hello")
+    try builder.Append("")
+
+    testing.ExpectEqual(uint(5), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("Hello", result)
+}
+
+test "Builder preserves multibyte UTF-8 strings" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("å")
+    try builder.Append("€")
+    try builder.Append("🦊")
+
+    // UTF-8 lengths: 2 + 3 + 4 bytes.
+    testing.ExpectEqual(uint(9), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("å€🦊", result)
+}
+
+// ------------------------------------------------------------
+// Append(rune)
+// ------------------------------------------------------------
+
+test "Builder appends ASCII rune" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append(65r)
+
+    testing.ExpectEqual(uint(1), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("A", result)
+}
+
+test "Builder encodes runes using UTF-8" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append(65r)
+    try builder.Append(229r)
+    try builder.Append(8364r)
+    try builder.Append(129418r)
+
+    // UTF-8 lengths: 1 + 2 + 3 + 4 bytes.
+    testing.ExpectEqual(uint(10), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("Aå€🦊", result)
+}
+
+// ------------------------------------------------------------
+// AppendLine
+// ------------------------------------------------------------
+
+test "Builder appends line terminator" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Hello")
+    try builder.AppendLine()
+
+    testing.ExpectEqual(uint(6), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("Hello\n", result)
+}
+
+test "Builder appends string followed by line terminator" {
+    let mut builder := try new Builder(0)
+
+    try builder.AppendLine("First")
+    try builder.AppendLine("Second")
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("First\nSecond\n", result)
+}
+
+test "Builder appends line terminator for empty string" {
+    let mut builder := try new Builder(0)
+
+    try builder.AppendLine("")
+
+    testing.ExpectEqual(uint(1), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("\n", result)
+}
+
+// ------------------------------------------------------------
+// AppendRepeat(string)
+// ------------------------------------------------------------
+
+test "Builder repeats strings" {
+    let mut builder := try new Builder(0)
+
+    try builder.AppendRepeat("ab", 3)
+
+    testing.ExpectEqual(uint(6), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("ababab", result)
+}
+
+test "Builder repeats Unicode strings" {
+    let mut builder := try new Builder(0)
+
+    try builder.AppendRepeat("å🦊", 2)
+
+    testing.ExpectEqual(uint(12), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("å🦊å🦊", result)
+}
+
+test "Builder ignores zero string repetitions" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Start")
+    try builder.AppendRepeat("ignored", 0)
+    try builder.AppendRepeat("", 100)
+
+    testing.ExpectEqual(uint(5), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("Start", result)
+}
+
+// ------------------------------------------------------------
+// AppendRepeat(rune)
+// ------------------------------------------------------------
+
+test "Builder repeats ASCII rune" {
+    let mut builder := try new Builder(0)
+
+    try builder.AppendRepeat(65r, 4)
+
+    testing.ExpectEqual(uint(4), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("AAAA", result)
+}
+
+test "Builder repeats Unicode rune" {
+    let mut builder := try new Builder(0)
+
+    try builder.AppendRepeat(129418r, 3)
+
+    testing.ExpectEqual(uint(12), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("🦊🦊🦊", result)
+}
+
+test "Builder ignores zero rune repetitions" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Hello")
+    try builder.AppendRepeat(129418r, 0)
+
+    testing.ExpectEqual(uint(5), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("Hello", result)
+}
+
+// ------------------------------------------------------------
+// Clear
+// ------------------------------------------------------------
+
+test "Builder clear removes all content" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Hello World")
+    testing.ExpectEqual(uint(11), builder.ByteCount)
+
+    builder.Clear()
+
+    testing.ExpectEqual(uint(0), builder.ByteCount)
+    testing.ExpectEqual(true, builder.IsEmpty)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("", result)
+}
+
+test "Builder clear retains capacity" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Hello World")
+    let previousCapacity := builder.Capacity
+
+    builder.Clear()
+
+    testing.ExpectEqual(previousCapacity, builder.Capacity)
+    testing.ExpectEqual(uint(0), builder.ByteCount)
+}
+
+test "Builder can append after clear" {
+    let mut builder := try new Builder(0)
+
+    try builder.Append("Old content")
+    builder.Clear()
+    try builder.Append("New content")
+
+    testing.ExpectEqual(uint(11), builder.ByteCount)
+
+    let result := try builder.Finish()
+    testing.ExpectEqual("New content", result)
+}

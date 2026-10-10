@@ -226,7 +226,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
-	previousInSwitchCaseBody := a.inSwitchCaseBody
+	previousSwitchCaseBody := a.switchCaseBody
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
@@ -236,7 +236,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
-	a.inSwitchCaseBody = true
+	a.switchCaseBody = block
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
@@ -247,7 +247,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
-		a.inSwitchCaseBody = previousInSwitchCaseBody
+		a.switchCaseBody = previousSwitchCaseBody
 	}()
 
 	hasFallthrough := blockEndsWithFallthrough(block)
@@ -428,4 +428,20 @@ func (a *Analyzer) isUnboundSwitchPatternName(expr ast.Expression) bool {
 		return false
 	}
 	return true
+}
+
+// isDirectSwitchFallthrough admits only a transfer belonging directly to the
+// current case body. Nested blocks and callable bodies cannot inherit the
+// enclosing case's transfer authority; nested switches install their own body.
+// Rules: rules/control-flow/flowcontrol_switch.md §§16, 38.
+func (a *Analyzer) isDirectSwitchFallthrough(stmt *ast.FallthroughStatement) bool {
+	if a.switchCaseBody == nil {
+		return false
+	}
+	for _, direct := range a.switchCaseBody.Statements {
+		if direct == stmt {
+			return true
+		}
+	}
+	return false
 }

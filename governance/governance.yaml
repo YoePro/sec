@@ -83,6 +83,7 @@ integrations:
       - fmt harmonizes fragments into one canonical layout without changing any decoded value, and reports type hazards that only fmt -fix-types rewrites
       - set, add, remove, move, verify, repath and new edit exact integrations, print a unified diff, write only with -write, and fail closed on unknown, ambiguous or out-of-range targets
       - check validates the ledger (loading, fragment header, index.yaml fragment list, unique IDs, id/status, status vocabulary, verification items, checklist item shapes, merged list items) with file, line and integration ID, and edit commands refuse changes that add a problem; its first run found and fixed 24 problems
+      - "library scope (2026-10-10): index.yaml fragments with implementation_scope: library (stdlib.yaml) are not compiler implementation; yamlstatus statistics exclude their integrations and checklist items, report them on a separate Not counted line, and keep their points selectable"
     remaining:
       - "-paths: report code, tests and rules paths that do not exist (IDEAS.md section 2)"
       - "-uses PATH: list integrations referencing a file (IDEAS.md section 3)"
@@ -108,8 +109,100 @@ integrations:
       - cmd/yamlstatus/selection_test.go
       - cmd/yamlstatus/edit_test.go
       - cmd/yamlstatus/check_test.go
+      - cmd/yamlstatus/library_scope_test.go
     verification:
       - command: go run ./cmd/yamlstatus check
         result: 0 problems in 47 fragments on 2026-10-09 after fixing the 24 problems found by the first run
       - command: go test ./cmd/yamlstatus -count=1
         result: passed on 2026-10-09 with well-formed and broken ledgers covering every check category, refused problem-introducing edits, and unblocked edits of fragments with pre-existing problems
+
+  - id: governance.allocation-storage-origin-taxonomy
+    area: rulebook-consistency
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: allocation.md delegates canonical storage-origin classification to storage.md. Arena remains an origin;
+      inline layout, external/foreign provenance, and fixed address stability are documented as independent properties.
+    rules:
+    - rules/memory/allocation.md
+    - rules/memory/storage.md
+    - rules/platform/fixed-address-bindings.md
+    - rules/platform/volatile.md
+    implemented:
+    - obsolete allocation origin list removed
+    - canonical storage classification delegated to rules/memory/storage.md
+    - Arena retained as a canonical storage origin
+    - foreign, external, fixed-address, and inline properties separated from storage origin
+    bug_reference:
+    - correction28.md
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: governance.arena-root-status-synchronization
+    area: implementation-governance
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: Root governance now records Arena.New, Release, FromBuffer, WithCapacity, Growable, stable ArenaDomain
+      identity, canonical owner traits, and represented borrowed-backing lifetime behavior. Broader Arena analysis remains
+      partial in its owning entries rather than being hidden from the root ledger.
+    bug_reference:
+    - correction29.md
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: rulebook.arena-backing-kind-summary
+    area: rulebook-consistency
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: arena.md consistently separates backing ownership kind (Owned, Borrowed, Static, or TargetProvided) from
+      fixed/growable capacity policy.
+    correction:
+    - State that backing ownership may be Owned, Borrowed, Static, or TargetProvided.
+    - State separately that an Arena is Fixed or Growable according to capacity/growth policy.
+    bug_reference:
+    - correction29.md
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: governance.semantic-ir-v2
+    area: semantic-ir-governance-and-versioning
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - map package-local Semantic IR amendments to the canonical v2 sections without deleting implementation-history
+      reports
+    - define canonical internal Semantic IR schema/version ownership
+    - ensure future SEC-MLIR packages amend implementation status rather than append normative semantic fragments
+      to the canonical book
+    required_tests:
+    - governance has one canonical Semantic IR rulebook path
+    - package reports link to canonical semantic sections
+    - schema changes update version metadata deterministically
+
+  - id: governance.compiler-analysis
+    area: compiler-analysis-rulebook-governance
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - map existing implementation-status entries for individual analysis rulebooks under the common coordination model
+      without duplicating them
+    - keep P1-P14 documents as implementation history rather than treating them as competing current analysis semantics
+
+  - id: governance.compiler-core
+    area: compiler-rulebook-governance-migration
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - migrate still-relevant target registry statuses, CLI implementation details, bootstrap import state, direct-LLVM
+      divergence and toolchain-path notes into implementation-status.yaml rather than the normative book
+    - keep P1-P14 historical completion records while adding remaining synchronization work caused by newer canonical
+      Target/Variant, @target/@when, Iterator[T] and compiler architecture rules
+    - ensure compiler.platform-model governance remains the canonical implementation plan for Target/Variant/CompilationPlan
+      resolution
+
+  - id: governance.compiler-pipeline
+    area: pipeline-rulebook-and-package-sync
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - map P1-P14 package records to the new pipeline boundaries without changing their historical completion claims
+    - add remaining work when newer canonical rules such as Iterator[T] extend a previously implemented package assumption

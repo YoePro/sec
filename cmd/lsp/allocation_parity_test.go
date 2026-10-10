@@ -255,7 +255,7 @@ func TestAllocationTargetOverlay(t *testing.T) {
 }
 
 // TestAllocationTargetIgnoresDependencyDirective keeps imported target metadata
-// from replacing the active source's target-independent fallback.
+// from replacing the active source's host-target fallback.
 // Rules: rules/memory/allocation.md — §29(1); rules/tooling/lsp.md — "Target-aware analysis".
 func TestAllocationTargetIgnoresDependencyDirective(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/sema/allocation_context_facts_valid.sec")
@@ -273,7 +273,11 @@ func TestAllocationTargetIgnoresDependencyDirective(t *testing.T) {
 		t.Fatal("missing imported directive")
 	}
 	program.Statements = append(program.Statements, directive)
-	if width := newLSPAnalyzer(uri, program).Types()["int"].BitWidth; width != 0 {
-		t.Fatalf("import selected %d-bit target", width)
+	// Outside a project the active target is the host target (lsp.md
+	// "Diagnostics", target-aware source selection); the imported cortex-m3
+	// directive must not replace it.
+	host := newLSPAnalyzer(uri, parseProgramForLSP(uri, string(data))).Types()["int"].BitWidth
+	if width := newLSPAnalyzer(uri, program).Types()["int"].BitWidth; width != host {
+		t.Fatalf("import selected a %d-bit target instead of the %d-bit host target", width, host)
 	}
 }

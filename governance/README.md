@@ -23,17 +23,17 @@ purpose: Short ownership description.
 integrations: []
 ```
 
-`integrations` uses the same entry shape and status vocabulary as the legacy
-`implementation-status.yaml`: `implemented`, `partial`, and `planned`.
+`integrations` uses the entry shape and status vocabulary of the retired root
+ledger: `implemented`, `partial`, and `planned`.
 An integration has one canonical owner.  Related work is referenced through
 rulebook paths or integration IDs; it is never copied into a second fragment.
 
-## Migration from the legacy ledger
+## Legacy ledger
 
-`../implementation-status.yaml` is a migration source, not a second canonical
-ledger.  New entries belong here.  When moving an existing integration, copy
-its complete entry into exactly one fragment, preserve its ID/history, remove
-the root copy in the same change, and check that no duplicate ID remains.
+The root `implementation-status.yaml` was fully migrated into these fragments
+and deleted on 2026-10-10.  Every integration, including the moved ones with
+their IDs and history, now lives in exactly one fragment.  Historical
+verification commands inside entries may still name the retired file.
 
 Keep `index.yaml` small: it registers fragment paths and ownership only.  Add
 or rename a fragment through the index in the same change.  Do not put full

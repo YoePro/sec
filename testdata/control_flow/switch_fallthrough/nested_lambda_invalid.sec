@@ -1,0 +1,6 @@
+module main
+fn Bad(flag: bool) void {
+ switch flag { case true: let cb := fn() void { fallthrough }
+ case false: }
+}
+fn main() void {}

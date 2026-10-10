@@ -53,6 +53,10 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		DefaultCycle:                                  SeverityError,
 		BackendDefaultLeftUndefined:                   SeverityError,
 		CharLiteralOutOfRange:                         SeverityError,
+		CheckedConversionRequiresTry:                  SeverityError,
+		TypeNameUsedAsValue:                           SeverityError,
+		UnsafeFunctionValueMismatch:                   SeverityError,
+		RawPointerNullDereference:                     SeverityError,
 		InapplicableContract:                          SeverityError,
 		UnsatisfiableContractSet:                      SeverityError,
 		InvalidContractArgument:                       SeverityError,
@@ -204,6 +208,7 @@ func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
 		ParserAssertMessageSeparator,
 		ParserAssertMissingCondition,
 		ParserLegacyTryMatchWrapper,
+		ParserRemovedUppercaseForeignQualifier,
 	}
 	for _, id := range ids {
 		definition, ok := Lookup(id)
@@ -336,6 +341,10 @@ func TestDefaultAndContractDiagnosticsAreRegistered(t *testing.T) {
 		DefaultCycle:                     "types.default-cycle",
 		BackendDefaultLeftUndefined:      "backend.default-left-undefined",
 		CharLiteralOutOfRange:            "literal.char-out-of-range",
+		CheckedConversionRequiresTry:     "types.checked-conversion-requires-try",
+		TypeNameUsedAsValue:              "types.type-name-used-as-value",
+		UnsafeFunctionValueMismatch:      "unsafe.function-value-mismatch",
+		RawPointerNullDereference:        "unsafe.raw-pointer-null",
 		InapplicableContract:             "types.inapplicable-contract",
 		UnsatisfiableContractSet:         "types.unsatisfiable-contract-set",
 		InvalidContractArgument:          "types.invalid-contract-argument",

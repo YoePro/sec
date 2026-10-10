@@ -36,7 +36,10 @@ func (a *Analyzer) constantConditionReferencesMutableBinding(expression ast.Expr
 	switch expression := expression.(type) {
 	case *ast.Identifier:
 		symbol, exists := a.symbols[expression.Value]
-		return exists && (symbol.Mutable || symbol.TransientConstant)
+		// A mutable working binding that the function never assigns,
+		// mutably borrows, or captures keeps its value for its whole
+		// lifetime, like an immutable binding (stableBindingsOf).
+		return exists && (symbol.Mutable && !a.currentStableBindings[expression.Value] || symbol.TransientConstant)
 	case *ast.ConversionExpression:
 		return a.constantConditionReferencesMutableBinding(expression.Value)
 	case *ast.CallExpression:

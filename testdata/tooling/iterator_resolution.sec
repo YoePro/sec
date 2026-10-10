@@ -1,0 +1,19 @@
+module main
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+type Words struct { current: int }
+impl Words implements Iterator[string] {
+    fn Next() Option[string] { return None }
+}
+fn MakeWords() Words { return Words{} }
+fn Visit() void {
+    let mut counter := Counter{}
+    for number in counter { discard number }
+    for word in MakeWords() { discard word }
+}
+fn Drain[I: Iterator[int]](values: ref mut I) void {
+    for value in values { discard value }
+}
+fn main() void { Visit() }

@@ -100,8 +100,8 @@ func TestFormatWritesLFLineEndings(t *testing.T) {
 //
 // Rules: rules/platform/ffi.md §5-6; rules/tooling/formatter.md §6(4).
 func TestFormatKeepsForeignQualifiedNamesContiguous(t *testing.T) {
-	input := "module main\nextern \"C\" fn GetVersion(flags: C::uint) C::int\nfn Use() void {\n    let v:C::int := C::int(1)\n    let size: c::stddef::size_t := 0\n}\n"
-	want := "module main\nextern \"C\" fn GetVersion(flags: C::uint) C::int\nfn Use() void {\n    let v: C::int := C::int(1)\n    let size: c::stddef::size_t := 0\n}\n"
+	input := "module main\nextern \"C\" fn GetVersion(flags: c::uint) c::int\nfn Use() void {\n    let v:c::int := c::int(1)\n    let size: c::stddef::size_t := 0\n}\n"
+	want := "module main\nextern \"C\" fn GetVersion(flags: c::uint) c::int\nfn Use() void {\n    let v: c::int := c::int(1)\n    let size: c::stddef::size_t := 0\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("foreign names formatted as:\n%s\nwant:\n%s", got, want)
 	}

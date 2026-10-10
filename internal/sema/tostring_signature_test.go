@@ -132,7 +132,10 @@ fn Describe(failure: StringError) int {
 			return 4
 		}
 		StringError.InvalidUtf8(index) => {
-			return int(index)
+			if index <= 100 {
+				return int(index)
+			}
+			return 7
 		}
 		StringError.InvalidCodePoint => {
 			return 5

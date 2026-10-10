@@ -10,6 +10,9 @@ package sema
 //   - rules/declarations/interfaces.md — §§6, 9.1 canonical conformance.
 func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, bool) {
 	concrete := dereferenceType(source)
+	if concrete.Kind == GenericType {
+		return constrainedIterator(concrete)
+	}
 	for _, iface := range concrete.Implements {
 		if !iface.Intrinsic || iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
 			continue
@@ -30,6 +33,31 @@ func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, boo
 		// the missing or mismatched implementation at the implements clause.
 		required.ImplTarget = concrete.Name
 		return element, required, iface, true
+	}
+	return Type{}, Function{}, Type{}, false
+}
+
+// constrainedIterator resolves iteration over a generic parameter whose
+// declared constraints include the compiler-known Iterator[T]: the element
+// type and Next requirement come from the constraint, and each
+// specialization resolves the concrete Next statically. No interface value
+// or dispatch is created.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §37 "Compiler-known `Iterator[T]`"
+//   - rules/declarations/generics.md — §15 "Operations available on generic parameters"
+//   - rules/declarations/interfaces.md — §9.1 "Compiler-known generic interfaces"
+func constrainedIterator(parameter Type) (Type, Function, Type, bool) {
+	for _, constraint := range parameter.GenericConstraints {
+		iface := constraint.Interface
+		if !iface.Intrinsic || iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
+			continue
+		}
+		required, ok := compilerKnownInterfaceRequirement(iface, "Next")
+		if !ok {
+			continue
+		}
+		return iface.TypeArgs[0], required, iface, true
 	}
 	return Type{}, Function{}, Type{}, false
 }

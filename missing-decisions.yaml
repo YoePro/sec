@@ -817,3 +817,117 @@ decisions:
       contains such a comment.
     classification: localized
     status: open
+
+  - id: MD-056
+    area: integer-bit-reinterpretation
+    rulebooks:
+      - rules/types/types.md
+      - rules/platform/ffi.md
+      - rules/platform/abi.md
+    description: >-
+      types.md "Explicit conversions" makes every conversion that may fail
+      require try (ConversionError) and says that lossy, wrapping or otherwise
+      non-preserving conversions need separately defined explicit operations,
+      but no such operation is defined. The platform layer depends on one:
+      sec/platform/linux and sec/stdlib/io pass signed values (file
+      descriptors, flags, lseek offsets that may be negative, exit codes) to
+      RawSyscall as uint machine words, which is a two's-complement
+      reinterpretation, not a value conversion; a try handler would wrongly
+      reject a valid negative offset. Decide the operation (its spelling, for
+      example a member or a named conversion, which integer pairs it allows,
+      and whether it requires unsafe or equal widths) or change the raw
+      syscall/register boundary types. Until then the compiler accepts and
+      types try over every checked integer-family conversion, enforces the
+      try requirement only for conversions involving a c:: scalar (ffi.md
+      §8), and leaves bare Sec-only narrowing conversions accepted.
+    classification: constraining
+    status: open
+
+  - id: MD-057
+    area: iterator-interface-parameter-type
+    rulebooks:
+      - rules/types/types.md
+      - rules/declarations/interfaces.md
+      - rules/control-flow/flowcontrol_for.md
+      - sec/stdlib/str/stdlib_str.md
+    description: >-
+      stdlib_str.md §13.2 and §12 write Iterator[T] directly as a parameter
+      type (fn Join(values: Iterator[string], separator: string), fn
+      FromRunes(values: Iterator[rune])), but types.md calls Iterator[T] a
+      compiler-known interface rather than a storable type, and
+      flowcontrol_for.md §37 and interfaces.md §9.1 forbid interface values,
+      boxing and dynamic dispatch for it; stdlib_str.md §13.6 itself defers the
+      shape "until the generic iterator and mutable-reference API are locked".
+      Decide what such a signature means: shorthand for an implicit generic
+      parameter (fn Join[I: Iterator[string]](values: I, ...)), required
+      explicit generic syntax (and an update of the stdlib design), or a new
+      runtime interface value; and whether the iterator is taken by value
+      (consumed) or as ref mut. The explicit generic forms
+      fn F[I: Iterator[T]](values: I) and fn F[I: Iterator[T]](values: ref
+      mut I) are implemented; a direct Iterator[T] parameter is rejected at
+      call sites with a concrete iterator ("argument must be
+      Iterator[string]") and in for loops ("not iterable").
+    classification: constraining
+    status: open
+
+  - id: MD-058
+    area: list-capacity-reservation
+    rulebooks:
+      - rules/collections/collections.md
+      - sec/stdlib/str/stdlib_str.md
+    description: >-
+      stdlib_str.md § 8.3 and § 8.5 give str.Builder init(initialCapacity) and
+      Reserve(additionalBytes) Result[void, CollectionError], and builder.sec
+      stores its bytes in list[byte], but collections.md § 13.4–13.5 give
+      list[T] only a read-only Capacity property and no way to reserve
+      capacity (no WithCapacity construction, no Reserve method; § 6.3
+      excludes Reserve from T[] and § 7 from slices). Decide whether list[T]
+      gets a fallible reservation operation (its spelling, CollectionError
+      variants and transactional behavior) or how Builder obtains reserved
+      storage otherwise. Until then Builder.init treats initialCapacity as an
+      ignored hint and Reserve cannot be implemented.
+    classification: localized
+    status: open
+
+  - id: MD-059
+    area: unsafe-function-type
+    rulebooks:
+      - rules/memory/unsafe.md
+      - rules/foundations/grammar.md
+    description: >-
+      unsafe.md § 39 makes unsafe status part of callable compatibility,
+      forbids implicit conversion of an unsafe function to a safe function
+      value and requires unsafe context for calls through an unsafe function
+      value, but grammar.md FunctionType ([ CallableCapability ] "fn" ...)
+      has no unsafe form, so no unsafe function value can be written or
+      typed. Decide whether FunctionType gets an unsafe form (its spelling,
+      its position relative to mut/-> capabilities, compatibility and
+      formatter canon) and whether an unsafe interface method or generic
+      callable constraint has a matching spelling (§ 40, § 41). Until then
+      sema rejects every unsafe function used as a function value with S1141
+      unsafe.function-value-mismatch, also inside unsafe contexts.
+    classification: localized
+    status: open
+
+  - id: MD-060
+    area: unsafe-function-body-context
+    rulebooks:
+      - rules/memory/unsafe.md
+      - rules/platform/inline_assembly.md
+    description: >-
+      unsafe.md § 7(1)-(2) and § 4(7) say the body of an unsafe fn is not
+      implicitly an unsafe context and each unsafe operation stays explicitly
+      marked, but sema treats the whole unsafe fn body as unsafe context
+      (internal/sema/analyzer.go, function body setup). Removing that would
+      reject sec/platform/linux/amd64/raw_syscall.sec, which writes asm
+      directly in unsafe fn bodies and reads the named asm output result
+      after the asm statement, plus the io write/syscall wrappers and the
+      tests TestUnsafeFunctionAllowsAsmAndNamedOutput and
+      TestGenerateUnsafeFunctionWithNamedAsmOutput. Decide whether the
+      rulebook rule is applied as written (and then how a named asm output
+      becomes visible outside an explicit unsafe block, for example through
+      unsafe block-expression results per § 4(5), and who migrates the
+      platform sources) or whether asm/unsafe fn bodies get an explicit
+      exception. Until then the implicit unsafe body is kept unchanged.
+    classification: localized
+    status: open

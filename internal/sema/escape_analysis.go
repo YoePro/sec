@@ -132,6 +132,10 @@ type EscapeAnalysis struct {
 	facts        []EscapeFact
 	summaries    map[CallableID]*EscapeCallableSummary
 	summaryOrder []CallableID
+	// callArguments are the call-boundary relations (escape_call_boundary.go);
+	// callArgumentKeys deduplicates re-inferred calls.
+	callArguments    []EscapeCallArgument
+	callArgumentKeys map[escapeCallArgumentKey]bool
 }
 
 func newEscapeAnalysis() *EscapeAnalysis {
@@ -144,6 +148,13 @@ func (e *EscapeAnalysis) clone() *EscapeAnalysis {
 		return copyAnalysis
 	}
 	copyAnalysis.facts = cloneEscapeFacts(e.facts)
+	copyAnalysis.callArguments = cloneEscapeCallArguments(e.callArguments)
+	if e.callArgumentKeys != nil {
+		copyAnalysis.callArgumentKeys = make(map[escapeCallArgumentKey]bool, len(e.callArgumentKeys))
+		for key := range e.callArgumentKeys {
+			copyAnalysis.callArgumentKeys[key] = true
+		}
+	}
 	copyAnalysis.summaryOrder = append([]CallableID(nil), e.summaryOrder...)
 	for id, summary := range e.summaries {
 		cloned := cloneEscapeCallableSummary(*summary)

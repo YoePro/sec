@@ -66,10 +66,33 @@ func newLSPAnalyzerForInputs(uri string, program *ast.Program, overlay sourceOve
 		analyzer.SetPitfallSourcePriority([]string{sourcePath})
 		return analyzer
 	}
+	// Outside a project the compiler CLI analyzes for the host target; the
+	// LSP uses the same plan so c:: fundamental types resolve through the
+	// host C ABI model instead of reporting S1077 only in the editor.
+	// Rules: rules/tooling/lsp.md — Target-aware analysis; rules/platform/ffi.md — §5.
+	if definition, found := platformtarget.Find(platformtarget.Host()); found && !lspHasProjectManifest(sourcePath) {
+		if plan, err := definition.ScalarPlan(); err == nil {
+			analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, depth)
+			analyzer.SetAllocationProfile(lspAllocationCapabilities(sourcePath).Profile)
+			analyzer.SetPitfallSourcePriority([]string{sourcePath})
+			return analyzer
+		}
+	}
 	analyzer := sema.NewAnalyzerWithDepth(depth)
 	analyzer.SetAllocationProfile(lspAllocationCapabilities(sourcePath).Profile)
 	analyzer.SetPitfallSourcePriority([]string{sourcePath})
 	return analyzer
+}
+
+// lspHasProjectManifest reports whether the source belongs to a project
+// whose manifest owns target selection; such a project never falls back to
+// the host target.
+func lspHasProjectManifest(sourcePath string) bool {
+	if sourcePath == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml"))
+	return err == nil
 }
 
 // lspAnalysisDepth resolves the normative project analysis setting per request.

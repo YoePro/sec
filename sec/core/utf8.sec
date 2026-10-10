@@ -70,8 +70,17 @@ fn DecodeUtf8(value: ref byte[], index: uint) Result[Utf8DecodedRune, StringErro
 
         let codePoint := (uint(first & 0x0F) << 12) | (uint(second & 0x3F) << 6) | uint(third & 0x3F)
 
+        // The byte checks above exclude surrogates and values above
+        // U+10FFFF; the checked conversion keeps that proof explicit
+        // (types.md "Explicit conversions").
+        let scalar := try rune(codePoint) {
+            Err(_) => {
+                return Err(StringError.InvalidCodePoint)
+            }
+        }
+
         return Ok(Utf8DecodedRune {
-            Value: rune(codePoint),
+            Value: scalar,
             Width: 3,
         })
     }
@@ -111,8 +120,17 @@ fn DecodeUtf8(value: ref byte[], index: uint) Result[Utf8DecodedRune, StringErro
         (uint(third & 0x3F) << 6) |
         uint(fourth & 0x3F)
 
+        // The byte checks above exclude surrogates and values above
+        // U+10FFFF; the checked conversion keeps that proof explicit
+        // (types.md "Explicit conversions").
+        let scalar := try rune(codePoint) {
+            Err(_) => {
+                return Err(StringError.InvalidCodePoint)
+            }
+        }
+
         return Ok(Utf8DecodedRune {
-            Value: rune(codePoint),
+            Value: scalar,
             Width: 4,
         })
     }

@@ -694,7 +694,7 @@ impl Resource { free { discard self.Handle } }`,
 		{
 			name: "foreign struct ABI syntax",
 			source: `module main
-extern "C" type Point struct { X: C::int, Y: C::int }`,
+extern "C" type Point struct { X: c::int, Y: c::int }`,
 			stage: parserStage, wantDetail: "expected",
 		},
 	}

@@ -75,25 +75,10 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 			continue
 		}
 		clearRootPlaceStateMaps(loopMoved, loopMoveReasons, binding.Name)
-		for index := range frameState.moved {
-			clearRootPlaceStateMaps(frameState.moved[index], frameState.moveReasons[index], binding.Name)
-		}
-		for index := range frameState.continueMoved {
-			clearRootPlaceStateMaps(frameState.continueMoved[index], frameState.continueReasons[index], binding.Name)
-		}
 		delete(loopClosedResources, binding.Name)
-		for index := range frameState.closedResources {
-			delete(frameState.closedResources[index], binding.Name)
-		}
-		for index := range frameState.continueClosedResources {
-			delete(frameState.continueClosedResources[index], binding.Name)
-		}
 		clearLoopBindingReferenceState(loopBorrows, loopLocalRefContainers, binding.Name)
-		for index := range frameState.borrows {
-			clearLoopBindingReferenceState(frameState.borrows[index], frameState.localRefContainers[index], binding.Name)
-		}
-		for index := range frameState.continueBorrows {
-			clearLoopBindingReferenceState(frameState.continueBorrows[index], frameState.continueLocalRefContainers[index], binding.Name)
+		for _, edge := range frameState.edges() {
+			edge.clearBinding(binding.Name, true)
 		}
 	}
 	a.loopBreakFrames[frame] = frameState
@@ -115,7 +100,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, false)
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
-	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
+	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.breakArenaGenerations())
 	a.loopDepth = previousLoopDepth
 }
 
@@ -339,6 +324,12 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			if requirement := a.iteratorLoweringRequirements[stmt]; requirement != nil && !a.summaryPass && !a.iterationDependencyProbe {
 				requirement.required = true
 				requirement.conformanceValid = a.hasValidExplicitInterfaceConformance(dereferenceType(iterableType), conformance)
+				if dereferenceType(iterableType).Kind == GenericType {
+					// The Iterator[T] constraint is checked at every call site;
+					// the template itself is lowered per specialization.
+					requirement.conformanceValid = true
+					requirement.genericTemplate = true
+				}
 				requirement.conformance = graphTypeIdentity(conformance)
 				requirement.next = callableID(next)
 			}
@@ -378,6 +369,15 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			}
 			if stmt.Bindings[0].Discard {
 				plan.Binding = ForIteratorDiscardBinding
+			}
+			if dereferenceType(iterableType).Kind == GenericType && !a.summaryPass && a.callGraphPathReachable {
+				// The template's Next comes from the Iterator[T] constraint:
+				// unknown at template level, a static edge per specialization
+				// (linkGenericSpecializations).
+				a.recordGenericConstraintCall(iterableType, next, stmt.Token)
+				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: stmt.Token})
+				a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: stmt.Token, UnknownAllocation: true})
+				a.recordUnknownBlockingCallee(stmt.Token)
 			}
 			if next.Token.Line > 0 {
 				plan.NextCallable = callableID(next)

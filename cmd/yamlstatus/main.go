@@ -32,6 +32,11 @@ type Stats struct {
 	TotalPartial     int
 	StatusCounts     map[string]int
 	FieldCounts      map[string]int
+	// LibraryObjects and LibraryFiles count integrations in fragments the
+	// index marks implementation_scope: library. They remain selectable but
+	// are not compiler implementation, so no other total includes them.
+	LibraryObjects int
+	LibraryFiles   []string
 }
 
 func main() {
@@ -43,6 +48,7 @@ func main() {
 
 func collectStats(dir string) (Stats, error) {
 	stats := Stats{StatusCounts: make(map[string]int), FieldCounts: make(map[string]int)}
+	index := loadIndex(dir)
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -52,6 +58,16 @@ func collectStats(dir string) (Stats, error) {
 		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+		if index.library[relativeFragment(dir, path)] {
+			library := Stats{StatusCounts: make(map[string]int), FieldCounts: make(map[string]int)}
+			if err := processYAMLFile(path, &library); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			stats.Entries = append(stats.Entries, library.Entries...)
+			stats.LibraryObjects += library.TotalObjects
+			stats.LibraryFiles = append(stats.LibraryFiles, relativeFragment(dir, path))
 			return nil
 		}
 		if err := processYAMLFile(path, &stats); err != nil {
@@ -143,7 +159,7 @@ func processYAMLFile(path string, stats *Stats) error {
 	}
 }
 
-func printResults(out io.Writer, stats Stats) {
+func printResults(out io.Writer, stats Stats, verbose bool) {
 	fmt.Fprintln(out, "\nIMPLEMENTATION STATISTICS")
 	fmt.Fprintf(out, "YAML files read:             %d\n", stats.Files)
 	fmt.Fprintf(out, "Total integrations:          %d\n", stats.TotalObjects)
@@ -156,14 +172,24 @@ func printResults(out io.Writer, stats Stats) {
 			fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
 		}
 	}
+
+	tot := stats.TotalImplemented + stats.TotalRemaining + stats.TotalPartial
 	fmt.Fprintln(out, "\nChecklist items:")
-	fmt.Fprintf(out, "  Implemented:               %d\n", stats.TotalImplemented)
-	fmt.Fprintf(out, "  Remaining:                 %d\n", stats.TotalRemaining)
-	fmt.Fprintf(out, "  Partial:                   %d\n", stats.TotalPartial)
-	fmt.Fprintln(out, "\nOther field occurrences (per integration):")
-	for _, field := range sortedKeys(stats.FieldCounts) {
-		fmt.Fprintf(out, "  %-25s %d\n", field, stats.FieldCounts[field])
+	fmt.Fprintf(out, "  Implemented:               %5d  (%2.1f%%)\n", stats.TotalImplemented, (float64(stats.TotalImplemented) / float64(tot) * 100))
+	fmt.Fprintf(out, "  Remaining:                 %5d  (%2.1f%%)\n", stats.TotalRemaining, (float64(stats.TotalRemaining) / float64(tot) * 100))
+	fmt.Fprintf(out, "  Partial:                   %5d  ( %2.1f%%)\n", stats.TotalPartial, (float64(stats.TotalPartial) / float64(tot) * 100))
+	fmt.Fprintf(out, "--------------------------------------------\n")
+	fmt.Fprintf(out, "  Total:                     %5d\n", tot)
+	if stats.LibraryObjects > 0 {
+		fmt.Fprintf(out, "\nNot counted (library, not compiler implementation): %d integrations in %s\n", stats.LibraryObjects, strings.Join(stats.LibraryFiles, ", "))
 	}
+	if verbose {
+		fmt.Fprintln(out, "\nOther field occurrences (per integration):")
+		for _, field := range sortedKeys(stats.FieldCounts) {
+			fmt.Fprintf(out, "  %-25s %d\n", field, stats.FieldCounts[field])
+		}
+	}
+	fmt.Fprintf(out, "\n")
 }
 
 func sortedKeys(counts map[string]int) []string {

@@ -7,10 +7,12 @@ status_values:
   partial: A usable vertical slice is integrated, with listed work remaining.
   planned: The scope is documented but no implementation slice is integrated.
 legacy_migration:
-  source: ../implementation-status.yaml
+  completed: "2026-10-10"
   policy: >-
-    The root file is a migration source only. New entries belong in a fragment;
-    moved entries must be removed from the root in the same change.
+    The legacy root implementation-status.yaml was fully migrated into the
+    fragments and deleted. All entries belong in exactly one fragment.
+# Fragments count as compiler implementation unless they set
+# implementation_scope: library.
 fragments:
   - path: allocation.yaml
     owns: allocation semantics and allocation lowering
@@ -94,6 +96,9 @@ fragments:
     owns: frontend semantic analysis and semantic diagnostics
   - path: stdlib.yaml
     owns: standard-library implementation and catalog status
+    # The standard library is not part of the compiler implementation;
+    # yamlstatus keeps library fragments out of its statistics.
+    implementation_scope: library
   - path: testing.yaml
     owns: language and compiler testing infrastructure, conformance evidence, and test-tooling status
   - path: tooling.yaml

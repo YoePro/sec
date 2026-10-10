@@ -196,7 +196,9 @@ func arenaConstructorBorrowHolder(expr *ast.CallExpression) string {
 // rules/memory/layout.md — §2(7); rules/types/default_values.md — canonical default resolution.
 func (a *Analyzer) validateArenaAllocationElement(method string, reference *ast.TypeReference, element Type) bool {
 	token := reference.Token
-	if element.Kind == GenericType {
+	if typeMentionsGenericParameter(element) {
+		// Checked per specialization (validateArenaGenericRequirements).
+		a.recordArenaGenericRequirement(method, element, token)
 		return true
 	}
 	display := typeDisplayName(element)

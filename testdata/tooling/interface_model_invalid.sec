@@ -1,0 +1,24 @@
+module main
+interface Read { fn Value() int }
+interface ReadMore { fn Value() int }
+interface Sink[T] { fn Write(value: T) void }
+interface Child implements Read {}
+interface Unresolved { fn Use(value: Missing) void }
+type Good struct {}
+impl Good implements Read { fn Value() int { return 1 } }
+type Bad struct {}
+impl Bad implements ReadMore { fn Value() string { return "wrong" } }
+type IntSink struct {}
+impl IntSink implements Sink[int] { fn Write(value: int) void { discard value } }
+type WrongSink struct {}
+impl WrongSink implements Sink[string] { fn Write(value: int) void { discard value } }
+type Inherited struct {}
+impl Inherited implements Child { fn Value() int { return 1 } }
+type Unknown struct {}
+impl Unknown implements Unresolved { fn Use(value: Missing) void { discard value } }
+type Counter struct {}
+impl Counter implements Iterator[int] { fn Next() Option[int] { return None } }
+type BrokenIterator struct {}
+impl BrokenIterator implements Iterator[int] { fn Next() Option[string] { return None } }
+type Duck struct {}
+impl Duck { fn Next() Option[int] { return None } }

@@ -1,0 +1,21 @@
+module main
+type Broken struct {}
+impl Broken implements Iterator[int] {
+    fn Next() Option[string] { return None }
+}
+type Duck struct {}
+impl Duck {
+    fn Next() Option[int] { return None }
+}
+type Counter struct {}
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+fn Bad() void {
+    let mut broken := Broken{}
+    for value in broken { discard value }
+    let mut duck := Duck{}
+    for value in duck { discard value }
+    let counter := Counter{}
+    for value in counter { discard value }
+}

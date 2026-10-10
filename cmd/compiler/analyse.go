@@ -150,6 +150,7 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 		}
 	}
 	report.addCallGraph(graph, nodes, names, inSelection)
+	report.addIterators(analyzer, inSelection)
 	report.addEffects(graph, nodes, names)
 	report.addAllocationFacts(analyzer, nodes, names)
 	report.addEscape(analyzer.EscapeAnalysis(), inSelection)

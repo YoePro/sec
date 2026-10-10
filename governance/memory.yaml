@@ -295,6 +295,36 @@ integrations:
       - "Semantic IR preserves replacement versus reinitialization and cleanup responsibility"
       - "Semantic IR never models a volatile hardware read itself as ownership move-out"
 
+  - id: "lowering.copy-move"
+    area: "sec-mlir-llvm-abi-copy-move"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/copy_move.md"
+      - "rules/memory/ownership.md"
+      - "rules/platform/volatile.md"
+      - "rules/mlir/sec_mlir.md"
+    implemented:
+      - "SEC-MLIR packages already lower many scalar, call, enum/union, match, and struct operations, including P13 struct semantics, but root governance still defers explicit ownership verification for general copy/move."
+    remaining:
+      - "lower resolved copy/move/replace/reinitialize operations without re-deciding source semantics from physical representation"
+      - "preserve source unavailability and exactly-once destination/destruction responsibility through copy elision, move elision, destination passing, buffer reuse, and stack-slot reuse"
+      - "verify argument transfer commit after fallible left-to-right argument preparation"
+      - "preserve partial aggregate ownership and conditional cleanup through supported control flow"
+      - "preserve volatile access ordering and never merge source-level volatile observations because local snapshots are copyable"
+      - "respect address stability/pinning/fixed-storage constraints independently of ownership transfer"
+      - "verify ABI and FFI ownership contracts rather than inferring ownership from register/pointer passing strategy"
+    required_tests:
+      - "copy elision preserves source availability"
+      - "move elision preserves source unavailability"
+      - "replacement destroys old destination exactly once before new ownership is established"
+      - "failed later call argument does not commit an earlier reserved reusable-source transfer"
+      - "volatile snapshot copy does not emit an additional volatile read"
+      - "physical MMIO/register storage is never relocated by value move lowering"
+      - "P13 struct ownership-sensitive cases reject unsupported non-trivial ownership paths rather than silently copying"
+
   - id: "semantic-ir.borrowing"
     area: "semantic-ir-borrowing-reference-authority"
     status: "planned"
@@ -324,6 +354,40 @@ integrations:
       - "Semantic IR preserves match guard-false borrow termination"
       - "Semantic IR preserves returned-reference origin and borrow dependency"
       - "Semantic IR keeps generation validity separate from alias authority"
+
+  - id: "lowering.borrowing"
+    area: "sec-mlir-llvm-reference-borrow-lowering"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/memory/reference_model.md"
+      - "rules/mlir/sec_mlir.md"
+      - "rules/platform/ffi.md"
+    code:
+      - "internal/codegen/mlir/generator.go"
+      - "internal/codegen/llvm/functions.go"
+      - "internal/codegen/llvm/statements.go"
+      - "internal/codegen/llvm/types.go"
+    implemented:
+      - "Existing MLIR/LLVM infrastructure lowers broad function, control-flow, aggregate, Result/Option, and reference-adjacent operations; compile-time borrow checking already removes the need for runtime borrow counters in established cases."
+    remaining:
+      - "consume resolved Semantic IR borrow/reference facts rather than reconstructing source borrow legality from pointer shapes"
+      - "erase compile-time-only borrow bookkeeping when safe while preserving required provenance/bounds/address-space/generation checks"
+      - "preserve final-use ordering so invalidating move/replacement/destruction cannot be scheduled before the last required borrow use"
+      - "lower ref/ref mut function and method ABI values without turning raw address uniqueness into source borrow authority"
+      - "lower FFI call-bounded ref/ref mut adaptation with no-retain semantics and selected target representation"
+      - "preserve volatile/MMIO access ordering when a safe reference/view to permitted physical storage is eventually defined by specialized platform rules"
+      - "ensure LLVM optimization cannot introduce aliasing behavior forbidden by Sec borrow semantics"
+    required_tests:
+      - "borrow-only program lowers with no runtime borrow counter/table"
+      - "ref mut call reborrow lowers without consuming caller reference storage"
+      - "final borrow use precedes invalidating replacement/destruction in lowered control flow"
+      - "generation/epoch check remains when required even though borrow legality was compile-time"
+      - "FFI call-bounded borrow address is not retained by generated wrapper"
+      - "volatile access count/order remains unchanged by snapshot borrow optimization"
 
   - id: "semantic-ir.destruction"
     area: "semantic-ir-destruction"
@@ -360,6 +424,77 @@ integrations:
       - "replacement and reinitialization remain semantically distinct"
       - "return/error transfer excludes transferred payload from callee cleanup"
 
+  - id: "lowering.destruction"
+    area: "sec-mlir-llvm-destruction"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/control-flow/defer.md"
+      - "rules/memory/ownership.md"
+      - "rules/mlir/sec_mlir.md"
+    code:
+      - "internal/codegen/mlir/generator.go"
+      - "internal/codegen/llvm/statements.go"
+    tests:
+      - "internal/codegen/mlir/generator_test.go"
+      - "testdata/ir"
+    implemented:
+      - "MLIR currently emits multiple statically represented deferred blocks in reverse registration order and has selected cleanup-adjacent return/error behavior."
+      - "Existing SEC MLIR packages lower broad control-flow, Result/Option/union/struct, and typed-error semantics, providing infrastructure for explicit destruction lowering."
+    remaining:
+      - "lower one unified cleanup plan containing defer and automatic destruction across ordinary return, error propagation, branches, loops, break, continue, and invocation exit"
+      - "preserve earliest legal destruction for unrelated locals while extending values retained by defer/borrows"
+      - "lower partial aggregate destruction and active variant destruction without touching moved/discarded payloads"
+      - "lower conditional destruction using static control-flow facts first and hidden runtime state only when permitted/required"
+      - "lower custom free before remaining owned-field destruction and representation deallocation"
+      - "lower construction-failure cleanup for only successfully initialized obligations"
+      - "lower conditional replacement/reinitialization with exact old-value cleanup"
+      - "preserve allocator/deallocator and foreign release pairing"
+      - "integrate owning interface/generic destruction specialization"
+      - "integrate target-supported static destruction through ProgramShutdownPlan rather than a hidden registry"
+      - "by LLVM translation, make every cleanup branch/call explicit and remove all unresolved Sec destruction decisions"
+      - "ensure LLVM optimization cannot infer, duplicate, omit, or reorder source-observable destruction"
+    required_tests:
+      - "unified defer/automatic cleanup order survives MLIR and LLVM lowering"
+      - "move/discard eliminates former-owner destroy in lowered IR"
+      - "conditional destruction executes on exactly the runtime paths still owning the value"
+      - "strict target policy rejects required hidden ownership flag before backend codegen"
+      - "custom free executes before remaining field destruction"
+      - "fallible construction rollback destroys only successful prior acquisitions"
+      - "return try and bodyless try cleanup preserve transferred payload"
+      - "break/continue loop cleanup does not destroy loop-carried values"
+      - "volatile snapshot cleanup does not emit a hardware access"
+      - "LLVM contains no unresolved semantic destroy-placement decision"
+
+  - id: "target-policy.destruction"
+    area: "target-runtime-static-ownership-destruction-policy"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/memory/ownership.md"
+      - "rules/compiler/initialization.md"
+      - "rules/platform/volatile.md"
+    remaining:
+      - "provide a project/target compilation policy that rejects code requiring dynamic ownership/destruction bookkeeping when deterministic runtime-free ownership is required"
+      - "resolve conditional ownership statically whenever control-flow facts suffice before considering hidden flags"
+      - "permit explicit discard convergence to normalize conditional ownership before replacement/cleanup-sensitive operations"
+      - "integrate static/global owned destruction only when TargetProfile and ProgramShutdownPlan support deterministic teardown"
+      - "avoid hidden global destruction registries in runtime-free/freestanding profiles"
+      - "respect ISR/execution-context restrictions once the canonical ISR rulebook defines permitted cleanup/effect behavior"
+      - "respect future physical-addressing/register contracts without treating scope exit as device/reset/register-clear semantics"
+    required_tests:
+      - "runtime-free target accepts statically resolvable partial/conditional ownership without hidden flag"
+      - "runtime-free target rejects ownership state that genuinely requires forbidden runtime bookkeeping"
+      - "explicit discard convergence makes a previously rejected conditional replacement statically resolvable where applicable"
+      - "target lacking static teardown rejects unsupported global owned destruction"
+      - "target with supported ProgramShutdownPlan lowers deterministic static destruction in dependency-constrained order"
+
   - id: "semantic-ir.lifetime-analysis"
     area: "semantic-ir-lifetime-facts"
     status: "planned"
@@ -390,6 +525,58 @@ integrations:
       - "mapping/view lifetime dependency retained"
       - "invalid lifetime IR rejected by verifier"
 
+  - id: "lowering.lifetime-analysis"
+    area: "mlir-llvm-lifetime-lowering"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/memory/destruction.md"
+      - "rules/platform/hardware-register-access.md"
+      - "rules/platform/volatile.md"
+    remaining:
+      - "lower verified storage lifetime without using backend lifetime metadata as source semantics"
+      - "preserve destruction/deallocation/remap ordering and all live reference/view dependencies"
+      - "emit LLVM lifetime markers only within proven Sec storage lifetime boundaries"
+      - "preserve borrow-derived alias/noalias assumptions only where canonical provenance proves them"
+      - "avoid over-strong alias/lifetime optimization around RawPtr, FFI, volatile, hardware aliases, or opaque calls"
+      - "preserve fixed-address and runtime mapping address stability while dependent views remain live"
+      - "prove no hidden heap promotion is introduced solely to repair source lifetime errors"
+    required_tests:
+      - "no early lifetime.end while reference or defer dependency remains"
+      - "no hidden heap promotion for returned local reference"
+      - "mapping cannot unmap before dependent view ends"
+      - "volatile access remains observable despite dead-value/lifetime optimization"
+      - "noalias emitted only for proven borrow/provenance cases"
+
+  - id: "platform.lifetime-analysis"
+    area: "platform-storage-mapping-lifetime"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/platform/hardware-register-access.md"
+      - "rules/platform/fixed-address-bindings.md"
+      - "rules/platform/volatile.md"
+    remaining:
+      - "consume fixed-address storage lifetime/availability contracts without treating physical address as lifetime proof"
+      - "model owning runtime mapping lifetime and borrowed typed register-view bounds"
+      - "invalidate old views on remap unless canonical platform contract proves semantic/address stability"
+      - "keep device liveness separate from mapping lifetime and ownership is available"
+      - "keep access-context authority, volatility, ordering and synchronization separate from lifetime proof"
+      - "provide future ISR rulebooks a stable generic escaping-execution lifetime contract without defining ISR syntax here"
+    required_tests:
+      - "fixed-address binding with unknown lifetime does not gain static lifetime"
+      - "register view cannot escape mapping owner"
+      - "mapping move preserves owner lifetime relationship"
+      - "mapping destruction invalidates dependent view"
+      - "remap invalidates old view unless contract proves stability"
+      - "device liveness failure does not mutate ownership availability state"
+
   - id: semantic-ir.transferability
     area: semantic-ir-boundary-transfer
     status: planned
@@ -416,6 +603,84 @@ integrations:
     - process adapter retained
     - ISR direction retained
     - invalid contradictory transfer facts rejected
+  - id: lowering.transferability
+    area: boundary-transfer-lowering
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Lowering must not clone move-only values or heap-promote invalid borrows to repair illegal concurrency-boundary transfers.
+    remaining:
+    - preserve consuming transfer commit/failure ownership semantics
+    - avoid hidden copying of move-only lifecycle/resources
+    - avoid hidden heap promotion/allocation to repair illegal borrowed transfer
+    - preserve synchronization required for shared state
+    - lower process transfer through selected serialization/IPC/shared-memory/handle adapter
+    - lower ISR handoff with bounded/noalloc/noblock/nopanic requirements
+    - preserve task/thread affinity and pinning requirements
+    - preserve fallible task creation and await Task[T] to TaskOutcome[T] without changing source ownership or outcome semantics
+    required_tests:
+    - failed consuming send preserves owner when API contract says not committed
+    - committed consuming send leaves source unavailable
+    - move-only resource not duplicated by runtime helper
+    - borrowed local not heap-promoted to permit detached work
+    - process transfer uses selected adapter
+    - ISR handoff uses only permitted primitives
+  - id: platform.transferability
+    area: thread-process-isr-ffi-platform-boundaries
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Platform facts define affinity, migration, process-handle, ISR, shared-memory, and foreign-callback restrictions without weakening concurrency.md.
+    remaining:
+    - resolve target/runtime thread affinity and destruction restrictions
+    - resolve scheduler migration/pinning guarantees
+    - integrate platform/native handle transfer and process-local restrictions
+    - integrate shared-memory mapping and process-compatible synchronization
+    - integrate ISR access-context and handoff capabilities
+    - integrate foreign callback thread/reentrancy/retention restrictions
+    - ensure unsafe does not waive platform boundary constraints
+    - reject unsupported task capability at compile time and validate migration and address-stability restrictions for the selected platform
+    required_tests:
+    - thread-affine platform handle rejected on wrong thread
+    - native process handle follows duplication/transfer contract
+    - shared-memory mapping lifetime covers process use
+    - ISR-safe value rejected when platform says operation not interrupt-safe
+    - foreign callback thread-bound state enforced
+  - id: tooling.transferability
+    area: transfer-diagnostics-lsp-tooling
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/tooling/lsp.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Diagnostics identify the concrete concurrency boundary and the transferability fact that prevents safe use.
+    remaining:
+    - expose boundary-specific transferability/shareability conditions from canonical analysis
+    - show nested blocking field/capture/reference/foreign contract in diagnostics
+    - show task migration/pinning relevance for thread-local failures
+    - show process adapter requirement for process boundaries
+    - show ISR direction/context for interrupt handoff failures
+    - ensure compiler/LSP/sec analyse parity
+    - invalidate transfer summaries incrementally when ownership/type/concurrency/FFI/platform facts change
+    - distinguish task-spawn failure, cancellation, panic, execution failure, and normal Completed(Err(E)) in shared compiler and LSP diagnostics
+    required_tests:
+    - diagnostic names concrete task/thread/process/ISR boundary
+    - diagnostic traces nested non-transferable field
+    - thread-local migration diagnostic explains scheduling boundary
+    - process diagnostic recommends explicit adapter
+    - ISR diagnostic identifies forbidden capability/effect
+    - compiler and LSP agree
   - id: semantic-ir.memory-model
     status: planned
     remaining:
@@ -437,6 +702,70 @@ integrations:
     - retain target/foreign facts and safe-wrapper boundary where needed
     - keep unsafe status distinct from effect summaries
     - verify contradictory trusted facts
+  - id: lowering.memory-model
+    status: partial
+    remaining:
+    - lower canonical destruction/reclamation and replacement/reinitialization
+    - eliminate runtime metadata only after proof
+    - avoid stronger backend alias/lifetime/nonnull assumptions
+    - complete volatile/fixed-address/memory-space lowering
+  - id: platform.memory-model
+    status: partial
+    remaining:
+    - complete FFI/mapping/hardware-address integration
+    - complete target memory-space/addressability constraints
+    - share canonical memory facts with ISR/concurrency analyses
+    - preserve runtime-free target support
+  - id: tooling.memory-model
+    status: planned
+    remaining:
+    - expose canonical memory state/provenance in LSP and sec analyse
+    - provide mentor diagnostics with state-transition provenance
+    - remove legacy terminology from user-facing output
+    - ensure compiler/LSP parity
+  - id: lowering.storage
+    status: planned
+    remaining:
+    - lower storage epochs and invalidation where runtime checks are required
+    - preserve memory spaces, mapping, volatile and fixed-address contracts
+    - preserve destruction before reclamation
+    - eliminate metadata/checks only after proof
+  - id: platform.storage
+    status: partial
+    remaining:
+    - complete target-defined memory-space contracts
+    - complete mapping/remap storage-domain integration
+    - complete foreign-storage and fixed-address alias validation
+    - integrate DMA/coherence/storage accessibility contracts
+  - id: tooling.storage
+    status: planned
+    remaining:
+    - expose canonical storage facts in diagnostics/LSP
+    - remove legacy storage-category terminology from user-facing tooling
+    - provide invalidation/reclamation provenance and mentor diagnostics
+    - ensure compiler/LSP/sec analyse parity
+  - id: lowering.unsafe
+    status: partial
+    remaining:
+    - lower raw/FFI/assembly/hardware operations using canonical target semantics
+    - avoid runtime unsafe flags or general runtime
+    - avoid backend assumptions stronger than source proof/trust
+    - preserve volatile/address-space/ABI/clobber contracts
+  - id: platform.unsafe
+    status: partial
+    remaining:
+    - complete target-knowledge/raw-address provenance
+    - complete mapping/hardware/ISR unsafe integration
+    - complete foreign ownership/effect/callback contracts
+    - complete inline-assembly effect trust integration
+  - id: tooling.unsafe
+    status: partial
+    remaining:
+    - complete unsafe-aware formatter/LSP
+    - show caller obligations/trust provenance
+    - provide wrap/remove unsafe code actions safely
+    - produce mentor diagnostics distinguishing missing context from proven invalidity
+    - provide optional whole-program trust reports
   - id: semantic-ir.references
     area: semantic-ir-reference-facts
     status: planned
@@ -462,6 +791,84 @@ integrations:
     - arena epoch dependency retained
     - mapping/view dependency retained
     - invalid reference IR rejected
+  - id: lowering.references
+    area: reference-representation-lowering
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/reference_model.md
+    - rules/platform/hardware-register-access.md
+    - rules/platform/volatile.md
+    remaining:
+    - select reference representation from target/profile and proven semantic requirements
+    - lower proven ordinary references without unnecessary runtime metadata
+    - preserve required bounds, epochs, address spaces, hardware capabilities and mapping dependencies
+    - preserve stale-reference deterministic panic/trap semantics where dynamic checks are required
+    - preserve safe-reference equality semantics beyond raw address equality when storage identity requires it
+    - avoid over-strong noalias/lifetime metadata around RawPtr, FFI, volatile, ISR shared state and hardware aliases
+    - prove no hidden heap promotion is introduced to repair illegal reference escape
+    required_tests:
+    - statically proven ref may lower to address only
+    - slice lowers with required bounds
+    - required epoch metadata preserved
+    - unneeded epoch support eliminated
+    - safe-reference equality distinguishes reused storage identity when required
+    - no hidden heap promotion
+  - id: platform.references
+    area: hardware-fixed-address-isr-reference-integration
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/platform/fixed-address-bindings.md
+    - rules/platform/hardware-register-access.md
+    - rules/platform/interrupts.md
+    - rules/platform/volatile.md
+    remaining:
+    - consume fixed-address storage lifetime/availability contracts without treating numeric address as permanent lifetime proof
+    - model runtime mapping owners and borrowed typed register views
+    - invalidate dependent views on mapping destruction/remap unless canonical stability proof exists
+    - keep external device liveness separate from safe-reference validity and ownership availability
+    - enforce hardware access-context authority independently from ref/ref mut authority
+    - enforce ISR-local reference non-escape and deferred-work lifetime rules
+    - combine ISR preemption/nesting facts with ordinary borrowing/concurrency proof without a separate ISR reference model
+    required_tests:
+    - fixed-address ref requires lifetime/storage contract
+    - register view cannot outlive mapping
+    - remap invalidates old view
+    - device unavailable is not None or ownership unavailable
+    - ISR valid static reference accepted
+    - ISR local reference escape rejected
+    - deferred work cannot retain ISR-local reference
+  - id: tooling.references
+    area: diagnostics-lsp-reference-tooling
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/tooling/lsp.md
+    - rules/tooling/diagnostics.md
+    remaining:
+    - expose canonical origin, possible-origin set, lifetime/borrow dependency, storage domain and invalidation cause from shared
+      Sema facts
+    - show returned-reference and retention summaries where useful
+    - show mapping/view and generation dependencies without exposing implementation-only jargon as primary UX
+    - produce mentor diagnostics identifying source origin, invalidating/escape operation, rejected use and practical remedy
+    - include ISR root/context as related information when reference failure occurs under interrupt execution
+    - ensure LSP/compiler/sec analyse parity and dependency-driven incremental invalidation
+    required_tests:
+    - returned-local diagnostic points to local origin and return
+    - arena-reset diagnostic points to reset and stale use
+    - mapping-view diagnostic points to mapping lifetime boundary
+    - ISR escape diagnostic points to handler-local origin and escaping handoff
+    - compiler and LSP agree on reference validity
   - id: semantic-ir.reference-model
     area: semantic-ir-reference-validity
     status: planned
@@ -478,6 +885,54 @@ integrations:
     - invalidation visible to verifier
     - stale ordinary ref failure category preserved
     - stale handle remains fallible
+  - id: lowering.reference-model
+    area: profile-selected-reference-lowering
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - lower proven direct refs to address-only where valid
+    - lower dynamic epoch/generation checks where required
+    - lower stable/weak handle resolution with domain/slot/generation identity
+    - preserve address-space/capability semantics
+    - preserve defined panic/trap for dynamically detected stale ordinary refs
+    - avoid backend nonnull/noalias/dereferenceable/lifetime assumptions stronger than Sec proof
+    - omit unused handle/generation runtime support
+    required_tests:
+    - address-only optimized ref
+    - 32-bit target with 64-bit logical epoch
+    - compact slot generation with retirement
+    - no global generation manager when unused
+    - stale handle not lowered to trap/UB
+  - id: platform.reference-model
+    area: reference-profile-address-space-ffi-isr
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - resolve target/profile reference representations and epoch widths through CompilationPlan
+    - integrate mapped/fixed/MMIO/address-space validity
+    - integrate FFI retention and pinning requirements
+    - integrate target capability/tagged-pointer mechanisms where present
+    - enforce ISR/concurrency protocols for dynamic validation and shared invalidation
+    required_tests:
+    - fixed MMIO reference without unnecessary generation
+    - retained foreign pointer requires pin/lifetime contract
+    - capability/address-space mismatch rejected
+    - ISR generation/handle path obeys noPanic/noAlloc/noBlock policy
+  - id: tooling.reference-model
+    area: reference-diagnostics-lsp-analysis
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - show reference kind/origin/bounds/storage identity/epoch dependency and invalidation source in LSP
+    - show selected runtime representation separately from source guarantee
+    - provide cause-chain mentor diagnostics from reference creation to invalidating event to invalid use
+    - show compact/default epoch policy where useful
+    - ensure compiler/LSP/sec analyse parity and incremental invalidation
+    required_tests:
+    - stale-reference diagnostic traces invalidating event
+    - handle diagnostic distinguishes fallible stale resolution
+    - LSP hover shows source guarantee versus representation
+    - compiler/LSP agree on address-space/provenance failures
   - id: semantic-ir.arena
     area: arena-semantic-ir
     status: planned
@@ -491,6 +946,32 @@ integrations:
     - represent allocation context and task/thread dependency transfer
     - represent capacity proof and failure-path facts
     - verify no dependency across Reset/Release and no duplicate owner state
+  - id: lowering.arena
+    area: arena-mlir-physical-planning
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - add high-level Sec MLIR Arena types/operations or equivalent
+    - integrate ArenaDomain-aware MLIR effects/resources
+    - lower borrowed fixed Arenas
+    - lower owned fixed Arenas through target provider
+    - lower growable Arenas using non-relocating stable segments/reservation
+    - preserve Result/failure atomicity and provider effects
+    - lower/erase epoch metadata only after proof
+    - support scalarized/automatic/static Arena elimination
+    - prevent CSE/LICM/DCE transformations that change allocation or lifecycle semantics
+  - id: platform.arena
+    area: arena-target-profiles-providers-ffi-isr
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - define/resolve owned backing providers through CompilationPlan
+    - validate target address spaces/alignment/provider release contracts
+    - support hosted, embedded fixed and bare-metal bounded policies
+    - support strict bounded-demand/no-runtime configurations
+    - integrate FFI retention/pinning of Arena-backed storage
+    - integrate ISR policy consistently with noPanic/noAlloc/noBlock and bounded-work requirements
+    - avoid hidden general runtime/provider fallbacks
   - id: frontend.raw-pointers
     area: raw-pointer-types-and-operations
     status: partial

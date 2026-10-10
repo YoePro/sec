@@ -157,8 +157,11 @@ func plural(count int) string {
 // crossTargetInterfaceConformance analyzes the active document's module once
 // per target selected by the module's `#target` files, with that target's
 // scalar plan, and records for every interface declared in the document which
-// types implement it on that target and which conformance diagnostics (S1106,
-// S1107) they produce. Results are cached until a module source changes.
+// types implement it on that target using structured Sema conformance facts.
+// Interface identity and member failures never come from diagnostic text.
+// Results are cached until a module source changes.
+// Rules: rules/compiler/semantic_ir.md — §109(1–4);
+// rules/declarations/interfaces.md — §§4–6,12; rules/tooling/lsp.md — "Code lens".
 func crossTargetInterfaceConformance(uri string, text string, overlay sourceOverlay) (summaries []interfaceConformanceSummary) {
 	summaries = []interfaceConformanceSummary{}
 	defer func() {
@@ -207,34 +210,30 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 				analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
 			}
 		}
-		errors := analyzer.Analyze(program)
-		types := analyzer.Types()
+		analyzer.Analyze(program)
+		facts := analyzer.InterfaceConformances()
 		for index := range summaries {
 			result := interfaceTargetResult{target: target.String(), implementers: map[string]location{}}
-			for name, typ := range types {
-				for _, implemented := range typ.Implements {
-					if implemented.Name != summaries[index].name || typ.Kind == sema.InterfaceType {
-						continue
-					}
-					if definition, ok := analyzer.ResolvedTypeDeclarationLocation(typ); ok && definition.File != "" {
-						result.implementers[name] = location{URI: uriFromPath(definition.File), Range: lspRange{Start: position{Line: definition.Line - 1, Character: definition.Column - 1}, End: position{Line: definition.Line - 1, Character: definition.Column - 1 + len(name)}}}
-					} else {
-						result.implementers[name] = location{URI: uri, Range: summaries[index].rng}
-					}
-				}
-			}
-			for _, err := range errors {
-				if err.ID != diagnostics.InterfaceMemberMissing && err.ID != diagnostics.InterfaceMemberIncompatible {
+			for _, fact := range facts {
+				if !sameSourceToken(fact.InterfaceDeclaration, interfaces[index].Name.Token) {
 					continue
 				}
-				if !strings.Contains(err.Message, " interface "+summaries[index].name) && !strings.Contains(err.Message, " implements "+summaries[index].name+" ") {
-					continue
+				definition := fact.TypeDeclaration
+				if definition.File != "" {
+					result.implementers[fact.TypeName] = location{URI: uriFromPath(definition.File), Range: lspRange{Start: position{Line: definition.Line - 1, Character: definition.Column - 1}, End: position{Line: definition.Line - 1, Character: definition.Column - 1 + len(fact.TypeName)}}}
+				} else {
+					result.implementers[fact.TypeName] = location{URI: uri, Range: summaries[index].rng}
 				}
-				result.failures = append(result.failures, interfaceConformanceFailure{
-					member:   conformanceFailureMember(err.Message),
-					message:  err.Message,
-					location: location{URI: uriFromPath(err.File), Range: lspRange{Start: position{Line: err.Line - 1, Character: err.Column - 1}, End: position{Line: err.Line - 1, Character: err.Column - 1}}},
-				})
+				for _, failure := range fact.Failures {
+					err := failure.Diagnostic
+					result.failures = append(result.failures, interfaceConformanceFailure{
+						member: failure.Member, message: err.Message,
+						location: location{URI: uriFromPath(err.File), Range: lspRange{Start: position{Line: err.Line - 1, Character: err.Column - 1}, End: position{Line: err.Line - 1, Character: err.Column - 1}}},
+					})
+				}
+				if fact.State == diagnostics.ProofUnproven {
+					result.failures = append(result.failures, interfaceConformanceFailure{member: "conformance unresolved", location: result.implementers[fact.TypeName]})
+				}
 			}
 			summaries[index].targets = append(summaries[index].targets, result)
 		}
@@ -244,19 +243,6 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 	interfaceConformanceCache.summary = summaries
 	interfaceConformanceCache.Unlock()
 	return summaries
-}
-
-// conformanceFailureMember extracts the member name from an S1106/S1107
-// message ("... method Open does not match ...", "... missing method Open").
-func conformanceFailureMember(message string) string {
-	fields := strings.Fields(message)
-	for index := 0; index+1 < len(fields); index++ {
-		switch fields[index] {
-		case "method", "property", "event":
-			return strings.TrimSuffix(fields[index+1], ":")
-		}
-	}
-	return "member"
 }
 
 // moduleTargets lists the distinct targets selected by `#target` directives

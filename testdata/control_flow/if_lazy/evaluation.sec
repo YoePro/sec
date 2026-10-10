@@ -1,0 +1,84 @@
+module main
+
+extern "C" fn probe(tag: int32, answer: int32) int32
+extern "C" fn touch(tag: int32) void
+
+fn Chain(a: int32, b: int32, c: int32) int32 {
+    unsafe {
+        if probe(1, a) == 1 {
+            touch(10)
+            return 10
+        } else if probe(2, b) == 1 {
+            touch(20)
+            return 20
+        } else if probe(3, c) == 1 {
+            touch(30)
+            return 30
+        } else {
+            touch(40)
+            return 40
+        }
+    }
+}
+
+fn And(a: int32, b: int32) int32 {
+    unsafe {
+        if probe(1, a) == 1 && probe(2, b) == 1 {
+            touch(10)
+            return 10
+        } else {
+            touch(20)
+            return 20
+        }
+    }
+}
+
+fn Or(a: int32, b: int32) int32 {
+    unsafe {
+        if probe(1, a) == 1 || probe(2, b) == 1 {
+            touch(10)
+            return 10
+        } else {
+            touch(20)
+            return 20
+        }
+    }
+}
+
+fn Nested(a: int32, b: int32, c: int32) int32 {
+    unsafe {
+        if (probe(1, a) == 1 && probe(2, b) == 1) || probe(3, c) == 1 {
+            touch(10)
+            return 10
+        } else {
+            touch(20)
+            return 20
+        }
+    }
+}
+
+fn LogicalChain(a: int32, b: int32, c: int32, d: int32, e: int32) int32 {
+    unsafe {
+        if probe(1, a) == 1 && probe(2, b) == 1 {
+            touch(10)
+            return 10
+        } else if probe(3, c) == 1 || probe(4, d) == 1 {
+            touch(20)
+            return 20
+        } else if probe(5, e) == 1 {
+            touch(30)
+            return 30
+        } else {
+            touch(40)
+            return 40
+        }
+    }
+}
+
+extern "C" fn run_tests() int32
+
+fn main() int {
+    unsafe {
+        return int(run_tests())
+    }
+}

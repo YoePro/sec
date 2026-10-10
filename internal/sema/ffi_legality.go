@@ -91,6 +91,7 @@ func (a *Analyzer) reportIllegalForeignType(token lexer.Token, function Function
 // Rules:
 //   - rules/platform/ffi.md — §5 and §9 legal scalars; §10 RawPtr; §12 call-bounded references;
 //     §13 pointer returns; §21 fixed arrays; §45; §46; §47
+//   - rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md — §4.3–4.5
 func foreignTypeLegality(typ Type, position foreignPosition) foreignTypeVerdict {
 	if isForeignCScalar(typ) {
 		return legalForeignType()
@@ -104,24 +105,38 @@ func foreignTypeLegality(typ Type, position foreignPosition) foreignTypeVerdict 
 			return legalForeignType()
 		}
 		return illegalForeignType("void has no value representation", "Remove the parameter or use RawPtr[void] for an untyped address.")
-	case IntType, UintType, RawPtrType:
+	case RawPtrType:
+		return legalForeignType()
+	case IntType, UintType:
+		// MD-023 §4.3, §4.5: 128- and 256-bit integers cross a foreign
+		// boundary only where the selected foreign ABI explicitly supports
+		// that representation and position. No C ABI model declares such
+		// support, so they fail closed before lowering.
+		if typ.BitWidth > 64 || typ.MaxInteger != nil && typ.MaxInteger.BitLen() > 64 {
+			return illegalForeignType("no C ABI model of the selected target supports "+typeDisplayName(typ)+" in a foreign signature",
+				"Split the value into 64-bit parts, or pass it through RawPtr[T] to memory with an explicit layout contract.")
+		}
 		return legalForeignType()
 	case FloatType:
 		if typ.Name == "float32" || typ.Name == "float64" {
 			return legalForeignType()
 		}
-		return illegalForeignType("only the IEEE float32 and float64 Sec scalars have a fixed C representation", "Use float32, float64, or the matching C:: floating type.")
+		return illegalForeignType("only the IEEE float32 and float64 Sec scalars have a fixed C representation", "Use float32, float64, or the matching c:: floating type.")
 	case EnumType:
+		// MD-023 §4.4–4.5: a closed Sec enum is not FFI-legal merely because
+		// it is integer-backed; C enums with open-value behavior are declared
+		// as extern "C" enums.
 		if typ.Underlying != "" && typ.Underlying != "enum" && typ.Underlying != "string" {
-			return legalForeignType()
+			return illegalForeignType("a closed Sec enum is not a C enum, even with an integer underlying type",
+				"Declare the foreign enum as an extern \"C\" enum once foreign enum declarations are available, or pass the underlying integer value and convert it in a wrapper.")
 		}
-		return illegalForeignType("an enum without an integer underlying representation has no C representation", "Give the enum an integer underlying type or pass its integer value.")
+		return illegalForeignType("an enum without an integer underlying representation has no C representation", "Pass an integer value and convert it in a wrapper.")
 	case BoolType:
-		return illegalForeignType("Sec bool does not represent C _Bool", "Use C::bool and convert explicitly at the boundary.")
+		return illegalForeignType("Sec bool does not represent C _Bool", "Use c::bool and convert explicitly at the boundary.")
 	case CharType, RuneType:
-		return illegalForeignType(typeDisplayName(typ)+" does not represent a C character type", "Use C::char, C::schar, C::uchar, or the binding's wide-character type.")
+		return illegalForeignType(typeDisplayName(typ)+" does not represent a C character type", "Use c::char, c::schar, c::uchar, or the binding's wide-character type.")
 	case StringType:
-		return illegalForeignType("Sec string has no implicit C string representation", "Pass RawPtr[byte] or RawPtr[C::char] together with an explicit length or termination contract, and convert in a wrapper.")
+		return illegalForeignType("Sec string has no implicit C string representation", "Pass RawPtr[byte] or RawPtr[c::char] together with an explicit length or termination contract, and convert in a wrapper.")
 	case DecimalType:
 		return illegalForeignType("decimal has no C ABI representation", "Convert to a C floating or integer representation in a wrapper.")
 	case ReferenceType:
@@ -161,7 +176,7 @@ func foreignTypeLegality(typ Type, position foreignPosition) foreignTypeVerdict 
 	case SliceType:
 		return illegalForeignType("a Sec slice is a pointer-and-length descriptor with no C representation", "Pass RawPtr[T] together with an explicit length.")
 	case FunctionType:
-		return illegalForeignType("native Sec callable values and closures do not cross a C ABI", "Use a C::fn function-pointer type with an environment-free callback once foreign function pointers are available.")
+		return illegalForeignType("native Sec callable values and closures do not cross a C ABI", "Use a c::fn function-pointer type with an environment-free callback once foreign function pointers are available.")
 	case InterfaceType:
 		return illegalForeignType("interface values have no C representation", "Pass a concrete C-compatible representation instead.")
 	case UnionType:
@@ -182,5 +197,5 @@ func foreignTypeLegality(typ Type, position foreignPosition) foreignTypeVerdict 
 	case AnyType:
 		return illegalForeignType("any has no C representation", "Pass a concrete C-compatible type.")
 	}
-	return illegalForeignType("the type has no declared foreign ABI representation", "Use a C:: scalar, a fixed-width Sec scalar, RawPtr[T], or a call-bounded reference.")
+	return illegalForeignType("the type has no declared foreign ABI representation", "Use a c:: scalar, a fixed-width Sec scalar, RawPtr[T], or a call-bounded reference.")
 }

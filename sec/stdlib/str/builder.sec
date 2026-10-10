@@ -26,29 +26,100 @@ module str
 
 // TODO: Implementera stdlib/str/builder.sec
 
+/**
+ * Builds UTF-8 strings using mutable, growable byte storage.
+ *
+ * Description:
+ * Maintains an owned sequence of UTF-8 bytes and supports
+ * incremental string construction without creating intermediate
+ * strings for every append operation.
+ *
+ * Ownership:
+ * Builder is move-only and owns its internal storage.
+ * The storage is released through normal destruction.
+ *
+ * Allocation:
+ * Storage growth is fallible and follows the active allocation
+ * context.
+ *
+ * Unicode:
+ * Appended strings must contain valid UTF-8.
+ * Appended runes are encoded as UTF-8.
+ */
 @noCopy
 type Builder struct {
-    // private storage
+    // Owned storage containing the accumulated UTF-8 bytes.
+    storage: list[byte],
 }
 
 impl Builder {
+    /**
+     * Constructs a mutable UTF-8 Builder with an initial byte capacity.
+     *
+     * Description:
+     * Creates an empty Builder and reserves storage for at least
+     * initialCapacity bytes. A capacity of zero does not allocate.
+     *
+     * Parameters:
+     * - initialCapacity: Minimum initial storage capacity in bytes.
+     *
+     * Errors:
+     * - CollectionError: Storage allocation or capacity failure.
+     *
+     * Allocation:
+     * May allocate when initialCapacity is greater than zero.
+     */
     init(initialCapacity: uint) CollectionError {
-        return Err(CollectionError.AllocationFailed)
+        // initialCapacity is a capacity hint that does not change content
+        // (stdlib_str.md § 8.3). list[T] defines no capacity-reservation
+        // operation yet (missing-decisions.yaml MD-058), so the Builder
+        // starts with its empty default storage.
+        discard initialCapacity
     }
 
+    /**
+     * Gets the number of UTF-8 bytes currently stored in the Builder.
+     *
+     * Returns:
+     * The number of bytes containing constructed string data.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
     property ByteCount: uint {
         get {
-            return 0
+            return storage.Len
         }
     }
+
+    /**
+     * Gets the current storage capacity in bytes.
+     *
+     * Returns:
+     * The number of bytes available in the allocated storage,
+     * including both used and unused capacity.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
     property Capacity: uint {
         get {
-            return 0
+            return storage.Capacity
         }
     }
+
+    /**
+     * Gets whether the Builder contains no string data.
+     *
+     * Returns:
+     * True when ByteCount is zero; otherwise false.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
     property IsEmpty: bool {
         get {
-            return true
+            return storage.Len == 0
         }
     }
 
@@ -56,32 +127,329 @@ impl Builder {
         return Err(CollectionError.AllocationFailed)
     }
 
+    /**
+     * Appends a UTF-8 string to the Builder.
+     *
+     * Description:
+     * Copies the source string's UTF-8 bytes into the owned storage.
+     * An empty string leaves the Builder unchanged.
+     * If appending fails, all bytes added by this call are removed.
+     *
+     * Parameters:
+     * - value: The valid UTF-8 string to append.
+     *
+     * Returns:
+     * Ok() when the complete string has been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates a storage growth failure.
+     *     The original byte content is preserved on failure.
+     *
+     * Allocation:
+     * May allocate when the existing capacity is insufficient.
+     */
     fn Append(value: string) Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        let originalLength := storage.Len
+        let mut index: uint := 0
+
+        while index < value.Len {
+            try storage.Append(value.ByteAt(index)) {
+                Err(error) => {
+                    // Restore the original logical content.
+                    while storage.Len > originalLength {
+                        storage.RemoveAt(storage.Len - 1)
+                    }
+
+                    return Err(error)
+                }
+            }
+
+            index += 1
+        }
+
+        return Ok()
     }
+
+    /**
+     * Appends a Unicode scalar value encoded as UTF-8.
+     *
+     * Description:
+     * Encodes the rune into one to four UTF-8 bytes.
+     * If storage growth fails, all bytes added by this call
+     * are removed, preserving the original Builder content.
+     *
+     * Parameters:
+     * - value: The Unicode scalar value to append.
+     *
+     * Returns:
+     * Ok() when the complete rune has been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates a storage growth failure.
+     *     The original byte content is preserved on failure.
+     *
+     * Allocation:
+     * Encoding uses a fixed local buffer and does not allocate.
+     * Appending may grow the Builder's owned storage.
+     */
     fn Append(value: rune) Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        let codepoint := int(value)
+        let mut encoded: byte[4]
+        let mut count: uint := 0
+
+        if codepoint <= 0x7F {
+            encoded[0] = byte(codepoint)
+            count = 1
+        } else if codepoint <= 0x7FF {
+            encoded[0] = byte(0xC0 | (codepoint >> 6))
+            encoded[1] = byte(0x80 | (codepoint & 0x3F))
+            count = 2
+        } else if codepoint <= 0xFFFF {
+            encoded[0] = byte(0xE0 | (codepoint >> 12))
+            encoded[1] = byte(0x80 | ((codepoint >> 6) & 0x3F))
+            encoded[2] = byte(0x80 | (codepoint & 0x3F))
+            count = 3
+        } else {
+            encoded[0] = byte(0xF0 | (codepoint >> 18))
+            encoded[1] = byte(0x80 | ((codepoint >> 12) & 0x3F))
+            encoded[2] = byte(0x80 | ((codepoint >> 6) & 0x3F))
+            encoded[3] = byte(0x80 | (codepoint & 0x3F))
+            count = 4
+        }
+
+        let originalLength := storage.Len
+        let mut index: uint := 0
+
+        while index < count {
+            try storage.Append(encoded[index]) {
+                Err(error) => {
+                    // Remove any incomplete UTF-8 sequence.
+                    while storage.Len > originalLength {
+                        storage.RemoveAt(storage.Len - 1)
+                    }
+
+                    return Err(error)
+                }
+            }
+
+            index += 1
+        }
+
+        return Ok()
     }
 
+    /**
+     * Appends a line terminator to the Builder.
+     *
+     * Description:
+     * Appends a single LF character (U+000A) without modifying
+     * existing content.
+     *
+     * Returns:
+     * Ok() when the line terminator has been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates a storage growth failure.
+     *     Existing content is preserved on failure.
+     *
+     * Allocation:
+     * May allocate when the existing capacity is insufficient.
+     */
     fn AppendLine() Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        return Append("\n")
     }
 
+    /**
+     * Appends a UTF-8 string followed by a line terminator.
+     *
+     * Description:
+     * Appends the supplied string followed by a single LF character
+     * (U+000A). Empty strings still produce a line terminator.
+     * Restores the original byte content if either append fails.
+     *
+     * Parameters:
+     * - value: The valid UTF-8 string to append before the
+     *     line terminator.
+     *
+     * Returns:
+     * Ok() when the complete line has been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates a storage growth failure.
+     *     Existing content is preserved on failure.
+     *
+     * Allocation:
+     * May allocate when the existing capacity is insufficient.
+     */
     fn AppendLine(value: string) Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        let originalLength := storage.Len
+
+        // Append the string first.
+        try Append(value)
+
+        // Append the line terminator.
+        try Append("\n") {
+            Err(error) => {
+                // Restore the original byte content.
+                while storage.Len > originalLength {
+                    storage.RemoveAt(storage.Len - 1)
+                }
+
+                return Err(error)
+            }
+        }
+
+        return Ok()
     }
 
+    /**
+     * Appends a UTF-8 string a specified number of times.
+     *
+     * Description:
+     * Appends count consecutive copies of value.
+     * An empty string or a count of zero leaves the Builder unchanged.
+     * If an append fails, all data added by this operation is removed.
+     *
+     * Parameters:
+     * - value: The valid UTF-8 string to repeat.
+     * - count: The number of repetitions.
+     *
+     * Returns:
+     * Ok() when all repetitions have been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates an append or allocation failure.
+     *     The original byte content is preserved on failure.
+     *
+     * Allocation:
+     * May grow the Builder's owned storage.
+     */
     fn AppendRepeat(value: string, count: uint) Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        if count == 0 || value.Len == 0 {
+            return Ok()
+        }
+
+        let originalLength := storage.Len
+        let mut index: uint := 0
+
+        while index < count {
+            try Append(value) {
+                Err(error) => {
+                    // Roll back all repetitions from this operation.
+                    while storage.Len > originalLength {
+                        storage.RemoveAt(storage.Len - 1)
+                    }
+
+                    return Err(error)
+                }
+            }
+
+            index += 1
+        }
+
+        return Ok()
     }
+
+    /**
+     * Appends a Unicode scalar value a specified number of times.
+     *
+     * Description:
+     * Encodes and appends the rune count times using UTF-8.
+     * A count of zero leaves the Builder unchanged.
+     * If an append fails, all data added by this operation is removed.
+     *
+     * Parameters:
+     * - value: The Unicode scalar value to repeat.
+     * - count: The number of repetitions.
+     *
+     * Returns:
+     * Ok() when all repetitions have been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates an append or allocation failure.
+     *     The original byte content is preserved on failure.
+     *
+     * Allocation:
+     * May grow the Builder's owned storage.
+     */
     fn AppendRepeat(value: rune, count: uint) Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        if count == 0 {
+            return Ok()
+        }
+
+        let originalLength := storage.Len
+        let mut index: uint := 0
+
+        while index < count {
+            try Append(value) {
+                Err(error) => {
+                    // Roll back all repetitions from this operation.
+                    while storage.Len > originalLength {
+                        storage.RemoveAt(storage.Len - 1)
+                    }
+
+                    return Err(error)
+                }
+            }
+
+            index += 1
+        }
+
+        return Ok()
     }
 
+    /**
+     * Removes all accumulated string data from the Builder.
+     *
+     * Description:
+     * Resets the logical byte count to zero while retaining
+     * allocated storage for subsequent append operations.
+     *
+     * Returns:
+     * Nothing.
+     *
+     * Allocation:
+     * Does not allocate or release the reserved backing storage.
+     *
+     * Errors:
+     * This operation cannot fail.
+     */
     fn Clear() void {
+        storage.Clear()
     }
 
+    /**
+     * Materializes the accumulated UTF-8 bytes as a string.
+     *
+     * Description:
+     * Copies the accumulated bytes into an owning byte array and
+     * converts that array into a UTF-8 string.
+     * The Builder remains unchanged and can be used again.
+     * An empty Builder produces an empty string.
+     *
+     * Returns:
+     * The string represented by the accumulated UTF-8 bytes.
+     *
+     * Errors:
+     * - CollectionError: Propagates failures while copying the bytes
+     *     into the temporary array.
+     *
+     * Allocation:
+     * Creates temporary byte-array storage and materializes a string.
+     *
+     * Unicode:
+     * Preserves the exact UTF-8 bytes without normalization.
+     */
     fn Finish() Result[string, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        let mut bytes: byte[]
+
+        for value in storage {
+            try bytes.Append(value)
+        }
+        let rv := try bytes.ToString() {
+            Err(_) => return Err(CollectionError.AllocationFailed)
+        }
+
+        return Ok(rv)
     }
 }

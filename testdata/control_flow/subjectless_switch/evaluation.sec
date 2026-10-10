@@ -1,0 +1,115 @@
+module main
+
+extern "C" fn probe(tag: int32, answer: int32) int32
+extern "C" fn touch(tag: int32) void
+extern "C" fn run_tests() int32
+
+fn Alternatives(a: int32, b: int32, c: int32) int32 {
+    let mut chosen: int32 := 0
+    unsafe {
+        switch {
+        case probe(1, a) == 1, probe(2, b) == 1:
+            touch(10)
+            chosen = 10
+        case probe(3, c) == 1:
+            touch(20)
+            chosen = 20
+        default:
+            touch(30)
+            chosen = 30
+        }
+    }
+    return chosen
+}
+
+fn Logical(a: int32, b: int32, c: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1 && probe(2, b) == 1, probe(3, c) == 1:
+            touch(10)
+        default:
+            touch(20)
+        }
+    }
+    return 40
+}
+
+fn NoDefault(a: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            touch(10)
+        }
+    }
+    return 40
+}
+
+fn EmptyBody(a: int32, b: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+        case probe(2, b) == 1:
+            touch(20)
+        default:
+            touch(30)
+        }
+        touch(40)
+    }
+    return 40
+}
+
+fn Nested(a: int32, b: int32) int32 {
+    unsafe {
+        switch {
+        case probe(1, a) == 1:
+            let local: int32 := 10
+            switch {
+            case probe(2, b) == 1:
+                touch(local)
+            default:
+                touch(20)
+            }
+        default:
+            let local: int32 := 30
+            touch(local)
+        }
+    }
+    return 40
+}
+
+fn LoopControl() int32 {
+    let mut i: int32 := 0
+    while i < 3 {
+        i += 1
+        switch {
+        case i == 1:
+            continue
+        case i == 2:
+            unsafe { touch(20) }
+            break
+        default:
+            unsafe { touch(30) }
+        }
+        unsafe { touch(40) }
+    }
+    return i
+}
+
+fn DefaultOnly() int32 {
+    unsafe {
+        switch {
+        default:
+            touch(10)
+        }
+    }
+    return 40
+}
+
+fn EmptySwitch() int32 {
+    switch {}
+    return 40
+}
+
+fn main() int {
+    unsafe { return int(run_tests()) }
+}

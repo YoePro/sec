@@ -2,37 +2,125 @@ schema_version: 1
 area: tooling
 purpose: Shared tooling infrastructure and cross-tooling coordination.
 integrations:
-  - id: "tooling.borrowing"
-    area: "diagnostics-lsp-formatter-traceability-borrowing"
-    status: "partial"
+  - id: tooling.borrowing
+    area: diagnostics-lsp-formatter-traceability-borrowing
+    status: partial
     integrated: "2026-08-28"
     document_revision: "2.0"
-    repository_baseline: "069c111"
+    repository_baseline: 069c111
     rules:
-      - "rules/memory/borrowing.md"
-      - "rules/tooling/diagnostics.md"
-      - "rules/tooling/lsp.md"
-      - "rules/tooling/formatter.md"
+      - rules/memory/borrowing.md
+      - rules/tooling/diagnostics.md
+      - rules/tooling/lsp.md
+      - rules/tooling/formatter.md
     implemented:
-      - "Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure."
-      - "Formatter preserves established ref/ref mut syntax in functions and supported patterns."
-      - "Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.md rulebook has been removed."
+      - Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure.
+      - Formatter preserves established ref/ref mut syntax in functions and supported patterns.
+      - Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.md rulebook has been removed.
     remaining:
-      - "register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape"
-      - "ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap"
-      - "distinguish availability from borrow authority in messages; when is available succeeds but access is borrowed, say so directly"
-      - "surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful"
-      - "provide navigation to borrow origin/holder and previous-iteration source for loop-carried conflicts"
-      - "offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics"
-      - "preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting"
-      - "support source/code traceability comments referring to stable borrowing § clauses"
+      - register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape
+      - ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap
+      - distinguish availability from borrow authority in messages; when is available succeeds but access is borrowed, say so directly
+      - surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful
+      - provide navigation to borrow origin/holder and previous-iteration source for loop-carried conflicts
+      - offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics
+      - preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting
+      - support source/code traceability comments referring to stable borrowing § clauses
     required_tests:
-      - "borrow conflict diagnostic includes related borrow origin"
-      - "loop-carried diagnostic explains previous iteration"
-      - "is available plus borrow conflict diagnostic distinguishes ownership presence from access authority"
-      - "LSP hover shows shared versus mutable borrow and canonical referent Place"
-      - "LSP handles finite alternative origins conservatively without presenting one false definitive origin"
-      - "formatter round-trips ref/ref mut function, match, and capture syntax"
+      - borrow conflict diagnostic includes related borrow origin
+      - loop-carried diagnostic explains previous iteration
+      - is available plus borrow conflict diagnostic distinguishes ownership presence from access authority
+      - LSP hover shows shared versus mutable borrow and canonical referent Place
+      - LSP handles finite alternative origins conservatively without presenting one false definitive origin
+      - formatter round-trips ref/ref mut function, match, and capture syntax
+
+  - id: tooling.copy-move
+    area: formatter-lsp-diagnostics-analysis
+    status: partial
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: 069c111
+    rules:
+      - rules/memory/copy_move.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.md
+      - rules/analysis/escape_analysis.md
+    implemented:
+      - Formatter preserves established :<- and <- move operators.
+      - LSP exposes initial move-related semantic facts and selected S1007 quick fixes.
+      - Frontend already reports several move/copy safety errors with related source locations.
+    remaining:
+      - format and expose explicit consuming argument/payload syntax everywhere, capture(<-value), and optional return <-value
+      - mentor diagnostics must state what value was consumed, where, why a later use is invalid, and a safe next step when provable
+      - add missing-<- diagnostic for -> call sites and owning payload constructors
+      - add copy-of-move-only ordinary by-value call diagnostic that recommends ref/slice/view or an explicitly consuming API rather than silently changing semantics
+      - integrate reverse escape/parameter-usage advice for large valid copies without turning performance advice into ownership errors
+      - surface copy classification, operation at cursor, move origin, destination, availability, consuming parameter, partial aggregate state, and consequence preview
+      - make automatic <- fixes conditional on proof that later source uses and borrow/destruction rules remain valid
+    required_tests:
+      - "formatter round-trips Consume(<-resource), Field: <-resource, Some(<-resource), capture(<-value), and return <-value"
+      - LSP marks a -> parameter and the corresponding <- call argument as one ownership transfer
+      - diagnostic for Consume(resource) explains that the callee takes ownership and suggests Consume(<-resource)
+      - diagnostic for ordinary by-value move-only argument explains that the parameter copies and suggests ref/slice/view or API redesign
+      - large-copy advisory references known size/use facts and never changes program validity
+      - use-after-Result.Ok()/Err() diagnostic identifies the consuming projection call
+
+  - id: tooling.destruction
+    area: diagnostics-lsp-formatter-traceability-destruction
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "2.0"
+    repository_baseline: 069c111
+    rules:
+      - rules/memory/destruction.md
+      - rules/tooling/diagnostics.md
+      - rules/tooling/lsp.md
+      - rules/tooling/formatter.md
+    implemented:
+      - Current frontend already emits selected move/resource/defer diagnostics with related source locations.
+      - Formatter/LSP already preserve several ownership/move constructs and expose initial ownership facts.
+      - Shared Sema accepts repeated discard of already unavailable discardable Places and retains resolved operand facts, so LSP diagnostics do not duplicate stale use-after-discard logic.
+    remaining:
+      - mentor diagnostics must explain which value is affected, where ownership/destruction responsibility originated, what earlier move/discard/replacement changed it, and how to fix the source safely
+      - diagnose custom-free partial move by pointing to the free declaration and explaining the complete-self invariant
+      - diagnose conditional cleanup requiring forbidden runtime bookkeeping and suggest static restructuring or explicit discard convergence
+      - optionally surface the configured low-priority redundancy advisory for a statically redundant discard without changing semantic validity
+      - surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful
+      - add navigation from destruction/use-after-move diagnostics to move/discard/return/transfer origin
+      - preserve source-level discard/defer/free/move syntax in formatter and never insert/remove semantic cleanup operations purely as formatting
+      - update stale rulebook paths from destruction.md to destruction.md opportunistically without creating fake normative corrections
+      - support compiler source comments/traceability references to stable destruction § clauses
+    required_tests:
+      - use-after-destruction/move diagnostic links to earlier terminal ownership action
+      - custom-free partial-move diagnostic identifies free and suggests moving whole value or redesigning ownership
+      - conditional-destruction policy diagnostic explains differing paths and suggests discard convergence when valid
+      - already unavailable discard remains valid under every advisory severity policy
+      - LSP hover can show non-trivial destruction and cleanup owner without implying null/Option semantics
+      - formatter round-trips free, defer, discard, and ownership move syntax without semantic change
+
+  - id: tooling.lifetime-analysis
+    area: diagnostics-lsp-analysis-tooling
+    status: planned
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: fafd8cb
+    rules:
+      - rules/memory/lifetime_analysis.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.md
+    remaining:
+      - expose lifetime origin/dependency/invalidation facts from shared Sema analysis without a second LSP lifetime engine
+      - mentor diagnostics identify origin, invalidating operation, rejected use, relevant path and practical safe restructuring
+      - hover/navigation can show returned-reference source, generation/epoch, mapping owner and retained-borrow dependency when useful
+      - code actions are offered only when semantically proven and never invent hidden allocation or weaken hardware/volatile behavior
+      - integrate lifetime findings with existing Interactive/Standard/Deep analysis surfaces while mandatory safety proof always runs
+    required_tests:
+      - returned-local-reference diagnostic explains stack/local lifetime and suggests owned or caller-backed alternative
+      - arena reset diagnostic identifies invalidating reset
+      - mapping/view diagnostic identifies mapping owner
+      - defer diagnostic identifies delayed use
+      - LSP and compiler report the same lifetime cause chain
 
   - id: tooling.semantic-ir-v2
     area: semantic-ir-debugging-lsp-diagnostics
@@ -42,14 +130,14 @@ integrations:
       - textual Semantic IR printer exists
       - existing compiler/LSP paths consume several shared compiler-known and semantic facts
       - "shaped semantic metadata (2026-10-03): sema.ShapedFactsOf exposes rank, static shape, Len, dense row-major strides, and contiguity from the same compiler-known registry functions that publish the Rank/Shape/Len/Strides/IsContiguous members, and LSP hover on a vector, matrix, tensor, or tensor_view binding presents them, stating a runtime shape for rank-only views instead of inventing extents (TestHoverPresentsShapedFactsForBindings)"
+      - "Iterator resolution is exposed through detached, deterministically source-ordered Sema snapshot facts: source type, explicit Iterator[T] conformance, yielded type, concrete Next target/result, callable identity and declaration location. LSP hover on the for keyword, binding and iterator source and sec analyse share the same description; generic templates explicitly defer the concrete target to specialization, and invalid conformance, duck typing and immutable-source loops publish no valid resolution."
+      - LSP iterator hover and call hierarchy consume Sema-owned iterator plans and call-graph edges; cross-target interface code lenses consume detached, deterministic InterfaceConformances facts with exact declaration identity, substituted interface identity, compiler validity state and structured member failures. LSP no longer scans Implements or parses conformance diagnostic messages; prefix-name collisions, generic/inherited conformance, unknown requirements, invalid Iterator conformance and snapshot replacement are covered.
     remaining:
-      - expose Iterator[T] resolution and concrete Next target
       - expose ownership/availability/Place provenance
       - expose Arena domain/epoch/allocation context (maybe. Make this the last point to implement)
       - expose effect and panic/check cause chains
       - expose task/thread transfer provenance
       - expose collection (list/set/map) semantic metadata in tooling; shaped metadata is exposed (2026-10-03)
-      - ensure LSP never implements a parallel iterator/interface model
       - add stable machine-readable serialization/version validation where required
     required_tests:
       - compiler and LSP show same Iterator conformance/Next target
@@ -57,6 +145,39 @@ integrations:
       - ownership/Arena/effect provenance visible
       - stale cached Semantic IR rejected
       - source locations survive lowering
+    revised: "2026-10-10"
+    verification:
+      - command: go test ./... -count=1
+        result: completed on 2026-10-10; all other packages passed, including complete compiler/LSP/Sema suites; command failed only because the unrelated cmd/unicodegen/main.go:21 input variable is unused. Remaining reduced from 7 to 6 for this ID and from 61 to 60 in tooling.yaml.
+      - command: go vet ./internal/sema ./cmd/lsp ./cmd/compiler
+        result: passed on 2026-10-10; full go vet ./... is blocked by the unrelated unused input variable in cmd/unicodegen/main.go:21
+      - command: go test -race ./internal/sema ./cmd/lsp -run 'Interface|Iterator' -count=1
+        result: passed on 2026-10-10 after replacing LSP conformance inference with structured compiler facts; existing iterator hover, navigation, call hierarchy and cross-target interface lens regressions pass
+      - command: go test ./internal/sema ./cmd/lsp -run 'InterfaceConformanceFacts|InterfaceLensConsumes|InterfaceConformanceLens|IteratorHover' -count=1
+        result: passed on 2026-10-10; exact compiler declaration/member identity prevents Read/ReadMore diagnostic contamination; generic substitution, inherited requirements, invalid Iterator conformance, unknown requirements, detached deterministic facts and analyzer snapshot replacement verified
+      - command: go test ./... -count=1
+        result: passed on 2026-10-10 after shared iterator tooling integration; remaining 8 to 7 for tooling.semantic-ir-v2, 6 to 5 for tooling.compiler-analysis, and 42 to 40 in tooling.yaml
+      - command: go vet ./...
+        result: passed on 2026-10-10 after exposing compiler-owned iterator resolutions to CLI and LSP
+      - command: go test -race ./internal/sema ./cmd/lsp ./cmd/compiler -run 'IteratorResolutions|IteratorHover|AnalyseIterator' -count=1
+        result: passed on 2026-10-10; compiler and LSP present identical Sema-owned conformance and concrete Next descriptions; deterministic, detached snapshot publication, generic-template target deferral, invalid conformance/duck typing/immutable-source rejection and source filtering verified
+    evidence:
+      code:
+        - internal/sema/iterator_tooling.go
+        - cmd/lsp/iterator_hover.go
+        - cmd/compiler/analyse_iterators.go
+        - internal/sema/interface_tooling.go
+        - internal/sema/interface_validation.go
+        - cmd/lsp/interface_conformance_lens.go
+      tests:
+        - internal/sema/iterator_tooling_test.go
+        - cmd/lsp/iterator_hover_test.go
+        - cmd/compiler/analyse_iterators_test.go
+        - testdata/tooling/iterator_resolution.sec
+        - testdata/tooling/iterator_resolution_invalid.sec
+        - internal/sema/interface_tooling_test.go
+        - cmd/lsp/interface_model_test.go
+        - testdata/tooling/interface_model_invalid.sec
 
   - id: tooling.compiler-analysis
     area: analysis-diagnostics-lsp-reports
@@ -67,8 +188,13 @@ integrations:
       - surface Invalid versus Unproven distinctly
       - support configurable progressive analysis budgets in LSP
       - ensure sec analyse reports canonical compiler facts rather than independent calculations
-      - show Iterator[T] conformance/Next target from the shared analysis engine
       - preserve mentor-style primary diagnostic ownership and pitfall suppression
+    implemented:
+      - show Iterator[T] conformance/Next target from the shared analysis engine
+    revised: "2026-10-10"
+    verification:
+      - command: go test ./cmd/compiler -run 'AnalyseIterator' -count=1
+        result: passed on 2026-10-10; actual sec analyse command and report renderer expose canonical iterator facts, preserve source order and omit unselected core/stdlib loops
 
   - id: tooling.compiler-core
     area: compiler-cli-lsp-target-info-and-diagnostics
@@ -90,27 +216,48 @@ integrations:
     area: cli-lsp-inspection-test-pipeline
     status: partial
     repository_baseline: 998d8d1
+    evidence:
+      code:
+        - cmd/compiler/emit_mlir.go
+        - cmd/compiler/main.go
+        - README.md
+      tests:
+        - cmd/compiler/emission_boundary_test.go
+        - testdata/tooling/emission_boundary.sec
     remaining:
-      - define/document inspection boundaries so emit-mlir cannot ambiguously mean multiple MLIR levels without labeling
       - share CompilationPlan/workspace/source/module/test facts between CLI and LSP
       - expose implementation-capability diagnostics separately from source/target errors
       - make sec check independent of backend tools wherever backend verification is not a semantic prerequisite
       - keep stable TestIdentity and test selection compiler-owned through LSP/editor integrations
       - preserve deterministic source/provenance metadata across emitted artifacts
+    implemented:
+      - "Inspection boundaries are documented in README and command help: emit-mlir always emits LLVM dialect MLIR, while emit-sec-mlir emits the Sec dialect with its schema attribute. Both file and stdout output identify boundary and selected target in parser-compatible MLIR comments. Requested legacy verification now runs against temporary output before publication, preserving existing destinations and suppressing stdout on verifier failure."
+    revised: "2026-10-10"
+    verification:
+      - command: go vet ./cmd/compiler
+        result: passed on 2026-10-10
+      - command: go test -race ./cmd/compiler -run 'MLIREmissionBoundaries|LabeledLLVMMLIR|MLIRUsage' -count=1
+        result: passed on 2026-10-10
+      - command: go test ./cmd/compiler -run 'MLIREmissionBoundaries|Labeled.*MLIR|MLIRUsage' -count=1 -v
+        result: passed on 2026-10-10 with no skips; actual LLVM MLIR parsing/translation and Sec dialect verification accept labeled amd64 and armv7 output, alongside CLI publication failure and boundary/help tests
+      - command: go test ./cmd/compiler ./internal/codegen/mlir ./internal/lowering/secmlir ./internal/mlir -count=1
+        result: passed on 2026-10-10 after MLIR command extraction, explicit boundary labels and verification-before-publication ordering
+      - command: go test ./cmd/compiler -run 'MLIREmissionBoundaries|LabeledLLVMMLIR|MLIRUsage' -count=1 -v
+        result: passed on 2026-10-10; file/stdout boundary and target labels verified for both MLIR commands on amd64/armv7, failure preserves existing output and emits no stdout, and real LLVM MLIR tools verify and translate labeled output on both targets; remaining 6 to 5 for this ID and 60 to 59 in tooling.yaml
 
   - id: tooling.arena
     area: arena-diagnostics-lsp-reports
     status: partial
     repository_baseline: 814a584
     implemented:
-    - LSP completion for represented Arena compiler-known members
-    - LSP hover for direct Arena effects and propagated allocation cause paths
+      - LSP completion for represented Arena compiler-known members
+      - LSP hover for direct Arena effects and propagated allocation cause paths
     remaining:
-    - show Arena backing/provider/capacity/domain/epoch/profile
-    - show Reset/Release blockers with cause chains
-    - show task/thread/foreign dependencies
-    - show allocation-context origin
-    - show byte-accurate capacity-demand reports
-    - show physical planning/proof-based check elimination in analysis mode
-    - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
-    - ensure compiler/LSP/sec analyse parity and incremental invalidation
+      - show Arena backing/provider/capacity/domain/epoch/profile
+      - show Reset/Release blockers with cause chains
+      - show task/thread/foreign dependencies
+      - show allocation-context origin
+      - show byte-accurate capacity-demand reports
+      - show physical planning/proof-based check elimination in analysis mode
+      - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
+      - ensure compiler/LSP/sec analyse parity and incremental invalidation

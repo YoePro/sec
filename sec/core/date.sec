@@ -161,7 +161,11 @@ impl date {
             return Err(DateError.OutOfRange)
         }
 
-        self._epochDays = int32(epochDays)
+        self._epochDays = try int32(epochDays) {
+            Err(_) => {
+                return Err(DateError.OutOfRange)
+            }
+        }
     }
 
     fn ToString(format: Format) Result[string, StringError] {
@@ -179,7 +183,12 @@ impl date {
     fn FromYMD(year: int, month: int, day: int) Result[date, DateError] {
         // TODO: validera + räkna om till epochDays
         // let days := /* beräkning */
-        return Ok(date { _epochDays: int32(day) })
+        let days := try int32(day) {
+            Err(_) => {
+                return Err(DateError.OutOfRange)
+            }
+        }
+        return Ok(date { _epochDays: days })
     }
 
     static property Year: int {           // 1–9999

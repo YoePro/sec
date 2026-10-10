@@ -4,19 +4,17 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"unicode"
 )
 
-func TestLetterRangesMatchGoUnicodeIsLetter(t *testing.T) {
-	ranges := unicodeLetterRanges()
-	for value := rune(-1); value <= unicode.MaxRune; value++ {
-		if got, want := tableContains(ranges, value), unicode.IsLetter(value); got != want {
-			t.Fatalf("IsLetter(%U) = %t, want %t", value, got, want)
-		}
+var repositoryUCD = filepath.Join("..", "..", "third_party", "unicode", unicodeVersion, "ucd")
+
+func loadRepositoryUCD(t *testing.T) *ucdDatabase {
+	t.Helper()
+	db, err := loadUCD(repositoryUCD, unicodeVersion)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if tableContains(ranges, unicode.MaxRune+1) {
-		t.Fatal("table accepted rune above Unicode maximum")
-	}
+	return db
 }
 
 func TestLetterRangesCoverRepresentativeRunes(t *testing.T) {
@@ -26,21 +24,22 @@ func TestLetterRangesCoverRepresentativeRunes(t *testing.T) {
 	}{
 		{'A', true},
 		{'z', true},
-		{'\u00E5', true},
-		{'\u00C4', true},
-		{'\u03A9', true},
-		{'\u03BB', true},
-		{'\u0416', true},
-		{'\u044F', true},
-		{'\u4E2D', true},
+		{'å', true},
+		{'Ä', true},
+		{'Ω', true},
+		{'λ', true},
+		{'Ж', true},
+		{'я', true},
+		{'中', true},
 		{'0', false},
 		{'$', false},
-		{'\u0378', false},
-		{unicode.ReplacementChar, false},
+		{'͸', false},
+		{'�', false},
 		{-1, false},
+		{maxCodePoint + 1, false},
 	}
 
-	ranges := unicodeLetterRanges()
+	ranges := unicodeLetterRanges(loadRepositoryUCD(t))
 	for _, tt := range tests {
 		if got := tableContains(ranges, tt.value); got != tt.want {
 			t.Errorf("IsLetter(%U) = %t, want %t", tt.value, got, tt.want)
@@ -54,7 +53,7 @@ func TestGeneratedUnicodeSourceIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := renderLetterTables(); string(got) != string(want) {
+	if want := renderLetterTables(loadRepositoryUCD(t)); string(got) != string(want) {
 		t.Fatalf("%s is stale; run go run ./cmd/unicodegen", path)
 	}
 }

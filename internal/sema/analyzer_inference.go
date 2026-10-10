@@ -16,6 +16,21 @@ import (
 
 // Move all infer functions to this file to rerduce the size of analyzer.go
 
+// inferGenericArgumentSubstitution infers from one call argument. A ref or
+// ref mut parameter also accepts an owned compatible Place through the
+// call-bounded implicit borrow, so its referent pattern is matched against
+// the argument's type; the instantiated call still checks borrow authority.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §15.2 "Call-site borrow creation"
+//   - rules/declarations/generics.md — generic argument inference
+func inferGenericArgumentSubstitution(parameter Type, argument Type, substitution map[string]Type) bool {
+	if parameter.Kind == ReferenceType && parameter.Element != nil && argument.Kind != ReferenceType {
+		return inferGenericTypeSubstitution(*parameter.Element, argument, substitution)
+	}
+	return inferGenericTypeSubstitution(parameter, argument, substitution)
+}
+
 func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[string]Type) bool {
 	return inferGenericTypeSubstitutionWithFixed(pattern, concrete, substitution, nil)
 }
@@ -115,6 +130,7 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 		}
 	}
 	a.recordFunctionValueCall(expr, calleeType)
+	a.recordFunctionValueCallEscapeFacts(expr, calleeType)
 
 	return *calleeType.FunctionReturnType, expressionValue{Display: expr.String()}
 }
@@ -222,6 +238,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			if functions := a.accessibleFunctions(a.functions[expr.Value]); len(functions) > 0 {
 				if len(functions) == 1 {
 					a.bindDefinition(expr.Token, functions[0].Token)
+					if a.rejectUnsafeFunctionValue(expr, functions[0]) {
+						return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+					}
 					a.recordNamedCallableIdentity(expr, functions[0])
 					return functionTypeFromFunction(functions[0]), expressionValue{Display: expr.String()}
 				}
@@ -241,6 +260,16 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 						return property.Type, expressionValue{Display: expr.String()}
 					}
 				}
+			}
+			// A compiler-known lowercase type name such as list, map or set
+			// in value position (for example list[byte].WithCapacity(...)) is a
+			// type, not an undefined variable (rules/types/types.md — compiler-known
+			// types; rules/collections/collections.md — §13.5 list surface).
+			if lexer.ReservedDeclarationNameKindOf(expr.Value) == lexer.CompilerKnownTypeDeclarationName {
+				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TypeNameUsedAsValue,
+					"Collections are created with a literal such as list[T] {} or with their declared default; compiler-known collection types expose no static members unless their rulebook defines them.",
+					"%s is a type, not a value", expr.Value)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
 			a.addErrorAtToken(expr.Token, "undefined variable %s", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -2154,6 +2183,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if !a.validateCallArgumentBorrows(best[0].Function, sourceArgs, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		a.recordCallBoundaryEscapeFacts(best[0].Function, sourceArgs, preparedSpreadValues)
 		a.recordCallArgumentUnitConversions(best[0].Function, sourceArgs, a.callArgumentTypesForFunction(best[0].Function, sourceArgTypes, methodReceiver, isMethodCall))
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
 		dispatch := CallDispatchDirect
@@ -2171,6 +2201,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			contractReceiver = iface
 		}
 		a.recordResolvedCall(expr, best[0].Function, dispatch, contractReceiver)
+		a.recordGenericInstantiation(best[0].Function, callCalleeDefinitionToken(expr))
 		a.recordForeignBufferExtents(expr, a.resolvedCalls[expr])
 		execution, recordCall := a.callGraphExecutionForCall(expr)
 		if !a.summaryPass && a.callGraphPathReachable && recordCall {
@@ -2185,6 +2216,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			// rules/errors/panic.md § 21(3)–(4): a method called through an
 			// interface reference or a constrained generic parameter has no
 			// concrete body here, so its panic behavior is unknown.
+			if isMethodCall && dereferenceType(methodReceiver.Type).Kind == GenericType {
+				a.recordGenericConstraintCall(methodReceiver.Type, best[0].Function, callCalleeDefinitionToken(expr))
+			}
 			if dispatch == CallDispatchInterface || (isMethodCall && dereferenceType(methodReceiver.Type).Kind == GenericType) {
 				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: callCalleeDefinitionToken(expr)})
 				a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: callCalleeDefinitionToken(expr), UnknownAllocation: true})
@@ -2684,6 +2718,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.addErrorAtToken(member.Property.Token, "RawPtr.Read requires unsafe because it reads through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		if a.rejectProvenNullDereference(member, "Read") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if !a.checkCompilerKnownCallArity(expr, "RawPtr.Read", 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2696,6 +2733,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 	case "Write":
 		if !a.inUnsafe {
 			a.addErrorAtToken(member.Property.Token, "RawPtr.Write requires unsafe because it writes through a raw pointer")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if a.rejectProvenNullDereference(member, "Write") {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.checkCompilerKnownCallArity(expr, "RawPtr.Write", 1, 1) {
@@ -2717,6 +2757,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileRead requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		if a.rejectProvenNullDereference(member, "VolatileRead") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if !a.checkCompilerKnownCallArity(expr, "RawPtr.VolatileRead", 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2732,6 +2775,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 	case "VolatileWrite":
 		if !a.inUnsafe {
 			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileWrite requires unsafe because it performs observable physical-storage access")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if a.rejectProvenNullDereference(member, "VolatileWrite") {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.checkCompilerKnownCallArity(expr, "RawPtr.VolatileWrite", 1, 1) {
@@ -3308,13 +3354,32 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 
 	best := bestOverloadMatches(matches)
 	if len(best) == 1 {
-		if a.checkCompileTimeCallArgumentContracts(best[0].Function, args) {
+		// A generic call selected through its expected type is an ordinary
+		// call: it gets the same unsafe, ownership, borrow, resolution and
+		// call-graph checks as the main call path, so effects, borrows and
+		// moves of calls in return and typed-let positions are not lost.
+		function := best[0].Function
+		if function.Unsafe && !a.inUnsafe {
+			a.addErrorAtToken(expr.Token, "calling unsafe function %s requires unsafe", name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.recordCallArgumentUnitConversions(best[0].Function, args, argTypes)
-		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
-		a.setCallReferenceOrigin(expr, best[0].Function, args, false)
-		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}, true
+		if a.checkCompileTimeCallArgumentContracts(function, args) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.validateCallArgumentOwnership(function, args, runtimeSpreadValues) || !a.validateCallArgumentBorrows(function, args, runtimeSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.recordCallBoundaryEscapeFacts(function, args, runtimeSpreadValues)
+		a.recordCallArgumentUnitConversions(function, args, argTypes)
+		a.setDefinitions(callCalleeDefinitionToken(expr), function.Token)
+		a.recordResolvedCall(expr, function, CallDispatchDirect, Type{})
+		a.recordGenericInstantiation(function, callCalleeDefinitionToken(expr))
+		if execution, recordCall := a.callGraphExecutionForCall(expr); !a.summaryPass && a.callGraphPathReachable && recordCall {
+			a.callGraph.addCall(a.currentCallable, function, callCalleeDefinitionToken(expr), CallDispatchDirect, execution)
+		}
+		a.setCallReferenceOrigin(expr, function, args, false)
+		a.markMovedCallArguments(function, args, runtimeSpreadValues, false)
+		return function.ReturnType, expressionValue{Display: expr.String()}, true
 	}
 	if len(best) > 1 {
 		ambiguous := make([]lexer.Token, 0, len(best))
@@ -3325,7 +3390,10 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		a.addErrorAtToken(expr.Token, "ambiguous call to %s", name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	if constraintFailure != nil {
+	// Non-generic overloads are resolved by the main call path; a generic
+	// candidate's constraint failure is reported here only when no other
+	// overload could accept the call.
+	if constraintFailure != nil && !anyNonGenericFunction(functions) {
 		a.addErrorAtToken(
 			expr.Token,
 			"type %s does not satisfy constraint %s for %s",
@@ -3338,6 +3406,15 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	return Type{}, expressionValue{}, false
 }
 
+func anyNonGenericFunction(functions []Function) bool {
+	for _, function := range functions {
+		if len(function.GenericParameters) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
 	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false
@@ -3346,7 +3423,7 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 	substitution := map[string]Type{}
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
-		if !parameterOK || !inferGenericTypeSubstitution(parameter.Type, argType, substitution) {
+		if !parameterOK || !inferGenericArgumentSubstitution(parameter.Type, argType, substitution) {
 			return Function{}, false
 		}
 	}
@@ -3367,7 +3444,7 @@ func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, a
 	substitution := map[string]Type{}
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
-		if !parameterOK || !inferGenericTypeSubstitution(parameter.Type, argType, substitution) {
+		if !parameterOK || !inferGenericArgumentSubstitution(parameter.Type, argType, substitution) {
 			return Function{}, false
 		}
 	}
@@ -3488,6 +3565,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if a.runtimeContractConversion(expr) {
 		a.recordContractConversionEffect(expr)
 	}
+	a.recordCheckedConversion(expr, targetType, valueType)
 
 	return targetType, expressionValue{Display: expr.String()}
 }

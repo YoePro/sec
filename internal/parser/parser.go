@@ -112,6 +112,9 @@ type Parser struct {
 	peekToken lexer.Token
 
 	stopBeforeBrace bool
+	// switchCaseStart identifies the outer case expression only; nested struct
+	// values keep ordinary literal diagnostics.
+	switchCaseStart lexer.Token
 	// conditionContext names the if or while condition being parsed, for
 	// focused `is` pattern-binding diagnostics.
 	conditionContext       string
@@ -1374,7 +1377,7 @@ func (p *Parser) parseIfStatement() ast.Statement {
 // is/not/available/empty globally: ownership availability, Option None,
 // union and Option variant tests, the union empty-state test, the raw
 // pointer null test, and the positive Option binding `is Some(binding)`.
-// `is not` negates every non-binding test except null. A union payload
+// `is not` negates every non-binding test. A union payload
 // pattern is rejected with the focused match-only diagnostic.
 //
 // Rules:
@@ -1391,6 +1394,12 @@ func (p *Parser) parseIsExpression(subject ast.Expression) ast.Expression {
 		p.nextToken()
 		negated = true
 	}
+	if p.peekToken.Type == lexer.NULL {
+		// rules/platform/ffi.md §11; MD-024 §5.3: `is null` and `is not null`
+		// are the exact symmetric raw-pointer tests.
+		p.nextToken()
+		return &ast.NullTestExpression{Token: isToken, Subject: subject, NullToken: p.curToken, Negated: negated}
+	}
 	if p.peekToken.Type != lexer.IDENT {
 		p.addError("is test expects a union variant, empty, None, Some, available, or null at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return subject
@@ -1399,15 +1408,6 @@ func (p *Parser) parseIsExpression(subject ast.Expression) ast.Expression {
 	case "available":
 		p.nextToken()
 		return &ast.AvailabilityExpression{Token: isToken, Place: subject, Negated: negated}
-	case "null":
-		// rules/platform/ffi.md §11: null testing uses `is null`; the sentinel
-		// has no negated test form.
-		p.nextToken()
-		if negated {
-			p.addError("is not null is not defined; test is null and use the other branch at %d:%d", p.curToken.Line, p.curToken.Column)
-			return subject
-		}
-		return &ast.NullTestExpression{Token: isToken, Subject: subject, NullToken: p.curToken}
 	case "None":
 		return p.finishOptionAbsenceIfCondition(subject, isToken, negated)
 	case "Some":
@@ -2184,55 +2184,6 @@ func (p *Parser) recoverSwitchCaseGuard(clause *ast.SwitchCase) *ast.SwitchCase 
 	p.nextToken()
 	clause.Body = p.parseSwitchCaseBody()
 	return clause
-}
-
-// parseSwitchCaseItem parses one comma-separated switch alternative. A bare
-// `_` is retained as an identifier item so Sema can reject the wildcard
-// pattern with the switch-specific diagnostic.
-//
-// Rules:
-//   - rules/control-flow/flowcontrol_switch.md — §7 "Case expressions", §8 "Range cases", §10 "Relational cases"
-//   - rules/control-flow/flowcontrol_switch.md — §28 "No pattern matching", §35 "Parser requirements"
-func (p *Parser) parseSwitchCaseItem(subjectless bool) ast.SwitchCaseItem {
-	if p.curToken.Type == lexer.UNDERSCORE && (p.peekToken.Type == lexer.COLON || p.peekToken.Type == lexer.COMMA) {
-		wildcard := &ast.Identifier{Token: p.curToken, Value: "_"}
-		return &ast.SwitchValueCase{Token: p.curToken, Value: wildcard}
-	}
-	if subjectless {
-		value := p.parseExpression(LOWEST)
-		if value == nil {
-			return nil
-		}
-		return &ast.SwitchValueCase{Token: expressionToken(value), Value: value}
-	}
-
-	switch p.curToken.Type {
-	case lexer.LT, lexer.LTE, lexer.GT, lexer.GTE:
-		token := p.curToken
-		operator := p.curToken.Lexeme
-		p.nextToken()
-		value := p.parseExpression(COMPARE)
-		if value == nil {
-			return nil
-		}
-		return &ast.SwitchRelationalCase{Token: token, Operator: operator, Value: value}
-	case lexer.RANGE, lexer.RANGE_EXCLUSIVE:
-		rangeExpr := &ast.RangeExpression{Token: p.curToken, Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE}
-		if p.isExpressionStart(p.peekToken.Type) {
-			p.nextToken()
-			rangeExpr.End = p.parseExpression(COMPARE)
-		}
-		return &ast.SwitchRangeCase{Token: rangeExpr.Token, Range: rangeExpr}
-	default:
-		value := p.parseRangeOrExpression()
-		if value == nil {
-			return nil
-		}
-		if rangeExpr, ok := value.(*ast.RangeExpression); ok {
-			return &ast.SwitchRangeCase{Token: rangeExpr.Token, Range: rangeExpr}
-		}
-		return &ast.SwitchValueCase{Token: expressionToken(value), Value: value}
-	}
 }
 
 // parseSwitchCaseBody parses the statements of one switch clause up to the next

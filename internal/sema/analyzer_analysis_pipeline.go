@@ -29,7 +29,12 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 				a.validateLengthIndexBounds(program)
 			})},
 		{id: "string-materializations", dependencies: []string{"callable-bodies"}, priority: 40,
-			run: once(a.reportStringMaterializations)},
+			run: once(func() {
+				a.reportStringMaterializations()
+				a.reportCheckedConversions()
+				a.validateArenaGenericRequirements()
+				a.linkGenericSpecializations()
+			})},
 		{id: "no-panic", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 50,
 			run: once(func() { a.validateNoPanicGuarantees(program) })},
 		{id: "no-alloc", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 60,

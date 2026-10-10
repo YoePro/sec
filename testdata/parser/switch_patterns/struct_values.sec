@@ -1,0 +1,15 @@
+module main
+fn Handle(value: int) int {
+    switch value {
+    case Point { x: 1, y: 2 }, Event.Move { x: 3, y: 4 }:
+        return 10
+    case Point { base..., x: 3 }:
+        return 20
+    case Point { x: Inner { y: 1 } }:
+        return 30
+    case Point {}:
+        return 40
+    default:
+        return 50
+    }
+}

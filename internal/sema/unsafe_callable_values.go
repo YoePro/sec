@@ -1,0 +1,35 @@
+package sema
+
+import (
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+)
+
+// rejectUnsafeFunctionValue reports a named unsafe function used as a
+// first-class function value.
+//
+// Unsafe status is part of callable compatibility, and an unsafe function must
+// not implicitly convert to a safe function value. FunctionType has no unsafe
+// form, so every function value is a safe callable: accepting the conversion
+// would let a call through the value bypass the explicit unsafe context. The
+// rejection holds inside unsafe contexts too, because unsafe accepts caller
+// obligations at a call and does not change callable compatibility. A safe
+// wrapper that discharges the obligations remains the way to obtain a safe
+// callable.
+//
+// Rules:
+//   - rules/memory/unsafe.md — §39(1), §39(2), §39(3), §39(4), §50(2) "unsafe.function-value-mismatch"
+//   - missing-decisions.yaml — MD-059 (no unsafe function type)
+func (a *Analyzer) rejectUnsafeFunctionValue(ident *ast.Identifier, function Function) bool {
+	if !function.Unsafe {
+		return false
+	}
+	kind := "function"
+	if function.Extern {
+		kind = "extern function"
+	}
+	a.addErrorAtTokenWithMetadata(ident.Token, diagnostics.UnsafeFunctionValueMismatch,
+		"Call it directly inside unsafe, or pass a safe wrapper function that establishes its caller obligations.",
+		"unsafe %s %s cannot be used as a function value; function types are safe callables", kind, ident.Value)
+	return true
+}

@@ -25,10 +25,71 @@ module str
 
 // TODO: Implement stdlib/str/join.sec
 
-fn Join(values: Iterator[string], separator: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Joins the strings produced by an iterator using a separator.
+ *
+ * Description:
+ * Traverses the iterator once and inserts the separator between
+ * consecutive elements. Empty elements are preserved.
+ * No separator is added before the first or after the last element.
+ *
+ * Parameters:
+ * - values: An owned iterator yielding valid UTF-8 strings.
+ *     The iterator is consumed during traversal.
+ * - separator: The UTF-8 string inserted between elements.
+ *     An empty separator is permitted.
+ *
+ * Returns:
+ * The joined string, or an empty string if the iterator yields
+ * no elements.
+ *
+ * Errors:
+ * - CollectionError: Propagates failures from Builder construction,
+ *     appending, or finalization.
+ *
+ * Allocation:
+ * Materializes the result using growable Builder storage.
+ */
+fn Join[I: Iterator[string]](values: I, separator: string) Result[string, CollectionError] {
+    let mut builder := try new Builder(0)
+    let mut first := true
+
+    for value in values {
+        if !first {
+            try builder.Append(separator)
+        }
+
+        try builder.Append(value)
+        first = false
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Joins the elements of a string array using a separator.
+ *
+ * Description:
+ * Preserves element order and inserts the separator between
+ * consecutive elements, including empty elements.
+ * Calculates the required output capacity before construction.
+ * Does not modify the source array.
+ *
+ * Parameters:
+ * - values: An immutably borrowed array of UTF-8 strings.
+ * - separator: The UTF-8 string inserted between elements.
+ *     An empty separator is permitted.
+ *
+ * Returns:
+ * The joined string, or an empty string for an empty array.
+ *
+ * Errors:
+ * - CollectionError: Propagates failures from Builder construction,
+ *     appending, or finalization.
+ *
+ * Allocation:
+ * Materializes one output string using a pre-sized Builder.
+ */
 fn Join(values: ref string[], separator: string) Result[string, CollectionError] {
     let mut totalBytes: uint := 0
     let mut count: uint := 0
@@ -60,14 +121,97 @@ fn Join(values: ref string[], separator: string) Result[string, CollectionError]
     return builder.Finish()
 }
 
-fn Concat(values: Iterator[string]) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Concatenates all strings produced by an iterator.
+ *
+ * Description:
+ * Traverses the iterator once and joins the elements without
+ * inserting separators. Empty elements contribute no bytes.
+ * Equivalent in result to joining with an empty separator.
+ *
+ * Parameters:
+ * - values: An owned iterator yielding valid UTF-8 strings.
+ *     The iterator is consumed during traversal.
+ *
+ * Returns:
+ * The concatenated string, or an empty string if the iterator
+ * yields no elements.
+ *
+ * Errors:
+ * - CollectionError: Propagates failures from the underlying Join.
+ *
+ * Allocation:
+ * Materializes the result through Join and Builder.
+ */
+fn Concat[I: Iterator[string]](values: I) Result[string, CollectionError] {
+    return Join(<-values, "")
 }
 
+/**
+ * Concatenates the elements of a string array.
+ *
+ * Description:
+ * Preserves element order without inserting separators.
+ * Uses the array-based Join implementation to calculate the
+ * required output capacity before construction.
+ * Does not modify the source array.
+ *
+ * Parameters:
+ * - values: An immutably borrowed array of UTF-8 strings.
+ *
+ * Returns:
+ * The concatenated string, or an empty string for an empty array.
+ *
+ * Errors:
+ * - CollectionError: Propagates failures from the underlying Join.
+ *
+ * Allocation:
+ * Materializes the result through a pre-sized Builder.
+ */
 fn Concat(values: ref string[]) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return Join(values, "")
 }
 
-fn AppendJoin(builder: ref mut Builder, values: Iterator[string], separator: string) Result[void, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Appends joined iterator elements to an existing Builder.
+ *
+ * Description:
+ * Traverses the iterator once, appending each string and inserting
+ * the separator only between consecutive iterator elements.
+ * Preserves content already present in the Builder.
+ * Does not insert a separator between existing Builder content
+ * and the first iterator element.
+ *
+ * Parameters:
+ * - builder: A mutably borrowed Builder receiving the output.
+ *     Ownership remains with the caller.
+ * - values: An owned iterator yielding valid UTF-8 strings.
+ *     The iterator is consumed during traversal.
+ * - separator: The UTF-8 string inserted between new elements.
+ *     An empty separator is permitted.
+ *
+ * Returns:
+ * Ok() when all elements have been appended successfully.
+ *
+ * Errors:
+ * - CollectionError: Propagates Builder append failures.
+ *     On failure, previously appended data remains in the Builder.
+ *     The operation is not transactional.
+ *
+ * Allocation:
+ * Uses existing Builder storage and may trigger fallible growth.
+ */
+fn AppendJoin[I: Iterator[string]](builder: ref mut Builder, values: I, separator: string) Result[void, CollectionError] {
+    let mut first := true
+
+    for value in values {
+        if !first {
+            try builder.Append(separator)
+        }
+
+        try builder.Append(value)
+        first = false
+    }
+
+    return Ok()
 }

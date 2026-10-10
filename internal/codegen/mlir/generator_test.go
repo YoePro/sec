@@ -1657,36 +1657,12 @@ fn main() int {
 
 func TestGenerateSwitchRejectsDeferredForms(t *testing.T) {
 	tests := map[string]string{
-		"subjectless": `
-module main
-fn main() int {
-    switch {
-    case true:
-        return 1
-    default:
-        return 0
-    }
-}
-`,
 		"range": `
 module main
 fn main() int {
     switch 5 {
     case 0..10:
         return 1
-    default:
-        return 0
-    }
-}
-`,
-		"fallthrough": `
-module main
-fn main() int {
-    switch 1 {
-    case 1:
-        fallthrough
-    case 2:
-        return 2
     default:
         return 0
     }

@@ -32,19 +32,18 @@ interface Drawable {
 	return analyzer.Analyze(result.Program)
 }
 
-// C and system extern signatures accept C:: scalars, fixed-width Sec
-// scalars, RawPtr[T], integer-backed enums, and call-bounded reference
+// C and system extern signatures accept c:: scalars, fixed-width Sec
+// scalars up to 64 bits, RawPtr[T], and call-bounded reference
 // parameters whose referents are themselves foreign-representable.
 //
 // Rules:
 //   - rules/platform/ffi.md — §5, §9, §10, §12, §21, §45
 func TestForeignSignaturesAcceptLegalTypesPerPosition(t *testing.T) {
 	for _, declaration := range []string{
-		`extern "C" fn Flags(value: C::bool, wide: C::long_double, small: C::uchar) C::int`,
+		`extern "C" fn Flags(value: c::bool, wide: c::long_double, small: c::uchar) c::int`,
 		`extern "C" fn Fixed(a: int8, b: uint16, c: int32, d: uint64, e: float32, f: float64, g: byte) float64`,
-		`extern "system" fn Pointer(buffer: RawPtr[byte], untyped: RawPtr[void]) RawPtr[C::char]`,
-		`extern "C" fn Borrow(first: ref mut byte, block: ref mut C::int[4], value: ref int32) void`,
-		`extern "C" fn Status(mode: Mode) Mode`,
+		`extern "system" fn Pointer(buffer: RawPtr[byte], untyped: RawPtr[void]) RawPtr[c::char]`,
+		`extern "C" fn Borrow(first: ref mut byte, block: ref mut c::int[4], value: ref int32) void`,
 		`unsafe extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64`,
 	} {
 		if errors := analyzeForeignDeclaration(t, declaration); len(errors) != 0 {
@@ -82,6 +81,12 @@ func TestForeignSignaturesRejectIllegalTypesPerPosition(t *testing.T) {
 		{`extern "C" fn F(callback: fn(int32) int32) void`, "native Sec callable values and closures do not cross a C ABI"},
 		{`extern "C" fn F() ref int32`, "returns foreign pointers as RawPtr[T], never as a call-bounded reference"},
 		{`extern "C" fn F(label: Label) void`, "an enum without an integer underlying representation has no C representation"},
+		// MD-023 §4.3–4.5: closed enums and unverified wide integers fail closed.
+		{`extern "C" fn F(mode: Mode) void`, "a closed Sec enum is not a C enum"},
+		{`extern "C" fn F() Mode`, "return type has type Mode"},
+		{`extern "C" fn F(value: int128) void`, "no C ABI model of the selected target supports int128"},
+		{`extern "C" fn F() uint256`, "no C ABI model of the selected target supports uint256"},
+		{`extern "C" fn F(value: ref uint128) void`, "its referent uint128 cannot cross the boundary"},
 		{`extern "system" fn F(flag: bool) void`, "cannot cross the system ABI boundary"},
 	}
 	for _, test := range tests {

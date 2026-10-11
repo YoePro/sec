@@ -98,3 +98,61 @@ func TestLegacyPlacesOverlapHasNoCorrectnessCallers(t *testing.T) {
 		}
 	}
 }
+
+// Interprocedural parameter-usage summaries build their Places with the same
+// compiler-owned root identity Sema assigns to the parameter declaration, and
+// a generic body keeps one root identity per declaration across every
+// instantiation (P15-10).
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §10 "Stable place root identity"
+//   - rules/compiler/semantic_ir.md — § 10(7)
+func TestPlaceRootIdentityCoversSummariesAndGenericInstantiation(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `module main
+
+fn Touch(values: ref mut int[4], other: ref mut int[4]) void {
+    values[1] = 2
+    other[1] = 3
+}
+
+fn Twice[T](value: T) T {
+    let copy :<- value
+    return copy
+}
+
+fn Use() int {
+    discard Twice[bool](true)
+    return Twice[int](4)
+}
+`)
+	assertSemaErrors(t, errors, nil)
+	summary := parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "Touch")
+	ids := map[PlaceRootID]string{}
+	for _, parameter := range summary.Parameters {
+		if len(parameter.Uses) == 0 {
+			t.Fatalf("%s has no recorded uses", parameter.Name)
+		}
+		for _, use := range parameter.Uses {
+			place := use.Place
+			if place.RootID == 0 || place.RootKind != PlaceRootParameter || place.RootToken != parameter.Declaration {
+				t.Fatalf("%s use Place root = %d/%s/%v, want the parameter declaration identity", parameter.Name, place.RootID, place.RootKind, place.RootToken)
+			}
+			if place.RootID != analyzer.placeRootID(parameter.Declaration) {
+				t.Fatalf("%s summary identity %d differs from Sema's %d", parameter.Name, place.RootID, analyzer.placeRootID(parameter.Declaration))
+			}
+			if previous, seen := ids[place.RootID]; seen && previous != parameter.Name {
+				t.Fatalf("parameters %s and %s share root identity %d", previous, parameter.Name, place.RootID)
+			}
+			ids[place.RootID] = parameter.Name
+		}
+	}
+	copies := 0
+	for key := range analyzer.placeRootIDs {
+		if key.Line == 9 && key.Column == 9 {
+			copies++
+		}
+	}
+	if copies != 1 {
+		t.Fatalf("generic local has %d root identities across instantiations, want 1", copies)
+	}
+}

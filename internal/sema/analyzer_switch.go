@@ -99,6 +99,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+	a.mergeContinuingReferenceOrigins(branches...)
 }
 
 // applySwitchEntryMerge joins the direct case-test entry with the preceding
@@ -116,6 +117,7 @@ func (a *Analyzer) applySwitchEntryMerge(direct, fallthroughEntry branchAnalysis
 	a.borrows = mergeContinuingBorrows(direct.borrows, direct, fallthroughEntry)
 	a.localRefContainers = mergeContinuingLocalRefContainers(direct.localRefContainers, direct, fallthroughEntry)
 	a.arenaGenerations = mergeContinuingArenaGenerations(direct.arenaGenerations, direct, fallthroughEntry)
+	a.mergeContinuingReferenceOrigins(direct, fallthroughEntry)
 }
 
 // analyzeSwitchCaseItems validates every comma-separated case alternative
@@ -214,7 +216,7 @@ func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool
 //   - rules/control-flow/flowcontrol_switch.md — §15 "No implicit fallthrough", §18 "Case scopes", §19 "Fallthrough and scope"
 func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true}
 	}
 
 	previousSymbols := a.symbols
@@ -260,6 +262,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		referenceOrigins:   captureReferenceOrigins(a.symbols),
 		continues:          a.blockCanFallThrough(block) && !hasFallthrough,
 		fallsThrough:       hasFallthrough,
 	}

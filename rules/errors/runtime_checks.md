@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-09-29
+- **Last updated:** 2026-10-11 (SEC-MLIR-P15 reference synchronization)
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
@@ -433,12 +433,31 @@ checked conversion, including contract construction
 
 capacity growth
     CapacityError or AllocationError
-
-reference generation validation
-    ReferenceError
 ```
 
 Exact canonical error unions belong to core and specialized rulebooks.
+
+Reference-generation validation is not an ordinary fallible operation. It has
+three distinct outcomes:
+
+```text
+proven safe:
+    no runtime check
+
+ordinary direct safe reference (ref T / ref mut T), dynamic validation:
+    check + panic.invalid-reference-generation on the violated safety guarantee
+
+fallible stable/weak handle resolution:
+    explicit Option/Result according to the handle API
+```
+
+`try` does not recover a stale ordinary direct reference, and programmers do not
+write `try` around ordinary safe dereferences. Generation/epoch validity is a
+partial safety mechanism: it never replaces ownership, borrow compatibility,
+bounds, initialization, type validity, relocation correctness, address-space
+correctness, or concurrency synchronization, and it is not a runtime borrow
+checker. An epoch dependency implies no mandatory runtime metadata
+(`rules/memory/reference_model.md`; SEC-MLIR-P15 reference synchronization).
 
 ---
 

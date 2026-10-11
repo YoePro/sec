@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-09-27
+- Last updated: 2026-10-11 (SEC-MLIR-P15 Place/direct-reference amendment integrated)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -300,7 +300,19 @@ compiler-known projection
 
 § 10(4) Place identity must not be reconstructed from source spelling after Sema.
 
-§ 10(5) Place relationship facts such as Same, Disjoint, Contains, ContainedBy, MayOverlap, or Unknown may be retained/referenced where required.
+§ 10(5) Place relationship facts use the one canonical relationship domain `Same`, `Disjoint`, `Contains`, `ContainedBy`, `PotentiallyOverlapping`, or `Unknown`; borrowing and later ownership/data-race passes consume this common result.
+
+§ 10(6) Semantic IR distinguishes value, storage, Place, reference, and raw pointer. A Place is an addressable semantic path, never a runtime numeric address.
+
+§ 10(7) Place roots use stable compiler root identities; source spelling is diagnostics metadata only. A root may be a local, parameter, static, addressed storage, allocation, declared foreign storage, or another compiler-recognized storage domain.
+
+§ 10(8) Projection information includes stored field identity, constant index, dynamic index identity, union variant payload identity, and safe-reference dereference. Constant Place indexes use arbitrary precision and are never truncated to a host integer width.
+
+§ 10(9) A known Place/root may carry a storage identity distinct from numeric address, source name, allocation size, and epoch value. Address reuse does not silently reuse stale semantic identity.
+
+§ 10(10) A reference may depend on an invalidation domain whose semantic identity is independent of address; a validity epoch describes one live incarnation of that domain.
+
+§ 10(11) Struct fields and fixed-array elements can be borrowed without copying the whole aggregate. Dynamic fixed-array element Places require the fixed-array bounds semantics, evaluated on one array Place and one index. A union payload Place is valid only under the active-variant proof for the same union storage. Physical offsets are not selected.
 
 ---
 
@@ -1103,6 +1115,24 @@ source location
 
 § 45(4) Reference facts may be reduced only after every downstream consumer has equivalent proof.
 
+§ 45(5) `ref T` and `ref mut T` are distinct non-null, non-owning Semantic IR types. `ref T` is copyable; `ref mut T` is move-only.
+
+§ 45(6) A direct reference is not defined as a machine address, address plus generation, fat pointer, capability, or side-table key; those are lowering choices.
+
+§ 45(7) Direct-reference validity policy is `proven` (with proof provenance) or `dynamic-epoch` (with the required invalidation-domain/epoch dependency).
+
+§ 45(8) Dereferencing a safe reference produces a Place: read-only for `ref T`, read/write for `ref mut T`; dynamic validity guards the dereference with the same validity predicate.
+
+§ 45(9) A whole-value read through a reference is explicit and never silently moves from a shared reference. A write through `ref mut T` is replacement. Package-scoped executable support may restrict reads to copy-trivial and writes to trivially replaceable types until later packages define non-trivial replacement and destruction.
+
+§ 45(10) Reference equality compares the same live storage identity and the same referenced location, not raw addresses; dynamic references must satisfy their required validity before comparison.
+
+§ 45(11) After a CFG merge a reference may carry a finite compile-time set of possible origins, which implies no runtime provenance tag. A reborrow that needs precise provenance may be rejected when the origin set becomes unknown.
+
+§ 45(12) Function metadata preserves enough origin information to instantiate returned-reference facts at call sites; returning a local-origin direct reference remains invalid.
+
+§ 45(13) The `CompilationPlan` records the logical epoch policy (default 64 bits); the source reference type does not include epoch width.
+
 ---
 
 ## § 46 Borrow operations
@@ -1124,6 +1154,14 @@ EndBorrowDependency
 § 46(4) The Semantic IR verifier need not rerun the full borrow solver but must reject structurally contradictory borrow state.
 
 § 46(5) NLL/final-use facts may be retained as explicit dependency endpoints or equivalent metadata.
+
+§ 46(6) Reference creation consumes a valid borrowable Place and records BorrowID, LifetimeID, origin, storage identity, authority, validity policy, and address-stability class; no ownership of the referent transfers.
+
+§ 46(7) Reborrow is explicit and may only narrow authority, spatial extent, and lifetime while preserving compatible provenance, address space, and epoch dependency; shared never becomes mutable.
+
+§ 46(8) A shared-reference copy preserves non-owning referent identity and compatible validity facts. Moving `ref mut T` transfers the holder and its borrow obligation, not referent ownership.
+
+§ 46(9) Resolved borrow end is represented explicitly or through equivalent canonical lifetime metadata. It is compile-time structure: no operation requires a runtime borrow counter, owner lock, or alias tag.
 
 ---
 
@@ -1173,6 +1211,10 @@ owner-domain retirement
 § 48(4) Stale ordinary safe-reference failure remains panic/trap behavior when dynamically checked.
 
 § 48(5) Stale stable/weak-handle resolution remains fallible.
+
+§ 48(6) Semantic IR provides a total validity predicate. A dynamic validity use is guarded, and the false path of ordinary direct safe-reference use reaches the canonical invalid-reference-generation failure endpoint (panic reason `InvalidReferenceGeneration`, `panic.invalid-reference-generation`); it does not return `Result`, does not use `try`, and does not resume.
+
+§ 48(7) The invalidation identities established for direct references (destroy, free, Arena Reset/Release, collection storage replacement, relocation, foreign invalidation) are the common model later packages reuse.
 
 ---
 
@@ -2369,6 +2411,8 @@ invalid source/synthetic provenance where required
 
 § 96(4) Verifier failures are internal compiler errors.
 
+§ 96(5) For Places and direct references the verifier additionally rejects inconsistent root/projection types, increased authority, invalid field/array/union projections, an array element Place that is not bounds-proven or guarded, a union payload Place without variant proof, a copied `ref mut`, a reborrow that does not narrow, malformed dynamic validity guards, incompatible reference comparison, inconsistent BorrowID/LifetimeID, use after a resolved borrow end, invalid returned-reference origin, and a Place escaping as a language value.
+
 ---
 
 ## § 97 Verification schedule
@@ -2614,6 +2658,8 @@ source locations
 § 108(3) The textual form is compiler/debugging syntax, not Sec source syntax.
 
 § 108(4) It must not be accepted as user Sec source.
+
+§ 108(5) Place and reference output prints the stable Place/root ID, the structured projection path, arbitrary-precision constant indexes, reference kind, BorrowID/LifetimeID, validity policy, epoch dependency identity, and address-stability class; source display spelling is never the semantic identifier.
 
 ---
 

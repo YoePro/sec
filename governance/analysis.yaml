@@ -856,6 +856,10 @@ integrations:
       - internal/sema/types.go
       - internal/sema/call_graph.go
       - internal/sema/arena_generic_requirements.go
+      - internal/sema/analyzer_arena.go
+      - internal/sema/allocation_context_facts.go
+      - internal/sema/call_graph.go
+      - internal/sema/escape_diagnostics.go
     tests:
       - internal/sema/allocation_test.go
       - internal/sema/lifetime_test.go
@@ -863,6 +867,8 @@ integrations:
       - internal/sema/copy_move_test.go
       - internal/sema/allocation_test.go
       - internal/sema/arena_generic_requirements_test.go
+      - internal/sema/arena_domain_identity_test.go
+      - internal/sema/allocation_context_facts_test.go
     implemented:
       - compiler-known Arena type and AllocationError enum
       - compiler-known Arena.New, Arena.FromBuffer, Arena.WithCapacity, Arena.Growable, Arena.Alloc, Arena.Reset, and Arena.Release member recognition in the represented frontend subset
@@ -878,6 +884,7 @@ integrations:
       - "Arena.New[T] and Arena.Alloc[T] share one safe typed-allocation validator: unsized or incomplete T (void, never, interfaces, packs) uses S1072 arena.unsized-allocation-type, T without a canonical infallible default uses S1073 arena.allocation-missing-default, and T requiring destruction uses S1074 arena.non-trivially-destructible-allocation, each with help; Alloc previously validated no type requirement at all, and unresolved generic parameters are deferred to instantiation"
       - "Arena.New[T] and Arena.Alloc[T] type requirements per generic specialization (2026-10-10, internal/sema/arena_generic_requirements.go): an allocation whose element still names template parameters is recorded on its template, every resolved generic call records its substitution (forwarded substitutions inside templates compose transitively, with a recursion guard), and after all bodies are analyzed each concrete specialization is checked for sized layout, valid default and trivial destruction (S1072-S1074) at the concrete call with the template allocation as related location; explicit and inferred generic calls also match ref parameters through implicit call-site borrows"
       - Arena.FromBuffer backing identity is an exclusive mutable borrow for the complete Arena lifetime and moves with the Arena owner; implemented and verified on 2026-10-09 under frontend.allocation in governance/allocation.yaml (internal/sema/analyzer_arena.go, internal/sema/arena_from_buffer_test.go)
+      - "stable ArenaDomain identity replaces lexical binding names (2026-10-11, arena.md §§4.2, 44, 68(3)-(4)): an Arena reached through a local reference now operates on the referenced owner's domain instead of a domain named after the reference binding, so a Reset through an alias invalidates storage allocated from the owner and storage allocated through the alias stays local to the owner's invocation (both previously accepted); a ref/ref mut Arena parameter gets one symbolic compiler-owned domain instead of its name; Arena effect sites carry the selected or created Domain (the receiver spelling stays display-only), allocation-context facts take it from the site and still select nothing on conflicting or ambiguous result evidence; diagnostics name the owning Arena binding instead of internal domain identities"
     verification:
       - command: go test ./... -count=1
         result: passed on 2026-10-10 with direct, forwarded and recursive generic Arena specializations; remaining reduced from 10 to 8
@@ -891,9 +898,10 @@ integrations:
         result: passed on 2026-10-02 for New and Alloc with sized/defaultable/trivial acceptance, interface and void rejection, missing default, owning dynamic array destruction, and deferred generic parameters
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-02; `sec sema sec` reports no new Arena allocation diagnostics in library sources
+      - command: go test ./internal/sema -run 'TestArenaAlias|TestArenaEffectSites|TestAllocationContext' -count=1
+        result: passed on 2026-10-11 with stale use after a Reset through an alias, a rejected return of alias-allocated local storage, one symbolic domain for a parameter's Alloc and Reset, the alias selecting the owner's domain, and no domain guessed from receiver labels or conflicting evidence
     remaining:
       - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
-      - replace lexical Arena binding-name identity with stable compiler-owned ArenaDomain identity
       - allocation-context propagation and complete allocation-effect inference through function bodies
       - statically impossible alignment (blocked on explicit alignment syntax, missing-decisions.yaml MD-019), count-overflow, and allocation diagnostics (arena.md § 17(5), § 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering
       - allocation failure handling beyond ordinary Result syntax
@@ -959,7 +967,7 @@ integrations:
     area: frontend-analysis
     status: partial
     audited: "2026-08-20"
-    updated: "2026-10-07"
+    updated: "2026-10-11"
     repository_baseline: c515862
     primary_rule: rules/memory/allocation.md
     canonical_arena_rule: rules/memory/arena.md
@@ -984,6 +992,12 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/types.go
       - internal/sema/call_graph.go
+      - internal/sema/reference_origin_join.go
+      - internal/sema/analyzer_while_flow.go
+      - internal/sema/analyzer_for.go
+      - internal/sema/analyzer_switch.go
+      - internal/sema/analyzer_if_statement.go
+      - internal/sema/analyzer_logical.go
     tests:
       - internal/sema/arena_invalidation_diagnostics_test.go
       - cmd/compiler/arena_invalidation_diagnostics_test.go
@@ -994,6 +1008,7 @@ integrations:
       - internal/sema/allocation_test.go
       - internal/sema/lifetime_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/reference_origin_join_test.go
     implemented:
       - represented live-dependency failures at explicit Reset and Release use separate mandatory registered S1126 (arena.reset-live-dependency) and S1127 (arena.release-live-dependency) identities, Invalid proof state, exact method spans, the live dependency declaration as a labelled related location, and operation-specific epoch versus terminal-domain/owner help
       - dependency selection is deterministic by declaration source and name, yielding one witness per rejected operation; rejection does not advance the represented epoch, consume the owner, end backing borrows or publish a successful Reset/Release effect
@@ -1013,13 +1028,14 @@ integrations:
       - operation-point validation of represented validity-preserving Arena dependencies
       - stable ArenaDomain identity across owner moves
       - corrected defer, switch, match, and loop generation-state propagation in the represented frontend subset
+      - "corrected flow state for reference-holder origins (2026-10-11, arena.md §§36, 44; correction25/correction28 branch/switch/loop propagation): branch analysis restored the outer symbol table, so an origin a branch gave an outer reference holder (for example a holder rebound to an Arena allocation) was dropped at the join and later Reset/Release stale-use and dependency checks missed it; branches, match arms, switch cases and logical right-hand sides now snapshot reference-holder origins and every join merges them conservatively (Arena storage first, oldest generation per domain, then invocation-local storage); loopEdgeState carries the origins on break and continue edges, loop exits join zero-iteration, end-of-body and break origins, and the loop header joins entry, fall-through and continue origins so a Reset in one iteration makes a holder stale in the next; defer bodies keep their existing deferred-use dependency records"
     partial:
       - dependency liveness is conservative and does not yet model every nested Arena, container, capture, task/thread, foreign-retained, weak-handle, or implicit-destruction path
     remaining:
+      - "known hole (verified 2026-10-11): a reference holder carries one origin, so when branches rebind it into different Arenas (first in one branch, second in the other) the join keeps only one domain; a Reset of the other Arena followed by a use of the holder is accepted. The join needs a multi-origin holder state instead of the strongest single origin (internal/sema/reference_origin_join.go)"
       - broaden the ArenaDomain dependency query to full NLL/last-use semantics
       - distinguish weak/stale-capable handles from strong validity-preserving dependencies
       - integrate nested Arena, container, capture, task/thread, foreign-retained, and deferred-use dependencies
-      - consume corrected branch/switch/loop/defer flow state from the relevant corrections
     verification:
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-07 after focused Arena Reset/Release dependency diagnostics
@@ -1039,6 +1055,10 @@ integrations:
         result: all 18 moved function bodies were identical; no semantic behavior was changed
       - command: Python YAML validation and git diff --check
         result: passed on 2026-10-07 with 46 registered fragments, 303 unique integration IDs and existing unique Arena references; the entire traceability remaining post was removed (6 to 5)
+      - command: go test ./internal/sema -run 'TestArenaHolderOrigin|TestLoopEdgesCarryEveryDomain' -count=1
+        result: passed on 2026-10-11 with stale holder uses after if, if/else, switch, while, for, break and loop-backedge joins, and valid terminating-branch, reset-then-allocate and use-before-reset programs
+      - command: go test ./... -count=1
+        result: passed on 2026-10-11 except the unrelated stale generated unicode.sec check; `sec sema sec` reports the same 59 library errors as HEAD
     bug_reference:
       - rules/corrections/applied/correction28-20260823.md
     governance_reconciliation:
@@ -1125,7 +1145,7 @@ integrations:
       - "propagate unsafe callable compatibility through interfaces/generics/dynamic dispatch and through unsafe function values once an unsafe function type exists (MD-059); named function values are covered, and interface requirements and impl methods have no unsafe form yet"
       - "integrate canonical effects beyond the verified @noPanic/@noAlloc/@noBlock contracts (MayIO, MayAccessVolatile and the other § 15(2) effects have no unsafe-specific facts yet)"
       - "reject compiler-known false caller obligations even inside unsafe beyond the proven-null raw-pointer dereference slice: alignment, lifetime/dangling, range, alias and representation obligations, null facts carried through copies, fields and calls, and proven-null raw-to-safe conversion (raw_pointers.md § 18(5), unsafe.md § 21(3)-(5), § 22(4))"
-      - "apply § 7(1) (an unsafe fn body is not implicitly an unsafe context) once MD-060 decides how platform asm bodies and named asm outputs migrate; sema still treats the unsafe fn body as unsafe context"
+      - "known hole (verified 2026-10-10): Sema treats the whole body of an unsafe fn as an unsafe context, so unsafe operations inside it need no explicit unsafe marker, contrary to unsafe.md § 7(1)-(2) and § 4(7); the fix waits for MD-060, which decides how platform asm bodies and named asm outputs migrate"
     implemented:
       - "unsafe function values (2026-10-10, unsafe.md § 39(1)-(2), § 50(2)): FunctionType has no unsafe form (MD-059), so a named unsafe function or unsafe extern function used as a function value, whether inferred, typed by an expected function type, or passed as a callback argument, is mandatory S1141 unsafe.function-value-mismatch, also inside unsafe contexts; direct unsafe calls and safe wrapper functions used as values stay valid (§ 39(3))"
       - "proven null raw-pointer dereference (2026-10-10, raw_pointers.md § 7(6)-(8), § 34; unsafe.md § 8(6), § 21(2)): RawPtr Read, Write, VolatileRead and VolatileWrite through an immutable binding initialized with null, or through a stable binding (never assigned, mutably borrowed or captured) that a dominating `is null` test or the failed edge of `is not null` (else branch, code after an early exit, through !, true && and false ||) fixes as null, is mandatory S1142 unsafe.raw-pointer-null even inside unsafe; unproven, non-null, reassigned and mutable cases stay accepted"
@@ -1211,10 +1231,19 @@ integrations:
       - derived task/thread entry roots
       - source-ordered direct Arena effect sites
       - synchronous MayAllocate propagation with shortest cause path
+      - "Reset through Arena reference parameters (2026-10-11, arena.md §§36, 44, 68(3)-(4); compiler_analysis.md § 14): each function summary records the ref/ref mut Arena parameters it may Reset, directly or by forwarding them, solved in the existing bounded reference-summary fixed point (unresolved summaries widen to every Arena parameter); a validated direct or expected-type call applies the summary to each bound argument (an owned Arena, or a local alias resolved to its owner's domain): the Reset dependency check runs at the argument (S1126 \"cannot pass arena mem to Fill, which may Reset it\") and the Arena epoch advances, so earlier allocations are stale after Fill(mem), Forward(mem), mutually recursive helpers and Fill(alias); allocation-only helpers keep earlier allocations valid"
+    code:
+      - internal/sema/arena_parameter_effects.go
+      - internal/sema/analyzer_reference_summaries.go
+    tests:
+      - internal/sema/arena_parameter_effects_test.go
+    verification:
+      - command: go test ./internal/sema -run TestCalleeArena -count=1
+        result: passed on 2026-10-11 with stale uses after direct, forwarded, mutually recursive and alias calls, S1126 for a deferred use across Fill(mem), an allocation-only helper accepted, and exact per-function Arena parameter summaries; go test ./... passes except the unrelated stale unicode.sec check and `sec sema sec` matches HEAD
     remaining:
       - replace legacy storage-origin/root approximations with canonical ArenaDomain/storage identities
       - complete path-aware Arena owner/state/epoch merging
-      - complete Reset/Release blockers through references, closures, results, defer, nested Arenas and FFI retention
+      - "complete Reset/Release blockers through closures, results, defer, nested Arenas and FFI retention, and apply callee Arena parameter summaries through function values, interface dispatch and arguments that are not visible Arena bindings (for example a field such as self.arena)"
       - complete task/thread/cancellation/structured-concurrency dependency propagation
       - complete allocation-context propagation
       - complete ordered Arena effects beyond summary MayAllocate
@@ -1684,6 +1713,7 @@ integrations:
       - internal/diagnostics/diagnostics.go
       - internal/sema/analyzer.go
       - internal/sema/escape_call_boundary.go
+      - internal/sema/escape_storage_domain.go
     tests:
       - internal/diagnostics/escape_test.go
       - internal/sema/escape_diagnostics_test.go
@@ -1701,6 +1731,7 @@ integrations:
       - internal/sema/copy_move_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/escape_call_boundary_test.go
+      - internal/sema/escape_storage_domain_test.go
     implemented:
       - "revision 2.0 return transfer (2026-10-07): `return value` and `return <-value` record the same owned-value ValueTransfer fact and Returned parameter disposition; the optional marker previously hid the returned Place. An owned local return records no parameter or storage dependency (TestEscapeAnalysisReturnTransferFollowsResolvedSemantics)"
       - a value copied out through a `ref`/`ref mut` parameter in a non-reference return is a fresh owned value from a temporary source; previously it recorded a false Returned disposition that gave the callee and every forwarding caller unsound returned-lifetime and address-identity parameter demand (2026-10-07; TestParameterUsageCopyThroughBorrowIsNotReturned)
@@ -1738,6 +1769,7 @@ integrations:
       - "call-boundary facts (2026-10-10, escape_analysis.md \"Call retention contracts\", \"Call-boundary semantic classification\", \"Calls\"): every argument of a validated call to a resolved callee records its resolved relation (borrow, mutable borrow, copy, ownership transfer) from the callee parameter contract rather than source tokens, with canonical Place provenance or a Temporary source; consuming parameters, explicit <- and move-only values passed by value are ownership transfers that record a ValueTransfer fact to the RetainingCall destination (the TransfersOwnership contract) and mark transferred caller parameters and receivers OwnershipTransferred; borrowed parameters of Sec callables resolve to NoRetention and record no Retention/BorrowEscape, because Sec 0.1 has no retaining parameter contract (explicit retention contracts and FFI retention remain separate points); facts are deduplicated across re-inferred calls, detached in snapshots, and lambda bodies stay excluded as for return facts"
       - "function-value call composition (2026-10-10, escape_analysis.md \"Call retention contracts\", \"Unknown\", \"Calls\"): a validated call through a function value records per-argument relations from the function type the arguments were checked against (reference parameter borrow or mutable borrow, move-only value or explicit <- ownership transfer, otherwise copy) and the proven target set; a closed set of known Sec bodies (named functions and lambdas) keeps the NoRetention contract, while an open set, unresolved callee or foreign target is UnknownRetention: borrowed, reference-like, address-like and callable arguments record a Retention fact to the Unknown destination marked Unknown and give caller parameters and receivers the UnknownRetention disposition that parameter-usage analysis already treats as unknown lifetime demand; ownership transfers still record ValueTransfer; calls on paths Sema proves unreachable record no call-boundary facts"
       - "FFI retention contracts (2026-10-10, ffi.md § 10, § 12, § 14; escape_analysis.md \"ForeignRetention\", \"UnknownRetention\"): extern call arguments are marked foreign; ref T and ref mut T extern parameters are call-bounded borrows foreign code must not retain and record no retention, while raw pointers, callables, views and values carrying one (typeContainsAddress) establish no retention behavior and record a ForeignRetention fact to the ForeignCode destination marked Unknown, giving caller parameters and receivers the PassedToForeign and UnknownRetention dispositions; address-free scalars and aggregates retain nothing; a function value whose target set contains a foreign body stays conservative UnknownRetention"
+      - "static storage destination (2026-10-10, escape_analysis.md \"Static and thread-local destinations\", \"Diagnostic categories\"; lifetime_analysis.md § 19): an assignment whose target is rooted in Static storage (whole binding, field or element) and whose type carries a reference records a BorrowEscape fact to StaticStorage for every borrowed dependency of the stored value (ref and slice borrows, reference values followed to their canonical origin, owned Places initializing a reference target, struct-literal fields and tracked call-result origins); lifetime validation accepts the store only when every referent is static and otherwise reports mandatory S1143 escape.static-store-of-short-lived-reference (S1144 is registered for the thread-local form) with a StaticStorage cause path; a stored borrowed parameter is rejected with a call-bounded origin explanation and summarized as Retained; owned values without references are not checked"
     verification:
       - command: go test ./internal/sema -run 'TestEscapeAnalysisReturnTransferFollowsResolvedSemantics|TestParameterUsageCopyThroughBorrowIsNotReturned|TestParameterUsageOwnershipTransfer' -count=1
         result: passed on 2026-10-07 with equal plain and marked return facts, owned local return, copy through borrow from a temporary source, call-local borrow calls without markers, and call-only parameter lifetime for borrowed copies and their callers
@@ -1761,6 +1793,8 @@ integrations:
         result: passed on 2026-10-10 with unknown-target borrow (Retention to Unknown, UnknownRetention on the caller parameter), unknown-target ownership transfer without retention, named-function and lambda closed targets without retention, and the parameter-usage unreachable-open-call regression
       - command: go test ./internal/sema -run 'TestEscape|TestTypeContainsAddress' -count=1
         result: passed on 2026-10-10 with borrow and mutable-borrow extern parameters retaining nothing, a RawPtr argument recording ForeignRetention with PassedToForeign/UnknownRetention on the caller parameter, address-free arguments without dispositions, and address detection through struct fields, arrays and callables
+      - command: go test ./internal/sema -run TestStaticStore -count=1
+        result: passed on 2026-10-10 with S1143 for ref, implicit, field and struct-literal stores of a local, a stored borrowed parameter (Retained), and accepted static referents recording three StaticStorage facts; `sec sema sec` reports no S1143/S1144
     required_tests:
       - shared borrowed parameter call requires no explicit call-site `ref`
       - mutable borrowed parameter call requires no explicit call-site `ref mut`
@@ -1787,7 +1821,7 @@ integrations:
       - implement explicit call retention contracts and retained-borrow propagation
       - implement task and thread transfer escape classification
       - "FFI retention: consume explicit foreign retention contracts once ffi.md defines a retain/no-retain parameter or callback contract beyond ref T and RawPtr[T], and extend address detection to extern \"C\" struct values once foreign data declarations parse (ffi.md § 14)"
-      - integrate Static and ThreadLocal escape destinations with lifetime/storage validation
+      - "ThreadLocal destination: the storage-domain check already routes ThreadLocal-rooted targets to S1144, but no source construct produces ThreadLocal storage yet; connect it when thread-local declarations and ThreadLocal[T].Borrow provenance (TLS key and attachment generation) are represented"
       - preserve storage-domain, backing, epoch/generation, and handle dependencies needed by lifetime/reference validation
       - connect escape facts to the common Interactive, Standard, and Deep analysis execution surface, sec analyse selection, and LSP consumers without weakening required proofs
       - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/analysis/escape_analysis.md

@@ -502,12 +502,16 @@ type ResolvedTryHandler struct {
 // Rules:
 //   - rules/errors/errorhandling.md — §16 "Partial handlers and implicit propagation", §18 "Handler order and reachability"
 type ResolvedTryPlan struct {
-	SuccessType         Type
-	ErrorType           Type
-	Exhaustive          bool
-	ResidualPropagates  bool
-	EnclosingResultType Type
-	Handlers            []ResolvedTryHandler
+	SuccessType        Type
+	ErrorType          Type
+	Exhaustive         bool
+	ResidualPropagates bool
+	// ResidualTestBoundary marks residual failures that propagate to the
+	// enclosing test invocation boundary (errorhandling.md §41) rather than
+	// through an enclosing Result return.
+	ResidualTestBoundary bool
+	EnclosingResultType  Type
+	Handlers             []ResolvedTryHandler
 	// Failures is the ordered failure set protected by a failure-set try.
 	Failures []TryFailurePoint
 }

@@ -78,6 +78,8 @@ type Type struct {
 	Signed     bool
 	BitWidth   uint16
 	TargetSize bool
+	// Mutable is the authority of a place (rw) or reference (ref mut) type.
+	Mutable bool
 }
 
 type EnumRepresentationKind string
@@ -224,7 +226,7 @@ func typeKey(t Type) string {
 	key := string(t.Kind) + "\x00" + t.Module + "\x00" + t.Name + "\x00" + t.Identity + "\x00" +
 		fmtUint(uint64(t.Base)) + "\x00" + fmtUint(uint64(t.Success)) + "\x00" + fmtUint(uint64(t.Error)) + "\x00" +
 		fmtUint(uint64(t.Underlying)) + "\x00" + fmtUint(uint64(t.Element)) + "\x00" + t.Length + "\x00" +
-		fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
+		fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize) + boolKey(t.Mutable)
 	for _, argument := range t.TypeArgs {
 		key += "\x00" + fmtUint(uint64(argument))
 	}
@@ -387,6 +389,10 @@ type Storage struct {
 	Mutable  bool
 	Class    StorageClass
 	Location Location
+	// AddressTaken marks reference-dependent storage that a P15 Place root
+	// addresses; P5 trivial-core lowering must not erase it before the P15
+	// representation boundary is discharged.
+	AddressTaken bool
 }
 
 type OpKind string
@@ -663,8 +669,14 @@ type Operation struct {
 	PanicHasMessage bool
 	// AssertCheck marks the conditional branch of an unproven assertion.
 	AssertCheck bool
+	// Place and Reference carry the P15 Place/direct-reference facts;
+	// ReferenceGuard is the ref.is-valid result guarding a dynamic-epoch use
+	// (place_reference.go).
+	Place          *PlaceMetadata
+	Reference      *ReferenceMetadata
+	ReferenceGuard ValueID
 }
 
 func (o Operation) IsTerminator() bool {
-	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable || o.Kind == OpPanic
+	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable || o.Kind == OpPanic || o.Kind == OpReferenceGenerationFailure
 }

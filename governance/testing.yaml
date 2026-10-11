@@ -6,7 +6,7 @@ integrations:
     area: language-testing-and-tooling
     status: partial
     repository_baseline: 814a584
-    revised: "2026-10-09"
+    revised: "2026-10-11"
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
       selection, top-level test declarations, compiler-known testing operations,
@@ -47,6 +47,9 @@ integrations:
       - cmd/lsp/hover_try.go
       - internal/ir/semantic/builder.go
       - cmd/compiler/test_command.go
+      - internal/sema/test_dependency_direction.go
+      - cmd/compiler/test_command.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/parser/parser_test.go
       - internal/cst/roles_test.go
@@ -55,6 +58,8 @@ integrations:
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
       - internal/sema/test_boundary_try_test.go
+      - cmd/compiler/test_command_test.go
+      - internal/sema/test_dependency_direction_test.go
       - cmd/compiler/test_command_test.go
     implemented:
       - contextual top-level `test "name" { ... }` recognition retains a distinct ast.TestDeclaration with its source name and ordinary Sec body while `test` remains an identifier outside the declaration shape
@@ -72,11 +77,12 @@ integrations:
       - rulebook inventory and directory documentation distinguish the written source-language testing contract from rules/compiler/compiler_testing.md and its compiler-verification infrastructure
       - "test bodies are a compiler-known try propagation boundary (2026-10-09): bodyless Result, bounds, arithmetic and failure-set try and naked try assignment of any error type are accepted in a test body and resolved with TestBoundary instead of S1093 against the test's internal void return; defer bodies, lambdas inside a test and ordinary functions keep their own boundaries, try hover names the test invocation as propagation target, and Semantic IR rejects the boundary explicitly"
       - "first sec test command (2026-10-09, cmd/compiler/test_command.go): selects *_test.sec files from explicit files, directories and globs or, without arguments, from the project root with .sec/sec.toml; compiles each directory's test files with their white-box production module without aborting on the first failing module; discovers top-level tests from Sema ResolvedTests metadata; filters by --run regular expression; --list discovers and compiles only; reports a structured per-test model (module, name, identity, source location, status) as human lines or --json; keeps compilation failure, execution unavailable and test outcomes distinct with exit statuses 3, 4 and 1, and reports an empty selection or an unmatched filter explicitly"
+      - "test-only dependency direction (2026-10-11, testing.md §§ 25, 26.2, 40.1): every resolved name from production source to a declaration in *_test.sec source is mandatory S1145 testing.production-dependency-on-test with the test declaration as related location, reported once per use (members of a test-only type are covered by the type) while Test -> Production and Test -> Test stay valid; sec test validates the production graph of the tested directory module on its own (its production files and their own imports, no test source) before the TestCompilationPlan, so neither a test-only helper nor a test-only import can make production source compile (§ 25.3); imports are still flattened program-wide, so source-file-local import bindings remain frontend.modules work"
+      - "testing namespace completion (2026-10-11, testing.md § 11.4): inside a test body, LSP completion after `testing.` lists exactly the Sema-owned implemented testing surface (sema.TestingNamespaceMembers: Pass, Fail, Skip, Log, Expect, Require, ExpectEqual, RequireEqual, one item per overload with its signature) filtered by the typed prefix and nothing else; outside a test body testing members are not offered; Run and TestResult appear once Sema implements them (cmd/lsp/testing_completion.go, TestTestingNamespaceCompletionListsOnlyTestingMembers)"
     remaining:
       - require TestCompilationPlan context in addition to the implemented *_test.sec filename check, complete remaining declaration diagnostics, and callable-effect facts
       - add TestCompilationPlan as an explicit compilation mode and keep production validity independent from test-only declarations
       - select same-directory *_test.sec only in test compilation and add the project-root tests/ test-only source universe
-      - implement test-only dependency direction so Test may depend on Production and Test while Production may not depend on Test
       - complete the compiler-known test-context namespace with Run and TestResult, plus execution/control-flow semantics for the implemented Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface
       - lower test-boundary try propagation so an unexpected Err terminates the current invocation as a structured Failed outcome reporting the error after ordinary cleanup; Sema accepts and resolves it (ResolvedTry.TestBoundary), Semantic IR rejects it explicitly until the test harness outcome exists
       - implement monotonic failure state and controlled cleanup for Pass, Fail, Skip, Require failures, bare return, and unexpected Err
@@ -112,6 +118,8 @@ integrations:
         result: passed; canonical header/body/call formatting, exact name preservation, contextual test identifier behavior, and idempotence are covered
       - command: go test ./internal/cst ./internal/formatter -run 'ApplyProgramRolesMarksOnlyTopLevelTestDeclarationNames|TopLevelTestDeclaration' -count=1
         result: passed on 2026-09-25 with parser-owned CST role scoping, exact test-name preservation, ordinary identifier/call/string separation, canonical header trivia, and idempotence
+      - command: go test ./internal/sema ./cmd/compiler -run 'TestProductionCannotDepend|TestTestSourceMayDepend|TestSecTest' -count=1
+        result: passed on 2026-10-11 with S1145 for a test-only function, type and static used from production, members of a test-only type covered by the type, Test -> Production accepted, and sec test failing compilation for a test-only helper and a test-only import while a production import stays valid; `sec sema sec` matches HEAD and stdlib sec test --list fails only on pre-existing library errors
 
   - id: testing.compiler-verification-v1
     area: compiler-testing-and-conformance

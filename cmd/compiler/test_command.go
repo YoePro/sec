@@ -278,6 +278,10 @@ func compileTestGroup(group testSourceGroup, command testCommand, report *testRu
 	if result.Diagnostics > 0 {
 		return result
 	}
+	if diagnostics := validateProductionGraph(program, command.target); diagnostics > 0 {
+		result.Diagnostics += diagnostics
+		return result
+	}
 	analyzer, diagnostics := analyzeTestProgram(program, command.target, group.files)
 	result.Diagnostics += diagnostics
 	if analyzer == nil || diagnostics > 0 {
@@ -348,6 +352,61 @@ func analyzeTestProgram(program *ast.Program, target CompilerTarget, sourceFiles
 		printSemaError(os.Stderr, err)
 	}
 	return analyzer, len(errors)
+}
+
+// validateProductionGraph analyzes the production sources of the tested
+// directory module on their own, before the TestCompilationPlan adds test
+// source: test-only declarations and test-only imports therefore cannot make
+// production source valid. A module without production source has nothing
+// to validate. It returns the number of reported diagnostics.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 25.1 "Production must remain independently valid", § 25.3 "Test-only imports", § 26.2 "Production graph"
+//   - rules/tooling/testing.md — § 4.3 "Production builds exclude test files"
+func validateProductionGraph(testProgram *ast.Program, target CompilerTarget) int {
+	var module *ast.ModuleStatement
+	for _, statement := range testProgram.Statements {
+		if declaration, ok := statement.(*ast.ModuleStatement); ok && declaration.Token.File != "" {
+			module = declaration
+			break
+		}
+	}
+	if module == nil {
+		return 0
+	}
+	production := &ast.Program{Statements: []ast.Statement{module}}
+	siblings := assembleCLIModuleSources(production, target)
+	if siblings.Errors > 0 {
+		return siblings.Errors
+	}
+	if len(production.Statements) == 1 {
+		return 0
+	}
+	production.Statements = production.Statements[1:]
+	files := []string{}
+	seen := map[string]bool{}
+	for _, statement := range production.Statements {
+		if declaration, ok := statement.(*ast.ModuleStatement); ok && !seen[declaration.Token.File] {
+			seen[declaration.Token.File] = true
+			files = append(files, declaration.Token.File)
+		}
+	}
+	resolveCoreLibraryWithSources(production, files)
+	resolveStdlibImportsWithSources(production, target, files)
+	definition, ok := findTargetDefinition(target)
+	if !ok {
+		return 0
+	}
+	plan, err := definition.scalarPlan()
+	if err != nil {
+		return 0
+	}
+	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisStandard)
+	errors := analyzer.Analyze(production)
+	for _, err := range errors {
+		printSemaError(os.Stderr, err)
+	}
+	return len(errors)
 }
 
 func sameSourceFileKey(path string) string {

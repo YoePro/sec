@@ -58,23 +58,469 @@ type UnescapeError union error {
      * Result storage could not be allocated.
      */
     Allocation(CollectionError),
-
-    /** Temporary during implementation */
-    NotImplemented,
 }
 
+/**
+ * Escapes a string using Sec string-literal escape rules.
+ *
+ * Description:
+ * Produces the escaped contents of an ordinary double-quoted
+ * Sec string literal without adding the surrounding quotes.
+ *
+ * Backslashes, double quotes, and common control characters
+ * use their canonical short escape sequences.
+ *
+ * Other C0, DEL, and C1 control characters use hexadecimal
+ * escapes. Ordinary Unicode characters are preserved.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to escape.
+ *
+ * Returns:
+ * A newly materialized string containing escaped text.
+ * An empty input produces an empty string.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing
+ *     the resulting string.
+ *
+ * Allocation:
+ * Materializes an escaped string using Builder.
+ */
 fn EscapeLiteral(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.Len)
+
+    for character in value {
+        if character == 92r {
+            try builder.Append("\\\\")
+        } else if character == 34r {
+            try builder.Append("\\\"")
+        } else if character == 10r {
+            try builder.Append("\\n")
+        } else if character == 13r {
+            try builder.Append("\\r")
+        } else if character == 9r {
+            try builder.Append("\\t")
+        } else if character == 0r {
+            try builder.Append("\\0")
+        } else if character < 32r ||
+        (character >= 127r && character <= 159r) {
+            try _AppendHexEscape(builder, character)
+        } else {
+            try builder.Append(character)
+        }
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Produces a quoted Sec string literal.
+ *
+ * Description:
+ * Escapes the source string according to Sec string-literal
+ * rules and surrounds the result with double quotes.
+ *
+ * Backslashes, double quotes, and control characters are
+ * escaped by EscapeLiteral().
+ *
+ * The result can be used as the textual representation of
+ * an ordinary Sec string literal.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to quote.
+ *
+ * Returns:
+ * A newly materialized string containing the escaped text
+ * surrounded by double quotes.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure during escaping
+ *     or construction of the quoted result.
+ *
+ * Allocation:
+ * Materializes escaped text and the final quoted string.
+ */
 fn Quote(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let escaped := try EscapeLiteral(value)
+
+    let mut builder := try new Builder(escaped.Len)
+
+    try builder.Append("\"")
+    try builder.Append(escaped)
+    try builder.Append("\"")
+
+    return builder.Finish()
 }
 
+/**
+ * Decodes text escaped according to Sec string-literal rules.
+ *
+ * Description:
+ * Parses escaped string contents without requiring or removing
+ * surrounding quotation marks.
+ *
+ * Supports the canonical Sec escapes for backslash, quotes,
+ * control characters, hexadecimal values, and Unicode scalars.
+ *
+ * Unescaped text is preserved exactly. Escape sequences are
+ * replaced with their corresponding Unicode scalar values.
+ *
+ * Hexadecimal escapes contribute a Unicode scalar, not a
+ * raw UTF-8 byte.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The escaped UTF-8 text to decode.
+ *
+ * Returns:
+ * A newly materialized UTF-8 string containing the decoded text.
+ *
+ * Errors:
+ * - Truncated: An escape ends before its required characters.
+ * - InvalidEscape: An unknown escape or invalid escape syntax.
+ * - InvalidHexDigit: A required hexadecimal digit is invalid.
+ * - InvalidUnicodeScalar: A Unicode escape contains an invalid
+ *     scalar value or an empty digit sequence.
+ * - Allocation: Result storage could not be allocated.
+ *
+ * Allocation:
+ * Materializes a new string using Builder.
+ */
 fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
-    return Err(UnescapeError.NotImplemented)
+    let mut builder := try new Builder(value.Len) {
+        Err(error) => {
+            return Err(UnescapeError.Allocation(error))
+        }
+    }
+
+    let mut index: uint := 0
+    let mut segmentStart: uint := 0
+
+    while index < value.Len {
+        if value.ByteAt(index) != 92 {
+            index += 1
+            continue
+        }
+
+        // Copy the unchanged UTF-8 segment.
+        if segmentStart < index {
+            let segment := try value.Slice(segmentStart, index) {
+                Err(_) => {
+                    panic "UnescapeLiteral: invalid segment bounds"
+                }
+            }
+
+            try builder.Append(segment) {
+                Err(error) => {
+                    return Err(UnescapeError.Allocation(error))
+                }
+            }
+        }
+
+        let escapeStart := index
+        index += 1
+
+        if index >= value.Len {
+            return Err(UnescapeError.Truncated(escapeStart))
+        }
+
+        let escapeCode := value.ByteAt(index)
+        index += 1
+
+        let mut decoded: rune := 0r
+
+        switch escapeCode {
+            case 92:
+                decoded = 92r
+            case 34:
+                decoded = 34r
+            case 39:
+                decoded = 39r
+            case 110:
+                decoded = 10r
+            case 114:
+                decoded = 13r
+            case 116:
+                decoded = 9r
+            case 48:
+                decoded = 0r
+            case 120:
+                // Hexadecimal escape: exactly two digits.
+                if index >= value.Len {
+                    return Err(UnescapeError.Truncated(escapeStart))
+                }
+
+                let upper := try _HexDigitValue(
+                    value.ByteAt(index), index,
+                )
+                index += 1
+
+                if index >= value.Len {
+                    return Err(UnescapeError.Truncated(escapeStart))
+                }
+
+                let lower := try _HexDigitValue(
+                    value.ByteAt(index), index,
+                )
+                index += 1
+
+                decoded = rune(upper * 16 + lower)
+            case 117:
+                // Unicode escape: \u{H...}
+                if index >= value.Len {
+                    return Err(UnescapeError.Truncated(escapeStart))
+                }
+
+                if value.ByteAt(index) != 123 {
+                    return Err(UnescapeError.InvalidEscape(escapeStart))
+                }
+
+                index += 1
+
+                let mut scalar: uint := 0
+                let mut digits: uint := 0
+
+                while index < value.Len && value.ByteAt(index) != 125 {
+                    if digits == 6 {
+                        return Err(UnescapeError.InvalidEscape(escapeStart))
+                    }
+
+                    let digit := try _HexDigitValue(
+                        value.ByteAt(index), index,
+                    )
+
+                    scalar = scalar * 16 + digit
+                    digits += 1
+                    index += 1
+                }
+
+                if index >= value.Len {
+                    return Err(UnescapeError.Truncated(escapeStart))
+                }
+
+                if digits == 0 {
+                    return Err(UnescapeError.InvalidUnicodeScalar(escapeStart))
+                }
+
+                // Consume the closing brace.
+                index += 1
+
+                // Reject values outside the Unicode scalar range.
+                if scalar > 0x10FFFF || scalar in 0xD800..0xDFFF {
+                    return Err(UnescapeError.InvalidUnicodeScalar(escapeStart))
+                }
+
+                decoded = rune(scalar)
+            default:
+                return Err(UnescapeError.InvalidEscape(escapeStart))
+        }
+
+        try builder.Append(decoded) {
+            Err(error) => {
+                return Err(UnescapeError.Allocation(error))
+            }
+        }
+
+        segmentStart = index
+    }
+
+    // Copy any text following the final escape.
+    if segmentStart < value.Len {
+        let suffix := try value.Slice(segmentStart, value.Len) {
+            Err(_) => {
+                panic "UnescapeLiteral: invalid suffix bounds"
+            }
+        }
+
+        try builder.Append(suffix) {
+            Err(error) => {
+                return Err(UnescapeError.Allocation(error))
+            }
+        }
+    }
+
+    let result := try builder.Finish() {
+        Err(error) => {
+            return Err(UnescapeError.Allocation(error))
+        }
+    }
+
+    return Ok(result)
 }
 
+/**
+ * Decodes a quoted Sec string literal.
+ *
+ * Description:
+ * Requires an ordinary double-quoted Sec string literal.
+ * Validates the surrounding quotes and checks that the
+ * literal contains no unescaped double quotes or physical
+ * line breaks.
+ *
+ * Removes the surrounding quotes and decodes the contents
+ * using UnescapeLiteral().
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The complete quoted UTF-8 string literal.
+ *
+ * Returns:
+ * The decoded string without surrounding quotation marks.
+ *
+ * Errors:
+ * - InvalidQuotes: Missing or invalid quotation delimiters,
+ *     unescaped inner quotes, or physical line breaks.
+ * - Truncated: An incomplete escape sequence.
+ * - InvalidEscape: An unsupported or malformed escape.
+ * - InvalidHexDigit: An invalid hexadecimal digit.
+ * - InvalidUnicodeScalar: An invalid Unicode scalar value.
+ * - Allocation: Result storage could not be allocated.
+ *
+ * Error positions are byte offsets in the original input,
+ * including its opening quotation mark.
+ *
+ * Allocation:
+ * Materializes a new string through UnescapeLiteral().
+ */
 fn Unquote(value: string) Result[string, UnescapeError] {
-    return Err(UnescapeError.NotImplemented)
+    if value.Len < 2 {
+        return Err(UnescapeError.InvalidQuotes)
+    }
+
+    let closingIndex := value.Len - 1
+
+    if value.ByteAt(0) != 34 || value.ByteAt(closingIndex) != 34 {
+        return Err(UnescapeError.InvalidQuotes)
+    }
+
+    // Validate the literal contents without decoding them.
+    let mut index: uint := 1
+
+    while index < closingIndex {
+        let current := value.ByteAt(index)
+
+        if current == 92 {
+            // Skip the character immediately following a backslash.
+            // The decoder will validate the actual escape syntax.
+            index += 1
+
+            if index >= closingIndex {
+                return Err(UnescapeError.InvalidQuotes)
+            }
+
+            index += 1
+            continue
+        }
+
+        if current == 34 || current == 10 || current == 13 {
+            return Err(UnescapeError.InvalidQuotes)
+        }
+
+        index += 1
+    }
+
+    let contents := try value.Slice(1, closingIndex) {
+        Err(_) => {
+            panic "Unquote: invalid content bounds"
+        }
+    }
+
+    let result := try UnescapeLiteral(contents) {
+        Err(error) => {
+            match error {
+                UnescapeError.Truncated(position) => {
+                    return Err(UnescapeError.Truncated(position + 1))
+                }
+                UnescapeError.InvalidEscape(position) => {
+                    return Err(UnescapeError.InvalidEscape(position + 1))
+                }
+                UnescapeError.InvalidHexDigit(position) => {
+                    return Err(UnescapeError.InvalidHexDigit(position + 1))
+                }
+                UnescapeError.InvalidUnicodeScalar(position) => {
+                    return Err(UnescapeError.InvalidUnicodeScalar(position + 1))
+                }
+                UnescapeError.InvalidQuotes => {
+                    return Err(UnescapeError.InvalidQuotes)
+                }
+                UnescapeError.Allocation(cause) => {
+                    return Err(UnescapeError.Allocation(cause))
+                }
+            }
+        }
+    }
+
+    return Ok(result)
+}
+
+/**
+ * Appends a two-digit hexadecimal escape for a control rune.
+ *
+ * Description:
+ * Writes a backslash, x, and two uppercase hexadecimal digits.
+ * The input must be in the range U+0000 through U+00FF.
+ *
+ * Parameters:
+ * - builder: The destination string builder.
+ * - character: The control rune to escape.
+ *
+ * Returns:
+ * Ok when the escape has been appended.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure during append.
+ */
+
+fn _AppendHexEscape(builder: ref mut Builder, character: rune) Result[void, CollectionError] {
+    let value := byte(character)
+
+    let hex := try value.ToString(byte.ByteStringFormat.Hexadecimal) {
+        Err(_) => {
+            return Err(CollectionError.AllocationFailed)
+        }
+    }
+
+    try builder.Append("\\x")
+    try builder.Append(hex)
+
+    return Ok()
+}
+
+/**
+ * Decodes one ASCII hexadecimal digit.
+ *
+ * Parameters:
+ * - digit: The input byte to decode.
+ * - position: The byte position in the source string.
+ *
+ * Returns:
+ * The hexadecimal value in the range 0 through 15.
+ *
+ * Errors:
+ * - InvalidHexDigit: The byte is not a hexadecimal digit.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _HexDigitValue(digit: byte, position: uint) Result[uint, UnescapeError] {
+    if digit in 48..57 {
+        return Ok(uint(digit) - 48)
+    }
+
+    if digit in 65..70 {
+        return Ok(uint(digit) - 65 + 10)
+    }
+
+    if digit in 97..102 {
+        return Ok(uint(digit) - 97 + 10)
+    }
+
+    return Err(UnescapeError.InvalidHexDigit(position))
 }

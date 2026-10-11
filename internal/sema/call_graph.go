@@ -109,8 +109,13 @@ const (
 )
 
 type ArenaEffectSite struct {
-	Kind        ArenaEffectKind
-	Arena       string
+	Kind ArenaEffectKind
+	// Arena is the receiver spelling at the operation, kept for display only.
+	Arena string
+	// Domain is the stable compiler-owned ArenaDomain identity the operation
+	// selects (Allocate, Reset, Release) or creates (constructors); it is the
+	// identity analyses compare, never the lexical binding name.
+	Domain      string
 	Source      lexer.Token
 	MayAllocate bool
 	// UnknownAllocation marks a site whose allocation behavior is unknown;

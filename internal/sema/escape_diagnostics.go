@@ -8,6 +8,8 @@ import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
+	"sort"
+	"strings"
 )
 
 // reportEscapeDiagnostic publishes a registered lifetime escape failure with
@@ -22,6 +24,8 @@ func (a *Analyzer) reportEscapeDiagnostic(token, origin lexer.Token, id, format 
 		help = "The returned reference or carrier outlives this invocation's local storage. Return an owned value or a reference into storage owned by the caller."
 	case diagnostics.EscapeOuterPlace:
 		help = "The destination can outlive the local referent. Store an owned value or a reference whose storage remains valid for the destination's complete use."
+	case diagnostics.StaticStoreOfShortLivedReference, diagnostics.ThreadLocalStoreOfShortLivedReference:
+		help = "Static and thread-local storage outlives every invocation. Store an owned value, or a reference whose referent is itself static storage."
 	case diagnostics.EscapeMatchPayload:
 		help = "This payload reference is valid only in the active match arm. Use it within that arm or transfer an owned payload instead."
 	case diagnostics.EscapeClosureCapture:
@@ -60,7 +64,10 @@ func (a *Analyzer) checkReturningReferenceToLocal(functionName string, returnTyp
 	if !valueType.ReferenceOriginLocal {
 		return false
 	}
-	originName := valueType.ReferenceOriginName
+	originName := a.referenceOriginDisplayName(valueType.ReferenceOriginName)
+	if valueType.ReferenceOriginStorage == StorageOriginArena && valueType.ReferenceOriginDisplayName != "" {
+		originName = "storage of arena " + valueType.ReferenceOriginDisplayName
+	}
 	if originName == "" {
 		originName = "local value"
 	}
@@ -89,7 +96,7 @@ func (a *Analyzer) checkTrackedReturnedReferenceOrigin(functionName string, expr
 		// is exclusively caller-owned.
 		return false
 	}
-	originName := origin.Name
+	originName := a.referenceOriginDisplayName(origin.Name)
 	if originName == "" {
 		originName = "local value"
 	}
@@ -211,4 +218,33 @@ func (a *Analyzer) checkReturningLambdaCapturingLocalReference(functionName stri
 		return true
 	}
 	return false
+}
+
+// referenceOriginDisplayName presents a compiler-owned ArenaDomain identity as
+// the storage of the visible Arena binding that owns it, so diagnostics name
+// source bindings rather than internal domain identities.
+// Rules: rules/tooling/diagnostics.md — mentor-quality source names; rules/memory/arena.md — §4.2.
+func (a *Analyzer) referenceOriginDisplayName(name string) string {
+	if !strings.HasPrefix(name, "$arena-domain") {
+		return name
+	}
+	owners, references := []string{}, []string{}
+	for binding, symbol := range a.symbols {
+		if symbol.Type.ArenaDomainID != name {
+			continue
+		}
+		if symbol.Type.Kind == ReferenceType {
+			references = append(references, binding)
+		} else if symbol.Type.Name == "Arena" {
+			owners = append(owners, binding)
+		}
+	}
+	if len(owners) == 0 {
+		owners = references
+	}
+	if len(owners) == 0 {
+		return "Arena storage"
+	}
+	sort.Strings(owners)
+	return "storage of arena " + owners[0]
 }

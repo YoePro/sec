@@ -40,6 +40,7 @@ integrations:
     - deterministic printer exists
     - Package 13 struct operations and current match/errorhandling operations are implemented
     remaining:
+    - "add static (module-level), thread-local and addressed (fixed-address binding, register/MMIO) storage classes to Semantic IR storage, which today represents only local-automatic storage, with initialization, mutability, address-stability and memory-space facts and verifier rules (identified 2026-10-11 by SEC-MLIR-P15 P15-42)"
     - add/normalize canonical Place identity and state records
     - add explicit ArenaDomain/state/epoch operations
     - add reference/storage invalidation operations
@@ -594,7 +595,7 @@ integrations:
     status: partial
     implementation_phase: canonical-place-model-migration
     integrated: "2026-09-10"
-    revised: "2026-10-04"
+    revised: "2026-10-11"
     baseline:
       repository_head: 2c67853ee31358a9a8a486aa11fba57c6b6a7270
       tree: 225922f80c0537e8c2b21e3388d6a068cbb032ee
@@ -638,6 +639,12 @@ integrations:
       - internal/sema/parameter_usage.go
       - internal/sema/analyzer_for.go
       - internal/sema/types.go
+      - internal/sema/place_identities.go
+      - internal/sema/parameter_usage_place.go
+      - internal/sema/reference_plans.go
+      - internal/layout/reference_policy.go
+      - internal/ir/semantic/place_reference.go
+      - internal/ir/semantic/reference_lowering.go
     tests:
       - internal/testsupport/sec_mlir_test.go
       - internal/lowering/secmlir/emitter_test.go
@@ -647,6 +654,10 @@ integrations:
       - testdata/sema/place_wide_constant_indexes.sec
       - internal/sema/place_relationship_test.go
       - internal/sema/place_root_identity_test.go
+      - internal/sema/place_identities_test.go
+      - internal/sema/reference_plans_test.go
+      - internal/ir/semantic/package15_test.go
+      - internal/ir/semantic/package15_builder_test.go
     implemented:
       - clean persistent detached baseline with exact commit, tree, primary-worktree exclusion, and toolchain record
       - repository-shared SEC_MLIR_BIN resolver that rejects relative directories
@@ -666,15 +677,20 @@ integrations:
       - frontend StorageOrigin aligned with rules/memory/storage.md § 5 (Automatic, Static, ThreadLocal, Arena, AllocatorBacked, Unknown); the non-origins Inline, External and Foreign were removed
       - "stable Place root identity (2026-10-04): Place carries RootID (PlaceRootID, deterministic first-use allocation per analysis, keyed by the declaration token) and RootKind (local, parameter, receiver, static, deref per revised § 10) beside the display name; Relationship compares root identities when both are present, so same-spelled bindings of different declarations are disjoint (internal/sema/place_root_identity_test.go)"
       - "P15-16 migration (2026-10-04): borrow, defer, lifetime, reservation, and move-into-itself checks decide through borrowRecordMayOverlap / placesMayOverlap over Relationship; PlacesOverlap has no correctness callers, enforced by TestLegacyPlacesOverlapHasNoCorrectnessCallers"
+      - "rule synchronization (P15-02..P15-06, 2026-10-11): predecessor gates recorded (go test, go vet, P13/P14 lowering and Semantic IR tests, check-sec-mlir 91/91); runtime_checks.md and reference_model.md § 76(2) synchronized with the direct-reference sync (stale ordinary reference -> panic.invalid-reference-generation, no try recovery); the Semantic IR Place/direct-reference amendment integrated into semantic_ir.md v2 (§§ 10, 45, 46, 48, 96, 108); schema/lowering v10 and v11 installed in sec_mlir_dialect.md and sec_mlir_lowering.md (compiler still emits schema 10 until P15-50); correction archived as rules/corrections/applied/p15-place-reference-synchronization-20261011.md"
+      - "canonical Place model completed (P15-09..P15-19, 2026-10-11): single-model audit; parameter-usage summary Places carry Sema root identities and generic bodies keep one identity per declaration; StorageIdentityID, InvalidationDomainID, EpochDependencyID, AddressSpaceID, BorrowID, LifetimeID and DynamicIndexID with deterministic allocation, printing, absent state and detached clones; root Places carry storage identity, storage origin and memory space; different known storage identities are disjoint; dynamic indexes are identified by their evaluated expression and keep P14 index facts; projections normalize to canonical kinds with slice/property deferred; the 16-alternative origin bound is enforced and samePlaceIdentity compares root identities"
+      - "compiler-resolved reference facts and plans (P15-20..P15-30, 2026-10-11): ReferenceKind, ReferenceValidityPolicy, ReferenceProvenanceKind and immutable ReferenceFacts (AddressStability + pin flag replace RelocationClass); ResolvedPlaceOf, ResolvedReferencePlanOf (explicit, reborrow and implicit call-site borrows, CopyTrivial shared / MoveOnly mutable), ResolvedReferenceUseOf (read, write, reborrow, equality, pass, return) and ReferenceLifetimeEnds, all read-only with defensive copies; validity proven / dynamic-epoch (Arena) / uncheckable (unknown provenance); CompilationPlan reference policy with a 64-bit default epoch and proof-gated shorter widths"
+      - "Semantic IR Place and direct-reference core (P15-31..P15-40, 2026-10-11): place<T, ro|rw>, ref and ref_mut types; Place/reference metadata; place.value-root, place.storage-root, place.field, place.array-index-in-bounds, place.array-element, place.union-payload, ref.deref-place, place.read (copy-trivial), place.write (trivial replacement), ref.borrow-shared/mut, ref.copy-shared, ref.move, ref.reborrow-shared/mut, ref.is-valid, fail.reference-generation, ref.end-borrow and ref.compare with deterministic printing; verification of authority, exact indexes, reference facts, borrow derivation, Place escape, dynamic validity guards with the invalid-reference-generation endpoint and use after end-borrow"
+      - "package-15 builder boundary (P15-41, 2026-10-11): BuildOptions.MaxPackage 15 routes every reference/Place path through ResolvedReferencePlanOf / ResolvedReferenceUseOf; missing or uncheckable facts and not-yet-lowered plan kinds are package-15 unsupported errors with no module returned; reference types intern as P15 reference types and the pre-P15 reference-parameter approximation is not used; reference-free programs build identically at 14 and 15"
+      - "local Place roots (P15-42 partial, 2026-10-11): borrows of whole local bindings lower to place.value-root (immutable SSA, ro) or place.storage-root over P5 storage marked AddressTaken (verifier-enforced) plus ref.borrow-shared/mut carrying the resolved facts, without loading or copying the binding; static and addressed roots remain unsupported until Semantic IR represents static/addressed storage"
+      - "field Place borrows (P15-43, 2026-10-11): borrows of stored-field paths lower as root Place plus place.field projections with P13 field identities from the resolved member plans, preserving authority and never loading or copying the enclosing struct; properties are never field Places"
+      - "fixed-array element Place borrows (P15-44, 2026-10-11): element borrows consume P14's resolved index plan; the root Place is formed before the index is evaluated once; proven indexes form place.array-element without a branch; runtime-checked ordinary indexes emit one place.array-index-in-bounds predicate and branch to fail.bounds fixed-array-index before the element Place or reference exists; dynamic-index identities and authority are preserved; by-value parameters are immutable SSA roots"
     remaining:
-      - synchronize the canonical reference, runtime-check, panic, Semantic IR, dialect, and lowering rulebooks
-      - carry Place root identities across generic instantiation and onto the Places built by interprocedural parameter-usage summaries; symbolic dynamic-index identity; normalized projections; StorageIdentityID and the other § 11 facts; the documented bound on alternative origin sets
-      - publish immutable compiler-resolved Place, reference-creation, and reference-use plans
-      - implement verified Semantic IR Place and direct-reference operations without physical representation choices
       - lower source reference behavior solely from resolved plans
       - implement schema-11 types, operations, emitter support, and all three P15 verifiers
       - prove predecessor integration, architecture boundaries, determinism, and unsupported-feature rejection
       - complete the section-155 acceptance matrix, isolated final gates, governance promotion, and section-156 report
+      - "lower static and addressed (fixed-address/MMIO) Place roots, the P15-42 remainder; blocked on the semantic-ir.core-v2 static/addressed storage classes, so these roots are package-15 unsupported today"
     deferred:
       - slice values and fixed-array-to-slice borrowing to P16
       - move-only or semantic-copy reads and non-trivial replacement or destruction to P17

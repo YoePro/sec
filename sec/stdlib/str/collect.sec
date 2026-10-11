@@ -25,17 +25,157 @@ module str
 
 // TODO: Implement stdlib/str/collect.sec
 
+/**
+ * Materializes a UTF-8 string as an owning array of runes.
+ *
+ * Description:
+ * Iterates over the source string and appends each decoded
+ * Unicode scalar value to a new dynamic rune array.
+ *
+ * Each array element represents one Unicode rune, not one
+ * UTF-8 byte or one grapheme cluster.
+ *
+ * The original string remains unchanged.
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to materialize.
+ *
+ * Returns:
+ * An owning rune array containing the decoded runes
+ * in their original order.
+ * An empty string produces an empty array.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing
+ *     the resulting array.
+ *
+ * Allocation:
+ * Allocates dynamic array storage as needed.
+ */
 fn ToRuneArray(value: string) Result[rune[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: rune[]
+
+    for character in value {
+        try result.Append(character)
+    }
+
+    return Ok(result)
 }
+
+/**
+ * Materializes a UTF-8 string as an owning byte array.
+ *
+ * Description:
+ * Copies every byte from the source string into a new
+ * dynamic byte array, preserving the exact UTF-8 encoding.
+ *
+ * The operation does not decode runes, transform bytes,
+ * or perform Unicode normalization.
+ *
+ * The original string remains unchanged.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to materialize.
+ *
+ * Returns:
+ * An owning byte array containing the original UTF-8 bytes
+ * in their original order.
+ * An empty string produces an empty array.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing
+ *     the resulting array.
+ *
+ * Allocation:
+ * Allocates dynamic array storage as needed.
+ */
 fn ToByteArray(value: string) Result[byte[], CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut result: byte[]
+    let mut index: uint := 0
+
+    while index < value.Len {
+        try result.Append(value.ByteAt(index))
+        index += 1
+    }
+
+    return Ok(result)
 }
 
-fn FromRunes(values: Iterator[rune]) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Materializes a sequence of Unicode runes as a UTF-8 string.
+ *
+ * Description:
+ * Consumes the input iterator and encodes each rune as UTF-8,
+ * preserving the original iteration order.
+ *
+ * The result is a newly materialized string.
+ * An empty iterator produces an empty string.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - values: The rune iterator to consume.
+ *
+ * Returns:
+ * A UTF-8 string containing the encoded rune sequence.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing
+ *     the resulting string.
+ *
+ * Ownership:
+ * Consumes the iterator according to its ownership contract.
+ *
+ * Allocation:
+ * Allocates storage for the resulting UTF-8 string.
+ */
+fn FromRunes[I: Iterator[rune]](values: I) Result[string, CollectionError] {
+    let mut builder := try new Builder(0)
+
+    for character in values {
+        try builder.Append(character)
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Materializes a rune array as a UTF-8 string.
+ *
+ * Description:
+ * Iterates over the source array and encodes each Unicode
+ * rune as UTF-8, preserving the original element order.
+ *
+ * The source array remains unchanged and is not consumed.
+ * An empty array produces an empty string.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - values: A borrowed rune array containing the Unicode
+ *     scalar values to encode.
+ *
+ * Returns:
+ * A newly materialized UTF-8 string containing the
+ * encoded rune sequence.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing
+ *     the resulting string.
+ *
+ * Ownership:
+ * Borrows the source array without transferring ownership.
+ *
+ * Allocation:
+ * Allocates storage for the resulting UTF-8 string.
+ */
 fn FromRunes(values: ref rune[]) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(0)
+
+    for character in values {
+        try builder.Append(character)
+    }
+
+    return builder.Finish()
 }

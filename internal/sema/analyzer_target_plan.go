@@ -20,6 +20,7 @@ func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
 func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth AnalysisDepth) *Analyzer {
 	analyzer := NewAnalyzerWithDepth(depth)
 	analyzer.SetAllocationProfile(plan.Profile)
+	analyzer.referencePolicy = plan.References
 	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {
 		return analyzer
 	}

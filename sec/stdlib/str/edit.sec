@@ -46,22 +46,379 @@ type EditError union error {
      * Result storage could not be allocated.
      */
     Allocation(CollectionError),
-
-    /** Just for implementation */
-    NotImplemented,
 }
 
+/**
+ * Inserts a string at a UTF-8 rune boundary.
+ *
+ * Description:
+ * Creates a new string by inserting insertion at byteIndex.
+ * The source string remains unchanged.
+ *
+ * The insertion position must be a valid UTF-8 rune boundary.
+ * Position zero inserts at the beginning, while value.Len
+ * inserts at the end.
+ *
+ * An empty insertion returns the original string.
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - byteIndex: The byte offset where insertion occurs.
+ * - insertion: The UTF-8 string to insert.
+ *
+ * Returns:
+ * The string containing the inserted text.
+ *
+ * Errors:
+ * - OutOfBounds: The byte position exceeds value.Len.
+ * - NotRuneBoundary: The position splits a UTF-8 rune.
+ * - Allocation: Result storage could not be allocated.
+ *
+ * Allocation:
+ * Materializes a new string for a non-empty insertion.
+ * An empty insertion does not require new storage.
+ */
 fn Insert(value: string, byteIndex: uint, insertion: string) Result[string, EditError] {
-    return Err(EditError.NotImplemented)
+    try _ValidateEditBoundary(value, byteIndex)
+
+    if insertion.Len == 0 {
+        return Ok(value)
+    }
+
+    let prefix := try value.Slice(0, byteIndex) {
+        Err(_) => {
+            panic "Insert: invalid prefix bounds"
+        }
+    }
+
+    let suffix := try value.Slice(byteIndex, value.Len) {
+        Err(_) => {
+            panic "Insert: invalid suffix bounds"
+        }
+    }
+
+    let mut builder := try new Builder(value.Len) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(prefix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(insertion) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(suffix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    let result := try builder.Finish() {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    return Ok(result)
 }
+
+/**
+ * Inserts a Unicode rune at a UTF-8 rune boundary.
+ *
+ * Description:
+ * Creates a new string by inserting the UTF-8 encoding of
+ * insertion at byteIndex. The source string remains unchanged.
+ *
+ * The insertion position must be a valid UTF-8 rune boundary.
+ * Position zero inserts at the beginning, while value.Len
+ * inserts at the end.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - byteIndex: The byte offset where insertion occurs.
+ * - insertion: The Unicode rune to insert.
+ *
+ * Returns:
+ * A new UTF-8 string containing the inserted rune.
+ *
+ * Errors:
+ * - OutOfBounds: The byte position exceeds value.Len.
+ * - NotRuneBoundary: The position splits a UTF-8 rune.
+ * - Allocation: Result storage could not be allocated.
+ *
+ * Allocation:
+ * Materializes a new string.
+ * The rune is encoded directly without an intermediate string.
+ */
 fn Insert(value: string, byteIndex: uint, insertion: rune) Result[string, EditError] {
-    return Err(EditError.NotImplemented)
+    try _ValidateEditBoundary(value, byteIndex)
+
+    let prefix := try value.Slice(0, byteIndex) {
+        Err(_) => {
+            panic "Insert: invalid prefix bounds"
+        }
+    }
+
+    let suffix := try value.Slice(byteIndex, value.Len) {
+        Err(_) => {
+            panic "Insert: invalid suffix bounds"
+        }
+    }
+
+    let mut builder := try new Builder(value.Len) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(prefix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(insertion) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(suffix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    let result := try builder.Finish() {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    return Ok(result)
 }
 
+/**
+ * Removes a byte range from a UTF-8 string.
+ *
+ * Description:
+ * Creates a new string by removing the bytes in the
+ * half-open range [startByte, endByte).
+ *
+ * Both positions must lie on valid UTF-8 rune boundaries.
+ * The source string remains unchanged.
+ *
+ * An empty range returns the original string.
+ * Removing the entire range produces an empty string.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - startByte: Inclusive start byte offset.
+ * - endByte: Exclusive end byte offset.
+ *
+ * Returns:
+ * The string with the specified range removed.
+ *
+ * Errors:
+ * - StartAfterEnd: startByte exceeds endByte.
+ * - OutOfBounds: A position exceeds value.Len.
+ * - NotRuneBoundary: A position splits a UTF-8 rune.
+ * - Allocation: Result storage could not be allocated.
+ *
+ * Allocation:
+ * Materializes a new string when content is removed.
+ * An empty range does not require new storage.
+ */
 fn RemoveRange(value: string, startByte: uint, endByte: uint) Result[string, EditError] {
-    return Err(EditError.NotImplemented)
+    if startByte > endByte {
+        return Err(EditError.StartAfterEnd)
+    }
+
+    try _ValidateEditBoundary(value, startByte)
+    try _ValidateEditBoundary(value, endByte)
+
+    if startByte == endByte {
+        return Ok(value)
+    }
+
+    let prefix := try value.Slice(0, startByte) {
+        Err(_) => {
+            panic "RemoveRange: invalid prefix bounds"
+        }
+    }
+
+    let suffix := try value.Slice(endByte, value.Len) {
+        Err(_) => {
+            panic "RemoveRange: invalid suffix bounds"
+        }
+    }
+
+    let mut builder := try new Builder(value.Len) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(prefix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(suffix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    let result := try builder.Finish() {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    return Ok(result)
 }
 
+/**
+ * Replaces a byte range in a UTF-8 string.
+ *
+ * Description:
+ * Creates a new string by replacing the bytes in the
+ * half-open range [startByte, endByte) with replacement.
+ *
+ * Both positions must lie on valid UTF-8 rune boundaries.
+ * The source string remains unchanged.
+ *
+ * An empty range inserts replacement at startByte.
+ * An empty replacement removes the specified range.
+ * An empty range with an empty replacement returns the
+ * original string.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - startByte: Inclusive start byte offset.
+ * - endByte: Exclusive end byte offset.
+ * - replacement: The UTF-8 string inserted in place of the range.
+ *
+ * Returns:
+ * The string with the specified range replaced.
+ *
+ * Errors:
+ * - StartAfterEnd: startByte exceeds endByte.
+ * - OutOfBounds: A position exceeds value.Len.
+ * - NotRuneBoundary: A position splits a UTF-8 rune.
+ * - Allocation: Result storage could not be allocated.
+ *
+ * Allocation:
+ * Materializes a new string when content changes.
+ * An empty edit does not require new storage.
+ */
 fn ReplaceRange(value: string, startByte: uint, endByte: uint, replacement: string) Result[string, EditError] {
-    return Err(EditError.NotImplemented)
+    if startByte > endByte {
+        return Err(EditError.StartAfterEnd)
+    }
+
+    try _ValidateEditBoundary(value, startByte)
+    try _ValidateEditBoundary(value, endByte)
+
+    if startByte == endByte && replacement.Len == 0 {
+        return Ok(value)
+    }
+
+    let prefix := try value.Slice(0, startByte) {
+        Err(_) => {
+            panic "ReplaceRange: invalid prefix bounds"
+        }
+    }
+
+    let suffix := try value.Slice(endByte, value.Len) {
+        Err(_) => {
+            panic "ReplaceRange: invalid suffix bounds"
+        }
+    }
+
+    let mut builder := try new Builder(value.Len) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(prefix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(replacement) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    try builder.Append(suffix) {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    let result := try builder.Finish() {
+        Err(error) => {
+            return Err(EditError.Allocation(error))
+        }
+    }
+
+    return Ok(result)
+}
+
+/**
+ * Validates a byte position as a UTF-8 rune boundary.
+ *
+ * Description:
+ * Positions zero and value.Len are valid boundaries.
+ * A position inside a UTF-8 continuation sequence is invalid.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - byteIndex: The byte position to validate.
+ *
+ * Returns:
+ * Ok when byteIndex is a valid rune boundary.
+ *
+ * Errors:
+ * - OutOfBounds: The position exceeds the string length.
+ * - NotRuneBoundary: The position is inside an encoded rune.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ValidateEditBoundary(value: string, byteIndex: uint) Result[void, EditError] {
+    if byteIndex > value.Len {
+        return Err(EditError.OutOfBounds(byteIndex))
+    }
+
+    if byteIndex < value.Len {
+        let current := value.ByteAt(byteIndex)
+
+        if current in 0x80..0xBF {
+            return Err(EditError.NotRuneBoundary(byteIndex))
+        }
+    }
+
+    return Ok()
 }

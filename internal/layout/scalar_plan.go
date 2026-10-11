@@ -24,6 +24,9 @@ type ResolvedScalarPlan struct {
 	// CABI is the target's resolved C ABI data model. It is empty for targets
 	// that supply no C ABI, in which case c:: types cannot be resolved.
 	CABI CABIModel
+	// References is the reference policy; its zero value is the canonical
+	// 64-bit logical epoch on every target (reference_policy.go).
+	References ResolvedReferencePolicy
 }
 
 func (p ResolvedScalarPlan) Validate() error {
@@ -37,6 +40,9 @@ func (p ResolvedScalarPlan) Validate() error {
 		return fmt.Errorf("scalar plan endianness must be little or big, got %q", p.Endianness)
 	}
 	if err := p.CABI.Validate(); err != nil {
+		return err
+	}
+	if err := p.References.Validate(); err != nil {
 		return err
 	}
 	if p.CABI.Defined() && p.CABI.PointerWidthBits != p.PointerWidthBits {

@@ -600,6 +600,10 @@ type Function struct {
 	ConstructionError        *Type
 	ReturnOrigin             localReferenceOrigin
 	HasReturnOrigin          bool
+	// ArenaParameterResets lists, in ascending order, the indexes of
+	// ref/ref mut Arena parameters whose Arena the function may Reset,
+	// directly or by forwarding the parameter (arena_parameter_effects.go).
+	ArenaParameterResets []int
 	// CustomFree marks the non-callable `free` lifecycle body of a type.
 	CustomFree bool
 	// TrustedNoPanic records an extern declaration annotated @noPanic: a

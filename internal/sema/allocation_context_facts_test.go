@@ -154,6 +154,9 @@ func TestAllocationContextProfiles(t *testing.T) {
 
 // TestAllocationContextMissingAndAmbiguousEvidence ensures that source labels
 // and inconsistent cloned-call metadata cannot manufacture a selected domain.
+// Since 2026-10-11 the canonical domain comes from the Arena effect site
+// itself (compiler-owned ArenaDomain identity), so missing expression types
+// still yield that identity but never the receiver label.
 // Rules: rules/memory/allocation.md — §§5(4),6(4),24(6),29(1),(3).
 func TestAllocationContextMissingAndAmbiguousEvidence(t *testing.T) {
 	file := "../../testdata/sema/allocation_context_facts_valid.sec"
@@ -169,8 +172,10 @@ func TestAllocationContextMissingAndAmbiguousEvidence(t *testing.T) {
 	original := a.expressionTypes
 	a.expressionTypes = nil
 	for _, fact := range a.AllocationContextFacts() {
-		if fact.SelectedDomain != "" || fact.CreatedDomain != "" {
-			t.Fatal("domain guessed without canonical type", fact)
+		for _, domain := range []string{fact.SelectedDomain, fact.CreatedDomain} {
+			if domain != "" && (domain == fact.Arena || !strings.HasPrefix(domain, "$arena-domain")) {
+				t.Fatal("domain guessed from a source label", fact)
+			}
 		}
 	}
 	a.expressionTypes = original

@@ -26,18 +26,250 @@ module str
 
 // TODO: Implement stdlib/str/replace.sec
 
+/**
+ * Replaces every occurrence of a substring in a UTF-8 string.
+ *
+ * Description:
+ * Finds non-overlapping occurrences of search from left to right
+ * and replaces each occurrence with replacement.
+ * Replacement text is not searched again.
+ *
+ * An empty search string matches at every rune boundary,
+ * including the beginning and end of the input.
+ *
+ * When no occurrence is found, returns the original string.
+ * No Unicode normalization or case folding is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - search: The exact substring to locate.
+ * - replacement: The UTF-8 string inserted for each match.
+ *
+ * Returns:
+ * The string with all occurrences replaced.
+ *
+ * Errors:
+ * - CollectionError: Propagates allocation failures during
+ *     construction of the resulting string.
+ *
+ * Allocation:
+ * May allocate storage for the replacement result.
+ * No materialization is needed when search is not found.
+ */
 fn ReplaceAll(value: string, search: string, replacement: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    // An empty search matches at rune boundaries.
+    if search.Len == 0 {
+        let mut builder := try new Builder(value.Len)
+
+        try builder.Append(replacement)
+
+        for character in value {
+            try builder.Append(character)
+            try builder.Append(replacement)
+        }
+
+        return builder.Finish()
+    }
+
+    // Preserve the original string when no replacement is needed.
+    match value.IndexOf(search) {
+        None => {
+            return Ok(value)
+        }
+        Some(_) => {
+        }
+    }
+
+    // Split lazily and materialize the replaced result.
+    return Join(value.Split(search), replacement)
 }
 
+/**
+ * Replaces up to count occurrences of a substring.
+ *
+ * Description:
+ * Searches from left to right and replaces at most count
+ * non-overlapping occurrences of search.
+ * Replacement text is not searched again.
+ *
+ * An empty search string matches at rune boundaries,
+ * including the beginning and end of the input.
+ * A count of zero leaves the input unchanged.
+ *
+ * If no match is found, returns the original string.
+ * No Unicode normalization or case folding is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - search: The exact substring to locate.
+ * - replacement: The UTF-8 replacement string.
+ * - count: Maximum number of occurrences to replace.
+ *
+ * Returns:
+ * The string with up to count occurrences replaced.
+ *
+ * Errors:
+ * - CollectionError: Propagates allocation failures during
+ *     construction of the resulting string.
+ *
+ * Allocation:
+ * May allocate storage for the replacement result.
+ * Does not materialize a result when count is zero or
+ * no occurrence is found.
+ */
 fn ReplaceN(value: string, search: string, replacement: string, count: uint) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    if count == 0 {
+        return Ok(value)
+    }
+
+    // Empty search matches at rune boundaries.
+    if search.Len == 0 {
+        let mut builder := try new Builder(value.Len)
+        let mut replaced: uint := 0
+
+        try builder.Append(replacement)
+        replaced += 1
+
+        for character in value {
+            try builder.Append(character)
+
+            if replaced < count {
+                try builder.Append(replacement)
+                replaced += 1
+            }
+        }
+
+        return builder.Finish()
+    }
+
+    // Avoid materialization when the search has no matches.
+    if !value.Contains(search) {
+        return Ok(value)
+    }
+
+    let mut builder := try new Builder(value.Len)
+    let mut position: uint := 0
+    let mut replaced: uint := 0
+
+    while replaced < count {
+        match value.IndexOf(search, position) {
+            Some(found) => {
+                let before := try value.Slice(position, found) {
+                    Err(_) => {
+                        panic "ReplaceN: invalid match bounds"
+                    }
+                }
+
+                try builder.Append(before)
+                try builder.Append(replacement)
+
+                position = found + search.Len
+                replaced += 1
+            }
+            None => {
+                break
+            }
+        }
+    }
+
+    // Preserve the remainder without searching it again.
+    let remainder := try value.Slice(position, value.Len) {
+        Err(_) => {
+            panic "ReplaceN: invalid remainder bounds"
+        }
+    }
+
+    try builder.Append(remainder)
+
+    return builder.Finish()
 }
 
+/**
+ * Replaces the first occurrence of a substring.
+ *
+ * Description:
+ * Finds the first occurrence of search and replaces it with
+ * replacement. Subsequent occurrences remain unchanged.
+ *
+ * An empty search string matches at the beginning of the input.
+ * If no match is found, the original string is returned.
+ * No Unicode normalization or case folding is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - search: The exact substring to locate.
+ * - replacement: The UTF-8 replacement string.
+ *
+ * Returns:
+ * The string with the first occurrence replaced.
+ *
+ * Errors:
+ * - CollectionError: Propagates allocation failures from ReplaceN.
+ *
+ * Allocation:
+ * May allocate when a replacement is performed.
+ * Does not materialize a new string when no match is found.
+ */
 fn ReplaceFirst(value: string, search: string, replacement: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return ReplaceN(value, search, replacement, 1)
 }
 
+/**
+ * Replaces the last occurrence of a substring.
+ *
+ * Description:
+ * Finds the rightmost occurrence of search and replaces it
+ * with replacement. Earlier occurrences remain unchanged.
+ *
+ * An empty search string matches at the end of the input.
+ * If no match is found, the original string is returned.
+ * Replacement text is not searched again.
+ *
+ * Matching is exact and case-sensitive. No Unicode
+ * normalization or case folding is performed.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - search: The exact substring to locate.
+ * - replacement: The UTF-8 replacement string.
+ *
+ * Returns:
+ * The string with the last occurrence replaced.
+ *
+ * Errors:
+ * - CollectionError: Propagates allocation failures during
+ *     construction of the resulting string.
+ *
+ * Allocation:
+ * May allocate when a replacement is performed.
+ * Does not materialize a new string when no match is found.
+ */
 fn ReplaceLast(value: string, search: string, replacement: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    match value.LastIndexOf(search) {
+        None => {
+            return Ok(value)
+        }
+        Some(position) => {
+            let mut builder := try new Builder(value.Len)
+
+            let before := try value.Slice(0, position) {
+                Err(_) => {
+                    panic "ReplaceLast: invalid prefix bounds"
+                }
+            }
+
+            let afterStart := position + search.Len
+            let suffix := try value.Slice(afterStart, value.Len) {
+                Err(_) => {
+                    panic "ReplaceLast: invalid suffix bounds"
+                }
+            }
+
+            try builder.Append(before)
+            try builder.Append(replacement)
+            try builder.Append(suffix)
+
+            return builder.Finish()
+        }
+    }
 }

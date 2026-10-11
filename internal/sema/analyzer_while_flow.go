@@ -103,10 +103,12 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
 	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
 	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
-	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
+	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations, loopHeaderReferenceOrigins(iterationEntry.symbols, a.symbols, bodyFallsThrough, frameState))
 	a.callGraphPathReachable = previousCallGraphPathReachable
 	breakFrame := a.popLoopBreakFrame(frame)
+	loopSymbols := a.symbols
 	a.symbols = previousSymbols
+	a.mergeLoopExitReferenceOrigins(loopSymbols, breakFrame)
 	a.constInts = previousConstInts
 	for name, previousValue := range previousConstInts {
 		currentValue, exists := loopConstInts[name]

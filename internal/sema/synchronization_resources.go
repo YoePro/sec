@@ -226,6 +226,7 @@ func singleResourcePlaceRelationship(left, right Place) SynchronizationResourceR
 func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 	place, ok := a.resolvePlacePath(expr)
 	if ok {
+		a.recordResolvedPlace(expr, place)
 		resourcePlace := place
 		if place.Type.Kind == ReferenceType && place.Type.Element != nil && isMutexType(*place.Type.Element) {
 			resourcePlace = a.canonicalDereferencePlace(expr, place, place.Type)

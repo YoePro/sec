@@ -140,7 +140,7 @@ func verifyNoPanicContradiction(fn *Function, blocks map[BlockID]*Block) error {
 		}
 		seen[id] = true
 		for _, op := range block.Operations {
-			if op.Kind == OpPanic {
+			if op.Kind == OpPanic || op.Kind == OpReferenceGenerationFailure {
 				return fmt.Errorf("@noPanic function reaches panic %s at %s", op.PanicReason, formatLocation(op.Location))
 			}
 			for _, successor := range op.Successors {

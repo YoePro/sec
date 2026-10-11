@@ -148,6 +148,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, elseBranch)
 		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, elseBranch)
 		a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, elseBranch)
+		a.mergeContinuingReferenceOrigins(thenBranch, elseBranch)
 		return
 	}
 
@@ -186,4 +187,5 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, fallthroughBranch)
+	a.mergeContinuingReferenceOrigins(thenBranch, fallthroughBranch)
 }

@@ -141,3 +141,87 @@ test "nested contexts keep their own boundary" {
 		t.Fatalf("errors = %d, want helper, defer and lambda:\n%s", len(errors), joined)
 	}
 }
+
+// A try used as a statement discards its success value, so a handler that
+// completes normally needs no recovery value (errorhandling.md §21, §21.2;
+// discard.md § 4), while a try in value position still requires one. Failures
+// a partial handler set leaves unmatched propagate to the test invocation
+// boundary like an ordinary try (§16, §41) instead of requiring a Result
+// return.
+func TestStatementTryHandlersAndTestBoundaryResidual(t *testing.T) {
+	source := `module boundary
+
+type EditError enum error {
+    Empty,
+    Overflow,
+}
+
+fn Insert(text: string) Result[string, EditError] {
+    if text == "" {
+        return Err(EditError.Empty)
+    }
+    return Ok(text)
+}
+
+test "statement try handlers complete normally" {
+    try Insert("") {
+        Err(EditError.Empty) => {
+            testing.Pass()
+        }
+        Err(_) => {
+            testing.Fail("unexpected error")
+        }
+    }
+    testing.Fail("expected an error")
+}
+
+test "residual failures propagate to the test boundary" {
+    try Insert("") {
+        Err(EditError.Empty) => {
+            testing.Pass()
+        }
+    }
+    testing.Fail("expected EditError.Empty")
+}
+`
+	analyzer, errors, _ := analyzeTestBoundarySource(t, source)
+	if len(errors) != 0 {
+		t.Fatalf("errors = %v", errors)
+	}
+	boundaryPlans := 0
+	for _, plan := range analyzer.resolvedTryPlans {
+		if plan.ResidualPropagates && plan.ResidualTestBoundary {
+			boundaryPlans++
+		}
+	}
+	if boundaryPlans != 1 {
+		t.Fatalf("test-boundary residual plans = %d, want 1", boundaryPlans)
+	}
+
+	valuePosition := `module boundary
+
+type EditError enum error {
+    Empty,
+}
+
+fn Insert(text: string) Result[string, EditError] {
+    return Ok(text)
+}
+
+fn Use() string {
+    let value := try Insert("x") {
+        Err(_) => {
+            Log()
+        }
+    }
+    return value
+}
+
+fn Log() void {
+}
+`
+	_, errors, _ = analyzeTestBoundarySource(t, valuePosition)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "try handler must produce string, got void") {
+		t.Fatalf("value-position handler errors = %v", errors)
+	}
+}

@@ -168,6 +168,7 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		a.expressionTypes[expr] = typ
 		a.recordResolvedOperator(expr, typ)
 		a.recordResolvedOperatorEffect(expr)
+		a.recordReferenceExpressionUse(expr, typ)
 	}
 	return typ, value
 }
@@ -1484,6 +1485,9 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 		a.setResolvedIndexUse(index, use)
 	}
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Value)
+	if place, placed := a.resolvePlace(expr.Value); placed {
+		a.recordReferencePlan(expr, place, expr.Mutable, false, expr.Token)
+	}
 	return Type{
 		Name:                       referenceTypeName(valueType, expr.Mutable),
 		Kind:                       ReferenceType,
@@ -2184,6 +2188,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.recordCallBoundaryEscapeFacts(best[0].Function, sourceArgs, preparedSpreadValues)
+		a.recordCallReferencePlans(best[0].Function, sourceArgs, preparedSpreadValues)
+		if !a.applyCalleeArenaParameterResets(best[0].Function, sourceArgs, preparedSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		a.recordCallArgumentUnitConversions(best[0].Function, sourceArgs, a.callArgumentTypesForFunction(best[0].Function, sourceArgTypes, methodReceiver, isMethodCall))
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
 		dispatch := CallDispatchDirect
@@ -3370,6 +3378,10 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordCallBoundaryEscapeFacts(function, args, runtimeSpreadValues)
+		a.recordCallReferencePlans(function, args, runtimeSpreadValues)
+		if !a.applyCalleeArenaParameterResets(function, args, runtimeSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		a.recordCallArgumentUnitConversions(function, args, argTypes)
 		a.setDefinitions(callCalleeDefinitionToken(expr), function.Token)
 		a.recordResolvedCall(expr, function, CallDispatchDirect, Type{})

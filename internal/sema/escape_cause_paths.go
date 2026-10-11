@@ -102,6 +102,12 @@ func (a *Analyzer) escapeDiagnosticCause(token, origin lexer.Token, id string, e
 	case diagnostics.EscapeOuterPlace:
 		destination = EscapeDestinationOuterPlace
 		boundary = "stored dependency requires storage valid for the destination's complete lifetime"
+	case diagnostics.StaticStoreOfShortLivedReference:
+		destination = EscapeDestinationStaticStorage
+		boundary = "static storage requires a dependency valid for the whole program"
+	case diagnostics.ThreadLocalStoreOfShortLivedReference:
+		destination = EscapeDestinationThreadLocalStorage
+		boundary = "thread-local storage requires a dependency valid for the owning thread's lifetime"
 	case diagnostics.EscapeMatchPayload:
 		boundary = "payload dependency crosses the active match arm's lifetime boundary"
 	case diagnostics.EscapeClosureCapture:
@@ -347,7 +353,14 @@ func (a *Analyzer) reportEscapeAssignmentDiagnostic(target, value ast.Expression
 		return
 	}
 	path := &a.errors[len(a.errors)-1].EscapeCauses[0]
-	path.Destination = EscapeDestinationOuterPlace
+	switch id {
+	case diagnostics.StaticStoreOfShortLivedReference:
+		path.Destination = EscapeDestinationStaticStorage
+	case diagnostics.ThreadLocalStoreOfShortLivedReference:
+		path.Destination = EscapeDestinationThreadLocalStorage
+	default:
+		path.Destination = EscapeDestinationOuterPlace
+	}
 	last := len(path.Steps) - 1
 	boundary := path.Steps[last]
 	if id == diagnostics.EscapeMatchPayload {

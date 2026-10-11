@@ -119,6 +119,9 @@ func verifyTypes(table *TypeTable) error {
 		if t.TargetSize && !(t.Kind == TypeInt || t.Kind == TypeUint || t.Kind == TypeFloat) {
 			return fmt.Errorf("invalid target-sized type !%d", id)
 		}
+		if err := verifyPlaceReferenceTypes(table, id, t); err != nil {
+			return err
+		}
 		switch t.Kind {
 		case TypeArithmeticFailureReason:
 			if t.Base != 0 || t.Success != 0 || t.Error != 0 {
@@ -507,6 +510,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
+	if err := verifyPlaceReferenceFunction(module, fn, blocks, values); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -582,6 +588,14 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 		return 0
 	}()
+	// A Place is never a language value (semantic_ir.md § 96(5)).
+	if !placeConsumer(op.Kind) {
+		for _, operand := range op.Operands {
+			if _, place := placeType(module.Types, values[operand].Type); place {
+				return fmt.Errorf("Place %%%d escapes through %s", operand, op.Kind)
+			}
+		}
+	}
 	switch op.Kind {
 	case OpConstInt:
 		if len(op.Results) != 1 || op.Integer == nil {
@@ -916,6 +930,14 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpBoundsFailure:
 		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || op.ArrayOperation != "fixed-array-index" {
 			return fmt.Errorf("invalid fail.bounds")
+		}
+	case OpPlaceValueRoot, OpPlaceStorageRoot, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement,
+		OpPlaceUnionPayload, OpReferenceDerefPlace, OpPlaceRead, OpPlaceWrite, OpReferenceBorrowShared,
+		OpReferenceBorrowMutable, OpReferenceCopyShared, OpReferenceMove, OpReferenceReborrowShared,
+		OpReferenceReborrowMutable, OpReferenceIsValid, OpReferenceGenerationFailure, OpReferenceEndBorrow,
+		OpReferenceCompare:
+		if err := verifyPlaceReferenceOperation(module, op, values, storages); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
@@ -1790,7 +1812,7 @@ func verifyStorageDominance(fn *Function, blocks map[BlockID]*Block, dom map[Blo
 					return fmt.Errorf("storage.init before declaration")
 				}
 				init[op.Storage] = position{b.ID, index}
-			case OpStorageLoad, OpStorageStore:
+			case OpStorageLoad, OpStorageStore, OpPlaceStorageRoot:
 				d, dok := decl[op.Storage]
 				i, iok := init[op.Storage]
 				use := position{b.ID, index}

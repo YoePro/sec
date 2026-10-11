@@ -4,7 +4,7 @@
 
 Normative detailed representation specification.
 
-Current Sec MLIR dialect schema version: `9`
+Current Sec MLIR dialect schema version: `11`
 
 Schema version 7 adds canonical high-level enum and tagged-union semantic value
 representation.
@@ -17,6 +17,15 @@ synthesized `sec.unreachable` terminator. Physical union layout remains deferred
 
 Schema version 9 adds canonical high-level struct semantic values. Physical
 struct layout remains deferred.
+
+Schema version 10 adds canonical high-level fixed-array semantic values,
+compact construction/defaults, bounds predicates, guarded element operations
+and the ordinary bounds-failure endpoint (SEC-MLIR-P14). Physical array
+representation remains deferred.
+
+Schema version 11 introduces compiler-internal semantic places and direct safe
+reference values (SEC-MLIR-P15). The schema does not select one physical
+pointer/reference representation.
 
 ---
 
@@ -32,15 +41,25 @@ v6  Result branching and local try handlers
 v7  enum and tagged-union semantic value representation
 v8  verified match CFG support and synthesized unreachable
 v9  canonical high-level struct semantic values
+v10 fixed-array semantic values
+v11 places and direct safe references
 ```
 
-Compiler-generated v9 modules carry:
+Compiler-generated modules carry the newest schema whose package is
+implemented; schema-v11 modules carry:
 
 ```mlir
-sec.dialect_version = 9 : i32
+sec.dialect_version = 11 : i32
 ```
 
-Schema versions 1 through 8 remain valid regression inputs.
+Until SEC-MLIR-P15 completes schema-11 emission the compiler emits schema 10.
+Schema versions 1 through 10 remain valid regression inputs, and every schema
+keeps its compatibility promises.
+
+The schema-v10 and schema-v11 sections below were installed from
+`rules/mlir/dialect-versions/sec_mlir_dialect_v10.md` and
+`sec_mlir_dialect_v11.md` on 2026-10-11; those files remain the version-history
+snapshots.
 
 ---
 
@@ -798,3 +817,1189 @@ parse-print-verify, empty/nested/concrete-generic/wide types, all four struct
 operation verifiers, scalar-wrapper preservation, high-level struct storage,
 synthetic union payload structs, schema-8 regression compatibility and no
 physical layout selection.
+
+---
+
+# Schema version 10 — fixed-array semantic values
+
+## v10.2 `!sec.array`
+
+Canonical conceptual syntax:
+
+```text
+!sec.array<element-type, "length">
+```
+
+Examples:
+
+```text
+!sec.array<i32, "4">
+!sec.array<i128, "2">
+!sec.array<!sec.struct<...>, "0">
+```
+
+---
+
+## v10.3 Length syntax
+
+The length parameter is a StringAttr containing canonical base-10
+arbitrary-precision unsigned text.
+
+Valid:
+
+```text
+"0"
+"1"
+"4294967295"
+"18446744073709551615"
+```
+
+Invalid:
+
+```text
+"-1"
+"+1"
+"00"
+"01"
+" 4 "
+```
+
+---
+
+## v10.4 Why the length is textual
+
+The semantic length is not assigned an arbitrary MLIR integer bit width.
+
+Canonical decimal text:
+
+```text
+preserves arbitrary precision
+prints deterministically
+avoids host-width dependence
+remains independent of physical index type
+```
+
+---
+
+## v10.5 Array type identity
+
+Type identity includes:
+
+```text
+element type
+exact length
+```
+
+`!sec.array<i32,"4">` differs from:
+
+```text
+!sec.array<i32,"5">
+!sec.array<ui32,"4">
+```
+
+---
+
+## v10.6 No dynamic-array use
+
+`!sec.array` in schema v10 means only:
+
+```text
+fixed T[N]
+```
+
+It never means:
+
+```text
+dynamic T[]
+slice
+```
+
+Those receive separate future representations.
+
+---
+
+## v10.7 `sec.array.construct`
+
+Variadic operands represent compact literal segments.
+
+Required arrays:
+
+```text
+segment_kinds
+segment_lengths
+segment_actions
+```
+
+Each array length equals operand count.
+
+Allowed segment kinds:
+
+```text
+element
+spread
+```
+
+---
+
+## v10.8 Element segment
+
+For an element segment:
+
+```text
+operand type == result element type
+segment length == "1"
+segment action == "construct-direct"
+```
+
+---
+
+## v10.9 Spread segment
+
+For a spread segment:
+
+```text
+operand type == !sec.array<T,"M">
+segment length == "M"
+segment action == "copy-trivial"
+```
+
+P14 compiler output does not emit move/semantic-copy spread.
+
+---
+
+## v10.10 Construct result
+
+Result:
+
+```text
+!sec.array<T,"N">
+```
+
+Verifier performs arbitrary-precision checked sum:
+
+```text
+sum(segment_lengths) == N
+```
+
+No expansion into N operands.
+
+---
+
+## v10.11 `sec.array.default`
+
+No operands.
+
+Result:
+
+```text
+!sec.array<T,"N">
+```
+
+Meaning:
+
+```text
+fully initialized canonical array default
+```
+
+For `N == 0` no element default is constructed.
+
+Builder/Semantic IR verification owns defaultability and ownership checks.
+
+---
+
+## v10.12 `sec.array.len`
+
+Operand:
+
+```text
+!sec.array<T,"N">
+```
+
+Result:
+
+```text
+!sec.uint
+```
+
+before scalar target resolution, or the plan-resolved unsigned scalar after
+P6.
+
+The semantic value is exactly N.
+
+Pure and foldable.
+
+---
+
+## v10.13 `sec.array.index_in_bounds`
+
+Operands:
+
+```text
+array: !sec.array<T,"N">
+index: integer semantic value
+```
+
+Required:
+
+```text
+index_signed: BoolAttr
+```
+
+Result:
+
+```text
+i1
+```
+
+Total operation.
+
+No physical address computation.
+
+---
+
+## v10.14 `sec.array.extract`
+
+Operands:
+
+```text
+array
+index
+```
+
+Result:
+
+```text
+T
+```
+
+Required:
+
+```text
+bounds_kind
+bounds_proof
+action
+```
+
+Allowed P14 values:
+
+```text
+bounds_kind:
+    proven-safe
+    runtime-check
+
+action:
+    copy-trivial
+```
+
+---
+
+## v10.15 `sec.array.replace`
+
+Operands:
+
+```text
+array
+index
+new_value
+```
+
+Result:
+
+```text
+same !sec.array<T,"N">
+```
+
+Required:
+
+```text
+bounds_kind
+bounds_proof
+```
+
+The new value type must exactly equal T.
+
+P14 generator separately requires trivial safe replacement semantics.
+
+---
+
+## v10.16 Proven bounds metadata
+
+Canonical proof strings:
+
+```text
+constant
+range
+branch
+contract
+analysis
+```
+
+For runtime-guarded operations:
+
+```text
+bounds_proof = "guarded"
+```
+
+These strings are compiler provenance.
+
+They are not source promises.
+
+---
+
+## v10.17 `sec.fail.bounds`
+
+No operands.
+
+No results.
+
+No successors.
+
+Terminator.
+
+Required:
+
+```text
+operation = "fixed-array-index"
+```
+
+Semantic panic reason:
+
+```text
+panic.bounds
+```
+
+It does not select the physical panic endpoint.
+
+---
+
+## v10.18 Index guard verifier
+
+Register:
+
+```text
+--sec-verify-array-index-guards
+```
+
+Runtime-check extract/replace requires:
+
+```text
+dominating sec.array.index_in_bounds
+same array SSA
+same index SSA
+true-edge dominance
+```
+
+Proven-safe operations require valid proof provenance.
+
+---
+
+## v10.19 Ordinary runtime check shape
+
+Canonical:
+
+```text
+index_in_bounds
+cf.cond_br
+
+false:
+    sec.fail.bounds
+
+true:
+    sec.array.extract or sec.array.replace
+```
+
+No direct backend trap.
+
+---
+
+## v10.20 Fallible check shape
+
+Fallible indexing:
+
+```text
+index_in_bounds
+cf.cond_br
+
+false:
+    canonical IndexError.OutOfBounds enum value
+    Result/handler flow
+
+true:
+    sec.array.extract / replacement path
+```
+
+No `sec.fail.bounds` on the handled failure path.
+
+---
+
+## v10.21 Array storage
+
+High-level:
+
+```text
+!sec.storage<!sec.array<T,"N">>
+```
+
+may exist for the P14 trivial subset.
+
+Schema v10 does not define a physical MemRef/LLVM aggregate representation.
+
+---
+
+## v10.22 P5 boundary
+
+`sec-lower-trivial-core` does not lower struct or fixed-array aggregate storage
+to MemRef.
+
+Scalar storage behavior remains unchanged.
+
+---
+
+## v10.23 P6 target resolution
+
+P6 may resolve target-sized scalar types recursively inside the array element
+type while preserving:
+
+```text
+array wrapper
+exact length
+nested shape
+```
+
+It also resolves `sec.array.len` result representation.
+
+---
+
+## v10.24 P8 boundary
+
+P8 does not recursively erase integer signedness inside `!sec.array`.
+
+Dedicated aggregate representation lowering owns that transition later.
+
+---
+
+## v10.25 P13 integration
+
+`!sec.struct` fields may contain `!sec.array`.
+
+`!sec.array` elements may contain `!sec.struct`.
+
+Both wrappers remain high-level.
+
+---
+
+## v10.26 Zero length
+
+Schema v10 permits:
+
+```text
+!sec.array<T,"0">
+```
+
+It has no element value.
+
+`sec.array.default` is valid for zero length without requiring one T default.
+
+`sec.array.extract` still requires a proof/guard; no valid safe proof can exist
+for any actual index into length zero.
+
+---
+
+## v10.27 No physical layout
+
+Schema v10 does not define:
+
+```text
+element stride
+byte size
+alignment
+element pointer
+LLVM array
+MemRef
+GEP
+```
+
+---
+
+## v10.28 Schema-v10 completion
+
+Schema v10 is complete when:
+
+```text
+array type parses/prints/verifies
+large exact lengths round-trip
+construct segments verify without expansion
+default/len operations verify
+index predicate verifies
+guarded extract/replace verify
+ordinary bounds endpoint verifies
+schema-v9 regressions remain valid
+no dynamic/slice type is represented as !sec.array
+no physical array layout is selected
+```
+
+---
+
+# Schema version 11 — places and direct safe references
+
+## v11.2 `!sec.place`
+
+Conceptual syntax:
+
+```text
+!sec.place<T, "ro">
+!sec.place<T, "rw">
+```
+
+`!sec.place` is compiler-internal.
+
+It is not a source-visible type.
+
+---
+
+## v11.3 Place authority
+
+Allowed:
+
+```text
+ro
+rw
+```
+
+A place derivation may preserve or reduce authority.
+
+It may not increase authority.
+
+---
+
+## v11.4 `!sec.ref<T>`
+
+High-level source safe shared reference.
+
+Guarantees:
+
+```text
+non-null
+typed
+non-owning
+shared read authority
+```
+
+The type does not encode physical generation bits.
+
+---
+
+## v11.5 `!sec.ref_mut<T>`
+
+High-level source safe mutable reference.
+
+Guarantees:
+
+```text
+non-null
+typed
+non-owning referent
+exclusive mutable authority
+```
+
+The reference value is move-only by semantic classification.
+
+---
+
+## v11.6 Place root metadata
+
+Root place operations carry canonical semantic metadata such as:
+
+```text
+sec.place_root_id
+sec.storage_identity
+sec.address_space
+sec.source_name
+```
+
+`sec.source_name` is provenance only.
+
+---
+
+## v11.7 Reference metadata
+
+Reference-producing operations carry:
+
+```text
+sec.borrow_id
+sec.lifetime_id
+sec.validity_policy
+sec.validity_proof
+sec.epoch_dependency
+sec.relocation_class
+sec.reference_origin
+```
+
+where applicable.
+
+These attributes are semantic.
+
+They do not force physical fields.
+
+---
+
+## v11.8 `sec.place.value`
+
+Operand:
+
+```text
+T
+```
+
+Result:
+
+```text
+!sec.place<T,"ro">
+```
+
+Required root/storage identity metadata.
+
+Logical place materialization only.
+
+---
+
+## v11.9 `sec.place.storage`
+
+Operand:
+
+```text
+!sec.storage<T>
+```
+
+Result:
+
+```text
+!sec.place<T,"ro">
+or
+!sec.place<T,"rw">
+```
+
+Authority must match the storage mutability contract.
+
+---
+
+## v11.10 `sec.place.field`
+
+Operand:
+
+```text
+!sec.place<!sec.struct<...>, A>
+```
+
+Required:
+
+```text
+field ordinal
+```
+
+Result:
+
+```text
+!sec.place<FieldType, A-or-narrower>
+```
+
+The field must be a stored field.
+
+---
+
+## v11.11 `sec.place.array_index_in_bounds`
+
+Operands:
+
+```text
+array place
+integer index
+```
+
+Result:
+
+```text
+i1
+```
+
+The array place referent is fixed:
+
+```text
+!sec.array<T,N>
+```
+
+Required:
+
+```text
+index_signed
+```
+
+No physical address computation.
+
+---
+
+## v11.12 `sec.place.array_element`
+
+Operands:
+
+```text
+array place
+index
+```
+
+Result:
+
+```text
+!sec.place<T, same authority>
+```
+
+Required:
+
+```text
+bounds_kind
+bounds_proof
+```
+
+Runtime-check form must be dominated by the matching place bounds predicate.
+
+---
+
+## v11.13 `sec.place.union_payload`
+
+Operand:
+
+```text
+union place
+```
+
+Required:
+
+```text
+variant index
+```
+
+Result:
+
+```text
+payload place
+```
+
+Only valid on a matching active-variant path.
+
+---
+
+## v11.14 `sec.place.deref`
+
+Operand:
+
+```text
+!sec.ref<T>
+```
+
+returns:
+
+```text
+!sec.place<T,"ro">
+```
+
+Operand:
+
+```text
+!sec.ref_mut<T>
+```
+
+returns:
+
+```text
+!sec.place<T,"rw">
+```
+
+Dynamic-validity reference requires a dominating valid branch.
+
+---
+
+## v11.15 `sec.place.read`
+
+Operand:
+
+```text
+!sec.place<T,A>
+```
+
+Result:
+
+```text
+T
+```
+
+Required action:
+
+```text
+copy-trivial
+```
+
+for schema-v11 compiler output.
+
+---
+
+## v11.16 `sec.place.write`
+
+Operands:
+
+```text
+!sec.place<T,"rw">
+T
+```
+
+No result.
+
+The compiler-generation layer enforces trivial replacement safety.
+
+---
+
+## v11.17 `sec.ref.borrow_shared`
+
+Operand:
+
+```text
+!sec.place<T,"ro|rw">
+```
+
+Result:
+
+```text
+!sec.ref<T>
+```
+
+Required reference semantic metadata.
+
+---
+
+## v11.18 `sec.ref.borrow_mut`
+
+Operand:
+
+```text
+!sec.place<T,"rw">
+```
+
+Result:
+
+```text
+!sec.ref_mut<T>
+```
+
+Required reference semantic metadata.
+
+---
+
+## v11.19 `sec.ref.copy_shared`
+
+Operand/result:
+
+```text
+!sec.ref<T> -> !sec.ref<T>
+```
+
+No ownership transfer of the referent.
+
+No mutable authority.
+
+---
+
+## v11.20 `sec.ref.move`
+
+Operand/result:
+
+```text
+!sec.ref_mut<T> -> !sec.ref_mut<T>
+```
+
+The operation represents semantic reference-value move.
+
+It does not move referent storage.
+
+---
+
+## v11.21 `sec.ref.reborrow_shared`
+
+Produces a new shared direct reference whose authority/lifetime/extent do not
+exceed the source grant.
+
+The source may be:
+
+```text
+shared
+mutable
+```
+
+according to verified Sema facts.
+
+---
+
+## v11.22 `sec.ref.reborrow_mut`
+
+Produces a constrained mutable reborrow.
+
+Source authority must be mutable.
+
+No shared-to-mutable reborrow.
+
+---
+
+## v11.23 `sec.ref.is_valid`
+
+Operand:
+
+```text
+direct safe reference
+```
+
+Result:
+
+```text
+i1
+```
+
+Total abstract runtime-validity predicate.
+
+No physical validation strategy is selected.
+
+---
+
+## v11.24 `sec.ref.compare`
+
+Operands:
+
+```text
+compatible direct safe references
+```
+
+Predicate:
+
+```text
+eq
+ne
+```
+
+Result:
+
+```text
+i1
+```
+
+Semantic equality is live storage identity + referenced location.
+
+---
+
+## v11.25 `sec.ref.end_borrow`
+
+No results.
+
+Required:
+
+```text
+borrow_id
+lifetime_id
+```
+
+Compile-time semantic lifetime marker.
+
+---
+
+## v11.26 `sec.fail.reference_generation`
+
+No operands.
+
+No results.
+
+No successors.
+
+Terminator.
+
+Canonical panic reason:
+
+```text
+panic.invalid-reference-generation
+```
+
+No Result value is constructed.
+
+---
+
+## v11.27 Reference validity policy
+
+Allowed compiler-generated policy values:
+
+```text
+proven
+dynamic-epoch
+```
+
+A proven policy requires proof provenance.
+
+A dynamic policy requires reference-guard validation at protected uses.
+
+---
+
+## v11.28 Epoch width is not a type parameter
+
+Do not define:
+
+```text
+!sec.ref<T, epoch=64>
+```
+
+or equivalent source type identity.
+
+Epoch width belongs to CompilationPlan representation policy.
+
+---
+
+## v11.29 Place escape rule
+
+A `!sec.place` value may not be:
+
+```text
+returned
+stored as ordinary data
+placed in Result
+placed in union/array/struct
+passed as ordinary user function argument
+```
+
+Only recognized place/reference operations may consume it.
+
+---
+
+## v11.30 Reference function signatures
+
+`!sec.ref<T>` and `!sec.ref_mut<T>` may appear in high-level function
+parameters/results.
+
+This does not select ABI representation.
+
+---
+
+## v11.31 P5 storage interaction
+
+Storage that participates in a live place/reference identity remains high-level.
+
+P5 must not lower it to MemRef before reference representation has been
+discharged.
+
+---
+
+## v11.32 P6 interaction
+
+Target scalar type resolution may recurse through the referent type while
+preserving:
+
+```text
+place/ref wrapper
+borrow metadata
+reference semantics
+```
+
+---
+
+## v11.33 P8 interaction
+
+Signless normalization must not recursively erase semantic integer distinction
+inside reference/place wrappers.
+
+---
+
+## v11.34 Verifiers
+
+Schema v11 registers:
+
+```text
+--sec-verify-places
+--sec-verify-reference-guards
+--sec-verify-borrow-semantics
+```
+
+They verify emitted semantic structure.
+
+They do not replace Sema source analysis.
+
+---
+
+## v11.35 `--sec-verify-places`
+
+Checks:
+
+```text
+root/place type consistency
+authority
+field identity
+array bounds guard
+union active-variant guard
+deref authority
+place non-escape
+```
+
+---
+
+## v11.36 `--sec-verify-reference-guards`
+
+Checks dynamic-validity protected use:
+
+```text
+same reference SSA
+true-edge dominance
+false edge reaches invalid-generation failure
+```
+
+Proven uses require proof metadata.
+
+---
+
+## v11.37 `--sec-verify-borrow-semantics`
+
+Checks:
+
+```text
+no ref-mut copy
+reborrow authority
+borrow/lifetime IDs
+reference move structure
+end-borrow use ordering
+returned origin metadata
+```
+
+---
+
+## v11.38 No physical representation
+
+Schema v11 does not define:
+
+```text
+pointer field
+epoch field
+side-table key
+capability bits
+fat-reference struct
+slot identity
+physical address-space number
+```
+
+---
+
+## v11.39 Schema-v11 completion
+
+Schema v11 is complete when:
+
+```text
+place/ref types parse/print/verify
+root/subplace operations verify
+shared/mutable borrowing verifies
+reference copy/move/reborrow verifies
+dynamic validity guard verifies
+invalid-generation endpoint verifies
+reference equality remains semantic
+place escape is rejected
+schema-v10 regression remains valid
+no physical representation is selected
+```

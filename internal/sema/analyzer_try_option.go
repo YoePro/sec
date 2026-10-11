@@ -92,8 +92,8 @@ func (a *Analyzer) inferHandledOptionTryExpression(expr *ast.TryExpression, opti
 			noneSeen = true
 			noneToken = handler.Token
 		}
-		flow := a.analyzeTryHandlerBody(handler, successType, Type{}, "")
-		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType
+		flow := a.analyzeTryHandlerBodyInPosition(expr, handler, successType, Type{}, "")
+		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType && !a.statementTries[expr]
 		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{
 			PatternKind: TryHandlerOptionNone, Flow: flow, ResultType: successType,
 			SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue,

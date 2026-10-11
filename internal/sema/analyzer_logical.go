@@ -91,6 +91,7 @@ func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Ty
 		a.borrows = mergeContinuingBorrows(before.borrows, before, rhs)
 		a.localRefContainers = mergeContinuingLocalRefContainers(before.localRefContainers, before, rhs)
 		a.arenaGenerations = mergeContinuingArenaGenerations(before.arenaGenerations, before, rhs)
+		a.mergeContinuingReferenceOrigins(before, rhs)
 	}
 
 	if rightType.Kind == InvalidType {

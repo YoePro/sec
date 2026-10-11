@@ -23,10 +23,18 @@ const (
 )
 
 type PlaceProjection struct {
-	Kind            PlaceProjectionKind
-	Name            string
-	ConstantIndex   *big.Int
-	DynamicIndex    bool
+	Kind          PlaceProjectionKind
+	Name          string
+	ConstantIndex *big.Int
+	DynamicIndex  bool
+	// DynamicIndexID identifies the evaluated runtime index expression of a
+	// dynamic index (package15.md § 14); IndexType, IndexSigned, ArrayLength
+	// and IndexProof retain the P14 index facts when known.
+	DynamicIndexID  DynamicIndexID
+	IndexType       Type
+	IndexSigned     bool
+	ArrayLength     *big.Int
+	IndexProof      ArrayIndexProofKind
 	SliceStart      int64
 	SliceEnd        int64
 	SliceStartKnown bool
@@ -53,7 +61,49 @@ func clonePlaceConstantIndex(index *big.Int) *big.Int {
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
 func clonePlaceProjection(projection PlaceProjection) PlaceProjection {
 	projection.ConstantIndex = clonePlaceConstantIndex(projection.ConstantIndex)
+	projection.ArrayLength = clonePlaceConstantIndex(projection.ArrayLength)
 	return projection
+}
+
+// CanonicalProjectionKind is the normalized P15 projection category: field,
+// constant-index, dynamic-index, union-payload and dereference are canonical;
+// slice and property are retained only as deferred compatibility data and a
+// property never forms an addressable field Place.
+type CanonicalProjectionKind string
+
+const (
+	CanonicalProjectionField        CanonicalProjectionKind = "field"
+	CanonicalProjectionConstant     CanonicalProjectionKind = "constant-index"
+	CanonicalProjectionDynamic      CanonicalProjectionKind = "dynamic-index"
+	CanonicalProjectionUnionPayload CanonicalProjectionKind = "union-payload"
+	CanonicalProjectionDereference  CanonicalProjectionKind = "dereference"
+	CanonicalProjectionSlice        CanonicalProjectionKind = "deferred-slice"
+	CanonicalProjectionProperty     CanonicalProjectionKind = "deferred-property"
+)
+
+// Canonical normalizes one projection (P15-14).
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — § 12 "Place projections"
+//   - rules/compiler/semantic_ir.md — § 10(8)
+func (projection PlaceProjection) Canonical() CanonicalProjectionKind {
+	switch projection.Kind {
+	case PlaceField:
+		return CanonicalProjectionField
+	case PlaceIndex:
+		if projection.DynamicIndex {
+			return CanonicalProjectionDynamic
+		}
+		return CanonicalProjectionConstant
+	case PlaceUnionPayload:
+		return CanonicalProjectionUnionPayload
+	case PlaceDereference:
+		return CanonicalProjectionDereference
+	case PlaceSlice:
+		return CanonicalProjectionSlice
+	default:
+		return CanonicalProjectionProperty
+	}
 }
 
 // clonePlaceProjections returns independent immutable-by-convention Place
@@ -112,14 +162,20 @@ const (
 // analysis data and introduces no runtime representation or borrow counter.
 type Place struct {
 	// Root is the display name of the root binding; RootID is its identity.
-	Root        string
-	RootID      PlaceRootID
-	RootKind    PlaceRootKind
-	RootToken   lexer.Token
-	Projections []PlaceProjection
-	Type        Type
-	Mutable     bool
-	Addressable bool
+	Root      string
+	RootID    PlaceRootID
+	RootKind  PlaceRootKind
+	RootToken lexer.Token
+	// StorageIdentity is the storage-domain identity of the root
+	// (storage.md § 3.6), StorageOrigin its canonical origin, and
+	// AddressSpace its storage.md § 16 memory space. Zero values are unknown.
+	StorageIdentity StorageIdentityID
+	StorageOrigin   StorageOrigin
+	AddressSpace    AddressSpaceID
+	Projections     []PlaceProjection
+	Type            Type
+	Mutable         bool
+	Addressable     bool
 	// AmbiguousProvenance is set when loop control flow joins different
 	// referent Places for the same reference binding. Direct access remains
 	// protected by the joined owner borrows, but creating another reference
@@ -267,6 +323,10 @@ func joinPlaceRelationships(joined, next PlaceRelationship) PlaceRelationship {
 func singleOriginPlaceRelationship(left, right Place) PlaceRelationship {
 	if left.Root == "" || right.Root == "" {
 		return PlaceUnknown
+	}
+	// Different known storage domains never overlap (P15-17).
+	if left.StorageIdentity != 0 && right.StorageIdentity != 0 && left.StorageIdentity != right.StorageIdentity {
+		return PlaceDisjoint
 	}
 	if left.RootID != 0 && right.RootID != 0 {
 		if left.RootID != right.RootID {
@@ -503,11 +563,7 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 		if elementType == nil {
 			return Place{}, false
 		}
-		projection := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expressionToken(expr.Index)}
-		if constant, ok := a.integerConstantValue(expr.Index); ok {
-			projection.ConstantIndex = clonePlaceConstantIndex(constant)
-			projection.DynamicIndex = false
-		}
+		projection := a.indexPlaceProjection(expr)
 		base.Projections = appendIndexProjection(base.Projections, projection)
 		for index := range base.AlternativeOrigins {
 			base.AlternativeOrigins[index].Projections = appendIndexProjection(base.AlternativeOrigins[index].Projections, projection)
@@ -698,6 +754,9 @@ func (a *Analyzer) rootPlace(name string) (Place, bool) {
 		Root: name, RootToken: symbol.Token, Type: symbol.Type,
 		RootID:          a.placeRootID(symbol.Token),
 		RootKind:        placeRootKindOf(name, symbol),
+		StorageIdentity: a.rootStorageIdentity(symbol),
+		StorageOrigin:   symbol.Storage,
+		AddressSpace:    rootAddressSpace(symbol),
 		Mutable:         a.canWriteThroughSymbol(symbol),
 		Addressable:     true,
 		PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginAutomatic && name != "self",
@@ -863,4 +922,34 @@ func clearRootPlaceStateMaps(moved map[string]lexer.Token, moveReasons map[strin
 			delete(moveReasons, movedKey)
 		}
 	}
+}
+
+// indexPlaceProjection builds the index projection of one index expression: an
+// exact arbitrary-precision constant index, or a dynamic index identified by
+// its evaluated index expression (never its text). Both retain the P14 index
+// type, signedness, exact fixed-array length and bounds-proof facts when Sema
+// has resolved them.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 13-14
+//   - rules/compiler/semantic_ir.md — §§ 10(8), 10(11)
+func (a *Analyzer) indexPlaceProjection(expr *ast.IndexExpression) PlaceProjection {
+	projection := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expressionToken(expr.Index)}
+	if constant, ok := a.integerConstantValue(expr.Index); ok {
+		projection.ConstantIndex = clonePlaceConstantIndex(constant)
+		projection.DynamicIndex = false
+	} else {
+		location := sourceTokenLocation(expressionToken(expr.Index))
+		projection.DynamicIndexID = a.placeIdentities.dynamicIndex(fmt.Sprintf("index:%s:%d:%d", location.File, location.Line, location.Column))
+	}
+	if indexType, typed := a.expressionTypes[expr.Index]; typed {
+		projection.IndexType = indexType
+		projection.IndexSigned = indexType.Kind == IntType
+	}
+	if plan, planned := a.resolvedArrayIndexPlans[expr]; planned {
+		projection.IndexType, projection.IndexSigned = plan.IndexType, plan.IndexSigned
+		projection.ArrayLength = clonePlaceConstantIndex(plan.ArrayLength)
+		projection.IndexProof = plan.ProofKind
+	}
+	return projection
 }

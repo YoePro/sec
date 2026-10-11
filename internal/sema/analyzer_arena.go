@@ -17,16 +17,40 @@ import (
 // recordArenaEffect records source-ordered direct Arena effects for reachable
 // final-body paths, without publishing speculative summary-pass events.
 // Rules: rules/memory/arena.md — §§76–77; rules/analysis/call_graph.md — "Effect-analysis integration".
-func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source lexer.Token, mayAllocate bool) {
+func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, domain string, source lexer.Token, mayAllocate bool) {
 	if a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
 	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{
 		Kind:        kind,
 		Arena:       arena,
+		Domain:      domain,
 		Source:      source,
 		MayAllocate: mayAllocate,
 	})
+}
+
+// referencedArenaDomain resolves the stable ArenaDomain an Arena reference
+// operates on. A reference to a visible Arena binding uses that binding's
+// domain, owner and locality; any other Arena reference (a parameter or an
+// unresolved holder) receives one symbolic compiler-owned domain kept on the
+// reference binding, never its source name.
+// Rules: rules/memory/arena.md — §§4.2(1–5), 44(3–4), 68(3)–(4).
+func (a *Analyzer) referencedArenaDomain(receiver *ast.Identifier, symbol Symbol) (string, string, bool) {
+	if name, _, _, _, _ := a.referenceOriginForExpression(receiver); name != "" && name != receiver.Value {
+		if target, ok := a.symbols[name]; ok && target.Type.Kind != ReferenceType && target.Type.Name == "Arena" {
+			if target.Type.ArenaDomainID == "" {
+				target.Type.ArenaDomainID = a.newArenaDomainID(target.Token, "owner:"+name)
+				a.symbols[name] = target
+			}
+			return target.Type.ArenaDomainID, name, target.Local
+		}
+	}
+	if symbol.Type.ArenaDomainID == "" {
+		symbol.Type.ArenaDomainID = a.newArenaDomainID(symbol.Token, "referenced:"+receiver.Value)
+		a.symbols[receiver.Value] = symbol
+	}
+	return symbol.Type.ArenaDomainID, receiver.Value, false
 }
 
 // bindArenaDomainFromExpression preserves an ArenaDomain through owner moves
@@ -276,9 +300,9 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 				})
 			}
 		}
-		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", callCalleeDefinitionToken(expr), false)
 		arena := a.types["Arena"]
 		arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
+		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", arena.ArenaDomainID, callCalleeDefinitionToken(expr), false)
 		return arena, expressionValue{Display: expr.String()}, true
 	}
 	if !a.canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
@@ -289,9 +313,9 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 	if member.Name == "Growable" {
 		effect = ArenaEffectCreateGrowable
 	}
-	a.recordArenaEffect(effect, "", callCalleeDefinitionToken(expr), true)
 	arena := a.types["Arena"]
 	arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
+	a.recordArenaEffect(effect, "", arena.ArenaDomainID, callCalleeDefinitionToken(expr), true)
 	return arenaResultType(arena, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 }
 
@@ -327,11 +351,16 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		return Type{}, expressionValue{}, false
 	}
 	domain := symbol.Type.ArenaDomainID
+	owner := receiver.Value
+	allocationLocal := symbol.Local
 	if throughReference {
-		// The referenced Arena belongs to the caller: storage allocated from it
-		// is rooted in the reference parameter, which may be returned, and Reset
-		// through the reference advances that same identity's epoch.
-		domain = receiver.Value
+		// A reference to an Arena operates on the referenced Arena's own
+		// stable domain, so a Reset through a local alias invalidates storage
+		// allocated directly from the owner, and storage allocated through the
+		// alias stays local to the owner's invocation. A reference whose Arena
+		// is not visible here (a parameter) owns a symbolic domain: storage
+		// allocated from it belongs to the caller and may be returned.
+		domain, owner, allocationLocal = a.referencedArenaDomain(receiver, symbol)
 	} else if domain == "" {
 		domain = a.newArenaDomainID(symbol.Token, "owner:"+receiver.Value)
 		symbol.Type.ArenaDomainID = domain
@@ -358,8 +387,8 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		if !a.validateArenaAllocationElement("New", expr.GenericArguments[0], elementType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
-		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local && !throughReference, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
+		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, domain, member.Property.Token, true)
+		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: owner, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: allocationLocal, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
 		return arenaResultType(refType, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 	case "Alloc":
 		if len(expr.GenericArguments) != 1 {
@@ -394,14 +423,14 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			Element:                    &sliceType,
 			ReferenceMutable:           true,
 			ReferenceOriginName:        domain,
-			ReferenceOriginDisplayName: receiver.Value,
+			ReferenceOriginDisplayName: owner,
 			ReferenceOriginToken:       receiver.Token,
-			ReferenceOriginLocal:       symbol.Local && !throughReference,
+			ReferenceOriginLocal:       allocationLocal,
 			ReferenceOriginStorage:     StorageOriginArena,
 			ReferenceOriginGeneration:  a.arenaGenerations[domain],
 		}
 		errType := a.types["AllocationError"]
-		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
+		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, domain, member.Property.Token, true)
 		return arenaResultType(refSliceType, errType), expressionValue{Display: expr.String()}, true
 	case "Reset":
 		if len(expr.GenericArguments) != 0 {
@@ -416,11 +445,14 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(receiver.Token, "Arena.Reset requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if a.checkArenaInvalidationDependencies(member.Property.Value, domain, receiver.Value, member.Property.Token) {
+		if a.checkArenaInvalidationDependencies(member.Property.Value, domain, owner, member.Property.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.arenaGenerations[domain]++
-		a.recordArenaEffect(ArenaEffectReset, receiver.Value, member.Property.Token, false)
+		if throughReference && owner == receiver.Value {
+			a.recordArenaParameterReset(receiver.Value)
+		}
+		a.recordArenaEffect(ArenaEffectReset, receiver.Value, domain, member.Property.Token, false)
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
 	case "Release":
 		if len(expr.GenericArguments) != 0 {
@@ -440,14 +472,14 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(receiver.Token, "Arena.Release requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if a.checkArenaInvalidationDependencies(member.Property.Value, domain, receiver.Value, member.Property.Token) {
+		if a.checkArenaInvalidationDependencies(member.Property.Value, domain, owner, member.Property.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.arenaGenerations[domain]++
 		a.moved[receiver.Value] = expr.Token
 		a.moveReasons[receiver.Value] = "released"
 		a.endBorrowsHeldBy(receiver.Value)
-		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, member.Property.Token, false)
+		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, domain, member.Property.Token, false)
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false

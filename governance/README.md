@@ -28,6 +28,20 @@ ledger: `implemented`, `partial`, and `planned`.
 An integration has one canonical owner.  Related work is referenced through
 rulebook paths or integration IDs; it is never copied into a second fragment.
 
+## Known holes
+
+A verified soundness hole (an invalid program the compiler currently
+accepts) is recorded as a `remaining` item of the owning integration that
+starts with `known hole (verified YYYY-MM-DD):`, names a minimal accepted
+example and the violated rule.  List them with:
+
+```text
+grep -rn "known hole" governance/
+```
+
+Remove the item, and record the fix under `implemented`, when the hole is
+closed.
+
 ## Legacy ledger
 
 The root `implementation-status.yaml` was fully migrated into these fragments

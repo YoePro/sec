@@ -132,6 +132,11 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	b.module.Functions = append(b.module.Functions, fn)
 	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1}
 	for i, parameter := range resolved.Parameters {
+		if b.maxPackage >= referenceLoweringPackage {
+			if err := fb.p15ReferenceParameter(parameter); err != nil {
+				return err
+			}
+		}
 		typeID, err := b.internType(parameter.Type)
 		if err != nil {
 			return locateUnsupportedType(err, parameter.Token)
@@ -196,6 +201,9 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 			return 0, &UnsupportedFeatureError{Feature: "array type " + t.Name, Package: b.maxPackage}
 		}
 		return b.internArrayType(t)
+	}
+	if t.Kind == sema.ReferenceType {
+		return b.internReferenceType(t)
 	}
 	if t.Kind == sema.ResultType && len(t.TypeArgs) == 2 {
 		if t.Name != "Result" && (t.Named || t.Declared) {
@@ -679,6 +687,11 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 }
 
 func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error {
+	if fb.owner.maxPackage >= referenceLoweringPackage {
+		if handled, err := fb.p15ReferenceBoundary(stmt.Target); handled {
+			return err
+		}
+	}
 	if fb.owner.maxPackage < 3 {
 		return fb.unsupported("assignment", stmt.Token)
 	}
@@ -1362,6 +1375,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	}
 	if errExpr, ok := expr.(*ast.ErrExpression); ok {
 		return fb.buildResultConstructor(errExpr.Value, expected, false, location(errExpr.Token))
+	}
+	if fb.owner.maxPackage >= referenceLoweringPackage {
+		if value, err := fb.p15Reference(expr); err != errNotReference {
+			return value, err
+		}
 	}
 	if arrayLiteral, ok := expr.(*ast.ArrayLiteral); ok && fb.owner.maxPackage >= 14 {
 		plan, resolved := fb.owner.analyzer.ResolvedArrayLiteralPlanOf(arrayLiteral)
@@ -2764,6 +2782,11 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 // enclosing Result. Widening into a different error channel needs concrete
 // error identity in Semantic IR and is rejected explicitly.
 func (fb *functionBuilder) buildTryResidualPropagation(expr *ast.TryExpression, plan sema.ResolvedTryPlan, errorValue builtValue) error {
+	if plan.ResidualTestBoundary {
+		// errorhandling.md §41: the test invocation boundary has no Semantic
+		// IR representation until test execution lowering exists.
+		return fb.unsupported("try residual propagation to a test boundary", expr.Token)
+	}
 	enclosing, err := fb.owner.internType(plan.EnclosingResultType)
 	if err != nil {
 		return err

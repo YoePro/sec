@@ -1,0 +1,278 @@
+module str
+
+/*
+ * Sec Standard Library - str - String replacement tests
+ *
+ * File:        stdlib/str/replace_test.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-11
+ *
+ * Purpose:
+ * Tests exact, case-sensitive string replacement, non-overlapping matches,
+ * empty search strings, UTF-8 rune boundaries, and replacement limits.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ */
+
+// ReplaceAll: ordinary and overlapping search occurrences.
+
+test "ReplaceAll replaces every occurrence" {
+    let result := try ReplaceAll("a-b-c", "-", "+")
+    testing.ExpectEqual("a+b+c", result)
+}
+
+test "ReplaceAll replaces adjacent occurrences" {
+    let result := try ReplaceAll("aaaa", "a", "x")
+    testing.ExpectEqual("xxxx", result)
+}
+
+test "ReplaceAll uses non-overlapping matches from the left" {
+    let result := try ReplaceAll("aaaaa", "aa", "X")
+    testing.ExpectEqual("XXa", result)
+}
+
+test "ReplaceAll preserves input when there is no match" {
+    let result := try ReplaceAll("Hello", "xyz", "!")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "ReplaceAll preserves an empty input without a match" {
+    let result := try ReplaceAll("", "a", "X")
+    testing.ExpectEqual("", result)
+}
+
+test "ReplaceAll replaces a complete string" {
+    let result := try ReplaceAll("hello", "hello", "world")
+    testing.ExpectEqual("world", result)
+}
+
+test "ReplaceAll deletes every occurrence" {
+    let result := try ReplaceAll("banana", "a", "")
+    testing.ExpectEqual("bnn", result)
+}
+
+test "ReplaceAll does not search its replacement text" {
+    let result := try ReplaceAll("aaa", "a", "aa")
+    testing.ExpectEqual("aaaaaa", result)
+}
+
+test "ReplaceAll is case-sensitive" {
+    let result := try ReplaceAll("AbA", "a", "x")
+    testing.ExpectEqual("AbA", result)
+}
+
+// ReplaceAll: an empty search matches at every rune boundary.
+
+test "ReplaceAll inserts around ASCII runes for empty search" {
+    let result := try ReplaceAll("abc", "", "-")
+    testing.ExpectEqual("-a-b-c-", result)
+}
+
+test "ReplaceAll inserts once into an empty string" {
+    let result := try ReplaceAll("", "", "X")
+    testing.ExpectEqual("X", result)
+}
+
+test "ReplaceAll empty search respects multibyte rune boundaries" {
+    let result := try ReplaceAll("å🦊", "", "-")
+    testing.ExpectEqual("-å-🦊-", result)
+}
+
+test "ReplaceAll empty search respects combining rune boundaries" {
+    let result := try ReplaceAll("é", "", "|")
+    testing.ExpectEqual("|e|́|", result)
+}
+
+test "ReplaceAll empty search with empty replacement preserves input" {
+    let result := try ReplaceAll("å🦊", "", "")
+    testing.ExpectEqual("å🦊", result)
+}
+
+test "ReplaceAll uses exact UTF-8 matching without normalization" {
+    let result := try ReplaceAll("é é", "é", "X")
+    testing.ExpectEqual("X é", result)
+}
+
+// ReplaceN: limits, boundaries, and non-overlapping occurrences.
+
+test "ReplaceN with zero count preserves input" {
+    let result := try ReplaceN("a-a-a", "a", "x", 0)
+    testing.ExpectEqual("a-a-a", result)
+}
+
+test "ReplaceN replaces only the first requested occurrence" {
+    let result := try ReplaceN("a-a-a", "a", "x", 1)
+    testing.ExpectEqual("x-a-a", result)
+}
+
+test "ReplaceN replaces exactly two occurrences" {
+    let result := try ReplaceN("a-a-a", "a", "x", 2)
+    testing.ExpectEqual("x-x-a", result)
+}
+
+test "ReplaceN count may exceed the number of occurrences" {
+    let result := try ReplaceN("a-a-a", "a", "x", 99)
+    testing.ExpectEqual("x-x-x", result)
+}
+
+test "ReplaceN uses non-overlapping matches" {
+    let result := try ReplaceN("aaaaa", "aa", "X", 2)
+    testing.ExpectEqual("XXa", result)
+}
+
+test "ReplaceN preserves the suffix after reaching count" {
+    let result := try ReplaceN("aaaa", "aa", "b", 1)
+    testing.ExpectEqual("baa", result)
+}
+
+test "ReplaceN preserves input when no match exists" {
+    let result := try ReplaceN("abc", "z", "x", 3)
+    testing.ExpectEqual("abc", result)
+}
+
+test "ReplaceN can delete a limited number of occurrences" {
+    let result := try ReplaceN("banana", "a", "", 2)
+    testing.ExpectEqual("bnna", result)
+}
+
+test "ReplaceN does not search replacement text again" {
+    let result := try ReplaceN("aaa", "a", "aa", 2)
+    testing.ExpectEqual("aaaaa", result)
+}
+
+test "ReplaceN handles Unicode substrings" {
+    let result := try ReplaceN("å🦊å🦊", "🦊", "!", 1)
+    testing.ExpectEqual("å!å🦊", result)
+}
+
+// ReplaceN: an empty search is counted in rune boundaries.
+
+test "ReplaceN empty search with zero count preserves input" {
+    let result := try ReplaceN("abc", "", "-", 0)
+    testing.ExpectEqual("abc", result)
+}
+
+test "ReplaceN empty search with count one inserts at the start" {
+    let result := try ReplaceN("abc", "", "-", 1)
+    testing.ExpectEqual("-abc", result)
+}
+
+test "ReplaceN empty search with count two inserts at two boundaries" {
+    let result := try ReplaceN("abc", "", "-", 2)
+    testing.ExpectEqual("-a-bc", result)
+}
+
+test "ReplaceN empty search with count equal to all boundaries" {
+    let result := try ReplaceN("abc", "", "-", 4)
+    testing.ExpectEqual("-a-b-c-", result)
+}
+
+test "ReplaceN empty search count above boundaries stops naturally" {
+    let result := try ReplaceN("abc", "", "-", 99)
+    testing.ExpectEqual("-a-b-c-", result)
+}
+
+test "ReplaceN empty search respects UTF-8 rune boundaries" {
+    let result := try ReplaceN("å🦊", "", "-", 2)
+    testing.ExpectEqual("-å-🦊", result)
+}
+
+test "ReplaceN empty input and empty search matches once" {
+    let result := try ReplaceN("", "", "X", 9)
+    testing.ExpectEqual("X", result)
+}
+
+test "ReplaceN empty input with zero count remains empty" {
+    let result := try ReplaceN("", "", "X", 0)
+    testing.ExpectEqual("", result)
+}
+
+// ReplaceFirst: delegates to ReplaceN with a count of one.
+
+test "ReplaceFirst replaces the first match" {
+    let result := try ReplaceFirst("abcabc", "ab", "X")
+    testing.ExpectEqual("Xcabc", result)
+}
+
+test "ReplaceFirst uses the leftmost overlapping match" {
+    let result := try ReplaceFirst("aaaa", "aa", "b")
+    testing.ExpectEqual("baa", result)
+}
+
+test "ReplaceFirst preserves input without a match" {
+    let result := try ReplaceFirst("Hello", "xyz", "X")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "ReplaceFirst empty search inserts at the beginning" {
+    let result := try ReplaceFirst("abc", "", "-")
+    testing.ExpectEqual("-abc", result)
+}
+
+test "ReplaceFirst empty search matches empty input" {
+    let result := try ReplaceFirst("", "", "X")
+    testing.ExpectEqual("X", result)
+}
+
+test "ReplaceFirst replaces a multibyte UTF-8 substring" {
+    let result := try ReplaceFirst("åå", "å", "ä")
+    testing.ExpectEqual("äå", result)
+}
+
+// ReplaceLast: the rightmost match may overlap an earlier match.
+
+test "ReplaceLast replaces the rightmost match" {
+    let result := try ReplaceLast("abcabc", "ab", "X")
+    testing.ExpectEqual("abcXc", result)
+}
+
+test "ReplaceLast selects the rightmost overlapping match" {
+    let result := try ReplaceLast("aaaa", "aa", "b")
+    testing.ExpectEqual("aab", result)
+}
+
+test "ReplaceLast preserves input without a match" {
+    let result := try ReplaceLast("Hello", "xyz", "X")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "ReplaceLast empty search inserts at the end" {
+    let result := try ReplaceLast("abc", "", "-")
+    testing.ExpectEqual("abc-", result)
+}
+
+test "ReplaceLast empty search matches empty input" {
+    let result := try ReplaceLast("", "", "X")
+    testing.ExpectEqual("X", result)
+}
+
+test "ReplaceLast replaces a multibyte UTF-8 substring" {
+    let result := try ReplaceLast("åå", "å", "ä")
+    testing.ExpectEqual("åä", result)
+}
+
+test "ReplaceLast can remove the final separator" {
+    let result := try ReplaceLast("a-b-c", "-", "")
+    testing.ExpectEqual("a-bc", result)
+}
+
+test "ReplaceLast does not search its replacement" {
+    let result := try ReplaceLast("aaa", "a", "aa")
+    testing.ExpectEqual("aaaa", result)
+}
+
+// Cross-function consistency.
+
+test "ReplaceFirst agrees with ReplaceN count one" {
+    let first := try ReplaceFirst("ab-ab-ab", "ab", "X")
+    let limited := try ReplaceN("ab-ab-ab", "ab", "X", 1)
+    testing.ExpectEqual(first, limited)
+}
+
+test "ReplaceAll agrees with ReplaceN when the count is sufficient" {
+    let all := try ReplaceAll("å-å-å", "å", "🦊")
+    let limited := try ReplaceN("å-å-å", "å", "🦊", 99)
+    testing.ExpectEqual(all, limited)
+}

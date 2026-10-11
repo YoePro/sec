@@ -109,3 +109,27 @@ func TestSecTestSelectionErrors(t *testing.T) {
 		t.Fatalf("no tests status = %d\n%s", status, out.String())
 	}
 }
+
+// The TestCompilationPlan validates the production graph on its own first:
+// a production reference satisfied only by a test-only declaration or a
+// test-only import fails compilation, while a production import keeps the
+// module valid (testing.md §§ 25.1, 25.3, 26.2).
+func TestSecTestValidatesProductionGraphWithoutTestSource(t *testing.T) {
+	testFile := "module calc\n\nimport \"unicode\"\n\nfn Helper(value: int) int {\n    return value\n}\n\ntest \"double\" {\n    testing.ExpectEqual(4, Double(2))\n}\n"
+	for name, production := range map[string]string{
+		"test-only helper": "module calc\n\nfn Double(value: int) int {\n    return Helper(value) * 2\n}\n",
+		"test-only import": "module calc\n\nfn Double(value: int) int {\n    return value * 2\n}\n\nfn Letter(value: rune) bool {\n    return unicode.IsLetter(value)\n}\n",
+	} {
+		dir := writeTestModule(t, map[string]string{"calc.sec": production, "calc_test.sec": testFile})
+		var out bytes.Buffer
+		if status := runTestCommand([]string{"--list", dir}, &out); status != testExitCompilationFailure {
+			t.Fatalf("%s: status = %d\n%s", name, status, out.String())
+		}
+	}
+	valid := "module calc\n\nimport \"unicode\"\n\nfn Double(value: int) int {\n    return value * 2\n}\n\nfn Letter(value: rune) bool {\n    return unicode.IsLetter(value)\n}\n"
+	dir := writeTestModule(t, map[string]string{"calc.sec": valid, "calc_test.sec": testFile})
+	var out bytes.Buffer
+	if status := runTestCommand([]string{"--list", dir}, &out); status != testExitSuccess {
+		t.Fatalf("valid module status = %d\n%s", status, out.String())
+	}
+}

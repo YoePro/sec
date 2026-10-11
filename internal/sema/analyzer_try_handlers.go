@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"strings"
 
 	"sec/internal/ast"
@@ -265,4 +266,30 @@ func concreteErrorVariantCount(errorType Type) int {
 	default:
 		return 0
 	}
+}
+
+// analyzeTryHandlerBodyInPosition analyzes one handler of expr knowing
+// whether the try is in value position. Only a value-position try needs a
+// recovery value from a handler that continues; a try used as a statement
+// discards its success value, so its handlers may complete normally exactly
+// as for void success, and an expression handler's value is discarded.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §21 "Recovery values" (value position), §21.2 "void success"
+//   - rules/control-flow/discard.md — § 4 implicit call-result discard
+func (a *Analyzer) analyzeTryHandlerBodyInPosition(expr *ast.TryExpression, handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
+	previous := a.tryHandlerValueRequired
+	a.tryHandlerValueRequired = !a.statementTries[expr]
+	defer func() { a.tryHandlerValueRequired = previous }()
+	return a.analyzeTryHandlerBody(handler, successType, errorType, bindingName)
+}
+
+// tryHandlerRecoveryValueHelp explains how a value-position handler can
+// satisfy its protected operation's success type.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — § 21 "Recovery values", § 21.1, § 30
+func tryHandlerRecoveryValueHelp(successType Type) string {
+	name := typeDisplayName(successType)
+	return fmt.Sprintf("The try is used as a %s value, so every path through this handler must end with return, propagate the failure, terminate (for example panic or testing.Fail), or end with a final expression of type %s as the recovery value. Use the try as a statement if the result is not needed.", name, name)
 }

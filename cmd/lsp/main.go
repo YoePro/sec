@@ -1230,6 +1230,9 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		if fileAST == nil || !analyzed {
 			return []completionItem{}
 		}
+		if items, ok := testingNamespaceCompletionItems(fileAST, parseText, context.DotOffset, context.Prefix); ok {
+			return items
+		}
 		if targetExpr == nil {
 			return []completionItem{}
 		}

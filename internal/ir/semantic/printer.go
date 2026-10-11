@@ -89,6 +89,9 @@ func formatType(t Type) string {
 	if t.Kind == TypeArray {
 		return fmt.Sprintf("array<!%d, %q>", t.Element, t.Length)
 	}
+	if t.Kind == TypePlace || t.Kind == TypeReference {
+		return formatPlaceReferenceType(t)
+	}
 	s := t.Name
 	if s == "" {
 		s = string(t.Kind)
@@ -121,7 +124,11 @@ func formatFunction(out *strings.Builder, fn *Function) {
 	if len(fn.Storages) > 0 {
 		out.WriteString("    storage {\n")
 		for _, s := range fn.Storages {
-			fmt.Fprintf(out, "      $%d %s: !%d mutable=%t class=%s %s\n", s.ID, s.Name, s.Type, s.Mutable, s.Class, formatLocation(s.Location))
+			addressTaken := ""
+			if s.AddressTaken {
+				addressTaken = " address-taken"
+			}
+			fmt.Fprintf(out, "      $%d %s: !%d mutable=%t class=%s%s %s\n", s.ID, s.Name, s.Type, s.Mutable, s.Class, addressTaken, formatLocation(s.Location))
 		}
 		out.WriteString("    }\n")
 	}
@@ -296,6 +303,10 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpBoundsFailure:
 		fmt.Fprintf(out, " operation=%q", op.ArrayOperation)
+	default:
+		if isPlaceReferenceOperation(op.Kind) {
+			formatPlaceReferenceOperation(out, op)
+		}
 	}
 	if op.TryHandlerKind != "" {
 		fmt.Fprintf(out, " [handler=%s index=%d", op.TryHandlerKind, op.TryHandlerIndex)

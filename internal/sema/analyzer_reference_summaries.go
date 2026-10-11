@@ -35,6 +35,9 @@ func (a *Analyzer) inferFunctionReferenceSummaries(program *ast.Program) analysi
 func (a *Analyzer) widenFunctionReferenceSummaries() {
 	for name, overloads := range a.functions {
 		for index := range overloads {
+			// An unresolved Arena parameter summary may Reset every Arena
+			// parameter it receives.
+			overloads[index].ArenaParameterResets = arenaReferenceParameterIndexes(overloads[index])
 			if !typeContainsReference(overloads[index].ReturnType, map[string]bool{}) {
 				continue
 			}
@@ -53,6 +56,7 @@ func copyFunctionReferenceSummaries(functions map[string][]Function) map[string]
 		out[name] = make([]Function, len(overloads))
 		for index, function := range overloads {
 			function.ReturnOrigin = cloneLocalReferenceOrigin(function.ReturnOrigin)
+			function.ArenaParameterResets = append([]int(nil), function.ArenaParameterResets...)
 			out[name][index] = function
 		}
 	}
@@ -76,6 +80,9 @@ func functionReferenceSummariesEqual(left, right map[string][]Function) bool {
 				return false
 			}
 			if leftFunction.HasReturnOrigin && !sameReferenceOrigin(leftFunction.ReturnOrigin, rightFunction.ReturnOrigin) {
+				return false
+			}
+			if !equalIntSlices(leftFunction.ArenaParameterResets, rightFunction.ArenaParameterResets) {
 				return false
 			}
 		}

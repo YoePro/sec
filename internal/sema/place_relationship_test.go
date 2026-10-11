@@ -46,9 +46,18 @@ func TestPlaceRelationshipClassifiesCanonicalPaths(t *testing.T) {
 		{"statically disjoint slices", relationshipPlace("values", PlaceProjection{Kind: PlaceSlice, SliceStartKnown: true, SliceEndKnown: true, SliceEnd: 2}), relationshipPlace("values", PlaceProjection{Kind: PlaceSlice, SliceStartKnown: true, SliceStart: 2, SliceEndKnown: true, SliceEnd: 4}), PlaceDisjoint},
 		{"unresolved root", relationshipPlace(""), relationshipPlace("values"), PlaceUnknown},
 	}
+	mirror := map[PlaceRelationship]PlaceRelationship{PlaceContains: PlaceContainedBy, PlaceContainedBy: PlaceContains}
 	for _, test := range cases {
 		if got := Relationship(test.left, test.right); got != test.want {
 			t.Errorf("%s: Relationship(%s, %s) = %s, want %s", test.name, test.left, test.right, got, test.want)
+		}
+		// The relationship is symmetric up to containment direction (P15-19).
+		want := test.want
+		if mirrored, ok := mirror[want]; ok {
+			want = mirrored
+		}
+		if got := Relationship(test.right, test.left); got != want {
+			t.Errorf("%s (mirrored): Relationship(%s, %s) = %s, want %s", test.name, test.right, test.left, got, want)
 		}
 	}
 }

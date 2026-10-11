@@ -227,17 +227,43 @@ type Analyzer struct {
 	hasCurrentFunctionSummary bool
 	currentTest               *ast.TestDeclaration
 	summaryPass               bool
-	inFunctionBody            bool
-	inLambda                  bool
-	lambdaOuterSymbols        map[string]Symbol
-	inUnsafe                  bool
-	switchCaseBody            *ast.BlockStatement
-	inDeferBlock              bool
-	deferOuterSymbols         map[string]Symbol
-	deferCaptures             map[string]borrowRecord
-	suppressPlaceRootRead     int
-	loopBackedgePlaces        map[string]bool
-	cancellableDepth          int
+	// resolvedPlaces, resolvedReferencePlans, resolvedReferenceUses and
+	// referenceLifetimeEnds are the P15 read-only Place/reference facts, and
+	// referencePolicy the CompilationPlan reference policy (reference_plans.go).
+	resolvedPlaces         map[ast.Expression]Place
+	resolvedReferencePlans map[ast.Expression]ResolvedReferencePlan
+	resolvedReferenceUses  map[ast.Expression]ResolvedReferenceUse
+	referenceLifetimeEnds  []ReferenceLifetimeEnd
+	referencePolicy        layout.ResolvedReferencePolicy
+	// statementTries marks try expressions used as statements, whose locally
+	// handled failures need no recovery value (errorhandling.md §21), and
+	// tryHandlerValueRequired is set while analyzing the handlers of a try in
+	// value position.
+	statementTries          map[*ast.TryExpression]bool
+	tryHandlerValueRequired bool
+	// currentStatementToken locates the statement being analyzed, the source
+	// of resolved borrow ends.
+	currentStatementToken lexer.Token
+	// placeIdentities allocates the canonical P15 storage, invalidation,
+	// epoch, address-space, borrow and lifetime identities (place_identities.go).
+	placeIdentities placeIdentityAllocator
+	// productionTestDependencies deduplicates S1145 per production use
+	// (test_dependency_direction.go).
+	productionTestDependencies map[sourceTokenKey]bool
+	// currentArenaParameterResets collects the Arena parameters the current
+	// function body may Reset (arena_parameter_effects.go).
+	currentArenaParameterResets map[int]bool
+	inFunctionBody              bool
+	inLambda                    bool
+	lambdaOuterSymbols          map[string]Symbol
+	inUnsafe                    bool
+	switchCaseBody              *ast.BlockStatement
+	inDeferBlock                bool
+	deferOuterSymbols           map[string]Symbol
+	deferCaptures               map[string]borrowRecord
+	suppressPlaceRootRead       int
+	loopBackedgePlaces          map[string]bool
+	cancellableDepth            int
 	// terminalReturnDepth carries the intrinsically transferring return
 	// context through structural construction. constructionOwnershipDepth is
 	// narrower: it admits explicit <- only while an owning field or payload is
@@ -309,6 +335,9 @@ type loopEdgeState struct {
 	borrows            map[string][]borrowRecord
 	localRefContainers map[string]localReferenceOrigin
 	arenaGenerations   map[string]int
+	// referenceOrigins carries outer reference holders' origins across the
+	// edge (reference_origin_join.go).
+	referenceOrigins map[string]Type
 }
 
 // loopBreakFrame collects the edge states of the nearest active loop.
@@ -347,6 +376,7 @@ func (a *Analyzer) captureLoopEdgeState() loopEdgeState {
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		referenceOrigins:   captureReferenceOrigins(a.symbols),
 	}
 }
 
@@ -356,6 +386,7 @@ func (e loopEdgeState) clearBinding(name string, clearMoves bool) {
 		clearRootPlaceStateMaps(e.moved, e.moveReasons, name)
 	}
 	delete(e.closedResources, name)
+	delete(e.referenceOrigins, name)
 	clearLoopBindingReferenceState(e.borrows, e.localRefContainers, name)
 }
 
@@ -492,6 +523,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedClosureCreations = map[*ast.LambdaExpression]ClosureCreationSummary{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
+	a.resolvedPlaces = map[ast.Expression]Place{}
+	a.resolvedReferencePlans = map[ast.Expression]ResolvedReferencePlan{}
+	a.resolvedReferenceUses = map[ast.Expression]ResolvedReferenceUse{}
+	a.referenceLifetimeEnds = nil
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
 	a.activeConditionFacts = nil
 	a.arrayIndexMutationEpoch = 0
@@ -944,6 +979,7 @@ func (a *Analyzer) bindDefinitions(use lexer.Token, declarations []lexer.Token) 
 		if !validDefinitionToken(declaration) {
 			continue
 		}
+		a.checkProductionDependsOnTest(use, declaration)
 		key := sourceTokenLocation(declaration)
 		if seen[key] {
 			continue
@@ -2391,6 +2427,9 @@ func (a *Analyzer) withImplTarget(target string, fn func()) {
 }
 
 func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
+	previousStatementToken := a.currentStatementToken
+	a.currentStatementToken = statementToken(stmt)
+	defer func() { a.currentStatementToken = previousStatementToken }()
 	// rules/compiler/compiler_analysis.md §18(2): observe live body borrows
 	// before block cleanup removes lexical holders.
 	if len(a.activeIterationDependencies) != 0 {
@@ -2586,6 +2625,12 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 }
 
 func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) {
+	if tryExpr, ok := stmt.Expression.(*ast.TryExpression); ok {
+		if a.statementTries == nil {
+			a.statementTries = map[*ast.TryExpression]bool{}
+		}
+		a.statementTries[tryExpr] = true
+	}
 	exprType, _ := a.inferExpression(stmt.Expression)
 	if _, ok := stmt.Expression.(*ast.SpawnExpression); ok && exprType.Kind != InvalidType {
 		a.addErrorAtToken(stmt.Token, "spawned task result must be owned, awaited, joined or detached")
@@ -3084,8 +3129,11 @@ type branchAnalysis struct {
 	borrows            map[string][]borrowRecord
 	localRefContainers map[string]localReferenceOrigin
 	arenaGenerations   map[string]int
-	continues          bool
-	fallsThrough       bool
+	// referenceOrigins snapshots outer reference holders' origins at the end
+	// of the branch; nil means the pre-branch origins (reference_origin_join.go).
+	referenceOrigins map[string]Type
+	continues        bool
+	fallsThrough     bool
 }
 
 // activeConditionFact adds mutation-generation validity to the public
@@ -3127,7 +3175,7 @@ func (a *Analyzer) captureLoopIterationAnalysisState() loopIterationAnalysisStat
 
 func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true}
 	}
 
 	previousSymbols := a.symbols
@@ -3169,6 +3217,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		referenceOrigins:   captureReferenceOrigins(a.symbols),
 		continues:          a.blockCanFallThrough(block),
 	}
 }
@@ -3401,6 +3450,7 @@ func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+	a.mergeContinuingReferenceOrigins(branches...)
 }
 
 func (a *Analyzer) checkMutexGuardsAcrossSelect(token lexer.Token) {
@@ -3621,6 +3671,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		referenceOrigins:   captureReferenceOrigins(a.symbols),
 		continues:          a.blockCanFallThrough(branch.Body),
 	}
 }
@@ -4123,7 +4174,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
 	}
-	if a.summaryPass && !typeContainsReference(function.ReturnType, map[string]bool{}) {
+	if a.summaryPass && !typeContainsReference(function.ReturnType, map[string]bool{}) && !hasArenaReferenceParameter(function) {
 		return
 	}
 	if function.Extern {
@@ -4177,6 +4228,9 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.currentFunctionMetadata = function
 	a.currentFunctionSummary = localReferenceOrigin{}
 	a.hasCurrentFunctionSummary = false
+	previousArenaParameterResets := a.currentArenaParameterResets
+	a.currentArenaParameterResets = map[int]bool{}
+	defer func() { a.currentArenaParameterResets = previousArenaParameterResets }()
 	a.inFunctionBody = true
 	if fn.Unsafe {
 		a.inUnsafe = true
@@ -5189,6 +5243,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	// rule recursively without teaching each constructor about ReturnStatement.
 	a.terminalReturnDepth++
 	defer func() { a.terminalReturnDepth-- }()
+	defer a.recordReferenceReturnUse(stmt.Value, returnType)
 
 	if a.currentFunctionMetadata.Initializer {
 		if stmt.Value == nil {
@@ -5552,6 +5607,7 @@ func (a *Analyzer) setFunctionReferenceSummary(function Function) {
 		}
 		overloads[index].HasReturnOrigin = a.hasCurrentFunctionSummary
 		overloads[index].ReturnOrigin = cloneLocalReferenceOrigin(a.currentFunctionSummary)
+		overloads[index].ArenaParameterResets = sortedArenaParameterResets(a.currentArenaParameterResets)
 		a.functions[function.Name] = overloads
 		return
 	}
@@ -6556,6 +6612,7 @@ func clonePlaces(places []Place) []Place {
 }
 
 func (a *Analyzer) endBorrowsHeldBy(holder string) {
+	a.recordReferenceLifetimeEnd(holder, a.currentStatementToken)
 	for root, records := range a.borrows {
 		out := records[:0]
 		for _, record := range records {
@@ -6881,7 +6938,16 @@ func sameReferenceOrigin(left, right localReferenceOrigin) bool {
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
 func samePlaceIdentity(left, right Place) bool {
-	if left.Root != right.Root || len(left.Projections) != len(right.Projections) {
+	// Root identity follows the declaration, not the spelling (P15-10):
+	// equally named roots of different declarations are different Places.
+	if left.RootID != 0 && right.RootID != 0 {
+		if left.RootID != right.RootID {
+			return false
+		}
+	} else if left.Root != right.Root {
+		return false
+	}
+	if len(left.Projections) != len(right.Projections) {
 		return false
 	}
 	for index := range left.Projections {
@@ -6913,6 +6979,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	headerBorrows map[string][]borrowRecord,
 	headerLocalRefContainers map[string]localReferenceOrigin,
 	headerArenaGenerations map[string]int,
+	headerReferenceOrigins map[string]Type,
 ) {
 	previousDependencyProbe := a.iterationDependencyProbe
 	a.iterationDependencyProbe = true
@@ -6923,7 +6990,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 			backedgePlaces[place] = true
 		}
 	}
-	if len(backedgePlaces) == 0 && tokenStateKeysEqual(entry.closedResources, headerClosedResources) && borrowStatesEqual(entry.borrows, headerBorrows) && referenceOriginStatesEqual(entry.localRefContainers, headerLocalRefContainers) && arenaGenerationStatesEqual(entry.arenaGenerations, headerArenaGenerations) {
+	if len(backedgePlaces) == 0 && tokenStateKeysEqual(entry.closedResources, headerClosedResources) && borrowStatesEqual(entry.borrows, headerBorrows) && referenceOriginStatesEqual(entry.localRefContainers, headerLocalRefContainers) && arenaGenerationStatesEqual(entry.arenaGenerations, headerArenaGenerations) && len(headerReferenceOrigins) == 0 {
 		return
 	}
 
@@ -6945,6 +7012,12 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	previousWarningCount := len(a.warnings)
 
 	a.symbols = copySymbols(entry.symbols)
+	for name, origin := range headerReferenceOrigins {
+		if symbol, ok := a.symbols[name]; ok {
+			symbol.Type = referenceTypeWithOrigin(symbol.Type, origin)
+			a.symbols[name] = symbol
+		}
+	}
 	a.completionSymbols = copySymbols(entry.completionSymbols)
 	a.definitionTokens = copyDefinitionTokens(entry.definitionTokens)
 	a.constInts = copyConstInts(entry.constInts)
@@ -9216,6 +9289,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	// invalidate active comparison facts after any assignment; this is safe
 	// until the general refinement engine tracks per-binding SSA versions.
 	defer func() { a.arrayIndexMutationEpoch++ }()
+	a.recordReferenceWriteUse(stmt.Target)
 	a.recordDeferPlaceExpression(stmt.Target)
 	if a.assignmentReplacesIteratedCollection(stmt) {
 		return
@@ -9303,6 +9377,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 	if a.checkAssignmentEscapesMatchPayload(stmt.Target, stmt.Value) {
+		return
+	}
+	if a.checkStorageDomainStore(stmt.Target, symbol.Type, stmt.Value, exprType) {
 		return
 	}
 
@@ -9490,6 +9567,9 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 			return
 		}
 		a.recordResolvedCompoundAssignment(stmt, targetType, exprType)
+	}
+	if a.checkStorageDomainStore(stmt.Target, targetType, stmt.Value, exprType) {
+		return
 	}
 	if a.checkAssignmentEscapesLocalReference(stmt.Target, stmt.Value) {
 		return
@@ -10092,6 +10172,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 
 	valueType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
 	if valueType.Kind == InvalidType {
+		return
+	}
+	if a.checkStorageDomainStore(stmt.Target, targetType, stmt.Value, valueType) {
 		return
 	}
 	if a.checkAssignmentEscapesLocalReference(stmt.Target, stmt.Value) {
@@ -13267,8 +13350,8 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 			resolvedBindingName = ""
 			payloadDiscard = true
 		}
-		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, resolvedBindingName)
-		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType
+		flow := a.analyzeTryHandlerBodyInPosition(expr, handler, successType, bindingType, resolvedBindingName)
+		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType && !a.statementTries[expr]
 		narrowed := errorType.Kind == ErrorRootType && variantName != ""
 		classification := CopyClassificationOf(bindingType)
 		bindingCopies := resolvedBindingName != "" && (classification == CopyTrivial || classification == CopySemantic)
@@ -13288,6 +13371,7 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		// left unhandled propagates on its own and must fit the channel.
 		if a.failureSetResidualPropagates(expr, matchedVariants) {
 			plan.ResidualPropagates = true
+			plan.ResidualTestBoundary = a.tryPropagatesToTestBoundary()
 			plan.EnclosingResultType = a.currentFunctionReturn
 		}
 		return plan, len(a.errors) == errorsBefore
@@ -13297,6 +13381,7 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 	// unmatched failures continue through normal try propagation.
 	if a.checkTryResidualPropagation(expr, errorType, unhandledTryVariants(errorType, matchedVariants)) {
 		plan.ResidualPropagates = true
+		plan.ResidualTestBoundary = a.tryPropagatesToTestBoundary()
 		plan.EnclosingResultType = a.currentFunctionReturn
 	}
 	return plan, len(a.errors) == errorsBefore
@@ -13336,6 +13421,11 @@ func (a *Analyzer) checkTryResidualPropagation(expr *ast.TryExpression, errorTyp
 	case !a.inFunctionBody:
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled, and they cannot propagate outside a function; add Err(_) => ... to handle the remaining errors", unhandled)
 		return false
+	case a.tryPropagatesToTestBoundary():
+		// rules/errors/errorhandling.md §41: unmatched failures of a partial
+		// handler set propagate like ordinary try to the test invocation
+		// boundary, which records Failed and reports the unexpected error.
+		return true
 	case a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2:
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... to handle the remaining errors locally or return Result[%s, %s]",
 			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType))
@@ -13556,7 +13646,8 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		return TryHandlerReturns
 	}
 
-	if handler.BlockBody != nil && successType.Kind != VoidType {
+	valueRequired := successType.Kind != VoidType && a.tryHandlerValueRequired
+	if handler.BlockBody != nil && valueRequired {
 		if value, ok := tryHandlerBlockValue(handler.BlockBody); ok {
 			return a.analyzeTryHandlerBlockValue(handler, value, successType)
 		}
@@ -13564,7 +13655,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 
 	if handler.BlockBody != nil {
 		a.analyzeBlockStatements(handler.BlockBody)
-		if successType.Kind == VoidType {
+		if !valueRequired {
 			if blockCanFallThrough(handler.BlockBody) {
 				return TryHandlerProducesValue
 			}
@@ -13574,7 +13665,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			return TryHandlerTerminates
 		}
 		if blockCanFallThrough(handler.BlockBody) {
-			a.addErrorAtToken(handler.Token, "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+			a.addErrorAtTokenWithMetadata(handler.Token, diagnostics.TryHandlerMissingRecoveryValue, tryHandlerRecoveryValueHelp(successType), "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
 			return TryHandlerInvalidFlow
 		}
 		if blockDefinitelyReturns(handler.BlockBody) {
@@ -13584,7 +13675,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	}
 
 	if handler.Body == nil {
-		a.addErrorAtToken(handler.Token, "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+		a.addErrorAtTokenWithMetadata(handler.Token, diagnostics.TryHandlerMissingRecoveryValue, tryHandlerRecoveryValueHelp(successType), "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
 		return TryHandlerInvalidFlow
 	}
 
@@ -13592,7 +13683,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	if bodyType.Kind == InvalidType {
 		return TryHandlerInvalidFlow
 	}
-	if !a.canInitialize(successType, bodyType, handler.Body) {
+	if valueRequired && !a.canInitialize(successType, bodyType, handler.Body) {
 		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
 	}
 	return TryHandlerProducesValue
@@ -13874,6 +13965,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+	a.mergeContinuingReferenceOrigins(branches...)
 
 	if valueContext {
 		if !hasResultType {
@@ -14342,7 +14434,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false})
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: false})
 	}
 	if arm.BlockBody != nil {
 		a.analyzeBlockStatements(arm.BlockBody)
@@ -14354,11 +14446,12 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 			borrows:            copyBorrows(a.borrows),
 			localRefContainers: copyLocalRefContainers(a.localRefContainers),
 			arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+			referenceOrigins:   captureReferenceOrigins(a.symbols),
 			continues:          a.blockCanFallThrough(arm.BlockBody),
 		})
 	}
 	if arm.Body == nil {
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 	}
 	a.constructionOwnershipDepth++
 	bodyType, _ := a.inferExpression(arm.Body)
@@ -14372,7 +14465,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	if ownershipValid {
 		a.markMoveSource(arm.Body)
 	}
-	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
+	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 }
 
 func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {
@@ -14633,6 +14726,7 @@ func (a *Analyzer) currentBranchAnalysisState() branchAnalysis {
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		referenceOrigins:   captureReferenceOrigins(a.symbols),
 		continues:          true,
 	}
 }

@@ -91,9 +91,11 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	if dependencyBoundary {
 		a.recordIterationBorrowState("backedge", headerBorrows)
 	}
-	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
+	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations, loopHeaderReferenceOrigins(iterationEntry.symbols, a.symbols, bodyFallsThrough, frameState))
 	breakFrame := a.popLoopBreakFrame(frame)
+	loopSymbols := a.symbols
 	a.symbols = previousSymbols
+	a.mergeLoopExitReferenceOrigins(loopSymbols, breakFrame)
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
 	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)

@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-09-02
+- Last updated: 2026-10-11 (SEC-MLIR-P15 reference synchronization, § 76(2))
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/reference_model.md`
@@ -1515,7 +1515,7 @@ EndReferenceDependency
 
 § 76(1) Dynamic stale ordinary-reference detection uses the panic semantics defined by `panic.md`.
 
-§ 76(2) The stable panic reason should distinguish invalid/stale reference generation or equivalent canonical cause.
+§ 76(2) The stable panic reason is the registered invalid-reference-generation reason (`panic.invalid-reference-generation`, registry name `InvalidReferenceGeneration`); an ordinary stale direct reference never produces a `Result` and is not recovered by `try`.
 
 § 76(3) The minimum stale-reference failure path must respect panic profile/runtime-free requirements.
 

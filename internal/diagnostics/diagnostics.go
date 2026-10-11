@@ -242,32 +242,52 @@ const (
 	// receiver the compiler proves null; unsafe does not make it valid.
 	// Rules: rules/memory/raw_pointers.md — § 7(6)-(8), § 34;
 	// rules/memory/unsafe.md — § 8(6), § 21(2), § 50(2).
-	RawPointerNullDereference    = "S1142"
-	UnreachableStatement         = "S3001"
-	UseAfterDiscard              = "S4001"
-	LargeValueParameter          = "A2001"
-	RedundantStateTestComparison = "A2002"
-	NegatedStateTest             = "A2003"
-	PitfallAdvisory              = "A2004"
+	RawPointerNullDereference = "S1142"
+	// StaticStoreOfShortLivedReference rejects storing a borrowed dependency
+	// whose referent is not static into Static storage.
+	// Rules: rules/analysis/escape_analysis.md — "Static and thread-local
+	// destinations", "Diagnostic categories"; rules/memory/lifetime_analysis.md — § 19.
+	StaticStoreOfShortLivedReference = "S1143"
+	// ThreadLocalStoreOfShortLivedReference is the ThreadLocal-storage form.
+	ThreadLocalStoreOfShortLivedReference = "S1144"
+	// ProductionDependsOnTest rejects a production declaration that resolves
+	// a name declared only in *_test.sec source.
+	// Rules: rules/tooling/testing.md — § 25 "Test-only dependency direction", § 26.2, § 40.1.
+	ProductionDependsOnTest = "S1145"
+	// TryHandlerMissingRecoveryValue rejects a try handler in value position
+	// that can complete without returning, propagating, terminating or
+	// producing a value of the protected operation's success type.
+	// Rules: rules/errors/errorhandling.md — § 21 "Recovery values", § 21.1, § 30.
+	TryHandlerMissingRecoveryValue = "S1146"
+	UnreachableStatement           = "S3001"
+	UseAfterDiscard                = "S4001"
+	LargeValueParameter            = "A2001"
+	RedundantStateTestComparison   = "A2002"
+	NegatedStateTest               = "A2003"
+	PitfallAdvisory                = "A2004"
 )
 
 var registry = map[string]Definition{
-	DefaultCycle:                 {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
-	BackendDefaultLeftUndefined:  {ID: BackendDefaultLeftUndefined, Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
-	CharLiteralOutOfRange:        {ID: CharLiteralOutOfRange, Name: "literal.char-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
-	CheckedConversionRequiresTry: {ID: CheckedConversionRequiresTry, Name: "types.checked-conversion-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
-	TypeNameUsedAsValue:          {ID: TypeNameUsedAsValue, Name: "types.type-name-used-as-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
-	UnsafeFunctionValueMismatch:  {ID: UnsafeFunctionValueMismatch, Name: "unsafe.function-value-mismatch", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
-	RawPointerNullDereference:    {ID: RawPointerNullDereference, Name: "unsafe.raw-pointer-null", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
-	UnitPolymorphismReserved:     {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
-	PitfallAdvisory:              {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
-	IndexOutOfBounds:             {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeLocalStorage:           {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeOuterPlace:             {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeMatchPayload:           {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeClosureCapture:         {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeProvenanceUnknown:      {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
-	EscapeVariadicPack:           {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	DefaultCycle:                          {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	BackendDefaultLeftUndefined:           {ID: BackendDefaultLeftUndefined, Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
+	CharLiteralOutOfRange:                 {ID: CharLiteralOutOfRange, Name: "literal.char-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
+	CheckedConversionRequiresTry:          {ID: CheckedConversionRequiresTry, Name: "types.checked-conversion-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	TypeNameUsedAsValue:                   {ID: TypeNameUsedAsValue, Name: "types.type-name-used-as-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	UnsafeFunctionValueMismatch:           {ID: UnsafeFunctionValueMismatch, Name: "unsafe.function-value-mismatch", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	RawPointerNullDereference:             {ID: RawPointerNullDereference, Name: "unsafe.raw-pointer-null", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	StaticStoreOfShortLivedReference:      {ID: StaticStoreOfShortLivedReference, Name: "escape.static-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	ThreadLocalStoreOfShortLivedReference: {ID: ThreadLocalStoreOfShortLivedReference, Name: "escape.thread-local-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	ProductionDependsOnTest:               {ID: ProductionDependsOnTest, Name: "testing.production-dependency-on-test", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true},
+	TryHandlerMissingRecoveryValue:        {ID: TryHandlerMissingRecoveryValue, Name: "errors.try-handler-missing-recovery-value", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	UnitPolymorphismReserved:              {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
+	PitfallAdvisory:                       {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
+	IndexOutOfBounds:                      {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeLocalStorage:                    {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeOuterPlace:                      {ID: EscapeOuterPlace, Name: "escape.outer-place", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeMatchPayload:                    {ID: EscapeMatchPayload, Name: "escape.match-payload", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeClosureCapture:                  {ID: EscapeClosureCapture, Name: "escape.closure-capture", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeProvenanceUnknown:               {ID: EscapeProvenanceUnknown, Name: "escape.provenance-unknown", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
+	EscapeVariadicPack:                    {ID: EscapeVariadicPack, Name: "escape.variadic-pack", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 
 	ArenaResetLiveDependency:                      {ID: ArenaResetLiveDependency, Name: "arena.reset-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
 	ArenaReleaseLiveDependency:                    {ID: ArenaReleaseLiveDependency, Name: "arena.release-live-dependency", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},

@@ -1311,6 +1311,9 @@ fn Divide(left: int, right: int, condition: bool) int {
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "try handler must return, propagate, terminate or produce int") {
 		t.Fatalf("errors = %#v", errors)
 	}
+	if errors[0].ID != diagnostics.TryHandlerMissingRecoveryValue || !strings.Contains(errors[0].Help, "final expression of type int") {
+		t.Fatalf("handler flow diagnostic lacks S1146 identity or help: %#v", errors[0])
+	}
 }
 
 // Interpolation formatting is resolved once in Sema so later concat planning

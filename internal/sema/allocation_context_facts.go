@@ -79,7 +79,20 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 				fact.ContextKnown = true
 				fact.Context = context
 			}
-			if value, known := results[key]; known && !ambiguousResults[key] {
+			// The effect site carries the stable domain it selected or
+			// created; Result-type correlation remains the fallback.
+			// Conflicting or ambiguous result evidence still selects nothing.
+			value, correlated := results[key]
+			conflict := ambiguousResults[key] ||
+				correlated && site.Kind == ArenaEffectAllocate && site.Domain != "" && value.selected != site.Domain
+			switch {
+			case conflict:
+			case site.Domain != "" && site.Kind == ArenaEffectAllocate:
+				fact.SelectedDomain = site.Domain
+			case site.Domain != "" && (site.Kind == ArenaEffectCreateOwned || site.Kind == ArenaEffectCreateGrowable):
+				fact.CreatedDomain = site.Domain
+			}
+			if correlated && !conflict && site.Domain == "" {
 				if site.Kind == ArenaEffectAllocate {
 					fact.SelectedDomain = value.selected
 				}

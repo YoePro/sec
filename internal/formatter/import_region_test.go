@@ -17,7 +17,7 @@ func formatImportCase(t *testing.T, input string, want string) {
 //   - rules/tooling/formatter.md — § 13(2), (3), (5), (6), (7), (8), (10); § 14(1)–(5)
 func TestFormatGathersSortsAndGroupsImports(t *testing.T) {
 	input := "module main\n\nimport \"net/http\"\nimport sys \"platform/linux\"\n// formatting\nimport \"fmt\"\n\nfn A() void {\n}\n\nimport z \"io\"\n\nfn B() void {\n}\n"
-	want := "module main\n\nimport (\n    // formatting\n    \"fmt\"\n    z \"io\"\n    \"net/http\"\n\n    sys \"platform/linux\"\n)\n\nfn A() void {\n}\n\nfn B() void {\n}\n"
+	want := "module main\n\nimport (\n    // formatting\n    \"fmt\"\n    z \"io\"\n    \"net/http\"\n    sys \"platform/linux\"\n)\n\nfn A() void {\n}\n\nfn B() void {\n}\n"
 	formatImportCase(t, input, want)
 }
 

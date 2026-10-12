@@ -37,6 +37,7 @@ type formatterReplacement struct {
 //   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
 //   - rules/tooling/formatter.md — §15(4) enum assignment alignment
 //   - rules/tooling/formatter.md — §7(6) and §9(2) named-type group alignment
+//   - rules/tooling/formatter.md — §16(18–19),§22(1) declaration header modifiers
 func formatCSTRoles(text string, maxPadding int) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
 	document := cst.Build(text, "")
@@ -78,7 +79,7 @@ func formatCSTRoles(text string, maxPadding int) string {
 				text:  replacementText,
 			})
 			continue
-		case element.HasRole(cst.UnitExpressionCompactToken):
+		case element.HasRole(cst.UnitExpressionCompactToken), element.HasRole(cst.HeaderCompoundHyphen):
 			before := start
 			for before > 0 && isHorizontalFormatterByte(text[before-1]) {
 				before--

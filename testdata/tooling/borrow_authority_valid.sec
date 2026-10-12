@@ -1,0 +1,13 @@
+module main
+fn AfterBorrowEnds() void {
+    let mut value := 1
+    let holder := ref value
+    discard holder
+    if value is available { value = 2 }
+}
+fn SharedRead() void {
+    let mut value := 1
+    let holder := ref value
+    if value is available { let copy := value }
+    discard holder
+}

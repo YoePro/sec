@@ -1,0 +1,22 @@
+module main
+type HeapFailure enum error { Failed }
+type UnescapeError union error {
+    Truncated(uint), InvalidEscape(uint), InvalidHexDigit(uint),
+    InvalidUnicodeScalar(uint), InvalidQuotes, Allocation(HeapFailure)
+}
+fn UnescapeLiteral(contents: string) Result[string, UnescapeError] { return Ok(contents) }
+fn Unquote(contents: string) Result[string, UnescapeError] {
+    let result := try UnescapeLiteral(contents) {
+        Err(error) => {
+            match error {
+                UnescapeError.Truncated(position) => { return Err(UnescapeError.Truncated(position + 1)) }
+                UnescapeError.InvalidEscape(position) => { return Err(UnescapeError.InvalidEscape(position + 1)) }
+                UnescapeError.InvalidHexDigit(position) => { return Err(UnescapeError.InvalidHexDigit(position + 1)) }
+                UnescapeError.InvalidUnicodeScalar(position) => { return Err(UnescapeError.InvalidUnicodeScalar(position + 1)) }
+                UnescapeError.InvalidQuotes => { return Err(UnescapeError.InvalidQuotes) }
+                UnescapeError.Allocation(cause) => { return Err(UnescapeError.Allocation(cause)) }
+            }
+        }
+    }
+    return Ok(result)
+}

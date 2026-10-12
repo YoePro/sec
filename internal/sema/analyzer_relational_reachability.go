@@ -134,10 +134,7 @@ func (a *Analyzer) recordPathConditionFact(condition ast.Expression, holds bool)
 			return
 		}
 	}
-	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{
-		fact:  ResolvedConditionFact{Kind: ConditionFactBranchTrue, Condition: condition},
-		epoch: a.arrayIndexMutationEpoch,
-	})
+	a.activeConditionFacts = append(a.activeConditionFacts, a.activeProofFact(ResolvedConditionFact{Kind: ConditionFactBranchTrue, Condition: condition}))
 }
 
 // diagnoseRelationallyUnreachableBlock reports the first statement of a
@@ -163,6 +160,7 @@ func (a *Analyzer) diagnoseRelationallyUnreachableBlock(block *ast.BlockStatemen
 // fact at the start of every iteration.
 func (a *Analyzer) enterLoopBodyFacts() {
 	a.arrayIndexMutationEpoch++
+	a.conditionProofBarrier++
 }
 
 // stableBindingsOf names the parameters and locals of a function whose value

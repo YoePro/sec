@@ -365,6 +365,9 @@ type Parameter struct {
 	Name     string
 	Value    Value
 	Location Location
+	// Reference is the callee-side reference facts of a ref or ref mut
+	// parameter (sec-mlir-dialect package 15 § 59); nil for other parameters.
+	Reference *ReferenceMetadata
 }
 type Value struct {
 	ID        ValueID
@@ -398,26 +401,29 @@ type Storage struct {
 type OpKind string
 
 const (
-	OpConstInt                        OpKind = "const.int"
-	OpConstBool                       OpKind = "const.bool"
-	OpConstString                     OpKind = "const.string"
-	OpConstDecimal                    OpKind = "const.decimal"
-	OpConstFloat                      OpKind = "const.float"
-	OpReturn                          OpKind = "return"
-	OpStorageDeclare                  OpKind = "storage.declare"
-	OpStorageInit                     OpKind = "storage.init"
-	OpStorageLoad                     OpKind = "storage.load"
-	OpStorageStore                    OpKind = "storage.store"
-	OpDirectCall                      OpKind = "call.direct"
-	OpForeignCall                     OpKind = "call.foreign"
-	OpBranch                          OpKind = "branch"
-	OpCondBranch                      OpKind = "conditional-branch"
-	OpUnreachable                     OpKind = "unreachable"
-	OpIntUnaryPlus                    OpKind = "int.unary-plus"
-	OpIntNegChecked                   OpKind = "int.neg-checked"
-	OpIntBitNot                       OpKind = "int.bit-not"
-	OpIntBinaryChecked                OpKind = "int.binary-checked"
-	OpIntBitwise                      OpKind = "int.bitwise"
+	OpConstInt         OpKind = "const.int"
+	OpConstBool        OpKind = "const.bool"
+	OpConstString      OpKind = "const.string"
+	OpConstDecimal     OpKind = "const.decimal"
+	OpConstFloat       OpKind = "const.float"
+	OpReturn           OpKind = "return"
+	OpStorageDeclare   OpKind = "storage.declare"
+	OpStorageInit      OpKind = "storage.init"
+	OpStorageLoad      OpKind = "storage.load"
+	OpStorageStore     OpKind = "storage.store"
+	OpDirectCall       OpKind = "call.direct"
+	OpForeignCall      OpKind = "call.foreign"
+	OpBranch           OpKind = "branch"
+	OpCondBranch       OpKind = "conditional-branch"
+	OpUnreachable      OpKind = "unreachable"
+	OpIntUnaryPlus     OpKind = "int.unary-plus"
+	OpIntNegChecked    OpKind = "int.neg-checked"
+	OpIntBitNot        OpKind = "int.bit-not"
+	OpIntBinaryChecked OpKind = "int.binary-checked"
+	OpIntBitwise       OpKind = "int.bitwise"
+	// OpIntBitExtract is `bit[N](value)`: the unsigned value of the N
+	// (Operation.Integer) low bits of an integer, byte or char operand.
+	OpIntBitExtract                   OpKind = "int.bit-extract"
 	OpIntShiftChecked                 OpKind = "int.shift-checked"
 	OpIntCompare                      OpKind = "int.compare"
 	OpArithmeticFailure               OpKind = "fail.arithmetic"
@@ -515,7 +521,14 @@ const (
 
 type ArgumentAction string
 
-const ArgumentCopyTrivial ArgumentAction = "copy-trivial"
+const (
+	ArgumentCopyTrivial ArgumentAction = "copy-trivial"
+	// ArgumentSharedReference and ArgumentMutableReference pass a reference
+	// value produced explicitly at the call site to a ref or ref mut
+	// parameter (package 15 §§ 59-60).
+	ArgumentSharedReference  ArgumentAction = "shared-reference"
+	ArgumentMutableReference ArgumentAction = "mutable-reference"
+)
 
 type UnionPayloadAction string
 
@@ -592,6 +605,10 @@ const (
 	// TryHandlerResidual marks the return that propagates failures a
 	// partial handler set leaves unmatched (rules/errors/errorhandling.md §16).
 	TryHandlerResidual TryHandlerKind = "residual"
+	// TryHandlerNone marks a None handler of a try over Option[T]; absence is
+	// the only alternate state, so it is not an Err handler and keeps the
+	// Option carrier kind distinct (rules/errors/errorhandling.md §§10.2, 35).
+	TryHandlerNone TryHandlerKind = "none"
 )
 
 type DecimalConstant struct {

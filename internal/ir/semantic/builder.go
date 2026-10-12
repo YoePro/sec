@@ -57,8 +57,17 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 			currentModule = declaration.Path
 			continue
 		}
+		if currentModule != identity {
+			continue
+		}
+		if impl, ok := statement.(*ast.ImplStatement); ok {
+			if err := b.buildStaticMethods(impl); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		fn, ok := statement.(*ast.FunctionDeclaration)
-		if !ok || currentModule != identity {
+		if !ok {
 			continue
 		}
 		if err := b.buildFunction(fn); err != nil {
@@ -102,6 +111,16 @@ type functionBuilder struct {
 	nextLoop    LoopID
 	loops       []*activeLoop
 	bindings    map[sema.BindingID]binding
+	// failures routes the fallible points of the failure-set try whose
+	// protected expression is being built (failure_set_try.go).
+	failures *failureRouter
+	// references holds the resolved reference facts of every reference SSA
+	// value the builder created, so uses validate and derive from the facts
+	// of the exact reference they consume (reference_use.go).
+	references map[ValueID]*ReferenceMetadata
+	// receiver is the implicit `self` reference parameter of the instance
+	// method being built (reference_receiver.go); zero otherwise.
+	receiver builtValue
 }
 type binding struct {
 	value   ValueID
@@ -119,6 +138,10 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	if !ok {
 		return fmt.Errorf("missing resolved function %s", decl.Name.Value)
 	}
+	return b.buildResolvedFunction(decl, resolved)
+}
+
+func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved sema.Function) error {
 	returnType, err := b.internType(resolved.ReturnType)
 	if err != nil {
 		token := decl.Token
@@ -131,11 +154,19 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
 	b.module.Functions = append(b.module.Functions, fn)
 	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1}
+	if !resolved.Static && resolved.ImplTarget != "" {
+		if err := fb.addReceiverParameter(resolved, decl); err != nil {
+			return err
+		}
+	}
 	for i, parameter := range resolved.Parameters {
+		var referenceFacts *ReferenceMetadata
 		if b.maxPackage >= referenceLoweringPackage {
-			if err := fb.p15ReferenceParameter(parameter); err != nil {
+			facts, err := fb.p15ReferenceParameter(parameter)
+			if err != nil {
 				return err
 			}
+			referenceFacts = facts
 		}
 		typeID, err := b.internType(parameter.Type)
 		if err != nil {
@@ -146,7 +177,10 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 			return err
 		}
 		value := fb.newValue(typeID, ownership, location(parameter.Token))
-		fn.Parameters = append(fn.Parameters, Parameter{Name: parameter.Name, Value: value, Location: location(parameter.Token)})
+		fn.Parameters = append(fn.Parameters, Parameter{Name: parameter.Name, Value: value, Location: location(parameter.Token), Reference: referenceFacts})
+		if referenceFacts != nil {
+			fb.recordReference(value.ID, referenceFacts)
+		}
 		if i < len(decl.Parameters) && decl.Parameters[i].Name != nil {
 			if fact, ok := b.analyzer.ResolvedBindingOf(decl.Parameters[i].Name); ok {
 				fb.bindings[fact.ID] = binding{value: value.ID, typ: typeID}
@@ -610,6 +644,10 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if _, err := fb.buildCall(call); err != nil {
 				return err
 			}
+		case *ast.TryAssignmentStatement:
+			if err := fb.buildTryAssignment(stmt); err != nil {
+				return err
+			}
 		case *ast.UnsafeStatement:
 			if stmt.Body == nil {
 				return fb.unsupported("empty unsafe block", stmt.Token)
@@ -688,6 +726,12 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 
 func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error {
 	if fb.owner.maxPackage >= referenceLoweringPackage {
+		if handled, err := fb.lowerReceiverWrite(stmt); handled {
+			return err
+		}
+		if use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(stmt.Target); ok && use.Kind == sema.ReferenceUseWrite && use.Facts.Checkable() {
+			return fb.lowerReferenceWrite(stmt, use)
+		}
 		if handled, err := fb.p15ReferenceBoundary(stmt.Target); handled {
 			return err
 		}
@@ -1151,7 +1195,7 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 	}
 	updated := builtValue{}
 	if resolved.RuntimeCheck {
-		updated, err = fb.emitCheckedOperator(op, resultType, nil, nil)
+		updated, err = fb.emitCheckedOperator(op, resultType, nil, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -1372,6 +1416,9 @@ type builtValue struct {
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
 	if okExpr, ok := expr.(*ast.OkExpression); ok {
 		return fb.buildResultConstructor(okExpr.Value, expected, true, location(okExpr.Token))
+	}
+	if extraction, ok := expr.(*ast.BitExtractionExpression); ok {
+		return fb.buildBitExtraction(extraction)
 	}
 	if errExpr, ok := expr.(*ast.ErrExpression); ok {
 		return fb.buildResultConstructor(errExpr.Value, expected, false, location(errExpr.Token))
@@ -1773,7 +1820,9 @@ func (fb *functionBuilder) buildArrayIndexRead(expr *ast.IndexExpression, result
 		op.ArrayProofKind = proof
 		return fb.result(op, resultType), nil
 	}
-	if plan.CheckKind != sema.ArrayIndexRuntimeCheck || plan.FailureMode != sema.ArrayIndexFailureOrdinary {
+	point, routed := fb.failurePoint(expr)
+	routed = routed && plan.FailureMode == sema.ArrayIndexFailureFallible
+	if plan.CheckKind != sema.ArrayIndexRuntimeCheck || (plan.FailureMode != sema.ArrayIndexFailureOrdinary && !routed) {
 		return builtValue{}, fb.unsupported("non-ordinary fixed-array index failure mode", expr.Token)
 	}
 	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
@@ -1791,7 +1840,15 @@ func (fb *functionBuilder) buildArrayIndexRead(expr *ast.IndexExpression, result
 		Successors: []BranchTarget{{Block: success.ID}, {Block: failure.ID}}, Location: location(expr.Token),
 	})
 	fb.current = failure
-	fb.emit(Operation{Kind: OpBoundsFailure, ArrayOperation: "fixed-array-index", Location: location(expr.Token)})
+	if routed {
+		errorValue, err := fb.outOfBoundsError(point.ErrorType, expr.Token)
+		if err != nil {
+			return builtValue{}, err
+		}
+		fb.routeFailure(expr, errorValue, location(expr.Token))
+	} else {
+		fb.emit(Operation{Kind: OpBoundsFailure, ArrayOperation: "fixed-array-index", Location: location(expr.Token)})
+	}
 	fb.current = success
 	op.ArrayCheckKind = ArrayIndexRuntimeCheck
 	op.ArrayProofKind = ArrayIndexProofGuarded
@@ -2540,11 +2597,13 @@ func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtVal
 		return fb.buildResolvedOperatorWithFailure(expr.Expression, nil, expr)
 	case sema.ResolvedTryBoundsPropagation, sema.ResolvedTryHandledBounds:
 		return fb.buildBoundsTryExpression(expr, resolved)
+	case sema.ResolvedTryOptionPropagation, sema.ResolvedTryHandledOption:
+		if fb.owner.maxPackage < 12 {
+			return builtValue{}, fb.unsupported("Option try", expr.Token)
+		}
+		return fb.buildOptionTry(expr, resolved)
 	case sema.ResolvedTryFailureSetPropagation, sema.ResolvedTryHandledFailureSet:
-		// rules/errors/errorhandling.md §11: the failure set must be lowered
-		// as ordered first-failure control flow; until then it is rejected
-		// rather than reduced to a single failure source.
-		return builtValue{}, fb.unsupported("try over a failure set of several fallible points", expr.Token)
+		return fb.buildFailureSetTry(expr, resolved)
 	default:
 		return builtValue{}, fb.unsupported("handled try expression", expr.Token)
 	}
@@ -2710,8 +2769,11 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 	residual := plan.ResidualPropagates && !plan.Exhaustive
 	for index, handler := range plan.Handlers {
 		last := index == len(plan.Handlers)-1
-		unconditional := !handler.Guarded && (handler.PatternKind == sema.TryHandlerErrCatchAll || (last && plan.Exhaustive))
-		if handler.PatternKind == sema.TryHandlerErrCatchAll {
+		// A None handler matches the whole alternate state of an Option try,
+		// so it dispatches like a catch-all without a variant test.
+		coversAlternate := handler.PatternKind == sema.TryHandlerErrCatchAll || handler.PatternKind == sema.TryHandlerOptionNone
+		unconditional := !handler.Guarded && (coversAlternate || (last && plan.Exhaustive))
+		if coversAlternate {
 			// A guarded catch-all tests only its guard; failing it continues
 			// with the next handler (errorhandling.md §19).
 			var nextTest *Block
@@ -2790,6 +2852,11 @@ func (fb *functionBuilder) buildTryResidualPropagation(expr *ast.TryExpression, 
 	enclosing, err := fb.owner.internType(plan.EnclosingResultType)
 	if err != nil {
 		return err
+	}
+	if _, _, isOption := fb.optionVariants(enclosing); isOption {
+		// rules/errors/errorhandling.md §§12.2, 16: None left unhandled by
+		// guarded handlers leaves through the compatible Option return.
+		return fb.returnOptionNone(enclosing, Operation{TryHandlerKind: TryHandlerResidual, TryHandlerIndex: -1, TryResidualPropagates: true, Location: location(expr.Token)})
 	}
 	enclosingType, ok := fb.owner.module.Types.Lookup(enclosing)
 	if !ok || enclosingType.Kind != TypeResult || enclosingType.Error != errorValue.typ {
@@ -2929,6 +2996,8 @@ func semanticTryHandlerKind(kind sema.ResolvedTryHandlerPatternKind) TryHandlerK
 	switch kind {
 	case sema.TryHandlerErrCatchAll:
 		return TryHandlerErrCatchAll
+	case sema.TryHandlerOptionNone:
+		return TryHandlerNone
 	default:
 		return TryHandlerErrVariant
 	}
@@ -3081,7 +3150,7 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
 	}
 	if resolved.RuntimeCheck {
-		return fb.emitCheckedOperator(op, resultType, arithmeticTry, localTry)
+		return fb.emitCheckedOperator(op, resultType, arithmeticTry, localTry, expr)
 	}
 	return fb.result(op, resultType), nil
 }
@@ -3147,7 +3216,7 @@ func semanticOperatorKind(resolved sema.ResolvedOperator, op *Operation) bool {
 	return true
 }
 
-func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression) (builtValue, error) {
+func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression, source ast.Expression) (builtValue, error) {
 	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
 	if err != nil {
 		return builtValue{}, err
@@ -3175,6 +3244,15 @@ func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, 
 			return builtValue{}, err
 		}
 		localError = fb.result(Operation{Kind: OpArithmeticErrorFromReason, Operands: []ValueID{failureReason.ID}, Location: op.Location}, errorType)
+	} else if point, routed := fb.failurePoint(source); routed && arithmeticTry == nil {
+		// A checked operator inside a failure-set try fails into the try's
+		// failure edge instead of panicking (runtime_checks.md "What try converts").
+		errorType, err := fb.owner.internType(point.ErrorType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		errorValue := fb.result(Operation{Kind: OpArithmeticErrorFromReason, Operands: []ValueID{failureReason.ID}, Location: op.Location}, errorType)
+		fb.routeFailure(source, errorValue, op.Location)
 	} else if arithmeticTry == nil {
 		fb.emit(Operation{Kind: OpArithmeticFailure, Operands: []ValueID{failureReason.ID}, FailureCategory: failureCategory(op), Operator: op.Operator, Location: op.Location})
 	} else {
@@ -3237,18 +3315,46 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if resolved.Kind == sema.ResolvedInterfaceMethodCall {
 		return builtValue{}, fb.unsupported("interface method dispatch", call.Token)
 	}
-	if resolved.Kind == sema.ResolvedStaticMethodCall {
-		return builtValue{}, fb.unsupported("method call", call.Token)
+	instanceMethod := !resolved.Function.Static && resolved.Function.ImplTarget != "" && resolved.Kind != sema.ResolvedInterfaceMethodCall
+	if instanceMethod && !fb.owner.instanceMethodLowerable(resolved.Function) {
+		return builtValue{}, fb.unsupported("instance method call", call.Token)
 	}
-	args := make([]ValueID, 0, len(call.Arguments))
-	actions := make([]ArgumentAction, 0, len(call.Arguments))
-	for index, arg := range call.Arguments {
-		if _, isReference := arg.(*ast.RefExpression); isReference {
-			return builtValue{}, fb.unsupported("reference argument call", expressionToken(arg))
+	if resolved.Kind == sema.ResolvedStaticMethodCall {
+		if resolved.Function.Static && !staticMethodLowerable(resolved.Function) {
+			return builtValue{}, fb.unsupported("static method of a generic implementation", call.Token)
 		}
+	}
+	args := make([]ValueID, 0, len(call.Arguments)+1)
+	actions := make([]ArgumentAction, 0, len(call.Arguments)+1)
+	if instanceMethod {
+		receiver, action, err := fb.buildReceiverArgument(call, resolved.Function)
+		if err != nil {
+			return builtValue{}, err
+		}
+		args = append(args, receiver.id)
+		actions = append(actions, action)
+	}
+	for index, arg := range call.Arguments {
 		expected := TypeID(0)
 		if index < len(resolved.Function.Parameters) {
 			expected, _ = fb.owner.internType(resolved.Function.Parameters[index].Type)
+		}
+		if action, isReference := fb.referenceArgumentAction(expected); isReference {
+			// package 15 §§ 59-60: the argument is the reference value its
+			// resolved implicit borrow, explicit borrow or pass produces.
+			v, err := fb.buildExpr(arg, expected)
+			if err != nil {
+				return builtValue{}, err
+			}
+			if v.typ != expected {
+				return builtValue{}, fb.unsupported("reference argument whose type differs from its parameter", expressionToken(arg))
+			}
+			args = append(args, v.id)
+			actions = append(actions, action)
+			continue
+		}
+		if _, isReference := arg.(*ast.RefExpression); isReference {
+			return builtValue{}, fb.unsupported("reference argument call", expressionToken(arg))
 		}
 		v, err := fb.buildExpr(arg, expected)
 		if err != nil {
@@ -3333,10 +3439,10 @@ func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 //   - rules/mlir/packages/sec-mlir-dialect_package13.md — sections 83-86
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 88-89, 103
 func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (OwnershipClass, error) {
-	if p.MutableRef {
+	if p.MutableRef || p.Type.Kind == sema.ReferenceType && p.Type.ReferenceMutable {
 		return OwnershipMutableReference, nil
 	}
-	if p.Ref {
+	if p.Ref || p.Type.Kind == sema.ReferenceType {
 		return OwnershipSharedReference, nil
 	}
 	switch p.Type.Kind {
@@ -3437,6 +3543,8 @@ func expressionToken(e ast.Expression) lexer.Token {
 		return x.Token
 	case *ast.ConversionExpression:
 		return x.Token
+	case *ast.BitExtractionExpression:
+		return x.Token
 	case *ast.MemberExpression:
 		return x.Token
 	case *ast.StructLiteral:
@@ -3481,6 +3589,8 @@ func statementToken(s ast.Statement) lexer.Token {
 	case *ast.ExpressionStatement:
 		return x.Token
 	case *ast.UnsafeStatement:
+		return x.Token
+	case *ast.TryAssignmentStatement:
 		return x.Token
 	}
 	return lexer.Token{}

@@ -11,7 +11,8 @@ import (
 
 // formatCSTTokenSpacing normalizes the horizontal gap between two adjacent
 // real tokens on the same line when the parser has assigned either token a
-// spacing role. A gap that crosses a line break or holds a comment is never
+// spacing role. Single-line list trailing commas are elided only in proven
+// parenthesis/bracket groups. A gap that crosses a line break or holds a comment is never
 // touched, so line structure, indentation, and comment placement are left to
 // the later passes. Tokens without a spacing role keep their source spacing.
 //
@@ -28,7 +29,9 @@ func formatCSTTokenSpacing(text string) string {
 	if hasUncertainConcreteSyntax(document) {
 		return text
 	}
-	document.ApplyProgramRoles(parser.New(lexer.New(text)).ParseProgram())
+	p := parser.New(lexer.New(text))
+	document.ApplyProgramRoles(p.ParseProgram())
+	document.ApplySingleLineDelimiterRoles(len(p.Errors()) == 0)
 
 	replacements := []formatterReplacement{}
 	previous := -1
@@ -40,6 +43,9 @@ func formatCSTTokenSpacing(text string) string {
 			}
 			continue
 		case cst.Token:
+			if element.HasRole(cst.SingleLineTrailingComma) {
+				continue
+			}
 		default:
 			previous = -1
 			continue
@@ -65,10 +71,19 @@ func formatCSTTokenSpacing(text string) string {
 
 // canonicalTokenGap returns the canonical same-line gap between two adjacent
 // tokens, or false when neither token's role determines it.
+// Rules: rules/tooling/formatter.md — §6(4–7),§8(6–8),§11(1,4),§21(5).
 func canonicalTokenGap(left, right cst.Element) (string, bool) {
 	switch {
 	case left.HasRole(cst.ForeignQualifierSeparator) || right.HasRole(cst.ForeignQualifierSeparator):
 		return "", true
+	case right.HasRole(cst.CompactDelimiterClose) || right.HasRole(cst.SingleLineComma):
+		return "", true
+	case left.HasRole(cst.PaddedDelimiterOpen) || right.HasRole(cst.PaddedDelimiterClose):
+		return " ", true
+	case left.HasRole(cst.CompactDelimiterOpen):
+		return "", true
+	case left.HasRole(cst.SingleLineComma):
+		return " ", true
 	case left.HasRole(cst.PrefixOperator), right.HasRole(cst.EmptyCollectionLiteralClose):
 		return "", true
 	case right.HasRole(cst.DeclarationColon):

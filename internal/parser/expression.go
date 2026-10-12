@@ -991,6 +991,17 @@ func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
 	errorCount := len(p.errors)
 	warningCount := len(p.warnings)
 
+	if identifier, ok := left.(*ast.Identifier); ok && identifier.Value == "bit" {
+		if extraction := p.parseBitExtractionExpression(identifier); extraction != nil {
+			return extraction
+		}
+		p.curToken = curToken
+		p.peekToken = peekToken
+		p.l.Restore(lexerState)
+		p.rollbackErrors(errorCount)
+		p.warnings = p.warnings[:warningCount]
+	}
+
 	generic := p.parseExplicitGenericCallExpression(left)
 	if generic != nil {
 		return generic
@@ -2229,4 +2240,38 @@ func (p *Parser) parseListCollectionLiteral(identifier *ast.Identifier, bracketT
 		}
 	}
 	return literal
+}
+
+// parseBitExtractionExpression parses the contextual call-shaped form
+// `bit[Width](Value)` with the current token on `[`. It returns nil when the
+// tokens do not form that shape, so the caller rolls back to ordinary
+// indexing of a value named bit.
+//
+// Rules:
+//   - rules/foundations/grammar.md — BitExtractionExpression
+//   - rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md — § 8
+func (p *Parser) parseBitExtractionExpression(identifier *ast.Identifier) ast.Expression {
+	if p.curToken.Type != lexer.LBRACKET || p.peekToken.Type == lexer.RBRACKET {
+		return nil
+	}
+	p.nextToken()
+	width := p.parseExpression(LOWEST)
+	if width == nil || p.peekToken.Type != lexer.RBRACKET {
+		return nil
+	}
+	p.nextToken()
+	if p.peekToken.Type != lexer.LPAREN {
+		return nil
+	}
+	p.nextToken()
+	if p.peekToken.Type == lexer.RPAREN {
+		return nil
+	}
+	p.nextToken()
+	value := p.parseExpression(LOWEST)
+	if value == nil || p.peekToken.Type != lexer.RPAREN {
+		return nil
+	}
+	p.nextToken()
+	return &ast.BitExtractionExpression{Token: identifier.Token, Width: width, Value: value}
 }

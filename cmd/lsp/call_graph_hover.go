@@ -95,6 +95,7 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 	}
 	lines = append(lines, allocationHoverLines(analyzer, graph, node.ID)...)
 	lines = append(lines, panicHoverLines(graph, node.ID)...)
+	lines = append(lines, tryAssignmentFlowHoverLines(analyzer, node.ID)...)
 	lines = append(lines, blockingHoverLine(graph, node.ID))
 	return "\n\n" + strings.Join(lines, "\n\n")
 }

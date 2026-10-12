@@ -29,6 +29,16 @@ func (a *Analyzer) integerConstantValueUsing(expr ast.Expression, bindings map[s
 		return new(big.Int).Set(value), true
 	case *ast.ConversionExpression:
 		return a.integerConstantValueUsing(expr.Value, bindings)
+	case *ast.BitExtractionExpression:
+		// bit[N](value) is value mod 2^N as the non-negative remainder
+		// (types.md "Explicit low-bit extraction").
+		width, widthKnown := a.integerConstantValueUsing(expr.Width, bindings)
+		value, valueKnown := a.integerConstantValueUsing(expr.Value, bindings)
+		if !widthKnown || !valueKnown || width.Sign() <= 0 || width.Cmp(big.NewInt(MaximumBitExtractionWidth)) > 0 {
+			return nil, false
+		}
+		modulus := new(big.Int).Lsh(big.NewInt(1), uint(width.Int64()))
+		return new(big.Int).Mod(value, modulus), true
 	case *ast.CallExpression:
 		if a.isExplicitConversionExpression(expr) {
 			return a.integerConstantValueUsing(expr.Arguments[0], bindings)

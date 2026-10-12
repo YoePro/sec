@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-09-23
+- **Last updated:** 2026-10-12 (MD-032 switch labels, MD-055 import group headings, MD-033 import sorting, MD-036/MD-054 [format] table)
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
@@ -168,6 +168,27 @@ compact
 
 § 4(17) `language_corrections` controls the optional correction layer. It is disabled by default and is separate from ordinary canonical formatting.
 
+§ 4(18) The project formatting configuration is the `[format]` table of the project's `.sec/sec.toml` manifest (`projects.md` § 6(8)). This rulebook owns the meaning and domains of its keys, which are exactly the § 4(5) settings; the project rulebook owns its placement, loading and manifest validation (MD-036/MD-054, 2026-10-12):
+
+```toml
+[format]
+format_version = 1
+indentation_width = 4
+vertical_style = "compact"
+line_width = 120
+language_corrections = false
+```
+
+§ 4(19) An absent `[format]` table applies every § 4(5) default. A table that omits a setting applies that setting's default while its explicit settings remain in effect. A missing project manifest never makes the formatter take values from the host or an unrelated project.
+
+§ 4(20) The effective options are resolved with this precedence, highest first: explicitly supplied formatter invocation options; the selected project's `[format]` settings; the § 4(5) defaults. An invocation option that was not supplied never shadows a project setting, and an explicit option never rewrites the manifest. For example, `sec fmt --indentation-width 2 source.sec` formats with width 2 although the project sets `indentation_width = 4`; four is the default, not a language-wide requirement. Enabling `language_corrections` requires an explicit project setting or invocation choice (`sec fmt --fix`); invoking `sec fmt` alone never enables it.
+
+§ 4(21) When the effective `format_version` is unsupported, the formatter reports a diagnostic and modifies no source file. Unknown keys, wrongly typed values and values outside their domains are diagnostics as well, never ignored or guessed. Validation completes before any file of the requested operation is changed.
+
+§ 4(22) The CLI formatter and the LSP resolve and validate the same project manifest through shared configuration code. A file that belongs to a Sec project uses that project's `.sec/sec.toml`; a stand-alone file uses the defaults plus explicit invocation options. Project membership follows the existing project-root and workspace rules; editor-provided formatting preferences never override the project configuration (§ 4(15)).
+
+§ 4(23) Formatting is deterministic for the tuple (source, effective options, formatter version).
+
 ---
 
 ## § 5. Required syntax representation
@@ -195,7 +216,7 @@ compact
 
 § 5(6) Ordinary formatting must not require semantic analysis.
 
-§ 5(7) Import grouping may consult compiler-known module classification metadata when needed to distinguish standard-library, ordinary, and platform imports.
+§ 5(7) Import sorting is purely syntactic: it consults no module classification metadata, module lookup, installed standard-library inventory or `CompilationPlan` (§ 13(7); MD-033, 2026-10-12).
 
 § 5(8) The concrete CST storage implementation is not defined by this rulebook. The behavioral requirements in this section and § 25 are normative.
 
@@ -555,21 +576,54 @@ import (
 
 § 13(4) The formatter must never remove an import merely because it appears unused. Unused-import removal is not formatting.
 
-§ 13(5) Imports are sorted by canonical import path, not by alias spelling.
+§ 13(5) Imports are sorted alphabetically by their logical import path, not by alias spelling.
 
 § 13(6) Comments attached to an import move with that import when imports are reordered.
 
-§ 13(7) The canonical import classes are:
+§ 13(7) The formatter does not classify imports as standard-library, project, external or platform modules, and does not need module resolution or a `CompilationPlan` to sort them (MD-033, 2026-10-12). Import-path validity, such as `core` needing no import and standard-library modules being imported by logical path (`"net/http"`, not `"stdlib/net/http"`), remains owned by `modules.md` and gives the formatter no sorting category.
 
-1. Sec standard-library modules;
-2. ordinary project and dependency modules;
-3. platform modules.
+§ 13(8) An intentional empty line in a grouped import region is an explicit group boundary. The formatter sorts imports within each group and never merges, moves or reorders imports across group boundaries.
 
-§ 13(8) In `structured` style, one empty line separates non-empty import classes.
+§ 13(9) Without explicit groups, the imports form one alphabetic sequence in both vertical styles. The formatter never invents groups, headings or blank lines from a guessed import origin.
 
-§ 13(9) In `compact` style, optional blank separation between import classes is removed.
+§ 13(10) Optional `//` comments may describe groups (§ 13(11)–(14)); they document groups for readers and are not parser directives or import-class identifiers:
 
-§ 13(10) Imports within one class are ordered lexically by canonical import path.
+```sec
+import (
+    // Standard library
+    "fmt"
+    "io"
+    "net/http"
+    "str"
+
+    // Project modules
+    "app/config"
+    "app/server"
+
+    // External dependencies
+    "github.com/example/library"
+)
+```
+
+§ 13(11) A standalone group-heading comment that starts a blank-line-separated run of a grouped import declaration, and is unambiguously attached to the imports that immediately follow it, is placed directly above the first import of its group, with no empty line between the heading and that import. Distinct commented groups are separated by one empty line (MD-055, 2026-10-12):
+
+```sec
+import (
+    // Network libraries
+    "net/http"
+    "net/url"
+
+    // File libraries
+    "fs"
+    "io"
+)
+```
+
+§ 13(12) A group heading belongs to its group, not to an individual import. Sorting and regrouping never move an import across a group boundary or attach a heading to another import; ordinary comments attached to one import travel with it under § 13(6).
+
+§ 13(13) When comment attachment or group boundaries are ambiguous, the formatter preserves the order of the affected import region and the comments' relative positions. It may apply unambiguous local whitespace and indentation changes but does not guess a comment's owner or invent a grouping: a genuinely detached comment, a trailing group comment, or an inline block comment is not reclassified as a heading.
+
+§ 13(14) When a heading relationship is unambiguous, an unnecessary empty line between the heading and its first import is removed. Indentation inside `import (...)` uses the configured `indentation_width`; the example's four spaces are the default. Formatting of headed groups is deterministic and idempotent. This does not authorize reordering across comments or rewriting comment text.
 
 ---
 
@@ -892,14 +946,14 @@ match value {
 
 ```sec
 switch value {
-case 1, 3, 5, 10..<20:
-    Selected()
+    case 1, 3, 5, 10..<20:
+        Selected()
 
-case >= 100:
-    Large()
+    case >= 100:
+        Large()
 
-default:
-    Other()
+    default:
+        Other()
 }
 ```
 
@@ -908,6 +962,8 @@ default:
 § 18(9) The case `:` follows the final alternative. The formatter does not insert a trailing comma immediately before the case colon.
 
 § 18(10) A switch case body is indented one structural level from its case label.
+
+§ 18(10a) Inside `switch`, each `case` or `default` label is indented one configured indentation level relative to the `switch` statement, its body one further configured level, and the closing `}` aligns with `switch`. The number of spaces per level is the configured `indentation_width` (§ 4(5)); the § 18(7) example shows the default four spaces, not a fixed width (MD-032, 2026-10-12).
 
 § 18(11) In `structured` style, switch cases may be separated by one blank line. `compact` removes that optional separation.
 
@@ -1755,7 +1811,7 @@ type Point struct {
 
 § 29(10) Ordinary formatting does not require semantic analysis.
 
-§ 29(11) Import classification metadata is the limited exception described by § 5(7); it does not authorize general semantic rewriting.
+§ 29(11) Import sorting has no semantic exception (§ 5(7)); no formatting pass authorizes general semantic rewriting.
 
 § 29(12) `format_version = 1` is a conformance-test contract.
 

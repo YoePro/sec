@@ -1,0 +1,6 @@
+module helper
+fn Invoke[T](value: T) void {
+    discard value
+    panic "changed generic body"
+}
+fn Work() void { Invoke(1) }

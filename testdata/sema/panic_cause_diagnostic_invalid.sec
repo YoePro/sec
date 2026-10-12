@@ -1,0 +1,4 @@
+module main
+fn Leaf(value: bool) void { assert value, "real panic cause" }
+@noPanic
+fn Root(value: bool) void { Leaf(value) }

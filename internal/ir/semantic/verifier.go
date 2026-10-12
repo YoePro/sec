@@ -397,6 +397,14 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 			return err
 		}
 		paramDefs[p.Value.ID] = true
+		if _, isReference := referenceType(module.Types, p.Value.Type); isReference {
+			if p.Reference == nil {
+				return fmt.Errorf("reference parameter %s has no reference facts", p.Name)
+			}
+			if err := verifyReferenceMetadata(Operation{Kind: "parameter", Reference: p.Reference}); err != nil {
+				return err
+			}
+		}
 	}
 	for _, b := range fn.Blocks {
 		for _, v := range b.Parameters {
@@ -669,8 +677,15 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			if values[id].Type != callee.Parameters[i].Value.Type {
 				return fmt.Errorf("call argument type mismatch")
 			}
-			if op.ArgumentActions[i] != ArgumentCopyTrivial {
-				return fmt.Errorf("unsupported call argument action")
+			want := ArgumentCopyTrivial
+			if reference, ok := referenceType(module.Types, callee.Parameters[i].Value.Type); ok {
+				want = ArgumentSharedReference
+				if reference.Mutable {
+					want = ArgumentMutableReference
+				}
+			}
+			if op.ArgumentActions[i] != want {
+				return fmt.Errorf("call argument %d action %q, want %q for its parameter type", i, op.ArgumentActions[i], want)
 			}
 		}
 		void := typeHasKind(module.Types, callee.ReturnType, TypeVoid)
@@ -714,6 +729,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpIntBitwise:
 		if !validIntegerBitwiseKind(op.IntegerBitwise) || len(op.Operands) != 2 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || op.Results[0].Type != values[op.Operands[0]].Type {
 			return fmt.Errorf("invalid int.bitwise")
+		}
+	case OpIntBitExtract:
+		if err := verifyBitExtract(module.Types, op, values); err != nil {
+			return err
 		}
 	case OpIntShiftChecked:
 		if !validIntegerShiftKind(op.IntegerShift) || !validCheckedResults(module.Types, op, values, 2) || !isBuiltinIntegerType(module.Types, values[op.Operands[1]].Type) || shiftKindSigned(op.IntegerShift) != isSignedBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) {
@@ -1598,6 +1617,8 @@ func verifyTryHandlers(fn *Function) error {
 		okCount             int
 		catchAll            bool
 		catchAllIndex       int
+		none                bool
+		errHandlers         bool
 		highestVariantIndex int
 		variants            map[string]bool
 		exhaustive          bool
@@ -1613,7 +1634,7 @@ func verifyTryHandlers(fn *Function) error {
 				return fmt.Errorf("try handler index must be >= -1")
 			}
 			switch op.TryHandlerKind {
-			case TryHandlerOK, TryHandlerErrVariant, TryHandlerErrCatchAll, TryHandlerMerge, TryHandlerResidual:
+			case TryHandlerOK, TryHandlerErrVariant, TryHandlerErrCatchAll, TryHandlerMerge, TryHandlerResidual, TryHandlerNone:
 			default:
 				return fmt.Errorf("invalid try handler kind %q", op.TryHandlerKind)
 			}
@@ -1629,6 +1650,15 @@ func verifyTryHandlers(fn *Function) error {
 				groups[op.Successors[0].Block] = group
 			}
 			group.residual = group.residual || op.TryResidualPropagates
+			switch op.TryHandlerKind {
+			case TryHandlerNone:
+				group.none = true
+			case TryHandlerErrVariant, TryHandlerErrCatchAll:
+				group.errHandlers = true
+			}
+			if group.none && group.errHandlers {
+				return fmt.Errorf("try merge ^%d mixes Option None and Result Err handlers", op.Successors[0].Block)
+			}
 			if op.TryHandlerGuarded {
 				// A guarded handler never covers its pattern, so it neither
 				// counts as the catch-all nor claims its variant.
@@ -1638,6 +1668,13 @@ func verifyTryHandlers(fn *Function) error {
 			switch op.TryHandlerKind {
 			case TryHandlerOK:
 				group.okCount++
+			case TryHandlerNone:
+				if group.catchAll {
+					return fmt.Errorf("duplicate unguarded None handler for try merge ^%d", op.Successors[0].Block)
+				}
+				group.catchAll = true
+				group.catchAllIndex = op.TryHandlerIndex
+				group.exhaustive = group.exhaustive || op.TryHandlerExhaustive
 			case TryHandlerErrCatchAll:
 				if group.catchAll {
 					return fmt.Errorf("duplicate Err catch-all for try merge ^%d", op.Successors[0].Block)

@@ -153,7 +153,11 @@ const (
 	EffectMayPanicForeign EffectKind = "may-panic-foreign"
 	// EffectMayPanicUnknownCallee is a call through a function value whose
 	// target set is not known, so its panic behavior cannot be proven.
-	EffectMayPanicUnknownCallee       EffectKind = "may-panic-unknown-callee"
+	EffectMayPanicUnknownCallee EffectKind = "may-panic-unknown-callee"
+	// EffectMayPanicInvalidReference is a run-time validated use of a
+	// dynamic-epoch reference whose stale generation panics with
+	// InvalidReferenceGeneration (sec-mlir-dialect package 15 P15-48).
+	EffectMayPanicInvalidReference    EffectKind = "may-panic-invalid-reference"
 	EffectMayUseNondeterministicInput EffectKind = "may-use-nondeterministic-input"
 	EffectVolatileRead                EffectKind = "volatile-read"
 	EffectVolatileWrite               EffectKind = "volatile-write"
@@ -163,12 +167,17 @@ type EffectSite struct {
 	Kind           EffectKind
 	Source         lexer.Token
 	PanicReasonIDs []diagnostics.PanicReasonID
+	Message        string
+	HasMessage     bool
 }
 
 type CallableEffectSummary struct {
 	DirectEffects []EffectSite
 	MayPanic      bool
 	PanicPath     []CallableID
+	// PanicCauses retains every registered direct/transitive panic source,
+	// with a shortest call-site witness and canonical reason/message metadata.
+	PanicCauses []EffectDomainCause
 }
 
 type CallableNode struct {
@@ -771,30 +780,6 @@ func (g *CallGraph) IsSameStackRecursive(id CallableID) bool {
 	return false
 }
 
-// EffectSummary returns direct semantic effects and a deterministic shortest
-// synchronous cause path for transitive panic behavior, including reachable
-// checked unreachable statements.
-//
-// Rules:
-//   - rules/errors/panic.md — § 16(5)–(6) "Checked unreachable"
-//   - rules/errors/panic.md — § 21 "@noPanic"
-func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
-	if g == nil {
-		return CallableEffectSummary{}
-	}
-	summary := CallableEffectSummary{DirectEffects: cloneEffectSites(g.effects[id])}
-	summary.PanicPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
-		for _, effect := range g.effects[candidate] {
-			if isPanicEffectKind(effect.Kind) {
-				return true
-			}
-		}
-		return false
-	})
-	summary.MayPanic = len(summary.PanicPath) > 0
-	return summary
-}
-
 func cloneEffectSites(sites []EffectSite) []EffectSite {
 	cloned := append([]EffectSite(nil), sites...)
 	for index := range cloned {
@@ -803,6 +788,10 @@ func cloneEffectSites(sites []EffectSite) []EffectSite {
 	return cloned
 }
 
+// synchronousPathTo returns a deterministic shortest same-stack witness to a
+// canonical introducing fact. Recursive graphs terminate through the visited set.
+// Rules: rules/analysis/call_graph.md — "Same-stack effect transfer", "Diagnostics";
+// rules/errors/panic.md — §§25(3)–(4),28(3).
 func (g *CallGraph) synchronousPathTo(start CallableID, predicate func(CallableID) bool) []CallableID {
 	if start == "" || predicate == nil {
 		return nil
@@ -823,7 +812,9 @@ func (g *CallGraph) synchronousPathTo(start CallableID, predicate func(CallableI
 		if predicate(entry.id) {
 			return entry.path
 		}
-		for _, target := range g.sameStackTargets(entry.id) {
+		targets := g.sameStackTargets(entry.id)
+		sort.Slice(targets, func(i, j int) bool { return targets[i] < targets[j] })
+		for _, target := range targets {
 			if visited[target] {
 				continue
 			}
@@ -1006,7 +997,7 @@ func IsPanicEffectKind(kind EffectKind) bool { return isPanicEffectKind(kind) }
 
 func isPanicEffectKind(kind EffectKind) bool {
 	switch kind {
-	case EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee:
+	case EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee, EffectMayPanicInvalidReference:
 		return true
 	}
 	return false

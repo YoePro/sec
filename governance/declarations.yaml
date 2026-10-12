@@ -198,6 +198,7 @@ integrations:
       - finite source-order-independent nested register fields occupy the nested nominal width and preserve inner layout, nominal field types, and access semantics across every projection; recursive storage and unsafe whole-nested writes are diagnosed
       - explicit integer-to-register conversion rejects statically out-of-range values, converts proven fitting integer domains directly, and exposes uncertain runtime narrowing as Result[Register, ArithmeticError] for try handling
       - parser AST preserves width expressions while Sema owns evaluation, and LSP renders nested nominal fields plus checked conversion result types from the same semantic facts
+      - "plain bit[N] field writes (MD-046 partial, 2026-10-12, registers.md § 12.1): an explicit `bit[M](value)` with M not above the width of a unit-free register field proves the fit and is accepted as the field write; any other unproven wider integer is still rejected (never silently truncated), and unit-annotated fields keep their current behavior pending the open part of MD-046"
     remaining:
       - preserve unnamed open bit-backed enum encodings through field extraction and insertion
       - carry ordinary, the complete write-one/write-zero clear/set/toggle family, canonical read-clear, and canonical read-set field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
@@ -612,6 +613,7 @@ integrations:
       - variadic pack escape, direct pack reference exposure, mutation, and move-out rejection in Sema
       - direct zero-or-more typed variadic arguments, generic instantiation, runtime-length array/slice/pack spread sources, multiple mixed spread sources, and fixed-arity preference over equally ranked variadic overloads
       - variadic callable shape retained by inferred function values, callable identity, compatibility, and concrete generic instances
+      - "MD-027 contextual arguments (2026-10-12, types.md 'Contextual None and empty-literal arguments', functions.md § 19): overload resolution considers all supplied arguments together; a bare None, an empty array literal [] or the null sentinel whose type the candidates do not agree on is deferred, matches only a parameter of its family (Option, empty-literal-compatible array, RawPtr) and is typed from the single selected overload, for calls, methods, init and new; viable candidates that disagree give S1147 types.ambiguous-contextual-argument naming the candidate types with typed-binding help; return types neither distinguish nor select overloads (TestContextualLiteralArgumentsFollowOverloadResolution, TestReturnTypeAloneDoesNotDistinguishOverloads, TestBareNoneArgumentUsesAgreedParameterContext)"
     remaining:
       - accept optional `return <-value` with the same result ownership as `return value`
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority

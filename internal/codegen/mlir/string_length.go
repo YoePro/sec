@@ -6,8 +6,9 @@ import (
 )
 
 // emitStringRuneLength counts Unicode scalars from valid UTF-8 without allocation.
-// ByteLen retains the descriptor byte count. NUL is ordinary length-counted data.
-// Rules: rules/compiler/compiler_known_members.md — Len, RuneLen, ByteLen on strings;
+// The value-form SizeOf is the descriptor's UTF-8 byte count. NUL is ordinary
+// length-counted data.
+// Rules: rules/compiler/compiler_known_members.md — Len and value-form SizeOf on strings;
 // rules/types/contracts.md — String and collection contracts (revision 2.1).
 func (g *Generator) emitStringRuneLength(text value) value {
 	for _, declarations := range g.functions {

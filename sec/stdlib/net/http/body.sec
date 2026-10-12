@@ -72,7 +72,7 @@ impl Body {
         let mut bytes: byte[]
         let mut index: uint := 0
 
-        while index < data.ByteLen {
+        while index < data.SizeOf {
             try bytes.Append(data.ByteAt(index)) {
                 Err(error) => return Err(BodyError.Allocation(error))
             }

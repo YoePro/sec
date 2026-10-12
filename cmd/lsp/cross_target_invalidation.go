@@ -4,9 +4,10 @@ import "path/filepath"
 
 // invalidateCrossTargetDirectories removes cached per-plan diagnostics and
 // supersedes in-flight work when its source closure or project plan changes.
-// Active-plan reanalysis must never merge allocation facts from the old closure.
+// Active-plan reanalysis must never merge panic or allocation facts from the old closure.
 // Cross-target recomputation retains its existing open/save scheduling policy.
-// Rules: rules/memory/allocation.md — §29(5); rules/tooling/lsp.md — "Snapshots", "Multi-target diagnostics".
+// Rules: rules/errors/panic.md — §28(8); rules/memory/allocation.md — §29(5);
+// rules/tooling/lsp.md — "Snapshots", "Multi-target diagnostics".
 func (s *server) invalidateCrossTargetDirectories(dirs map[string]bool) {
 	if s == nil || s.crossTarget == nil {
 		return

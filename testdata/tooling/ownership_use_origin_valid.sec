@@ -1,0 +1,25 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+fn Consume(->value: Resource) void { discard value }
+fn Use(value: ref Resource) void {}
+fn Reinitialize() void {
+    let mut value := Resource { Raw: 1 }
+    Consume(<-value)
+    value = Resource { Raw: 2 }
+    Use(ref value)
+}
+fn Before() void {
+    let value := Resource { Raw: 1 }
+    Use(ref value)
+    Consume(<-value)
+}
+fn ReturnPath(value: Resource, flag: bool) Resource {
+    if flag { return value }
+    Use(ref value)
+    return value
+}
+fn Refine(value: Resource, flag: bool) void {
+    if flag { Consume(<-value) }
+    if value is available { Use(ref value) }
+}

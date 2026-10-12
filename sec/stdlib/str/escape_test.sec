@@ -1,0 +1,617 @@
+module str
+
+/*
+ * Sec Standard Library - str - String literal escape and unescape tests
+ *
+ * File:        stdlib/str/escape_test.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-12
+ *
+ * Purpose:
+ * Tests Sec string-literal escaping, quoting, decoding, malformed input,
+ * exact byte-offset error reporting, and Unicode scalar validation.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ * rules/foundations/lexical_structure.md
+ */
+
+// EscapeLiteral: produce literal contents without surrounding double quotes.
+
+test "EscapeLiteral preserves empty input" {
+    let result := try EscapeLiteral("")
+    testing.ExpectEqual("", result)
+}
+
+test "EscapeLiteral preserves printable ASCII" {
+    let result := try EscapeLiteral("Hello, Sec! 123")
+    testing.ExpectEqual("Hello, Sec! 123", result)
+}
+
+test "EscapeLiteral escapes a backslash" {
+    let result := try EscapeLiteral("A\\B")
+    testing.ExpectEqual("A\\\\B", result)
+}
+
+test "EscapeLiteral escapes double quotes" {
+    let result := try EscapeLiteral("A\"B")
+    testing.ExpectEqual("A\\\"B", result)
+}
+
+test "EscapeLiteral leaves single quotes unchanged" {
+    let result := try EscapeLiteral("A'B")
+    testing.ExpectEqual("A'B", result)
+}
+
+test "EscapeLiteral uses short newline escape" {
+    let result := try EscapeLiteral("A\nB")
+    testing.ExpectEqual("A\\nB", result)
+}
+
+test "EscapeLiteral uses short carriage return escape" {
+    let result := try EscapeLiteral("A\rB")
+    testing.ExpectEqual("A\\rB", result)
+}
+
+test "EscapeLiteral uses short tab escape" {
+    let result := try EscapeLiteral("A\tB")
+    testing.ExpectEqual("A\\tB", result)
+}
+
+test "EscapeLiteral uses short NUL escape" {
+    let result := try EscapeLiteral("A\0B")
+    testing.ExpectEqual("A\\0B", result)
+}
+
+test "EscapeLiteral uses hexadecimal for ESC" {
+    let result := try EscapeLiteral("A\x1BB")
+    testing.ExpectEqual("A\\x1BB", result)
+}
+
+test "EscapeLiteral uses hexadecimal for DEL" {
+    let result := try EscapeLiteral("\x7F")
+    testing.ExpectEqual("\\x7F", result)
+}
+
+test "EscapeLiteral uses hexadecimal for C1 controls" {
+    let result := try EscapeLiteral("\x85")
+    testing.ExpectEqual("\\x85", result)
+}
+
+test "EscapeLiteral preserves ordinary Unicode runes" {
+    let result := try EscapeLiteral("ÅÄÖ åäö € 🦊")
+    testing.ExpectEqual("ÅÄÖ åäö € 🦊", result)
+}
+
+test "EscapeLiteral preserves decomposed Unicode" {
+    let result := try EscapeLiteral("é")
+    testing.ExpectEqual("é", result)
+}
+
+test "EscapeLiteral handles adjacent escapes" {
+    let result := try EscapeLiteral("\n\t\\\"")
+    testing.ExpectEqual("\\n\\t\\\\\\\"", result)
+}
+
+// Quote: escape the contents and add exactly one pair of double quotes.
+
+test "Quote surrounds ASCII text" {
+    let result := try Quote("Hello")
+    testing.ExpectEqual("\"Hello\"", result)
+}
+
+test "Quote produces two quotes for empty input" {
+    let result := try Quote("")
+    testing.ExpectEqual("\"\"", result)
+}
+
+test "Quote escapes inner double quotes" {
+    let result := try Quote("A\"B")
+    testing.ExpectEqual("\"A\\\"B\"", result)
+}
+
+test "Quote escapes backslashes" {
+    let result := try Quote("C:\\Temp")
+    testing.ExpectEqual("\"C:\\\\Temp\"", result)
+}
+
+test "Quote escapes newline and tab" {
+    let result := try Quote("A\n\tB")
+    testing.ExpectEqual("\"A\\n\\tB\"", result)
+}
+
+test "Quote escapes control characters with hexadecimal" {
+    let result := try Quote("\x1B")
+    testing.ExpectEqual("\"\\x1B\"", result)
+}
+
+test "Quote leaves Unicode text intact" {
+    let result := try Quote("Räksmörgås 🦊")
+    testing.ExpectEqual("\"Räksmörgås 🦊\"", result)
+}
+
+// UnescapeLiteral: decode escaped contents without quote delimiters.
+
+test "UnescapeLiteral accepts empty input" {
+    let result := try UnescapeLiteral("")
+    testing.ExpectEqual("", result)
+}
+
+test "UnescapeLiteral preserves text without escapes" {
+    let result := try UnescapeLiteral("Aå€🦊B")
+    testing.ExpectEqual("Aå€🦊B", result)
+}
+
+test "UnescapeLiteral decodes backslash and quotes" {
+    let result := try UnescapeLiteral("\\\\\\\"\\'")
+    testing.ExpectEqual("\\\"'", result)
+}
+
+test "UnescapeLiteral decodes newline carriage return and tab" {
+    let result := try UnescapeLiteral("A\\nB\\rC\\tD")
+    testing.ExpectEqual("A\nB\rC\tD", result)
+}
+
+test "UnescapeLiteral decodes NUL" {
+    let result := try UnescapeLiteral("A\\0B")
+    testing.ExpectEqual("A\0B", result)
+}
+
+test "UnescapeLiteral decodes uppercase hex digits" {
+    let result := try UnescapeLiteral("\\x41\\x5A")
+    testing.ExpectEqual("AZ", result)
+}
+
+test "UnescapeLiteral decodes lowercase hex digits" {
+    let result := try UnescapeLiteral("\\x6a")
+    testing.ExpectEqual("j", result)
+}
+
+test "UnescapeLiteral treats hex escape as a Unicode scalar" {
+    let result := try UnescapeLiteral("\\xE5")
+    testing.ExpectEqual("å", result)
+}
+
+test "UnescapeLiteral consumes exactly two hex digits" {
+    let result := try UnescapeLiteral("\\x414")
+    testing.ExpectEqual("A4", result)
+}
+
+test "UnescapeLiteral decodes Unicode euro sign" {
+    let result := try UnescapeLiteral("\\u{20AC}")
+    testing.ExpectEqual("€", result)
+}
+
+test "UnescapeLiteral decodes Unicode four-byte rune" {
+    let result := try UnescapeLiteral("\\u{1F98A}")
+    testing.ExpectEqual("🦊", result)
+}
+
+test "UnescapeLiteral decodes a single Unicode hex digit" {
+    let result := try UnescapeLiteral("\\u{A}")
+    testing.ExpectEqual("\n", result)
+}
+
+test "UnescapeLiteral decodes six Unicode hex digits" {
+    let result := try UnescapeLiteral("\\u{000041}")
+    testing.ExpectEqual("A", result)
+}
+
+test "UnescapeLiteral accepts maximum Unicode scalar" {
+    let result := try UnescapeLiteral("\\u{10FFFF}")
+    testing.ExpectEqual("\u{10FFFF}", result)
+}
+
+test "UnescapeLiteral decodes Unicode scalar zero" {
+    let result := try UnescapeLiteral("\\u{0}")
+    testing.ExpectEqual("\0", result)
+}
+
+test "UnescapeLiteral preserves text around escape sequences" {
+    let result := try UnescapeLiteral("Aå\\u{1F98A}B\\nC")
+    testing.ExpectEqual("Aå🦊B\nC", result)
+}
+
+test "UnescapeLiteral preserves decomposed Unicode" {
+    let result := try UnescapeLiteral("é")
+    testing.ExpectEqual("é", result)
+}
+
+// UnescapeLiteral: errors and zero-based UTF-8 byte positions.
+
+test "UnescapeLiteral rejects trailing backslash" {
+    try UnescapeLiteral("abc\\") {
+        Err(UnescapeError.Truncated(position)) => {
+            testing.ExpectEqual(3, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.Truncated")
+}
+
+test "UnescapeLiteral rejects missing hex digits" {
+    try UnescapeLiteral("\\x") {
+        Err(UnescapeError.Truncated(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.Truncated")
+}
+
+test "UnescapeLiteral rejects a single hex digit" {
+    try UnescapeLiteral("\\x1") {
+        Err(UnescapeError.Truncated(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.Truncated")
+}
+
+test "UnescapeLiteral rejects invalid first hex digit" {
+    try UnescapeLiteral("\\xG1") {
+        Err(UnescapeError.InvalidHexDigit(position)) => {
+            testing.ExpectEqual(2, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidHexDigit")
+}
+
+test "UnescapeLiteral rejects invalid second hex digit" {
+    try UnescapeLiteral("\\x1Z") {
+        Err(UnescapeError.InvalidHexDigit(position)) => {
+            testing.ExpectEqual(3, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidHexDigit")
+}
+
+test "UnescapeLiteral reports byte offset after multibyte Unicode" {
+    try UnescapeLiteral("Aå\\xG1") {
+        Err(UnescapeError.InvalidHexDigit(position)) => {
+            testing.ExpectEqual(5, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidHexDigit")
+}
+
+test "UnescapeLiteral rejects unknown escape" {
+    try UnescapeLiteral("\\q") {
+        Err(UnescapeError.InvalidEscape(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidEscape")
+}
+
+test "UnescapeLiteral rejects Unicode escape without opening brace" {
+    try UnescapeLiteral("\\u1234") {
+        Err(UnescapeError.InvalidEscape(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidEscape")
+}
+
+test "UnescapeLiteral rejects incomplete Unicode escape introducer" {
+    try UnescapeLiteral("\\u") {
+        Err(UnescapeError.Truncated(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.Truncated")
+}
+
+test "UnescapeLiteral rejects Unicode escape without closing brace" {
+    try UnescapeLiteral("\\u{123") {
+        Err(UnescapeError.Truncated(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.Truncated")
+}
+
+test "UnescapeLiteral rejects empty Unicode scalar digits" {
+    try UnescapeLiteral("\\u{}") {
+        Err(UnescapeError.InvalidUnicodeScalar(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidUnicodeScalar")
+}
+
+test "UnescapeLiteral rejects high surrogate" {
+    try UnescapeLiteral("\\u{D800}") {
+        Err(UnescapeError.InvalidUnicodeScalar(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidUnicodeScalar")
+}
+
+test "UnescapeLiteral rejects low surrogate" {
+    try UnescapeLiteral("\\u{DFFF}") {
+        Err(UnescapeError.InvalidUnicodeScalar(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidUnicodeScalar")
+}
+
+test "UnescapeLiteral rejects Unicode scalar above maximum" {
+    try UnescapeLiteral("\\u{110000}") {
+        Err(UnescapeError.InvalidUnicodeScalar(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidUnicodeScalar")
+}
+
+test "UnescapeLiteral rejects more than six Unicode hex digits" {
+    try UnescapeLiteral("\\u{1234567}") {
+        Err(UnescapeError.InvalidEscape(position)) => {
+            testing.ExpectEqual(0, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidEscape")
+}
+
+test "UnescapeLiteral reports invalid Unicode hex digit" {
+    try UnescapeLiteral("\\u{ABG}") {
+        Err(UnescapeError.InvalidHexDigit(position)) => {
+            testing.ExpectEqual(5, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidHexDigit")
+}
+
+// Unquote: validate outer quotes, inner quotes, and physical line breaks.
+
+test "Unquote decodes ordinary quoted text" {
+    let result := try Unquote("\"Hello\"")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "Unquote accepts empty quoted text" {
+    let result := try Unquote("\"\"")
+    testing.ExpectEqual("", result)
+}
+
+test "Unquote preserves quoted Unicode" {
+    let result := try Unquote("\"å€🦊\"")
+    testing.ExpectEqual("å€🦊", result)
+}
+
+test "Unquote decodes escaped inner quote" {
+    let result := try Unquote("\"A\\\"B\"")
+    testing.ExpectEqual("A\"B", result)
+}
+
+test "Unquote decodes escaped backslash" {
+    let result := try Unquote("\"C:\\\\Temp\"")
+    testing.ExpectEqual("C:\\Temp", result)
+}
+
+test "Unquote decodes short escapes" {
+    let result := try Unquote("\"A\\nB\\tC\"")
+    testing.ExpectEqual("A\nB\tC", result)
+}
+
+test "Unquote decodes Unicode escape" {
+    let result := try Unquote("\"\\u{1F98A}\"")
+    testing.ExpectEqual("🦊", result)
+}
+
+test "Unquote rejects unquoted text" {
+    try Unquote("Hello") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects empty unquoted input" {
+    try Unquote("") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects a single double quote" {
+    try Unquote("\"") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects missing opening quote" {
+    try Unquote("abc\"") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects missing closing quote" {
+    try Unquote("\"abc") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects unescaped inner quote" {
+    try Unquote("\"A\"B\"") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects physical line feed" {
+    try Unquote("\"A\nB\"") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects physical carriage return" {
+    try Unquote("\"A\rB\"") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote rejects escaped closing delimiter" {
+    try Unquote("\"abc\\\"") {
+        Err(UnescapeError.InvalidQuotes) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidQuotes")
+}
+
+test "Unquote shifts InvalidEscape positions past opening quote" {
+    try Unquote("\"\\q\"") {
+        Err(UnescapeError.InvalidEscape(position)) => {
+            testing.ExpectEqual(1, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidEscape")
+}
+
+test "Unquote shifts InvalidHexDigit positions past opening quote" {
+    try Unquote("\"\\xG1\"") {
+        Err(UnescapeError.InvalidHexDigit(position)) => {
+            testing.ExpectEqual(3, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidHexDigit")
+}
+
+test "Unquote shifts InvalidUnicodeScalar positions past opening quote" {
+    try Unquote("\"\\u{D800}\"") {
+        Err(UnescapeError.InvalidUnicodeScalar(position)) => {
+            testing.ExpectEqual(1, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.InvalidUnicodeScalar")
+}
+
+test "Unquote shifts Truncated positions past opening quote" {
+    try Unquote("\"\\u{123\"") {
+        Err(UnescapeError.Truncated(position)) => {
+            testing.ExpectEqual(1, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected UnescapeError.Truncated")
+}
+
+// Round trips: all valid contents must survive quoting and escaping.
+
+test "EscapeLiteral and UnescapeLiteral round trip ASCII" {
+    let escaped := try EscapeLiteral("Hello, Sec!")
+    let decoded := try UnescapeLiteral(escaped)
+    testing.ExpectEqual("Hello, Sec!", decoded)
+}
+
+test "EscapeLiteral and UnescapeLiteral round trip controls" {
+    let source := "\0\n\r\t\x1B\x7F\x85"
+    let escaped := try EscapeLiteral(source)
+    let decoded := try UnescapeLiteral(escaped)
+    testing.ExpectEqual(source, decoded)
+}
+
+test "EscapeLiteral and UnescapeLiteral round trip Unicode" {
+    let source := "Å é € 🦊"
+    let escaped := try EscapeLiteral(source)
+    let decoded := try UnescapeLiteral(escaped)
+    testing.ExpectEqual(source, decoded)
+}
+
+test "Quote and Unquote round trip empty string" {
+    let quoted := try Quote("")
+    let decoded := try Unquote(quoted)
+    testing.ExpectEqual("", decoded)
+}
+
+test "Quote and Unquote round trip quotes and backslashes" {
+    let source := "A\"B\\C'D"
+    let quoted := try Quote(source)
+    let decoded := try Unquote(quoted)
+    testing.ExpectEqual(source, decoded)
+}
+
+test "Quote and Unquote round trip controls" {
+    let source := "A\0\n\r\t\x1BB"
+    let quoted := try Quote(source)
+    let decoded := try Unquote(quoted)
+    testing.ExpectEqual(source, decoded)
+}
+
+test "Quote and Unquote round trip mixed Unicode" {
+    let source := "Räksmörgås é € 🦊"
+    let quoted := try Quote(source)
+    let decoded := try Unquote(quoted)
+    testing.ExpectEqual(source, decoded)
+}

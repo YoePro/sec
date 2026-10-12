@@ -244,17 +244,17 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 			}
 			if mutable {
 				if record.LoopCarried {
-					a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
+					a.addBorrowAuthorityConflict(place, token, record, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
 					return true
 				}
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s while it is already borrowed", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, "cannot create mutable reference to %s while it is already borrowed", place.String())
 				return true
 			}
 			if record.LoopCarried {
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
 				return true
 			}
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s while it is mutably borrowed", place.String())
+			a.addBorrowAuthorityConflict(place, token, record, "cannot create shared reference to %s while it is mutably borrowed", place.String())
 			return true
 		}
 	}
@@ -289,7 +289,7 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 		return true
 	}
 	if a.loopBackedgePlaces[movedKey] {
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.ConditionallyUnavailableUse,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.ConditionallyUnavailableUse,
 			"reinitialize "+movedKey+" before the next iteration, or move it out only after the loop",
 			"cannot borrow place %s because it may be unavailable on a later loop iteration", place.String())
 		return true
@@ -297,23 +297,23 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
 	help := "borrow " + place.String() + " before that operation, or reinitialize a mutable binding before borrowing it again"
 	if isMultipleAvailabilityReason(reason) {
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,
 			"cannot borrow unavailable place %s; on every possible execution path it was %s", place.String(), availabilityReasonPhrase(reason))
 		return true
 	}
 	switch reason {
 	case "discarded":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterDiscard,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterDiscard,
 			"reinitialize a mutable Place before borrowing it, or keep the value until the borrow",
 			"cannot borrow unavailable place %s; it was discarded here", place.String())
 	case "detached":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was detached here", place.String())
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was detached here", place.String())
 	case "released":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was released here", place.String())
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was released here", place.String())
 	case "consumed by call":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was consumed by call here", place.String())
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was consumed by call here", place.String())
 	default:
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was moved here", place.String())
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was moved here", place.String())
 	}
 	return true
 }
@@ -352,7 +352,7 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 func (a *Analyzer) inferCallArgumentExpression(arg ast.Expression) (Type, expressionValue) {
 	move, explicit := explicitMoveArgument(arg)
 	if !explicit {
-		if expected, ok := a.expectedExpressionTypes[arg]; ok && a.isBareNoneArgument(arg) {
+		if expected, ok := a.expectedExpressionTypes[arg]; ok && (a.isBareNoneArgument(arg) || isEmptyArrayLiteral(arg)) {
 			return a.inferExpressionWithExpected(arg, expected)
 		}
 		return a.inferExpression(arg)
@@ -382,59 +382,6 @@ func explicitMoveSource(expr ast.Expression) ast.Expression {
 		return move.Right
 	}
 	return expr
-}
-
-// validateCallArgumentOwnership requires visible transfer from every reusable
-// Place passed to a consuming parameter, including copyable Places, while
-// preserving marker-free forwarding of fresh temporaries.
-//
-// Rules:
-//   - rules/memory/copy_move.md — §§7 and 8.2
-//   - rules/declarations/functions.md — §9 "Explicit consuming parameter"
-func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
-	valid := true
-	for sourceIndex, arg := range sourceArgs {
-		param, ok := functionParameterForArgument(function, sourceIndex)
-		if !ok {
-			return false
-		}
-		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
-		move, explicit := explicitMoveArgument(arg)
-		source := explicitMoveSource(arg)
-		borrowParameter := param.Ref || param.MutableRef || param.Type.Kind == ReferenceType
-		if explicit {
-			if preparedSpread || borrowParameter {
-				a.addErrorAtToken(move.Token, "explicit <- argument requires an owning value parameter")
-				valid = false
-				continue
-			}
-			if !a.validateNamedOwnershipSource(ast.OwnershipMove, source, move.Token, false, false) {
-				valid = false
-			}
-			continue
-		}
-		if preparedSpread || borrowParameter {
-			continue
-		}
-		place, reusable := a.resolvePlace(source)
-		if !reusable {
-			continue
-		}
-		needsTransfer := param.Consuming || requiresOwnershipTransfer(place.Type)
-		if !needsTransfer {
-			continue
-		}
-		a.addErrorAtTokenWithMetadata(
-			expressionToken(source),
-			diagnostics.ImplicitMoveDisallowed,
-			fmt.Sprintf("write `<-%s` to make the ownership transfer explicit", place.String()),
-			"reusable source %s passed to %s must use explicit <- ownership transfer",
-			place.String(),
-			function.Name,
-		)
-		valid = false
-	}
-	return valid
 }
 
 // validateCallArgumentBorrows models selected reference parameters as
@@ -468,8 +415,7 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 				if reservation.Kind != mutableBorrow || !borrowRecordMayOverlap(place, reservation) {
 					continue
 				}
-				a.addErrorAtTokenWithPrevious(
-					expressionToken(arg), reservation.Token,
+				a.addBorrowAuthorityConflict(place, expressionToken(arg), reservation,
 					"argument %d reads %s while mutable borrow prepared for argument %d remains active",
 					sourceIndex+1, place.String(), callReservationArgumentIndex(reservation),
 				)
@@ -492,8 +438,7 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 			if !borrowRecordMayOverlap(place, reservation) || !mutable && reservation.Kind == sharedBorrow {
 				continue
 			}
-			a.addErrorAtTokenWithPrevious(
-				expressionToken(arg), reservation.Token,
+			a.addBorrowAuthorityConflict(place, expressionToken(arg), reservation,
 				"argument %d overlaps %s borrow prepared for argument %d",
 				sourceIndex+1, reservation.Kind, callReservationArgumentIndex(reservation),
 			)

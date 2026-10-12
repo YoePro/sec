@@ -27,7 +27,8 @@ func analyzeDiagnosticBatchWithPolicy(snapshots []lspserver.Snapshot, overlay so
 }
 
 // analyzeDiagnosticBatchWithDependencies returns compiler source dependencies alongside current diagnostics.
-// Rules: rules/memory/allocation.md — §29(5); rules/tooling/lsp.md — "Snapshots", "Incremental analysis".
+// Rules: rules/errors/panic.md — §28(6)–(8); rules/memory/allocation.md — §29(5);
+// rules/tooling/lsp.md — "Snapshots", "Incremental analysis".
 func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, overlay sourceOverlay, policy pitfallDiagnosticSettings, dependencies map[string]map[string]bool) map[string][]diagnostic {
 	results := make(map[string][]diagnostic, len(snapshots))
 	type document struct {

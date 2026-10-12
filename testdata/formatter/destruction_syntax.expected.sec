@@ -1,0 +1,29 @@
+module main
+impl Resource {
+    free {
+        Release(self.Raw)
+    }
+}
+fn Transfer(->value: Resource) Resource {
+    defer {
+        Trace("defer/discard/free/<- stay literal")
+    }
+    return <-value
+}
+fn Cleanup(value: Resource) void {
+    let destination :<- value
+    let mut replacement := Create()
+    replacement <- destination
+    Consume(<-replacement)
+    let payload := Packet{ Value: <-Create() }
+    let option := Some(<-Create())
+    let captureSource := Create()
+    let closure := capture(<-captureSource) fn() void {
+        discard captureSource
+    }
+    discard payload
+    discard option
+    discard closure
+    // A redundant discard remains source syntax.
+    discard closure
+}

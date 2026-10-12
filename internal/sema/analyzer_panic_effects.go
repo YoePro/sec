@@ -40,6 +40,8 @@ func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
 		Kind:           EffectMayPanicExplicit,
 		Source:         stmt.Token,
 		PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonExplicitPanic},
+		Message:        message,
+		HasMessage:     hasMessage,
 	})
 }
 
@@ -192,4 +194,51 @@ func (a *Analyzer) recordForeignAllocationEffect(callee Function, source lexer.T
 		return
 	}
 	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectForeign, Source: source, UnknownAllocation: true})
+}
+
+// analyzeAssertStatement enforces exact bool typing and records a panic effect
+// unless canonical condition proof establishes truth on every path. Condition
+// evaluation retains its independently inferred effects.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.2 "Condition typing"
+//   - rules/errors/panic.md — §§ 15.3, 15.5, 15.8 "Meaning", "Assertions are always active", "Assertions in @noPanic"
+func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
+	if stmt == nil || stmt.Condition == nil {
+		return
+	}
+	conditionType, _ := a.inferExpression(stmt.Condition)
+	if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
+		a.addErrorAtTokenWithMetadata(expressionToken(stmt.Condition), diagnostics.AssertConditionNotBool,
+			assertConditionHelp(stmt.Condition, conditionType),
+			"assert condition must be bool, got %s", typeDisplayName(conditionType))
+		return
+	}
+	if conditionType.Kind == BoolType {
+		// rules/errors/panic.md §15.8: proof is decided before this assertion
+		// adds its own condition fact, so it never proves itself.
+		proven := isBoolLiteral(stmt.Condition, true) || a.proveCondition(stmt.Condition)
+		refinement := a.recordConditionFact(stmt.Condition, ConditionFactAssertionSuccess, stmt.Token)
+		message := ""
+		hasMessage := stmt.Message != nil
+		if hasMessage {
+			message = stmt.Message.Value
+		}
+		a.resolvedAssertions[stmt] = ResolvedAssertion{
+			Reason:     PanicReasonAssertionFailed,
+			ReasonID:   diagnostics.PanicReasonAssertionFailure,
+			Condition:  stmt.Condition,
+			Message:    message,
+			HasMessage: hasMessage,
+			File:       stmt.Token.File,
+			Line:       stmt.Token.Line,
+			Column:     stmt.Token.Column,
+			Function:   a.currentFunctionName,
+			Proven:     proven,
+			Refinement: refinement,
+		}
+		if !proven && !a.summaryPass && a.callGraphPathReachable {
+			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicAssertion, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonAssertionFailure}, Message: message, HasMessage: hasMessage})
+		}
+	}
 }

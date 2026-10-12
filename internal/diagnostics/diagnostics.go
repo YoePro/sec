@@ -259,12 +259,16 @@ const (
 	// producing a value of the protected operation's success type.
 	// Rules: rules/errors/errorhandling.md — § 21 "Recovery values", § 21.1, § 30.
 	TryHandlerMissingRecoveryValue = "S1146"
-	UnreachableStatement           = "S3001"
-	UseAfterDiscard                = "S4001"
-	LargeValueParameter            = "A2001"
-	RedundantStateTestComparison   = "A2002"
-	NegatedStateTest               = "A2003"
-	PitfallAdvisory                = "A2004"
+	// AmbiguousContextualArgument rejects a call whose viable overloads give a
+	// contextual argument (None, [] or null) incompatible types.
+	// Rules: rules/types/types.md — "Contextual None and empty-literal arguments" (MD-027).
+	AmbiguousContextualArgument  = "S1147"
+	UnreachableStatement         = "S3001"
+	UseAfterDiscard              = "S4001"
+	LargeValueParameter          = "A2001"
+	RedundantStateTestComparison = "A2002"
+	NegatedStateTest             = "A2003"
+	PitfallAdvisory              = "A2004"
 )
 
 var registry = map[string]Definition{
@@ -279,6 +283,7 @@ var registry = map[string]Definition{
 	ThreadLocalStoreOfShortLivedReference: {ID: ThreadLocalStoreOfShortLivedReference, Name: "escape.thread-local-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 	ProductionDependsOnTest:               {ID: ProductionDependsOnTest, Name: "testing.production-dependency-on-test", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true},
 	TryHandlerMissingRecoveryValue:        {ID: TryHandlerMissingRecoveryValue, Name: "errors.try-handler-missing-recovery-value", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	AmbiguousContextualArgument:           {ID: AmbiguousContextualArgument, Name: "types.ambiguous-contextual-argument", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	UnitPolymorphismReserved:              {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
 	PitfallAdvisory:                       {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
 	IndexOutOfBounds:                      {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},

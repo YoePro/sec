@@ -186,7 +186,7 @@ func (a *Analyzer) checkDeferredUsePlace(place Place, token lexer.Token, action 
 			if !isDeferredUseKind(record.Kind) || !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required by defer", action, place.String())
+			a.addBorrowAuthorityConflict(place, token, record, "cannot %s %s while it is required by defer", action, place.String())
 			return true
 		}
 	}
@@ -205,7 +205,7 @@ func (a *Analyzer) checkDeferredReferenceHolderUsePlace(place Place, token lexer
 		if record.Kind != deferredReferenceHolderUse || !borrowRecordMayOverlap(place, record) {
 			continue
 		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required as a reference holder by defer", action, place.String())
+		a.addBorrowAuthorityConflict(place, token, record, "cannot %s %s while it is required as a reference holder by defer", action, place.String())
 		return true
 	}
 	return false

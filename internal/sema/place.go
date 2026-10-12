@@ -874,7 +874,7 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		return false
 	}
 	if a.loopBackedgePlaces[movedKey] {
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.ConditionallyUnavailableUse,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.ConditionallyUnavailableUse,
 			"reinitialize "+movedKey+" before the next iteration, or move it out only after the loop",
 			"place %s may be unavailable on a later loop iteration", place.String())
 		return true
@@ -888,7 +888,7 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		return true
 	}
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
-	if a.reportConsumedResultProjectionUse(place, token, movedAt, reason) {
+	if a.reportConsumedResultProjectionUse(place, movedKey, token, movedAt, reason) {
 		return true
 	}
 	a.reportDefinitelyUnavailablePlace(place, movedKey, token, movedAt)

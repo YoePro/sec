@@ -1,0 +1,5 @@
+module main
+import "helper"
+@noPanic
+fn Root() void { helper.Work() }
+fn main() void { Root() }

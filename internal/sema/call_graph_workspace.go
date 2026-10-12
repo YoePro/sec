@@ -274,7 +274,9 @@ func sortGraphScopes(scopes []CallGraphScope) {
 	})
 }
 
-const callGraphCheckpointVersion = 3
+// Version 4 includes static panic messages in registered effect sites; older
+// payloads cannot retain the complete cause metadata promised by this model.
+const callGraphCheckpointVersion = 4
 
 type graphCheckpoint struct {
 	Format  string

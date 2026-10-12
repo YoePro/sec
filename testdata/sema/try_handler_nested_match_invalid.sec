@@ -1,0 +1,26 @@
+module main
+type Failure enum error { First, Second }
+fn Read(contents: string) Result[string, Failure] { return Ok(contents) }
+fn MissingRecovery(contents: string) Result[string, Failure] {
+    let result := try Read(contents) {
+        Err(error) => {
+            match error {
+                Failure.First => { return Err(Failure.First) }
+                Failure.Second => { discard error }
+            }
+        }
+    }
+    return Ok(result)
+}
+fn UnreachableRecovery(contents: string) Result[string, Failure] {
+    let result := try Read(contents) {
+        Err(error) => {
+            match error {
+                Failure.First => { return Err(Failure.First) }
+                Failure.Second => { return Err(Failure.Second) }
+            }
+            "unused recovery"
+        }
+    }
+    return Ok(result)
+}

@@ -37,14 +37,18 @@ func TestFormatAlignmentPaddingFollowsIndentationWidth(t *testing.T) {
 	}
 }
 
+// Imports form one alphabetic sequence in both vertical styles; the formatter
+// never classifies a path as platform, project or standard library (MD-033).
+//
 // Rules:
-//   - rules/tooling/formatter.md — § 13(8)–(9)
-func TestFormatCompactImportRegionDropsClassSeparation(t *testing.T) {
-	input := "module main\n\nimport sys \"platform/linux\"\nimport \"fmt\"\n"
-	structured := Format(Source{Text: input}, Options{}).Text
-	compact := Format(Source{Text: input}, Options{VerticalStyle: VerticalCompact}).Text
-	if !strings.Contains(structured, "\"fmt\"\n\n    sys") || !strings.Contains(compact, "\"fmt\"\n    sys") {
-		t.Fatalf("structured:\n%s\ncompact:\n%s", structured, compact)
+//   - rules/tooling/formatter.md — § 13 "Imports"
+func TestFormatImportRegionHasNoImportClasses(t *testing.T) {
+	input := "module main\n\nimport sys \"platform/linux\"\nimport \"fmt\"\nimport \"app/config\"\n"
+	want := "module main\n\nimport (\n    \"app/config\"\n    \"fmt\"\n    sys \"platform/linux\"\n)\n"
+	for _, style := range []VerticalStyle{VerticalStructured, VerticalCompact} {
+		if got := Format(Source{Text: input}, Options{VerticalStyle: style}).Text; got != want {
+			t.Fatalf("%s:\n%s\nwant:\n%s", style, got, want)
+		}
 	}
 }
 

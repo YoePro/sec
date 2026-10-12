@@ -692,6 +692,8 @@ func (b *parameterUsageBuilder) walkExpressionChildren(expression ast.Expression
 	case *ast.RangeExpression:
 		b.walkExpression(expression.Start)
 		b.walkExpression(expression.End)
+	case *ast.BitExtractionExpression:
+		b.walkExpression(expression.Value)
 	case *ast.ConversionExpression:
 		b.walkExpression(expression.Value)
 	case *ast.MemberExpression:

@@ -8,7 +8,7 @@ impl string {
     }
 
     property BackingCount: uint {
-        get { return self.ByteLen }
+        get { return self.SizeOf }
     }
 
     fn IndexOf(value: string) Option[uint] {
@@ -22,7 +22,7 @@ type Override string
 
 impl HeaderValue {
     fn IsValid() bool {
-        return self.ByteLen != 0u
+        return self.SizeOf != 0u
     }
 }
 
@@ -39,7 +39,7 @@ enum StructuredFieldError error {
 }
 
 fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
-    let bytes: uint := value.ByteLen
+    let bytes: uint := value.SizeOf
     let n: Option[uint] := value.IndexOf("=")
     if n is None {
         return Err(StructuredFieldError.AllocationFailed)

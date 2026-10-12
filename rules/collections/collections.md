@@ -1,7 +1,7 @@
 # Collections
 
 **Created:** 2026-08-11  
-**Last updated:** 2026-08-11  
+**Last updated:** 2026-10-12 (MD-058 capacity reservation, Len/Capacity/SizeOf)  
 **Document revision:** 1  
 **Language version:** Sec 0.1  
 **Status:** Draft for Sec 0.1
@@ -152,6 +152,21 @@ Len means logical element or entry count.
 Len never means payload size in bytes.
 ```
 
+`Len`, `Capacity`, and value-form `SizeOf` are different observations (MD-058,
+2026-10-12, `rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md`):
+
+| Category | `.Len` | `.Capacity` | Instance `.SizeOf` |
+|---|---|---|---|
+| `string` | Unicode scalar count | not provided | encoded UTF-8 payload bytes |
+| `byte[]`, `char[]`, `rune[]` | element count | not public (§ 6.3) | represented element payload bytes |
+| `list[T]` | element count | available element capacity | initialized element payload bytes |
+| `map[K, V]` | entry count | available entry capacity | no payload `SizeOf` contract |
+| `set[T]` | distinct element count | available entry capacity | no payload `SizeOf` contract |
+| bounded `list`, `map`, `set` | live entry count | declared maximum entry count | existing representation rules |
+
+No public `ByteLen`, `RuneLen`, or `CharLen` alias exists: `.SizeOf` is the
+encoded byte count of a string and `.Len` its scalar count.
+
 The result type is:
 
 ```text
@@ -261,13 +276,28 @@ value.SizeOf
 is a read-only `uint` property describing the byte extent of the represented
 logical payload.
 
-It is not the descriptor size.
+It is not the descriptor size, the allocated capacity, allocator metadata, or
+reserved but uninitialized slots.
 
 Conceptually:
 
 ```text
 payload byte size = Len * element layout stride
 ```
+
+For a `string` value, `SizeOf` is the number of encoded UTF-8 payload bytes,
+without a terminating NUL, unused capacity, descriptor, or allocation header,
+while `Len` counts Unicode scalars (MD-058):
+
+```sec
+let text := "Hej π"
+
+// text.Len    == 5
+// text.SizeOf == 6
+```
+
+`map` and `set` are not contiguous logical payloads; their `Capacity` gives
+them no `Ptr` and no `Len * entry stride` payload size.
 
 The multiplication is not revalidated as an ordinary runtime arithmetic
 expression when observing an already valid collection value. Storage creation,
@@ -1489,6 +1519,9 @@ according to the list contract.
 
 Unlike `T[]`, list capacity is intentionally source-visible.
 
+Dynamic `list[T]` reserves capacity through `Reserve` and `WithCapacity`
+(§ 13.12).
+
 ## 13.5 Core list methods
 
 The Sec 0.1 list surface includes:
@@ -1607,6 +1640,76 @@ function/lambda rules.
 Sorting must not silently copy move-only elements merely because an
 implementation algorithm was written in copy-oriented form.
 
+## 13.12 Capacity reservation
+
+Dynamic `list[T]` provides (MD-058, 2026-10-12, `rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md`):
+
+```sec
+fn Reserve(additional: uint) Result[void, CollectionError]
+static fn WithCapacity(capacity: uint) Result[list[T], CollectionError]
+```
+
+`Reserve` is a mutable instance method and `WithCapacity` a type-associated
+factory written `list[T].WithCapacity(n)`. Neither is a constructor named
+`New`, a free function, a property setter, or an allocator selection API, and no
+`Capacity()` method exists.
+
+On a list with `Len == L`, a successful `Reserve(n)` guarantees:
+
+```text
+Capacity >= L + n
+```
+
+`n` counts additional future elements beyond `Len`; it is not a byte count and
+not an increase over the old `Capacity`. `L + n` and the required storage size
+are checked for representability before any state changes.
+
+When the capacity already suffices, `Reserve(n)` is a successful no-op: no
+allocator call, no relocation, no change to `Len` or `Capacity`, and no
+invalidation of references. `Reserve(0)` is therefore always a successful no-op.
+
+When growth is required, the implementation may reserve more than requested;
+growth factor, layout and excess capacity are not source guarantees. The list
+remains logically unchanged: same elements, ownership and `Len`, and no
+element is constructed because capacity grew. Up to `n` subsequently added
+elements are then accommodated without further backing-capacity growth unless
+intervening operations change that guarantee; construction, copying, callbacks
+or allocations of the elements themselves are not made infallible.
+
+Reservation may relocate backing storage. Ordinary ownership, borrowing and
+invalidation rules apply: a reservation is invalid while an active borrow
+forbids that structural mutation, and no live owner may refer to a destroyed
+backing incarnation.
+
+`Reserve` is transactional. On overflow, capacity limit or allocation failure
+the list is unchanged: same elements, `Len`, `Capacity`, ownership and backing
+identity, with no partial move, leaked allocation or destroyed element.
+
+`WithCapacity(n)` creates a new empty owning list:
+
+```text
+Len == 0
+Capacity >= n
+```
+
+No element is constructed. On failure no partially constructed owner is
+returned and temporary storage is cleaned up. `WithCapacity(0)` produces a valid
+empty list without requesting backing allocation. `WithCapacity` uses the
+active explicit or implicit allocation context only when it must allocate and
+never invents a global allocator; when no allocation context can exist the
+allocation rules reject the program at compile time.
+
+`list[T, Capacity]`, `T[]`, `T[N]`, slices and other non-growing views have no
+`Reserve` or `WithCapacity`.
+
+```sec
+let mut bytes: list[byte]
+try bytes.Reserve(1024)
+
+let mut numbers := try list[int].WithCapacity(100)
+try numbers.Reserve(20)
+```
+
 ---
 
 # 14. `map[K, V]`
@@ -1675,7 +1778,13 @@ Read-only properties:
 ```text
 Len
 IsEmpty
+Capacity
 ```
+
+`Len` counts entries. `Capacity` is the number of entries a dynamic map can hold
+without growing, and for `map[K, V, Capacity]` its declared maximum entry count;
+it never exposes buckets, load factors, control bytes or bytes (MD-058). A
+bounded map only observes `Capacity` and never grows beyond its bound.
 
 No required:
 
@@ -1832,6 +1941,34 @@ Result[void, CollectionError]
 
 when structural growth/resource failure is possible.
 
+## 14.8 Capacity reservation
+
+Dynamic `map[K, V]` provides (MD-058, 2026-10-12):
+
+```sec
+fn Reserve(additional: uint) Result[void, CollectionError]
+static fn WithCapacity(capacity: uint) Result[map[K, V], CollectionError]
+```
+
+They follow § 13.12 with entries as the unit: a successful `Reserve(n)`
+guarantees `Capacity >= Len + n` entries, an already sufficient capacity is a
+no-op, and `WithCapacity(n)` creates an empty map with `Capacity >= n`. No key or
+value is constructed by reservation. `Reserve` is transactional including any
+rehash: on failure the entries, keys, values, `Len`, `Capacity` and backing
+identity are unchanged and no partly rehashed table is visible.
+`map[K, V, Capacity]` has no `Reserve` or `WithCapacity`.
+
+```text
+Existing map: Len = 20, Capacity = 40
+Reserve(100) succeeds -> Capacity >= 120
+Reserve(10)  succeeds -> no growth required because Capacity >= 30
+```
+
+```sec
+let mut users := try map[string, int].WithCapacity(100)
+try users.Reserve(20)
+```
+
 ---
 
 # 15. `set[T]`
@@ -1876,7 +2013,13 @@ Read-only properties:
 ```text
 Len
 IsEmpty
+Capacity
 ```
+
+`Len` counts distinct elements. `Capacity` is the number of distinct elements a
+dynamic set can hold without growing, and for `set[T, Capacity]` its declared
+maximum; it never exposes buckets or bytes (MD-058). A bounded set only observes
+`Capacity`.
 
 No required:
 
@@ -1996,6 +2139,24 @@ out of the set.
 
 Structural mutation during a conflicting active iteration borrow is invalid.
 
+## 15.5 Capacity reservation
+
+Dynamic `set[T]` provides (MD-058, 2026-10-12):
+
+```sec
+fn Reserve(additional: uint) Result[void, CollectionError]
+static fn WithCapacity(capacity: uint) Result[set[T], CollectionError]
+```
+
+They follow § 13.12 and § 14.8 with distinct elements as the unit, including
+the transactional rehash guarantee. `set[T, Capacity]` has no `Reserve` or
+`WithCapacity`.
+
+```sec
+let mut names := try set[string].WithCapacity(100)
+try names.Reserve(20)
+```
+
 ---
 
 # 16. Collection errors
@@ -2034,6 +2195,18 @@ CollectionError.AllocationFailed
 CollectionError.CapacityExceeded
 CollectionError.SizeOverflow
 ```
+
+The canonical core declaration (`CollectionError` in the compiler-known core
+types) currently has exactly these three cases. `Reserve` and `WithCapacity`
+(§§ 13.12, 14.8, 15.5) use them as follows (MD-058):
+
+| Case | When |
+|---|---|
+| `SizeOverflow` | `Len + additional`, the requested total capacity, or the required storage size is unrepresentable |
+| `AllocationFailed` | a required allocation or reallocation fails in a legitimate allocation context |
+| `CapacityExceeded` | a hard collection or target capacity limit prevents a representable reservation |
+
+No reservation-specific error type exists.
 
 The allocation subsystem may retain its own lower-level:
 

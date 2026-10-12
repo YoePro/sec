@@ -1,0 +1,37 @@
+module   headers
+
+import   alias   "core/x"
+
+type Control register[16]   msb - first    big - endian {
+    Flag: bit
+}
+
+interface Factory {
+    static   fn   Make()   int
+    mut   fn   Change()   void
+    ->   fn   End()   void
+}
+
+impl   extends   Control {
+    static   let   mut   count: int := 1
+
+    static   fn   Make()   int {
+        return 1
+    }
+}
+
+unsafe   fn   Read()   int {
+    return 1
+}
+
+unsafe   extern   "C"   fn   ReadForeign()   int
+
+static   fn   Global()   int {
+    return 1
+}
+
+static   let   mut   value: int := 1
+
+fn Difference(msb: int, first: int) int {
+    return msb - first
+}

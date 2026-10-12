@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-10-11 (SEC-MLIR-P15 reference synchronization)
+- **Last updated:** 2026-10-12 (MD-028 protected try subtree)
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
@@ -363,6 +363,17 @@ let value := try left + right {
 ```
 
 The handler belongs to the full expression.
+
+The protected expression extends through its natural grammatical boundary and
+includes call receivers, call arguments, operators, indexing, and every
+successive member or call of a method chain (`errorhandling.md` § 13.1; MD-028,
+2026-10-12):
+
+```sec
+let item := try Build(left + right, values[index])
+```
+
+protects the addition, the index, and `Build`.
 
 ---
 

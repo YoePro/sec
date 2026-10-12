@@ -57,24 +57,23 @@ impl Builder {
      * Constructs a mutable UTF-8 Builder with an initial byte capacity.
      *
      * Description:
-     * Creates an empty Builder and reserves storage for at least
-     * initialCapacity bytes. A capacity of zero does not allocate.
+     * Creates an empty Builder. initialCapacity is a best-effort
+     * preallocation hint in bytes, not a guarantee: when the storage cannot
+     * be reserved the Builder is still a valid empty Builder. Use Reserve
+     * for a guaranteed capacity. A hint of zero does not allocate.
      *
      * Parameters:
-     * - initialCapacity: Minimum initial storage capacity in bytes.
-     *
-     * Errors:
-     * - CollectionError: Storage allocation or capacity failure.
+     * - initialCapacity: Preferred initial storage capacity in bytes.
      *
      * Allocation:
-     * May allocate when initialCapacity is greater than zero.
+     * May allocate through the active allocation context when
+     * initialCapacity is greater than zero.
      */
-    init(initialCapacity: uint) CollectionError {
-        // initialCapacity is a capacity hint that does not change content
-        // (stdlib_str.md § 8.3). list[T] defines no capacity-reservation
-        // operation yet (missing-decisions.yaml MD-058), so the Builder
-        // starts with its empty default storage.
-        discard initialCapacity
+    init(initialCapacity: uint) {
+        // stdlib_str.md § 8.3 (MD-058): the hint never fails construction.
+        try storage.Reserve(initialCapacity) {
+            Err(_) => {}
+        }
     }
 
     /**
@@ -123,8 +122,26 @@ impl Builder {
         }
     }
 
+    /**
+     * Guarantees room for at least additionalBytes more UTF-8 bytes.
+     *
+     * Description:
+     * On success, at least additionalBytes further bytes can be appended
+     * beyond ByteCount without another storage growth. A request already
+     * satisfied by Capacity succeeds without allocating. On failure the
+     * content, ByteCount and Capacity are unchanged.
+     *
+     * Parameters:
+     * - additionalBytes: Number of additional bytes to make room for.
+     *
+     * Errors:
+     * - CollectionError: Overflow, capacity limit or allocation failure.
+     *
+     * Allocation:
+     * May allocate when the existing capacity is insufficient.
+     */
     fn Reserve(additionalBytes: uint) Result[void, CollectionError] {
-        return Err(CollectionError.AllocationFailed)
+        return storage.Reserve(additionalBytes)
     }
 
     /**
@@ -152,7 +169,7 @@ impl Builder {
         let originalLength := storage.Len
         let mut index: uint := 0
 
-        while index < value.Len {
+        while index < value.SizeOf {
             try storage.Append(value.ByteAt(index)) {
                 Err(error) => {
                     // Restore the original logical content.
@@ -325,7 +342,7 @@ impl Builder {
      * May grow the Builder's owned storage.
      */
     fn AppendRepeat(value: string, count: uint) Result[void, CollectionError] {
-        if count == 0 || value.Len == 0 {
+        if count == 0 || value.SizeOf == 0 {
             return Ok()
         }
 

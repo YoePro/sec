@@ -2,7 +2,7 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-28
+**Last updated:** 2026-10-12 (MD-046/MD-056 bit extraction)
 **Replaces:** register-type portions of `rules/platform/registers.txt`  
 **Document revision:** 3
 **Sec language version:** 0.1
@@ -82,6 +82,8 @@ let raw: bit[32]
 ```
 
 Ordinary raw values use existing types such as `uint8`, `uint16`, `uint32`, `uint64`, or byte arrays as appropriate.
+
+The same spelling has one separate expression use: the compiler-known low-bit extraction `bit[N](value)` (`types.md` "Explicit low-bit extraction"; MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It yields an ordinary unsigned integer value, never a standalone `bit[N]` value, and does not make `bit[N]` a variable type.
 
 ## 5. Reserved fields
 
@@ -444,6 +446,26 @@ let invalid := Packet12(0x1ABC) // compile-time error
 ```
 
 This conversion interprets an already-formed numeric value or bit pattern. It is not byte decoding and does not perform implicit endian conversion.
+
+### 12.1 Plain field writes and explicit bit extraction
+
+A plain `bit[N]` field without a unit annotation keeps its physical width. A write to it is valid only when the field conversion rules prove that the value fits the field's representable unsigned interval; an unproven wider value is never silently truncated, and field assignment itself is not fallible (MD-046, 2026-10-12).
+
+An explicit low-bit extraction no wider than the field proves that fit:
+
+```sec
+type Sensor register[16] {
+    Reading: bit[12],
+    _: bit[4],
+}
+
+let source: uint16 := ReadValue()
+sensor.Reading = bit[12](source)
+```
+
+The extraction's result is its ordinary unsigned carrier (`uint16` here); no second conversion and no `uint12` type are required. Access permissions, special write semantics, shadow contracts and platform operation plans still apply, and extraction never bypasses them.
+
+A unit-annotated field such as `Speed: bit[12]<rpm>` also carries a unit contract. `bit[N](value)` performs no unit conversion and never supplies or removes a unit, so it is not a way to write a unitless value into such a field. The observation type and the checked or provably safe write form of unit-annotated fields remain open (MD-046).
 
 Byte-oriented encoding and decoding are separate operations and must obey the register type's byte-order contract.
 

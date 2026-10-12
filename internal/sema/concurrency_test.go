@@ -194,7 +194,7 @@ fn Invalid() void {
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
 		"detach requires Task[T] or Thread[T], got int at 9:12",
-		"value taskHandle was detached here and is no longer available at 12:11, previous declaration at 11:12",
+		"value taskHandle was detached here and is no longer available at 12:11, ownership detached here at 11:12, source ownership established here at 10:9",
 	})
 }
 

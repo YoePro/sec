@@ -76,11 +76,11 @@ func (a *Analyzer) reportConditionallyUnavailablePlace(place Place, movedKey str
 	}
 	help := "test `" + movedKey + " is available` before using it, or restructure the control flow so availability is known statically"
 	if borrow {
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.ConditionallyUnavailableUse, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.ConditionallyUnavailableUse, help,
 			"cannot borrow conditionally available place %s; %s", subject, detail)
 		return
 	}
-	a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.ConditionallyUnavailableUse, help,
+	a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.ConditionallyUnavailableUse, help,
 		"%s may no longer be available here; %s", subject, detail)
 }
 
@@ -95,27 +95,27 @@ func (a *Analyzer) reportDefinitelyUnavailablePlace(place Place, movedKey string
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
 	help := "use " + place.String() + " before that operation, borrow it instead when appropriate, or reinitialize a mutable binding before using it again"
 	if isMultipleAvailabilityReason(reason) {
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,
 			"value %s is no longer available; on every possible execution path it was %s", place.String(), availabilityReasonPhrase(reason))
 		return
 	}
 	switch reason {
 	case "discarded":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterDiscard,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterDiscard,
 			"reinitialize a mutable Place before using it, or keep the value until its last use",
 			"value %s was discarded here and is no longer available", place.String())
 	case "detached":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,
 			"value %s was detached here and is no longer available", place.String())
 	case "released":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove,
 			"use the arena's allocations before Release, or create a new Arena",
 			"arena %s was released here and is no longer available", place.String())
 	case "consumed by call":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,
 			"value %s was consumed by call here and is no longer available", place.String())
 	default:
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,
 			"use of moved value %s", place.String())
 	}
 }
@@ -129,10 +129,10 @@ func (a *Analyzer) reportDefinitelyUnavailablePlace(place Place, movedKey string
 func (a *Analyzer) reportPartiallyUnavailablePlace(place Place, movedKey string, token, movedAt lexer.Token, borrow bool) {
 	help := "use the still-available sub-places individually, or reinitialize " + movedKey + " before using " + place.String() + " as a whole"
 	if borrow {
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.PartiallyUnavailableUse, help,
+		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.PartiallyUnavailableUse, help,
 			"cannot borrow partially available place %s; sub-place %s is unavailable", place.String(), movedKey)
 		return
 	}
-	a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.PartiallyUnavailableUse, help,
+	a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.PartiallyUnavailableUse, help,
 		"cannot use partially moved value %s; place %s is unavailable", place.String(), movedKey)
 }

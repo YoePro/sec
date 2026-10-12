@@ -1,0 +1,19 @@
+module main
+fn Check(value: bool) void { assert value, "value must hold" }
+fn Divide(left: int, right: int) int { return left / right }
+fn Stop() void { panic "stop here" }
+fn Middle(value: bool, left: int, right: int) void {
+    Check(value)
+    discard Divide(left, right)
+    Stop()
+}
+fn Root(value: bool, left: int, right: int) void { Middle(value, left, right) }
+fn RecursiveA(value: bool) void {
+    if value { RecursiveB(value) }
+    Check(value)
+}
+fn RecursiveB(value: bool) void { RecursiveA(value) }
+fn Protected(left: int, right: int) Result[int, ArithmeticError] {
+    return Ok(try left / right)
+}
+fn Proven() void { assert true }

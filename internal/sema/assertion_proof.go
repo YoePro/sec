@@ -8,11 +8,11 @@ import (
 
 // proveCondition reports a bool condition the compiler proves true on every
 // path reaching it, from constants, integer type ranges narrowed by range
-// contracts and by dominating comparisons against constants, `+`/`-` on those
+// contracts and by dominating comparisons against constants, `+`/`-`/`*`/`/` on those
 // refined intervals, logical composition, an identical dominating condition
 // fact, a dominating symbolic relation between the same two values that
 // implies the asserted one (`a < b` proves `a <= b`, `a != b`, and `b > a`),
-// and a chain of such relations through other values (`a < b && b <= c`
+// and a chain of such relations through other values and ordered constants (`a < b && b <= c`
 // proves `a < c`).
 // Only facts no mutation has invalidated are used. It never evaluates the condition; the
 // condition's own effects are recorded independently.
@@ -74,6 +74,9 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 	if minimum, maximum, ok := a.bitwiseInterval(expr); ok {
 		return minimum, maximum, true
 	}
+	if extraction, ok := expr.(*ast.BitExtractionExpression); ok {
+		return a.bitExtractionInterval(extraction)
+	}
 	if id, ok := expr.(*ast.Identifier); ok {
 		if symbol, found := a.symbols[id.Value]; found && !symbol.Mutable && !symbol.Volatile && symbol.IntegerMinimum != nil && symbol.IntegerMaximum != nil {
 			minimum, maximum := new(big.Int).Set(symbol.IntegerMinimum), new(big.Int).Set(symbol.IntegerMaximum)
@@ -81,7 +84,13 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 			return minimum, maximum, true
 		}
 	}
-	if infix, ok := expr.(*ast.InfixExpression); ok && (infix.Operator == "+" || infix.Operator == "-") {
+	if infix, ok := expr.(*ast.InfixExpression); ok && (infix.Operator == "+" || infix.Operator == "-" || infix.Operator == "*" || infix.Operator == "/") {
+		// Quantity products/quotients can rescale coordinates through unit
+		// plans; plain integer corners do not establish that unit conversion.
+		if (infix.Operator == "*" || infix.Operator == "/") &&
+			(a.expressionTypes[infix.Left].Unit != "" || a.expressionTypes[infix.Right].Unit != "") {
+			return nil, nil, false
+		}
 		leftMin, leftMax, leftKnown := a.integerInterval(infix.Left)
 		rightMin, rightMax, rightKnown := a.integerInterval(infix.Right)
 		if !leftKnown || !rightKnown {
@@ -90,7 +99,10 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 		if infix.Operator == "+" {
 			return new(big.Int).Add(leftMin, rightMin), new(big.Int).Add(leftMax, rightMax), true
 		}
-		return new(big.Int).Sub(leftMin, rightMax), new(big.Int).Sub(leftMax, rightMin), true
+		if infix.Operator == "-" {
+			return new(big.Int).Sub(leftMin, rightMax), new(big.Int).Sub(leftMax, rightMin), true
+		}
+		return productOrQuotientInterval(infix.Operator, leftMin, leftMax, rightMin, rightMax)
 	}
 	typ, ok := a.expressionTypes[expr]
 	if !ok {
@@ -154,7 +166,7 @@ func (a *Analyzer) activeComparisonFacts() []*ast.InfixExpression {
 	for _, active := range a.activeConditionFacts {
 		// A logical right operand only proves that its left operand was
 		// false, which is not a comparison fact that holds.
-		if active.epoch == a.arrayIndexMutationEpoch && active.fact.Condition != nil && active.fact.Kind != ConditionFactLogicalRHSFalse {
+		if a.assertionFactValid(active) && active.fact.Condition != nil && active.fact.Kind != ConditionFactLogicalRHSFalse {
 			collect(active.fact.Condition)
 		}
 	}
@@ -204,7 +216,7 @@ func (a *Analyzer) refineIntervalByDominatingFacts(expr ast.Expression, minimum,
 	// Range membership and disjunctions of bounded conditions, on both
 	// logical edges (rules/foundations/operators.md — "Range membership").
 	for _, active := range a.activeConditionFacts {
-		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil {
+		if !a.assertionFactValid(active) || active.fact.Condition == nil {
 			continue
 		}
 		low, high, ok := a.conditionBounds(active.fact.Condition, subject, active.fact.Kind != ConditionFactLogicalRHSFalse)
@@ -451,7 +463,7 @@ func comparisonOrderings(operator string) int {
 func (a *Analyzer) dominatingConditionProves(condition ast.Expression) bool {
 	spelling := condition.String()
 	for _, active := range a.activeConditionFacts {
-		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil {
+		if !a.assertionFactValid(active) || active.fact.Condition == nil {
 			continue
 		}
 		if active.fact.Condition.String() == spelling {
@@ -480,108 +492,6 @@ func assertConditionHelp(condition ast.Expression, typ Type) string {
 		return "A Result is not a condition; handle it with try, or test its state explicitly, such as `assert " + subject + ".ErrRef is None`."
 	}
 	return "The assertion condition must have type bool; Sec applies no truthiness conversion, so write an explicit comparison or state test."
-}
-
-// relationEdge is one dominating fact `from <= to` (strict: `from < to`)
-// between two pure values.
-type relationEdge struct {
-	to     string
-	strict bool
-}
-
-// transitiveRelationImplies reports that a chain of dominating comparisons
-// through other pure values implies the asserted comparison. Every fact is
-// normalized to `x < y` or `x <= y` edges (`==` gives both directions, `!=`
-// gives none); the claim holds when a path of sufficient strictness connects
-// its operands: `l < r` needs a path from l to r with a strict edge, `l <= r`
-// any path, `l == r` paths in both directions, and `l != r` a strict path in
-// either direction. Only facts no mutation has invalidated participate.
-//
-// Rules:
-//   - rules/errors/panic.md — § 15.6(1), (3) "Assertion refinement", § 15.8(1) proof on every path
-func (a *Analyzer) transitiveRelationImplies(claim *ast.InfixExpression) bool {
-	left, leftPure := relationOperandSpelling(claim.Left)
-	right, rightPure := relationOperandSpelling(claim.Right)
-	if !leftPure || !rightPure || left == right {
-		return false
-	}
-	edges := map[string][]relationEdge{}
-	for _, fact := range a.activeComparisonFacts() {
-		from, okFrom := relationOperandSpelling(fact.Left)
-		to, okTo := relationOperandSpelling(fact.Right)
-		if !okFrom || !okTo || from == to {
-			continue
-		}
-		switch fact.Operator {
-		case "<":
-			edges[from] = append(edges[from], relationEdge{to: to, strict: true})
-		case "<=":
-			edges[from] = append(edges[from], relationEdge{to: to})
-		case ">":
-			edges[to] = append(edges[to], relationEdge{to: from, strict: true})
-		case ">=":
-			edges[to] = append(edges[to], relationEdge{to: from})
-		case "==":
-			edges[from] = append(edges[from], relationEdge{to: to})
-			edges[to] = append(edges[to], relationEdge{to: from})
-		}
-	}
-	if len(edges) == 0 {
-		return false
-	}
-	switch claim.Operator {
-	case "<":
-		_, strict := relationPath(edges, left, right)
-		return strict
-	case "<=":
-		reachable, _ := relationPath(edges, left, right)
-		return reachable
-	case ">":
-		_, strict := relationPath(edges, right, left)
-		return strict
-	case ">=":
-		reachable, _ := relationPath(edges, right, left)
-		return reachable
-	case "==":
-		forward, _ := relationPath(edges, left, right)
-		backward, _ := relationPath(edges, right, left)
-		return forward && backward
-	case "!=":
-		_, forward := relationPath(edges, left, right)
-		_, backward := relationPath(edges, right, left)
-		return forward || backward
-	}
-	return false
-}
-
-// relationPath searches the relation graph from one value to another and
-// reports whether any path exists and whether some path contains a strict
-// edge.
-func relationPath(edges map[string][]relationEdge, from string, to string) (reachable bool, strict bool) {
-	type state struct {
-		node   string
-		strict bool
-	}
-	seen := map[state]bool{{node: from}: true}
-	queue := []state{{node: from}}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		for _, edge := range edges[current.node] {
-			next := state{node: edge.to, strict: current.strict || edge.strict}
-			if next.node == to {
-				reachable = true
-				if next.strict {
-					return true, true
-				}
-			}
-			if !seen[next] {
-				seen[next] = true
-				queue = append(queue, next)
-			}
-		}
-	}
-	return reachable, false
 }
 
 // recordIntegerBindingInterval snapshots the proven interval of an immutable

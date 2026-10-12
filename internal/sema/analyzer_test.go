@@ -6814,7 +6814,7 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot move handle while it is required by defer at 17:16, previous declaration at 15:13",
+		"cannot move handle while it is required by defer at 17:16, defer retains this storage at 15:13",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -6832,7 +6832,7 @@ fn Invalid() void {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"cannot discard value while it is required by defer at 7:10, previous declaration at 5:19",
+		"cannot discard value while it is required by defer at 7:10, defer retains this storage at 5:19",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -6863,7 +6863,7 @@ fn Invalid(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot move handle while it is required by defer at 19:16, previous declaration at 16:14",
+		"cannot move handle while it is required by defer at 19:16, defer retains this storage at 16:14",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -8946,7 +8946,7 @@ fn Test() void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"value value was discarded here and is no longer available at 12:15, previous declaration at 11:10",
+		"value value was discarded here and is no longer available at 12:15, ownership discarded here at 11:10, source ownership established here at 9:6",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -10289,7 +10289,7 @@ fn Use() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"use of moved value tx at 12:15, previous declaration at 11:16",
+		"use of moved value tx at 12:15, ownership moved here at 11:16, source ownership established here at 10:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10315,7 +10315,7 @@ fn Use() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"use of moved value message at 14:15, previous declaration at 13:22",
+		"use of moved value message at 14:15, ownership moved here at 13:22, source ownership established here at 12:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10517,7 +10517,7 @@ fn Use() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"message may no longer be available here; it was moved on one possible execution path at 19:15, previous declaration at 14:11",
+		"message may no longer be available here; it was moved on one possible execution path at 19:15, ownership action on a possibly unavailable path at 14:11, source ownership established here at 12:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10863,7 +10863,7 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot read value while it is mutably borrowed at 11:14, previous declaration at 10:30",
+		"cannot read value while it is mutably borrowed at 11:14, borrow origin at 10:30, borrow holder handle keeps authority live at 10:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10912,7 +10912,7 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot move handle while it is borrowed at 15:12, previous declaration at 14:16",
+		"cannot move handle while it is borrowed at 15:12, borrow origin at 14:16, borrow holder borrow keeps authority live at 14:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10934,7 +10934,7 @@ fn Invalid(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot assign to value while it is shared borrowed at 11:2, previous declaration at 9:10",
+		"cannot assign to value while it is shared borrowed at 11:2, borrow origin at 9:10, borrow holder view keeps authority live at 7:10",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10956,7 +10956,7 @@ fn Invalid(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot read value while it is mutably borrowed at 11:14, previous declaration at 9:10",
+		"cannot read value while it is mutably borrowed at 11:14, borrow origin at 9:10, borrow holder view keeps authority live at 7:10",
 	}
 	assertSemaErrors(t, errors, expected)
 }

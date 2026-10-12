@@ -3781,7 +3781,7 @@ func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
 	valueOffset := strings.Index(valueSource, "value.") + len("value.")
 	valueItems := completeSource(uri, valueSource, valueOffset)
 	assertCompletionLabels(t, valueItems, []string{
-		"ByteAt", "ByteLen", "Compare", "Contains", "Empty", "EndsWith", "FromByteArray", "FromRuneArray",
+		"ByteAt", "Compare", "Contains", "Empty", "EndsWith", "FromByteArray", "FromRuneArray",
 		"IndexOf", "LastIndexOf", "Len", "Ptr", "SizeOf", "Slice", "Split", "SplitOnce",
 		"SplitToArray", "StartsWith", "ToByteArray", "ToCharArray", "ToLower", "ToRuneArray",
 		"ToString", "ToUpper", "Trim", "TrimEnd", "TrimStart",
@@ -4173,13 +4173,12 @@ sys "platform/linux/amd64"
 )
 `
 
-	// rules/tooling/formatter.md — §13(7)–(8): one empty line separates
-	// non-empty import classes; platform is the reserved import root.
+	// rules/tooling/formatter.md — § 13(7)–(9): imports form one alphabetic
+	// sequence; the formatter does not separate a platform import class.
 	want := `module main
 
 import (
     "fmt"
-
     sys "platform/linux/amd64"
 )
 `

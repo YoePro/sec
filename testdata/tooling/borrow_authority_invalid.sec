@@ -1,0 +1,42 @@
+module main
+fn OwnerRead() void {
+    let mut value := 1
+    let holder := ref mut value
+    if value is available { let copy := value }
+    discard holder
+}
+fn OwnerWrite() void {
+    let mut value := 1
+    let holder := ref value
+    if value is available { value = 2 }
+    discard holder
+}
+fn SharedBorrow() void {
+    let mut value := 1
+    let holder := ref mut value
+    if value is available { let other := ref value }
+    discard holder
+}
+fn MutableBorrow() void {
+    let mut value := 1
+    let holder := ref value
+    if value is available { let other := ref mut value }
+    discard holder
+}
+fn OwnerMove() void {
+    let mut value := 1
+    let holder := ref value
+    if value is available { let moved :<- value }
+    discard holder
+}
+fn OwnerDiscard() void {
+    let mut value := 1
+    let holder := ref value
+    if value is available { discard value }
+    discard holder
+}
+fn ArenaBacking(buffer: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(buffer)
+    if buffer is available { let size := buffer.Len }
+    arena.Release()
+}

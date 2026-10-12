@@ -105,7 +105,7 @@ integrations:
       - inherited properties retain getter validation, declaration binding, and their declared result types
       - inherited calls retain the named receiver and the core declaration's parameter and result types
       - IndexOf on a named string returns Option[uint]
-      - ByteLen on a named string returns uint
+      - SizeOf on a named string returns its UTF-8 byte count as uint (ByteLen alias removed by MD-058, 2026-10-12)
       - LSP completion derives inherited string methods and properties from Sema facts
       - non-string named types do not acquire ordinary underlying methods through this integration
     verification:

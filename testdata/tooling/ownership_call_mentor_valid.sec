@@ -1,0 +1,47 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+type Packet struct { Value: Resource }
+type Choice union { Owned(Resource), Named { Value: Resource } }
+type Failure enum error { Failed }
+fn Consume(->value: Resource) void { discard value }
+fn ConsumeInt(->value: int) void {}
+fn InspectInt(value: int) void {}
+fn Use(value: ref Resource) void {}
+fn Valid() void {
+    let resource := Resource { Raw: 1 }
+    Consume(<-resource)
+    Consume(Resource { Raw: 2 })
+    let count := 1
+    ConsumeInt(<-count)
+    ConsumeInt(2)
+    let copied := 3
+    InspectInt(copied)
+    InspectInt(copied)
+    let packet := Packet { Value: Resource { Raw: 4 } }
+    let resource2 := Resource { Raw: 5 }
+    let option: Option[Resource] := Some(<-resource2)
+    let result: Result[Resource, Failure] := Ok(Resource { Raw: 6 })
+    let resource3 := Resource { Raw: 7 }
+    let choice := Choice.Owned(<-resource3)
+    let named := Choice.Named { Value: Resource { Raw: 8 } }
+    discard packet
+    discard option
+    discard result
+    discard choice
+    discard named
+}
+fn Forward(resource: Resource) Option[Resource] { return Some(resource) }
+fn Borrow(resource: Resource) void { Use(ref resource) }
+type Issue union error { Detail(Resource) }
+fn Error() void {
+    let issue := Issue.Detail(Resource { Raw: 1 })
+    let result: Result[int, Issue] := Err(<-issue)
+    discard result
+}
+fn Assignment() void {
+    let mut result: Result[Resource, Failure] := Ok(Resource { Raw: 1 })
+    let resource := Resource { Raw: 2 }
+    result = Ok(<-resource)
+    discard result
+}

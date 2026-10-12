@@ -71,11 +71,22 @@ const (
 	//
 	// Rules: rules/platform/ffi.md §5-6; rules/foundations/grammar.md ForeignTypeReference.
 	ForeignQualifierSeparator Role = "foreign-qualifier-separator"
-	// DeclarationColon marks the type-annotation colon of a let declaration.
+	// DeclarationColon marks a parser-confirmed declaration or literal-field colon.
 	DeclarationColon Role = "declaration-colon"
 	// SpacedKeyword marks a statement or control-flow keyword that is followed
 	// by exactly one space when its operand continues on the same line.
 	SpacedKeyword Role = "spaced-keyword"
+	// HeaderCompoundHyphen belongs to a parser-confirmed register modifier,
+	// rather than subtraction or a hyphen inside source-sensitive text.
+	HeaderCompoundHyphen Role = "header-compound-hyphen"
+	// Compact delimiters have no inner horizontal padding; padded brace
+	// delimiters retain one inner space around non-empty source content.
+	CompactDelimiterOpen    Role = "compact-delimiter-open"
+	CompactDelimiterClose   Role = "compact-delimiter-close"
+	PaddedDelimiterOpen     Role = "padded-delimiter-open"
+	PaddedDelimiterClose    Role = "padded-delimiter-close"
+	SingleLineComma         Role = "single-line-comma"
+	SingleLineTrailingComma Role = "single-line-trailing-comma"
 	// NamedTypeBaseStart marks the first base-type token of a simple named-type
 	// declaration such as `type Port int range 1..65535`.
 	NamedTypeBaseStart Role = "named-type-base-start"
@@ -436,6 +447,7 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			}
 		}
 		for _, parameter := range parameters {
+			d.applyOwnershipSpacingRoles(parameter, indexes, mark)
 			nameIndex, nameOK := indexes[keyForToken(parameter.Name.Token)]
 			typeIndex, typeOK := indexes[keyForToken(parameter.Type.Token)]
 			if !nameOK || !typeOK || typeIndex <= nameIndex {
@@ -645,6 +657,19 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			// rules/errors/panic.md §15.1 and formatter.md §23(1) statement syntax.
 			if node.Token.Type == lexer.ASSERT && node.Condition != nil {
 				mark(node.Token, SpacedKeyword)
+				if node.Message != nil {
+					if index, ok := indexes[keyForToken(node.Message.Token)]; ok {
+						for previous := index - 1; previous >= 0; previous-- {
+							if d.Elements[previous].Kind == Whitespace {
+								continue
+							}
+							if d.Elements[previous].Kind == Token && d.Elements[previous].Token.Type == lexer.COMMA {
+								markIndex(previous, SingleLineComma)
+							}
+							break
+						}
+					}
+				}
 			}
 		case *ast.PanicStatement:
 			// rules/errors/panic.md §17 `panic "message"`.
@@ -706,6 +731,8 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		}
 	}
 	visitProgramNodes(program, func(node any) {
+		d.applyHeaderSpacingRoles(node, indexes, mark)
+		d.applyOwnershipSpacingRoles(node, indexes, mark)
 		markSpacingRoles(node)
 		switch node := node.(type) {
 		case *ast.GenericParameter:

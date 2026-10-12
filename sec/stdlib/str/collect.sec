@@ -94,7 +94,7 @@ fn ToByteArray(value: string) Result[byte[], CollectionError] {
     let mut result: byte[]
     let mut index: uint := 0
 
-    while index < value.Len {
+    while index < value.SizeOf {
         try result.Append(value.ByteAt(index))
         index += 1
     }
@@ -131,7 +131,7 @@ fn ToByteArray(value: string) Result[byte[], CollectionError] {
  * Allocates storage for the resulting UTF-8 string.
  */
 fn FromRunes[I: Iterator[rune]](values: I) Result[string, CollectionError] {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     for character in values {
         try builder.Append(character)
@@ -171,7 +171,7 @@ fn FromRunes[I: Iterator[rune]](values: I) Result[string, CollectionError] {
  * Allocates storage for the resulting UTF-8 string.
  */
 fn FromRunes(values: ref rune[]) Result[string, CollectionError] {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     for character in values {
         try builder.Append(character)

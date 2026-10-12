@@ -111,6 +111,7 @@ func formatFunction(out *strings.Builder, fn *Function) {
 			out.WriteString(", ")
 		}
 		fmt.Fprintf(out, "%%%d %s: !%d [%s]", p.Value.ID, p.Name, p.Value.Type, p.Value.Ownership)
+		formatReferenceMetadata(out, p.Reference)
 	}
 	fmt.Fprintf(out, ") -> !%d", fn.ReturnType)
 	if fn.Extern {
@@ -228,6 +229,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])
 	case OpIntBitwise:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBitwise, op.Operands[0], op.Operands[1])
+	case OpIntBitExtract:
+		fmt.Fprintf(out, " bits=%s %%%d", op.Integer.String(), op.Operands[0])
 	case OpIntShiftChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerShift, op.Operands[0], op.Operands[1])
 	case OpIntCompare:

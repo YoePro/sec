@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"sec/internal/ast"
 	llvmcodegen "sec/internal/codegen/llvm"
 	"sec/internal/diagnostics"
+	"sec/internal/formatconfig"
 	secformatter "sec/internal/formatter"
 	semantic "sec/internal/ir/semantic"
 	"sec/internal/lexer"
@@ -203,10 +205,16 @@ func (e *formatCheckError) Error() string {
 // all affected files. LSP uses the same formatter.
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt <path>` and
 // `sec fmt --check <path>` and `sec fmt --stdin`; Shared implementation; Diagnostics.
+//
+// Effective options follow formatter.md § 4(18)–(23): explicit options of this
+// invocation, then the file's project `[format]` table, then the defaults.
+// Every file's configuration is validated before any file is written.
 func runFmtCommand(args []string) error {
 	var paths []string
-	check, stdin, fix, literalPaths := false, false, false, false
-	for _, arg := range args {
+	check, stdin, literalPaths := false, false, false
+	var overrides formatconfig.Overrides
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
 		switch {
 		case literalPaths:
 			paths = append(paths, arg)
@@ -219,7 +227,22 @@ func runFmtCommand(args []string) error {
 		case arg == "--fix":
 			// rules/tooling/lsp.md — "Shared formatter": `sec fmt --fix`
 			// applies the opt-in Language Corrections of formatter.md §§ 26–27.
-			fix = true
+			enabled := true
+			overrides.LanguageCorrections = &enabled
+		case arg == "--indentation-width" || strings.HasPrefix(arg, "--indentation-width="):
+			raw, inline := strings.CutPrefix(arg, "--indentation-width=")
+			if !inline {
+				if index+1 >= len(args) {
+					return fmt.Errorf("--indentation-width requires a value")
+				}
+				index++
+				raw = args[index]
+			}
+			width, err := strconv.Atoi(raw)
+			if err != nil {
+				return fmt.Errorf("--indentation-width must be an integer, got %q", raw)
+			}
+			overrides.IndentationWidth = &width
 		case strings.HasPrefix(arg, "-"):
 			return fmt.Errorf("unknown fmt option: %s", arg)
 		default:
@@ -230,13 +253,25 @@ func runFmtCommand(args []string) error {
 		if check || len(paths) > 0 {
 			return fmt.Errorf("--stdin cannot be combined with --check or source file paths")
 		}
-		return formatStdinWithOptions(os.Stdin, os.Stdout, secformatter.Options{Fix: fix})
+		settings, err := formatconfig.ForSource("", overrides)
+		if err != nil {
+			return err
+		}
+		return formatStdinWithOptions(os.Stdin, os.Stdout, settings.Options)
 	}
 	if len(paths) == 0 {
 		return fmt.Errorf("expected at least one source file")
 	}
+	options := make([]secformatter.Options, len(paths))
+	for index, path := range paths {
+		settings, err := formatconfig.ForSource(path, overrides)
+		if err != nil {
+			return err
+		}
+		options[index] = settings.Options
+	}
 	var changed, malformed []string
-	for _, path := range paths {
+	for index, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
@@ -248,7 +283,7 @@ func runFmtCommand(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		result := secformatter.Format(secformatter.Source{Text: string(input)}, secformatter.Options{Fix: fix})
+		result := secformatter.Format(secformatter.Source{Text: string(input)}, options[index])
 		if result.Malformed {
 			if check {
 				malformed = append(malformed, path)
@@ -278,7 +313,7 @@ func runFmtCommand(args []string) error {
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt --stdin`;
 // Shared implementation; rules/foundations/lexical_structure.md — §2 "Line endings".
 func formatStdin(input io.Reader, output io.Writer) error {
-	return formatStdinWithOptions(input, output, secformatter.Options{})
+	return formatStdinWithOptions(input, output, formatconfig.Defaults().Options)
 }
 
 // formatStdinWithOptions formats a stream with the selected formatter

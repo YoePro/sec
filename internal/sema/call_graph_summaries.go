@@ -49,6 +49,10 @@ type EffectDomainCause struct {
 	Fact     string
 	Unknown  bool
 	Path     []CallSite
+	// Effect is the detached producer fact when this cause is a registered
+	// semantic effect, including panic reason IDs and static message metadata.
+	// Synthetic missing-contract causes have no producer fact.
+	Effect *EffectSite
 }
 
 // CallableDomainSummary exposes an idempotent may-set and independent unknown
@@ -147,8 +151,12 @@ func (g *CallGraph) DomainSummary(id CallableID) CallableDomainSummary {
 // rules/analysis/call_graph.md — "Unknown callable contract", "Spawn effects".
 func (g *CallGraph) directDomainCauses(id CallableID) []EffectDomainCause {
 	var causes []EffectDomainCause
-	add := func(domain SummaryEffect, source lexer.Token, fact string, unknown bool) {
+	add := func(domain SummaryEffect, source lexer.Token, fact string, unknown bool, effects ...EffectSite) {
 		candidate := EffectDomainCause{Domain: domain, Callable: id, Source: source, Fact: fact, Unknown: unknown}
+		if len(effects) != 0 {
+			effect := cloneEffectSites(effects[:1])[0]
+			candidate.Effect = &effect
+		}
 		for _, existing := range causes {
 			if existing.Domain == domain && existing.Source == source && existing.Fact == fact && existing.Unknown == unknown {
 				return
@@ -164,7 +172,7 @@ func (g *CallGraph) directDomainCauses(id CallableID) []EffectDomainCause {
 	for _, effect := range g.effects[id] {
 		if domain, known := summaryDomainForEffect(effect.Kind); known {
 			uncertain := effect.Kind == EffectMayPanicForeign || effect.Kind == EffectMayPanicUnknownCallee
-			add(domain, effect.Source, string(effect.Kind), uncertain)
+			add(domain, effect.Source, string(effect.Kind), uncertain, effect)
 		} else {
 			for _, domain := range summaryEffects {
 				add(domain, effect.Source, "unclassified semantic effect: "+string(effect.Kind), true)
@@ -265,6 +273,10 @@ func cloneDomainPath(path []CallSite) []CallSite {
 // Rules: rules/analysis/call_graph.md — "Graph data model".
 func cloneDomainCause(cause EffectDomainCause) EffectDomainCause {
 	cause.Path = cloneDomainPath(cause.Path)
+	if cause.Effect != nil {
+		effect := cloneEffectSites([]EffectSite{*cause.Effect})[0]
+		cause.Effect = &effect
+	}
 	return cause
 }
 

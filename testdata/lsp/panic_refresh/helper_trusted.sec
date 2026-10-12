@@ -1,0 +1,4 @@
+module helper
+@noPanic
+extern "C" fn Foreign() void
+fn Work() void { Foreign() }

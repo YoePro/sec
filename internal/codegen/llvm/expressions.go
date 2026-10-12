@@ -251,9 +251,10 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 	switch expr.Property.Value {
 	case "ptr", "Ptr":
 		return value{typ: "ptr", ref: object.ref}, nil
-	case "ByteLen":
+	case "SizeOf":
+		// MD-058: the value-form SizeOf of a string is its UTF-8 payload bytes.
 		return g.coerceValue(value{typ: "i64", ref: object.lenRef, unsigned: true}, g.nativeIntegerType())
-	case "Len", "RuneLen", "len":
+	case "Len", "len":
 		return g.coerceValue(value{typ: "i64", ref: g.emitStringRuneLength(object), unsigned: true}, g.nativeIntegerType())
 	default:
 		return value{}, fmt.Errorf("unknown string member %s", expr.Property.Value)

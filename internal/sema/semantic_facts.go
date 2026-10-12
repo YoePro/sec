@@ -439,6 +439,7 @@ const (
 // ResolvedTryAssignment records whether a fallible assignment propagates or
 // uses local handlers and preserves the exact error-channel decision for IR.
 type ResolvedTryAssignment struct {
+	Callable            CallableID
 	Kind                ResolvedTryAssignmentKind
 	ErrorType           Type
 	EnclosingResultType Type
@@ -1322,6 +1323,16 @@ func (a *Analyzer) ResolvedFunctionForDeclaration(decl *ast.FunctionDeclaration)
 		return Function{}, false
 	}
 	return a.lookupFunctionByToken(decl.Name.Value, decl.Name.Token)
+}
+
+// ResolvedMethodForDeclaration returns the resolved signature of a method
+// declared in an impl block of target, registered under its qualified
+// `Target.Name` identity (impl.md § 11).
+func (a *Analyzer) ResolvedMethodForDeclaration(target string, decl *ast.FunctionDeclaration) (Function, bool) {
+	if a == nil || decl == nil || decl.Name == nil || target == "" {
+		return Function{}, false
+	}
+	return a.lookupFunctionByToken(target+"."+decl.Name.Value, decl.Name.Token)
 }
 
 // ResolvedTestingOperationOf returns the compiler-known test operation selected

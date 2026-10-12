@@ -1,0 +1,28 @@
+module main
+fn Leaf() void { panic "leaf failure" }
+fn Middle() void { Leaf() }
+extern "C" fn Foreign() void
+@isr
+fn Direct() void { assert false }
+@isr
+fn Transitive() void { Middle() }
+@interruptSafe
+fn Helper() void { Middle() }
+@isr
+@noPanic
+unsafe fn UnsafeRoot() void { unsafe { Middle() } }
+@isr
+fn Deferred() void { defer { Middle() } }
+@interruptSafe
+fn Unknown(action: fn() void) void { action() }
+@interruptSafe
+fn ForeignRoot() void { Foreign() }
+@isr
+fn Proven() void { assert true }
+@interruptSafe
+fn Handled(left: int, right: int) void {
+    discard try left + right { Err(_) => 0 }
+}
+type NonNegative int range 0..100
+@interruptSafe
+fn ContractProven(value: NonNegative) void { assert value >= 0 }

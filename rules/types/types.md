@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-09-28
+- **Last updated:** 2026-10-12 (MD-046/MD-056 bit extraction)
 - **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
@@ -478,10 +478,10 @@ Conversions between them follow explicit conversion and representability rules. 
 
 A string is not an implicit array of `char`, `rune`, or `byte`.
 
-`Len` equals `RuneLen` and counts decoded Unicode scalar values without
-normalization. `ByteLen` counts encoded UTF-8 bytes. Both counts exclude any
-external terminator. For example, `"éΩ"` has `Len == RuneLen == 2` and
-`ByteLen == 4`. String length contracts use the units defined by
+`Len` counts decoded Unicode scalar values without normalization. The
+value-form `SizeOf` counts encoded UTF-8 payload bytes (MD-058). Both counts
+exclude any external terminator. For example, `"éΩ"` has `Len == 2` and
+`SizeOf == 4`. String length contracts use the units defined by
 `rules/types/contracts.md` revision 2.1.
 
 Conversions between strings and arrays, slices, bytes, or runes use explicitly defined core/library operations.
@@ -989,6 +989,39 @@ let percent: Percent := 50
 The compiler validates representability and contracts against the target type.
 
 Context shaping of an untyped literal is not implicit conversion of an already typed runtime value.
+
+## Contextual None and empty-literal arguments
+
+A bare `None` has no independently inferable `Option[T]` type, and an empty collection literal `[]` needs an expected collection type. Typed declarations, assignments and returns supply that type, and so do call arguments and constructor/initializer arguments (MD-027, 2026-10-12, `rules/corrections/applied/md027-md033-md036-md054-contextual-literals-formatter-configuration-correction-20261012.md`):
+
+```sec
+fn AcceptOption(value: Option[int]) void {
+}
+
+fn AcceptItems(values: int[]) void {
+}
+
+AcceptOption(None)
+AcceptItems([])
+```
+
+When an argument position has one unambiguous expected parameter type, `None` is typed as that `Option[T]` and `[]` as that empty collection type. This is not an implicit conversion between distinct `Option` or collection types.
+
+Overload resolution considers all supplied input arguments together: arguments with independently known types eliminate inapplicable overloads before the contextual type of `None` or `[]` is determined, wherever the contextual argument appears. If the remaining viable overloads give a contextual argument incompatible types, the call is ambiguous; the compiler never chooses by declaration order, arbitrary defaulting, the expected result type or an unannounced conversion. The diagnostic names the conflicting candidate parameter types and explains that an explicitly typed argument or binding resolves the ambiguity:
+
+```sec
+fn Store(value: Option[int]) void {
+}
+
+fn Store(value: Option[string]) void {
+}
+
+let number: Option[int] := None
+Store(number)  // Valid: Option[int] determines the overload.
+Store(None)    // Error: ambiguous overload.
+```
+
+The same rules apply to ordinary calls, methods, `init(...)` and `new` construction; no new syntax or dynamic overload dispatch is introduced.
 
 ---
 
@@ -1844,6 +1877,55 @@ Inference may use:
 Inference must preserve named type identity.
 
 The compiler must reject ambiguous inference rather than silently choose an unrelated type.
+
+---
+
+# Explicit low-bit extraction
+
+The compiler-known expression
+
+```sec
+bit[N](value)
+```
+
+extracts the `N` least-significant bits of an integer value (MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is a deliberate, visibly lossy bit-pattern extraction, distinct from the value-preserving checked conversion `TargetType(value)`; it is not a new keyword, a general cast, a core function, a standalone `bit[N]` type or a `uintN` family.
+
+Semantics: with bit 0 as the least-significant bit of the source's fixed-width two's-complement representation, the result is
+
+```text
+bit[N](x) = x mod 2^N
+```
+
+where `mod` is the unique non-negative remainder in `0..2^N-1`, also for negative `x`. Extraction works on the numeric bit pattern, not on bytes in memory, and is independent of endianness, register field allocation order, access width and C ABI. It is pure, infallible and allocation-free and needs neither `try` nor `unsafe`.
+
+`N` is a compile-time integer constant in `1..256`. It must not exceed the source's resolved representation width; a narrower source is never zero- or sign-extended. The width of `int` and `uint` comes from the active CompilationPlan and is diagnosed, never guessed, when unavailable.
+
+The result type is always unsigned and chosen from `N` alone:
+
+| `N` | Result type |
+|---|---|
+| 1–8 | `uint8` |
+| 9–16 | `uint16` |
+| 17–32 | `uint32` |
+| 33–64 | `uint64` |
+| 65–128 | `uint128` |
+| 129–256 | `uint256` |
+
+The compiler records the proven interval `0 <= result <= 2^N - 1`, which a later checked conversion may use to prove that it cannot fail. `bit[N](value)` returns `uint8`, never `byte` or `char`, for `N` in `1..8`.
+
+Accepted sources are the primitive signed and unsigned integer types, including target-sized `int` and `uint` with a resolved width, and the eight-bit `byte` and `char` (read as their numeric representation, not as text). Named types, constrained types, unit-bearing values, enums, registers, pointers, foreign `c::` scalars, strings, runes, booleans and floating values are rejected; they need their own explicit conversion first, and extraction never strips a contract or a unit.
+
+```sec
+let word: uint32 := 0xABCD1234
+let low12 := bit[12](word)      // uint16, 0x234
+
+let negative: int64 := -1
+let low8 := bit[8](negative)    // uint8, 255
+
+let wide: uint16 := 0xABCD
+let truncated := bit[8](wide)   // uint8, 0xCD: explicit truncation
+let checked := try uint8(wide)  // fails: 0xABCD does not fit uint8
+```
 
 ---
 

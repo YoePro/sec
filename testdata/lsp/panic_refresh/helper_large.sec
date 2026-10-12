@@ -1,0 +1,3 @@
+#target(os: "linux", arch: "amd64")
+module helper
+fn Work() void { }

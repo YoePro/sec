@@ -213,6 +213,7 @@ func (r *analyseReport) addEffects(graph *sema.CallGraph, nodes []sema.CallableN
 		if effects.MayPanic && len(effects.PanicPath) > 1 {
 			section.add("%s: may panic via %s", names[node.ID], analysePath(effects.PanicPath, names))
 		}
+		addPanicCauseReport(section, effects.PanicCauses, names[node.ID], names)
 		arena := graph.ArenaSummary(node.ID)
 		for _, effect := range arena.DirectEffects {
 			section.add("%s: arena %s %s at %s", names[node.ID], effect.Kind, effect.Arena, analysePosition(effect.Source))

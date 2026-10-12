@@ -128,6 +128,8 @@ LSP safe fixes must call the same fix engine as:
 sec fmt --fix
 ```
 
+LSP formatting resolves its effective options through the same configuration code as `sec fmt`: the document's project `.sec/sec.toml` `[format]` table, or the formatter defaults for a stand-alone file. An invalid configuration produces no edit (`formatter.md` § 4(18)–(22); MD-036/MD-054, 2026-10-12).
+
 The LSP may expose all formatter functionality or a negotiated subset.
 
 It must not contain an independent formatter implementation.

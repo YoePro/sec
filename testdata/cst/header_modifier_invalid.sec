@@ -1,0 +1,4 @@
+module main
+type Bad register[8] msb - wrong {
+    Flag: bit
+}

@@ -1016,13 +1016,16 @@ implicit empty `init`.
 The useful explicit constructor is a capacity hint:
 
 ```sec
-init(initialCapacity: uint) Result[Builder, CollectionError]
+init(initialCapacity: uint)
 ```
 
-The exact fallible-constructor spelling is subject to the canonical Sec
-constructor syntax.
-
-`initialCapacity` is a byte-capacity hint, because UTF-8 storage is byte-based.
+The constructor is infallible (MD-058, 2026-10-12,
+`rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md`).
+`initialCapacity` is a best-effort byte-capacity preallocation hint, because
+UTF-8 storage is byte-based, not a guarantee: when it cannot be honored the
+builder is still a valid empty builder, and a failed hint is never reported as
+guaranteed capacity. The hint obeys the allocation-context rules and never
+selects a hidden global heap. Use `Reserve` for a guaranteed capacity.
 
 It does not change the logical content.
 
@@ -1051,6 +1054,11 @@ semantics.
 ```sec
 fn Reserve(additionalBytes: uint) Result[void, CollectionError]
 ```
+
+`Reserve` is the guaranteed, explicit fallible operation. A builder backed by
+`list[byte]` delegates to `list[byte].Reserve` with the same byte count
+(`collections.md` § 13.12); it never ignores the request or reports success
+without meeting it.
 
 Semantics:
 
@@ -1549,7 +1557,7 @@ Rules:
 - both boundaries may equal end of string as appropriate;
 - both must be rune boundaries;
 - `[x, x)` removes nothing;
-- `[0, ByteLen)` produces empty string;
+- `[0, SizeOf)` produces empty string;
 - the output concatenates the prefix before `startByte` and suffix after
   `endByte`.
 
@@ -1785,7 +1793,7 @@ argument.
 For sized inputs such as arrays:
 
 1. sum all source byte lengths;
-2. add `(count - 1) * separator.ByteLen` where count > 1;
+2. add `(count - 1) * separator.SizeOf` where count > 1;
 3. detect overflow;
 4. allocate once where allocator/runtime behavior permits;
 5. copy each segment.

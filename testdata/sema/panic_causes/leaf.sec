@@ -1,0 +1,2 @@
+module main
+fn Leaf(value: bool) void { assert value, "separate source" }

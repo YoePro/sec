@@ -41,12 +41,21 @@ var errNotReference = fmt.Errorf("not a reference expression")
 func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error) {
 	analyzer := fb.owner.analyzer
 	token := expressionToken(expr)
+	if value, err := fb.lowerReceiverRead(expr); err != errNotReference {
+		return value, err
+	}
 	if plan, ok := analyzer.ResolvedReferencePlanOf(expr); ok {
 		if !plan.Facts.Checkable() {
 			return builtValue{}, fb.unsupported("uncheckable safe reference (neither proven nor dynamically checkable)", token)
 		}
 		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
 			return fb.lowerPlaceBorrow(reference, plan)
+		}
+		if _, explicit := expr.(*ast.RefExpression); !explicit && plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
+			// package 15 § 59: Sema resolved an implicit borrow of an owned
+			// Place passed to a ref or ref mut parameter.
+			implicit := &ast.RefExpression{Token: token, Mutable: plan.Facts.MutableAuthority, Value: expr}
+			return fb.lowerPlaceBorrow(implicit, plan)
 		}
 		return builtValue{}, fb.unsupported(fmt.Sprintf("%s reference %s of %s storage", referenceCreationKind(plan), plan.Facts.Kind, plan.Facts.Provenance), token)
 	}
@@ -56,6 +65,9 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 	if use, ok := analyzer.ResolvedReferenceUseOf(expr); ok {
 		if !use.Facts.Checkable() {
 			return builtValue{}, fb.unsupported("uncheckable safe reference "+string(use.Kind), token)
+		}
+		if value, err := fb.lowerReferenceUse(expr, use); err != errNotReference {
+			return value, err
 		}
 		return builtValue{}, fb.unsupported("reference "+string(use.Kind)+" lowering", token)
 	}
@@ -147,33 +159,60 @@ func (fb *functionBuilder) lowerPlaceBorrow(reference *ast.RefExpression, plan s
 	if err != nil {
 		return builtValue{}, err
 	}
-	place := root
-	placeFacts := placeMetadataOf(plan.Place)
 	mutablePlace := false
 	if rootType, ok := fb.owner.module.Types.Lookup(root.typ); ok {
 		mutablePlace = rootType.Mutable
 	}
-	for index, step := range steps {
-		switch step := step.(type) {
-		case *ast.MemberExpression:
-			resolved, _ := fb.owner.analyzer.ResolvedStructMemberOf(step)
-			fieldType, err := fb.owner.internType(resolved.MemberType)
-			if err != nil {
-				return builtValue{}, err
-			}
-			placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: mutablePlace})
-			place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(resolved.FieldID), Place: placeFacts, Location: location(step.Token)}, placeType)
-		case *ast.IndexExpression:
-			place, err = fb.lowerElementPlace(step, plan.Place.Projections[index], place, mutablePlace, placeFacts)
-			if err != nil {
-				return builtValue{}, err
-			}
-		}
+	place, err := fb.projectPlace(steps, plan.Place.Projections, root, mutablePlace, placeMetadataOf(plan.Place))
+	if err != nil {
+		return builtValue{}, err
 	}
 	if reference.Mutable && !mutablePlace {
 		return builtValue{}, fb.unsupported("mutable borrow of a read-only Place", reference.Token)
 	}
 	return fb.emitBorrow(reference, plan, place)
+}
+
+// projectPlace applies already validated field and fixed-array element steps
+// to a Place, preserving its authority; projections holds the resolved Place
+// projections the steps correspond to, aligned at their end.
+func (fb *functionBuilder) projectPlace(steps []ast.Expression, projections []sema.PlaceProjection, place builtValue, mutable bool, facts *PlaceMetadata) (builtValue, error) {
+	offset := len(projections) - len(steps)
+	if offset < 0 {
+		return builtValue{}, fmt.Errorf("Place path longer than its resolved projections")
+	}
+	for index, step := range steps {
+		projection := projections[offset+index]
+		switch step := step.(type) {
+		case *ast.MemberExpression:
+			resolved, ok := fb.owner.analyzer.ResolvedStructMemberOf(step)
+			if !ok || resolved.Kind != sema.MemberStoredField || projection.Canonical() != sema.CanonicalProjectionField || resolved.FieldName != projection.Name {
+				return builtValue{}, fb.unsupported("Place step that is not the resolved stored field", step.Token)
+			}
+			fieldType, err := fb.owner.internType(resolved.MemberType)
+			if err != nil {
+				return builtValue{}, err
+			}
+			placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: mutable})
+			place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(resolved.FieldID), Place: facts, Location: location(step.Token)}, placeType)
+		case *ast.IndexExpression:
+			indexPlan, ok := fb.owner.analyzer.ResolvedArrayIndexPlanOf(step)
+			if !ok || projection.Kind != sema.PlaceIndex {
+				return builtValue{}, fb.unsupported("element Place without a resolved fixed-array index plan", step.Token)
+			}
+			if _, fixed := sema.FixedArrayLength(indexPlan.ArrayType); !fixed {
+				return builtValue{}, fb.unsupported("element Place of a non-fixed-array sequence", step.Token)
+			}
+			var err error
+			place, err = fb.lowerElementPlace(step, projection, place, mutable, facts)
+			if err != nil {
+				return builtValue{}, err
+			}
+		default:
+			return builtValue{}, fb.unsupported("Place step", expressionToken(step))
+		}
+	}
+	return place, nil
 }
 
 // lowerElementPlace forms one fixed-array element Place from the evaluated
@@ -299,7 +338,9 @@ func (fb *functionBuilder) emitBorrow(reference *ast.RefExpression, plan sema.Re
 	loc := location(reference.Token)
 	referenceType := fb.owner.module.Types.Intern(Type{Kind: TypeReference, Element: placeType.Element, Mutable: reference.Mutable})
 	value := fb.newValue(referenceType, ownership, loc)
-	fb.emit(Operation{Kind: kind, Operands: []ValueID{place.id}, Results: []Value{value}, Reference: referenceMetadataOf(plan.Facts), Location: loc})
+	metadata := referenceMetadataOf(plan.Facts)
+	fb.emit(Operation{Kind: kind, Operands: []ValueID{place.id}, Results: []Value{value}, Reference: metadata, Location: loc})
+	fb.recordReference(value.ID, metadata)
 	return builtValue{id: value.ID, typ: referenceType}, nil
 }
 
@@ -342,14 +383,35 @@ func referenceCreationKind(plan sema.ResolvedReferencePlan) string {
 	}
 }
 
-// p15ReferenceParameter rejects a reference parameter until P15 parameter
-// lowering consumes its plan; the pre-P15 representation (the referent value
-// with reference ownership) is never used at package 15.
-func (fb *functionBuilder) p15ReferenceParameter(parameter sema.FunctionParameter) error {
-	if parameter.Ref || parameter.MutableRef || parameter.Type.Kind == sema.ReferenceType {
-		return fb.unsupported("reference parameter "+parameter.Name, parameter.Token)
+// p15ReferenceParameter returns the callee-side reference facts of a ref or
+// ref mut parameter from Sema (package 15 § 59), or nil for any other
+// parameter. The pre-P15 representation (the referent value with reference
+// ownership) is never used at package 15.
+func (fb *functionBuilder) p15ReferenceParameter(parameter sema.FunctionParameter) (*ReferenceMetadata, error) {
+	if !parameter.Ref && !parameter.MutableRef && parameter.Type.Kind != sema.ReferenceType {
+		return nil, nil
 	}
-	return nil
+	facts, ok := fb.owner.analyzer.ReferenceParameterFactsOf(parameter)
+	if !ok {
+		return nil, fb.unsupported("reference parameter "+parameter.Name+" without resolved reference facts", parameter.Token)
+	}
+	if !facts.Checkable() {
+		return nil, fb.unsupported("uncheckable reference parameter "+parameter.Name, parameter.Token)
+	}
+	return referenceMetadataOf(facts), nil
+}
+
+// referenceArgumentAction reports the argument action of a reference-typed
+// parameter.
+func (fb *functionBuilder) referenceArgumentAction(parameter TypeID) (ArgumentAction, bool) {
+	typ, ok := fb.owner.module.Types.Lookup(parameter)
+	if !ok || typ.Kind != TypeReference {
+		return "", false
+	}
+	if typ.Mutable {
+		return ArgumentMutableReference, true
+	}
+	return ArgumentSharedReference, true
 }
 
 // internReferenceType maps a resolved `ref T` / `ref mut T` source type to the

@@ -141,7 +141,7 @@ type _StructuredFieldParser struct {
 impl _StructuredFieldParser {
     property _IsFinished: bool {
         get {
-            return self._position >= self._input.Len
+            return self._position >= self._input.SizeOf
         }
     }
 

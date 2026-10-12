@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"fmt"
+
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
@@ -151,15 +153,22 @@ func (a *Analyzer) rejectFreeWholeSelfConsumption(place Place, token lexer.Token
 // Rules:
 //   - rules/memory/ownership.md — §19 "Custom `free` forbids partial moves in Sec 0.1"
 //   - rules/memory/copy_move.md — §14(4)
-//   - rules/memory/destruction.md — §10.3 "Custom `free`", §15.4(3)
+//   - rules/memory/destruction.md — §10.3 "Custom `free`", §15.4(3), §33.2(2)
 func (a *Analyzer) rejectCustomFreePartialMove(place Place, token lexer.Token) bool {
 	if place.CustomFreeOwner == "" {
 		return false
 	}
 	declaration := a.customFreeDeclarations[place.CustomFreeOwner]
-	a.addErrorAtTokenWithMetadataAndPrevious(token, declaration, diagnostics.CustomFreePartialMove,
-		"Move the complete value instead, or remove the custom free if field-wise destruction is sufficient.",
-		"cannot move %s out of %s because type %s defines custom free; partial moves are not permitted from custom-free types",
-		place.String(), place.CustomFreeOwnerPlace, place.CustomFreeOwner)
+	endLine, endColumn := token.EndPosition()
+	a.appendError(Error{
+		ID:   diagnostics.CustomFreePartialMove,
+		File: token.File, Line: token.Line, Column: token.Column,
+		EndLine: endLine, EndColumn: endColumn,
+		PreviousFile: declaration.File, PreviousLine: declaration.Line, PreviousColumn: declaration.Column,
+		RelatedLabel: "custom free requires complete self",
+		Help:         "The custom free body requires complete self: every owned field must remain available when cleanup runs. Move the complete value instead, or redesign ownership so the field can be transferred without dismantling a custom-free value.",
+		Message: fmt.Sprintf("cannot move %s out of %s because type %s defines custom free; partial moves are not permitted from custom-free types",
+			place.String(), place.CustomFreeOwnerPlace, place.CustomFreeOwner),
+	})
 	return true
 }

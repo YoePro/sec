@@ -5,7 +5,7 @@ type HeaderValue string
 
 impl HeaderValue {
     fn IsValid() bool {
-        return self.ByteLen != 0u
+        return self.SizeOf != 0u
     }
 }
 
@@ -14,7 +14,7 @@ enum StructuredFieldError error {
 }
 
 fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
-    let bytes: uint := value.ByteLen
+    let bytes: uint := value.SizeOf
     let n := value.IndexOf("=")
     if n is None {
         return Err(StructuredFieldError.AllocationFailed)

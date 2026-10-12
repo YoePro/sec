@@ -75,6 +75,8 @@ func validateTryHandlerSchema(module *semantic.Module) error {
 				switch {
 				case op.TryHandlerGuarded:
 					return &UnsupportedLoweringError{Feature: "guarded try handlers", Function: function.ID}
+				case op.TryHandlerKind == semantic.TryHandlerNone:
+					return &UnsupportedLoweringError{Feature: "Option try None handlers", Function: function.ID}
 				case op.TryResidualPropagates || op.TryHandlerKind == semantic.TryHandlerResidual:
 					return &UnsupportedLoweringError{Feature: "partial try handlers with residual propagation", Function: function.ID}
 				}

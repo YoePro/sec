@@ -1,0 +1,12 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+type Owner struct { Value: Resource }
+impl Owner {
+    free { Release(self.Value.Raw) }
+}
+fn Release(raw: int) void {}
+fn Split(owner: Owner) void {
+    let value :<- owner.Value
+    discard value
+}

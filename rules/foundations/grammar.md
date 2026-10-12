@@ -2002,12 +2002,12 @@ Examples:
 
 ```sec
 switch value {
-case < 0:
-    return
-case 0, 1, 2..<10:
-    fallthrough
-default:
-    return
+    case < 0:
+        return
+    case 0, 1, 2..<10:
+        fallthrough
+    default:
+        return
 }
 ```
 
@@ -2015,10 +2015,10 @@ Subjectless example:
 
 ```sec
 switch {
-case value < 0:
-    return
-default:
-    return
+    case value < 0:
+        return
+    default:
+        return
 }
 ```
 
@@ -2648,6 +2648,17 @@ bool(number)
 The parser initially creates call-shaped syntax.
 
 Sema resolves a type conversion.
+
+---
+
+# Bit extraction expression
+
+```text
+BitExtractionExpression
+    ::= Contextual("bit") "[" IntegerConstant "]" "(" Expression ")"
+```
+
+A contextual call-shaped expression use of the existing `bit[N]` spelling (MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is not a declaration, a general type conversion, an ordinary call or a user-definable generic, and parsing it never makes `bit[N]` a variable type. When `bit[...]` is not followed by a parenthesized operand, the source is ordinary indexing of a value named `bit`. `IntegerConstant` is evaluated as a compile-time integer constant; its domain and the semantics are owned by `types.md` "Explicit low-bit extraction". The formatter writes `bit[N](expression)` without spaces inside the extraction syntax.
 
 ---
 

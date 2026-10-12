@@ -2,6 +2,7 @@ package sema
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"sec/internal/lexer"
@@ -137,7 +138,7 @@ fn MoveAll(pair: ResourcePair) void {
 		"cannot move self.First out of self because type ResourcePair defines custom free; partial moves are not permitted from custom-free types at 40:27",
 	})
 	for _, err := range errors {
-		if err.ID != "S1085" || err.PreviousLine != 26 {
+		if err.ID != "S1085" || err.PreviousLine != 26 || err.RelatedLocationLabel() != "custom free requires complete self" || !strings.Contains(err.Help, "requires complete self") || !strings.Contains(err.Help, "redesign ownership") {
 			t.Fatalf("partial-move diagnostic = %+v, want S1085 related to free at 26", err)
 		}
 	}

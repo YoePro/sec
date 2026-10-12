@@ -342,6 +342,8 @@ func (s *pitfallEndpointScan) expression(expression ast.Expression, flow pitfall
 		if expression.Mutable {
 			flow.stable = false
 		}
+	case *ast.BitExtractionExpression:
+		return s.expression(expression.Value, flow)
 	case *ast.ConversionExpression:
 		return s.expression(expression.Value, flow)
 	case *ast.SliceExpression:

@@ -90,7 +90,7 @@ type UnescapeError union error {
  * Materializes an escaped string using Builder.
  */
 fn EscapeLiteral(value: string) Result[string, CollectionError] {
-    let mut builder := try new Builder(value.Len)
+    let mut builder := new Builder(value.SizeOf)
 
     for character in value {
         if character == 92r {
@@ -105,8 +105,7 @@ fn EscapeLiteral(value: string) Result[string, CollectionError] {
             try builder.Append("\\t")
         } else if character == 0r {
             try builder.Append("\\0")
-        } else if character < 32r ||
-        (character >= 127r && character <= 159r) {
+        } else if character < 32r || character in 127r..159r {
             try _AppendHexEscape(builder, character)
         } else {
             try builder.Append(character)
@@ -148,7 +147,7 @@ fn EscapeLiteral(value: string) Result[string, CollectionError] {
 fn Quote(value: string) Result[string, CollectionError] {
     let escaped := try EscapeLiteral(value)
 
-    let mut builder := try new Builder(escaped.Len)
+    let mut builder := new Builder(escaped.SizeOf)
 
     try builder.Append("\"")
     try builder.Append(escaped)
@@ -193,16 +192,12 @@ fn Quote(value: string) Result[string, CollectionError] {
  * Materializes a new string using Builder.
  */
 fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
-    let mut builder := try new Builder(value.Len) {
-        Err(error) => {
-            return Err(UnescapeError.Allocation(error))
-        }
-    }
+    let mut builder := new Builder(value.SizeOf)
 
     let mut index: uint := 0
     let mut segmentStart: uint := 0
 
-    while index < value.Len {
+    while index < value.SizeOf {
         if value.ByteAt(index) != 92 {
             index += 1
             continue
@@ -226,7 +221,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
         let escapeStart := index
         index += 1
 
-        if index >= value.Len {
+        if index >= value.SizeOf {
             return Err(UnescapeError.Truncated(escapeStart))
         }
 
@@ -252,7 +247,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                 decoded = 0r
             case 120:
                 // Hexadecimal escape: exactly two digits.
-                if index >= value.Len {
+                if index >= value.SizeOf {
                     return Err(UnescapeError.Truncated(escapeStart))
                 }
 
@@ -261,7 +256,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                 )
                 index += 1
 
-                if index >= value.Len {
+                if index >= value.SizeOf {
                     return Err(UnescapeError.Truncated(escapeStart))
                 }
 
@@ -273,7 +268,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                 decoded = rune(upper * 16 + lower)
             case 117:
                 // Unicode escape: \u{H...}
-                if index >= value.Len {
+                if index >= value.SizeOf {
                     return Err(UnescapeError.Truncated(escapeStart))
                 }
 
@@ -286,7 +281,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                 let mut scalar: uint := 0
                 let mut digits: uint := 0
 
-                while index < value.Len && value.ByteAt(index) != 125 {
+                while index < value.SizeOf && value.ByteAt(index) != 125 {
                     if digits == 6 {
                         return Err(UnescapeError.InvalidEscape(escapeStart))
                     }
@@ -300,7 +295,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                     index += 1
                 }
 
-                if index >= value.Len {
+                if index >= value.SizeOf {
                     return Err(UnescapeError.Truncated(escapeStart))
                 }
 
@@ -331,8 +326,8 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
     }
 
     // Copy any text following the final escape.
-    if segmentStart < value.Len {
-        let suffix := try value.Slice(segmentStart, value.Len) {
+    if segmentStart < value.SizeOf {
+        let suffix := try value.Slice(segmentStart, value.SizeOf) {
             Err(_) => {
                 panic "UnescapeLiteral: invalid suffix bounds"
             }
@@ -390,11 +385,11 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
  * Materializes a new string through UnescapeLiteral().
  */
 fn Unquote(value: string) Result[string, UnescapeError] {
-    if value.Len < 2 {
+    if value.SizeOf < 2 {
         return Err(UnescapeError.InvalidQuotes)
     }
 
-    let closingIndex := value.Len - 1
+    let closingIndex := value.SizeOf - 1
 
     if value.ByteAt(0) != 34 || value.ByteAt(closingIndex) != 34 {
         return Err(UnescapeError.InvalidQuotes)

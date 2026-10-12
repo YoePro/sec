@@ -95,9 +95,11 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			visit(node.End)
 		case *ast.MemberExpression:
 			visit(node.Object)
+			points = a.appendTryChainCarrierPoint(points, node.Object)
 		case *ast.CallExpression:
 			if member, ok := node.Callee.(*ast.MemberExpression); ok {
 				visit(member.Object)
+				points = a.appendTryChainCarrierPoint(points, member.Object)
 			}
 			for _, argument := range node.Arguments {
 				visit(argument)
@@ -112,6 +114,8 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 				points = append(points, TryFailurePoint{Kind: TryFailureContract, ErrorType: errorType, Expression: node, Token: node.Token})
 			}
 			points = a.appendCheckedConversionPoint(points, node, ast.Expression(node) == root)
+		case *ast.BitExtractionExpression:
+			visit(node.Value)
 		case *ast.ConversionExpression:
 			visit(node.Value)
 		case *ast.NewExpression:
@@ -241,12 +245,10 @@ func (a *Analyzer) usesExistingTryPath(root ast.Expression, rootIsResult bool, p
 		return true
 	}
 	if operator, ok := a.ResolvedOperatorOf(root); ok && operator.RuntimeCheck {
-		for _, point := range points {
-			if point.Kind != TryFailureArithmetic {
-				return false
-			}
-		}
-		return true
+		// The dedicated arithmetic path protects exactly the root operator;
+		// nested checked operands are further failure points of a failure
+		// set (runtime_checks.md "What try converts").
+		return len(points) == 1 && points[0].Expression == root
 	}
 	if index, ok := root.(*ast.IndexExpression); ok {
 		if _, fixed := a.resolvedArrayIndexPlans[index]; fixed {

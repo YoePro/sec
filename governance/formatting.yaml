@@ -6,7 +6,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-16"
-    revised: "2026-10-09"
+    revised: "2026-10-12"
     summary: >-
       Introduces a lexer-backed, byte-lossless concrete-syntax foundation and
       lexical delimiter hierarchy. The formatter remains primarily a bespoke
@@ -32,6 +32,9 @@ integrations:
       - internal/formatter/parameter_alignment.go
       - internal/formatter/enum_value_alignment.go
       - internal/cst/recovery.go
+      - internal/cst/header_roles.go
+      - internal/parser/register_header.go
+      - internal/cst/delimiter_spacing.go
     tests:
       - internal/parser/parser_test.go
       - internal/cst/document_test.go
@@ -75,12 +78,16 @@ integrations:
       - retain complete generic type-argument brackets on parser-owned type references and project them into CST roles; add the grammar-permitted trailing comma only to genuinely multiline lists while leaving single-line generics, arrays, indexing, and recovered incomplete syntax untouched
       - "attach parser missing-token and skipped-token recovery nodes to the concrete syntax model (2026-10-09, internal/cst/recovery.go): Document.ApplyRecovery maps every recovery event to exact real elements; a missing token is a synthetic zero-width node that Text never prints, with AnchorExact only when the parser proved the insertion point (After) and otherwise located at the reported token; a skipped range covers its first through last real token, SkippedElement answers membership, and an event whose tokens match no element (for example inside a re-lexed interpolation hole) stays unlocated instead of guessed"
       - the opt-in missing-list-separator Language Correction consumes exact CST missing-token nodes instead of reading parser recovery events directly
+      - Complete module and callable/static declaration header spacing projects parser-owned categories into CST roles; accepted register modifier start/end tokens retained by the parser identify compound header hyphens separately from subtraction, while rejected modifiers and dotted module headers receive no valid spacing role.
+      - Shared-parser confirmation enables CST roles for complete same-line delimiter groups, colon/comma punctuation and permitted trailing-comma removal without a second grammar or literal scanner; the formatter no longer normalizes calls, delimiters, assert-message separators or panic keywords through trimmed-line spacing passes.
     remaining:
       - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
       - replace the bespoke trimmed-line formatter pipeline with a CST-driven formatter whose structure, trivia ownership, safe regions, indentation, alignment, and comment placement decisions originate in internal/cst
       - migrate existing parser/AST/lexer-assisted formatter special cases onto grammar-aware CST roles instead of growing parallel source-analysis paths
       - support incremental and minimal-edit syntax-tree formatting
     verification:
+      - command: go test ./internal/cst ./internal/formatter -run 'HeaderSpacing|CompleteHeader|InvalidHeader|InvalidModule' -count=1
+        result: passed on 2026-10-12; exact accepted modifier provenance, lossless projection, subtraction separation and conservative rejected-header roles verified
       - command: go test ./internal/cst ./internal/formatter -count=1
         result: passed on 2026-10-09 with exact proven missing separators, inexact unproven missing closers, skipped ranges and membership, unlocated foreign events, replacement on reapply, valid source without recovery, and the migrated missing-separator correction; remaining reduced from 5 to 4
       - command: go test ./internal/cst ./internal/formatter -count=1
@@ -134,11 +141,18 @@ integrations:
       - internal/cst/roles.go
       - internal/formatter/token_spacing.go
       - internal/formatter/formatter.go
+      - internal/cst/delimiter_spacing.go
     tests:
       - internal/cst/roles_test.go
       - internal/formatter/token_spacing_test.go
       - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
+      - internal/cst/delimiter_spacing_test.go
+      - internal/formatter/cst_delimiter_spacing_test.go
+      - cmd/compiler/header_spacing_test.go
+      - cmd/lsp/header_spacing_test.go
+      - testdata/formatter/cst_delimiter_spacing.sec
+      - testdata/formatter/cst_delimiter_spacing.expected.sec
     implemented:
       - "§6(5): infix operators, including not in and the for-header in, have one space on both sides"
       - "§6(6) and §21(5): unary prefix operators and the <- consuming marker attach to their operand"
@@ -149,14 +163,27 @@ integrations:
       - roles come from the parsed AST (InfixExpression, PrefixExpression, AssignmentStatement, LetStatement, control statements) so identical spellings in other grammatical positions, such as a generic constraint & or a typed declaration head, are not affected
       - gaps that cross a line break or hold a comment are never changed, and malformed documents are left byte-for-byte unchanged
       - the pass runs before indentation and alignment so later column alignment observes the canonical token spelling; CLI and LSP share it
+      - Remaining horizontal delimiter, call, assertion-message and panic spacing now uses source-wide shared-parser confirmation plus CST token/group roles. Complete same-line parentheses/brackets compact inner trivia and trailing commas, non-empty braces get one inner space and empty braces stay compact, and literal field colons and comma separators use canonical gaps. Aggregate literal prefix gaps retain their source spelling; declaration and executable opening braces retain their existing parser-owned spacing roles. Opaque literal text, foreign qualifiers, comment-bearing group boundaries, multiline groups and rejected syntax remain protected. Four line-oriented horizontal spacing passes and their private delimiter/call scanners were removed.
     remaining:
       - continuation-line indentation for operators split across lines remains owned by formatter-canonical-layout
-      - spacing for remaining unroled positions such as struct-literal braces stays with the existing line-oriented passes until it moves to CST roles
     verification:
+      - command: go test ./... -count=1
+        result: full run on 2026-10-12 found the pre-existing stale generated Unicode library test plus an LSP Token{} prefix regression; the regression was fixed and complete CST/formatter/compiler/LSP suites passed on the final rerun. Only the unrelated generated Unicode artifact remains unresolved.
+      - command: go test ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-12 for final implementation after retaining existing aggregate literal prefix spacing
+      - command: go test -race ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'CSTDelimiterSpacing|SingleLineDelimiterRoles|FormatSourceNormalizesSingleLine|FormatNormalizesSameLine|FormatNormalizesSingleLine' -count=1
+        result: passed on 2026-10-12 for final implementation, retaining Token{} prefix spacing while replacing delimiter/call/assert/panic line scanners with CST roles
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test -race ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'CSTDelimiterSpacing|SingleLineDelimiterRoles|FormatNormalizesSameLine|FormatNormalizesSingleLine' -count=1
+        result: passed on 2026-10-12
+      - command: go test ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'CSTDelimiterSpacing|SingleLineDelimiterRoles|FormatNormalizesSameLine|FormatNormalizesSingleLine' -count=1
+        result: passed on 2026-10-12; nested aggregates, arrays, calls, grouping, foreign qualifiers, literal/comment preservation, trailing commas, assertions, parser proof, idempotence and CLI/LSP golden equality verified; remaining 2 to 1 for this ID and 23 to 22 in formatting.yaml
       - command: go test ./internal/cst ./internal/formatter ./cmd/lsp -run 'Test(ApplyProgramRolesMarksSpacingRoles|FormatCanonicalTokenSpacing|FormatTokenSpacingLeaves|FormatGenericConstraintConjunctionsFromCST|FormatDeclarationGroupSeparatorsFromCST|FormatSource)' -count=1
         result: passed on 2026-10-01
       - command: format every non-invalid testdata .sec file twice and compare ASTs
         result: passed on 2026-10-01 with no new idempotence or AST differences; the four pre-existing differences (switch_valid idempotence; units_advanced_valid, lexer/interpolation_balanced_valid, and formatter/check_noncanonical AST changes) are identical at HEAD
+    revised: "2026-10-12"
 
   - id: tooling.formatter-brace-blank-lines
     area: tooling
@@ -226,6 +253,8 @@ integrations:
       - rules/tooling/formatter.md
     code:
       - internal/formatter/formatter.go
+      - internal/cst/delimiter_spacing.go
+      - internal/formatter/token_spacing.go
     tests:
       - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
@@ -233,9 +262,11 @@ integrations:
       - join single-line call arguments with one space after commas
       - remove a trailing argument comma only from single-line calls
       - preserve all existing multiline call boundaries and their required trailing comma
-      - leave comment-bearing and incomplete single-line syntax unchanged
       - preserve formatter idempotence and expose the behavior through the shared LSP formatter
+      - leave comment-bearing call boundaries and unproven syntax unchanged; independent comment-free child groups may receive canonical spacing from CST roles
     verification:
+      - command: go test ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'CSTDelimiterSpacing|SingleLineDelimiterRoles|FormatSourceNormalizesSingleLine|FormatNormalizesSameLine|FormatNormalizesSingleLine' -count=1
+        result: passed on 2026-10-12 after migration to shared parser-confirmed CST punctuation roles
       - command: go test ./internal/formatter ./cmd/lsp -run 'Format|Formatting' -count=1
         result: passed
 
@@ -243,14 +274,13 @@ integrations:
     area: tooling
     status: implemented
     integrated: "2026-09-03"
-    summary: >-
-      Normalizes boundary trivia inside balanced parentheses, brackets, and
-      braces that stay on one physical line while preserving intentional
-      multiline delimiter layout for the future lossless CST formatter.
+    summary: Normalizes same-line parentheses, brackets and braces from parser-confirmed CST groups and token roles, preserving literal bytes, comments, multiline layout and syntax uncertainty; the former line-based delimiter and call scanners have been removed.
     rules:
       - rules/tooling/formatter.md
     code:
       - internal/formatter/formatter.go
+      - internal/cst/delimiter_spacing.go
+      - internal/formatter/token_spacing.go
     tests:
       - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
@@ -258,9 +288,11 @@ integrations:
       - remove inner boundary padding from same-line parenthesized and bracketed groups
       - normalize top-level comma spacing and remove trailing commas in same-line parenthesized and bracketed groups
       - retain one inner space for non-empty same-line braced groups and compact whitespace-only groups to `{}`
-      - preserve quoted contents, comment-bearing lines, incomplete syntax, and every multiline delimiter boundary
       - expose identical behavior through sec fmt and the shared LSP formatter
+      - preserve literal token bytes, comment-bearing group boundaries, unproven syntax and every multiline delimiter boundary while formatting independent comment-free child groups from CST roles
     verification:
+      - command: go test ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'CSTDelimiterSpacing|SingleLineDelimiterRoles|FormatSourceNormalizesSingleLine|FormatNormalizesSameLine|FormatNormalizesSingleLine' -count=1
+        result: passed on 2026-10-12 after migration to shared parser-confirmed CST punctuation roles
       - command: go test ./internal/formatter ./cmd/lsp -run 'Delimiter|SameLineMatchBlock' -count=1
         result: passed
 
@@ -362,7 +394,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-10-03"
+    revised: "2026-10-12"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
@@ -403,6 +435,8 @@ integrations:
       - internal/formatter/enum_value_alignment.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
+      - internal/cst/header_roles.go
+      - internal/parser/register_header.go
     tests:
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
@@ -412,6 +446,14 @@ integrations:
       - cmd/compiler/fmt_check_test.go
       - cmd/compiler/fmt_stdin_test.go
       - cmd/lsp/main_test.go
+      - internal/cst/header_roles_test.go
+      - internal/formatter/header_spacing_test.go
+      - cmd/compiler/header_spacing_test.go
+      - cmd/lsp/header_spacing_test.go
+      - testdata/formatter/header_spacing.sec
+      - testdata/formatter/header_spacing.expected.sec
+      - testdata/cst/header_modifier_invalid.sec
+      - testdata/cst/header_module_invalid.sec
     implemented:
       - >-
         One shared formatter implementation serves sec fmt and LSP document
@@ -605,9 +647,9 @@ integrations:
       - "§ 6(4) single-line parameters (fixed 2026-10-03): parameters of a single-line callable parameter list (functions, methods, interface requirements, extern declarations, lambdas) get exactly one space between colon and type; previously only multiline lists were touched, so `source:      ref mut Reader` was preserved (TestFormatNormalizesSingleLineParameterSpacing)"
       - "MD-013 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 5, 2026-10-03): register fields, including reserved `_` fields, carry the shared StructFieldColon/StructFieldTypeStart CST anchors (for `bit`, `bit[N]`, and named field types) and align through the same structural field engine as struct fields; a trailing comment no longer ends a field alignment group, while blank lines and standalone comments still do; trailing comments occupy the next structural column one standard space (structuralColumnSpacing) after the widest code cell instead of a hard-coded four-space gutter; every repository .sec file remains idempotent"
       - "literal preservation (fixed 2026-10-03, § 29): the line-oriented delimiter, call, split, assertion, trailing-comment, and indentation scanners skip string, raw-string, character, and interpolated-string literals by exact lexer token spans (internal/formatter/literal_spans.go) instead of a private quote toggle, so braces and quotes inside nested interpolation expressions no longer rewrite literal text (`{value}` to `{ value }`) or drop the indentation of every following line"
+      - "MD-032 switch label column (2026-10-12, formatter.md § 18(7), § 18(10a)): case/default labels sit one configured indentation level inside switch, their bodies one further level and the closing brace aligns with switch; verified for indentation widths 2, 4 and 6, nested switches and idempotence (TestFormatSwitchLabelsFollowConfiguredIndentation); the § 18(7) example and the switch examples of flowcontrol_switch.md, flowcontrol_while.md and grammar.md follow the decided layout"
+      - "formatter-header-token-spacing is complete for parser-confirmed declaration headers and statement keywords: existing named-type/contract, function/extern, reference/function-type, type-first, enum/unit/interface/impl/import and statement spacing is complemented by module headers, unsafe/static function prefixes, mutable/consuming/static interface receiver prefixes, static let modifiers and parser-retained register allocation/byte-order modifier ranges. CST roles compact only accepted modifier hyphens, leave ordinary subtraction distinct, preserve rejected syntax and share canonical/idempotent golden output through formatter, CLI and LSP."
     remaining:
-      - "formatter-switch-case-label-column: blocked on MD-032 — whether switch case/default labels align with `switch` as in the § 18(7) example or stay indented one level as the formatter and its tests do today."
-      - "formatter-header-token-spacing: header spacing is normalized since 2026-10-02 for named types, contracts, function and extern headers, function-type returns, ref/ref mut, type-first declarations, enum, unit, interface, impl, and single imports (frontend.types-core); since 2026-10-03 the discard, assert, panic, and contextual detach statement keywords (with a trailing detach discard spaced before) are parser-confirmed spaced keywords as well; operand-free keywords such as cancel, break, and continue need no spacing role."
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
         trimmed-line transformation pipeline with internal/cst as the primary
@@ -760,10 +802,12 @@ integrations:
           - Existing `format_version = 1` output does not intentionally drift between formatter implementation releases.
           - Personal editor preferences do not silently change canonical project source bytes.
           - Fixed and adaptive width modes produce deterministic output for a known effective width.
+        implemented:
+          - "MD-036/MD-054 project configuration (2026-10-12, formatter.md § 4(18)-(23), projects.md § 6(8)-(10)): internal/project.ParseManifestFormat reads the [format] table of .sec/sec.toml (the § 4(5) keys only; unknown keys, wrong value kinds, duplicate keys and a second table are manifest errors); internal/formatconfig resolves explicit invocation options over [format] over the § 4(5) defaults (language_corrections = false), validates format_version = 1, indentation_width, vertical_style, width_mode and the width settings, and finds the owning project by the same nearest-.sec/sec.toml rule as the compiler and LSP; sec fmt adds --indentation-width, keeps --fix as the explicit language_corrections override, validates every file's configuration before writing any file, and never rewrites the manifest; LSP formatting uses the same resolver and returns no edit for an invalid configuration (TestResolveAppliesOverridesManifestAndDefaults, TestResolveRejectsInvalidConfiguration, TestForSourceUsesTheOwningProject, TestFmtCommandUsesProjectFormatConfiguration, TestLSPFormattingUsesProjectFormatConfiguration)"
         remaining:
-          - the manifest location of the formatter settings, unknown format_version handling, defaults for an absent table, command-line override precedence, and whether language_corrections is project-owned are blocked on MD-054; formatter.Options already implements vertical_style, indentation_width and the alignment-padding limit as invocation options
+          - fixed and adaptive width modes are validated and resolved but not yet consumed by layout; the formatter has no preferred-line-width breaking, so line_width and the adaptive widths do not change output yet
       - id: formatter-imports-and-file-layout
-        status: partial
+        status: implemented
         rules:
           - § 13
           - § 14
@@ -771,7 +815,8 @@ integrations:
         requirement: >-
           Implement the canonical import region and top-level file layout.
           Preserve attached comments, sort imports canonically within their
-          groups, keep stdlib/ordinary/platform grouping, and never reorder
+          explicit groups alphabetically by logical path without classifying
+          import origins, and never reorder
           ordinary top-level declarations.
         acceptance:
           - Imports are never removed by ordinary formatting.
@@ -779,14 +824,10 @@ integrations:
           - Ordinary top-level declarations retain source order.
         implemented:
           - "2026-10-03 (internal/formatter/import_region.go): every top-level import is gathered into one canonical region after the module declaration and before the first ordinary declaration (including its attributes and parser-attached leading comments); one import keeps single-import form, two or more form one group"
-          - imports are ordered by import class, then canonical path, never by alias; duplicates and apparently unused imports are kept
+          - "MD-033 (2026-10-12): imports are sorted alphabetically by logical path, never by alias and never by a guessed standard-library, project or platform origin; blank-line-separated groups of one import group, with or without headings, are kept in source order and sorted internally without exchanging imports; sorting needs no module lookup, stdlib inventory or CompilationPlan (TestFormatImportsSortWithinExplicitGroups, TestFormatImportRegionHasNoImportClasses); duplicates and apparently unused imports are kept"
           - parser-attached leading, documentation, and trailing line comments move with their import; a comment the pass cannot attribute to exactly one import (dangling group comments, inline block comments, group-level comments) leaves the source unchanged, as does any parse error or a line holding more than one import item
-          - the reserved platform root forms its own class, separated by one empty line in the default structured style
           - ordinary top-level declarations keep source order
-          - "§ 13(9) compact style: Options.VerticalStyle = compact drops the empty line between import classes (TestFormatCompactImportRegionDropsClassSeparation); the project-owned manifest source of that option belongs to formatter-project-configuration"
-        remaining:
-          - standard-library versus project import classes are blocked on MD-033; until then both share the first class
-          - import regions with group-level or detached comments are left unformatted rather than partially reordered; where such comments go is MD-055
+          - "MD-055 import group headings (2026-10-12, formatter.md § 13(11)-(14)): a single grouped import declaration whose blank-line-separated runs start with standalone `//` heading comments keeps its runs in source order, sorts imports only within each run, places each heading directly above its run's first import (removing blank lines between them) and separates runs with one empty line; comments between imports of a run lead the next import and trailing line comments stay with their import; a comment that ends a run or the group, an inline block comment, or headings across several import declarations leave the region unchanged; verified for widths 2, 4 and 6 and idempotence (TestFormatImportGroupHeadings)"
       - id: formatter-language-surface
         status: partial
         rules:
@@ -943,6 +984,14 @@ integrations:
       - semantic normalization of numeric or string literals
       - automatic ownership, mutability, error-policy, or control-flow changes
     verification:
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test -race ./internal/parser ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'HeaderSpacing|CompleteHeader|InvalidHeader|RegisterType' -count=1
+        result: passed on 2026-10-12
+      - command: go test ./... -count=1
+        result: completed on 2026-10-12; all packages except cmd/unicodegen passed. TestGeneratedUnicodeSourceIsCurrent reports the pre-existing generated Unicode library source as stale; the unrelated artifact was left untouched.
+      - command: go test ./internal/cst ./internal/formatter ./cmd/lsp ./cmd/compiler -run 'HeaderSpacing|CompleteHeader|InvalidHeader|InvalidModule' -count=1
+        result: passed on 2026-10-12; module, static/unsafe/extern callable and static/receiver headers, static let, register modifiers, subtraction distinction, rejected headers, canonical golden fixed points and CLI/LSP equality verified; remaining 11 to 10 for this ID and 24 to 23 in formatting.yaml
       - command: go test ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-09-25 for the currently implemented CST, shared formatter, CLI, and LSP formatting slices
       - command: go test ./internal/parser ./internal/cst ./internal/formatter ./cmd/lsp -run 'ContextualMatrix|MultipleGenericConstraints|ApplyProgramRoles|GenericConstraint|Increment|Decrement|UnitMetadata|TopLevelTestDeclaration|OwnershipAvailability' -count=1

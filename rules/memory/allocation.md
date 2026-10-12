@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-08-30
-- Last updated: 2026-08-30
+- Last updated: 2026-10-12 (MD-058 collection capacity reservation)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/allocation.md`
@@ -61,6 +61,14 @@
 ```sec
 let values := try list[int].WithCapacity(100)
 let text := try string.From(source)
+```
+
+§ 3(2a) `list[T].WithCapacity`, `map[K, V].WithCapacity`, `set[T].WithCapacity` and the matching instance `Reserve` methods follow `collections.md` §§ 13.12, 14.8 and 15.5: they use the active explicit or implicit allocation context only when growth is required, a zero or already satisfied request does not allocate, and no global allocator or unrelated provider is ever selected. When no valid allocation context can exist for the target the program is rejected at compile time; a runtime allocation failure in a valid context returns `CollectionError.AllocationFailed` (MD-058, 2026-10-12):
+
+```sec
+let mut users := try map[string, int].WithCapacity(100)
+let mut names := try set[string].WithCapacity(100)
+try users.Reserve(20)
 ```
 
 § 3(3) The absence of explicit allocation-context syntax does not make an allocating operation allocation-free.

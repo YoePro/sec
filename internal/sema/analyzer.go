@@ -143,6 +143,8 @@ type Analyzer struct {
 	resolvedArrayIndexPlans   map[*ast.IndexExpression]ResolvedArrayIndexPlan
 	resolvedListIndexPlans    map[*ast.IndexExpression]ResolvedListIndexPlan
 	activeConditionFacts      []activeConditionFact
+	conditionBindingVersions  map[string]uint64
+	conditionProofBarrier     uint64
 	placeRootIDs              map[sourceTokenKey]PlaceRootID // deterministic Place root identities
 	synchronizationResources  map[ast.Expression]SynchronizationResourceFact
 	resourceIdentityDomain    *SynchronizationResourceSnapshot
@@ -233,14 +235,39 @@ type Analyzer struct {
 	resolvedPlaces         map[ast.Expression]Place
 	resolvedReferencePlans map[ast.Expression]ResolvedReferencePlan
 	resolvedReferenceUses  map[ast.Expression]ResolvedReferenceUse
+	// referenceParameterFacts holds the reference facts of each ref/ref mut
+	// parameter, keyed by its declaration location (P15-47).
+	referenceParameterFacts map[sourceTokenKey]ReferenceFacts
+	// receiverFacts and implicitReceiverUses publish the implicit receiver of
+	// instance methods (receiver_facts.go).
+	receiverFacts map[sourceTokenKey]ReferenceFacts
+	// resolvedBitExtractions holds the facts of `bit[N](value)` (bit_extraction.go).
+	resolvedBitExtractions map[*ast.BitExtractionExpression]ResolvedBitExtraction
+	implicitReceiverUses   map[*ast.Identifier]ImplicitReceiverUse
 	referenceLifetimeEnds  []ReferenceLifetimeEnd
 	referencePolicy        layout.ResolvedReferencePolicy
 	// statementTries marks try expressions used as statements, whose locally
 	// handled failures need no recovery value (errorhandling.md §21), and
 	// tryHandlerValueRequired is set while analyzing the handlers of a try in
 	// value position.
-	statementTries          map[*ast.TryExpression]bool
-	tryHandlerValueRequired bool
+	statementTries map[*ast.TryExpression]bool
+	// tryChainReceivers marks, while a try's protected expression is
+	// inferred, each member receiver with the member it is accessed through;
+	// tryUnwrappedReceivers records the receivers whose Result type the try
+	// unwraps to continue a chain (try_chain.go).
+	tryChainReceivers map[ast.Expression]string
+	// deferredContextualArguments holds the None, [] and null arguments of
+	// the call being resolved whose type the selected overload decides.
+	deferredContextualArguments map[ast.Expression]bool
+	tryUnwrappedReceivers       map[ast.Expression]Type
+	tryHandlerValueRequired     bool
+	// tryAssignmentHandlers, when set, analyzes each handler of the current
+	// try assignment as a separate branch from the failure-edge state and
+	// collects the branch states for the statement join.
+	tryAssignmentHandlers *tryAssignmentHandlerBranches
+	// tryHandlerOrigins receives the reference origins at the end of the
+	// handler body being captured, before its scope is restored.
+	tryHandlerOrigins *map[string]Type
 	// currentStatementToken locates the statement being analyzed, the source
 	// of resolved borrow ends.
 	currentStatementToken lexer.Token
@@ -526,9 +553,14 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedPlaces = map[ast.Expression]Place{}
 	a.resolvedReferencePlans = map[ast.Expression]ResolvedReferencePlan{}
 	a.resolvedReferenceUses = map[ast.Expression]ResolvedReferenceUse{}
+	a.referenceParameterFacts = map[sourceTokenKey]ReferenceFacts{}
+	a.receiverFacts = map[sourceTokenKey]ReferenceFacts{}
+	a.implicitReceiverUses = map[*ast.Identifier]ImplicitReceiverUse{}
 	a.referenceLifetimeEnds = nil
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
 	a.activeConditionFacts = nil
+	a.conditionBindingVersions = map[string]uint64{}
+	a.conditionProofBarrier = 0
 	a.arrayIndexMutationEpoch = 0
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
@@ -720,99 +752,6 @@ func (a *Analyzer) recordResolvedTestMetadata(declaration *ast.TestDeclaration) 
 	}
 	a.resolvedTestMetadata[declaration] = metadata
 	a.resolvedTests = append(a.resolvedTests, metadata)
-}
-
-// validateNoPanicGuarantees enforces the transitive verified guarantee from
-// attributes.md and effect_analysis.md. Package 14 section 55 consumes this
-// shared call-graph fact for fixed-array indexing.
-func (a *Analyzer) validateNoPanicGuarantees(program *ast.Program) {
-	a.withProgramModules(program, func(statement ast.Statement) {
-		switch statement := statement.(type) {
-		case *ast.FunctionDeclaration:
-			a.validateFunctionNoPanicGuarantee(statement, statement.Name.Value)
-		case *ast.ImplStatement:
-			if statement.Target == nil || !a.validImplStatements[statement] {
-				return
-			}
-			for _, member := range statement.Members {
-				fn, ok := member.(*ast.FunctionDeclaration)
-				if ok && fn != nil {
-					a.validateFunctionNoPanicGuarantee(fn, statement.Target.Name+"."+fn.Name.Value)
-				}
-			}
-		}
-	})
-}
-
-func (a *Analyzer) validateFunctionNoPanicGuarantee(fn *ast.FunctionDeclaration, name string) {
-	guarantee, ok := EffectiveGuaranteeOf(fn.Attributes, GuaranteeNoPanic)
-	if !ok || (fn.Extern && guarantee.Explicit()) {
-		return
-	}
-	attribute := guarantee.Source
-	function, ok := a.lookupFunctionByToken(name, fn.Name.Token)
-	if !ok || function.ReturnType.Kind == InvalidType {
-		return
-	}
-	summary := a.callGraph.EffectSummary(callableID(function))
-	if !summary.MayPanic || len(summary.PanicPath) == 0 {
-		return
-	}
-	chain := make([]string, 0, len(summary.PanicPath))
-	for _, id := range summary.PanicPath {
-		if node, exists := a.callGraph.Node(id); exists {
-			chain = append(chain, node.Name)
-		}
-	}
-	introducingID := summary.PanicPath[len(summary.PanicPath)-1]
-	introducing := a.callGraph.EffectSummary(introducingID)
-	kind := EffectKind("may-panic")
-	source := lexer.Token{}
-	if len(introducing.DirectEffects) != 0 {
-		kind = introducing.DirectEffects[0].Kind
-		source = introducing.DirectEffects[0].Source
-	}
-	message := fmt.Sprintf("function %s does not satisfy @noPanic%s: reachable %s effect via %s", name, guarantee.impliedSuffix(), kind, strings.Join(chain, " -> "))
-	if source.Line > 0 && source.Column > 0 {
-		message += fmt.Sprintf("; effect introduced at %s", formatLocation(source.File, source.Line, source.Column))
-	}
-	help := noPanicEffectHelp(kind)
-	if len(chain) > 1 {
-		help = "The panic comes from " + chain[len(chain)-1] + ", which " + name + " calls. " + help
-	}
-	if source.Line > 0 && source.Column > 0 {
-		a.addErrorAtTokenWithMetadataAndPrevious(attribute.Token, source, diagnostics.NoPanicViolation, help, "%s", message)
-		return
-	}
-	a.addErrorAtTokenWithMetadata(attribute.Token, diagnostics.NoPanicViolation, help, "%s", message)
-}
-
-// noPanicEffectHelp explains, in programmer terms, why an effect kind may
-// panic and how the program can avoid it.
-//
-// Rules:
-//   - rules/errors/panic.md — § 21 "@noPanic"
-//   - rules/errors/errorhandling.md — §30 "Diagnostics must act as a mentor"
-func noPanicEffectHelp(kind EffectKind) string {
-	switch kind {
-	case EffectMayPanicArithmetic:
-		return "Checked arithmetic can overflow, divide by zero, or shift out of range. Prove the operand ranges, or use try to turn the failure into ArithmeticError."
-	case EffectMayPanicBounds:
-		return "Indexing panics when the index is out of range. Prove the index (for example with a range-constrained index type or a dominating assert), or use try to handle IndexError."
-	case EffectMayPanicContract:
-		return "Converting a run-time value into a constrained type panics when the value breaks the type's contract. Use try to handle ContractError."
-	case EffectMayPanicExplicit:
-		return "An explicit panic always panics when reached. Return an error instead, or remove @noPanic."
-	case EffectMayPanicAssertion:
-		return "An assert whose condition the compiler cannot prove may fail. Return an error for the failing case, or establish the condition so the assertion is provable."
-	case EffectMayPanicUnreachable:
-		return "checked unreachable panics if control reaches it. Make the path statically impossible, or handle the case explicitly."
-	case EffectMayPanicUnknownCallee:
-		return "This call's target is not known here (a function value, an interface method, or a generic constraint method), so whether it can panic cannot be proven. Call a known function or concrete method directly, or remove @noPanic."
-	case EffectMayPanicForeign:
-		return "A call to an extern function has unknown foreign behavior and may abort. When the foreign documentation guarantees it cannot abort or unwind, mark the extern declaration @noPanic as a trusted foreign contract."
-	}
-	return "Remove the panic-capable operation from every path reachable from this function, or remove @noPanic."
 }
 
 // refreshTypesResolvedThroughNestedImplDeclarations closes the forward
@@ -2850,67 +2789,6 @@ func isCloseTrackedResourceName(name string) bool {
 	return name == baseName || name == "io."+baseName
 }
 
-// analyzeAssertStatement enforces exact bool typing and records a panic effect
-// unless the currently implemented proof establishes literal true. Condition
-// evaluation retains its independently inferred effects.
-//
-// Rules:
-//   - rules/errors/panic.md — § 15.2 "Condition typing"
-//   - rules/errors/panic.md — §§ 15.3, 15.5, 15.8 "Meaning", "Assertions are always active", "Assertions in @noPanic"
-func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
-	if stmt == nil || stmt.Condition == nil {
-		return
-	}
-	conditionType, _ := a.inferExpression(stmt.Condition)
-	if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-		a.addErrorAtTokenWithMetadata(expressionToken(stmt.Condition), diagnostics.AssertConditionNotBool,
-			assertConditionHelp(stmt.Condition, conditionType),
-			"assert condition must be bool, got %s", typeDisplayName(conditionType))
-		return
-	}
-	if conditionType.Kind == BoolType {
-		// rules/errors/panic.md §15.8: proof is decided before this assertion
-		// adds its own condition fact, so it never proves itself.
-		proven := isBoolLiteral(stmt.Condition, true) || a.proveCondition(stmt.Condition)
-		refinement := a.recordConditionFact(stmt.Condition, ConditionFactAssertionSuccess, stmt.Token)
-		message := ""
-		hasMessage := stmt.Message != nil
-		if hasMessage {
-			message = stmt.Message.Value
-		}
-		a.resolvedAssertions[stmt] = ResolvedAssertion{
-			Reason:     PanicReasonAssertionFailed,
-			ReasonID:   diagnostics.PanicReasonAssertionFailure,
-			Condition:  stmt.Condition,
-			Message:    message,
-			HasMessage: hasMessage,
-			File:       stmt.Token.File,
-			Line:       stmt.Token.Line,
-			Column:     stmt.Token.Column,
-			Function:   a.currentFunctionName,
-			Proven:     proven,
-			Refinement: refinement,
-		}
-		if !proven && !a.summaryPass && a.callGraphPathReachable {
-			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicAssertion, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonAssertionFailure}})
-		}
-	}
-}
-
-// recordConditionFact records and activates the common truth fact used by
-// successful assertions and if true branches. Mutation generation is kept
-// internal while the source-level provenance remains queryable and immutable.
-//
-// Rules:
-//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
-//   - rules/control-flow/flowcontrol_if.md — § 27 "Sema and flow-analysis requirements"
-func (a *Analyzer) recordConditionFact(condition ast.Expression, kind ResolvedConditionFactKind, source lexer.Token) ResolvedConditionFact {
-	fact := ResolvedConditionFact{Kind: kind, Condition: condition, Source: source}
-	a.resolvedConditionFacts[condition] = fact
-	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{fact: fact, epoch: a.arrayIndexMutationEpoch})
-	return fact
-}
-
 // analyzeUnreachableStatement records the defined panic effect of a reachable
 // checked unreachable statement. Branch analysis suppresses the effect when
 // the source path has already been proven impossible.
@@ -3134,20 +3012,6 @@ type branchAnalysis struct {
 	referenceOrigins map[string]Type
 	continues        bool
 	fallsThrough     bool
-}
-
-// activeConditionFact adds mutation-generation validity to the public
-// condition fact while it dominates the current analysis point.
-type activeConditionFact struct {
-	fact  ResolvedConditionFact
-	epoch uint64
-	// resultBinding and resultState carry a Result state fact ("Ok" or
-	// "Err") of an immutable binding that a path has proven without a
-	// condition of its own: an else branch, an early exit, an Option
-	// binding, or a match arm on a borrowed projection.
-	resultBinding string
-	resultState   string
-	resultSource  lexer.Token
 }
 
 // loopIterationAnalysisState is the loop-header snapshot: the same
@@ -4279,11 +4143,13 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		a.recordDefinition(param.Token)
 		a.recordBinding(param.Token, BindingParameter, param.Name, bindingType, mutableBinding)
 		a.seedParameterReferenceOrigin(function, param)
+		a.recordReferenceParameterFacts(param)
 	}
 	// rules/declarations/static.md, receiver semantics; correction15.md keeps the
 	// owning type on static methods but does not synthesize self or members.
 	if !function.Static {
 		a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
+		a.recordReceiverFacts(function)
 	}
 
 	a.analyzeBlockStatements(fn.Body)
@@ -4594,6 +4460,8 @@ func (a *Analyzer) expressionCallsMutableTargetMethod(expr ast.Expression, targe
 		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Right, target)
 	case *ast.RangeExpression:
 		return a.expressionCallsMutableTargetMethod(expr.Start, target) || a.expressionCallsMutableTargetMethod(expr.End, target)
+	case *ast.BitExtractionExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Value, target)
 	case *ast.ConversionExpression:
 		return a.expressionCallsMutableTargetMethod(expr.Value, target)
 	case *ast.OkExpression:
@@ -4717,6 +4585,8 @@ func expressionUsesSelf(expr ast.Expression) bool {
 		return expressionUsesSelf(expr.Left) || expressionUsesSelf(expr.Right)
 	case *ast.RangeExpression:
 		return expressionUsesSelf(expr.Start) || expressionUsesSelf(expr.End)
+	case *ast.BitExtractionExpression:
+		return expressionUsesSelf(expr.Value)
 	case *ast.ConversionExpression:
 		return expressionUsesSelf(expr.Value)
 	case *ast.CallExpression:
@@ -5402,6 +5272,8 @@ func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool 
 		return a.validateTerminalReturnConstruction(expr.Value)
 	case *ast.SpreadExpression:
 		return a.validateTerminalReturnConstruction(expr.Value)
+	case *ast.BitExtractionExpression:
+		return a.validateTerminalReturnConstruction(expr.Value)
 	case *ast.ConversionExpression:
 		return a.validateTerminalReturnConstruction(expr.Value)
 	case *ast.PrefixExpression:
@@ -5630,6 +5502,8 @@ func containsCapturedLambdaExpression(expr ast.Expression) bool {
 				return true
 			}
 		}
+	case *ast.BitExtractionExpression:
+		return containsCapturedLambdaExpression(expr.Value)
 	case *ast.ConversionExpression:
 		return containsCapturedLambdaExpression(expr.Value)
 	}
@@ -5747,6 +5621,8 @@ func (a *Analyzer) containedReferenceOrigins(expr ast.Expression) map[string]loc
 			prefixContainedOrigins(path, a.containedReferenceOrigins(element), out)
 		}
 	case *ast.SpreadExpression:
+		return a.containedReferenceOrigins(expr.Value)
+	case *ast.BitExtractionExpression:
 		return a.containedReferenceOrigins(expr.Value)
 	case *ast.ConversionExpression:
 		return a.containedReferenceOrigins(expr.Value)
@@ -5898,6 +5774,8 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 		if expr.Value != nil {
 			return a.matchScopedReferenceOriginInExpression(expr.Value)
 		}
+	case *ast.BitExtractionExpression:
+		return a.matchScopedReferenceOriginInExpression(expr.Value)
 	case *ast.ConversionExpression:
 		return a.matchScopedReferenceOriginInExpression(expr.Value)
 	case *ast.PrefixExpression:
@@ -5929,6 +5807,8 @@ func (a *Analyzer) localReferenceOriginForTransfer(value ast.Expression) (localR
 		if origin, ok := a.localRefContainers[value.Value]; ok {
 			return cloneLocalReferenceOrigin(origin), true
 		}
+	case *ast.BitExtractionExpression:
+		return a.localReferenceOriginForTransfer(value.Value)
 	case *ast.ConversionExpression:
 		return a.localReferenceOriginForTransfer(value.Value)
 	}
@@ -5989,6 +5869,8 @@ func (a *Analyzer) referencePlaceOrigin(expr ast.Expression) (Place, bool) {
 			return Place{}, false
 		}
 		return placeFromReferenceOrigin(origin, mustBorrowRootName(expr))
+	case *ast.BitExtractionExpression:
+		return a.referencePlaceOrigin(expr.Value)
 	case *ast.ConversionExpression:
 		return a.referencePlaceOrigin(expr.Value)
 	default:
@@ -6272,6 +6154,8 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 		if expr.Value != nil {
 			return a.localReferenceOriginInExpression(expr.Value)
 		}
+	case *ast.BitExtractionExpression:
+		return a.localReferenceOriginInExpression(expr.Value)
 	case *ast.ConversionExpression:
 		return a.localReferenceOriginInExpression(expr.Value)
 	case *ast.PrefixExpression:
@@ -9262,33 +9146,14 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 	a.assigned[stmt.Name.Value] = true
 }
 
-func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expression) (Type, bool) {
-	if len(resultType.TypeArgs) != 2 {
-		return Type{Kind: InvalidType}, false
-	}
-	switch expr := expr.(type) {
-	case *ast.OkExpression:
-		valueType, _ := a.inferExpression(expr.Value)
-		if valueType.Kind != InvalidType && !a.canInitialize(resultType.TypeArgs[0], valueType, expr.Value) {
-			a.addErrorAtToken(expressionToken(expr.Value), "cannot initialize %s with Ok(%s)", typeDisplayName(resultType), typeDisplayName(valueType))
-		}
-		return resultType, true
-	case *ast.ErrExpression:
-		valueType, _ := a.inferExpression(expr.Value)
-		if valueType.Kind != InvalidType && !a.canInitialize(resultType.TypeArgs[1], valueType, expr.Value) {
-			a.addErrorAtToken(expressionToken(expr.Value), "cannot initialize %s with Err(%s)", typeDisplayName(resultType), typeDisplayName(valueType))
-		}
-		return resultType, true
-	default:
-		return Type{}, false
-	}
-}
-
 func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, allowFallible bool) {
-	// Package 14 section 36 requires a dominating value proof. Conservatively
-	// invalidate active comparison facts after any assignment; this is safe
-	// until the general refinement engine tracks per-binding SSA versions.
-	defer func() { a.arrayIndexMutationEpoch++ }()
+	// Assertion facts retain independent binding versions; older bounds/state
+	// consumers still use the conservative assignment epoch.
+	// Rules: rules/errors/panic.md — §15.6, §15.8; rules/memory/borrowing.md — mutation authority.
+	defer func() {
+		a.arrayIndexMutationEpoch++
+		a.invalidateAssignmentProofFacts(stmt)
+	}()
 	a.recordReferenceWriteUse(stmt.Target)
 	a.recordDeferPlaceExpression(stmt.Target)
 	if a.assignmentReplacesIteratedCollection(stmt) {
@@ -9316,6 +9181,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 	a.bindDefinition(target.Token, symbol.Token)
 	a.recordDeferCapture(target.Value, symbol, target.Token)
+	a.recordImplicitReceiverUse(target, symbol)
 
 	property, propertyOK := a.lookupCurrentImplProperty(target.Value)
 	if propertyOK && !property.HasSetter {
@@ -9638,6 +9504,8 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		}
 	case *ast.SpreadExpression:
 		return a.markMoveSource(expr.Value)
+	case *ast.BitExtractionExpression:
+		return a.markMoveSource(expr.Value)
 	case *ast.ConversionExpression:
 		return a.markMoveSource(expr.Value)
 	case *ast.CallExpression:
@@ -9727,6 +9595,8 @@ func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
 		if _, structural := a.unionConstructorPayload(expr); structural {
 			return a.markResourceTransfer(expr.Arguments[0])
 		}
+	case *ast.BitExtractionExpression:
+		return a.markResourceTransfer(expr.Value)
 	case *ast.ConversionExpression:
 		return a.markResourceTransfer(expr.Value)
 	}
@@ -9761,6 +9631,8 @@ func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder s
 			a.bindBorrowHoldersFromExpression(expr.Value, holder)
 		}
 	case *ast.SpreadExpression:
+		a.bindBorrowHoldersFromExpression(expr.Value, holder)
+	case *ast.BitExtractionExpression:
 		a.bindBorrowHoldersFromExpression(expr.Value, holder)
 	case *ast.ConversionExpression:
 		a.bindBorrowHoldersFromExpression(expr.Value, holder)
@@ -9960,109 +9832,6 @@ func variadicPackValue(typ Type) bool {
 	return typ.Kind == VariadicPackType
 }
 
-func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
-	place, ok := a.rootPlace(name)
-	if !ok {
-		return false
-	}
-	return a.checkBorrowedReadPlace(place, token)
-}
-
-func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
-	for _, candidate := range placeOriginAlternatives(place) {
-		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind != mutableBorrow || record.Holder == candidate.Root || record.Holder == candidate.ReferenceHolder || !borrowRecordMayOverlap(candidate, record) {
-				continue
-			}
-			if record.LoopCarried {
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s because it may remain mutably borrowed from a previous loop iteration", place.String())
-				return true
-			}
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s while it is mutably borrowed", place.String())
-			return true
-		}
-	}
-	return false
-}
-
-func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
-	place, ok := a.rootPlace(name)
-	if !ok {
-		return false
-	}
-	return a.checkBorrowedMutationPlace(place, token)
-}
-
-func (a *Analyzer) checkBorrowedMutationPlace(place Place, token lexer.Token) bool {
-	for _, candidate := range placeOriginAlternatives(place) {
-		for _, record := range a.borrows[candidate.Root] {
-			if isDeferredUseKind(record.Kind) {
-				continue
-			}
-			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
-				continue
-			}
-			if !borrowRecordMayOverlap(candidate, record) {
-				continue
-			}
-			if record.LoopCarried {
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s because it may remain borrowed from a previous loop iteration", place.String())
-				return true
-			}
-			if record.Kind == mutableBorrow {
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is mutably borrowed", place.String())
-				return true
-			}
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is shared borrowed", place.String())
-			return true
-		}
-	}
-	return false
-}
-
-func (a *Analyzer) checkBorrowedMove(name string, token lexer.Token) bool {
-	place, ok := a.rootPlace(name)
-	if !ok {
-		return false
-	}
-	return a.checkBorrowedMovePlace(place, token)
-}
-
-func (a *Analyzer) checkBorrowedMovePlace(place Place, token lexer.Token) bool {
-	return a.checkBorrowedMovePlaceForAction(place, token, "move")
-}
-
-// checkBorrowedMovePlaceForAction validates ownership-invalidating move or
-// discard against deferred Place dependencies and ordinary live borrows.
-//
-// Rules:
-//   - rules/memory/borrowing.md — §21 "Defer and delayed use", §22 "Moves, discard, replacement, and destruction"
-func (a *Analyzer) checkBorrowedMovePlaceForAction(place Place, token lexer.Token, action string) bool {
-	if a.checkDeferredUsePlace(place, token, action) {
-		return true
-	}
-	for _, candidate := range placeOriginAlternatives(place) {
-		for _, record := range a.borrows[candidate.Root] {
-			if isDeferredUseKind(record.Kind) {
-				continue
-			}
-			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
-				continue
-			}
-			if !borrowRecordMayOverlap(candidate, record) {
-				continue
-			}
-			if record.LoopCarried {
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s because it may remain borrowed from a previous loop iteration", place.String())
-				return true
-			}
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s while it is borrowed", place.String())
-			return true
-		}
-	}
-	return false
-}
-
 func borrowRootName(expr ast.Expression) (string, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -10202,7 +9971,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.recordResolvedCompoundAssignment(stmt, targetType, valueType)
 	}
 
-	if !a.canInitialize(targetType, assignmentType, stmt.Value) {
+	if !a.canInitialize(targetType, assignmentType, stmt.Value) && !(stmt.Operator == "=" && a.bitExtractionFitsRegisterField(member, stmt.Value)) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return
 	}
@@ -11036,88 +10805,6 @@ func resolvedStructExpressionAction(expr ast.Expression, typ Type) ResolvedStruc
 		return resolvedStructCopyAction(typ)
 	default:
 		return StructFieldConstructDirect
-	}
-}
-
-// validateOwningConstructionSource preserves ordinary copy semantics outside
-// terminal return construction. A reusable move-only Place must carry <-;
-// temporaries and copyable Places remain marker-free.
-func (a *Analyzer) validateOwningConstructionSource(expr ast.Expression) bool {
-	if a.terminalReturnDepth > 0 {
-		return true
-	}
-	if _, explicit := explicitMoveArgument(expr); explicit {
-		return true // inferPrefixExpression already validated the source Place.
-	}
-	place, reusable := a.resolvePlace(expr)
-	if !reusable || !requiresOwnershipTransfer(place.Type) {
-		return true
-	}
-	return a.validateNamedOwnershipSource(ast.OwnershipCopy, expr, expressionToken(expr), false, false)
-}
-
-func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant, expr *ast.StructLiteral, token lexer.Token) {
-	expected := map[string]StructField{}
-	for _, field := range variant.PayloadFields {
-		expected[field.Name] = field
-	}
-
-	seen := map[string]lexer.Token{}
-	for _, field := range expr.Fields {
-		if field != nil && field.Spread {
-			a.addErrorAtToken(field.Token, "spread is not supported in union payload literals")
-			continue
-		}
-		if field == nil || field.Name == nil {
-			continue
-		}
-		name := field.Name.Value
-		if _, exists := seen[name]; exists {
-			a.addErrorAtToken(field.Name.Token, "duplicate payload field %s for %s.%s", name, typeDisplayName(unionType), variant.Name)
-			continue
-		}
-		seen[name] = field.Name.Token
-
-		expectedField, ok := expected[name]
-		if !ok {
-			a.addErrorAtToken(field.Name.Token, "unknown payload field %s for %s.%s", name, typeDisplayName(unionType), variant.Name)
-			continue
-		}
-
-		valueType, _ := a.inferOwningConstructionValue(field.Value, expectedField.Type)
-		if valueType.Kind != InvalidType && !a.canInitialize(expectedField.Type, valueType, field.Value) {
-			a.addErrorAtToken(expressionToken(field.Value), "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
-			continue
-		}
-		if valueType.Kind != InvalidType {
-			// rules/declarations/unions.md; correction17.md: union payload
-			// fields use the ordinary destination representability check.
-			a.checkCompileTimeContractExpression(expectedField.Type, field.Value)
-		}
-		if valueType.Kind != InvalidType {
-			a.validateOwningConstructionSource(field.Value)
-		}
-	}
-
-	for _, field := range variant.PayloadFields {
-		if _, supplied := seen[field.Name]; supplied {
-			continue
-		}
-		resolution := DefaultValueOf(field.Type)
-		value := defaultExpression(resolution, field.Type, token)
-		if value == nil {
-			start := len(a.errors)
-			// rules/types/default_values.md, "Diagnostics": types.no-default-value
-			// unless the cause is an ambiguous nearest-to-zero tie.
-			if id, help, reason, ambiguous := noDefaultDiagnostic(field.Type); ambiguous {
-				a.addErrorAtTokenWithMetadata(token, id, "initialize the payload field explicitly or "+help, "missing payload field %s for %s.%s because %s", field.Name, typeDisplayName(unionType), variant.Name, reason)
-			} else {
-				a.addErrorAtTokenWithMetadata(token, diagnostics.TypeNoDefaultValue, "initialize the payload field explicitly", "missing payload field %s for %s.%s because %s has no default value", field.Name, typeDisplayName(unionType), variant.Name, typeDisplayName(field.Type))
-			}
-			a.relateMissingDefault(start, field.Type, field.Token)
-			continue
-		}
-		expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
 	}
 }
 
@@ -12572,6 +12259,14 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread 
 			}
 			continue
 		}
+		if a.deferredContextualArguments[arg] {
+			// Typed from the selected overload's parameter (MD-027).
+			types = append(types, Type{Kind: InvalidType, Name: "contextual"})
+			expressions = append(expressions, arg)
+			preparedSpreadValues = append(preparedSpreadValues, false)
+			runtimeSpreadValues = append(runtimeSpreadValues, false)
+			continue
+		}
 		argType, _ := a.inferCallArgumentExpression(arg)
 		if argType.Kind == InvalidType {
 			return nil, nil, nil, nil, false
@@ -13595,98 +13290,6 @@ func enumHasValue(typ Type, name string) bool {
 	}
 	_, ok := typ.EnumConsts[name]
 	return ok
-}
-
-func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
-	// rules/errors/errorhandling.md §22: guards and handler bodies are
-	// outside the protected set of this try.
-	a.tryHandlerDepth++
-	defer func() { a.tryHandlerDepth-- }()
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	// rules/errors/errorhandling.md section 15: handler bindings are local to
-	// one handler arm. Preserve any shadowed outer Place state and remove every
-	// move/discard marker created for the handler binding when the arm ends.
-	previousBindingMoved := rootPlaceMovedState(a.moved, bindingName)
-	previousBindingMoveReasons := rootPlaceReasonState(a.moveReasons, bindingName)
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	if bindingName != "" {
-		clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
-		bindingIdentifier := tryHandlerBindingIdentifier(handler)
-		bindingToken := handler.Token
-		if bindingIdentifier != nil {
-			bindingToken = bindingIdentifier.Token
-			a.recordDefinition(bindingToken)
-			a.recordBinding(bindingToken, BindingLocal, bindingName, errorType, false)
-		}
-		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic}
-		delete(a.constInts, bindingName)
-	}
-	defer func() {
-		if bindingName != "" {
-			clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
-			for place, token := range previousBindingMoved {
-				a.moved[place] = token
-			}
-			for place, reason := range previousBindingMoveReasons {
-				a.moveReasons[place] = reason
-			}
-		}
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-	}()
-
-	if handler.Guard != nil {
-		a.analyzeTryHandlerGuard(handler, bindingName)
-	}
-
-	if handler.ReturnBody != nil {
-		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, handler.ReturnBody)
-		return TryHandlerReturns
-	}
-
-	valueRequired := successType.Kind != VoidType && a.tryHandlerValueRequired
-	if handler.BlockBody != nil && valueRequired {
-		if value, ok := tryHandlerBlockValue(handler.BlockBody); ok {
-			return a.analyzeTryHandlerBlockValue(handler, value, successType)
-		}
-	}
-
-	if handler.BlockBody != nil {
-		a.analyzeBlockStatements(handler.BlockBody)
-		if !valueRequired {
-			if blockCanFallThrough(handler.BlockBody) {
-				return TryHandlerProducesValue
-			}
-			if blockDefinitelyReturns(handler.BlockBody) {
-				return TryHandlerReturns
-			}
-			return TryHandlerTerminates
-		}
-		if blockCanFallThrough(handler.BlockBody) {
-			a.addErrorAtTokenWithMetadata(handler.Token, diagnostics.TryHandlerMissingRecoveryValue, tryHandlerRecoveryValueHelp(successType), "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
-			return TryHandlerInvalidFlow
-		}
-		if blockDefinitelyReturns(handler.BlockBody) {
-			return TryHandlerReturns
-		}
-		return TryHandlerTerminates
-	}
-
-	if handler.Body == nil {
-		a.addErrorAtTokenWithMetadata(handler.Token, diagnostics.TryHandlerMissingRecoveryValue, tryHandlerRecoveryValueHelp(successType), "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
-		return TryHandlerInvalidFlow
-	}
-
-	bodyType, _ := a.inferExpression(handler.Body)
-	if bodyType.Kind == InvalidType {
-		return TryHandlerInvalidFlow
-	}
-	if valueRequired && !a.canInitialize(successType, bodyType, handler.Body) {
-		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
-	}
-	return TryHandlerProducesValue
 }
 
 func rootPlaceMovedState(state map[string]lexer.Token, root string) map[string]lexer.Token {
@@ -16030,6 +15633,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 		return expr.Token
 	case *ast.NullTestExpression:
 		return expr.Token
+	case *ast.BitExtractionExpression:
+		return expr.Token
 	case *ast.ConversionExpression:
 		return expr.Token
 	case *ast.CallExpression:
@@ -16082,6 +15687,8 @@ func expressionEndToken(expr ast.Expression) lexer.Token {
 		return expressionEndToken(expr.Right)
 	case *ast.RangeExpression:
 		return expressionEndToken(expr.End)
+	case *ast.BitExtractionExpression:
+		return expressionEndToken(expr.Value)
 	case *ast.ConversionExpression:
 		return expressionEndToken(expr.Value)
 	case *ast.CallExpression:

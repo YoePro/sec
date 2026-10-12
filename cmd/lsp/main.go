@@ -29,7 +29,6 @@ import (
 	"sec/internal/lsp/protocol"
 	lspserver "sec/internal/lsp/server"
 	"sec/internal/parser"
-	platformtarget "sec/internal/platform/target"
 	"sec/internal/sema"
 )
 
@@ -788,173 +787,6 @@ func (s *server) handle(message rpcMessage) error {
 			return nil
 		}
 		return s.respondError(message.ID, -32601, "method not found")
-	}
-}
-
-func callHierarchyItemsForSource(uri string, text string, pos position, overlays ...sourceOverlay) (items []callHierarchyItem) {
-	defer func() {
-		if recover() != nil {
-			items = []callHierarchyItem{}
-		}
-	}()
-	analyzer := analyzeNavigationSource(uri, text, overlays...)
-	if analyzer == nil {
-		return []callHierarchyItem{}
-	}
-	token, ok := sourceTokenAtPosition(uri, text, pos)
-	if !ok {
-		return []callHierarchyItem{}
-	}
-	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
-	if len(definitions) != 1 {
-		return []callHierarchyItem{}
-	}
-	overlay := firstSourceOverlay(overlays)
-	for _, node := range analyzer.CallGraph().NodesForDeclaration(definitions[0]) {
-		items = append(items, withPanicDetail(callHierarchyItemForNode(uri, text, overlay, node), analyzer.CallGraph(), node.ID))
-	}
-	return items
-}
-
-func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.CallableID, overlays ...sourceOverlay) (calls []callHierarchyIncomingCall) {
-	defer func() {
-		if recover() != nil {
-			calls = []callHierarchyIncomingCall{}
-		}
-	}()
-	analyzer := analyzeNavigationSource(uri, text, overlays...)
-	if analyzer == nil {
-		return []callHierarchyIncomingCall{}
-	}
-	graph := analyzer.CallGraph()
-	overlay := firstSourceOverlay(overlays)
-	grouped := map[string]int{}
-	for _, site := range graph.Incoming(nodeID) {
-		caller, ok := graph.Node(site.Caller)
-		if !ok {
-			continue
-		}
-		rng := definitionTokenRange(sourceTextForToken(uri, text, overlay, site.Source), site.Source)
-		key := callHierarchyRelationshipKey(caller.ID, site.Dispatch, site.Execution)
-		if index, exists := grouped[key]; exists {
-			calls[index].FromRanges = append(calls[index].FromRanges, rng)
-			continue
-		}
-		grouped[key] = len(calls)
-		calls = append(calls, callHierarchyIncomingCall{
-			From:       withPanicDetail(callHierarchyItemForRelationship(uri, text, overlay, caller, site.Dispatch, site.Execution), graph, caller.ID),
-			FromRanges: []lspRange{rng},
-		})
-	}
-	return calls
-}
-
-func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.CallableID, overlays ...sourceOverlay) (calls []callHierarchyOutgoingCall) {
-	defer func() {
-		if recover() != nil {
-			calls = []callHierarchyOutgoingCall{}
-		}
-	}()
-	analyzer := analyzeNavigationSource(uri, text, overlays...)
-	if analyzer == nil {
-		return []callHierarchyOutgoingCall{}
-	}
-	graph := analyzer.CallGraph()
-	overlay := firstSourceOverlay(overlays)
-	grouped := map[string]int{}
-	for _, site := range graph.Outgoing(nodeID) {
-		for _, targetID := range site.Targets {
-			target, ok := graph.Node(targetID)
-			if !ok || target.Declaration.Line <= 0 {
-				continue
-			}
-			rng := definitionTokenRange(sourceTextForToken(uri, text, overlay, site.Source), site.Source)
-			key := callHierarchyRelationshipKey(target.ID, site.Dispatch, site.Execution)
-			if index, exists := grouped[key]; exists {
-				calls[index].FromRanges = append(calls[index].FromRanges, rng)
-				continue
-			}
-			grouped[key] = len(calls)
-			calls = append(calls, callHierarchyOutgoingCall{
-				To:         withPanicDetail(callHierarchyItemForRelationship(uri, text, overlay, target, site.Dispatch, site.Execution), graph, target.ID),
-				FromRanges: []lspRange{rng},
-			})
-		}
-	}
-	return calls
-}
-
-// withPanicDetail marks call hierarchy items whose callable may panic, so
-// transitive panic-capable paths are visible while navigating the hierarchy.
-//
-// Rules:
-//   - rules/errors/panic.md — § 28 "Diagnostics and tooling"
-//   - rules/tooling/lsp.md — call hierarchy effect facts
-func withPanicDetail(item callHierarchyItem, graph *sema.CallGraph, id sema.CallableID) callHierarchyItem {
-	if graph != nil && graph.EffectSummary(id).MayPanic {
-		if item.Detail != "" {
-			item.Detail += " · "
-		}
-		item.Detail += "may panic"
-	}
-	return item
-}
-
-func callHierarchyRelationshipKey(node sema.CallableID, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) string {
-	return fmt.Sprintf("%s|%s|%s", node, dispatch, execution)
-}
-
-func callHierarchyItemForRelationship(analysisURI string, analysisText string, overlay sourceOverlay, node sema.CallableNode, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) callHierarchyItem {
-	item := callHierarchyItemForNode(analysisURI, analysisText, overlay, node)
-	item.Data.Dispatch = dispatch
-	item.Data.Execution = execution
-	if execution != "" && execution != sema.CallExecutionSynchronous {
-		label := strings.ReplaceAll(string(execution), "-", " ")
-		if item.Detail == "" {
-			item.Detail = label
-		} else {
-			item.Detail += " | " + label
-		}
-	}
-	return item
-}
-
-func analyzeNavigationSource(uri string, text string, overlays ...sourceOverlay) *sema.Analyzer {
-	program := parseProgramForLSP(uri, text)
-	if program == nil {
-		return nil
-	}
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
-	return analyzer
-}
-
-func callHierarchyItemForNode(analysisURI string, analysisText string, overlay sourceOverlay, node sema.CallableNode) callHierarchyItem {
-	uri := analysisURI
-	if node.Declaration.File != "" {
-		uri = uriFromPath(node.Declaration.File)
-	}
-	rng := definitionTokenRange(sourceTextForToken(analysisURI, analysisText, overlay, node.Declaration), node.Declaration)
-	name := node.Name
-	if index := strings.LastIndex(name, "."); index >= 0 {
-		name = name[index+1:]
-	}
-	detail := node.Module
-	kind := 12 // SymbolKind.Function
-	if node.ImplTarget != "" {
-		detail = "impl " + node.ImplTarget
-		kind = 6 // SymbolKind.Method
-	}
-	return callHierarchyItem{
-		Name:           name,
-		Kind:           kind,
-		Detail:         detail,
-		URI:            uri,
-		Range:          rng,
-		SelectionRange: rng,
-		Data:           callHierarchyData{AnalysisURI: analysisURI, NodeID: node.ID},
 	}
 }
 
@@ -2405,47 +2237,6 @@ func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.
 	return "", false
 }
 
-// panicHoverLines presents the compiler-owned panic summary of a callable:
-// whether a synchronous path can panic, its direct panic sources with their
-// registered reasons, and the cause path to the introducing callable.
-//
-// Rules:
-//   - rules/errors/panic.md — § 21 "@noPanic", registered panic reasons
-//   - rules/tooling/lsp.md — "Hover": effect and panic paths
-func panicHoverLines(graph *sema.CallGraph, id sema.CallableID) []string {
-	summary := graph.EffectSummary(id)
-	if !summary.MayPanic {
-		return []string{"May panic: `no` (no reachable panic source in the current analysis)"}
-	}
-	lines := []string{"May panic: `yes`"}
-	for _, effect := range summary.DirectEffects {
-		if !sema.IsPanicEffectKind(effect.Kind) {
-			continue
-		}
-		reasons := make([]string, 0, len(effect.PanicReasonIDs))
-		for _, reason := range effect.PanicReasonIDs {
-			if definition, ok := diagnostics.PanicReasonByID(reason); ok {
-				reasons = append(reasons, definition.Name)
-			}
-		}
-		line := fmt.Sprintf("Panic source: `%s` at %d:%d", effect.Kind, effect.Source.Line, effect.Source.Column)
-		if len(reasons) > 0 {
-			line += " (" + strings.Join(reasons, ", ") + ")"
-		}
-		lines = append(lines, line)
-	}
-	if len(summary.PanicPath) > 1 {
-		path := make([]string, 0, len(summary.PanicPath))
-		for _, step := range summary.PanicPath {
-			if node, ok := graph.Node(step); ok {
-				path = append(path, node.Name)
-			}
-		}
-		lines = append(lines, "Panic path: `"+strings.Join(path, "` -> `")+"`")
-	}
-	return lines
-}
-
 // callGraphComponentHoverLine presents one compiler-owned SCC without
 // reconstructing graph relationships in the LSP.
 //
@@ -3805,7 +3596,10 @@ func (s *server) formatDocument(uri string) ([]textEdit, error) {
 		text = string(data)
 	}
 
-	formatted := formatSource(text)
+	formatted, err := formatSourceForDocument(uri, text)
+	if err != nil {
+		return nil, err
+	}
 	if formatted == text {
 		return []textEdit{}, nil
 	}
@@ -4675,71 +4469,6 @@ func lspStatementTokenForSource(stmt ast.Statement) (lexer.Token, bool) {
 	default:
 		return lexer.Token{}, false
 	}
-}
-
-func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string, overlays ...sourceOverlay) []sema.Error {
-	return resolveSourceImportsForTarget(program, seen, sourceFile, platformtarget.Host(), overlays...)
-}
-
-// resolveSourceImportsForTarget includes the sources of every imported module
-// that belong to target; a file whose `#target` selects another platform is
-// left out, as the compiler does.
-func resolveSourceImportsForTarget(program *ast.Program, seen map[string]bool, sourceFile string, target platformtarget.Target, overlays ...sourceOverlay) []sema.Error {
-	overlay := firstSourceOverlay(overlays)
-	issues := []sema.Error{}
-	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
-		importStmt, ok := stmt.(*ast.ImportStatement)
-		if !ok || importStmt == nil {
-			continue
-		}
-		if !canonicalLSPImportPath(importStmt.Path) {
-			continue
-		}
-		sourcePaths := sourceIncludePaths(importStmt.Path, sourceFile)
-		if len(sourcePaths) == 0 {
-			issues = append(issues, unresolvedImportError(importStmt))
-			continue
-		}
-		importedStatements := []ast.Statement{}
-		module := ""
-		resolved := false
-		for _, sourcePath := range sourcePaths {
-			if seen[sourcePath] {
-				if imported, parsed := parseSourceInclude(sourcePath, overlay); parsed {
-					resolved = true
-					rewriteImportQualifier(program, importQualifier(importStmt), programModulePath(imported))
-				}
-				continue
-			}
-			seen[sourcePath] = true
-
-			imported, ok := parseSourceInclude(sourcePath, overlay)
-			if !ok {
-				continue
-			}
-			resolved = true
-			if !lspserver.ProgramMatchesTarget(imported, target) {
-				continue
-			}
-			issues = append(issues, resolveSourceImportsForTarget(imported, seen, sourcePath, target, overlay)...)
-			if module == "" {
-				module = programModulePath(imported)
-			}
-			importedStatements = append(importedStatements, imported.Statements...)
-		}
-		if !resolved {
-			issues = append(issues, unresolvedImportError(importStmt))
-			continue
-		}
-		if module == "" || len(importedStatements) == 0 {
-			continue
-		}
-		rewriteImportQualifier(program, importQualifier(importStmt), module)
-		imported := &ast.Program{Statements: importedStatements}
-		qualifyImportedModule(imported, module)
-		program.Statements = append(program.Statements, imported.Statements...)
-	}
-	return issues
 }
 
 func sourceIncludePaths(path string, sourceFile string) []string {

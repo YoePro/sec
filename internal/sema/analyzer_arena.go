@@ -149,6 +149,7 @@ func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bo
 // checkArenaBackingBorrowRead rejects reads of backing still exclusively
 // borrowed by a represented Arena owner. Release ends that backing borrow.
 // Rules: rules/memory/arena.md — §§10(6–9), 45(2).
+// rules/memory/borrowing.md — §6(1–7),§32(7–8).
 func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) bool {
 	for _, record := range a.borrows[name] {
 		if record.Kind != mutableBorrow {
@@ -158,7 +159,8 @@ func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) b
 		if !ok || holder.Type.Name != "Arena" {
 			continue
 		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s while its backing is exclusively borrowed by arena %s", name, record.Holder)
+		place, _ := a.rootPlace(name)
+		a.addBorrowAuthorityConflict(place, token, record, "cannot read %s while its backing is exclusively borrowed by arena %s", name, record.Holder)
 		return true
 	}
 	return false

@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-09"
+updated: "2026-10-12"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -259,49 +259,6 @@ decisions:
       contract-violation handling.
     classification: constraining
     status: open
-  - id: MD-027
-    area: contextual-none-arguments
-    rulebooks:
-      - rules/types/types.md
-      - rules/errors/errorhandling.md
-      - rules/foundations/grammar.md
-      - rules/foundations/language_philosophy.md
-    description: >-
-      Bare `None` (and the empty literal `[]`, grammar.md "requires contextual
-      type information") needs an expected type, but no rulebook lists which
-      positions supply one. Declarations, assignments, and returns already
-      did. Call and `new` arguments did not, so stdlib code such as
-      `new Reference(None, None, new Path(), None, None)` failed with
-      "undefined variable None". The implementation now types a bare None
-      argument from the parameter in its position when every candidate that
-      accepts the argument count agrees on the same Option[T], mirroring the
-      null-sentinel rule of ffi.md § 11; disagreeing overloads still give no
-      context. Decisions needed: confirm call and initializer arguments as
-      contextual positions for None, whether overload disagreement should
-      instead pick by the other arguments first, and whether `[]` arguments
-      follow the same rule.
-    classification: clarifying
-    status: open
-
-  - id: MD-028
-    area: try-protected-subtree
-    rulebooks:
-      - rules/errors/errorhandling.md
-      - rules/errors/runtime_checks.md
-    description: >-
-      runtime_checks.md says "Within its expression subtree, try converts
-      language-defined checks into fallible control flow", and errorhandling.md
-      § 11 shows `try values[index] + amount` with two failure sources. The
-      implementation now applies this to the whole subtree, including the
-      arguments and receiver of a protected call: `try Wrap(left + right)`
-      protects the addition, and `try result.Append(data[i])` protects the
-      index as well as Append, so `Err(error)` there binds a heterogeneous set
-      and is rejected by § 11.1. An earlier implementation test assumed the
-      opposite for call arguments. Confirm that call arguments and receivers
-      belong to the protected subtree, or define a narrower boundary.
-    classification: clarifying
-    status: open
-
   - id: MD-029
     area: error-patterns
     rulebooks:
@@ -339,7 +296,6 @@ decisions:
     classification: localized
     status: open
 
-
   - id: MD-031
     area: sec-mlir-try-handler-metadata
     rulebooks:
@@ -352,45 +308,10 @@ decisions:
       err-catch-all, and merge. Decide how the dialect represents guarded
       handlers and residual propagation (new handler kinds, attributes, or
       explicit CFG), so the emitter can stop rejecting these plans.
-    classification: localized
-    status: open
-
-  - id: MD-032
-    area: formatter-switch-case-label-indentation
-    rulebooks:
-      - rules/tooling/formatter.md
-    description: >-
-      formatter.md § 18(7) shows switch case and default labels at the same
-      column as `switch`, with § 18(10) indenting each case body one level from
-      its label. The implemented formatter, its tests
-      (TestFormatSwitchCaseHeadersFromCST), and every formatted switch in the
-      repository instead indent case labels one level inside the switch body,
-      like match arms. The prose of § 18 never states the label column
-      explicitly. Decide whether case labels align with `switch` (as in the
-      § 18(7) example) or are indented one level (current output), so the
-      formatter and the rulebook example agree.
-    classification: localized
-    status: open
-
-  - id: MD-033
-    area: formatter-standard-library-import-class
-    rulebooks:
-      - rules/tooling/formatter.md
-      - rules/projects/modules.md
-      - rules/library/stdlib.md
-    description: >-
-      formatter.md § 13(7) orders imports in three classes: Sec
-      standard-library modules, ordinary project and dependency modules, and
-      platform modules. Platform is identifiable from the reserved `platform`
-      import root (modules.md § 8), but standard-library paths are plain
-      logical paths such as "io" or "net/http" that the compiler resolves
-      through the standard-library namespace. The formatter is a syntactic,
-      deterministic tool and no rule says how it decides that a path is a
-      standard-library module: from the toolchain's installed sec/stdlib tree,
-      from a fixed catalogue in stdlib.md § 6 (whose list is explicitly "at
-      least" and already incomplete), from project configuration, or not at
-      all. Decide the source of truth. Until then the formatter places
-      standard-library and project imports in one class sorted by path.
+      Since 2026-10-12 Semantic IR also lowers try over Option[T] with None
+      handlers (handler kind none, distinct from Err handlers per
+      errorhandling.md §35); the same decision must cover how the dialect
+      represents an Option None handler.
     classification: localized
     status: open
 
@@ -414,23 +335,6 @@ decisions:
       the target physically lacks an allocator. Full profile-family resolution
       remains owned by platform.target-profiles.
     classification: constraining
-    status: open
-
-  - id: MD-036
-    area: formatter-project-configuration-location
-    rulebooks:
-      - rules/tooling/formatter.md
-      - rules/projects/projects.md
-    description: >-
-      formatter.md § 4(5) and § 4(15) define a project-owned formatting
-      configuration (format_version, vertical_style, indentation_width,
-      width_mode, line_width, adaptive widths, language_corrections), and the
-      project manifest is .sec/sec.toml, but no rulebook says where in the
-      manifest these keys live (for example a [format] table), how
-      format_version is validated, or how the LSP and sec fmt locate the
-      manifest for a file outside a project. The formatter implements the
-      options; CLI and LSP keep the defaults until this is decided.
-    classification: localized
     status: open
 
   - id: MD-037
@@ -469,7 +373,6 @@ decisions:
       `s += try value.ToString()`.
     classification: constraining
     status: open
-
 
   - id: MD-040
     area: unit-and-type-same-spelling
@@ -547,7 +450,6 @@ decisions:
     classification: localized
     status: open
 
-
   - id: MD-045
     area: callable-and-external-stack-contract-producers
     rulebooks:
@@ -585,6 +487,12 @@ decisions:
       - rules/platform/hardware-register-access.md
       - rules/foundations/grammar.md
     description: >-
+      PARTLY DECIDED 2026-10-12 by rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md:
+      plain (unit-free) bit[N] fields accept an explicit `bit[N](value)`
+      extraction no wider than the field, other unproven wider writes are never
+      silently truncated, and bit extraction never adds or strips a unit
+      (registers.md § 12.1, types.md "Explicit low-bit extraction"). STILL OPEN
+      (correction § 7.3): the remainder below for unit-annotated fields.
       grammar.md (BitFieldType) admits `bit[N]<unit>` register fields and
       units.md "Interaction with registers and FFI" keeps field width and unit
       semantics separate, but no rulebook defines the value type of a field
@@ -775,74 +683,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-054
-    area: formatter-project-configuration-manifest
-    rulebooks:
-      - rules/tooling/formatter.md
-      - rules/projects/projects.md
-      - rules/tooling/lsp.md
-    description: >-
-      formatter.md § 4(5) lists the project formatting configuration
-      (format_version, vertical_style, indentation_width, width_mode,
-      line_width, the adaptive widths and language_corrections) and § 4(15)
-      makes every byte-changing setting project-owned, but no rulebook names
-      where it lives in .sec/sec.toml. projects.md § 5(3) makes unknown
-      top-level tables errors unless another rulebook owns them and § 6(1) has
-      no formatter section, so a table such as [format] or [formatter] cannot
-      be chosen without inventing manifest syntax. Also undefined: what a
-      formatter does with a format_version it does not implement (reject,
-      leave sources unchanged, or fall back), whether an absent table means
-      the § 4(5) defaults, whether command-line options may override the
-      manifest under projects.md § 25, and whether language_corrections is a
-      project setting or only an explicit invocation flag. The formatter
-      implements the option values (formatter.Options) but reads no manifest.
-    classification: localized
-    status: open
-
-  - id: MD-055
-    area: formatter-import-region-detached-comments
-    rulebooks:
-      - rules/tooling/formatter.md
-    description: >-
-      formatter.md § 13(5)–(6) sorts imports by path and moves comments
-      attached to an import with it, and § 13(3) lets the formatter gather
-      scattered imports into one region. No rule says what happens to a
-      comment that belongs to no single import when imports are reordered: a
-      group heading followed by an empty line (for example "// networking"
-      above several imports), a comment between the last import and the
-      closing parenthesis, or an inline block comment. Options include
-      keeping such comments at the top of the region, attaching a heading to
-      the next import, or not reordering a region that contains one. The
-      formatter currently leaves the whole import region unchanged when it
-      contains such a comment.
-    classification: localized
-    status: open
-
-  - id: MD-056
-    area: integer-bit-reinterpretation
-    rulebooks:
-      - rules/types/types.md
-      - rules/platform/ffi.md
-      - rules/platform/abi.md
-    description: >-
-      types.md "Explicit conversions" makes every conversion that may fail
-      require try (ConversionError) and says that lossy, wrapping or otherwise
-      non-preserving conversions need separately defined explicit operations,
-      but no such operation is defined. The platform layer depends on one:
-      sec/platform/linux and sec/stdlib/io pass signed values (file
-      descriptors, flags, lseek offsets that may be negative, exit codes) to
-      RawSyscall as uint machine words, which is a two's-complement
-      reinterpretation, not a value conversion; a try handler would wrongly
-      reject a valid negative offset. Decide the operation (its spelling, for
-      example a member or a named conversion, which integer pairs it allows,
-      and whether it requires unsafe or equal widths) or change the raw
-      syscall/register boundary types. Until then the compiler accepts and
-      types try over every checked integer-family conversion, enforces the
-      try requirement only for conversions involving a c:: scalar (ffi.md
-      §8), and leaves bare Sec-only narrowing conversions accepted.
-    classification: constraining
-    status: open
-
   - id: MD-057
     area: iterator-interface-parameter-type
     rulebooks:
@@ -868,25 +708,6 @@ decisions:
       call sites with a concrete iterator ("argument must be
       Iterator[string]") and in for loops ("not iterable").
     classification: constraining
-    status: open
-
-  - id: MD-058
-    area: list-capacity-reservation
-    rulebooks:
-      - rules/collections/collections.md
-      - sec/stdlib/str/stdlib_str.md
-    description: >-
-      stdlib_str.md § 8.3 and § 8.5 give str.Builder init(initialCapacity) and
-      Reserve(additionalBytes) Result[void, CollectionError], and builder.sec
-      stores its bytes in list[byte], but collections.md § 13.4–13.5 give
-      list[T] only a read-only Capacity property and no way to reserve
-      capacity (no WithCapacity construction, no Reserve method; § 6.3
-      excludes Reserve from T[] and § 7 from slices). Decide whether list[T]
-      gets a fallible reservation operation (its spelling, CollectionError
-      variants and transactional behavior) or how Builder obtains reserved
-      storage otherwise. Until then Builder.init treats initialCapacity as an
-      ignored hint and Reserve cannot be implemented.
-    classification: localized
     status: open
 
   - id: MD-059
@@ -929,5 +750,26 @@ decisions:
       unsafe block-expression results per § 4(5), and who migrates the
       platform sources) or whether asm/unsafe fn bodies get an explicit
       exception. Until then the implicit unsafe body is kept unchanged.
+    classification: localized
+    status: open
+
+  - id: MD-061
+    area: explicit-reborrow-source-form
+    rulebooks:
+      - rules/memory/borrowing.md
+      - rules/memory/reference_model.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+    description: >-
+      borrowing.md § 2.5 and § 9(5) define reborrowing and § 11.3 names one
+      source form (passing an existing ref mut T to a ref mut T parameter),
+      but no rulebook says what `ref r` / `ref mut r` means when r already
+      holds a reference. Sema is inconsistent today: the type checker gives
+      `ref r` the type ref ref T (and rejects `p == ref p` as comparing
+      ref T with ref ref T), while ResolvedReferencePlanOf marks the same
+      expression as a reborrow of r's referent. Decide whether `ref r` on a
+      reference holder is a reborrow producing ref T (shared from ref or
+      ref mut, mutable only from ref mut), a reference to the holder, or is
+      rejected. Until then the Semantic IR builder keeps explicit reborrow
+      expressions as a package-15 unsupported feature.
     classification: localized
     status: open

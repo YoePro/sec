@@ -631,6 +631,8 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	case *ast.RangeExpression:
 		b.walkExpression(expression.Start)
 		b.walkExpression(expression.End)
+	case *ast.BitExtractionExpression:
+		b.walkExpression(expression.Value)
 	case *ast.ConversionExpression:
 		b.walkExpression(expression.Value)
 	case *ast.MemberExpression:
@@ -1048,6 +1050,8 @@ func visitStatementExpressions(statement ast.Statement, visit func(ast.Expressio
 		case *ast.RangeExpression:
 			walkExpression(expression.Start)
 			walkExpression(expression.End)
+		case *ast.BitExtractionExpression:
+			walkExpression(expression.Value)
 		case *ast.ConversionExpression:
 			walkExpression(expression.Value)
 		case *ast.MemberExpression:

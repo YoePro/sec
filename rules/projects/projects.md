@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-10-04
+- **Last updated:** 2026-10-12 (MD-036/MD-054 [format] table)
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/projects/projects.md`
@@ -315,6 +315,7 @@ ProjectManifest {
     Version: ProjectVersion
     Build: optional BuildDefaults
     Analysis: optional AnalysisSettings
+    Format: optional FormatSettings
     Profiles: map<ProjectKey, ProfileDefinition>
     Targets: map<ProjectKey, TargetDefinition>
     Variants: map<ProjectKey, VariantDefinition>
@@ -337,6 +338,12 @@ ProjectManifest {
 § 6(6) `ProjectKey` comparison is case-sensitive.
 
 § 6(7) Human-facing `ProjectName` does not use the `ProjectKey` grammar.
+
+§ 6(8) `[format]` is a recognized optional top-level table holding the project formatting configuration (`FormatSettings`). A manifest contains at most one `[format]` table. `formatter.md` § 4 owns the meaning, defaults and domains of its keys; this rulebook owns its placement and loading (MD-036/MD-054, 2026-10-12).
+
+§ 6(9) Unknown `[format]` keys, wrongly typed values and duplicate keys are manifest errors. An absent table or an omitted key applies the formatter default for that setting.
+
+§ 6(10) Explicit formatter invocation options take precedence over `[format]`, which takes precedence over the formatter defaults (`formatter.md` § 4(20)); an explicit option never rewrites the manifest.
 
 ---
 

@@ -51,7 +51,7 @@ impl Scheme {
      * - RFC 3986 section 3.1.
      */
     static fn Parse(value: string) Result[Scheme, ParseError] {
-        if value.ByteLen == 0 {
+        if value.SizeOf == 0 {
             return Err(ParseError.InvalidScheme(0))
         }
 
@@ -63,7 +63,7 @@ impl Scheme {
 
         let mut index: uint := 1
 
-        while index < value.ByteLen {
+        while index < value.SizeOf {
             let current := value.CharAt(index)
 
             if !current.IsLetterOrDigit && current not in ['+', '-', '.'] {
@@ -85,7 +85,7 @@ impl Scheme {
      * - RFC 3986 section 3.1.
      */
     fn IsValid() bool {
-        if self.ByteLen == 0 {
+        if self.SizeOf == 0 {
             return false
         }
 
@@ -97,7 +97,7 @@ impl Scheme {
 
         let mut index: uint := 1
 
-        while index < self.ByteLen {
+        while index < self.SizeOf {
             let current := char(self.ByteAt(index))
 
             if !current.IsLetterOrDigit &&

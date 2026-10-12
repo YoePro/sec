@@ -1,0 +1,89 @@
+module main
+type Positive int range 1..9
+type Negative int range -9..-1
+type ZeroPossible int range -2..2
+type Holder struct { value: int }
+
+fn Products(p: Positive, n: Negative) void {
+    let pValue := int(p)
+    let nValue := int(n)
+    assert pValue * pValue >= 1 && pValue * pValue <= 81, "positive product"
+    assert nValue * pValue >= -81 && nValue * pValue <= -1, "negative product"
+    assert nValue * nValue >= 1 && nValue * nValue <= 81, "two negatives"
+}
+fn Quotients(p: Positive, n: Negative, z: ZeroPossible) void {
+    let pValue := int(p)
+    let nValue := int(n)
+    let zValue := int(z)
+    assert pValue / pValue >= 0 && pValue / pValue <= 9, "positive quotient"
+    assert nValue / pValue >= -9 && nValue / pValue <= 0, "negative quotient"
+    assert pValue / nValue >= -9 && pValue / nValue <= 0, "negative divisor"
+    assert nValue / nValue >= 0 && nValue / nValue <= 9, "two negative quotients"
+    assert pValue / zValue >= -100, "possible zero divisor"
+}
+fn Refined(left: int, right: int) void {
+    if left >= -3 && left <= 4 && right >= -2 && right <= 3 {
+        assert left * right >= -9 && left * right <= 12, "refined product"
+    }
+    if left >= -9 && left <= -1 && right >= 2 && right <= 3 {
+        assert left / right >= -4 && left / right <= 0, "refined quotient"
+    }
+}
+fn Chains(a: int, b: int, c: int) void {
+    if a < b && b < 3 && 5 < c {
+        assert a < c, "constant bridge"
+        assert c > a, "mirrored constant bridge"
+    }
+    let limit := 4
+    if a <= b && b <= limit {
+        assert a < 5, "named constant chain"
+        assert a < 0, "insufficient constant chain"
+    }
+}
+fn Independent(value: int, flag: bool) void {
+    let mut other := 1
+    if value > 3 {
+        other = 0
+        assert value > 3, "unrelated assignment"
+        if flag { other = 2 }
+        assert value > 3, "unrelated branch assignment"
+    }
+    discard other
+}
+fn Changed(value: int, flag: bool) void {
+    let mut current := value
+    if current > 3 {
+        if flag { current = 0 }
+        assert current > 3, "relevant branch assignment"
+    }
+    if current > 3 {
+        current = 0
+        assert current > 3, "relevant assignment"
+    }
+}
+fn MemberChanged(holder: ref mut Holder) void {
+    if holder.value > 3 {
+        holder.value = 0
+        assert holder.value > 3, "member mutation"
+    }
+}
+fn Touch(value: ref mut Holder) int {
+    value.value = 0
+    return 0
+}
+fn CallChanged(value: int) void {
+    let mut current := Holder{ value: value }
+    let mut other := 1
+    if current.value > 3 {
+        other = Touch(ref mut current)
+        assert current.value > 3, "effectful rhs"
+    }
+    discard other
+}
+fn StandaloneCallChanged(value: int) void {
+    let mut current := Holder{ value: value }
+    if current.value > 3 {
+        discard Touch(ref mut current)
+        assert current.value > 3, "standalone alias call"
+    }
+}

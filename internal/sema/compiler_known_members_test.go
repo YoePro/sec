@@ -602,8 +602,6 @@ func TestCompilerKnownRegistryHasStableRequiredIDs(t *testing.T) {
 	want := map[string]bool{
 		"CKM-PTR-VALUE":          false,
 		"CKM-LEN-STRING":         false,
-		"CKM-BYTELEN-STRING":     false,
-		"CKM-RUNELEN-STRING":     false,
 		"CKM-SIZEOF-VALUE":       false,
 		"CKM-TOSTRING-STRING":    false,
 		"CKM-STRING-TOBYTEARRAY": false,

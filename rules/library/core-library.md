@@ -389,7 +389,7 @@ The compiler defines:
 - string representation,
 - string lifetime rules,
 - equality and comparison primitives when needed,
-- Unicode-scalar length (`Len`/`RuneLen`) and encoded byte length (`ByteLen`),
+- Unicode-scalar length (`Len`) and encoded byte length (value-form `SizeOf`),
 - raw byte pointer access,
 - indexing and slicing primitives where supported.
 
@@ -397,18 +397,18 @@ The compiler defines:
 
 ```sec
 property Len: uint { get }
-property RuneLen: uint { get }
-property ByteLen: uint { get }
+property SizeOf: uint { get }
 
 unsafe property ptr: RawPtr[byte] {
     get
 }
 ```
 
-`Len` equals `RuneLen` and counts Unicode scalar values. `ByteLen` counts
-encoded UTF-8 bytes. All three are compiler-owned, read-only properties;
-privileged core declarations cannot change their units. Byte pointer arithmetic,
-byte offsets and byte slices explicitly use `ByteLen`.
+`Len` counts Unicode scalar values and the value-form `SizeOf` counts encoded
+UTF-8 bytes (MD-058); no public `ByteLen`, `RuneLen` or `CharLen` alias exists.
+Both are compiler-owned, read-only properties; privileged core declarations
+cannot change their units. Byte pointer arithmetic, byte offsets and byte slices
+explicitly use `SizeOf`.
 
 The compatibility lowercase `.len` and compiler-known `len(text)` count runes;
 `len(text)` retains its `int` result. This supersedes the earlier byte-count

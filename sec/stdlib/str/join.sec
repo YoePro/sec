@@ -51,7 +51,7 @@ module str
  * Materializes the result using growable Builder storage.
  */
 fn Join[I: Iterator[string]](values: I, separator: string) Result[string, CollectionError] {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
     let mut first := true
 
     for value in values {
@@ -96,17 +96,17 @@ fn Join(values: ref string[], separator: string) Result[string, CollectionError]
 
     // Calculate the required UTF-8 byte capacity.
     for value in values {
-        totalBytes += value.Len
+        totalBytes += value.SizeOf
 
         if count > 0 {
-            totalBytes += separator.Len
+            totalBytes += separator.SizeOf
         }
 
         count += 1
     }
 
     // Construct the output with the required capacity.
-    let mut builder := try new Builder(totalBytes)
+    let mut builder := new Builder(totalBytes)
     let mut first := true
 
     for value in values {

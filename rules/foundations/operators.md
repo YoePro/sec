@@ -1878,6 +1878,8 @@ Result type is the resolved integer operand type.
 
 Bitwise operations use the fixed-width bit representation of the type.
 
+Extracting the low `N` bits as a narrower unsigned value is the separate compiler-known expression `bit[N](value)` (`types.md` "Explicit low-bit extraction"), not an infix bitwise operator.
+
 They do not perform boolean operations.
 
 Invalid:

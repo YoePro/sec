@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -52,9 +53,9 @@ func (a *Analyzer) analyzeTryHandlerBlockValue(handler *ast.TryHandler, value as
 	block := handler.BlockBody
 	prefix := &ast.BlockStatement{Token: block.Token, Tokens: block.Tokens, Statements: block.Statements[:len(block.Statements)-1]}
 	a.analyzeBlockStatements(prefix)
-	if len(prefix.Statements) > 0 && !blockCanFallThrough(prefix) {
+	if len(prefix.Statements) > 0 && !a.blockCanFallThrough(prefix) {
 		a.addErrorAtToken(expressionToken(value), "unreachable recovery value; the handler block already leaves control flow")
-		if blockDefinitelyReturns(prefix) {
+		if a.blockDefinitelyReturns(prefix) {
 			return TryHandlerReturns
 		}
 		return TryHandlerTerminates
@@ -281,7 +282,17 @@ func (a *Analyzer) analyzeTryHandlerBodyInPosition(expr *ast.TryExpression, hand
 	previous := a.tryHandlerValueRequired
 	a.tryHandlerValueRequired = !a.statementTries[expr]
 	defer func() { a.tryHandlerValueRequired = previous }()
-	return a.analyzeTryHandlerBody(handler, successType, errorType, bindingName)
+	// Handlers nested inside this body belong to their own try and are never
+	// captured as branches of an enclosing try assignment.
+	capture, previousOrigins := a.tryAssignmentHandlers, a.tryHandlerOrigins
+	a.tryAssignmentHandlers, a.tryHandlerOrigins = nil, nil
+	defer func() { a.tryAssignmentHandlers, a.tryHandlerOrigins = capture, previousOrigins }()
+	if capture == nil {
+		return a.analyzeTryHandlerBody(handler, successType, errorType, bindingName)
+	}
+	return capture.analyze(a, func() ResolvedTryHandlerFlow {
+		return a.analyzeTryHandlerBody(handler, successType, errorType, bindingName)
+	})
 }
 
 // tryHandlerRecoveryValueHelp explains how a value-position handler can
@@ -292,4 +303,103 @@ func (a *Analyzer) analyzeTryHandlerBodyInPosition(expr *ast.TryExpression, hand
 func tryHandlerRecoveryValueHelp(successType Type) string {
 	name := typeDisplayName(successType)
 	return fmt.Sprintf("The try is used as a %s value, so every path through this handler must end with return, propagate the failure, terminate (for example panic or testing.Fail), or end with a final expression of type %s as the recovery value. Use the try as a statement if the result is not needed.", name, name)
+}
+
+// analyzeTryHandlerBody validates handler recovery and non-continuing paths
+// using compiler-resolved branch and match facts rather than syntax alone.
+// Rules: rules/errors/errorhandling.md — §§15,21–22;
+// rules/control-flow/flowcontrol_match.md — §23 "Return and termination analysis".
+func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
+	// rules/errors/errorhandling.md §22: guards and handler bodies are
+	// outside the protected set of this try.
+	a.tryHandlerDepth++
+	defer func() { a.tryHandlerDepth-- }()
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	// rules/errors/errorhandling.md section 15: handler bindings are local to
+	// one handler arm. Preserve any shadowed outer Place state and remove every
+	// move/discard marker created for the handler binding when the arm ends.
+	previousBindingMoved := rootPlaceMovedState(a.moved, bindingName)
+	previousBindingMoveReasons := rootPlaceReasonState(a.moveReasons, bindingName)
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	if bindingName != "" {
+		clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
+		bindingIdentifier := tryHandlerBindingIdentifier(handler)
+		bindingToken := handler.Token
+		if bindingIdentifier != nil {
+			bindingToken = bindingIdentifier.Token
+			a.recordDefinition(bindingToken)
+			a.recordBinding(bindingToken, BindingLocal, bindingName, errorType, false)
+		}
+		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic}
+		delete(a.constInts, bindingName)
+	}
+	defer func() {
+		if a.tryHandlerOrigins != nil {
+			*a.tryHandlerOrigins = captureReferenceOrigins(a.symbols)
+		}
+		if bindingName != "" {
+			clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
+			for place, token := range previousBindingMoved {
+				a.moved[place] = token
+			}
+			for place, reason := range previousBindingMoveReasons {
+				a.moveReasons[place] = reason
+			}
+		}
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+	}()
+
+	if handler.Guard != nil {
+		a.analyzeTryHandlerGuard(handler, bindingName)
+	}
+
+	if handler.ReturnBody != nil {
+		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, handler.ReturnBody)
+		return TryHandlerReturns
+	}
+
+	valueRequired := successType.Kind != VoidType && a.tryHandlerValueRequired
+	if handler.BlockBody != nil && valueRequired {
+		if value, ok := tryHandlerBlockValue(handler.BlockBody); ok {
+			return a.analyzeTryHandlerBlockValue(handler, value, successType)
+		}
+	}
+
+	if handler.BlockBody != nil {
+		a.analyzeBlockStatements(handler.BlockBody)
+		if !valueRequired {
+			if a.blockCanFallThrough(handler.BlockBody) {
+				return TryHandlerProducesValue
+			}
+			if a.blockDefinitelyReturns(handler.BlockBody) {
+				return TryHandlerReturns
+			}
+			return TryHandlerTerminates
+		}
+		if a.blockCanFallThrough(handler.BlockBody) {
+			a.addErrorAtTokenWithMetadata(handler.Token, diagnostics.TryHandlerMissingRecoveryValue, tryHandlerRecoveryValueHelp(successType), "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+			return TryHandlerInvalidFlow
+		}
+		if a.blockDefinitelyReturns(handler.BlockBody) {
+			return TryHandlerReturns
+		}
+		return TryHandlerTerminates
+	}
+
+	if handler.Body == nil {
+		a.addErrorAtTokenWithMetadata(handler.Token, diagnostics.TryHandlerMissingRecoveryValue, tryHandlerRecoveryValueHelp(successType), "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+		return TryHandlerInvalidFlow
+	}
+
+	bodyType, _ := a.inferExpression(handler.Body)
+	if bodyType.Kind == InvalidType {
+		return TryHandlerInvalidFlow
+	}
+	if valueRequired && !a.canInitialize(successType, bodyType, handler.Body) {
+		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
+	}
+	return TryHandlerProducesValue
 }

@@ -38,7 +38,8 @@ func (fb *functionBuilder) buildCheckedUnreachable(stmt *ast.UnreachableStatemen
 // buildAssertion lowers an assertion from Sema's ResolvedAssertion fact. An
 // unproven assertion evaluates its bool condition once and branches to a
 // failure block that panics with the AssertionFailure reason and the static
-// message; a proven assertion emits no check, its refinement being consumed
+// message; a proven assertion still evaluates its condition and emits no assertion check,
+// so calls and checked arithmetic keep their independent effects. Its refinement is consumed
 // from Sema's condition facts. An assertion is never an optimizer assumption.
 //
 // Rules:
@@ -49,9 +50,6 @@ func (fb *functionBuilder) buildAssertion(stmt *ast.AssertStatement) error {
 	if !ok {
 		return fmt.Errorf("missing resolved assertion at %s", formatLocation(location(stmt.Token)))
 	}
-	if fact.Proven {
-		return nil
-	}
 	boolType, err := fb.boolType()
 	if err != nil {
 		return err
@@ -59,6 +57,9 @@ func (fb *functionBuilder) buildAssertion(stmt *ast.AssertStatement) error {
 	condition, err := fb.buildExpr(stmt.Condition, boolType)
 	if err != nil {
 		return err
+	}
+	if fact.Proven {
+		return nil
 	}
 	loc := Location{File: fact.File, Line: fact.Line, Column: fact.Column}
 	failure := fb.newBlock()

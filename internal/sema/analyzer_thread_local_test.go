@@ -108,7 +108,7 @@ fn Replace(local: ThreadLocal[Resource], value: Resource) Resource {
 }
 `
 	errors := analyzeSourceRaw(t, invalid)
-	if len(errors) != 1 || !strings.Contains(errors[0].Message, "reusable source value passed to ThreadLocal.Replace must use explicit <- ownership transfer") {
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot copy reusable source value to ordinary by-value parameter value of ThreadLocal.Replace") {
 		t.Fatalf("errors = %v", errors)
 	}
 }

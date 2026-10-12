@@ -269,7 +269,7 @@ impl Host {
     property IsEmpty: bool {
         get {
             return _kind == HostKind.RegisteredName &&
-            _value.ByteLen == 0
+            _value.SizeOf == 0
         }
     }
 

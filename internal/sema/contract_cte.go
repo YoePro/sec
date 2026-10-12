@@ -188,6 +188,8 @@ func (a *Analyzer) compileTimeExpressionExecutes(expr ast.Expression) bool {
 		return a.compileTimeExpressionExecutes(expr.Right)
 	case *ast.InfixExpression:
 		return a.compileTimeExpressionExecutes(expr.Left) || a.compileTimeExpressionExecutes(expr.Right)
+	case *ast.BitExtractionExpression:
+		return a.compileTimeExpressionExecutes(expr.Value)
 	case *ast.ConversionExpression:
 		return a.compileTimeExpressionExecutes(expr.Value)
 	}

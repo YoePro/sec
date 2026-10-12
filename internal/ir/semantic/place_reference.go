@@ -205,7 +205,13 @@ func formatPlaceReferenceOperation(out *strings.Builder, op Operation) {
 		}
 		out.WriteByte('}')
 	}
-	if ref := op.Reference; ref != nil {
+	formatReferenceMetadata(out, op.Reference)
+}
+
+// formatReferenceMetadata prints the deterministic reference fact suffix
+// shared by reference operations and reference parameters.
+func formatReferenceMetadata(out *strings.Builder, ref *ReferenceMetadata) {
+	if ref != nil {
 		fmt.Fprintf(out, " {borrow=#%d lifetime=#%d", ref.Borrow, ref.Lifetime)
 		if ref.SourceBorrow != 0 {
 			fmt.Fprintf(out, " from=#%d", ref.SourceBorrow)
@@ -500,6 +506,11 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	}
 	dynamic := map[ValueID]bool{}
 	validity := map[ValueID]ValueID{}
+	for _, parameter := range fn.Parameters {
+		if parameter.Reference != nil && parameter.Reference.Validity == ReferenceDynamicEpoch {
+			dynamic[parameter.Value.ID] = true
+		}
+	}
 	for _, b := range fn.Blocks {
 		for _, op := range b.Operations {
 			if !placeConsumer(op.Kind) {

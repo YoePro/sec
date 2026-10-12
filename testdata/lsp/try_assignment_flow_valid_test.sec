@@ -1,0 +1,34 @@
+module main
+enum SetterError error { Rejected, Other }
+type Vehicle struct { speed: int }
+impl Vehicle {
+    property Speed: int {
+        get { return speed }
+        try set value SetterError { return Err(SetterError.Rejected) }
+    }
+}
+fn Propagate(vehicle: Vehicle) Result[void, SetterError] {
+    try vehicle.Speed = 10
+    return Ok()
+}
+fn Handle(vehicle: Vehicle) void {
+    try vehicle.Speed = 10 { Err(_) => {} }
+}
+fn Partial(vehicle: Vehicle) Result[void, SetterError] {
+    try vehicle.Speed = 10 { Err(SetterError.Rejected) => {} }
+    return Ok()
+}
+fn Terminate(vehicle: Vehicle) void {
+    try vehicle.Speed = 10 { Err(_) => { return } }
+}
+fn Caller(vehicle: Vehicle) void {
+	try vehicle.Speed = 1 { Err(_) => {} }
+    discard Propagate(vehicle)
+    Handle(vehicle)
+    discard Partial(vehicle)
+    Terminate(vehicle)
+}
+test "assignment flow test boundary" {
+    let mut vehicle := Vehicle{ speed: 0 }
+    try vehicle.Speed = 10
+}

@@ -719,8 +719,8 @@ unique
 ```
 
 `minByteLen`, `maxByteLen`, and `exactByteLen` are reserved string-only
-length contracts; their unit is `ByteLen`. `minLen`, `maxLen`, and `exactLen`
-use `RuneLen` on strings. See `rules/types/contracts.md` revision 2.1.
+length contracts; their unit is the encoded byte count `SizeOf`. `minLen`, `maxLen`, and `exactLen`
+use the scalar count `Len` on strings (MD-058). See `rules/types/contracts.md` revision 2.1.
 
 Additional contract words must be added to this rulebook when they become
 canonical.

@@ -1,0 +1,2 @@
+module main
+fn Root(value: bool) void { Leaf(value) }

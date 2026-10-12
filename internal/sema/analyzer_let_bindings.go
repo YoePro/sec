@@ -113,7 +113,10 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	if !ok || stmt.Value == nil || stmt.Type == nil {
-		if defined && stmt.Value != nil {
+		// A poisoned binding retains the original diagnostic, but an invalid
+		// initializer must not commit ownership transfers from its sources.
+		// Rules: rules/memory/copy_move.md — §§10,12.1(2–3).
+		if ok && defined && stmt.Value != nil {
 			referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
 			if !a.validateLetOwnership(stmt) {
 				return

@@ -603,7 +603,7 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to value while it is shared borrowed at 11:5, previous declaration at 10:17",
+		"cannot assign to value while it is shared borrowed at 11:5, borrow origin at 10:17, borrow holder view keeps authority live at 10:9",
 	})
 }
 
@@ -803,6 +803,6 @@ fn Invalid(buffer: ref mut byte[]) void {
 `
 	_, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot read buffer while its backing is exclusively borrowed by arena arena at 6:23, previous declaration at 5:24",
+		"cannot read buffer while its backing is exclusively borrowed by arena arena at 6:23, borrow origin at 5:24, borrow holder arena keeps authority live at 5:10",
 	})
 }

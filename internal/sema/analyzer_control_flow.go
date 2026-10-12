@@ -40,6 +40,8 @@ func (a *Analyzer) constantConditionReferencesMutableBinding(expression ast.Expr
 		// mutably borrows, or captures keeps its value for its whole
 		// lifetime, like an immutable binding (stableBindingsOf).
 		return exists && (symbol.Mutable && !a.currentStableBindings[expression.Value] || symbol.TransientConstant)
+	case *ast.BitExtractionExpression:
+		return a.constantConditionReferencesMutableBinding(expression.Value)
 	case *ast.ConversionExpression:
 		return a.constantConditionReferencesMutableBinding(expression.Value)
 	case *ast.CallExpression:

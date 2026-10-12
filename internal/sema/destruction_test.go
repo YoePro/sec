@@ -223,7 +223,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"value value was discarded here and is no longer available at 8:14, previous declaration at 6:10",
+		"value value was discarded here and is no longer available at 8:14, ownership discarded here at 6:10, source ownership established here at 5:6",
 	})
 }
 

@@ -1,0 +1,43 @@
+[project]
+name = "sec"
+uuid = "e3856637-43bf-4166-bf83-07edd6e03c5d"
+imports = []
+
+[version]
+major = 0
+minor = 1
+revision = 0
+build = 0
+format = "[major].[minor].[revision].[build]"
+
+[build]
+backend = "mlir"
+profile = "server"
+diagnostics = "default"
+
+[analysis]
+lsp_depth = "interactive"
+
+[profile.server]
+optimization = "none"
+debug = "line"
+strip = false
+
+[variant.linux-amd64]
+os = "linux"
+arch = "amd64"
+llvm_triple = "x86_64-pc-linux-gnu"
+
+[target.sec]
+kind = "command"
+source = "cmd/sec"
+artifact = "sec"
+variants = ["linux-amd64"]
+output = "bin/secc"
+
+[format]
+format_version = 1
+indentation_width = 4
+vertical_style = "compact"
+language_corrections = true
+line_width = 120

@@ -26,9 +26,9 @@ func TestArenaFromBufferBorrowsBackingForArenaLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertSemaErrors(t, analyzeSourceRaw(t, string(invalid)), []string{
-		"cannot read buffer[0] while it is mutably borrowed at 10:24, previous declaration at 9:27",
-		"cannot read buffer while it is mutably borrowed at 18:40, previous declaration at 17:27",
-		"cannot read buffer[0] while it is mutably borrowed at 27:24, previous declaration at 25:23",
+		"cannot read buffer[0] while it is mutably borrowed at 10:24, borrow origin at 9:27, borrow holder arena keeps authority live at 9:13",
+		"cannot read buffer while it is mutably borrowed at 18:40, borrow origin at 17:27, borrow holder first keeps authority live at 17:13",
+		"cannot read buffer[0] while it is mutably borrowed at 27:24, borrow origin at 25:23, borrow holder owner keeps authority live at 26:13",
 		"cannot return arena arena: its backing buffer is borrowed here and must outlive the Arena at 35:12, previous declaration at 34:23",
 		"cannot return Arena.FromBuffer(...): its borrowed backing must outlive the Arena at 39:17",
 		"cannot move arena arena out of its binding while it controls borrowed backing buffer at 45:15, previous declaration at 44:23",

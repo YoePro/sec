@@ -293,8 +293,8 @@ When a `switch` is nested inside a `while`, an unlabelled `break` exits the surr
 ```sec
 while running {
     switch status {
-    case Status.Stop:
-        break
+        case Status.Stop:
+            break
     }
 }
 ```
@@ -304,11 +304,11 @@ An unlabelled `continue` begins the next evaluation of the surrounding `while` c
 ```sec
 while running {
     switch status {
-    case Status.Skip:
-        continue
+        case Status.Skip:
+            continue
 
-    default:
-        Work()
+        default:
+            Work()
     }
 }
 ```

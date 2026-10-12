@@ -1458,7 +1458,14 @@ type RegisterType struct {
 	WidthExpression Expression
 	AllocationOrder string
 	ByteOrder       string
-	Fields          []*RegisterField
+	// ModifierTokens retains accepted header modifiers for lossless CST spacing.
+	// Rules: rules/tooling/formatter.md — §5(2,4–5),§22(1).
+	ModifierTokens []RegisterModifierTokens
+	Fields         []*RegisterField
+}
+
+type RegisterModifierTokens struct {
+	Start, End lexer.Token
 }
 
 func (rt *RegisterType) TokenLiteral() string {
@@ -1771,6 +1778,33 @@ func (re *RangeExpression) String() string {
 		operator = "..<"
 	}
 	return start + operator + end
+}
+
+// BitExtractionExpression is the compiler-known explicit low-bit extraction
+// `bit[Width](Value)`: the unsigned value of the Width least-significant bits
+// of an integer source (registers.md, types.md; MD-046/MD-056). It is neither
+// a call, a conversion nor a `bit[N]` value type.
+type BitExtractionExpression struct {
+	Token lexer.Token
+	Width Expression
+	Value Expression
+}
+
+func (be *BitExtractionExpression) expressionNode() {}
+
+func (be *BitExtractionExpression) TokenLiteral() string {
+	return be.Token.Lexeme
+}
+
+func (be *BitExtractionExpression) String() string {
+	width, value := "<nil>", "<nil>"
+	if be.Width != nil {
+		width = be.Width.String()
+	}
+	if be.Value != nil {
+		value = be.Value.String()
+	}
+	return "bit[" + width + "](" + value + ")"
 }
 
 type ConversionExpression struct {

@@ -169,6 +169,9 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		a.recordResolvedOperator(expr, typ)
 		a.recordResolvedOperatorEffect(expr)
 		a.recordReferenceExpressionUse(expr, typ)
+		if success, unwrapped := a.unwrapTryChainReceiver(expr, typ); unwrapped {
+			return success, value
+		}
 	}
 	return typ, value
 }
@@ -276,6 +279,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.bindDefinition(expr.Token, symbol.Token)
+		a.recordImplicitReceiverUse(expr, symbol)
 		// rules/declarations/properties.md, Read access; correction12.md.
 		// Implicit property symbols remain available for assignment lookup, but an
 		// expression read must independently require a getter.
@@ -324,6 +328,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return a.inferInfixExpression(expr)
 	case *ast.ConversionExpression:
 		return a.inferConversionExpression(expr)
+	case *ast.BitExtractionExpression:
+		return a.inferBitExtractionExpression(expr)
 	case *ast.CallExpression:
 		return a.inferCallExpression(expr)
 	case *ast.NewExpression:
@@ -489,6 +495,12 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		typ, value := a.inferArrayLiteralWithExpected(lit, expected)
 		a.expressionTypes[expr] = typ
 		return typ, value
+	}
+	if expected.Kind == ResultType {
+		if typ, resolved := a.resolveResultValueInitializer(expected, expr); resolved {
+			a.expressionTypes[expr] = typ
+			return typ, expressionValue{Display: expr.String()}
+		}
 	}
 	if typ, value, ok := a.inferExpectedUnionVariantExpression(expr, expected); ok {
 		a.expressionTypes[expr] = typ
@@ -909,7 +921,9 @@ func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Ty
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
-	a.checkUnionPayloadFields(unionType, variant, expr, expr.Token)
+	if !a.checkUnionPayloadFields(unionType, variant, expr, expr.Token) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	return unionType, expressionValue{Display: expr.String()}, true
 }
 
@@ -1941,6 +1955,7 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
+	defer a.invalidateCallProofFacts(expr)
 	if typ, value, ok := a.inferTestingOperationCall(expr); ok {
 		return typ, value
 	}
@@ -2062,6 +2077,8 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	a.bindDefinitions(callCalleeDefinitionToken(expr), functionDeclarationTokens(functions))
 
 	releaseNullContexts := a.bindNullArgumentContexts(functions, expr.Arguments)
+	releaseDeferred := a.deferContextualArguments(expr.Arguments)
+	defer releaseDeferred()
 	sourceArgTypes, sourceArgs, preparedSpreadValues, runtimeSpreadValues, ok := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
 	releaseNullContexts()
 	if !ok {
@@ -2123,6 +2140,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			function = instantiated
 		} else if len(function.GenericParameters) > 0 {
 			hadGenericArityMatch = true
+			if a.hasDeferredContextualArgument(sourceArgs) {
+				// A contextual literal has no type to infer generic
+				// arguments from; only concrete candidates can type it.
+				continue
+			}
 			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
 			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
 			if !ok {
@@ -2156,6 +2178,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				matchesArguments = false
 				break
 			}
+			if a.deferredContextualArguments[arg] {
+				if !a.contextualArgumentAccepts(arg, parameter.Type) {
+					matchesArguments = false
+				}
+				continue
+			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], parameter.Type)
 			if !a.canInitializeUnrecorded(parameter.Type, argType, arg) {
 				matchesArguments = false
@@ -2169,6 +2197,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	best := bestOverloadMatches(matches)
+	if len(best) > 1 && a.reportAmbiguousContextualArguments(expr.Token, name, best, sourceArgs) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if len(best) == 1 && !a.typeDeferredContextualArguments(best[0].Function, sourceArgs, sourceArgTypes) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if len(best) == 1 {
 		if best[0].Function.Unsafe && !a.inUnsafe {
 			kind := "function"
@@ -2189,6 +2223,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		a.recordCallBoundaryEscapeFacts(best[0].Function, sourceArgs, preparedSpreadValues)
 		a.recordCallReferencePlans(best[0].Function, sourceArgs, preparedSpreadValues)
+		if member, isMember := expr.Callee.(*ast.MemberExpression); isMember && isMethodCall {
+			a.recordReceiverReferencePlan(best[0].Function, member.Object)
+		}
 		if !a.applyCalleeArenaParameterResets(best[0].Function, sourceArgs, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -2457,6 +2494,9 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		return Type{}, expressionValue{}, false
 	}
 
+	if typ, isCollection := a.collectionTypeReceiver(expr, memberExpr); isCollection {
+		return a.inferCollectionWithCapacity(expr, memberExpr, typ)
+	}
 	if path, static := typePathFromExpression(memberExpr.Object); static {
 		typ, exists := a.types[a.resolveTypeName(path)]
 		if exists {
@@ -2585,6 +2625,14 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		classification := CopyClassificationOf(elementType)
 		if member.Name == "Fill" && classification != CopyTrivial && classification != CopySemantic {
 			a.addErrorAtToken(memberExpr.Property.Token, "Fill requires a copyable element type, got %s", typeDisplayName(elementType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
+	case "Reserve":
+		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".Reserve", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.compilerKnownUintArgument(expr.Arguments[0], "Reserve additional") {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
@@ -3290,7 +3338,12 @@ func (a *Analyzer) inferGenericUnionVariantInstance(template Type, variant Union
 	return a.instantiateGenericType(concrete), true
 }
 
-func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, expected Type) (Type, expressionValue, bool) {
+func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, expected Type) (callType Type, callValue expressionValue, matched bool) {
+	defer func() {
+		if matched {
+			a.invalidateCallProofFacts(expr)
+		}
+	}()
 	name := callExpressionName(expr)
 	if name == "fill" {
 		return a.inferCompilerKnownFill(expr, expected, true)
@@ -3590,7 +3643,11 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 			a.expressionTypes[construction] = resolved.Target
 		}
 	} else {
+		marked := a.markTryChainReceivers(expr.Expression)
 		valueType, _ = a.inferExpression(expr.Expression)
+		for _, receiver := range marked {
+			delete(a.tryChainReceivers, receiver)
+		}
 	}
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}

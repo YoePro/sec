@@ -513,7 +513,7 @@ func TestFormatDeclarationGroupSeparatorsFromCST(t *testing.T) {
 
 func TestFormatConsumingFunctionParameter(t *testing.T) {
 	input := "fn Test( -> a: int, b: string, ) void {\n}\n"
-	want := "fn Test(-> a: int, b: string) void {\n}\n"
+	want := "fn Test(->a: int, b: string) void {\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong consuming parameter formatting:\n%s\nwant:\n%s", got, want)
 	}

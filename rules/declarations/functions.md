@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-08-26
+- **Last updated:** 2026-10-12 (MD-027 contextual None and [] arguments)
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions.txt`
@@ -566,6 +566,21 @@ fn Convert(value: int) bool {
 ```
 
 Call arguments must be sufficient to select the callable.
+
+Overloads are distinguished by their complete input-parameter signature. Return type and the type expected for a call result never select an overload.
+
+Overload resolution considers all supplied input arguments together. Independently typed arguments eliminate inapplicable candidates before a contextual `None` or `[]` argument is typed from the single remaining parameter type; viable candidates that give such an argument incompatible types make the call ambiguous (`types.md` "Contextual None and empty-literal arguments"; MD-027, 2026-10-12):
+
+```sec
+fn Set(key: string, value: Option[int]) void {
+}
+
+fn Set(key: int, value: Option[string]) void {
+}
+
+Set("count", None)  // Valid: the first overload is selected.
+Set(42, None)       // Valid: the second overload is selected.
+```
 
 Named types preserve their normal distinct identity during overload resolution.
 

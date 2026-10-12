@@ -1,0 +1,3 @@
+module helper
+fn Invoke[T](value: T) void { discard value }
+fn Work() void { Invoke(1) }

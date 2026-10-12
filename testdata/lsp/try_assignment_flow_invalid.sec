@@ -1,0 +1,5 @@
+module main
+fn Invalid() void {
+    let mut value := 1
+    try value = 2
+}

@@ -16,7 +16,7 @@ import (
 // Rules:
 //   - rules/errors/errorhandling.md — §29 "Ownership and affine value semantics"
 //   - rules/errors/errorhandling.md — §33 "Diagnostics"
-func (a *Analyzer) reportConsumedResultProjectionUse(place Place, token, consumedAt lexer.Token, reason string) bool {
+func (a *Analyzer) reportConsumedResultProjectionUse(place Place, movedKey string, token, consumedAt lexer.Token, reason string) bool {
 	const prefix = "consumed by Result."
 	if !strings.HasPrefix(reason, prefix) || !strings.HasSuffix(reason, "()") {
 		return false
@@ -25,9 +25,8 @@ func (a *Analyzer) reportConsumedResultProjectionUse(place Place, token, consume
 	if projection != "Ok" && projection != "Err" {
 		return false
 	}
-	a.addErrorAtTokenWithPrevious(
-		token,
-		consumedAt,
+	a.addUnavailableOwnershipDiagnostic(place, movedKey, token, consumedAt, diagnostics.UseAfterMove,
+		"Use "+projection+"Ref to inspect without consuming, or finish all uses before the consuming projection.",
 		"value %s was consumed by Result.%s() here and is no longer available; use %sRef to inspect without consuming, or do not use %s after the projection",
 		place.String(),
 		projection,

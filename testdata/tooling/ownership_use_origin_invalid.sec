@@ -1,0 +1,54 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+type Pair struct { First: Resource, Second: Resource }
+type Failure enum error { Failed }
+fn Use(value: ref Resource) void {}
+fn Consume(->value: Resource) void { discard value }
+fn Moved() void {
+    let value := Resource { Raw: 1 }
+    let destination :<- value
+    Use(ref value)
+    discard destination
+}
+fn Discarded() void {
+    let value := Resource { Raw: 1 }
+    discard value
+    Use(ref value)
+}
+fn Consumed() void {
+    let value := Resource { Raw: 1 }
+    Consume(<-value)
+    Use(ref value)
+}
+fn Captured() void {
+    let value := Resource { Raw: 1 }
+    let closure := capture(<-value) fn() void { discard value }
+    Use(ref value)
+    discard closure
+}
+fn ProjectedOk(result: Result[int, Failure]) Result[int, Failure] {
+    let payload := result.Ok()
+    discard payload
+    return result
+}
+fn ProjectedErr(result: Result[int, Failure]) Result[int, Failure] {
+    let payload := result.Err()
+    discard payload
+    return result
+}
+fn Conditional(value: Resource, flag: bool) void {
+    if flag { Consume(<-value) }
+    Use(ref value)
+}
+fn Partial(pair: Pair) void {
+    let first :<- pair.First
+    let whole :<- pair
+    discard first
+    discard whole
+}
+fn Released(buffer: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Release()
+    arena.Reset()
+}

@@ -100,7 +100,8 @@ func (a *Analyzer) rejectNullEquality(expr *ast.InfixExpression) bool {
 //
 // Rules:
 //   - rules/platform/ffi.md — §11 "A target type may provide the required raw-pointer context"
-//   - rules/foundations/language_philosophy.md — §16 "Infer, do not guess"; None arguments await MD-027
+//   - rules/foundations/language_philosophy.md — §16 "Infer, do not guess"
+//   - rules/types/types.md — "Contextual None and empty-literal arguments" (MD-027)
 func (a *Analyzer) bindNullArgumentContexts(functions []Function, arguments []ast.Expression) func() {
 	bound := []ast.Expression{}
 	for index, argument := range arguments {
@@ -110,6 +111,8 @@ func (a *Analyzer) bindNullArgumentContexts(functions []Function, arguments []as
 			family = func(typ Type) bool { return typ.Kind == RawPtrType }
 		case a.isBareNoneArgument(argument):
 			family = isOptionType
+		case isEmptyArrayLiteral(argument):
+			family = acceptsEmptyArrayLiteral
 		default:
 			continue
 		}

@@ -1,0 +1,18 @@
+module main
+fn Transfer() void {
+    let mut value := 1
+    let first := ref mut value
+    let second :<- first
+    value = 2
+    discard second
+}
+fn Carried() void {
+    let mut value := 1
+    let mut holder := ref value
+    discard holder
+    for i in 0..2 {
+        value = i
+        holder = ref value
+    }
+    discard holder
+}

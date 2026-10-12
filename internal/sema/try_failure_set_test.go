@@ -290,3 +290,36 @@ fn Partial() int {
 		t.Fatalf("residual diagnostic = %+v", errors[1])
 	}
 }
+
+// Nested checked operands of an arithmetic try are further failure points:
+// the try resolves as an ordered failure set covering every check, and none
+// of them keeps its ordinary panic effect.
+//
+// Rules:
+//   - rules/errors/runtime_checks.md — "What try converts"
+//   - rules/errors/errorhandling.md — §11 "Compiler-internal failure sets"
+func TestNestedArithmeticTryIsAFailureSet(t *testing.T) {
+	source := `
+module main
+
+fn Calc(a: int, b: int, c: int) Result[int, ArithmeticError] {
+    return Ok(try a + b * c)
+}
+`
+	program := parser.New(lexer.New(source)).ParseProgram()
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatalf("errors = %v", errors)
+	}
+	calc := program.Statements[len(program.Statements)-1].(*ast.FunctionDeclaration)
+	ok := calc.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.OkExpression)
+	fact, found := analyzer.ResolvedTryOf(ok.Value.(*ast.TryExpression))
+	if !found || fact.Kind != ResolvedTryFailureSetPropagation || len(fact.Failures) != 2 ||
+		fact.Failures[0].Expression.String() != "(b * c)" || fact.Failures[1].Kind != TryFailureArithmetic {
+		t.Fatalf("try fact = %+v, %t; want an ordered two-point arithmetic failure set", fact, found)
+	}
+	graph := analyzer.CallGraph()
+	if summary := graph.EffectSummary(callGraphNodeIDByName(t, graph, "Calc")); summary.MayPanic {
+		t.Fatalf("Calc effects = %+v, want every protected check panic-free", summary)
+	}
+}

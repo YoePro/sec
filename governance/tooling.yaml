@@ -5,6 +5,27 @@ integrations:
   - id: tooling.borrowing
     area: diagnostics-lsp-formatter-traceability-borrowing
     status: partial
+    evidence:
+      code:
+        - internal/sema/analyzer_borrow_access.go
+        - internal/sema/analyzer_lifetime.go
+        - internal/sema/analyzer_arena.go
+        - internal/sema/borrow_overlap_diagnostics.go
+        - internal/sema/analyzer_defer.go
+      tests:
+        - internal/sema/borrow_authority_diagnostics_test.go
+        - cmd/compiler/borrow_authority_diagnostics_test.go
+        - cmd/lsp/borrow_authority_diagnostics_test.go
+        - testdata/tooling/borrow_authority_invalid.sec
+        - testdata/tooling/borrow_authority_valid.sec
+        - internal/sema/borrow_navigation_test.go
+        - cmd/compiler/ownership_navigation_test.go
+        - cmd/lsp/ownership_navigation_test.go
+        - testdata/tooling/borrow_holder_transfer_invalid.sec
+        - internal/sema/ownership_mentor_test.go
+        - cmd/compiler/ownership_mentor_test.go
+        - cmd/lsp/ownership_mentor_test.go
+        - testdata/tooling/borrow_overlap_mentor_invalid.sec
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -17,12 +38,12 @@ integrations:
       - Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure.
       - Formatter preserves established ref/ref mut syntax in functions and supported patterns.
       - Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.md rulebook has been removed.
+      - "Borrow-conflict diagnostics distinguish ownership availability from access authority using canonical Place availability: an available Place is explicitly described as still owned while an active borrow blocks access, and is available is explained as an ownership query rather than a borrow-status test. Shared/mutable borrow creation, owner reads/writes, move/discard, loop-carried conflicts and Arena backing reads share the explanation, with original primary messages and related borrow locations preserved through CLI human/JSON and LSP diagnostics."
+      - Borrow-conflict diagnostics expose named source links to borrow creation and the current holder, including moved holders and the previous-iteration origin in loop-carried conflicts. CLI and LSP project these compiler-owned links without a parallel borrow model.
+      - "Borrow conflicts identify creation/holder and conflicting access and explain canonical Place overlap: equal storage, whole/sub-Place containment, or conservative dynamic/range/property/alternative provenance. Call-bounded reservations and defer retention use the same compiler-owned explanation and navigable origins without an LSP overlap model."
     remaining:
       - register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape
-      - ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap
-      - distinguish availability from borrow authority in messages; when is available succeeds but access is borrowed, say so directly
       - surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful
-      - provide navigation to borrow origin/holder and previous-iteration source for loop-carried conflicts
       - offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics
       - preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting
       - support source/code traceability comments referring to stable borrowing § clauses
@@ -33,10 +54,63 @@ integrations:
       - LSP hover shows shared versus mutable borrow and canonical referent Place
       - LSP handles finite alternative origins conservatively without presenting one false definitive origin
       - formatter round-trips ref/ref mut function, match, and capture syntax
+    revised: "2026-10-12"
+    verification:
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/codegen/llvm ./internal/lowering/secmlir ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-12; all six complete suites passed for canonical overlap explanations and navigable borrow/call/defer witnesses without a separate tooling checker
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Mentor|CallArguments|Call.*Borrow|ConsumingParameter|Construction|Result.*Initializer|TerminalReturn' -count=1
+        result: passed on 2026-10-12; shared/mutable overlap explains same storage, containment, conservative dynamic/alternative provenance, call argument reservations and defer dependencies using canonical compiler facts and source links; remaining 6 to 5 for this ID and 55 to 52 in tooling.yaml
+      - command: go test ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp -count=1
+        result: completed on 2026-10-12; full compiler and LSP suites passed with origin and current-holder links. The unrelated formatter expectation in this invocation was updated for the consuming-marker fix and its full suite passed in the separate final local verification.
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test -race ./internal/sema ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp -run 'OwnershipNavigation|BorrowConflict|BorrowAuthority|CustomFree|DestructionSyntax|ConsumingFunctionParameter' -count=1
+        result: passed on 2026-10-12; origin/current-holder/previous-iteration navigation is retained through CLI JSON at all six frontend gates and LSP, including shared/mutable creation, owner access, moves/discards and Arena backing
+      - command: go test ./internal/sema ./internal/formatter ./internal/cst -count=1
+        result: passed on 2026-10-12; borrow conflict links retain original creation and current holder after transfer and identify the origin of a previous loop iteration, with no fabricated link for unknown temporary holders; remaining 7 to 6 for this ID and 58 to 55 in tooling.yaml
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-12 for the final implementation
+      - command: go test -race ./internal/sema ./cmd/lsp ./cmd/compiler -run 'BorrowAuthority|Availability|BorrowedArenaRetains' -count=1
+        result: passed on 2026-10-12 for final borrow authority diagnostics and shared availability regressions
+      - command: go test ./internal/sema ./cmd/lsp ./cmd/compiler -run 'BorrowAuthority|BorrowedArenaRetains' -count=1
+        result: passed on 2026-10-12 for the final implementation, including explicit ownership availability with conservative may-still-block wording for loop-carried borrows and seven guarded conflict scenarios
+      - command: go test ./... -count=1
+        result: completed on 2026-10-12; all packages except cmd/unicodegen passed. TestGeneratedUnicodeSourceIsCurrent reports the pre-existing generated sec/stdlib/unicode/unicode.sec as stale; this unrelated library artifact was left untouched.
+      - command: go test ./internal/sema ./cmd/lsp ./cmd/compiler -run 'BorrowAuthorityDiagnostics|BorrowedArenaRetains' -count=1
+        result: passed on 2026-10-12; seven invalid fixtures/actions distinguish true ownership availability from borrow authority, including Arena backing, and shared owner reads and writes after borrow release remain valid; human/JSON diagnostics at all six frontend gates and LSP retain help and borrow origin; remaining 8 to 7 for this ID and 59 to 58 in tooling.yaml
 
   - id: tooling.copy-move
     area: formatter-lsp-diagnostics-analysis
     status: partial
+    revised: "2026-10-12"
+    evidence:
+      code:
+        - internal/sema/ownership_use_diagnostics.go
+        - internal/sema/availability_diagnostics.go
+        - internal/sema/analyzer_result_projection.go
+        - internal/sema/place.go
+        - internal/sema/analyzer_lifetime.go
+        - internal/sema/call_ownership.go
+        - internal/sema/owning_construction.go
+        - internal/sema/analyzer_let_bindings.go
+        - internal/sema/analyzer_inference.go
+      tests:
+        - internal/sema/ownership_use_diagnostics_test.go
+        - cmd/compiler/ownership_use_diagnostics_test.go
+        - cmd/lsp/ownership_use_diagnostics_test.go
+        - testdata/tooling/ownership_use_origin_invalid.sec
+        - testdata/tooling/ownership_use_origin_valid.sec
+        - internal/sema/ownership_mentor_test.go
+        - internal/sema/copy_move_test.go
+        - internal/sema/analyzer_lifetime_test.go
+        - cmd/compiler/ownership_mentor_test.go
+        - cmd/lsp/ownership_mentor_test.go
+        - testdata/tooling/ownership_call_mentor_invalid.sec
+        - testdata/tooling/ownership_call_mentor_valid.sec
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -50,11 +124,11 @@ integrations:
       - Formatter preserves established :<- and <- move operators.
       - LSP exposes initial move-related semantic facts and selected S1007 quick fixes.
       - Frontend already reports several move/copy safety errors with related source locations.
+      - Ordinary by-value calls with non-copyable or unproven-copy reusable arguments explain the copy contract and recommend API redesign to ref/ref mut, a suitable slice/view, or an explicitly consuming parameter with a marked caller. They retain S1007 and compiler-owned source/API links, and LSP does not turn this advice into an automatic ownership edit.
+      - S1007 explains missing explicit transfer to consuming parameters and owning struct/union/Option/Result payloads, suggests the source-specific <- marker, and links API ownership contracts and source ownership origins. Local Ok/Err payloads use the shared construction validation; invalid inferred and named-union construction does not commit a source move or cascade use-after-move diagnostics.
+      - Use-after-ownership diagnostics explain the affected value, earlier ownership-ending action and why the later use cannot access an owned value. Canonical definite, partial and conditional state drives repair guidance and source links; Result.Ok()/Err() retain projection-specific inspection advice and the registered S1088 identity. CLI and LSP share these facts without automatic ownership repairs.
     remaining:
       - format and expose explicit consuming argument/payload syntax everywhere, capture(<-value), and optional return <-value
-      - mentor diagnostics must state what value was consumed, where, why a later use is invalid, and a safe next step when provable
-      - add missing-<- diagnostic for -> call sites and owning payload constructors
-      - add copy-of-move-only ordinary by-value call diagnostic that recommends ref/slice/view or an explicitly consuming API rather than silently changing semantics
       - integrate reverse escape/parameter-usage advice for large valid copies without turning performance advice into ownership errors
       - surface copy classification, operation at cursor, move origin, destination, availability, consuming parameter, partial aggregate state, and consequence preview
       - make automatic <- fixes conditional on proof that later source uses and borrow/destruction rules remain valid
@@ -65,10 +139,50 @@ integrations:
       - diagnostic for ordinary by-value move-only argument explains that the parameter copies and suggests ref/slice/view or API redesign
       - large-copy advisory references known size/use facts and never changes program validity
       - use-after-Result.Ok()/Err() diagnostic identifies the consuming projection call
+    verification:
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-12; all three complete suites passed with shared ownership-use mentorship, mandatory Result-projection use-after-move IDs and related operation/source-owner locations
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'OwnershipUse|Result.*Projection|Unavailable|Availability' -count=1
+        result: passed on 2026-10-12; nine real use-after-ownership actions retain mandatory IDs, source operation/owner links and safe guidance through all six compiler frontend gates and LSP; direct cross-file return provenance, mixed-path witnesses and missing-owner locations are checked; valid reinitialization, before-consume use, availability refinement and return-path exclusion remain valid; remaining 5 to 4 for this ID
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/codegen/llvm ./internal/lowering/secmlir ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-12; all six complete suites passed for the shared call/construction ownership validation, valid transfer paths and source/API mentorship through CLI/LSP; cohesive call ownership and construction validation extracted from analyzer.go and analyzer_lifetime.go
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Mentor|CallArguments|Call.*Borrow|ConsumingParameter|Construction|Result.*Initializer|TerminalReturn' -count=1
+        result: passed on 2026-10-12; ten missing-transfer/copy-contract diagnoses and five overlap diagnoses retain source/API/borrow links through all six frontend gates and LSP; valid fresh, copied, borrowed, explicit transfer and terminal forwarding cases pass; invalid constructions leave reusable sources owned; remaining 7 to 5 for this ID
 
   - id: tooling.destruction
     area: diagnostics-lsp-formatter-traceability-destruction
     status: partial
+    revised: "2026-10-12"
+    evidence:
+      code:
+        - internal/sema/ownership_use_diagnostics.go
+        - internal/sema/availability_diagnostics.go
+        - internal/sema/analyzer_result_projection.go
+        - internal/sema/place.go
+        - internal/sema/analyzer_lifetime.go
+        - internal/sema/custom_free.go
+        - internal/cst/ownership_roles.go
+        - internal/cst/roles.go
+        - internal/formatter/token_spacing.go
+      tests:
+        - internal/sema/ownership_use_diagnostics_test.go
+        - cmd/compiler/ownership_use_diagnostics_test.go
+        - cmd/lsp/ownership_use_diagnostics_test.go
+        - testdata/tooling/ownership_use_origin_invalid.sec
+        - testdata/tooling/ownership_use_origin_valid.sec
+        - internal/sema/custom_free_test.go
+        - internal/formatter/destruction_syntax_test.go
+        - cmd/compiler/ownership_navigation_test.go
+        - cmd/lsp/ownership_navigation_test.go
+        - cmd/compiler/header_spacing_test.go
+        - cmd/lsp/header_spacing_test.go
+        - testdata/tooling/custom_free_partial_move_invalid.sec
+        - testdata/formatter/destruction_syntax.sec
+        - testdata/formatter/destruction_syntax.expected.sec
     integrated: "2026-09-04"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -81,14 +195,14 @@ integrations:
       - Current frontend already emits selected move/resource/defer diagnostics with related source locations.
       - Formatter/LSP already preserve several ownership/move constructs and expose initial ownership facts.
       - Shared Sema accepts repeated discard of already unavailable discardable Places and retains resolved operand facts, so LSP diagnostics do not duplicate stale use-after-discard logic.
+      - Custom-free partial-move diagnostics name the free declaration, explain that cleanup requires complete self with every owned field available, and suggest moving the complete value or redesigning ownership. S1085 and its links/help are shared by all compiler frontend gates and LSP.
+      - CST formatting preserves discard, defer, free and explicit moves in declarations, assignments, consuming parameters, calls, payloads, captures and returns. Consuming parameter and capture markers attach to their binding; both vertical styles retain redundant discard, comments and literals without inserting or removing cleanup operations. CLI and LSP use the same formatter.
+      - Destruction/use-after-move diagnostics expose named navigation links to move, discard, consuming call, Result projection, release or represented return origins and the source ownership declaration. Loop/conditional/mixed-path witnesses retain uncertainty rather than claiming one operation occurred on every path; unavailable source locations produce no fabricated links.
     remaining:
       - mentor diagnostics must explain which value is affected, where ownership/destruction responsibility originated, what earlier move/discard/replacement changed it, and how to fix the source safely
-      - diagnose custom-free partial move by pointing to the free declaration and explaining the complete-self invariant
       - diagnose conditional cleanup requiring forbidden runtime bookkeeping and suggest static restructuring or explicit discard convergence
       - optionally surface the configured low-priority redundancy advisory for a statically redundant discard without changing semantic validity
       - surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful
-      - add navigation from destruction/use-after-move diagnostics to move/discard/return/transfer origin
-      - preserve source-level discard/defer/free/move syntax in formatter and never insert/remove semantic cleanup operations purely as formatting
       - update stale rulebook paths from destruction.md to destruction.md opportunistically without creating fake normative corrections
       - support compiler source comments/traceability references to stable destruction § clauses
     required_tests:
@@ -98,6 +212,21 @@ integrations:
       - already unavailable discard remains valid under every advisory severity policy
       - LSP hover can show non-trivial destruction and cleanup owner without implying null/Option semantics
       - formatter round-trips free, defer, discard, and ownership move syntax without semantic change
+    verification:
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-12; all three complete suites passed with named terminal ownership-action navigation, source-owner links and conservative loop/conditional/mixed-path witnesses
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'OwnershipUse|Result.*Projection|Unavailable|Availability' -count=1
+        result: passed on 2026-10-12; navigable move/discard/call/capture/Result/release origins and ownership declarations remain compiler-produced; represented return and mixed/conditional path witnesses retain their actual source locations without fabricating missing owner points; remaining 7 to 6 for this ID and 52 to 50 in tooling.yaml
+      - command: go test ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp -count=1
+        result: completed on 2026-10-12; full compiler, LSP and CST suites passed. The formatter initially failed an older expectation for spaced consuming parameters; it was corrected to the normative attached marker and the full formatter suite then passed in the separate final local verification above.
+      - command: go vet ./...
+        result: passed on 2026-10-12
+      - command: go test -race ./internal/sema ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp -run 'OwnershipNavigation|BorrowConflict|BorrowAuthority|CustomFree|DestructionSyntax|ConsumingFunctionParameter' -count=1
+        result: passed on 2026-10-12; targeted Sema, formatter, CLI and LSP tests cover custom-free mentorship, all six compiler frontend gates and cleanup/move formatting; CST had no tests matching this filter and its full suite was verified separately
+      - command: go test ./internal/sema ./internal/formatter ./internal/cst -count=1
+        result: passed on 2026-10-12; custom-free diagnostics retain S1085 and identify the complete-self invariant and free declaration; cleanup/move syntax is preserved in both vertical styles with attached consuming parameter and capture markers; remaining 9 to 7 for this ID
 
   - id: tooling.lifetime-analysis
     area: diagnostics-lsp-analysis-tooling

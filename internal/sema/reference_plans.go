@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/layout"
 	"sec/internal/lexer"
 )
@@ -303,6 +304,7 @@ func (a *Analyzer) recordReferenceUse(node ast.Expression, kind ResolvedReferenc
 	use.CopyTrivialRead = kind == ReferenceUseRead && CopyClassificationOf(place.Type) == CopyTrivial
 	use.TrivialReplacement = kind == ReferenceUseWrite && TriviallyDestructible(place.Type)
 	a.resolvedReferenceUses[node] = use
+	a.recordReferenceValidationEffect(use)
 }
 
 // recordReferenceReadUse marks an expression evaluated as a value through an
@@ -506,4 +508,68 @@ func (a *Analyzer) recordReferenceReturnUse(value ast.Expression, returnType Typ
 	if place, placed := a.resolvePlace(value); placed {
 		a.recordReferenceUse(value, ReferenceUseReturn, place, returnType.ReferenceMutable, expressionToken(value))
 	}
+}
+
+// recordReferenceParameterFacts publishes the facts of a ref or ref mut
+// parameter as seen by the callee: the caller-owned borrow it receives, with
+// its own borrow and lifetime identity, proven by the caller unless the
+// referent is Arena-backed, in which case it is dynamic-epoch.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — § 59 "Reference parameters"
+//   - rules/memory/borrowing.md — § 11 "Reference values and reborrowing"
+func (a *Analyzer) recordReferenceParameterFacts(param FunctionParameter) {
+	if a.summaryPass || param.Variadic || (!param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType) {
+		return
+	}
+	place, ok := a.resolvePlace(&ast.Identifier{Token: param.Token, Value: param.Name})
+	if !ok {
+		return
+	}
+	place.RootKind = PlaceRootParameter
+	if param.Type.Kind == ReferenceType && param.Type.Element != nil {
+		place.Type = *param.Type.Element
+	}
+	mutable := param.MutableRef || param.Type.Kind == ReferenceType && param.Type.ReferenceMutable
+	if a.referenceParameterFacts == nil {
+		a.referenceParameterFacts = map[sourceTokenKey]ReferenceFacts{}
+	}
+	a.referenceParameterFacts[sourceTokenLocation(param.Token)] = a.referenceFactsForPlace(place, mutable, param.Token)
+}
+
+// ReferenceParameterFactsOf returns the callee-side reference facts of a
+// ref or ref mut parameter.
+func (a *Analyzer) ReferenceParameterFactsOf(param FunctionParameter) (ReferenceFacts, bool) {
+	if a == nil {
+		return ReferenceFacts{}, false
+	}
+	facts, ok := a.referenceParameterFacts[sourceTokenLocation(param.Token)]
+	return cloneReferenceFacts(facts), ok
+}
+
+// recordReferenceValidationEffect adds the InvalidReferenceGeneration panic
+// effect of a use that Semantic IR validates at run time: a read, write,
+// equality or reborrow of a dynamic-epoch reference. Proven references,
+// borrow creation, borrow end and passing a reference add no effect, and the
+// validation itself neither allocates nor blocks. A later, more specific use
+// of the same node replaces the earlier effect.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — P15-48 effects and @noPanic
+//   - rules/memory/reference_model.md — § 45 (stale reference use)
+//   - rules/errors/panic.md — § 21 "@noPanic"
+func (a *Analyzer) recordReferenceValidationEffect(use ResolvedReferenceUse) {
+	if a.summaryPass || use.Source.Line <= 0 {
+		return
+	}
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicInvalidReference, use.Source)
+	if use.Facts.Validity != ReferenceValidityDynamicEpoch || !a.callGraphPathReachable {
+		return
+	}
+	switch use.Kind {
+	case ReferenceUseRead, ReferenceUseWrite, ReferenceUseEquality, ReferenceUseReborrow:
+	default:
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicInvalidReference, Source: use.Source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonInvalidReferenceGeneration}})
 }

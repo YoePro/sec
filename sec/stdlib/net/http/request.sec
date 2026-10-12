@@ -214,7 +214,7 @@ impl Request {
      * - RFC 3986 Sections 3.3 and 3.4
      */
     static fn Parse(value: string) Result[OriginTarget, MessageError] {
-        if value.ByteLen == 0 {
+        if value.SizeOf == 0 {
             return Err(MessageError.InvalidTarget)
         }
 
@@ -225,11 +225,11 @@ impl Request {
         let mut index: uint := 0
         let mut query := false
 
-        while index < value.ByteLen {
+        while index < value.SizeOf {
             let current := value.CharAt(index)
 
             if current == '%' {
-                let remaining := value.ByteLen - index
+                let remaining := value.SizeOf - index
 
                 if remaining < 3 {
                     return Err(MessageError.InvalidTarget)

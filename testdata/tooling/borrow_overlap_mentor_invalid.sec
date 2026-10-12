@@ -1,0 +1,31 @@
+module main
+type Pair struct { Left: int, Right: int }
+fn Whole(pair: Pair) void {
+    let mut value := pair
+    let holder := ref value.Left
+    value = pair
+    discard holder
+}
+fn Field(pair: Pair) void {
+    let mut value := pair
+    let holder := ref mut value
+    let copy := value.Left
+    discard holder
+}
+fn Dynamic(index: int) void {
+    let mut values := [1, 2]
+    let first := ref values[index]
+    let second := ref mut values[0]
+    discard first
+    discard second
+}
+fn Call(left: ref mut int, right: ref int) void {}
+fn Arguments() void {
+    let mut value := 1
+    Call(ref mut value, ref value)
+}
+fn Delayed() void {
+    let value := 1
+    defer { let copy := value }
+    discard value
+}

@@ -202,7 +202,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 12:18, previous declaration at 11:20",
+		"use of moved value first at 12:18, ownership moved here at 11:20, source ownership established here at 10:9",
 	})
 }
 
@@ -226,7 +226,7 @@ fn Test() void {
 }
 `,
 			wantErrors: 1,
-			want:       []string{"reusable source resource", "must use explicit <- ownership transfer"},
+			want:       []string{"cannot copy reusable source resource", "this parameter copies its argument"},
 		},
 		{
 			name: "forced consuming copyable reusable source",
@@ -382,7 +382,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 7:18, previous declaration at 6:20",
+		"use of moved value first at 7:18, ownership moved here at 6:20, source ownership established here at 5:9",
 	})
 }
 
@@ -400,7 +400,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 8:19, previous declaration at 7:20",
+		"use of moved value first at 8:19, ownership moved here at 7:20, source ownership established here at 6:9",
 	})
 }
 
@@ -459,7 +459,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 7:18, previous declaration at 6:20",
+		"use of moved value first at 7:18, ownership moved here at 6:20, source ownership established here at 5:9",
 	})
 }
 
@@ -606,7 +606,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value left at 8:18, previous declaration at 7:14",
+		"use of moved value left at 8:18, ownership moved here at 7:14, source ownership established here at 5:13",
 	})
 }
 
@@ -664,7 +664,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"first may no longer be available here; it was moved on one possible execution path at 12:19, previous declaration at 9:24",
+		"first may no longer be available here; it was moved on one possible execution path at 12:19, ownership action on a possibly unavailable path at 9:24, source ownership established here at 6:9",
 	})
 }
 
@@ -736,7 +736,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to value while it is already borrowed at 7:19, previous declaration at 6:18",
+		"cannot create mutable reference to value while it is already borrowed at 7:19, borrow origin at 6:18, borrow holder first keeps authority live at 6:9",
 	})
 }
 
@@ -753,7 +753,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create shared reference to value while it is mutably borrowed at 7:19, previous declaration at 6:18",
+		"cannot create shared reference to value while it is mutably borrowed at 7:19, borrow origin at 6:18, borrow holder first keeps authority live at 6:9",
 	})
 }
 
@@ -770,7 +770,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot read value while it is mutably borrowed at 7:17, previous declaration at 6:18",
+		"cannot read value while it is mutably borrowed at 7:17, borrow origin at 6:18, borrow holder first keeps authority live at 6:9",
 	})
 }
 
@@ -787,7 +787,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to value while it is shared borrowed at 7:5, previous declaration at 6:18",
+		"cannot assign to value while it is shared borrowed at 7:5, borrow origin at 6:18, borrow holder first keeps authority live at 6:9",
 	})
 }
 
@@ -849,7 +849,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to pair.left while it is shared borrowed at 12:7, previous declaration at 11:14",
+		"cannot assign to pair.left while it is shared borrowed at 12:7, borrow origin at 11:14, borrow holder left keeps authority live at 11:6",
 	})
 }
 
@@ -887,7 +887,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to pair.left while it is already borrowed at 13:16, previous declaration at 12:15",
+		"cannot create mutable reference to pair.left while it is already borrowed at 13:16, borrow origin at 12:15, borrow holder first keeps authority live at 12:6",
 	})
 }
 
@@ -955,7 +955,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to pair.inner.left while it is already borrowed at 16:16, previous declaration at 15:15",
+		"cannot create mutable reference to pair.inner.left while it is already borrowed at 16:16, borrow origin at 15:15, borrow holder first keeps authority live at 15:6",
 	})
 }
 
@@ -974,7 +974,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to values[0] while it is already borrowed at 9:19, previous declaration at 7:15",
+		"cannot create mutable reference to values[0] while it is already borrowed at 9:19, borrow origin at 7:15, borrow holder first keeps authority live at 7:6",
 	})
 }
 
@@ -1034,7 +1034,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to pair.left while it is already borrowed at 14:19, previous declaration at 13:15",
+		"cannot create mutable reference to pair.left while it is already borrowed at 14:19, borrow origin at 13:15, borrow holder first keeps authority live at 13:6",
 	})
 }
 
@@ -1056,7 +1056,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to pair.left while it is mutably borrowed at 12:7, previous declaration at 10:15",
+		"cannot assign to pair.left while it is mutably borrowed at 12:7, borrow origin at 10:15, borrow holder moved keeps authority live at 11:6",
 	})
 }
 
@@ -1073,7 +1073,7 @@ fn Test(firstIndex: int, secondIndex: int) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to values[*] while it is already borrowed at 7:16, previous declaration at 6:15",
+		"cannot create mutable reference to values[*] while it is already borrowed at 7:16, borrow origin at 6:15, borrow holder first keeps authority live at 6:6",
 	})
 }
 
@@ -1095,7 +1095,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to pair while it is already borrowed at 12:15, previous declaration at 11:14",
+		"cannot create mutable reference to pair while it is already borrowed at 12:15, borrow origin at 11:14, borrow holder left keeps authority live at 11:6",
 	})
 }
 
@@ -1176,8 +1176,8 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value pair.first at 20:21, previous declaration at 19:20",
-		"cannot use partially moved value pair; place pair.first is unavailable at 21:16, previous declaration at 19:20",
+		"use of moved value pair.first at 20:21, ownership moved here at 19:20, source ownership established here at 15:10",
+		"cannot use partially moved value pair; place pair.first is unavailable at 21:16, ownership moved here at 19:20, source ownership established here at 15:10",
 	})
 }
 
@@ -1286,8 +1286,8 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value envelope.pair; place envelope.pair.first is unavailable at 26:24, previous declaration at 25:29",
-		"cannot use partially moved value envelope; place envelope.pair.first is unavailable at 27:16, previous declaration at 25:29",
+		"cannot use partially moved value envelope.pair; place envelope.pair.first is unavailable at 26:24, ownership moved here at 25:29, source ownership established here at 19:10",
+		"cannot use partially moved value envelope; place envelope.pair.first is unavailable at 27:16, ownership moved here at 25:29, source ownership established here at 19:10",
 	})
 }
 
@@ -1350,8 +1350,8 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"pair.first may no longer be available here; it was moved on one possible execution path at 26:26, previous declaration at 20:21",
-		"pair.second may no longer be available here; it was moved on one possible execution path at 27:27, previous declaration at 23:21",
+		"pair.first may no longer be available here; it was moved on one possible execution path at 26:26, ownership action on a possibly unavailable path at 20:21, source ownership established here at 15:10",
+		"pair.second may no longer be available here; it was moved on one possible execution path at 27:27, ownership action on a possibly unavailable path at 23:21, source ownership established here at 15:10",
 	})
 }
 
@@ -1420,7 +1420,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"pair may no longer be available here; sub-place pair.first was moved on one possible execution path at 23:16, previous declaration at 19:20",
+		"pair may no longer be available here; sub-place pair.first was moved on one possible execution path at 23:16, ownership action on a possibly unavailable path at 19:20, source ownership established here at 15:10",
 	})
 }
 
@@ -1494,9 +1494,9 @@ fn ReinitializeInLoop(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"place pair.first may be unavailable on a later loop iteration at 20:22, previous declaration at 20:21",
-		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, previous declaration at 20:21",
-		"cannot use partially moved value pair; place pair.first is unavailable at 35:16, previous declaration at 31:20",
+		"place pair.first may be unavailable on a later loop iteration at 20:22, ownership action on a possibly unavailable path at 20:21, source ownership established here at 15:10",
+		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, ownership moved here at 20:21, source ownership established here at 15:10",
+		"cannot use partially moved value pair; place pair.first is unavailable at 35:16, ownership moved here at 31:20, source ownership established here at 27:10",
 	})
 }
 
@@ -1556,7 +1556,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value pair; place pair.first is unavailable at 20:16, previous declaration at 16:21",
+		"cannot use partially moved value pair; place pair.first is unavailable at 20:16, ownership moved here at 16:21, source ownership established here at 14:10",
 	})
 }
 
@@ -1589,7 +1589,7 @@ fn Test(looping: bool, exit: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, previous declaration at 17:22",
+		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, ownership moved here at 17:22, source ownership established here at 14:10",
 	})
 }
 
@@ -1618,7 +1618,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"place pair.first may be unavailable on a later loop iteration at 16:22, previous declaration at 16:21",
+		"place pair.first may be unavailable on a later loop iteration at 16:22, ownership action on a possibly unavailable path at 16:21, source ownership established here at 14:10",
 	})
 }
 
@@ -1646,7 +1646,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"place pair.first may be unavailable on a later loop iteration at 15:13, previous declaration at 16:21",
+		"place pair.first may be unavailable on a later loop iteration at 15:13, ownership action on a possibly unavailable path at 16:21, source ownership established here at 14:10",
 	})
 }
 
@@ -1675,7 +1675,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"place pair.first may be unavailable on a later loop iteration at 16:22, previous declaration at 16:21",
+		"place pair.first may be unavailable on a later loop iteration at 16:22, ownership action on a possibly unavailable path at 16:21, source ownership established here at 14:10",
 	})
 }
 
@@ -1724,7 +1724,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"choice may no longer be available here; sub-place choice.<Some> was moved on one possible execution path at 22:16, previous declaration at 17:8",
+		"choice may no longer be available here; sub-place choice.<Some> was moved on one possible execution path at 22:16, ownership action on a possibly unavailable path at 17:8, source ownership established here at 15:10",
 	})
 }
 
@@ -1781,7 +1781,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"choice may no longer be available here; sub-place choice.<Some> was moved on one possible execution path at 20:16, previous declaration at 17:8",
+		"choice may no longer be available here; sub-place choice.<Some> was moved on one possible execution path at 20:16, ownership action on a possibly unavailable path at 17:8, source ownership established here at 15:10",
 	})
 }
 
@@ -1874,7 +1874,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot move choice.<Some> while it is borrowed at 18:8, previous declaration at 16:14",
+		"cannot move choice.<Some> while it is borrowed at 18:8, borrow origin at 16:14, borrow holder view keeps authority live at 16:6",
 	})
 }
 
@@ -1995,7 +1995,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"wrapper may no longer be available here; sub-place wrapper.choice.<Some> was moved on one possible execution path at 31:16, previous declaration at 25:8",
+		"wrapper may no longer be available here; sub-place wrapper.choice.<Some> was moved on one possible execution path at 31:16, ownership action on a possibly unavailable path at 25:8, source ownership established here at 20:10",
 	})
 }
 
@@ -2182,7 +2182,7 @@ fn Build(resource: Resource) Resource {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	if len(errors) != 1 || !strings.Contains(errors[0].Message, "reusable source resource passed to Wrap must use explicit <- ownership transfer") {
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot copy reusable source resource to ordinary by-value parameter value of Wrap") {
 		t.Fatalf("ordinary call inherited terminal structural forwarding: %v", errors)
 	}
 }
@@ -2329,7 +2329,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to values[2..<4] while it is already borrowed at 7:15, previous declaration at 6:14",
+		"cannot create mutable reference to values[2..<4] while it is already borrowed at 7:15, borrow origin at 6:14, borrow holder left keeps authority live at 6:6",
 	})
 }
 
@@ -2347,7 +2347,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to values[2] while it is already borrowed at 8:16, previous declaration at 6:16",
+		"cannot create mutable reference to values[2] while it is already borrowed at 8:16, borrow origin at 6:16, borrow holder middle keeps authority live at 6:6",
 	})
 }
 
@@ -2367,7 +2367,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to values[1] while it is already borrowed at 10:19, previous declaration at 7:15",
+		"cannot create mutable reference to values[1] while it is already borrowed at 10:19, borrow origin at 7:15, borrow holder first keeps authority live at 7:6",
 	})
 }
 
@@ -2415,7 +2415,7 @@ fn Test(end: int) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to values[2..<4] while it is already borrowed at 7:15, previous declaration at 6:17",
+		"cannot create mutable reference to values[2..<4] while it is already borrowed at 7:15, borrow origin at 6:17, borrow holder dynamic keeps authority live at 6:6",
 	})
 }
 
@@ -2462,7 +2462,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to choice while it is shared borrowed at 18:4, previous declaration at 16:12",
+		"cannot assign to choice while it is shared borrowed at 18:4, borrow origin at 16:12, borrow holder payload keeps authority live at 16:3",
 	})
 }
 
@@ -2621,7 +2621,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to choice.<Some> while it is already borrowed at 13:16, previous declaration at 11:14",
+		"cannot create mutable reference to choice.<Some> while it is already borrowed at 13:16, borrow origin at 11:14, borrow holder view keeps authority live at 11:6",
 	})
 }
 
@@ -2654,7 +2654,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to wrapper.choice while it is shared borrowed at 19:12, previous declaration at 17:12",
+		"cannot assign to wrapper.choice while it is shared borrowed at 19:12, borrow origin at 17:12, borrow holder value keeps authority live at 17:3",
 	})
 }
 
@@ -2782,7 +2782,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to target while it is shared borrowed at 12:2, previous declaration at 9:10",
+		"cannot assign to target while it is shared borrowed at 12:2, borrow origin at 9:10, borrow holder view keeps authority live at 7:10",
 	})
 }
 
@@ -2803,7 +2803,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to second while it is mutably borrowed at 11:2, previous declaration at 9:10",
+		"cannot assign to second while it is mutably borrowed at 11:2, borrow origin at 9:10, borrow holder view keeps authority live at 7:10",
 	})
 }
 

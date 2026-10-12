@@ -1904,6 +1904,8 @@ The compiler never assumes that ordinary read-modify-write is safe merely becaus
 
 A `bit` or `bit[N]` field never implies that hardware supports bit-granular physical access.
 
+The source-level extraction `bit[N](value)` (`types.md` "Explicit low-bit extraction") selects numeric bits of a value and has no effect on physical access width, access plans or register byte order.
+
 ### 37.4 No protocol invention
 
 The compiler does not invent device protocols, privilege transitions, polling loops, active-level interpretation, or runtime resource discovery.

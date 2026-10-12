@@ -244,9 +244,9 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		members = append(members, CompilerKnownMember{ID: "CKM-LEN-VARIADIC-PACK", Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
 	} else if compilerKnownSequenceType(typ) {
 		members = append(members, CompilerKnownMember{ID: compilerKnownLenID(typ), Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
-		if dereferenceType(typ).Kind == StringType {
-			members = append(members, CompilerKnownMember{ID: "CKM-BYTELEN-STRING", Name: "ByteLen", Kind: CompilerKnownProperty, Result: uintType}, CompilerKnownMember{ID: "CKM-RUNELEN-STRING", Name: "RuneLen", Kind: CompilerKnownProperty, Result: uintType})
-		}
+		// MD-058: string.Len counts Unicode scalars and the value-form SizeOf
+		// counts encoded UTF-8 payload bytes; ByteLen/RuneLen aliases are not
+		// public members (collections.md § 3.4, compiler_known_members.md).
 		if dereferenceType(typ).Kind != StringType {
 			members = append(members, CompilerKnownMember{ID: compilerKnownIsEmptyID(typ), Name: "IsEmpty", Kind: CompilerKnownProperty, Result: boolType})
 		}
@@ -307,10 +307,19 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-FILL", Name: "Fill", Kind: CompilerKnownMethod, Result: builtinType("void")},
 		)
 	}
+	// rules/collections/collections.md §§ 13.12, 14.8, 15.5 (MD-058): every
+	// list, map and set observes Capacity in elements or entries; only the
+	// dynamic forms, without a type-level bound, reserve capacity.
+	if (sequence.Name == "list" || sequence.Name == "set") && len(sequence.TypeArgs) == 1 || sequence.Name == "map" && len(sequence.TypeArgs) == 2 {
+		family := strings.ToUpper(sequence.Name)
+		members = append(members, CompilerKnownMember{ID: "CKM-" + family + "-CAPACITY", Name: "Capacity", Kind: CompilerKnownProperty, Result: uintType})
+		if dynamicCollection(sequence) {
+			members = append(members, CompilerKnownMember{ID: "CKM-" + family + "-RESERVE", Name: "Reserve", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true})
+		}
+	}
 	if sequence.Name == "list" && len(sequence.TypeArgs) == 1 {
 		element := sequence.TypeArgs[0]
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-LIST-CAPACITY", Name: "Capacity", Kind: CompilerKnownProperty, Result: uintType},
 			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinType("CollectionError")), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(element), StructuralMutation: true},
@@ -509,6 +518,9 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: typ},
 			CompilerKnownMember{ID: "CKM-STRING-FROMRUNEARRAY", Name: "FromRuneArray", Kind: CompilerKnownAssociatedFunction, Result: typ},
 		)
+	}
+	if dynamicCollection(typ) && ((typ.Name == "list" || typ.Name == "set") && len(typ.TypeArgs) == 1 || typ.Name == "map" && len(typ.TypeArgs) == 2) {
+		members = append(members, CompilerKnownMember{ID: "CKM-" + strings.ToUpper(typ.Name) + "-WITHCAPACITY", Name: "WithCapacity", Kind: CompilerKnownAssociatedFunction, Result: compilerKnownResult(typ, builtinType("CollectionError"))})
 	}
 	if typ.Name == "Arena" {
 		members = append(members,
@@ -985,4 +997,10 @@ func ShapedFactsOf(typ Type) (ShapedFacts, bool) {
 		facts.IsContiguous = true
 	}
 	return facts, true
+}
+
+// dynamicCollection reports a list, map or set without a type-level capacity
+// bound; only these grow and reserve capacity (collections.md § 13.2, MD-058).
+func dynamicCollection(typ Type) bool {
+	return (typ.Name == "list" || typ.Name == "map" || typ.Name == "set") && len(typ.ConstArgs) == 0
 }

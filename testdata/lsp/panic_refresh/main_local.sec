@@ -1,0 +1,4 @@
+module main
+@noPanic
+fn Root() void { }
+fn main() void { Root() }

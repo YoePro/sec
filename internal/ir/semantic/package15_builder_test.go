@@ -38,22 +38,17 @@ fn Use() int {
     return 0
 }
 `, "reborrow of reference shared-direct of local storage"},
-		"reference parameter": {`module main
+		"returned reference": {`module main
 
 type Pair struct {
     left: int,
     right: int,
 }
 
-fn Peek(pair: ref Pair) int {
-    return 0
+fn Same(pair: ref Pair) ref Pair {
+    return pair
 }
-
-fn Use() int {
-    let pair := Pair { left: 1, right: 2 }
-    return Peek(pair)
-}
-`, "reference parameter pair"},
+`, "reference return lowering"},
 	} {
 		module, err := analyzedModule(t, test.source, 15)
 		var unsupported *UnsupportedFeatureError

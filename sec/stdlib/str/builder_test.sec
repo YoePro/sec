@@ -26,7 +26,7 @@ module str
 // ------------------------------------------------------------
 
 test "Builder starts empty" {
-    let builder := try new Builder(0)
+    let builder := new Builder(0)
 
     testing.ExpectEqual(uint(0), builder.ByteCount)
     testing.ExpectEqual(uint(0), builder.Capacity)
@@ -34,7 +34,7 @@ test "Builder starts empty" {
 }
 
 test "Builder tracks byte count" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Hello")
 
@@ -48,7 +48,7 @@ test "Builder tracks byte count" {
 // ------------------------------------------------------------
 
 test "Builder appends ASCII strings" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Hello")
     try builder.Append(" ")
@@ -61,7 +61,7 @@ test "Builder appends ASCII strings" {
 }
 
 test "Builder appends empty strings" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("")
     testing.ExpectEqual(uint(0), builder.ByteCount)
@@ -76,7 +76,7 @@ test "Builder appends empty strings" {
 }
 
 test "Builder preserves multibyte UTF-8 strings" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("å")
     try builder.Append("€")
@@ -94,7 +94,7 @@ test "Builder preserves multibyte UTF-8 strings" {
 // ------------------------------------------------------------
 
 test "Builder appends ASCII rune" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append(65r)
 
@@ -105,7 +105,7 @@ test "Builder appends ASCII rune" {
 }
 
 test "Builder encodes runes using UTF-8" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append(65r)
     try builder.Append(229r)
@@ -124,7 +124,7 @@ test "Builder encodes runes using UTF-8" {
 // ------------------------------------------------------------
 
 test "Builder appends line terminator" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Hello")
     try builder.AppendLine()
@@ -136,7 +136,7 @@ test "Builder appends line terminator" {
 }
 
 test "Builder appends string followed by line terminator" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.AppendLine("First")
     try builder.AppendLine("Second")
@@ -146,7 +146,7 @@ test "Builder appends string followed by line terminator" {
 }
 
 test "Builder appends line terminator for empty string" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.AppendLine("")
 
@@ -161,7 +161,7 @@ test "Builder appends line terminator for empty string" {
 // ------------------------------------------------------------
 
 test "Builder repeats strings" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.AppendRepeat("ab", 3)
 
@@ -172,7 +172,7 @@ test "Builder repeats strings" {
 }
 
 test "Builder repeats Unicode strings" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.AppendRepeat("å🦊", 2)
 
@@ -183,7 +183,7 @@ test "Builder repeats Unicode strings" {
 }
 
 test "Builder ignores zero string repetitions" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Start")
     try builder.AppendRepeat("ignored", 0)
@@ -200,7 +200,7 @@ test "Builder ignores zero string repetitions" {
 // ------------------------------------------------------------
 
 test "Builder repeats ASCII rune" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.AppendRepeat(65r, 4)
 
@@ -211,7 +211,7 @@ test "Builder repeats ASCII rune" {
 }
 
 test "Builder repeats Unicode rune" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.AppendRepeat(129418r, 3)
 
@@ -222,7 +222,7 @@ test "Builder repeats Unicode rune" {
 }
 
 test "Builder ignores zero rune repetitions" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Hello")
     try builder.AppendRepeat(129418r, 0)
@@ -238,7 +238,7 @@ test "Builder ignores zero rune repetitions" {
 // ------------------------------------------------------------
 
 test "Builder clear removes all content" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Hello World")
     testing.ExpectEqual(uint(11), builder.ByteCount)
@@ -253,7 +253,7 @@ test "Builder clear removes all content" {
 }
 
 test "Builder clear retains capacity" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Hello World")
     let previousCapacity := builder.Capacity
@@ -265,7 +265,7 @@ test "Builder clear retains capacity" {
 }
 
 test "Builder can append after clear" {
-    let mut builder := try new Builder(0)
+    let mut builder := new Builder(0)
 
     try builder.Append("Old content")
     builder.Clear()

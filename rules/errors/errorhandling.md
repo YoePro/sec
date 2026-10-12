@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-21
-- **Last updated:** 2026-09-10
+- **Last updated:** 2026-10-12 (MD-028 protected try subtree)
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/errorhandling.md`
@@ -543,6 +543,8 @@ None        -> absence alternate
 
 `None` is not an error and does not become one.
 
+A bare `None` takes its `Option[T]` type from context, including call and initializer arguments (`types.md` "Contextual None and empty-literal arguments"; MD-027, 2026-10-12).
+
 ### 10.3 Language-defined fallible operation
 
 A fallible operation has a compiler-known success type and one or more declared
@@ -585,6 +587,12 @@ It does not create:
 Sequential failures are not aggregated. Evaluation stops at the first failure
 according to ordinary source evaluation order.
 
+The failure set covers every statically possible alternate/failure source of the
+protected subtree (§ 13.1), including failures of call receivers and arguments and
+language-defined checked operations. It is not a runtime collection of errors:
+only the first encountered failure occurs along a given execution path
+(MD-028, 2026-10-12).
+
 ### 11.1 Binding a heterogeneous failure set
 
 `Err(_)` may handle a heterogeneous protected failure set because it introduces
@@ -599,6 +607,30 @@ possible when no such common channel exists in the protected construct.
 
 Programmers may instead use `Err(_)`, split the expression, or map failures
 explicitly.
+
+### 11.2 Handling or propagating each failure path
+
+For every possible failure path of the protected subtree, Sema determines whether
+the failure:
+
+1. is covered by a legal local `try` handler; or
+2. can propagate directly through the enclosing function's declared compatible
+   `Result[..., E]` or `Option[...]` return channel; or
+3. cannot be handled or propagated as written, in which case compilation fails
+   with a diagnostic identifying the incompatible failure source and a useful
+   remedy.
+
+Different concrete error types do not automatically require a local handler. A
+compatible explicitly declared `Result[..., error]` return channel receives
+distinct concrete Sec error types through ordinary error widening, preserving
+concrete identity and payload. The compiler must not infer `error`, a union, or a
+wrapper merely to make propagation or a heterogeneous local error binding
+succeed.
+
+Local handlers are optional when every remaining failure can propagate. A
+handler is necessary where a failure cannot propagate compatibly. The `Err(_)`,
+typed `Err(...)`, guard, partial-handler, reachability, ownership, and § 11.1
+binding rules are unchanged (MD-028, 2026-10-12).
 
 ---
 
@@ -704,6 +736,36 @@ local try-handler block
 
 Evaluation order is unchanged. The first encountered failure short-circuits the
 protected expression.
+
+### 13.1 Receivers, arguments and call chains
+
+The protected subtree explicitly includes function-call receivers, call
+arguments, operators, indexing, and every successive member or call of a method
+chain (MD-028, 2026-10-12):
+
+```sec
+let result := try value.Fn1().Fn2().Fn3()
+let item := try Build(left + right, values[index])
+let output := try resource.Prepare().Transform(data[index]).Finish()
+```
+
+These show expression forms, not declarations of `Fn1`, `Fn2`, `Fn3`, or any
+public API; each is well-typed only if its actual members, arguments, and
+ownership requirements are satisfied.
+
+Each intermediate call is evaluated in normal Sec evaluation order. The
+successful value of a fallible intermediate operation is used to type-check and
+invoke the next member or call of the chain, where that member's type and
+ownership contract permit it. The first encountered failure ends evaluation of
+the protected expression; no later call or operand is evaluated on that failure
+path.
+
+The body and guard of a local handler remain outside the same `try`'s protected
+operation set (§ 22). `Option[T]` absence is never mapped to `Err(...)` or the
+reverse (§ 12.3). `try` does not catch panic, manufacture error values for
+ordinary non-fallible operations, or alter evaluation order; ownership, moves,
+borrows, destruction, and cleanup are those of the actual success or failure
+path.
 
 ---
 

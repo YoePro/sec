@@ -18,8 +18,17 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 	if stmt == nil || stmt.Assignment == nil {
 		return
 	}
+	// Ownership follows the callable being analyzed, including accessor and
+	// nested callable bodies; consumers never infer it from source ranges.
+	defer func() {
+		if fact, resolved := a.resolvedTryAssignments[stmt]; resolved {
+			fact.Callable = a.currentCallable
+			a.resolvedTryAssignments[stmt] = fact
+		}
+	}()
 
 	errorsBefore := len(a.errors)
+	before := a.currentBranchAnalysisState()
 	a.analyzeAssignmentStatement(stmt.Assignment, true)
 	if len(a.errors) != errorsBefore {
 		return
@@ -39,7 +48,17 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 		a.resolveContractFailureEffect(call)
 	}
 	if len(stmt.Handlers) > 0 {
+		// The success edge stores the value; each handler is a branch of the
+		// failure edge, where the target keeps its previous state. Only the
+		// success continuation and normally completing handlers reach the
+		// statement join.
+		success := a.currentBranchAnalysisState()
+		capture := &tryAssignmentHandlerBranches{entry: a.tryAssignmentFailureEntry(stmt.Assignment.Target, before, success)}
+		previous := a.tryAssignmentHandlers
+		a.tryAssignmentHandlers = capture
 		a.analyzeTryAssignmentHandlers(stmt, errorType)
+		a.tryAssignmentHandlers = previous
+		a.joinTryAssignmentEdges(before, append([]branchAnalysis{success}, capture.branches...)...)
 		return
 	}
 

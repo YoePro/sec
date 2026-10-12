@@ -245,6 +245,8 @@ func (a *Analyzer) appendEscapeExpressionSteps(path *EscapeCausePath, expr ast.E
 	case *ast.ErrExpression:
 		walk(expr.Value)
 		add("carrier", "Result Err payload carries the dependency", expr.Token)
+	case *ast.BitExtractionExpression:
+		walk(expr.Value)
 	case *ast.ConversionExpression:
 		walk(expr.Value)
 	case *ast.PrefixExpression:

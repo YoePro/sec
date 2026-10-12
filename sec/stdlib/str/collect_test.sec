@@ -178,7 +178,7 @@ test "ToByteArray preserves decomposed UTF-8" {
 test "ToByteArray length equals the source byte length" {
     let value := "å€🦊ABC"
     let bytes := try ToByteArray(value)
-    testing.ExpectEqual(value.Len, bytes.Len)
+    testing.ExpectEqual(value.SizeOf, bytes.Len)
 }
 
 test "ToByteArray agrees with the source at every byte offset" {
@@ -186,7 +186,7 @@ test "ToByteArray agrees with the source at every byte offset" {
     let bytes := try ToByteArray(value)
     let mut index: uint := 0
 
-    while index < value.Len {
+    while index < value.SizeOf {
         testing.ExpectEqual(value.ByteAt(index), bytes[index])
         index += 1
     }

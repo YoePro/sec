@@ -1,0 +1,41 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+type Packet struct { Value: Resource }
+type Choice union { Owned(Resource), Named { Value: Resource } }
+type Issue union error { Detail(Resource) }
+type Failure enum error { Failed }
+fn Consume(->value: Resource) void { discard value }
+fn ConsumeInt(->value: int) void {}
+fn Inspect(value: Resource) void {}
+fn Use(value: ref Resource) void {}
+fn Calls(resource: Resource, count: int) void {
+    Consume(resource)
+    ConsumeInt(count)
+    Inspect(resource)
+    Use(ref resource)
+}
+fn Payloads(resource: Resource) void {
+    let packet := Packet { Value: resource }
+    let option: Option[Resource] := Some(resource)
+    let result: Result[Resource, Failure] := Ok(resource)
+    let choice := Choice.Owned(resource)
+    let named := Choice.Named { Value: resource }
+    Use(ref resource)
+    discard packet
+    discard option
+    discard result
+    discard choice
+    discard named
+}
+fn ErrorPayload(issue: Issue) void {
+    let result: Result[int, Issue] := Err(issue)
+    discard result
+    discard issue
+}
+fn Assignment(resource: Resource) void {
+    let mut result: Result[Resource, Failure] := Ok(Resource { Raw: 1 })
+    result = Ok(resource)
+    Use(ref resource)
+    discard result
+}

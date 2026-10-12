@@ -50,7 +50,7 @@ fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], Col
     }
 
     // An empty string split by an empty separator has no runes.
-    if value.Len == 0 && separator.Len == 0 {
+    if value.SizeOf == 0 && separator.SizeOf == 0 {
         return Ok(result)
     }
 
@@ -59,7 +59,7 @@ fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], Col
     for part in value.Split(separator) {
         if result.Len == maxParts - 1 {
             // Preserve the complete unsplit remainder.
-            let remainder := try value.Slice(position, value.Len) {
+            let remainder := try value.Slice(position, value.SizeOf) {
                 Err(_) => {
                     panic "SplitN: invalid remainder position"
                 }
@@ -71,10 +71,10 @@ fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], Col
 
         try result.Append(part)
 
-        let end := position + part.Len
+        let end := position + part.SizeOf
 
-        if separator.Len > 0 && end < value.Len {
-            position = end + separator.Len
+        if separator.SizeOf > 0 && end < value.SizeOf {
+            position = end + separator.SizeOf
         } else {
             position = end
         }
@@ -88,10 +88,10 @@ fn SplitAfter(value: string, separator: string) Result[string[], CollectionError
     let mut position: uint := 0
 
     for part in value.Split(separator) {
-        let end := position + part.Len
+        let end := position + part.SizeOf
 
-        if separator.Len > 0 && end < value.Len {
-            let nextPosition := end + separator.Len
+        if separator.SizeOf > 0 && end < value.SizeOf {
+            let nextPosition := end + separator.SizeOf
 
             let retained := try value.Slice(position, nextPosition) {
                 Err(_) => {
@@ -122,7 +122,7 @@ fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[]
         return Ok(result)
     }
 
-    if value.Len == 0 && separator.Len == 0 {
+    if value.SizeOf == 0 && separator.SizeOf == 0 {
         return Ok(result)
     }
 
@@ -131,7 +131,7 @@ fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[]
     for part in value.Split(separator) {
         if result.Len == maxParts - 1 {
             // Preserve the complete unsplit remainder.
-            let remainder := try value.Slice(position, value.Len) {
+            let remainder := try value.Slice(position, value.SizeOf) {
                 Err(_) => {
                     panic "SplitAfterN: invalid remainder position"
                 }
@@ -141,10 +141,10 @@ fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[]
             return Ok(result)
         }
 
-        let end := position + part.Len
+        let end := position + part.SizeOf
 
-        if separator.Len > 0 && end < value.Len {
-            let nextPosition := end + separator.Len
+        if separator.SizeOf > 0 && end < value.SizeOf {
+            let nextPosition := end + separator.SizeOf
 
             let retained := try value.Slice(position, nextPosition) {
                 Err(_) => {

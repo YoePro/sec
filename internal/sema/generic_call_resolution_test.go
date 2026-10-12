@@ -47,7 +47,7 @@ fn Main() int {
 // A compiler-known lowercase type name in value position is reported as a
 // type, not as an undefined variable.
 func TestCompilerKnownTypeNameUsedAsValue(t *testing.T) {
-	errors := analyzeSourceRaw(t, "module main\n\nfn F() void {\n    let reserved := list[byte].WithCapacity(4u)\n    discard reserved\n}\n")
+	errors := analyzeSourceRaw(t, "module main\n\nfn F() void {\n    let reserved := list\n    discard reserved\n}\n")
 	if len(errors) == 0 || errors[0].ID != diagnostics.TypeNameUsedAsValue || !strings.Contains(errors[0].Message, "list is a type, not a value") {
 		t.Fatalf("errors = %+v", errors)
 	}

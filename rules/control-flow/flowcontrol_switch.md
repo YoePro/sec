@@ -37,20 +37,20 @@ It does not produce a value.
 
 ```sec
 switch expression {
-case value:
-    statements
+    case value:
+        statements
 
-case value1, value2, value3:
-    statements
+    case value1, value2, value3:
+        statements
 
-case range:
-    statements
+    case range:
+        statements
 
-case relationalCase:
-    statements
+    case relationalCase:
+        statements
 
-default:
-    statements
+    default:
+        statements
 }
 ```
 
@@ -62,14 +62,14 @@ A switch body may contain zero or more `case` clauses followed by an optional `d
 
 ```sec
 switch {
-case condition:
-    statements
+    case condition:
+        statements
 
-case otherCondition:
-    statements
+    case otherCondition:
+        statements
 
-default:
-    statements
+    default:
+        statements
 }
 ```
 
@@ -83,11 +83,11 @@ The subject expression is evaluated exactly once.
 
 ```sec
 switch ReadStatus() {
-case Status.Ready:
-    Start()
+    case Status.Ready:
+        Start()
 
-default:
-    Stop()
+    default:
+        Stop()
 }
 ```
 
@@ -122,14 +122,14 @@ A value case compares the subject with one or more equality-compatible expressio
 
 ```sec
 switch value {
-case 1:
-    One()
+    case 1:
+        One()
 
-case 2, 3, 5, 7:
-    Prime()
+    case 2, 3, 5, 7:
+        Prime()
 
-default:
-    Other()
+    default:
+        Other()
 }
 ```
 
@@ -166,11 +166,11 @@ Example:
 
 ```sec
 switch value {
-case minimum:
-    AtMinimum()
+    case minimum:
+        AtMinimum()
 
-case CalculateTarget():
-    AtTarget()
+    case CalculateTarget():
+        AtTarget()
 }
 ```
 
@@ -182,14 +182,14 @@ A subject switch may contain range items.
 
 ```sec
 switch score {
-case 0..<50:
-    Failed()
+    case 0..<50:
+        Failed()
 
-case 50..<80:
-    Passed()
+    case 50..<80:
+        Passed()
 
-case 80..100:
-    Excellent()
+    case 80..100:
+        Excellent()
 }
 ```
 
@@ -219,11 +219,11 @@ One case may contain several compatible value and range alternatives.
 
 ```sec
 switch value {
-case 1, 3, 5, 10..<20:
-    Selected()
+    case 1, 3, 5, 10..<20:
+        Selected()
 
-default:
-    Other()
+    default:
+        Other()
 }
 ```
 
@@ -248,14 +248,14 @@ Example:
 
 ```sec
 switch value {
-case < 0:
-    Negative()
+    case < 0:
+        Negative()
 
-case 0:
-    Zero()
+    case 0:
+        Zero()
 
-case > 0:
-    Positive()
+    case > 0:
+        Positive()
 }
 ```
 
@@ -263,8 +263,8 @@ This:
 
 ```sec
 switch value {
-case < limit:
-    Below()
+    case < limit:
+        Below()
 }
 ```
 
@@ -284,11 +284,11 @@ Relational alternatives may be combined in one case.
 
 ```sec
 switch value {
-case < minimum, > maximum:
-    Outside()
+    case < minimum, > maximum:
+        Outside()
 
-default:
-    Inside()
+    default:
+        Inside()
 }
 ```
 
@@ -302,17 +302,17 @@ A subjectless switch evaluates boolean case expressions.
 
 ```sec
 switch {
-case score < 0:
-    Invalid()
+    case score < 0:
+        Invalid()
 
-case score < 50:
-    Failed()
+    case score < 50:
+        Failed()
 
-case score < 80:
-    Passed()
+    case score < 80:
+        Passed()
 
-default:
-    Excellent()
+    default:
+        Excellent()
 }
 ```
 
@@ -324,8 +324,8 @@ Invalid:
 
 ```sec
 switch {
-case 10:
-    Invalid()
+    case 10:
+        Invalid()
 }
 ```
 
@@ -337,14 +337,14 @@ Comma-separated conditions in a subjectless case mean boolean OR with left-to-ri
 
 ```sec
 switch {
-case user.IsAdmin(), user.IsOwner():
-    Allow()
+    case user.IsAdmin(), user.IsOwner():
+        Allow()
 
-case user.IsBlocked():
-    Deny()
+    case user.IsBlocked():
+        Deny()
 
-default:
-    Review()
+    default:
+        Review()
 }
 ```
 
@@ -360,14 +360,14 @@ A switch may contain at most one `default`.
 
 ```sec
 switch value {
-case 1:
-    One()
+    case 1:
+        One()
 
-case 2:
-    Two()
+    case 2:
+        Two()
 
-default:
-    Other()
+    default:
+        Other()
 }
 ```
 
@@ -385,11 +385,11 @@ A normal case body does not continue into the next case body.
 
 ```sec
 switch value {
-case 1:
-    One()
+    case 1:
+        One()
 
-case 2:
-    Two()
+    case 2:
+        Two()
 }
 ```
 
@@ -405,15 +405,15 @@ No terminator is required at the end of an ordinary case.
 
 ```sec
 switch value {
-case 1:
-    One()
-    fallthrough
+    case 1:
+        One()
+        fallthrough
 
-case 2:
-    OneOrTwo()
+    case 2:
+        OneOrTwo()
 
-default:
-    Other()
+    default:
+        Other()
 }
 ```
 
@@ -440,10 +440,10 @@ An empty case is legal.
 
 ```sec
 switch value {
-case 1:
+    case 1:
 
-case 2:
-    Two()
+    case 2:
+        Two()
 }
 ```
 
@@ -459,13 +459,13 @@ Every case body has its own lexical scope.
 
 ```sec
 switch value {
-case 1:
-    let message: string := "one"
-    Print(message)
+    case 1:
+        let message: string := "one"
+        Print(message)
 
-case 2:
-    let message: string := "two"
-    Print(message)
+    case 2:
+        let message: string := "two"
+        Print(message)
 }
 ```
 
@@ -493,11 +493,11 @@ Two compile-time case values that are equal under the subject's equality semanti
 
 ```sec
 switch value {
-case 1:
-    First()
+    case 1:
+        First()
 
-case 1:
-    Second()
+    case 1:
+        Second()
 }
 ```
 
@@ -513,11 +513,11 @@ Invalid:
 
 ```sec
 switch score {
-case 0..50:
-    First()
+    case 0..50:
+        First()
 
-case 40..100:
-    Second()
+    case 40..100:
+        Second()
 }
 ```
 
@@ -527,11 +527,11 @@ Invalid:
 
 ```sec
 switch score {
-case 0..100:
-    InRange()
+    case 0..100:
+        InRange()
 
-case 50:
-    Exact()
+    case 50:
+        Exact()
 }
 ```
 
@@ -545,11 +545,11 @@ Valid:
 
 ```sec
 switch value {
-case <= -10:
-    VeryLow()
+    case <= -10:
+        VeryLow()
 
-case < 0:
-    Low()
+    case < 0:
+        Low()
 }
 ```
 
@@ -561,11 +561,11 @@ Invalid:
 
 ```sec
 switch value {
-case >= 0:
-    NonNegative()
+    case >= 0:
+        NonNegative()
 
-case > 10:
-    Large()
+    case > 10:
+        Large()
 }
 ```
 
@@ -583,14 +583,14 @@ An enum value may be used as a switch subject when ordinary equality semantics p
 
 ```sec
 switch direction {
-case Direction.North:
-    North()
+    case Direction.North:
+        North()
 
-case Direction.South:
-    South()
+    case Direction.South:
+        South()
 
-default:
-    Other()
+    default:
+        Other()
 }
 ```
 
@@ -608,14 +608,14 @@ Strings may be switch subjects when ordinary string equality is valid.
 
 ```sec
 switch command {
-case "start":
-    Start()
+    case "start":
+        Start()
 
-case "stop":
-    Stop()
+    case "stop":
+        Stop()
 
-default:
-    Unknown()
+    default:
+        Unknown()
 }
 ```
 
@@ -627,8 +627,8 @@ Named semantic types retain their ordinary compatibility rules.
 
 ```sec
 switch speed {
-case minimumSpeed..maximumSpeed:
-    Normal()
+    case minimumSpeed..maximumSpeed:
+        Normal()
 }
 ```
 
@@ -638,11 +638,11 @@ Unit-bearing values retain the normal unit compatibility rules.
 
 ```sec
 switch distance {
-case 0<m>..<100<m>:
-    Near()
+    case 0<m>..<100<m>:
+        Near()
 
-case 100<m>..:
-    Far()
+    case 100<m>..:
+        Far()
 }
 ```
 
@@ -654,11 +654,11 @@ A `bool` value may be used as an explicit switch subject.
 
 ```sec
 switch ready {
-case true:
-    Start()
+    case true:
+        Start()
 
-case false:
-    Wait()
+    case false:
+        Wait()
 }
 ```
 
@@ -674,8 +674,8 @@ Invalid forms include:
 
 ```sec
 switch result {
-case Ok(value):
-    Use(value)
+    case Ok(value):
+        Use(value)
 }
 ```
 
@@ -697,8 +697,8 @@ Invalid:
 
 ```sec
 switch value {
-case 10..20 where user.Active:
-    Handle()
+    case 10..20 where user.Active:
+        Handle()
 }
 ```
 
@@ -706,8 +706,8 @@ Use a subjectless switch when the condition itself should determine the branch:
 
 ```sec
 switch {
-case value in 10..20 && user.Active:
-    Handle()
+    case value in 10..20 && user.Active:
+        Handle()
 }
 ```
 
@@ -737,11 +737,11 @@ Use `match` for value-producing branching, or assign to an outer binding from th
 let mut result: int
 
 switch value {
-case 1:
-    result = 10
+    case 1:
+        result = 10
 
-default:
-    result = 20
+    default:
+        result = 20
 }
 ```
 
@@ -771,14 +771,14 @@ Example:
 ```sec
 fn Classify(value: int) int {
     switch value {
-    case < 0:
-        return -1
+        case < 0:
+            return -1
 
-    case 0:
-        return 0
+        case 0:
+            return 0
 
-    default:
-        return 1
+        default:
+            return 1
     }
 }
 ```
@@ -796,14 +796,14 @@ fn Select(value: int) int {
     let mut result: int
 
     switch value {
-    case 1:
-        result = 10
+        case 1:
+            result = 10
 
-    case 2:
-        result = 20
+        case 2:
+            result = 20
 
-    default:
-        result = 30
+        default:
+            result = 30
     }
 
     return result

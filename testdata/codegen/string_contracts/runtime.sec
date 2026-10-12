@@ -18,8 +18,8 @@ fn ConvertBytes(raw: string) Result[ByteExact, ConversionError] { return Ok(try 
 fn ConvertRange(raw: string) Result[ByteRange, ConversionError] { return Ok(try ByteRange(raw)) }
 fn ConvertDerived(raw: string) Result[Derived, ConversionError] { return Ok(try Derived(raw)) }
 fn Runes(raw: string) uint { return raw.Len }
-fn RuneAlias(raw: string) uint { return raw.RuneLen }
-fn Bytes(raw: string) uint { return raw.ByteLen }
+fn RuneAlias(raw: string) uint { return raw.Len }
+fn Bytes(raw: string) uint { return raw.SizeOf }
 fn main() int { return 0 }
 fn Forward(raw: string) Result[Label, ConversionError] { return Ok(try Convert(raw)) }
 fn Identity(raw: string) string { return raw }

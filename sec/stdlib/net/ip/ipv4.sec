@@ -72,7 +72,7 @@ impl Ipv4Address {
     }
 
     static fn Parse(text: string) Result[Ipv4Address, AddressError] {
-        if text.ByteLen == 0 {
+        if text.SizeOf == 0 {
             return Err(AddressError.Empty)
         }
 
@@ -166,14 +166,14 @@ impl Ipv4Address {
     }
 
     fn _ParseIpv4Octet(text: string) Result[byte, AddressError] {
-        if text.ByteLen == 0 {
+        if text.SizeOf == 0 {
             return Err(AddressError.InvalidIpv4)
         }
 
         let mut value: byte := 0
         let mut index: uint := 0
 
-        while index < text.ByteLen {
+        while index < text.SizeOf {
             let current := text.ByteAt(index)
 
             if current not in byte('0')..byte('9') {

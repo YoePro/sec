@@ -29,22 +29,20 @@ type importDeclaration struct {
 
 // formatImportRegion gathers every top-level import into one canonical import
 // region after the module declaration: one import stays in single-import
-// form, two or more form one import group, imports are ordered by import
-// class and then lexically by canonical import path (never by alias), and
-// parser-attached leading and trailing comments move with their import. No
-// import is ever removed. Any source the pass cannot attribute exactly, such
-// as a parse error, a detached comment inside a group, or several imports on
-// one line, is left unchanged.
-//
-// Import classes: `platform` is the compiler-reserved import root. Whether a
-// path is a Sec standard-library module is not yet decidable by the formatter
-// (missing-decisions.yaml MD-033), so standard-library and project modules
-// share the first class until that decision is made.
+// form, two or more form one import group, and imports are sorted
+// alphabetically by logical import path (never by alias, never by a guessed
+// standard-library, project or platform origin), with parser-attached
+// leading and trailing comments moving with their import. Explicit
+// blank-line-separated groups of one import group, with or without heading
+// comments, are kept and sorted internally (headedImportGroup). No import is
+// ever removed. Any source the pass cannot attribute exactly, such as a parse
+// error, a detached comment inside a group, or several imports on one line,
+// is left unchanged.
 //
 // Rules:
-//   - rules/tooling/formatter.md — § 13(1)–(10) "Imports", § 14(1)–(5) "Top-level file layout"
+//   - rules/tooling/formatter.md — § 13 "Imports", § 14(1)–(5) "Top-level file layout"
 //   - rules/foundations/grammar.md — "Import declarations"
-//   - rules/projects/modules.md — § 8 "Import roots"
+//   - rules/corrections/applied/md027-md033-md036-md054-contextual-literals-formatter-configuration-correction-20261012.md — § 3
 func formatImportRegion(text string, compact bool) string {
 	if !strings.Contains(text, "import") {
 		return text
@@ -66,6 +64,7 @@ func formatImportRegion(text string, compact bool) string {
 	declarations := []*importDeclaration{}
 	byImportToken := map[int]*importDeclaration{}
 	entryByAnchor := map[int]*importEntry{}
+	entryByLine := map[int]*importEntry{}
 	ownedAnchors := map[int]bool{}
 	order := 0
 	for _, statement := range program.Statements {
@@ -100,6 +99,7 @@ func formatImportRegion(text string, compact bool) string {
 			ownedAnchors[first.ByteStart] = true
 			ownedAnchors[statement.PathToken.ByteStart] = true
 			entryByAnchor[-1-statement.PathToken.ByteStart] = entry
+			entryByLine[statement.PathToken.Line] = entry
 		}
 	}
 	if len(declarations) == 0 {
@@ -156,6 +156,13 @@ func formatImportRegion(text string, compact bool) string {
 		break
 	}
 
+	// MD-055: a group whose blank-line-separated runs carry heading comments
+	// keeps its runs; the comments inside it are attributed by its lines.
+	headed, headedOK := headedImportGroup(lines, tokensByLine, declarations, entryByLine)
+	if !headedOK {
+		return text
+	}
+
 	// Attach parser-owned comment groups; a comment the pass cannot attribute
 	// to exactly one import keeps the whole region unchanged.
 	for _, attachment := range program.Comments {
@@ -166,6 +173,9 @@ func formatImportRegion(text string, compact bool) string {
 		last := attachment.Comments[len(attachment.Comments)-1]
 		lastLine := tokenLastLine(last)
 		inside := commentInsideImportDeclaration(declarations, first.Line, lastLine)
+		if headed != nil && inside {
+			continue
+		}
 		switch attachment.Placement {
 		case ast.CommentTrailing:
 			if entry, ok := entryByAnchor[-1-attachment.Anchor.ByteStart]; ok && strings.HasPrefix(first.Lexeme, "//") {
@@ -205,20 +215,11 @@ func formatImportRegion(text string, compact bool) string {
 			removed[line] = true
 		}
 	}
-	sort.SliceStable(entries, func(left, right int) bool {
-		a, b := entries[left], entries[right]
-		if importClass(a.path) != importClass(b.path) {
-			return importClass(a.path) < importClass(b.path)
-		}
-		if a.path != b.path {
-			return a.path < b.path
-		}
-		if a.alias != b.alias {
-			return a.alias < b.alias
-		}
-		return a.order < b.order
-	})
-	region := renderImportRegion(entries, compact)
+	sortImportEntries(entries)
+	region := renderImportRegion(entries)
+	if headed != nil {
+		region = renderHeadedImportGroup(headed)
+	}
 
 	insertBefore := declarations[0].firstLine
 	if firstDeclarationLine != 0 && firstDeclarationLine < insertBefore {
@@ -240,21 +241,178 @@ func formatImportRegion(text string, compact bool) string {
 	return strings.Join(out, "\n")
 }
 
-// importClass orders the canonical import classes of § 13(7). Class 0 holds
-// standard-library and project modules until MD-033 decides how the
-// formatter recognizes standard-library paths; class 1 is the reserved
-// platform root.
-func importClass(path string) int {
-	if path == "platform" || strings.HasPrefix(path, "platform/") {
-		return 1
+// importRun is one blank-line-separated run of a grouped import declaration
+// with its optional group heading.
+type importRun struct {
+	heading []string
+	entries []*importEntry
+}
+
+// headedImportGroup recognizes a single grouped import declaration whose
+// imports form explicit blank-line-separated groups (MD-033), optionally
+// introduced by standalone `//` heading comments (MD-055). A heading is the
+// comment block that starts a run, directly above or separated by blank
+// lines from the run's first import; a comment between two imports of a run
+// leads the next import, and an end-of-line `//` comment trails its import.
+// It returns nil, true for a group of one run without a heading (the
+// ordinary region pass applies) and false when a comment's owner or the
+// group layout is ambiguous: a comment that ends a run or the group, a block
+// comment, or explicit groups combined with further import declarations.
+// Such a region is left unchanged.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 13 "Imports"
+//   - rules/corrections/applied/md028-md032-md055-try-switch-import-comments-correction-20261012.md — § 4
+//   - rules/corrections/applied/md027-md033-md036-md054-contextual-literals-formatter-configuration-correction-20261012.md — § 3
+func headedImportGroup(lines []string, tokensByLine map[int][]lexer.Token, declarations []*importDeclaration, entryByLine map[int]*importEntry) ([]importRun, bool) {
+	hasHeading := false
+	var runs []importRun
+	leading := map[*importEntry][]string{}
+	trailing := map[*importEntry]string{}
+	for _, declaration := range declarations {
+		if !declarationIsGroup(tokensByLine, declaration) {
+			continue
+		}
+		current := importRun{}
+		var pending []string
+		blankSinceItem := true
+		flush := func() bool {
+			if len(pending) > 0 {
+				return false
+			}
+			if len(current.entries) > 0 {
+				runs = append(runs, current)
+			} else if len(current.heading) > 0 {
+				return false
+			}
+			current = importRun{}
+			blankSinceItem = true
+			return true
+		}
+		for line := declaration.firstLine + 1; line < declaration.lastLine; line++ {
+			trimmed := strings.TrimSpace(lines[line-1])
+			switch {
+			case trimmed == "":
+				if len(current.entries) > 0 {
+					if !flush() {
+						return nil, false
+					}
+				}
+			case strings.HasPrefix(trimmed, "//"):
+				if len(current.entries) == 0 && blankSinceItem {
+					current.heading = append(current.heading, trimmed)
+					if line > declaration.firstLine+1 && strings.TrimSpace(lines[line-2]) == "" && len(current.heading) > 1 {
+						return nil, false
+					}
+					continue
+				}
+				pending = append(pending, trimmed)
+			case strings.Contains(trimmed, "/*"):
+				if len(current.heading) > 0 || hasHeading {
+					return nil, false
+				}
+				return nil, true
+			default:
+				entry, ok := entryByLine[line]
+				if !ok {
+					return nil, true
+				}
+				leading[entry] = pending
+				pending = nil
+				if tokens := tokensByLine[line]; len(tokens) > 0 {
+					end := tokens[len(tokens)-1].ByteEnd - tokenLineStart(lines, line)
+					if end >= 0 && end <= len(lines[line-1]) {
+						if rest := strings.TrimSpace(lines[line-1][end:]); rest != "" {
+							if !strings.HasPrefix(rest, "//") {
+								return nil, false
+							}
+							trailing[entry] = rest
+						}
+					}
+				}
+				current.entries = append(current.entries, entry)
+				blankSinceItem = false
+			}
+			if len(current.heading) > 0 {
+				hasHeading = true
+			}
+		}
+		if !flush() {
+			return nil, false
+		}
 	}
-	return 0
+	if !hasHeading && len(runs) < 2 {
+		return nil, true
+	}
+	if len(declarations) != 1 {
+		return nil, false
+	}
+	for _, run := range runs {
+		for _, entry := range run.entries {
+			entry.leading, entry.trailing = leading[entry], trailing[entry]
+		}
+	}
+	return runs, true
+}
+
+// renderHeadedImportGroup keeps every run and its heading, sorts imports
+// within each run only, places each heading directly above its run's first
+// import and separates runs with one blank line.
+func renderHeadedImportGroup(runs []importRun) []string {
+	region := []string{"import ("}
+	for index, run := range runs {
+		if index > 0 {
+			region = append(region, "")
+		}
+		for _, heading := range run.heading {
+			region = append(region, "    "+heading)
+		}
+		entries := append([]*importEntry(nil), run.entries...)
+		sortImportEntries(entries)
+		for _, entry := range entries {
+			for _, comment := range entry.leading {
+				region = append(region, "    "+comment)
+			}
+			spelled := "\"" + entry.path + "\""
+			if entry.alias != "" {
+				spelled = entry.alias + " " + spelled
+			}
+			if entry.trailing != "" {
+				spelled += " " + entry.trailing
+			}
+			region = append(region, "    "+spelled)
+		}
+	}
+	return append(region, ")")
+}
+
+// tokenLineStart returns the byte offset at which line starts.
+func tokenLineStart(lines []string, line int) int {
+	offset := 0
+	for index := 0; index < line-1; index++ {
+		offset += len(lines[index]) + 1
+	}
+	return offset
+}
+
+// sortImportEntries orders imports alphabetically by logical import path,
+// then alias, then source order; it never classifies a path (MD-033).
+func sortImportEntries(entries []*importEntry) {
+	sort.SliceStable(entries, func(left, right int) bool {
+		a, b := entries[left], entries[right]
+		if a.path != b.path {
+			return a.path < b.path
+		}
+		if a.alias != b.alias {
+			return a.alias < b.alias
+		}
+		return a.order < b.order
+	})
 }
 
 // renderImportRegion emits the single-import form for one import and one
-// import group otherwise, separating non-empty classes with one empty line
-// in the default structured style.
-func renderImportRegion(entries []*importEntry, compact bool) []string {
+// import group of a single alphabetic sequence otherwise.
+func renderImportRegion(entries []*importEntry) []string {
 	item := func(entry *importEntry) string {
 		spelled := "\"" + entry.path + "\""
 		if entry.alias != "" {
@@ -270,11 +428,7 @@ func renderImportRegion(entries []*importEntry, compact bool) []string {
 		return append(region, "import "+item(entries[0]))
 	}
 	region := []string{"import ("}
-	for index, entry := range entries {
-		// § 13(8)–(9): structured style separates classes; compact does not.
-		if !compact && index > 0 && importClass(entries[index-1].path) != importClass(entry.path) {
-			region = append(region, "")
-		}
+	for _, entry := range entries {
 		for _, comment := range trimmedLines(entry.leading) {
 			region = append(region, "    "+comment)
 		}

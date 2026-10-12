@@ -107,7 +107,7 @@ impl HeaderName {
 
         let mut index: uint := 0
 
-        while index < value.Len {
+        while index < value.SizeOf {
             let current := value.ByteAt(index)
 
             if !HeaderName._IsTokenByte(current) {
@@ -188,7 +188,7 @@ impl HeaderValue {
         }
 
         let first := value.ByteAt(0)
-        let last := value.ByteAt(value.Len - 1)
+        let last := value.ByteAt(value.SizeOf - 1)
 
         if first == 9 || first == 32 || last == 9 || last == 32 {
             return Err(HeaderError.InvalidValue)
@@ -196,7 +196,7 @@ impl HeaderValue {
 
         let mut index: uint := 0
 
-        while index < value.Len {
+        while index < value.SizeOf {
             let current := value.ByteAt(index)
 
             if current == 127 {

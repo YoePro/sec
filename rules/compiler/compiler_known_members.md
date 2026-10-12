@@ -415,7 +415,9 @@ For the members defined here:
 Ptr
 Len
 IsEmpty
-Capacity on list
+Capacity on list, map and set
+Reserve on dynamic list, map and set
+WithCapacity on dynamic list, map and set
 SizeOf
 Fill
 ToString
@@ -803,7 +805,7 @@ validation. Its caller must establish:
 
 ```text
 start <= end
-end <= value.ByteLen
+end <= value.SizeOf
 ```
 
 Public core operations such as checked substring extraction own those checks
@@ -927,8 +929,8 @@ RawPtr[byte]
 It refers to the first encoded storage byte of the string view or representation
 selected by the active CompilationPlan.
 
-`text.ByteLen` is the number of accessible encoded bytes.
-`text.Len` equals `text.RuneLen` and counts decoded Unicode scalar values.
+`text.SizeOf` is the number of accessible encoded bytes.
+`text.Len` counts decoded Unicode scalar values.
 
 `Ptr` does not imply a trailing zero byte.
 
@@ -1135,24 +1137,28 @@ There is no `Length` alias in Sec 0.1.
 
 ---
 
-# `Len`, `RuneLen`, and `ByteLen` on strings
+# `Len` and value-form `SizeOf` on strings
 
-For `string`, all three are read-only properties returning `uint`:
+For `string`, both are read-only properties returning `uint` (MD-058,
+2026-10-12, `rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md`):
 
 ```sec
 let runeCount := text.Len
-let sameCount := text.RuneLen
-let byteCount := text.ByteLen
+let byteCount := text.SizeOf
 ```
 
-`Len` equals `RuneLen`: the number of decoded Unicode scalar values.
-It counts neither grapheme clusters nor display columns and performs no
-normalization. `ByteLen` is the encoded UTF-8 byte count. Embedded U+0000
+`Len` is the number of decoded Unicode scalar values. It counts neither
+grapheme clusters nor display columns and performs no normalization. The
+value-form `SizeOf` is the encoded UTF-8 payload byte count. Embedded U+0000
 counts as one rune and one byte; non-BMP scalars count as one rune and four
-bytes. No trailing terminator contributes to either count.
+bytes. No trailing terminator, unused capacity, descriptor or allocation header
+contributes to either count.
 
-For example, `"éΩ"` has `Len == RuneLen == 2` and `ByteLen == 4`.
-Pointer-based byte views, byte offsets and foreign lengths use `ByteLen`.
+For example, `"éΩ"` has `Len == 2` and `SizeOf == 4`, and `"Hej π"` has
+`Len == 5` and `SizeOf == 6`. Pointer-based byte views, byte offsets and foreign
+lengths use `SizeOf`. No public `ByteLen`, `RuneLen` or `CharLen` alias exists;
+an internal helper for efficient scalar counting is not a public member.
+Whether every `string` is valid UTF-8 remains open (MD-050).
 The string contracts in `rules/types/contracts.md` use these same units.
 The compatibility lowercase `.len` follows `.Len` and therefore counts runes.
 
@@ -1468,9 +1474,15 @@ does not include capacity, allocation headers, or the owner descriptor.
 
 ## String
 
-Returns the physical size of the string value or descriptor.
+The value form `text.SizeOf` returns the encoded UTF-8 payload bytes of the
+string value (MD-058); it does not return `string.Len` and does not include a
+terminator, unused capacity, descriptor or allocation header. The type form
+`string.SizeOf` remains the physical layout size of a string value descriptor.
 
-It does not return `string.Len`.
+## Map and set
+
+There is no general payload `SizeOf` contract for `map` or `set` values; their
+`Capacity` (`collections.md` §§ 14.3, 15.2) is no byte size.
 
 ## Safe reference
 
@@ -1961,13 +1973,14 @@ does not consume or mutate the source.
 
 For an empty string it returns an empty owning array.
 
-The result length equals:
+The result length equals the encoded payload byte count (MD-058):
 
 ```text
-text.Len
+text.SizeOf
 ```
 
-when `text.Len` is representable as the owning-array element count.
+when `text.SizeOf` is representable as the owning-array element count. For
+example, `"Hej π".ToByteArray().Len == 6`.
 
 ---
 
@@ -2751,7 +2764,7 @@ Examples:
 Len
     compiler-known property
     result: uint
-    string meaning: Unicode scalar count (RuneLen); ByteLen is the UTF-8 byte count
+    string meaning: Unicode scalar count; the value-form SizeOf is the UTF-8 byte count
 
 Ptr
     unsafe compiler-known property
@@ -2927,6 +2940,30 @@ Availability and result types are receiver-specific and are defined by
 `collections.md`. Listing a name here does not make it universal: for example,
 `Ptr` is absent on map/set, `Fill` is limited to mutable slices, and dynamic
 arrays expose no `Capacity`.
+
+## Collection capacity members
+
+MD-058 (2026-10-12, `rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md`) adds these registry entries:
+
+```text
+CKM-LIST-CAPACITY      property Capacity: uint                 list[T], list[T, Capacity]
+CKM-MAP-CAPACITY       property Capacity: uint                 map[K, V], map[K, V, Capacity]
+CKM-SET-CAPACITY       property Capacity: uint                 set[T], set[T, Capacity]
+CKM-LIST-RESERVE       fn Reserve(additional: uint) Result[void, CollectionError]
+CKM-MAP-RESERVE        fn Reserve(additional: uint) Result[void, CollectionError]
+CKM-SET-RESERVE        fn Reserve(additional: uint) Result[void, CollectionError]
+CKM-LIST-WITHCAPACITY  static fn WithCapacity(capacity: uint) Result[list[T], CollectionError]
+CKM-MAP-WITHCAPACITY   static fn WithCapacity(capacity: uint) Result[map[K, V], CollectionError]
+CKM-SET-WITHCAPACITY   static fn WithCapacity(capacity: uint) Result[set[T], CollectionError]
+```
+
+`Reserve` is a structurally mutating instance method of a mutable dynamic
+receiver; it may allocate through the active allocation context, may relocate
+backing storage and is transactional. `WithCapacity` is an associated factory
+that returns a new empty owner and allocates only when its capacity is nonzero.
+Bounded variants, `T[]`, fixed arrays and slices have neither member, and no
+`Capacity()` method exists. Their full contracts are `collections.md`
+§§ 13.12, 14.8 and 15.5.
 
 ## String and formatting
 
@@ -3106,7 +3143,7 @@ legacy ptr migration.
 Test:
 
 ```text
-string RuneLen and ByteLen with distinct units;
+string Len and value-form SizeOf with distinct units, and no ByteLen/RuneLen/CharLen alias;
 fixed-array compile-time length;
 owning sequence runtime length;
 shared slice;
@@ -3589,7 +3626,7 @@ returns target-specific physical storage size in bytes.
 
 Value-form receiver effects remain observable.
 
-String `Len` equals `RuneLen` and counts Unicode scalar values; `ByteLen` is encoded UTF-8 byte length.
+String `Len` counts Unicode scalar values; value-form `SizeOf` is the encoded UTF-8 byte length (MD-058).
 
 Array and slice `Len` is element count.
 

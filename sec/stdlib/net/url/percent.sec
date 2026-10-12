@@ -54,7 +54,7 @@ fn PercentEncode(value: string, component: Component) Result[string, PercentErro
     let mut result: byte[]
     let mut index: uint := 0
 
-    while index < value.ByteLen {
+    while index < value.SizeOf {
         let current := value.ByteAt(index)
 
         if _IsLiteralByte(current, component) {
@@ -194,7 +194,7 @@ fn PercentDecodeBytes(value: string) Result[byte[], PercentError] {
     let mut result: byte[]
     let mut index: uint := 0
 
-    while index < value.ByteLen {
+    while index < value.SizeOf {
         if value.ByteAt(index) == byte('%') {
             let decoded := try _DecodeHexPair(value, index)
 
@@ -237,7 +237,7 @@ fn PercentDecodeBytes(value: string) Result[byte[], PercentError] {
 fn ValidatePercentEncoding(value: string) Result[void, PercentError] {
     let mut index: uint := 0
 
-    while index < value.ByteLen {
+    while index < value.SizeOf {
         if value.ByteAt(index) != byte('%') {
             index += 1
             continue
@@ -282,7 +282,7 @@ fn NormalizePercentEncoding(value: string) Result[string, PercentError] {
     let mut result: byte[]
     let mut index: uint := 0
 
-    while index < value.ByteLen {
+    while index < value.SizeOf {
         if value.ByteAt(index) != byte('%') {
             try result.Append(value.ByteAt(index)) {
                 Err(error) => return Err(PercentError.Allocation(error))
@@ -369,7 +369,7 @@ fn _UpperHexDigit(value: byte) byte {
  *     a non-hexadecimal digit.
  */
 fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
-    if value.ByteLen - index < 3 {
+    if value.SizeOf - index < 3 {
         return Err(PercentError.InvalidEscape(index))
     }
 

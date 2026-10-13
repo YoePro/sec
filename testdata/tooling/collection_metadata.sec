@@ -1,0 +1,5 @@
+module collectionmetadata
+
+fn Inspect(dynamicList: list[int], boundedList: list[int, 8], dynamicSet: set[string], boundedSet: set[string, 12], dynamicMap: map[string, int], boundedMap: map[string, int, 16], borrowed: ref mut list[int], plain: int) int {
+    return plain
+}

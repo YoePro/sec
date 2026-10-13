@@ -36,8 +36,29 @@ variants = ["linux-amd64"]
 output = "bin/secc"
 
 [format]
+# Formatting contract version. Supported version: 1 (not the compiler version).
 format_version = 1
-indentation_width = 4
+
+# Vertical spacing: "structured" separates logical groups with blank lines;
+# "compact" reduces optional blank lines. Default: "structured".
 vertical_style = "compact"
-language_corrections = true
+
+# Indentation in spaces. Allowed values: 2, 4, 6. Tabs are not used.
+indentation_width = 4
+
+# Width policy: "fixed" uses line_width; "adaptive" uses the editor viewport
+# within the adaptive limits, or adaptive_fallback_width without a viewport.
+width_mode = "fixed"
+
+# Preferred line width in columns (positive integer), not a hard limit.
 line_width = 120
+
+# Adaptive limits in columns (positive integers): minimum <= maximum,
+# and minimum <= fallback <= maximum. Used when width_mode = "adaptive".
+adaptive_min_width = 80
+adaptive_max_width = 200
+adaptive_fallback_width = 120
+
+# Optional supported syntax corrections: true enables them; false keeps
+# formatting limited to layout. Default: false. CLI --fix can opt in.
+language_corrections = true

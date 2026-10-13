@@ -262,7 +262,29 @@ const (
 	// AmbiguousContextualArgument rejects a call whose viable overloads give a
 	// contextual argument (None, [] or null) incompatible types.
 	// Rules: rules/types/types.md — "Contextual None and empty-literal arguments" (MD-027).
-	AmbiguousContextualArgument  = "S1147"
+	AmbiguousContextualArgument = "S1147"
+	// ProjectRootModuleMismatch enforces the root source name from the manifest.
+	// Rules: rules/projects/projects.md — §§7(7),14,53(8).
+	ProjectRootModuleMismatch = "S1148"
+	// ProjectSourceLayout enforces reserved storage and internal access markers.
+	// Rules: rules/projects/projects.md — §15; rules/projects/modules.md — §13.
+	ProjectSourceLayout = "S1149"
+	// ProjectInvalidVersion reports invalid structured manifest versions.
+	// Rules: rules/projects/projects.md — §§8–11,48(1–3).
+	ProjectInvalidVersion = "S1150"
+	// UnionVariantPayloadRequired rejects a payload-carrying union variant
+	// used as a value without its payload.
+	// Rules: rules/declarations/unions.md — §§5.2,5.3.
+	UnionVariantPayloadRequired = "S1151"
+	// UnionPatternPayloadBindingRequired rejects a match pattern that names a
+	// payload-carrying union variant without binding its payload.
+	// Rules: rules/declarations/unions.md — §§8.1,9.2–9.4.
+	UnionPatternPayloadBindingRequired = "S1152"
+	// DurationConversionInvalid rejects a time-quantity-to-duration conversion
+	// that is inexact without a rounding mode, out of the int64 nanosecond
+	// range, not a linear time difference, or unprovable in a context.
+	// Rules: rules/types/temporal.md — "Conversion of time quantities to duration".
+	DurationConversionInvalid    = "S1153"
 	UnreachableStatement         = "S3001"
 	UseAfterDiscard              = "S4001"
 	LargeValueParameter          = "A2001"
@@ -272,6 +294,12 @@ const (
 )
 
 var registry = map[string]Definition{
+	DurationConversionInvalid:             {ID: DurationConversionInvalid, Name: "temporal.invalid-duration-conversion", Family: "temporal", DefaultSeverity: SeverityError, Mandatory: true},
+	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
+	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
+	ProjectInvalidVersion:                 {ID: ProjectInvalidVersion, Name: "projects.invalid-version", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
+	ProjectSourceLayout:                   {ID: ProjectSourceLayout, Name: "projects.invalid-source-layout", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
+	ProjectRootModuleMismatch:             {ID: ProjectRootModuleMismatch, Name: "projects.root-module-name-mismatch", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	DefaultCycle:                          {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	BackendDefaultLeftUndefined:           {ID: BackendDefaultLeftUndefined, Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
 	CharLiteralOutOfRange:                 {ID: CharLiteralOutOfRange, Name: "literal.char-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},

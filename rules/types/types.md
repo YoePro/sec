@@ -722,6 +722,11 @@ They are not aliases for integers or strings.
 
 They do not implicitly convert to or from numeric types.
 
+A unit-bearing time quantity such as `5<s>` is not a `duration`; it converts
+to one only through the exact conversion of `rules/types/temporal.md` § 5
+(explicit `duration(q)`, or a proved contextual conversion at a `duration`
+declaration or argument; MD-015, 2026-10-13).
+
 Detailed rules for:
 
 - calendars;

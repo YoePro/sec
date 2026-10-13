@@ -612,11 +612,25 @@ Manuals, examples and other documentation are derived from those rules and are n
 
 ## Project status
 
+Editor clients can request `sec/tests` with `textDocument.uri` and an optional
+`run` regex matching `sec test --run`. The LSP returns the active file's
+compiler-owned module, structured identity path, name and source range from the
+current document snapshot, plus `compilationValid`. Discovery and selection use
+the same Sema metadata as the CLI; this request does not execute tests.
+
 Sec is in active language and compiler development.
 
 Large parts of the lexer, parser and semantic analyzer already exist, together with an evolving Semantic IR and MLIR-based lowering architecture.
 
 Not every documented feature has complete backend support yet.
+
+`sec check [--target <os-arch>] <file.sec|dir|glob>...` validates sources with
+the shared parser, project/module resolution, target facts and semantic analyses.
+It accepts explicit files, directories and globs, uses the host target by default,
+and supports `--diagnostic-format human|json`. It produces no artifacts and
+requires no LLVM, MLIR, Clang or linker tools. A successful check establishes
+frontend validity; emitting or building still validates readiness for its own
+requested backend boundary.
 
 A rule may therefore be:
 

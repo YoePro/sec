@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"sec/internal/diagnostics"
-	"sec/internal/ir/semantic"
 	"sec/internal/sema"
 )
 
@@ -50,14 +49,19 @@ func (r *diagnosticReporter) pipelineError(stage string, err error) {
 	case *sema.Error:
 		r.pipelineError(stage, *failure)
 		return
-	case *semantic.UnsupportedFeatureError:
+	case diagnostics.CapabilityFailure:
+		fact := failure.ImplementationCapability()
 		occurrence := newOccurrence("", diagnostics.SeverityError, stage, failure.Error())
-		occurrence.Arguments["category"] = "unsupported-lowering"
-		occurrence.Message.Arguments["category"] = "unsupported-lowering"
+		for key, value := range map[string]string{"category": "unsupported-lowering", "diagnostic_class": "compiler-capability", "feature": fact.Feature, "boundary": fact.Boundary, "callable": fact.Callable} {
+			if value != "" {
+				occurrence.Arguments[key] = value
+				occurrence.Message.Arguments[key] = value
+			}
+		}
 		occurrence.addHelp("The selected compiler path cannot lower this construct yet. This is an implementation capability limitation, not a proven source violation or a missing language-validity proof.")
-		if failure.Location.Line > 0 && failure.Location.Column > 0 {
-			position := occurrencePosition{Line: failure.Location.Line, Column: failure.Location.Column}
-			occurrence.Primary = &occurrenceLocation{Span: occurrenceSpan{File: failure.Location.File, Start: position, End: position}}
+		if fact.File != "" && fact.Line > 0 && fact.Column > 0 {
+			position := occurrencePosition{Line: fact.Line, Column: fact.Column}
+			occurrence.Primary = &occurrenceLocation{Span: occurrenceSpan{File: fact.File, Start: position, End: position}}
 		}
 		r.record(occurrence, fmt.Sprintf("%s error [unsupported-lowering]: %s\n  help: %s\n", stage, failure, occurrence.Help[0].Text))
 		return

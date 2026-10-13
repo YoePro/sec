@@ -101,16 +101,19 @@ type builder struct {
 	definedStructs map[TypeID]bool
 }
 type functionBuilder struct {
-	owner       *builder
-	fn          *Function
-	current     *Block
-	nextValue   ValueID
-	nextBlock   BlockID
-	nextStorage StorageID
-	nextMatch   MatchID
-	nextLoop    LoopID
-	loops       []*activeLoop
-	bindings    map[sema.BindingID]binding
+	// variantGuard is the union.is-variant predicate of the match arm being
+	// lowered, consumed by a borrowed payload binding (P15-45).
+	variantGuard ValueID
+	owner        *builder
+	fn           *Function
+	current      *Block
+	nextValue    ValueID
+	nextBlock    BlockID
+	nextStorage  StorageID
+	nextMatch    MatchID
+	nextLoop     LoopID
+	loops        []*activeLoop
+	bindings     map[sema.BindingID]binding
 	// failures routes the fallible points of the failure-set try whose
 	// protected expression is being built (failure_set_try.go).
 	failures *failureRouter
@@ -1194,7 +1197,7 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
 	}
 	updated := builtValue{}
-	if resolved.RuntimeCheck {
+	if resolved.RuntimeCheck || resolved.ShiftCountProven {
 		updated, err = fb.emitCheckedOperator(op, resultType, nil, nil, nil)
 		if err != nil {
 			return err
@@ -2184,12 +2187,19 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if needsNext {
 			nextBlock = fb.newBlock()
 		}
+		fb.variantGuard = 0
 		if err := fb.emitMatchPattern(subject, plan, armPlan, matchedBlock, nextBlock, boolType, matchID, arm.Token); err != nil {
 			return builtValue{}, err
 		}
 
 		fb.current = matchedBlock
-		payload, hasPayload, err := fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+		var payload builtValue
+		var hasPayload bool
+		if armPlan.BindingAction == sema.MatchBindingBorrowShared || armPlan.BindingAction == sema.MatchBindingBorrowMutable {
+			payload, hasPayload, err = fb.lowerPayloadBorrow(expr.Subject, subject, arm, armPlan, fb.variantGuard)
+		} else {
+			payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+		}
 		if err != nil {
 			return builtValue{}, err
 		}
@@ -2315,6 +2325,7 @@ func (fb *functionBuilder) emitMatchPattern(subject builtValue, plan sema.Resolv
 			MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
 			MatchPatternKind: string(arm.PatternKind), Location: location(token),
 		}, boolType)
+		fb.variantGuard = condition.id
 	case sema.MatchSubjectResult:
 		condition = fb.result(Operation{
 			Kind: OpResultIsErr, Operands: []ValueID{subject.id}, MatchID: matchID,
@@ -3149,7 +3160,9 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 	if !semanticOperatorKind(resolved, &op) {
 		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
 	}
-	if resolved.RuntimeCheck {
+	if resolved.RuntimeCheck || resolved.ShiftCountProven {
+		// A proven shift keeps the checked operation (Semantic IR has no
+		// unchecked shift); its failure edge is dead.
 		return fb.emitCheckedOperator(op, resultType, arithmeticTry, localTry, expr)
 	}
 	return fb.result(op, resultType), nil

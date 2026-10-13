@@ -274,6 +274,7 @@ integrations:
       - generic enum specialization preserves distinct nominal identity by ordered argument list
       - selected direct and changing-argument recursive generic storage cases are diagnosed
       - unresolved generic parameters are rejected by represented concrete lowering paths where current checks exist
+      - unresolved generic extern declarations are rejected before callable registration and every semantic CLI/backend entry; diagnostics retain Invalid proof state, declaration links and all unresolved parameters, while generic Sec wrappers may call concrete extern providers
     remaining:
       - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
       - separate generic resolution and inference ownership from canonical specialization application
@@ -295,7 +296,6 @@ integrations:
       - prevent implementation sharing from merging type, static, ownership, effect, analysis, diagnostic, debug, or callable identity
       - support distinct plan entries or ABI adapters converging on shared internal implementations
       - preserve exact native ABI compatibility metadata for separately compiled concrete specializations
-      - enforce that unresolved generic extern declarations never acquire runtime ABI
       - independently validate concrete generic types and callables for FFI compatibility
       - implement sound non-converging specialization detection over canonical InstantiationKeys
       - distinguish finite canonical cycles, recursive by-value layout, semantic non-convergence, and compiler resource limits
@@ -323,6 +323,24 @@ integrations:
       - unresolved generic extern declarations are rejected and concrete generic FFI compatibility is checked independently
       - size and performance policies may select different physical sharing without changing semantic instantiation identity
       - cold and warm cache plus parallel and sequential compilation produce equivalent canonical generic results
+    revised: "2026-10-13"
+    code:
+      - internal/sema/ffi.go
+    tests:
+      - internal/sema/ffi_generic_extern_test.go
+      - cmd/compiler/generic_extern_test.go
+      - cmd/lsp/generic_extern_test.go
+      - testdata/tooling/generic_extern_invalid.sec
+      - testdata/tooling/generic_extern_wrapper_valid.sec
+    verification:
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-13; complete Sema, compiler CLI and LSP suites
+      - command: go run ./cmd/yamlstatus check; go run ./cmd/yamlstatus fmt -check governance/generics.yaml
+        result: passed on 2026-10-13; 0 structural problems and canonical fragment
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'GenericExtern|ExternRejectsUnresolved' -count=1
+        result: passed on 2026-10-13; unresolved and phantom generic externs are excluded from callable catalogs and rejected consistently before all eight CLI backend paths, while LSP retains declaration provenance and generic Sec wrappers call concrete providers
 
   - id: frontend.generic-union-recursive-storage
     area: frontend-generics-and-representation
@@ -344,10 +362,16 @@ integrations:
     code:
       - internal/sema/analyzer.go
       - internal/sema/types.go
+      - internal/sema/generic_storage.go
     tests:
       - internal/sema/analyzer_test.go
       - testdata/generics_valid.sec
       - testdata/generics_invalid.sec
+      - internal/sema/generic_storage_test.go
+      - cmd/compiler/generic_storage_test.go
+      - cmd/lsp/generic_storage_test.go
+      - testdata/generics/recursive_boundaries_valid.sec
+      - testdata/generics/recursive_boundaries_invalid.sec
     implemented:
       - generic declaration name and arity pre-registration
       - generic struct template parameter scopes
@@ -362,13 +386,13 @@ integrations:
       - generic union direct and named payload recursive-storage diagnostics
       - generic union fixed-array-mediated and changing-argument recursion diagnostics
       - post-substitution recursive-storage checks for concrete union payloads
+      - template and concrete generic storage checks preserve shared and mutable references, references to arrays and views, raw pointers, dynamic arrays and owning list/map/set boundaries; fixed arrays, Option payloads and ordinary by-value wrappers remain subject to recursive-layout rejection
     partial:
       - generic type references encountered before a referenced generic declaration has completed body analysis can retain InvalidType template metadata, requiring a broader forward-template finalization audit
     remaining:
       - ensure no representation-dependent accepted generic instance contains unresolved InvalidType field or variant metadata
       - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete predeclaration skeletons
       - evolve recursive storage diagnostics from the current local cases to complete layout/storage dependency paths without conflating them with canonical InstantiationKey non-convergence
-      - preserve finite reference/slice/container boundaries according to their owning representation rules
     bug_reference:
       - correction8.md
     governance_reconciliation:
@@ -385,3 +409,11 @@ integrations:
       - forward generic type reference cannot leave unresolved InvalidType storage metadata
       - existing generic struct recursion tests remain green
       - existing Maybe[T] generic union substitution and construction tests remain green
+    revised: "2026-10-13"
+    verification:
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Generic|Generics|Recursive.*Layout' -count=1
+        result: passed on 2026-10-13; valid reference/raw-pointer/dynamic-storage recursion is accepted through concrete substitution, while direct, fixed-array, Option and by-value wrapper cycles remain rejected in Sema, CLI and LSP
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-13; complete semantic suite including existing generic recursion and union substitution tests

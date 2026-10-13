@@ -58,7 +58,7 @@ func TestFormattingOvertakesOnlyQueuedAnalysisRequests(t *testing.T) {
 	queue.close(nil)
 	order := []string{}
 	for {
-		message, ok := queue.next()
+		message, _, ok := queue.next()
 		if !ok {
 			break
 		}

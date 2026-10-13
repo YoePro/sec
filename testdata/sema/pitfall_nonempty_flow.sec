@@ -1,0 +1,106 @@
+module main
+
+type Present int[] notEmpty
+type Minimum int[] minLen 2
+type Exact int[] exactLen 2
+type Inherited Minimum
+type Maximum int[] maxLen 8
+type ZeroMinimum int[] minLen 0
+
+fn Clear(values: ref mut list[int]) void { values.Clear() }
+
+fn CaseFixed(values: ref int[2]) int {
+    return values[values.Len - 1]
+}
+
+fn CasePresent(values: ref Present) int {
+    return values[values.Len - 1]
+}
+
+fn CaseMinimum(values: ref Minimum) int {
+    return values[values.Len - 1]
+}
+
+fn CaseExact(values: ref Exact) int {
+    return values[values.Len - 1]
+}
+
+fn CaseInherited(values: ref Inherited) int {
+    return values[values.Len - 1]
+}
+
+fn CaseMaximum(values: ref Maximum) int {
+    return values[values.Len - 1]
+}
+
+fn CaseZeroMinimum(values: ref ZeroMinimum) int {
+    return values[values.Len - 1]
+}
+
+fn CaseDominatingExit(values: ref list[int]) int {
+    if values.IsEmpty { return 0 }
+    let observed := values.Len
+    discard observed
+    return values[values.Len - 1]
+}
+
+fn CaseAsserted(values: ref list[int]) int {
+    assert values.Len > 0
+    let observed := values.Len
+    discard observed
+    return values[values.Len - 1]
+}
+
+fn CaseNested(values: ref list[int], flag: bool) int {
+    if values.Len > 0 {
+        let observed := values.Len
+        if flag { return values[values.Len - 1] }
+    }
+    return 0
+}
+
+fn CaseConjunction(values: ref list[int], flag: bool) int {
+    if flag && values.Len > 0 { return values[values.Len - 1] }
+    return 0
+}
+
+fn CaseOtherCollection(values: ref list[int], other: ref list[int]) int {
+    if other.IsEmpty { return 0 }
+    let observed := values.Len
+    return values[values.Len - 1]
+}
+
+fn CaseMutated(values: ref mut list[int]) int {
+    if values.IsEmpty { return 0 }
+    values.Clear()
+    return values[values.Len - 1]
+}
+
+fn CaseCalleeMutation(values: ref mut list[int]) int {
+    if values.IsEmpty { return 0 }
+    Clear(values)
+    return values[values.Len - 1]
+}
+
+fn CaseLoopMutation(values: ref mut list[int], flag: bool) int {
+    if values.IsEmpty { return 0 }
+    while flag { values.Clear() }
+    return values[values.Len - 1]
+}
+
+fn CaseDeferred(values: ref list[int]) int {
+    if values.IsEmpty { return 0 }
+    defer { discard values[values.Len - 1] }
+    return 0
+}
+
+fn CaseElseExit(values: ref list[int]) int {
+    if values.Len > 0 { discard values.Len } else { return 0 }
+    return values[values.Len - 1]
+}
+
+fn CaseRelationalExit(values: ref list[int]) int {
+    if values.Len <= 0 { return 0 }
+    discard values.Len
+    return values[values.Len - 1]
+}

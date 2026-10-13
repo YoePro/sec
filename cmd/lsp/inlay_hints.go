@@ -113,9 +113,8 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 		return hints
 	}
 	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 
 	inRange := func(at position) bool {
 		if at.Line < requested.Start.Line || at.Line > requested.End.Line {

@@ -1,15 +1,11 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sec/internal/ast"
 	platformtarget "sec/internal/platform/target"
 	"sec/internal/sema"
-	"strconv"
-	"strings"
 )
 
 // newLSPAnalyzer binds the active project plan and depth, prioritizing the
@@ -30,9 +26,16 @@ func newLSPAnalyzer(uri string, programs ...*ast.Program) *sema.Analyzer {
 // Rules: rules/tooling/lsp.md — Target-aware analysis, Configuration, Snapshots;
 // rules/types/types.md — int and uint, Binary floating-point types.
 func newLSPAnalyzerForInputs(uri string, program *ast.Program, overlay sourceOverlay) *sema.Analyzer {
+	return newLSPAnalyzerForInputsAtDepth(uri, program, overlay, lspAnalysisDepthWithOverlay(pathFromURI(uri), overlay))
+}
+
+// newLSPAnalyzerForInputsAtDepth binds the selected snapshot budget to the shared
+// target-aware analyzer; no safety proof is disabled by a reduced depth.
+// Rules: rules/compiler/compiler_analysis.md — §§60(1–5),62(1–3);
+// rules/tooling/lsp.md — "Configuration", "Snapshots".
+func newLSPAnalyzerForInputsAtDepth(uri string, program *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) *sema.Analyzer {
 	programs := []*ast.Program{program}
 	sourcePath := pathFromURI(uri)
-	depth := lspAnalysisDepth(sourcePath)
 	// Source selection and semantic target selection must use the same active
 	// document, including unsaved directives; imported directives do not select
 	// the active document's allocation profile.
@@ -93,62 +96,4 @@ func lspHasProjectManifest(sourcePath string) bool {
 	}
 	_, err := os.Stat(filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml"))
 	return err == nil
-}
-
-// lspAnalysisDepth resolves the normative project analysis setting per request.
-// Rules: rules/projects/projects.md — §23; rules/tooling/lsp.md — "Configuration".
-func lspAnalysisDepth(sourcePath string) sema.AnalysisDepth {
-	depth := sema.AnalysisInteractive
-	if sourcePath == "" {
-		return depth
-	}
-	manifest := filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml")
-	configured, err := readLSPAnalysisDepth(manifest)
-	if err == nil {
-		return configured
-	}
-	return depth
-}
-
-// readLSPAnalysisDepth validates the existing analysis.lsp_depth manifest key.
-// Rules: rules/tooling/lsp.md — "Configuration".
-func readLSPAnalysisDepth(manifest string) (sema.AnalysisDepth, error) {
-	file, err := os.Open(manifest)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	section := ""
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.TrimSpace(line[1 : len(line)-1])
-			continue
-		}
-		if section != "analysis" {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) != "lsp_depth" {
-			continue
-		}
-		value = strings.TrimSpace(value)
-		if comment := strings.Index(value, "#"); comment >= 0 {
-			value = strings.TrimSpace(value[:comment])
-		}
-		unquoted, err := strconv.Unquote(value)
-		if err != nil {
-			return "", fmt.Errorf("invalid analysis.lsp_depth in %s: %w", manifest, err)
-		}
-		return sema.ParseAnalysisDepth(unquoted)
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-	return sema.AnalysisInteractive, nil
 }

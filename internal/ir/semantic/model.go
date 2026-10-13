@@ -621,43 +621,46 @@ type BranchTarget struct {
 	Arguments []ValueID
 }
 type Operation struct {
-	Kind                 OpKind
-	Location             Location
-	Results              []Value
-	Operands             []ValueID
-	Integer              *big.Int
-	Bool                 *bool
-	String               string
-	Decimal              *DecimalConstant
-	FloatLexeme          string
-	Storage              StorageID
-	Callee               FunctionID
-	ArgumentActions      []ArgumentAction
-	Successors           []BranchTarget
-	IntegerBinary        IntegerCheckedBinaryKind
-	IntegerBitwise       IntegerBitwiseKind
-	IntegerShift         IntegerShiftKind
-	IntegerCompare       IntegerComparePredicate
-	FailureCategory      ArithmeticFailureCategory
-	FailureReason        ArithmeticFailureReason
-	Variant              string
-	EnumCase             EnumCaseID
-	UnionVariant         UnionVariantIndex
-	UnionField           string
-	UnionFields          []string
-	PayloadActions       []UnionPayloadAction
-	StructField          StructFieldID
-	StructOrigins        []StructFieldOrigin
-	StructActions        []StructFieldAction
-	ArrayElementType     TypeID
-	ArrayLength          string
-	ArraySegmentKinds    []ArrayConstructSegmentKind
-	ArraySegmentLengths  []string
-	ArrayActions         []ArrayTransferAction
-	ArrayIndexSigned     bool
-	ArrayCheckKind       ArrayIndexCheckKind
-	ArrayProofKind       ArrayIndexProofKind
-	ArrayGuard           ValueID
+	Kind                OpKind
+	Location            Location
+	Results             []Value
+	Operands            []ValueID
+	Integer             *big.Int
+	Bool                *bool
+	String              string
+	Decimal             *DecimalConstant
+	FloatLexeme         string
+	Storage             StorageID
+	Callee              FunctionID
+	ArgumentActions     []ArgumentAction
+	Successors          []BranchTarget
+	IntegerBinary       IntegerCheckedBinaryKind
+	IntegerBitwise      IntegerBitwiseKind
+	IntegerShift        IntegerShiftKind
+	IntegerCompare      IntegerComparePredicate
+	FailureCategory     ArithmeticFailureCategory
+	FailureReason       ArithmeticFailureReason
+	Variant             string
+	EnumCase            EnumCaseID
+	UnionVariant        UnionVariantIndex
+	UnionField          string
+	UnionFields         []string
+	PayloadActions      []UnionPayloadAction
+	StructField         StructFieldID
+	StructOrigins       []StructFieldOrigin
+	StructActions       []StructFieldAction
+	ArrayElementType    TypeID
+	ArrayLength         string
+	ArraySegmentKinds   []ArrayConstructSegmentKind
+	ArraySegmentLengths []string
+	ArrayActions        []ArrayTransferAction
+	ArrayIndexSigned    bool
+	ArrayCheckKind      ArrayIndexCheckKind
+	ArrayProofKind      ArrayIndexProofKind
+	ArrayGuard          ValueID
+	// VariantGuard names the union.is-variant predicate whose true edge
+	// proves the active variant of a place.union-payload (P15-45).
+	VariantGuard         ValueID
 	ArrayOperation       string
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int

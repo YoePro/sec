@@ -27,34 +27,331 @@ module str
 
 // TODO: Implement stdlib/str/transform.sec
 
-fn Map(value: string, mapping: fn(rune) rune) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Transforms every Unicode scalar value in a string.
+ *
+ * Description:
+ * Applies transform to each rune in input order and appends
+ * the resulting rune to a new UTF-8 string.
+ *
+ * The number of runes remains unchanged, but the UTF-8
+ * byte length may differ from the original string.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to transform.
+ * - transform: Function mapping each input rune to one output rune.
+ *
+ * Returns:
+ * A newly materialized string containing the mapped runes.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * Allocates storage for the resulting UTF-8 string.
+ */
+fn Map(value: string, transform: fn(rune) rune) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+
+    for character in value {
+        let mapped := transform(character)
+        try builder.Append(mapped)
+    }
+
+    return builder.Finish()
 }
 
-fn MapIndexed(value: string, mapping: fn(uint, rune) rune) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Transforms each Unicode scalar value with its rune index.
+ *
+ * Description:
+ * Applies transform to every rune in input order.
+ * The callback receives the zero-based rune index and
+ * the current rune.
+ *
+ * Indexes count Unicode scalar values, not UTF-8 bytes.
+ * Each input rune produces exactly one output rune.
+ *
+ * The UTF-8 byte length may change during transformation.
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to transform.
+ * - transform: Function receiving the rune index and rune,
+ *     and returning the replacement rune.
+ *
+ * Returns:
+ * A newly materialized string containing the mapped runes.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * Allocates storage for the resulting UTF-8 string.
+ */
+fn MapIndexed(value: string, transform: fn(uint, rune) rune) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+    let mut index: uint := 0
+
+    for character in value {
+        let mapped := transform(index, character)
+        try builder.Append(mapped)
+        index += 1
+    }
+
+    return builder.Finish()
 }
 
-fn Filter(value: string, keep: fn(rune) bool) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Filters Unicode scalar values using a predicate.
+ *
+ * Description:
+ * Evaluates predicate for each rune in input order.
+ * Runes for which the predicate returns true are appended
+ * to the resulting string. All other runes are discarded.
+ *
+ * The relative order of retained runes is preserved.
+ * The predicate is invoked exactly once per input rune.
+ *
+ * Filtering operates on Unicode scalar values rather than
+ * UTF-8 bytes or grapheme clusters.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to filter.
+ * - predicate: Function returning true for runes to retain.
+ *
+ * Returns:
+ * A newly materialized string containing the retained runes.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * Allocates storage for the resulting UTF-8 string.
+ */
+fn Filter(value: string, predicate: fn(rune) bool) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+
+    for character in value {
+        if predicate(character) {
+            try builder.Append(character)
+        }
+    }
+
+    return builder.Finish()
 }
 
-fn FilterIndexed(value: string, keep: fn(uint, rune) bool) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Filters Unicode scalar values using their rune indexes.
+ *
+ * Description:
+ * Evaluates predicate for each rune in input order.
+ * The predicate receives the zero-based rune index and
+ * the current rune.
+ *
+ * Runes for which the predicate returns true are retained.
+ * All other runes are discarded.
+ *
+ * Indexes refer to positions in the original string,
+ * not positions in the filtered result or UTF-8 byte offsets.
+ *
+ * The relative order of retained runes is preserved.
+ * The predicate is invoked exactly once per input rune.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to filter.
+ * - predicate: Function receiving a rune index and rune,
+ *     returning true when the rune should be retained.
+ *
+ * Returns:
+ * A newly materialized string containing the retained runes.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * Allocates storage for the resulting UTF-8 string.
+ */
+fn FilterIndexed(value: string, predicate: fn(uint, rune) bool) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+    let mut index: uint := 0
+
+    for character in value {
+        if predicate(index, character) {
+            try builder.Append(character)
+        }
+
+        index += 1
+    }
+
+    return builder.Finish()
 }
 
-fn Collect(value: string, mapping: fn(rune) string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Transforms each Unicode scalar value into a string.
+ *
+ * Description:
+ * Applies transform to each input rune in order.
+ * The returned strings are concatenated into a new UTF-8
+ * string using Builder.
+ *
+ * Each input rune may produce zero, one, or multiple
+ * output runes.
+ *
+ * The callback is invoked exactly once per input rune.
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to transform.
+ * - transform: Function mapping one rune to a UTF-8 string.
+ *
+ * Returns:
+ * A newly materialized string containing the concatenated
+ * transformation results.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ * The callback may perform additional allocations.
+ */
+fn Collect(value: string, transform: fn(rune) string) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+
+    for character in value {
+        let mapped := transform(character)
+        try builder.Append(mapped)
+    }
+
+    return builder.Finish()
 }
 
-fn CollectIndexed(value: string, mapping: fn(uint, rune) string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Transforms each Unicode scalar value into a string using its index.
+ *
+ * Description:
+ * Applies transform to every input rune in order.
+ * The callback receives the zero-based rune index and
+ * the current rune.
+ *
+ * Each input rune may produce zero, one, or multiple
+ * output runes. The returned strings are concatenated
+ * in their original input order.
+ *
+ * Indexes count Unicode scalar values, not UTF-8 bytes.
+ * The callback is invoked exactly once per input rune.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to transform.
+ * - transform: Function receiving the rune index and rune,
+ *     and returning a UTF-8 string.
+ *
+ * Returns:
+ * A newly materialized string containing the concatenated
+ * transformation results.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ * The callback may perform additional allocations.
+ */
+fn CollectIndexed(value: string, transform: fn(uint, rune) string) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+    let mut index: uint := 0
+
+    for character in value {
+        let mapped := transform(index, character)
+        try builder.Append(mapped)
+        index += 1
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Repeats a string a specified number of times.
+ *
+ * Description:
+ * Concatenates count copies of the input string in order.
+ *
+ * A count of zero or an empty input produces an empty string.
+ * The original UTF-8 contents are preserved without normalization.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to repeat.
+ * - count: Number of repetitions.
+ *
+ * Returns:
+ * A newly materialized string containing the repetitions.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     constructing the result.
+ *
+ * Allocation:
+ * May allocate storage for the resulting string.
+ */
 fn Repeat(value: string, count: uint) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(0)
+    try builder.AppendRepeat(value, count)
+    return builder.Finish()
 }
 
+/**
+ * Reverses the order of Unicode scalar values in a string.
+ *
+ * Description:
+ * Reverses the order of runes rather than UTF-8 bytes.
+ * Every Unicode scalar value is preserved.
+ *
+ * Combining characters are treated as individual runes.
+ * This function does not perform grapheme-cluster reversal
+ * or Unicode normalization.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to reverse.
+ *
+ * Returns:
+ * A newly materialized string containing the reversed runes.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while
+ *     collecting runes or constructing the result.
+ *
+ * Allocation:
+ * Allocates temporary rune storage and a result string.
+ */
 fn Reverse(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let runes := try ToRuneArray(value)
+    let mut builder := try new Builder(value.Len)
+
+    let mut index: uint := runes.Len
+
+    while index > 0 {
+        index -= 1
+        try builder.Append(runes[index]) {
+            Err(_) => {
+                panic "Reverse: index invariant violated"
+            }
+        }
+    }
+
+    return builder.Finish()
 }

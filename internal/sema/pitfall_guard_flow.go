@@ -272,7 +272,10 @@ func (b *pitfallBuilder) withLoopIndexGuards(statement ast.Statement, guards []p
 // Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Guards participate in pitfall reasoning".
 func (b *pitfallBuilder) walkIndependentGuardBody(body *ast.BlockStatement) {
 	outer := b.activeIndexGuards
+	outerNonEmpty, outerPreceding := b.activeNonEmptyProofs, b.activePreceding
 	b.activeIndexGuards = nil
+	b.activeNonEmptyProofs, b.activePreceding = nil, nil
 	b.walkBlock(body)
 	b.activeIndexGuards = outer
+	b.activeNonEmptyProofs, b.activePreceding = outerNonEmpty, outerPreceding
 }

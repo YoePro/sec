@@ -32,8 +32,9 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 	// carries only the related location rather than repeating the primary
 	// one; the related location is also attached as a navigable link.
 	message := err.DisplayMessage()
+	provenance := err.DiagnosticProvenance()
 	var related []diagnosticRelatedInformation
-	for _, link := range err.RelatedLocations() {
+	for _, link := range provenance.Related {
 		previous := fmt.Sprintf("%d:%d", link.Line, link.Column)
 		if link.File != "" {
 			previous = link.File + ":" + previous
@@ -60,13 +61,16 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 	if err.Help != "" {
 		message += "\n\nhelp: " + err.Help
 	}
-	message, related = appendEscapeCausePaths(err, message, related, uri, text, overlay)
-	message, related = appendAllocationCausePath(err, message, related, uri, text, overlay)
+	message, related = appendDiagnosticCauseNotes(err, provenance.Notes, message, related, uri, text, overlay)
 	resolvedSeverity := lspSeverity(err.Severity, severity)
 	// Mandatory registry policy also applies when a lowering occurrence lacks
 	// an explicit severity or arrives through an advisory fallback path.
 	if definition, known := diagnostics.Lookup(err.ID); known && definition.Mandatory {
 		resolvedSeverity = lspSeverity(definition.DefaultSeverity, resolvedSeverity)
+	}
+	var data *diagnosticData
+	if err.ProofState != "" {
+		data = &diagnosticData{ProofState: err.ProofState}
 	}
 	return diagnostic{
 		Range: lspRange{
@@ -78,5 +82,6 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 		Source:             "sec",
 		Message:            message,
 		RelatedInformation: related,
+		Data:               data,
 	}
 }

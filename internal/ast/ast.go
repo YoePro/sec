@@ -1784,6 +1784,41 @@ func (re *RangeExpression) String() string {
 // `bit[Width](Value)`: the unsigned value of the Width least-significant bits
 // of an integer source (registers.md, types.md; MD-046/MD-056). It is neither
 // a call, a conversion nor a `bit[N]` value type.
+// QuantityLiteral is a numeric literal immediately followed by a unit
+// annotation, such as `5<s>` or `0.5<ns>`: one unit-bearing numeric quantity
+// whose carrier comes from the expected unit-bearing type or the unit's
+// default carrier. A leading sign is an ordinary prefix expression.
+//
+// Rules:
+//   - rules/types/units.md — "Quantity literals"
+//   - rules/foundations/grammar.md — "Quantity literals"
+type QuantityLiteral struct {
+	// Token is the numeric literal token.
+	Token lexer.Token
+	// Value is the *IntegerLiteral or *FloatLiteral.
+	Value Expression
+	// UnitToken is the opening `<` of the annotation.
+	UnitToken      lexer.Token
+	Unit           string
+	UnitExpression *UnitExpression
+	// EndToken is the closing `>`.
+	EndToken lexer.Token
+}
+
+func (ql *QuantityLiteral) expressionNode() {}
+
+func (ql *QuantityLiteral) TokenLiteral() string {
+	return ql.Token.Lexeme
+}
+
+func (ql *QuantityLiteral) String() string {
+	value := "<nil>"
+	if ql.Value != nil {
+		value = ql.Value.String()
+	}
+	return value + "<" + ql.Unit + ">"
+}
+
 type BitExtractionExpression struct {
 	Token lexer.Token
 	Width Expression

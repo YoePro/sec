@@ -218,6 +218,7 @@ func (a *Analyzer) applyForBindingModes(stmt *ast.ForStatement, bindingTypes []T
 		result[i].ReferenceOriginStorage = originStorage
 		result[i].ReferenceOriginGeneration = generation
 		result[i].ReferenceOriginMatchScoped = a.referenceOriginMatchScopedForExpression(stmt.Iterable)
+		result[i].ReferenceOriginAlternatives = a.referenceOriginAlternativesForExpression(stmt.Iterable)
 	}
 	return result
 }

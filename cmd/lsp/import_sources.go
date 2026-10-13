@@ -20,7 +20,10 @@ func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile
 // rules/errors/panic.md — §28(8); rules/tooling/lsp.md — "Snapshots".
 func resolveSourceImportsForTarget(program *ast.Program, seen map[string]bool, sourceFile string, target platformtarget.Target, overlays ...sourceOverlay) []sema.Error {
 	overlay := firstSourceOverlay(overlays)
-	issues := []sema.Error{}
+	issues := lspProjectSourceLayoutErrors(program, sourceFile, overlay)
+	if len(issues) != 0 {
+		return issues
+	}
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok || importStmt == nil {

@@ -31,7 +31,7 @@ func TestIndexBoundsDiagnosticsLSP(t *testing.T) {
 	}
 	for _, e := range errs {
 		d := semaDiagnostic(e, 3, string(data))
-		if d.Code != diagnostics.IndexOutOfBounds || d.Severity != 1 || !strings.Contains(d.Message, "Invalid:") || !strings.Contains(d.Message, "pitfall.bounds.") || !strings.Contains(d.Message, "Suggested edit:") || d.Range.Start.Line != e.Line-1 || d.Range.Start.Character != e.Column-1 {
+		if d.Code != diagnostics.IndexOutOfBounds || d.Severity != 1 || !strings.Contains(d.Message, "Invalid:") || !strings.Contains(d.Message, "pitfall.bounds.") || !strings.Contains(d.Message, "Suggested edit:") || d.Range.Start.Line != e.Line-1 || d.Range.Start.Character != e.Column-1 || d.Data == nil || d.Data.ProofState != diagnostics.ProofInvalid {
 			t.Fatal(d)
 		}
 		if e.RelatedLabel == "bounds evidence" && (len(d.RelatedInformation) != 1 || d.RelatedInformation[0].Location.Range.Start.Line != e.PreviousLine-1) {

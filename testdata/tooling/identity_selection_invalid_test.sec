@@ -1,0 +1,5 @@
+module identity_selection
+
+test "broken" {
+    let value := missing_value
+}

@@ -26,7 +26,9 @@ func validateBuildEntry(analyzed analyzedProgram, inputFile string) []sema.Error
 	return analyzed.Analyzer.ValidateProgramEntry(buildTargetKind(inputFile), module, anchor)
 }
 
-// buildTargetKind resolves the kind of the Target owning a source file.
+// buildTargetKind consumes the resolved project snapshot for valid manifests
+// when selecting the Target owning a source file.
+// Rules: rules/projects/projects.md — §§17,49(1–2).
 func buildTargetKind(sourceFile string) sema.ProgramTargetKind {
 	manifest, found := findNearestProjectManifest(filepath.Dir(sourceFile))
 	if !found {
@@ -41,7 +43,17 @@ func buildTargetKind(sourceFile string) sema.ProgramTargetKind {
 		absolute = sourceFile
 	}
 	root := filepath.Dir(filepath.Dir(manifest))
-	if target, ok := project.TargetForSource(project.ParseManifestTargets(string(data)), root, absolute); ok && target.Kind != "" {
+	var targets []project.Target
+	if resolved, diagnostics := project.ParseManifest(manifest, string(data)); len(diagnostics) == 0 {
+		root = resolved.Facts().ProjectRoot
+		targets = resolved.Targets()
+	} else {
+		// Legacy entry-kind fallback remains until discovered-manifest validation
+		// is integrated (governance/tooling_projects.yaml, §48). It exposes no
+		// resolved identity/version facts for an invalid manifest.
+		targets = project.ParseManifestTargets(string(data))
+	}
+	if target, ok := project.TargetForSource(targets, root, absolute); ok && target.Kind != "" {
 		return sema.ProgramTargetKind(target.Kind)
 	}
 	return sema.ProgramTargetCommand

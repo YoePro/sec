@@ -230,6 +230,7 @@ impl string {
         panic "String index is out of bounds"
     }
 
+    // TODO: This should be moved to stdlib and even more - a string should be able to hold binary data as well. But since it can allocate we cannot have it in the core library. So for now it is here.
     fn FromByteArray(value: ref byte[]) Result[string, StringError] {
         let mut index: uint := 0
 

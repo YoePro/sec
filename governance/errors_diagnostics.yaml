@@ -268,6 +268,29 @@ integrations:
           span and repair help (use the r suffix or declare rune). It is
           separate from S1120, which keeps the Unicode-scalar domain of r
           literals (TestCharRuneLiteralSemantics).
+      - id: diagnostics.s1153-invalid-duration-conversion
+        description: >-
+          MD-015 (2026-10-13): a time-quantity-to-duration conversion that is
+          inexact without a RoundingMode, outside the signed 64-bit nanosecond
+          range, of a non-time/point/non-linear/scale-less unit, or an
+          unprovable contextual conversion at a duration declaration or
+          argument emits mandatory S1153 temporal.invalid-duration-conversion
+          naming the reason, with help listing whole nanoseconds, an explicit
+          RoundingMode and try duration(q); a dynamic explicit conversion
+          keeps S1139 (requires try). Status detail is owned by
+          frontend.temporal-duration (TestInvalidDurationConversionsAreRejected).
+      - id: diagnostics.s1151-s1152-union-payload-required
+        description: >-
+          2026-10-13: a payload-carrying union variant used as a value without
+          its payload (bare, qualified or expected-type shaped) emits mandatory
+          S1151 union.variant-payload-required with help showing the canonical
+          construction (Variant(value) naming the payload type, or the
+          named-field form for struct-like payloads, unions.md §§ 5.2, 5.3); a
+          match pattern naming such a variant without a binding emits mandatory
+          S1152 union.pattern-payload-binding-required with help for the
+          binding forms and the is test (unions.md §§ 8.1, 9.2–9.4). Both
+          previously had no ID or help
+          (TestUnionVariantMissingPayloadHasStableDiagnostics).
       - id: diagnostics.stack-budget-identities
         description: >-
           The registry allocates mandatory Error identities S1121

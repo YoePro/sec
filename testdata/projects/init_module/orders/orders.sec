@@ -1,0 +1,5 @@
+module orders
+
+fn Count() int {
+    return 7
+}

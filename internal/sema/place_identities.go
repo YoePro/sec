@@ -179,6 +179,12 @@ func identityTableKeys[T ~uint32](table map[string]T) []string {
 // binding owns the storage declared at its declaration.
 func (a *Analyzer) rootStorageIdentity(symbol Symbol) StorageIdentityID {
 	if typeCarriesReferenceOrigin(symbol.Type) {
+		// A joined referent cannot claim its representative's one storage
+		// identity: other paths may select a different Arena or local storage.
+		// Rules: rules/memory/lifetime_analysis.md — §11.2(1–2).
+		if len(symbol.Type.ReferenceOriginAlternatives) > 1 {
+			return 0
+		}
 		// A reference or view root denotes its referent, whose storage domain
 		// is known here only for Arena-backed storage; anything else stays
 		// unknown rather than borrowing the holder binding's own storage.

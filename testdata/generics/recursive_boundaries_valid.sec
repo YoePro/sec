@@ -1,0 +1,66 @@
+module main
+
+type Shared[T] union {
+    Next(ref Shared[T])
+    End
+}
+
+type Mutable[T] union {
+    Next { link: ref mut Mutable[T] }
+    End
+}
+
+type Dynamic[T] union {
+    Next(Dynamic[T][])
+    End
+}
+
+type View[T] union {
+    Next(ref View[T][])
+    End
+}
+
+type Pointer[T] union {
+    Next(RawPtr[Pointer[T]])
+    End
+}
+
+type Collection[T] union {
+    Next(list[Collection[T]])
+    End
+}
+
+type ChangingReference[T] union {
+    Next(ref ChangingReference[T[]])
+    End
+}
+
+type MapNode[T] union {
+    Next(map[int, MapNode[T]])
+    End
+}
+
+type SetNode[T] union {
+    Next(set[SetNode[T]])
+    End
+}
+
+type ReferenceArray[T] struct {
+    links: ref ReferenceArray[T][2]
+}
+
+type DynamicStruct[T] struct {
+    links: DynamicStruct[T][]
+}
+
+fn SharedValue(value: Shared[int]) void { discard value }
+fn MutableValue(value: Mutable[int]) void { discard value }
+fn DynamicValue(value: Dynamic[int]) void { discard value }
+fn ViewValue(value: View[int]) void { discard value }
+fn PointerValue(value: Pointer[int]) void { discard value }
+fn CollectionValue(value: Collection[int]) void { discard value }
+fn ChangingReferenceValue(value: ChangingReference[int]) void { discard value }
+fn MapValue(value: MapNode[int]) void { discard value }
+fn SetValue(value: SetNode[int]) void { discard value }
+fn ReferenceArrayValue(value: ReferenceArray[int]) void { discard value }
+fn DynamicStructValue(value: DynamicStruct[int]) void { discard value }

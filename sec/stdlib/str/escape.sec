@@ -90,7 +90,7 @@ type UnescapeError union error {
  * Materializes an escaped string using Builder.
  */
 fn EscapeLiteral(value: string) Result[string, CollectionError] {
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf)
 
     for character in value {
         if character == 92r {
@@ -147,7 +147,7 @@ fn EscapeLiteral(value: string) Result[string, CollectionError] {
 fn Quote(value: string) Result[string, CollectionError] {
     let escaped := try EscapeLiteral(value)
 
-    let mut builder := new Builder(escaped.SizeOf)
+    let mut builder := try new Builder(escaped.SizeOf)
 
     try builder.Append("\"")
     try builder.Append(escaped)
@@ -192,7 +192,9 @@ fn Quote(value: string) Result[string, CollectionError] {
  * Materializes a new string using Builder.
  */
 fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf) {
+        Err(error) => return Err(UnescapeError.Allocation(error))
+    }
 
     let mut index: uint := 0
     let mut segmentStart: uint := 0
@@ -402,11 +404,15 @@ fn Unquote(value: string) Result[string, UnescapeError] {
         let current := value.ByteAt(index)
 
         if current == 92 {
-            // Skip the character immediately following a backslash.
-            // The decoder will validate the actual escape syntax.
             index += 1
 
             if index >= closingIndex {
+                return Err(UnescapeError.InvalidQuotes)
+            }
+
+            let escaped := value.ByteAt(index)
+
+            if escaped == 10 || escaped == 13 {
                 return Err(UnescapeError.InvalidQuotes)
             }
 

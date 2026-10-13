@@ -854,6 +854,30 @@ impl decimal {
 }
 ```
 
+## 10.3 Rounding modes
+
+Numeric core declares the one rounding-policy enumeration
+(`sec/core/rounding.sec`, MD-015, 2026-10-13):
+
+```sec
+enum RoundingMode {
+    NearestEven
+    NearestAwayFromZero
+    TowardZero
+    AwayFromZero
+    Ceil
+    Floor
+}
+```
+
+An explicit conversion that accepts a rounding policy takes it as a
+`RoundingMode` argument and applies it exactly once to the exact mathematical
+result; no mode is ever selected implicitly. The time-quantity conversion
+`duration(q, mode)` is defined in `rules/types/temporal.md` § 5.6. The
+rounding policy of general unit conversions (MD-047) remains open and must
+reuse this enum. `stdlib/math` rounding functions are separate and do not
+declare another enum.
+
 ---
 
 # 11. Character and rune

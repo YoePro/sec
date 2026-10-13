@@ -198,6 +198,16 @@ func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.
 		facts.AddressStability = AddressStabilityUnknown
 		return facts
 	}
+	// A joined holder cannot be represented by the current single-domain
+	// ReferenceFacts ABI. Preserve uncertainty rather than validating only
+	// its legacy representative (package 15 §§25–31).
+	for _, root := range []string{place.ReferenceHolder, place.Root} {
+		if symbol, ok := a.symbols[root]; ok && len(symbol.Type.ReferenceOriginAlternatives) > 1 {
+			facts.Provenance = ReferenceProvenanceUnknown
+			facts.AddressStability = AddressStabilityUnknown
+			return facts
+		}
+	}
 	if domain, generation, arena := a.arenaOriginOfPlace(place); arena {
 		facts.Provenance = ReferenceProvenanceArena
 		facts.Validity = ReferenceValidityDynamicEpoch
@@ -412,8 +422,9 @@ func (a *Analyzer) ResolvedPlaceOf(expr ast.Expression) (Place, bool) {
 }
 
 // ResolvedReferencePlanOf returns the plan of one reference creation or
-// reborrow keyed by its exact AST node (a ref expression or an implicitly
-// borrowed call argument). It never creates borrows or re-resolves anything.
+// reborrow keyed by its exact AST node (a ref expression, an implicitly
+// borrowed call argument, or the bound identifier of a `ref`/`ref mut` match
+// payload binding). It never creates borrows or re-resolves anything.
 //
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 33-34

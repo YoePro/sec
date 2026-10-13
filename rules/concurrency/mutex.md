@@ -315,7 +315,7 @@ impl duration {
 
 **Governance tags:** `concurrency.context-v1`, `frontend.temporal-duration`, `frontend.units-v2`
 
-§ 12(1) A time-dimension unit expression may be accepted at a `duration` parameter when the canonical temporal/unit conversion rules prove a valid conversion.
+§ 12(1) A time-dimension unit expression may be accepted at a `duration` parameter when the canonical conversion of `rules/types/temporal.md` § 5 (MD-015) proves it exact and in range; an unprovable runtime quantity must be converted explicitly with `try duration(...)`.
 
 Examples:
 
@@ -613,7 +613,7 @@ match State.Lock(5<s>) {
 }
 ```
 
-§ 23(8) `5<s>` is converted to the canonical `duration` parameter by temporal/unit rules.
+§ 23(8) `5<s>` is converted to the canonical `duration` parameter by the conversion of `rules/types/temporal.md` § 5 (MD-015).
 
 ---
 
@@ -1238,7 +1238,7 @@ let connection := HttpConnection {
 
 § 57(10) Sema must enforce derived-source lifetime dependency on parent Context.
 
-§ 57(11) Time-unit expressions must convert through canonical temporal/unit rules, not a mutex-specific table.
+§ 57(11) Time-unit expressions must convert through the one conversion of `rules/types/temporal.md` § 5 (MD-015), not a mutex-specific table.
 
 ---
 

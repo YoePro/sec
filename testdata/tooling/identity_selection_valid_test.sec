@@ -1,0 +1,13 @@
+module identity_selection
+
+test "one / α𐐀" {
+    assert true
+}
+
+test "one.*" {
+    assert true
+}
+
+test "second" {
+    assert true
+}

@@ -198,7 +198,7 @@ func TestPitfallAnalysisConsumesBranchLocalNonEmptyProof(t *testing.T) {
 		{name: "negated IsEmpty", condition: "!values.IsEmpty", body: "return values[values.Len - 1]", wantState: PitfallStateSuppressed},
 		{name: "empty branch remains unsafe", condition: "values.IsEmpty", body: "return values[values.Len - 1]", wantState: PitfallStateFinding},
 		{name: "wrong collection", condition: "other.Len > 0", body: "return values[values.Len - 1]", wantState: PitfallStateFinding},
-		{name: "proof expires after statement", condition: "values.Len > 0", body: "let observed := values.Len\n        return values[values.Len - 1]", wantState: PitfallStateFinding},
+		{name: "proof survives length-preserving statement", condition: "values.Len > 0", body: "let observed := values.Len\n        return values[values.Len - 1]", wantState: PitfallStateSuppressed},
 	}
 
 	for _, test := range tests {

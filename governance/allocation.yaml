@@ -263,7 +263,7 @@ integrations:
       - internal/sema/allocation_context_facts.go
       - cmd/compiler/analyse_allocation.go
       - cmd/compiler/analyse.go
-      - cmd/compiler/allocation_cause_paths.go
+      - cmd/compiler/diagnostic_provenance.go
       - cmd/compiler/sema_diagnostic.go
       - cmd/compiler/diagnostic_catalog.go
       - cmd/lsp/analysis_configuration.go
@@ -272,7 +272,7 @@ integrations:
       - cmd/lsp/allocation_operation_hover.go
       - cmd/lsp/hover.go
       - cmd/lsp/call_graph_hover.go
-      - cmd/lsp/allocation_cause_paths.go
+      - cmd/lsp/diagnostic_provenance.go
       - cmd/lsp/sema_diagnostic.go
       - cmd/lsp/analysis_dependencies.go
       - cmd/lsp/diagnostics_batch.go
@@ -322,6 +322,8 @@ integrations:
       - shared target parsing round-trips every registered OS/architecture pair, including hyphenated cortex-m3 architectures; subprocess compiler emit-ir and sec analyse JSON match standalone/batched LSP allocation IDs, owning counts, severity, primary locations and related cause links at interactive/standard/deep depth for hosted/freestanding targets, with valid analyse allocation knowledge, independent unknown evidence, paths and context/domain descriptions matching real callable hovers
       - mandatory errors continue to stop CLI report generation and lowering; partial editor facts remain conservative; parity covers the represented allocation model and does not complete operation coverage, general profile selection or mentor diagnostics owned by remaining work
     verification:
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'DiagnosticProvenance|EscapeCause|AllocationCause|StackBudgetDiagnosticTransport|ProofDiagnostic|OwnershipNavigation|Pitfall.*Ownership' -count=1
+        result: passed on 2026-10-13; allocation cause transport now consumes the shared detached Sema DiagnosticProvenance view and common CLI/LSP renderers, retaining source links, unknown semantics and incomplete markers; moved renderer evidence paths synchronized without changing remaining scope
       - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-08 after merging allocation_context_description.go into allocation_context_facts.go without behavior or API changes
       - command: go test ./... -count=1

@@ -49,6 +49,15 @@ func TestPitfallDiagnosticOwnership(t *testing.T) {
 			if f.DiagnosticID == "" || f.State != PitfallStateFinding {
 				t.Fatal(f)
 			}
+			matches := 0
+			for _, e := range errors {
+				if e.ID == f.DiagnosticID && e.File == f.DiagnosticSource.File && e.Line == f.DiagnosticSource.Line && e.Column == f.DiagnosticSource.Column && e.EndLine == f.DiagnosticSource.EndLine && e.EndColumn == f.DiagnosticSource.EndColumn {
+					matches++
+				}
+			}
+			if matches != 1 {
+				t.Fatal("finding lacks an exact primary occurrence", f)
+			}
 			for _, action := range f.Actions {
 				if action.Kind != PitfallSuggestedEdit {
 					t.Fatal(action)

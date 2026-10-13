@@ -92,6 +92,11 @@ func runCLI() {
 		return
 	}
 
+	if command == "check" {
+		runCheckCommand(flag.Args()[1:], os.Stdout)
+		return
+	}
+
 	if command == "fmt" {
 		if err := runFmtCommand(flag.Args()[1:]); err != nil {
 			if _, ok := err.(*formatCheckError); ok {
@@ -162,8 +167,11 @@ func runCLI() {
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
 	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json|<ID>]")
-	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
+	fmt.Fprintln(os.Stderr, "       sec init [path] [--dry-run] [--minimal] [--name <name>] [--target <os-arch>] [--profile <profile>]")
+	fmt.Fprintln(os.Stderr, "       sec init module <path> [--dry-run]")
+	fmt.Fprintln(os.Stderr, "       sec init command|library|firmware|test <name> [--target <os-arch>] [--dry-run]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
+	fmt.Fprintln(os.Stderr, "       sec check [--target <os-arch>] <file.sec|dir|glob>... (frontend validation; no backend tools)")
 	fmt.Fprintln(os.Stderr, "       sec analyse [--all] [--target <os-arch>] <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec test [--list] [--run <regexp>] [--json] [--target <os-arch>] [<file_test.sec|dir|glob>...]")
 	fmt.Fprintln(os.Stderr, "       sec fmt [--check] <file.sec>...")
@@ -173,7 +181,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec emit-sec-mlir <file.sec> [-o <file.mlir|->] [--target <os-arch>] [--mlir-bin <path>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
 	fmt.Fprintln(os.Stderr, "       MLIR boundaries: emit-sec-mlir = verified Sec dialect; emit-mlir = LLVM dialect (--verify checks it)")
-	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
+	fmt.Fprintln(os.Stderr, "       sec build <file.sec|TargetName> [--build-number <number>] [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
 	fmt.Fprintln(os.Stderr, "       diagnostic-producing commands accept --diagnostic-format <human|json>")
 }
 
@@ -742,110 +750,6 @@ func isValidEmitOutputFile(path string) bool {
 	return path == "-" || !strings.HasPrefix(filepath.Base(path), "-")
 }
 
-type buildCommandOptions struct {
-	InputFile      string
-	OutputFile     string
-	Target         CompilerTarget
-	Clang          string
-	LLVMOutputFile string
-	MLIROutputFile string
-	MLIRBin        string
-	Pipeline       string
-}
-
-func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
-	options, ok := parseBuildCommandOptions(args, CompilerTarget{})
-	return options.InputFile, options.OutputFile, ok
-}
-
-func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buildCommandOptions, bool) {
-	options := buildCommandOptions{
-		Target:   defaultTarget,
-		Clang:    "clang",
-		Pipeline: "llvm",
-	}
-
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-o":
-			if i+1 >= len(args) || options.OutputFile != "" {
-				return buildCommandOptions{}, false
-			}
-			options.OutputFile = args[i+1]
-			if !isValidBuildOutputFile(options.OutputFile) {
-				return buildCommandOptions{}, false
-			}
-			i++
-		case "--target":
-			if i+1 >= len(args) {
-				return buildCommandOptions{}, false
-			}
-			target, ok := parseCompilerTarget(args[i+1])
-			if !ok {
-				return buildCommandOptions{}, false
-			}
-			options.Target = target
-			i++
-		case "--clang":
-			if i+1 >= len(args) || options.Clang != "clang" {
-				return buildCommandOptions{}, false
-			}
-			options.Clang = args[i+1]
-			i++
-		case "--pipeline":
-			if i+1 >= len(args) {
-				return buildCommandOptions{}, false
-			}
-			switch args[i+1] {
-			case "llvm", "mlir":
-				options.Pipeline = args[i+1]
-			default:
-				return buildCommandOptions{}, false
-			}
-			i++
-		case "--mlir-bin":
-			if i+1 >= len(args) || options.MLIRBin != "" {
-				return buildCommandOptions{}, false
-			}
-			options.MLIRBin = args[i+1]
-			i++
-		case "--keep-llvm":
-			if options.LLVMOutputFile != "" {
-				return buildCommandOptions{}, false
-			}
-			options.LLVMOutputFile = "__sec_keep_llvm__"
-		case "--keep-mlir":
-			if options.MLIROutputFile != "" {
-				return buildCommandOptions{}, false
-			}
-			options.MLIROutputFile = "__sec_keep_mlir__"
-		default:
-			if strings.HasPrefix(args[i], "-") || options.InputFile != "" {
-				return buildCommandOptions{}, false
-			}
-			options.InputFile = args[i]
-		}
-	}
-
-	if options.InputFile == "" {
-		return buildCommandOptions{}, false
-	}
-	if options.OutputFile == "" {
-		options.OutputFile = defaultBuildOutputPath(options.InputFile)
-	}
-	if options.Clang == "" {
-		options.Clang = "clang"
-	}
-	if options.LLVMOutputFile == "__sec_keep_llvm__" {
-		options.LLVMOutputFile = options.OutputFile + ".ll"
-	}
-	if options.MLIROutputFile == "__sec_keep_mlir__" {
-		options.MLIROutputFile = options.OutputFile + ".mlir"
-	}
-
-	return options, true
-}
-
 func isValidBuildOutputFile(path string) bool {
 	return path != "" && path != "-" && !strings.HasPrefix(filepath.Base(path), "-")
 }
@@ -909,74 +813,6 @@ func parseAndAnalyzeSourceForTargetWithAnalyzerMode(input string, sourceFile str
 	analyzer := analyzeProgramWithSourcesRetained(program, target, []string{sourceFile}, summary, printSuccessSummary)
 
 	return analyzedProgram{Program: program, Analyzer: analyzer}
-}
-
-func analyzeProgram(program *ast.Program, target CompilerTarget) {
-	analyzeProgramWithSources(program, target, nil, diagnosticSummary{})
-}
-
-func analyzeProgramWithSources(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary) {
-	_ = analyzeProgramWithSourcesRetained(program, target, sourceFiles, summary, true)
-}
-
-func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool) *sema.Analyzer {
-	return analyzeProgramWithSourcesAtDepth(program, target, sourceFiles, summary, printSuccessSummary, sema.AnalysisStandard)
-}
-
-func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool, depth sema.AnalysisDepth) *sema.Analyzer {
-	siblings := assembleCLIModuleSources(program, target)
-	summary.Errors += siblings.Errors
-	summary.Warnings += siblings.Warnings
-	if siblings.Errors > 0 {
-		printDiagnosticSummary(summary)
-		exitCLI(2)
-	}
-	if err := validateProgramTarget(program, target); err != nil {
-		reportToolError("target", "%s", err)
-		summary.Errors++
-		printDiagnosticSummary(summary)
-		exitCLI(1)
-	}
-
-	resolveCoreLibraryWithSources(program, sourceFiles)
-	resolveStdlibImportsWithSources(program, target, sourceFiles)
-
-	targetDefinition, ok := findTargetDefinition(target)
-	if !ok {
-		reportToolError("target", "unsupported target %s", target.String())
-		summary.Errors++
-		printDiagnosticSummary(summary)
-		exitCLI(1)
-	}
-	scalarPlan, err := targetDefinition.scalarPlan()
-	if err != nil {
-		reportToolError("target", "%s", err)
-		summary.Errors++
-		printDiagnosticSummary(summary)
-		exitCLI(1)
-	}
-	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
-	errors := analyzer.Analyze(program)
-	printSemaWarnings(analyzer)
-	for _, warning := range analyzer.Warnings() {
-		if warning.Severity == diagnostics.SeverityInformation {
-			summary.Information++
-		} else {
-			summary.Warnings++
-		}
-	}
-	if len(errors) > 0 {
-		for _, err := range errors {
-			printSemaError(os.Stderr, err)
-		}
-		summary.Errors += len(errors)
-		printDiagnosticSummary(summary)
-		exitCLI(3)
-	}
-	if printSuccessSummary {
-		printDiagnosticSummary(summary)
-	}
-	return analyzer
 }
 
 // printSemaError renders the stable semantic diagnostic ID and actionable help
@@ -1355,53 +1191,6 @@ func validateProgramTarget(program *ast.Program, current CompilerTarget) error {
 
 func resolveStdlibImports(program *ast.Program, target CompilerTarget) {
 	resolveStdlibImportsWithSources(program, target, nil)
-}
-
-func resolveStdlibImportsWithSources(program *ast.Program, target CompilerTarget, sourceFiles []string) {
-	// TODO: Replace this source-level stdlib inclusion with compiled library metadata/artifacts.
-	seen := map[string]bool{}
-	resolveStdlibImportsInto(program, target, seen, sourceFiles)
-}
-
-func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen map[string]bool, sourceFiles []string) {
-	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
-		importStmt, ok := stmt.(*ast.ImportStatement)
-		if !ok {
-			continue
-		}
-		sourcePaths, ok := sourceIncludePathsWithSources(importStmt.Path, target, sourceFiles)
-		if !ok {
-			continue
-		}
-		imported := &ast.Program{}
-		module := ""
-		for _, sourcePath := range sourcePaths {
-			if seen[sourcePath] {
-				if module == "" {
-					module = programModulePath(parseSourceInclude(sourcePath, target))
-				}
-				continue
-			}
-			seen[sourcePath] = true
-			sourceProgram := parseSourceInclude(sourcePath, target)
-			if module == "" {
-				module = programModulePath(sourceProgram)
-			}
-			imported.Statements = append(imported.Statements, sourceProgram.Statements...)
-		}
-		if len(imported.Statements) == 0 {
-			rewriteImportQualifier(program, importQualifier(importStmt), module)
-			continue
-		}
-
-		resolveStdlibImportsInto(imported, target, seen, sourcePaths)
-		if module == "" {
-			module = programModulePath(imported)
-		}
-		rewriteImportQualifier(program, importQualifier(importStmt), module)
-		qualifyImportedModule(imported, module)
-		program.Statements = append(program.Statements, imported.Statements...)
-	}
 }
 
 func sourceIncludePaths(path string, target CompilerTarget) ([]string, bool) {

@@ -14,6 +14,7 @@ func semanticSnapshotType(typ Type) Type {
 
 func semanticSnapshotTypeSeen(typ Type, seen map[string]bool) Type {
 	result := escapeSnapshotType(typ)
+	result.ReferenceOriginAlternatives = append([]ReferenceOriginAlternative(nil), typ.ReferenceOriginAlternatives...)
 	// rules/memory/destruction.md §§3.3(2), 15: post-Sema policy must
 	// retain an explicit lifecycle contract even at a recursive type edge.
 	result.CustomFree = typ.CustomFree

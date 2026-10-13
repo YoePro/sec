@@ -1,11 +1,8 @@
 package project
 
 import (
-	"bufio"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 )
 
 // Target is the part of a `[target.<name>]` table that source analysis needs:
@@ -24,50 +21,26 @@ type Target struct {
 // all other tables are skipped; malformed values are left empty so the
 // caller falls back to its default.
 func ParseManifestTargets(text string) []Target {
+
 	targets := map[string]*Target{}
-	current := ""
-	scanner := bufio.NewScanner(strings.NewReader(text))
-	for scanner.Scan() {
-		line := strings.TrimSpace(stripComment(scanner.Text()))
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "[") {
-			current = ""
-			header := strings.TrimSpace(strings.Trim(line, "[]"))
-			if !strings.HasPrefix(header, "target.") {
-				continue
-			}
-			name := strings.TrimPrefix(header, "target.")
-			if unquoted, err := strconv.Unquote(name); err == nil {
-				name = unquoted
-			} else if strings.Contains(name, ".") {
-				continue
-			}
-			if targets[name] == nil {
-				targets[name] = &Target{Name: name}
-			}
-			current = name
-			continue
-		}
-		if current == "" {
-			continue
-		}
-		key, raw, found := strings.Cut(line, "=")
-		if !found {
-			continue
-		}
-		value, err := parseTOMLString(strings.TrimSpace(raw))
-		if err != nil {
-			continue
-		}
-		switch strings.TrimSpace(key) {
-		case "kind":
-			targets[current].Kind = value
-		case "source":
-			targets[current].Source = value
-		}
+	doc, err := ParseManifestDocument(text)
+	if err != nil {
+		return nil
 	}
+	tables, err := doc.Table("target")
+	if err != nil {
+		return nil
+	}
+	for name, value := range tables {
+		table, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		kind, _ := table["kind"].(string)
+		source, _ := table["source"].(string)
+		targets[name] = &Target{Name: name, Kind: kind, Source: source}
+	}
+
 	names := make([]string, 0, len(targets))
 	for name := range targets {
 		names = append(names, name)

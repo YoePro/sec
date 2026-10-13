@@ -636,7 +636,7 @@ after duration => {
 
 § 30(2) The expression must be type-compatible with canonical `duration`.
 
-§ 30(3) Compatible unit syntax may materialize a duration:
+§ 30(3) Compatible unit syntax may materialize a duration through the canonical conversion of `rules/types/temporal.md` § 5 (MD-015):
 
 ```sec
 after 100<ms> => {

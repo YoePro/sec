@@ -1,0 +1,6 @@
+module main
+
+extern "C" fn Convert[T, U](value: T) U
+extern "system" fn PlatformValue[V](value: V) void
+extern "C" fn Phantom[P]() int32
+extern "C" fn Plain(value: int32) int32

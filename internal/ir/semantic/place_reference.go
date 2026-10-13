@@ -187,6 +187,9 @@ func formatPlaceReferenceOperation(out *strings.Builder, op Operation) {
 		}
 	case OpPlaceUnionPayload:
 		fmt.Fprintf(out, " variant=#%d", op.UnionVariant)
+		if op.VariantGuard != 0 {
+			fmt.Fprintf(out, " guard=%%%d", op.VariantGuard)
+		}
 	case OpReferenceCompare:
 		fmt.Fprintf(out, " %s", op.Operator)
 	case OpReferenceGenerationFailure:

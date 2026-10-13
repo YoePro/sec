@@ -24,13 +24,19 @@ type UserInfo string
 
 impl UserInfo {
     /** Parses and validates encoded RFC 3986 userinfo. */
-    static fn Parse(value: string) Result[UserInfo, ParseError]
+    static fn Parse(value: string) Result[UserInfo, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
 
     /** Percent-encodes decoded UTF-8 userinfo text. */
-    static fn FromDecoded(value: string) UserInfo
+    static fn FromDecoded(value: string) UserInfo {
+        return UserInfo("")
+    }
 
     /** Decodes percent escapes and validates UTF-8. */
-    fn Decode() Result[string, PercentError]
+    fn Decode() Result[string, PercentError] {
+        return Err(PercentError.InvalidEscape(0))
+    }
 }
 
 type Port string
@@ -67,7 +73,7 @@ impl Port {
      */
     fn Number() Result[uint16, PortError] {
         // Todo: Implement net/url/authority.sec/Port.Number
-        return Err(PortError.OutOfRange(1))
+        return Err(PortError.OutOfRange("1"))
     }
 }
 
@@ -78,17 +84,24 @@ type Authority struct {
 }
 
 impl Authority {
-    init(host: Host)
+    init(host: Host) {
+    }
 
-    init(host: Host, port: Port)
+    init(host: Host, port: Port) {
+    }
 
-    init(userInfo: UserInfo, host: Host, port: Option[Port])
+    init(userInfo: UserInfo, host: Host, port: Option[Port]) {
+    }
 
     /** Parses an authority without the leading `//`. */
-    static fn Parse(value: string) Result[Authority, ParseError]
+    static fn Parse(value: string) Result[Authority, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
 
     /** Serializes userinfo, host, and optional port without leading `//`. */
-    fn String() string
+    fn ToString() Result[string, StringError] {
+        return Ok("")
+    }
 
     /**
      * Serializes an authority for diagnostics without exposing userinfo content.
@@ -97,5 +110,7 @@ impl Authority {
      * When UserInfo is present, the serialized userinfo is replaced by the
      * literal `REDACTED` before the `@` delimiter.
      */
-    fn Redacted() string
+    fn Redacted() string {
+        return ""
+    }
 }

@@ -134,6 +134,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.recordResultConstruction(stmt)
 			a.setConstInt(stmt.Name.Value, stmt.Value)
 			a.recordFloatingBindingConstant(stmt.Name.Value, stmt.Value)
+			a.recordQuantityBindingConstant(stmt.Name.Value, stmt.Value)
 			a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
 			a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
 		}
@@ -189,6 +190,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.recordResultConstruction(stmt)
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 		a.recordFloatingBindingConstant(stmt.Name.Value, stmt.Value)
+		a.recordQuantityBindingConstant(stmt.Name.Value, stmt.Value)
 		a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
 		a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
 	}

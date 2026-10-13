@@ -51,7 +51,7 @@ module str
  * Materializes the result using growable Builder storage.
  */
 fn Join[I: Iterator[string]](values: I, separator: string) Result[string, CollectionError] {
-    let mut builder := new Builder(0)
+    let mut builder := try new Builder(0)
     let mut first := true
 
     for value in values {
@@ -106,7 +106,7 @@ fn Join(values: ref string[], separator: string) Result[string, CollectionError]
     }
 
     // Construct the output with the required capacity.
-    let mut builder := new Builder(totalBytes)
+    let mut builder := try new Builder(totalBytes)
     let mut first := true
 
     for value in values {

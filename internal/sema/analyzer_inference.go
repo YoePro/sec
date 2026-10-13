@@ -216,6 +216,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 		}
 		return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
+	case *ast.QuantityLiteral:
+		return a.inferQuantityLiteral(expr)
 	case *ast.StringLiteral:
 		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
 	case *ast.InterpolatedStringLiteral:
@@ -634,7 +636,7 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			return Type{}, expressionValue{}, false
 		}
 		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-			a.addErrorAtToken(expr.Token, "union variant %s.%s requires payload", typeDisplayName(expected), variant.Name)
+			a.reportUnionVariantPayloadRequired(expr.Token, expected, variant)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return expected, expressionValue{Display: expr.String()}, true
@@ -652,7 +654,7 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			return Type{}, expressionValue{}, false
 		}
 		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-			a.addErrorAtToken(expr.Property.Token, "union variant %s.%s requires payload", typeDisplayName(expected), variant.Name)
+			a.reportUnionVariantPayloadRequired(expr.Property.Token, expected, variant)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.bindDefinition(expr.Property.Token, variant.Token)
@@ -1466,15 +1468,16 @@ func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expres
 	a.checkSliceBounds(expr, leftType)
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Left)
 	return Type{
-		Name:                       typeDisplayName(*leftType.Element) + "[]",
-		Kind:                       SliceType,
-		Element:                    leftType.Element,
-		ReferenceOriginName:        originName,
-		ReferenceOriginToken:       originToken,
-		ReferenceOriginLocal:       originLocal,
-		ReferenceOriginStorage:     originStorage,
-		ReferenceOriginGeneration:  generation,
-		ReferenceOriginMatchScoped: a.referenceOriginMatchScopedForExpression(expr.Left),
+		Name:                        typeDisplayName(*leftType.Element) + "[]",
+		Kind:                        SliceType,
+		Element:                     leftType.Element,
+		ReferenceOriginName:         originName,
+		ReferenceOriginToken:        originToken,
+		ReferenceOriginLocal:        originLocal,
+		ReferenceOriginStorage:      originStorage,
+		ReferenceOriginGeneration:   generation,
+		ReferenceOriginMatchScoped:  a.referenceOriginMatchScopedForExpression(expr.Left),
+		ReferenceOriginAlternatives: a.referenceOriginAlternativesForExpression(expr.Left),
 	}, expressionValue{Display: expr.String()}
 }
 
@@ -1503,16 +1506,17 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 		a.recordReferencePlan(expr, place, expr.Mutable, false, expr.Token)
 	}
 	return Type{
-		Name:                       referenceTypeName(valueType, expr.Mutable),
-		Kind:                       ReferenceType,
-		Element:                    &valueType,
-		ReferenceMutable:           expr.Mutable,
-		ReferenceOriginName:        originName,
-		ReferenceOriginToken:       originToken,
-		ReferenceOriginLocal:       originLocal,
-		ReferenceOriginStorage:     originStorage,
-		ReferenceOriginGeneration:  generation,
-		ReferenceOriginMatchScoped: a.referenceOriginMatchScopedForExpression(expr.Value),
+		Name:                        referenceTypeName(valueType, expr.Mutable),
+		Kind:                        ReferenceType,
+		Element:                     &valueType,
+		ReferenceMutable:            expr.Mutable,
+		ReferenceOriginName:         originName,
+		ReferenceOriginToken:        originToken,
+		ReferenceOriginLocal:        originLocal,
+		ReferenceOriginStorage:      originStorage,
+		ReferenceOriginGeneration:   generation,
+		ReferenceOriginMatchScoped:  a.referenceOriginMatchScopedForExpression(expr.Value),
+		ReferenceOriginAlternatives: a.referenceOriginAlternativesForExpression(expr.Value),
 	}, expressionValue{Display: expr.String()}
 }
 
@@ -1536,7 +1540,7 @@ func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type
 		}
 		if variant.Payload != nil {
 			a.bindDefinition(expr.Property.Token, variant.Token)
-			a.addErrorAtToken(expr.Property.Token, "union variant %s.%s requires payload", typeDisplayName(typ), variant.Name)
+			a.reportUnionVariantPayloadRequired(expr.Property.Token, typ, variant)
 			return Type{Kind: InvalidType}, true
 		}
 		a.bindDefinition(expr.Property.Token, variant.Token)
@@ -3571,6 +3575,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	targetType, ok := a.resolveType(targetRef)
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if a.isDurationType(targetType) {
+		return a.inferDurationConversion(expr, targetType)
 	}
 	if len(expr.Arguments) == 2 && hasUnitSemantics(targetType) {
 		return a.inferFactorProvidedUnitConversion(expr, targetType)

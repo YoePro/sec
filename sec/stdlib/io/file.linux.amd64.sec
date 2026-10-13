@@ -711,7 +711,14 @@ impl Directory {
             let entryType := _directoryEntryType(self.buffer[recordStart + 18])
             self.buffer_position = recordEnd
 
-            let name := string.FromByteArray(ref self.buffer[nameStart..<nameEnd])
+            let name := try string.FromByteArray(ref self.buffer[nameStart..<nameEnd]) {
+                Err(error) => {
+                    match error {
+                        Allocation(_) => return Err(IOErrorLegacy.OutOfMemory)
+                        _ => return Err(IOErrorLegacy.InvalidData)
+                    }
+                }
+            }
             if name != "." && name != ".." {
                 let entry: Option[DirectoryEntry] := Some(DirectoryEntry {
                     Name: name,

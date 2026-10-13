@@ -264,20 +264,6 @@ type codeAction struct {
 	Edit        workspaceEdit       `json:"edit"`
 }
 
-type diagnostic struct {
-	Range              lspRange                       `json:"range"`
-	Severity           int                            `json:"severity"`
-	Code               string                         `json:"code,omitempty"`
-	Source             string                         `json:"source"`
-	Message            string                         `json:"message"`
-	RelatedInformation []diagnosticRelatedInformation `json:"relatedInformation,omitempty"`
-}
-
-type diagnosticRelatedInformation struct {
-	Location location `json:"location"`
-	Message  string   `json:"message"`
-}
-
 type lspRange struct {
 	Start position `json:"start"`
 	End   position `json:"end"`
@@ -289,25 +275,31 @@ type position struct {
 }
 
 type server struct {
-	in                     *bufio.Reader //
-	out                    io.Writer     //
-	documentSnapshots      *lspserver.Documents
-	diagnosticTimers       map[string]*time.Timer //
-	diagnosticGeneration   map[string]uint64
-	diagnosticDependencies map[string]map[string]bool // timerMu protects the published module source universe
-	diagnosticWorkMu       sync.Mutex
-	diagnosticsStopped     bool
-	diagnosticDelay        time.Duration //
-	writeMu                sync.Mutex    //
-	timerMu                sync.Mutex    //
-	shutdown               bool          //
-	workspaceRoots         []string
-	workspaceSymbols       *workspaceSymbolIndex
-	parameterInsight       parameterInsightSettings
-	pitfallSettings        pitfallDiagnosticSettings
-	inlayHints             *inlayHintSettings
-	crossTarget            *crossTargetStore
-	targetSelections       map[string]lspTargetSelection // timerMu protects immutable request snapshots
+	in                        *bufio.Reader //
+	out                       io.Writer     //
+	documentSnapshots         *lspserver.Documents
+	diagnosticTimers          map[string]*time.Timer //
+	diagnosticGeneration      map[string]uint64
+	diagnosticDependencies    map[string]map[string]bool // timerMu protects the published module source universe
+	publishedProjectManifests map[string]bool            // timerMu protects manifest error publication/clearing
+	diagnosticWorkMu          sync.Mutex
+	diagnosticsStopped        bool
+	diagnosticDelay           time.Duration //
+	writeMu                   sync.Mutex    //
+	timerMu                   sync.Mutex    //
+	shutdown                  bool          //
+	workspaceRoots            []string
+	workspaceSymbols          *workspaceSymbolIndex
+	parameterInsight          parameterInsightSettings
+	pitfallSettings           pitfallDiagnosticSettings
+	inlayHints                *inlayHintSettings
+	crossTarget               *crossTargetStore
+	targetSelections          map[string]lspTargetSelection // timerMu protects immutable request snapshots
+	// stateMu guards the settings and workspace fields above: read-only
+	// requests running on worker goroutines hold it shared, and the few
+	// messages that change those fields hold it exclusively (concurrency.go).
+	stateMu sync.RWMutex
+	workers sync.WaitGroup
 }
 
 func (s *server) inlayHintSettings() inlayHintSettings {
@@ -346,6 +338,11 @@ func main() {
 func (s *server) run() error {
 	defer s.stopDiagnosticTimers()
 	queue := newRequestQueue()
+	enableAnalysisCache()
+	defer disableAnalysisCache()
+	s.prepareConcurrentState()
+	slots := make(chan struct{}, analysisWorkerCount())
+	defer s.workers.Wait()
 	go func() {
 		for {
 			message, err := protocol.ReadMessage(s.in)
@@ -361,11 +358,29 @@ func (s *server) run() error {
 		}
 	}()
 	for {
-		message, ok := queue.next()
+		message, disposition, ok := queue.next()
 		if !ok {
 			return queue.err()
 		}
-		if err := s.handle(message); err != nil {
+		if !isDeferrableAnalysisRequest(message.Method) {
+			// Any other message may change documents, configuration or
+			// target selection, so cached analyses stop being reusable.
+			advanceAnalysisEpoch()
+		}
+		var err error
+		switch disposition {
+		case dispositionCancelled:
+			err = s.respondError(message.ID, -32800, "request cancelled")
+		case dispositionContentModified:
+			err = s.respondError(message.ID, -32801, "content modified by a newer document version")
+		default:
+			if len(message.ID) > 0 && isDeferrableAnalysisRequest(message.Method) {
+				s.handleConcurrently(message, slots)
+				continue
+			}
+			err = s.handleOrdered(message)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -469,6 +484,8 @@ func (s *server) handle(message rpcMessage) error {
 			s.updatePitfallSettings(params.Settings)
 		}
 		return s.republishOpenDiagnostics()
+	case "sec/tests":
+		return s.handleTestDiscovery(message)
 	case "textDocument/codeLens":
 		var params codeLensParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -806,10 +823,8 @@ func documentHighlightsForSource(uri string, text string, pos position, overlays
 	if program == nil {
 		return []documentHighlight{}
 	}
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
 	if !ok {
@@ -896,10 +911,8 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 	if program == nil {
 		return nil
 	}
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
 	if !ok {
@@ -942,9 +955,8 @@ func referencesForSource(uri string, text string, pos position, includeDeclarati
 	}
 	path := pathFromURI(uri)
 	overlay := firstSourceOverlay(overlays)
-	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
 	if !ok {
@@ -1402,10 +1414,8 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	if program == nil {
 		return classification
 	}
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 	tokens := sourceTokens(uri, text)
 	for name := range analyzer.Types() {
 		// Lowercase compiler-known collection and shaped constructors are
@@ -1917,9 +1927,8 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 		return signatureHelp{}, false
 	}
 	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 	construction, openOffset, closeOffset, found := constructionAtOffset(program, path, text, offset)
 	if !found || offset <= openOffset || offset > closeOffset {
 		return signatureHelp{}, false
@@ -2267,53 +2276,6 @@ func distinctCallees(sites []sema.CallSite) int {
 		}
 	}
 	return len(callees)
-}
-
-func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
-	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
-	contents += unitQuantityHoverSuffix(typ)
-	// rules/tooling/lsp.md "Hover" lists contracts; they are resolved Sema
-	// facts, including inherited contracts, never re-parsed from source.
-	if contracts := sema.ContractDisplays(typ); len(contracts) > 0 {
-		contents += "\n\nContracts: `" + strings.Join(contracts, "` `") + "`"
-	}
-	// rules/declarations/lambda-functions.md: callable authority is a resolved
-	// Sema fact. The LSP presents it and never re-parses fn/mut fn/-> fn syntax.
-	if capability, ok := sema.CallableCapabilityFactOf(typ); ok {
-		contents += fmt.Sprintf("\n\nCallable capability: `%s`\n\nInvocation requires: %s.", capability.Spelling, capability.InvocationRequirement)
-		if capability.ConsumesCallable {
-			contents += "\n\nA successful invocation consumes the callable value."
-		}
-	}
-	contents += shapedFactsHoverSuffix(typ)
-	if value, source, ok := sema.DefaultValuePreview(typ, 8); ok {
-		contents += fmt.Sprintf("\n\nDefault: `%s`\n\nSource: `%s`", value, source)
-	} else {
-		contents += "\n\nDefault: _none_"
-	}
-	return hoverResult{
-		Contents: markupContent{Kind: "markdown", Value: contents},
-		Range:    rng,
-	}
-}
-
-// shapedFactsHoverSuffix presents the shaped facts Sema resolved for a
-// binding's type: rank, shape, Len, whether the shape is static or a runtime
-// fact of the value, and canonical dense contiguity. It never invents facts
-// Sema has not resolved.
-//
-// Rules:
-//   - rules/tooling/lsp.md — "Shaped values"
-func shapedFactsHoverSuffix(typ sema.Type) string {
-	facts, ok := sema.ShapedFactsOf(typ)
-	if !ok {
-		return ""
-	}
-	if !facts.StaticShape {
-		return fmt.Sprintf("\n\nShaped `%s`: Rank `%s` · Shape known at run time from the viewed storage", facts.Family, facts.Rank)
-	}
-	return fmt.Sprintf("\n\nShaped `%s`: Rank `%s` · Shape `%s` (static) · Len `%s` · Strides `%s` · IsContiguous `true`",
-		facts.Family, facts.Rank, facts.Shape, facts.Len, facts.Strides)
 }
 
 // unitDerivationHoverSuffix presents the dimension derivation Sema resolved
@@ -4221,6 +4183,9 @@ func textPositionOffset(text string, line int, column int) int {
 
 func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	path := pathFromURI(uri)
+	if isProjectManifest(path) {
+		return projectVersionDiagnostics(uri, text)
+	}
 	l := lexer.NewWithFile(text, path)
 	p := parser.New(l)
 	parseResult := p.Parse()
@@ -4309,8 +4274,14 @@ func prepareProgramForLSP(program *ast.Program, sourceFile string, overlay sourc
 	}
 	target := lspActiveTarget(program, sourceFile, overlay)
 	lspserver.AssembleModuleForTarget(program, sourceFile, overlay.Sources, target)
+	rootErrors := lspProjectRootModuleErrors(program, sourceFile, overlay)
+	for _, issue := range rootErrors {
+		if issue.ID == diagnostics.ProjectSourceLayout {
+			return rootErrors
+		}
+	}
 	resolveCoreSources(program, sourceFile, overlay)
-	return resolveSourceImportsForTarget(program, map[string]bool{}, sourceFile, target, overlay)
+	return append(rootErrors, resolveSourceImportsForTarget(program, map[string]bool{}, sourceFile, target, overlay)...)
 }
 
 func diagnosticBelongsToSource(err sema.Error, sourceFile string) bool {

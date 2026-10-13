@@ -785,7 +785,7 @@ fn Send(message: T, lifetime: duration) ChannelSendResult[T]
 
 § 28(6) The runtime converts the relative duration to an absolute monotonic expiration deadline.
 
-§ 28(7) Compatible time-unit expressions may materialize as `duration` through the canonical temporal/unit conversion rules.
+§ 28(7) Compatible time-unit expressions may materialize as `duration` through the canonical conversion of `rules/types/temporal.md` § 5 (MD-015).
 
 § 28(8) Sec 0.1 defines no `SendTimed` spelling.
 

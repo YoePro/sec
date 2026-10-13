@@ -124,17 +124,21 @@ type PitfallSubject struct {
 type PitfallFinding struct {
 	Rule PitfallRuleID
 	// DiagnosticID identifies the coalesced mandatory owner, independently of analysis rule identity.
-	DiagnosticID    string
-	Family          PitfallFamily
-	Classification  PitfallClassification
-	Confidence      PitfallConfidence
-	Subject         PitfallSubject
-	EvidenceFor     []PitfallEvidence
-	EvidenceAgainst []PitfallEvidence
-	Suppression     *PitfallSuppression
-	OwningRule      string
-	Actions         []PitfallSuggestedAction
-	State           PitfallAnalysisState
+	DiagnosticID string
+	// DiagnosticSource identifies the primary occurrence exactly, even when
+	// the finding is presented at an outer expression instead of its cause.
+	// Rules: rules/analysis/pitfall_analysis.md — Diagnostic ownership and coalescing.
+	DiagnosticSource lexer.Token
+	Family           PitfallFamily
+	Classification   PitfallClassification
+	Confidence       PitfallConfidence
+	Subject          PitfallSubject
+	EvidenceFor      []PitfallEvidence
+	EvidenceAgainst  []PitfallEvidence
+	Suppression      *PitfallSuppression
+	OwningRule       string
+	Actions          []PitfallSuggestedAction
+	State            PitfallAnalysisState
 }
 
 type PitfallRuleDefinition struct {
@@ -192,7 +196,7 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 	},
 	{
 		ID: PitfallFinalElementNeedsNonEmpty, Family: PitfallBoundsAndRanges,
-		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "constant-values", "control-flow", "bounds"},
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "constant-values", "control-flow", "bounds", "expression-types", "operation-contracts"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
 	},
 	{
@@ -494,74 +498,6 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 	case *ast.MatchStatement:
 		b.walkMatch(statement.Match)
 	}
-}
-
-// walkBlock preserves owning reachability for bounds proofs while retaining
-// contextual guard and intent witnesses for optional pitfall findings.
-// Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Evidence model",
-// "Guards participate in pitfall reasoning".
-func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
-	if block == nil {
-		return
-	}
-	if b.boundsOnly {
-		for _, statement := range block.Statements {
-			b.walkStatement(statement)
-			if !b.analyzer.statementCanFallThrough(statement) {
-				break
-			}
-		}
-		return
-	}
-	b.inspectIneffectiveRejectionGuards(block)
-	b.inspectCheckWithoutTransfer(block)
-	inheritedProofs := b.activeNonEmptyProofs
-	inheritedPreceding := b.activePreceding
-	inheritedGuards := b.activeIndexGuards
-	for index, statement := range block.Statements {
-		b.activeNonEmptyProofs = nil
-		// The proof that holds on entry to this statement: inherited by the
-		// block's first statement, or established by a directly preceding
-		// empty-collection exit guard.
-		var entryProofs map[string]lexer.Token
-		if index == 0 {
-			entryProofs = clonePitfallNonEmptyProofs(inheritedProofs)
-		} else if collection, proof, ok := b.emptyCollectionExitGuard(block.Statements[index-1]); ok {
-			entryProofs = map[string]lexer.Token{collection: proof}
-		}
-		if pitfallStraightLineStatement(statement) {
-			b.activeNonEmptyProofs = entryProofs
-		}
-		if loop, ok := statement.(*ast.ForStatement); ok {
-			b.inspectSkippedFirstElement(loop, block.Statements[:index])
-			b.inspectCapacityAsLength(loop, block.Statements[:index])
-			b.inspectWrongBoundSource(loop, block.Statements[:index])
-			b.inspectLengthEndpointIntent(loop, block.Statements, index, entryProofs)
-		}
-		b.activePreceding = block.Statements[:index]
-		b.walkStatement(statement)
-		b.activeIndexGuards = b.survivingIndexGuards(b.activeIndexGuards, statement)
-		b.activeIndexGuards = append(b.activeIndexGuards, b.continuationIndexGuards(statement)...)
-		if !b.analyzer.statementCanFallThrough(statement) {
-			break
-		}
-	}
-	b.activeIndexGuards = inheritedGuards
-	b.activeNonEmptyProofs = inheritedProofs
-	b.activePreceding = inheritedPreceding
-}
-
-// clonePitfallNonEmptyProofs keeps branch-local proof state isolated across
-// recursive block traversal.
-func clonePitfallNonEmptyProofs(proofs map[string]lexer.Token) map[string]lexer.Token {
-	if len(proofs) == 0 {
-		return nil
-	}
-	result := make(map[string]lexer.Token, len(proofs))
-	for collection, token := range proofs {
-		result[collection] = token
-	}
-	return result
 }
 
 func (b *pitfallBuilder) walkSwitchCase(item *ast.SwitchCase) {

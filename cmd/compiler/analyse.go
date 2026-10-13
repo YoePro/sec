@@ -105,6 +105,7 @@ func analyseSelectedFiles(program *ast.Program) map[string]bool {
 
 type analyseReport struct {
 	target   CompilerTarget
+	depth    sema.AnalysisDepth
 	sections []analyseSection
 	counts   map[analyseReportClass]int
 }
@@ -131,10 +132,10 @@ func (s *analyseSection) add(format string, args ...any) {
 //   - rules/compiler/compiler.md — § 56(4) one shared fact model
 //   - rules/compiler/compiler_analysis.md — § 61(2) report contents; § 61(3) report classes
 func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, target CompilerTarget) analyseReport {
-	report := analyseReport{target: target, counts: map[analyseReportClass]int{}}
+	report := analyseReport{target: target, depth: analyzer.AnalysisDepth(), counts: map[analyseReportClass]int{}}
 	for _, warning := range analyzer.Warnings() {
 		if selected[warning.File] {
-			report.counts[analyseClassWarning]++
+			report.counts[analyseDiagnosticClass(warning)]++
 		}
 	}
 	inSelection := func(token lexer.Token) bool { return selected[token.File] }
@@ -382,8 +383,15 @@ func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection 
 	}
 }
 
+// write renders the recorded snapshot metadata and findings without assigning
+// a synthetic analysis depth to a report assembled without snapshot metadata.
+// Rules: rules/compiler/compiler_analysis.md — §61(2–3), §62(1–3).
 func (r analyseReport) write(out io.Writer) {
-	fmt.Fprintf(out, "analysis report (depth %s, target %s)\n", sema.AnalysisDeep, r.target.String())
+	depth := string(r.depth)
+	if depth == "" {
+		depth = "unavailable"
+	}
+	fmt.Fprintf(out, "analysis report (depth %s, target %s)\n", depth, r.target.String())
 	for _, section := range r.sections {
 		fmt.Fprintf(out, "\n%s:\n", section.title)
 		if len(section.lines) == 0 {

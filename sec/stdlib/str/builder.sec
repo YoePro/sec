@@ -69,11 +69,9 @@ impl Builder {
      * May allocate through the active allocation context when
      * initialCapacity is greater than zero.
      */
-    init(initialCapacity: uint) {
-        // stdlib_str.md § 8.3 (MD-058): the hint never fails construction.
-        try storage.Reserve(initialCapacity) {
-            Err(_) => {}
-        }
+    init(initialCapacity: uint) CollectionError {
+        // stdlib_str.md § 8.3 (MD-058): "the hint never fails construction." TODO: Change stdlib_str.md to reflect that is is fallible
+        try storage.Reserve(initialCapacity)
     }
 
     /**
@@ -123,22 +121,28 @@ impl Builder {
     }
 
     /**
-     * Guarantees room for at least additionalBytes more UTF-8 bytes.
+     * Reserves capacity for additional UTF-8 bytes.
      *
      * Description:
-     * On success, at least additionalBytes further bytes can be appended
-     * beyond ByteCount without another storage growth. A request already
-     * satisfied by Capacity succeeds without allocating. On failure the
-     * content, ByteCount and Capacity are unchanged.
+     * Ensures that the builder can hold at least
+     * ByteCount + additionalBytes bytes without further growth.
+     *
+     * Existing content remains unchanged.
+     * A failed reservation preserves the builder's existing state.
      *
      * Parameters:
-     * - additionalBytes: Number of additional bytes to make room for.
+     * - additionalBytes: Additional byte capacity required
+     *     beyond the current byte count.
+     *
+     * Returns:
+     * Ok when the requested capacity is available.
      *
      * Errors:
-     * - CollectionError: Overflow, capacity limit or allocation failure.
+     * - CollectionError: The requested capacity could not
+     *     be reserved.
      *
      * Allocation:
-     * May allocate when the existing capacity is insufficient.
+     * May allocate when the current capacity is insufficient.
      */
     fn Reserve(additionalBytes: uint) Result[void, CollectionError] {
         return storage.Reserve(additionalBytes)

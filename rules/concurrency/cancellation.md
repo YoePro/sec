@@ -1039,7 +1039,7 @@ duration
 250<ms>
 ```
 
-may materialize as `duration` through the canonical temporal/unit conversion rules.
+may materialize as `duration` through the canonical conversion of `rules/types/temporal.md` § 5 (MD-015).
 
 § 43(4) Absolute Context deadlines use:
 

@@ -1,0 +1,5 @@
+module checkwidth
+
+fn Wide() uint {
+    return 4294967296
+}

@@ -100,14 +100,15 @@ impl Ipv4Address {
         ))
     }
 
-    fn ToString() string {
-        return byte(self.A).ToString(byte.ByteStringFormat.Decimal)
+    fn ToString() Result[string, StringError] {
+        let text := try byte(self.A).ToString(byte.ByteStringFormat.Decimal)
         + "."
         + byte(self.B).ToString(byte.ByteStringFormat.Decimal)
         + "."
         + byte(self.C).ToString(byte.ByteStringFormat.Decimal)
         + "."
         + byte(self.D).ToString(byte.ByteStringFormat.Decimal)
+        return Ok(text)
     }
 
     property Bytes: byte[4] {

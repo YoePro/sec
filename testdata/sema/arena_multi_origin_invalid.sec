@@ -1,0 +1,144 @@
+module main
+
+enum Branch { First, Second }
+
+fn ResetFirst(flag: bool) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    first.Reset()
+    discard holder
+    return Ok()
+}
+
+fn ResetSecond(flag: bool) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    second.Reset()
+    discard holder
+    return Ok()
+}
+
+fn SwitchSecond(flag: bool, count: int) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    switch count {
+        case 0: holder = try first.Alloc[byte](4u)
+        default: holder = try second.Alloc[byte](4u)
+    }
+    second.Reset()
+    discard holder
+    return Ok()
+}
+
+fn MatchSecond(choice: Branch) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    match choice {
+        Branch.First => { holder = try first.Alloc[byte](4u) }
+        Branch.Second => { holder = try second.Alloc[byte](4u) }
+    }
+    second.Reset()
+    discard holder
+    return Ok()
+}
+
+fn LoopSecond(flag: bool, count: int) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    while count > 0 {
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+        break
+    }
+    second.Reset()
+    discard holder
+    return Ok()
+}
+
+fn ReleaseSecond(flag: bool, count: int) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    second.Release()
+    discard holder
+    return Ok()
+}
+
+fn DeferredSecond(flag: bool, count: int) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    defer { discard holder[0] }
+    second.Reset()
+    return Ok()
+}
+
+fn DerivedViewSecond(flag: bool, count: int) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    let view := ref holder[..]
+    second.Reset()
+    discard view
+    return Ok()
+}
+
+fn NestedThird(flag: bool, count: int) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    let mut third: Arena := Arena {}
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    if count > 0 {
+        holder = try third.Alloc[byte](4u)
+    }
+    second.Reset()
+    discard holder
+    return Ok()
+}

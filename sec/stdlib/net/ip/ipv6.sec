@@ -193,7 +193,7 @@ impl Ipv6Address {
      * - RFC 4291 section 2.2.
      * - RFC 5952 section 4.
      */
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         let segments: uint16[8] := [
             uint16(self.Segment0),
             uint16(self.Segment1),
@@ -236,21 +236,21 @@ impl Ipv6Address {
 
         while index < 8 {
             if index == bestStart {
-                result += "::"
+                result = try result + "::"
                 index += bestLength
                 continue
             }
 
             if !result.IsEmpty &&
             !result.EndsWith(":") {
-                result += ":"
+                result = try result + ":"
             }
 
-            result += _Ipv6SegmentToString(segments[index])
+            result = try result + _Ipv6SegmentToString(segments[index])
             index += 1
         }
 
-        return result
+        return Ok(result)
     }
 
     /**
@@ -438,9 +438,9 @@ impl Ipv6Address {
      * Standards:
      * - RFC 5952 sections 4.1 and 4.3.
      */
-    fn _Ipv6SegmentToString(value: uint16) string {
+    fn _Ipv6SegmentToString(value: uint16) Result[string, StringError] {
         if value == 0 {
-            return "0"
+            return Ok("0")
         }
 
         let digits: byte[4] := [
@@ -458,11 +458,11 @@ impl Ipv6Address {
                 continue
             }
 
-            result += digit.ToString(byte.ByteStringFormat.Hexadecimal)
+            result = try result + digit.ToString(byte.ByteStringFormat.Hexadecimal)
             started = true
         }
 
-        return result
+        return Ok(result)
     }
 
     /**

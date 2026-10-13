@@ -16,7 +16,7 @@ import (
 // with a non-time dimension must never become a hidden timeout overload.
 // Rules: rules/concurrency/mutex.md — §12(2)-(6);
 // rules/types/temporal.md — §1 (nominal temporal identities);
-// rules/types/units.md — Dimensions; MD-015 (conversion remains undecided).
+// rules/types/units.md — Dimensions; rules/types/temporal.md — § 5 (MD-015): a runtime quantity of an unbounded carrier is never proved, so it stays rejected.
 func TestDurationCallBoundariesHaveNoUnitSpellingShortcut(t *testing.T) {
 	template := fixture(t, "duration_call_boundary.sec.in")
 	for _, symbol := range []string{"s", "ms", "us", "ns", "beat", "arbitraryTick"} {

@@ -147,10 +147,8 @@ func analyzeNavigationSource(uri string, text string, overlays ...sourceOverlay)
 	if program == nil {
 		return nil
 	}
-	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	defer release()
 	return analyzer
 }
 

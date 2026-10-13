@@ -131,19 +131,21 @@ func (a *Analyzer) GeneratedIdentities() []GeneratedIdentity {
 // check is separate from proving Reset/Release operation-point legality.
 // Rules: rules/memory/reference_model.md — §30(2–6); rules/memory/arena.md — §§38(1–4), 44(1).
 func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bool {
-	if !typeCarriesReferenceOrigin(symbol.Type) || symbol.Type.ReferenceOriginStorage != StorageOriginArena || symbol.Type.ReferenceOriginName == "" {
+	if !typeCarriesReferenceOrigin(symbol.Type) {
 		return false
 	}
-	current := a.arenaGenerations[symbol.Type.ReferenceOriginName]
-	if symbol.Type.ReferenceOriginGeneration == current {
-		return false
+	for _, origin := range referenceOriginAlternatives(symbol.Type) {
+		if origin.Storage != StorageOriginArena || origin.Name == "" || origin.Generation == a.arenaGenerations[origin.Name] {
+			continue
+		}
+		display := origin.DisplayName
+		if display == "" {
+			display = origin.Name
+		}
+		a.addErrorAtTokenWithPrevious(token, origin.Token, "cannot use %s after arena %s was reset", symbol.Name, display)
+		return true
 	}
-	display := symbol.Type.ReferenceOriginDisplayName
-	if display == "" {
-		display = symbol.Type.ReferenceOriginName
-	}
-	a.addErrorAtTokenWithPrevious(token, symbol.Type.ReferenceOriginToken, "cannot use %s after arena %s was reset", symbol.Name, display)
-	return true
+	return false
 }
 
 // checkArenaBackingBorrowRead rejects reads of backing still exclusively

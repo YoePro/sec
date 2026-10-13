@@ -514,9 +514,12 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", Kind: CompilerKnownProperty, Result: builtinType("int")})
 	}
 	if typ.Kind == StringType {
+		// Materializing a string can fail to allocate, and FromByteArray also
+		// validates the encoding, so both return Result[string, StringError]
+		// like the core declarations (sec/core/string.sec).
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: typ},
-			CompilerKnownMember{ID: "CKM-STRING-FROMRUNEARRAY", Name: "FromRuneArray", Kind: CompilerKnownAssociatedFunction, Result: typ},
+			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
+			CompilerKnownMember{ID: "CKM-STRING-FROMRUNEARRAY", Name: "FromRuneArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
 		)
 	}
 	if dynamicCollection(typ) && ((typ.Name == "list" || typ.Name == "set") && len(typ.TypeArgs) == 1 || typ.Name == "map" && len(typ.TypeArgs) == 2) {

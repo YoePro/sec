@@ -27,32 +27,48 @@ type Query string
 
 impl Query {
     /** Parses and validates one encoded RFC 3986 query component without `?`. */
-    static fn Parse(value: string) Result[Query, ParseError]
+    static fn Parse(value: string) Result[Query, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
 
     /** Percent-encodes decoded UTF-8 query text using the generic query context. */
-    static fn FromDecoded(value: string) Query
+    static fn FromDecoded(value: string) Query {
+        return Query("")
+    }
 
     /** Decodes generic query percent escapes as UTF-8. `+` remains `+`. */
-    fn Decode() Result[string, PercentError]
+    fn Decode() Result[string, PercentError] {
+        return Err(PercentError.InvalidEscape(0))
+    }
 
     /** Returns a query with canonical RFC 3986 percent spelling. */
-    fn Normalize() Query
+    fn Normalize() Query {
+        return Query("")
+    }
 }
 
 type Fragment string
 
 impl Fragment {
     /** Parses and validates one encoded RFC 3986 fragment without `#`. */
-    static fn Parse(value: string) Result[Fragment, ParseError]
+    static fn Parse(value: string) Result[Fragment, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
 
     /** Percent-encodes decoded UTF-8 fragment text. */
-    static fn FromDecoded(value: string) Fragment
+    static fn FromDecoded(value: string) Fragment {
+        return Fragment("")
+    }
 
     /** Decodes fragment percent escapes as UTF-8. */
-    fn Decode() Result[string, PercentError]
+    fn Decode() Result[string, PercentError] {
+        return Err(PercentError.InvalidEscape(0))
+    }
 
     /** Returns a fragment with canonical RFC 3986 percent spelling. */
-    fn Normalize() Fragment
+    fn Normalize() Fragment {
+        return Fragment("")
+    }
 }
 
 type QueryParameter struct {
@@ -60,8 +76,9 @@ type QueryParameter struct {
     Value: string,
 }
 
-impl QueryParams {
-    init(->items: QueryParameter[])
+impl QueryParameter {
+    init(->items: QueryParameter[]) {
+    }
 
     /**
      * Parses UTF-8 application/x-www-form-urlencoded query data.
@@ -79,16 +96,27 @@ impl QueryParams {
      * Standards:
      * - WHATWG URL Standard, application/x-www-form-urlencoded parser.
      */
-    static fn Parse(value: string) Result[QueryParams, QueryParamsError]
+    static fn Parse(value: string) Result[QueryParameter, QueryParamsError] {
+        return Err(QueryParamsError.InvalidEscape(0))
+    }
 
     /** Returns the number of parameter pairs, including duplicate names. */
-    property Count: usize { get }
+    property Count: uint {
+        get {
+            return 0
+        }
+    }
 
     /** Returns true when there are no parameter pairs. */
-    property IsEmpty: bool { get }
+    property IsEmpty: bool {
+        get {
+            return true
+        }
+    }
 
     /** Appends one decoded name/value pair without removing duplicates. */
-    fn Add(name: string, value: string) void
+    fn Add(name: string, value: string) void {
+    }
 
     /**
      * Replaces every pair with the given name by one pair.
@@ -97,22 +125,33 @@ impl QueryParams {
      * If the name already exists, the replacement occupies the position of the
      * first removed pair. If it does not exist, the new pair is appended.
      */
-    fn Set(name: string, value: string) void
+    fn Set(name: string, value: string) void {
+    }
 
     /** Returns the first value for `name`, or None when absent. */
-    fn Get(name: string) Option[string]
+    fn Get(name: string) Option[string] {
+        return None
+    }
 
     /** Returns all values for `name` in source order as a new owning array. */
-    fn GetAll(name: string) string[]
+    fn GetAll(name: string) string[] {
+        let mut result: string[]
+        return result
+    }
 
     /** Returns true when at least one pair has the given name. */
-    fn Has(name: string) bool
+    fn Has(name: string) bool {
+        return false
+    }
 
     /** Removes every pair with `name` and returns the number removed. */
-    fn Remove(name: string) usize
+    fn Remove(name: string) uint {
+        return 0
+    }
 
     /** Removes all pairs. */
-    fn Clear() void
+    fn Clear() void {
+    }
 
     /**
      * Encodes the ordered parameter list as UTF-8 application/x-www-form-urlencoded.
@@ -120,8 +159,13 @@ impl QueryParams {
      * Returns:
      * Newly allocated encoded data without a leading `?`.
      */
-    fn Encode() string
+    fn Encode() string {
+        return ""
+    }
 
     /** Returns a new owning array containing all pairs in order. */
-    fn ToArray() QueryParameter[]
+    fn ToArray() QueryParameter[] {
+        let mut result: QueryParameter[]
+        return result
+    }
 }

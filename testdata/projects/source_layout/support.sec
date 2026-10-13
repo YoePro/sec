@@ -1,0 +1,5 @@
+module main
+
+fn Count() int {
+    return 7
+}

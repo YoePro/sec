@@ -1,0 +1,5 @@
+module codec
+
+fn Value() int {
+    return 7
+}

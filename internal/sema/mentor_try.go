@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -49,6 +50,10 @@ func carrierTryHelp(actual Type, success Type, family string, expr ast.Expressio
 // Rules: rules/tooling/lsp.md — Unit actions; rules/types/units.md — LSP requirements;
 // rules/errors/error-handling.md — Simple try propagation.
 func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual Type, expr ast.Expression, format string, args ...any) {
+	if reason := a.durationConversionRejection(expected, actual, expr); reason != "" {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.DurationConversionInvalid, durationConversionHelp, "%s: %s", fmt.Sprintf(format, args...), reason)
+		return
+	}
 	if suggestions := a.unitConversionAlternatives(expected, actual, expr); len(suggestions) > 0 {
 		suggestion := suggestions[0]
 		a.unitConversionSuggestions = append(a.unitConversionSuggestions, suggestions...)

@@ -34,3 +34,30 @@ func TestBuildTargetKindComesFromTheManifest(t *testing.T) {
 		t.Errorf("file without a manifest kind = %s, want command", kind)
 	}
 }
+
+// Rules: rules/projects/projects.md — §§3.2–3.3,17,49(1–2).
+func TestBuildTargetKindUsesResolvedProject(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".sec", "sec.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile("../../testdata/projects/model/sec.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, fixture, 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path string
+		kind sema.ProgramTargetKind
+	}{
+		{"cmd/sec/main.sec", sema.ProgramTargetCommand},
+		{"compiler/library/library.sec", sema.ProgramTargetLibrary},
+	} {
+		if got := buildTargetKind(filepath.Join(root, filepath.FromSlash(tc.path))); got != tc.kind {
+			t.Fatal(tc.path, got, tc.kind)
+		}
+	}
+}

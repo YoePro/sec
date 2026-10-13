@@ -1,0 +1,67 @@
+module main
+
+fn UseBeforeReset(flag: bool) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    discard holder
+    first.Reset()
+    second.Reset()
+    return Ok()
+}
+
+fn RebindToLocal(flag: bool) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    holder = ref mut bytes[..]
+    first.Reset()
+    second.Reset()
+    discard holder
+    return Ok()
+}
+
+fn TerminatingSecond(flag: bool) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+        return Ok()
+    }
+    second.Reset()
+    discard holder
+    return Ok()
+}
+
+fn ResetThenFresh(flag: bool) Result[void, AllocationError] {
+    let mut first: Arena := Arena {}
+    let mut second: Arena := Arena {}
+    let mut bytes: byte[4] := [1, 2, 3, 4]
+    let mut holder: ref mut byte[] := ref mut bytes[..]
+    if flag {
+        holder = try first.Alloc[byte](4u)
+    } else {
+        holder = try second.Alloc[byte](4u)
+    }
+    first.Reset()
+    second.Reset()
+    holder = try second.Alloc[byte](4u)
+    discard holder
+    return Ok()
+}

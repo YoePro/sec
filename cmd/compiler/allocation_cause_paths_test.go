@@ -57,8 +57,8 @@ func TestAllocationCausePathsCLI(t *testing.T) {
 func TestAllocationCauseMissingSource(t *testing.T) {
 	occurrence := emittedOccurrence{}
 	e := sema.Error{AllocationCause: &sema.AllocationCausePath{Incomplete: true, Steps: []sema.AllocationCauseStep{{Kind: "operation", Source: lexer.Token{Line: 2, Column: 3}, Message: "unavailable operation source"}}}}
-	human := appendAllocationCausePath(&occurrence, e, "")
-	if len(occurrence.Related) != 0 || len(occurrence.Notes) != 1 || !strings.Contains(human, "allocation cause path is incomplete") {
+	human := appendDiagnosticCauseNotes(&occurrence, e.DiagnosticProvenance().Notes, "")
+	if len(occurrence.Related) != 0 || len(occurrence.Notes) != 2 || occurrence.Notes[1].Key != "allocation.cause.incomplete" || !strings.Contains(human, "allocation cause path is incomplete") {
 		t.Fatal(occurrence, human)
 	}
 }

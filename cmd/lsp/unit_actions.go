@@ -28,9 +28,8 @@ func unitConversionCodeActions(uri string, text string, reported []diagnostic, o
 		return nil
 	}
 	path := pathFromURI(uri)
-	prepareProgramForLSP(program, path, overlay)
-	analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
-	analyzer.Analyze(program)
+	program, analyzer, release := cachedLSPAnalysis(uri, text, program, overlay)
+	defer release()
 	actions := []codeAction{}
 	baseline := analyze(uri, text, overlay)
 	for _, suggestion := range analyzer.UnitConversionSuggestions() {

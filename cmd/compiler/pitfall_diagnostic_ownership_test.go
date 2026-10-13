@@ -15,7 +15,7 @@ import (
 // Rules: rules/analysis/pitfall_analysis.md — "Diagnostic ownership and coalescing".
 func TestPitfallDiagnosticOwnershipCLI(t *testing.T) {
 	file := "../../testdata/sema/pitfall_diagnostic_ownership_invalid.sec"
-	for _, command := range []string{"sema", "analyse"} {
+	for _, command := range []string{"sema", "check", "analyse"} {
 		_, output, code := runCLIForDiagnostics(t, command, file, "--diagnostic-format=json")
 		doc := decodeOccurrenceDocument(t, output)
 		if code != 3 || doc.Summary.Errors != 3 || len(doc.Occurrences) != 3 {
@@ -39,5 +39,19 @@ func TestPitfallDiagnosticOwnershipCLI(t *testing.T) {
 	report.write(&output)
 	if strings.Count(output.String(), "not a second diagnostic") != 3 || report.counts[analyseClassError] != 0 {
 		t.Fatal(output.String(), report.counts)
+	}
+}
+
+// TestAnalyseSuppressedPitfallIsEvidenceOnly preserves Deep-mode suppression
+// explanations without incrementing diagnostics or changing validity.
+// Rules: rules/analysis/pitfall_analysis.md — Diagnostic ownership and coalescing, sec analyse Deep output.
+func TestAnalyseSuppressedPitfallIsEvidenceOnly(t *testing.T) {
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/tooling/pitfall_suppressed.sec", "--diagnostic-format=json")
+	if code != 0 || !strings.Contains(stdout, "suppressed "+string(sema.PitfallFinalElementNeedsNonEmpty)) {
+		t.Fatal(code, stdout, stderr)
+	}
+	doc := decodeOccurrenceDocument(t, stderr)
+	if len(doc.Occurrences) != 0 || doc.Summary.Errors != 0 || doc.Summary.Warnings != 0 {
+		t.Fatal(doc)
 	}
 }

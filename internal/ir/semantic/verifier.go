@@ -515,6 +515,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyNoPanicContradiction(fn, blocks); err != nil {
 		return err
 	}
+	if err := verifyUnionPayloadPlaces(fn, blocks, values, dom); err != nil {
+		return err
+	}
 	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
@@ -1484,6 +1487,77 @@ func verifyUnionGuards(fn *Function, blocks map[BlockID]*Block) error {
 	return nil
 }
 
+// verifyUnionPayloadPlaces enforces the active-variant proof of every
+// place.union-payload: its guard must be a union.is-variant predicate for the
+// same variant whose tested union value is the very value of the Place's
+// root (the SSA value of a value root, or a load of the storage of a storage
+// root), and the payload Place must be confined to that predicate's true
+// edge. This deliberately does not redo Sema analysis.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 19, 44, 71, 121
+func verifyUnionPayloadPlaces(fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, dom map[BlockID]map[BlockID]bool) error {
+	type test struct {
+		container  ValueID
+		variant    UnionVariantIndex
+		block      BlockID
+		trueBlock  BlockID
+		falseBlock BlockID
+	}
+	tests := map[ValueID]test{}
+	definitions := map[ValueID]Operation{}
+	graph := map[BlockID][]BlockID{}
+	for _, block := range fn.Blocks {
+		for index, op := range block.Operations {
+			for _, result := range op.Results {
+				definitions[result.ID] = op
+			}
+			for _, successor := range op.Successors {
+				graph[block.ID] = append(graph[block.ID], successor.Block)
+			}
+			if op.Kind != OpUnionIsVariant || len(op.Results) != 1 || len(op.Operands) != 1 || index+1 >= len(block.Operations) {
+				continue
+			}
+			branch := block.Operations[index+1]
+			if branch.Kind == OpCondBranch && len(branch.Successors) == 2 && len(branch.Operands) == 1 && branch.Operands[0] == op.Results[0].ID {
+				tests[op.Results[0].ID] = test{container: op.Operands[0], variant: op.UnionVariant, block: block.ID, trueBlock: branch.Successors[0].Block, falseBlock: branch.Successors[1].Block}
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if op.Kind != OpPlaceUnionPayload {
+				continue
+			}
+			guard, ok := tests[op.VariantGuard]
+			if !ok || guard.variant != op.UnionVariant {
+				return fmt.Errorf("place.union-payload in ^%d does not name a matching union.is-variant guard", block.ID)
+			}
+			if len(op.Operands) != 1 {
+				return fmt.Errorf("invalid place.union-payload")
+			}
+			root, rooted := definitions[op.Operands[0]]
+			sameUnion := false
+			switch {
+			case rooted && root.Kind == OpPlaceValueRoot && len(root.Operands) == 1:
+				sameUnion = root.Operands[0] == guard.container
+			case rooted && root.Kind == OpPlaceStorageRoot:
+				load, loaded := definitions[guard.container]
+				sameUnion = loaded && load.Kind == OpStorageLoad && load.Storage == root.Storage
+			}
+			if !sameUnion {
+				return fmt.Errorf("place.union-payload in ^%d is not a payload of the union its guard tested", block.ID)
+			}
+			// A loop may lead the false edge back to the test itself, which
+			// re-establishes the proof, so only paths avoiding the test count.
+			if !dom[block.ID][guard.trueBlock] || reachableAvoiding(graph, guard.falseBlock, block.ID, guard.block) {
+				return fmt.Errorf("place.union-payload in ^%d is not confined to its variant guard's true edge", block.ID)
+			}
+		}
+	}
+	return nil
+}
+
 // verifyArrayIndexGuards enforces the explicit P14 guard provenance contract.
 // A runtime extraction/replacement must name the predicate that guarded the
 // same array and index SSA values, and its block must be reachable only from
@@ -1592,6 +1666,26 @@ func validArrayBoundsFailureBlock(module *Module, block *Block, values map[Value
 	}
 	last := block.Operations[len(block.Operations)-1]
 	return len(block.Operations) == 3 && last.Kind == OpReturn && len(last.Operands) == 1 && last.Operands[0] == construct.Results[0].ID
+}
+
+// reachableAvoiding reports whether target is reachable from from without
+// passing through avoid.
+func reachableAvoiding(graph map[BlockID][]BlockID, from, target, avoid BlockID) bool {
+	work := []BlockID{from}
+	seen := map[BlockID]bool{avoid: true}
+	for len(work) != 0 {
+		block := work[len(work)-1]
+		work = work[:len(work)-1]
+		if block == target {
+			return true
+		}
+		if seen[block] {
+			continue
+		}
+		seen[block] = true
+		work = append(work, graph[block]...)
+	}
+	return false
 }
 
 func reachableBlock(graph map[BlockID][]BlockID, from, target BlockID) bool {

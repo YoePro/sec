@@ -66,7 +66,7 @@ impl Scheme {
         while index < value.SizeOf {
             let current := value.CharAt(index)
 
-            if !current.IsLetterOrDigit && current not in ['+', '-', '.'] {
+            if !current.IsLetterOrDigit && current not in [char('+'), char('-'), char('.')] {
                 return Err(ParseError.InvalidScheme(index))
             }
 
@@ -101,7 +101,7 @@ impl Scheme {
             let current := char(self.ByteAt(index))
 
             if !current.IsLetterOrDigit &&
-            current not in ['+', '-', '.'] {
+            current not in [char('+'), char('-'), char('.')] {
                 return false
             }
 

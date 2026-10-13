@@ -66,10 +66,10 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		left = p.parseIdentifierExpression()
 
 	case lexer.INT:
-		left = p.parseIntegerLiteral()
+		left = p.parseQuantitySuffix(p.parseIntegerLiteral())
 
 	case lexer.FLOAT:
-		left = p.parseFloatLiteral()
+		left = p.parseQuantitySuffix(p.parseFloatLiteral())
 
 	case lexer.STRING:
 		left = p.parseStringLiteral()
@@ -1762,6 +1762,71 @@ func (p *Parser) parseFloatLiteral() ast.Expression {
 		Token: p.curToken,
 		Value: value,
 	}
+}
+
+// parseQuantitySuffix attaches a unit annotation written immediately after a
+// numeric literal, as in `5<s>`. The `<` must touch the literal and the
+// annotation must be one complete unit expression closed by `>` on the same
+// line; otherwise nothing is consumed and `<` stays an ordinary comparison
+// (`5 < s`, `5<count && ...`).
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Quantity literals"
+//   - rules/types/units.md — "Quantity literals"
+func (p *Parser) parseQuantitySuffix(literal ast.Expression) ast.Expression {
+	if literal == nil || p.peekToken.Type != lexer.LT {
+		return literal
+	}
+	endLine, endColumn := p.curToken.EndPosition()
+	if p.peekToken.Line != endLine || p.peekToken.Column != endColumn {
+		return literal
+	}
+	curToken, peekToken := p.curToken, p.peekToken
+	lexerState := p.l.Snapshot()
+	restore := func() ast.Expression {
+		p.curToken, p.peekToken = curToken, peekToken
+		p.l.Restore(lexerState)
+		return literal
+	}
+	p.nextToken()
+	open := p.curToken
+	var tokens []lexer.Token
+	unit := ""
+	for {
+		p.nextToken()
+		if p.curToken.Line != open.Line {
+			return restore()
+		}
+		if p.curToken.Type == lexer.GT {
+			break
+		}
+		switch p.curToken.Type {
+		case lexer.IDENT, lexer.INT, lexer.ASTERISK, lexer.SLASH, lexer.BIT_XOR, lexer.PLUS, lexer.MINUS, lexer.LPAREN, lexer.RPAREN:
+		default:
+			return restore()
+		}
+		unit += p.curToken.Lexeme
+		tokens = append(tokens, p.curToken)
+	}
+	expression, err := parseUnitExpressionTokens(tokens)
+	if err != nil {
+		return restore()
+	}
+	expression.Source = unit
+	return &ast.QuantityLiteral{
+		Token: expressionTokenOf(literal), Value: literal, UnitToken: open,
+		Unit: unit, UnitExpression: expression, EndToken: p.curToken,
+	}
+}
+
+func expressionTokenOf(literal ast.Expression) lexer.Token {
+	switch literal := literal.(type) {
+	case *ast.IntegerLiteral:
+		return literal.Token
+	case *ast.FloatLiteral:
+		return literal.Token
+	}
+	return lexer.Token{}
 }
 
 func (p *Parser) parseStringLiteral() ast.Expression {

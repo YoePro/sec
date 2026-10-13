@@ -158,41 +158,8 @@ impl Mt {
 // Scaled Time Units (s)
 // =============================================================================
 
-/** Millisecond */
-unit ms physical
-impl ms {
-    LongName: "Millisecond"
-    Symbol: "ms"
-    BaseUnit: false
-    Status: active
-    Dimension: [time^1]
-    Scale: 1 / 1000
-    System: SI
-}
-
-/** Microsecond */
-unit us physical
-impl us {
-    LongName: "Microsecond"
-    Symbol: "us"
-    BaseUnit: false
-    Status: active
-    Dimension: [time^1]
-    Scale: 1 / 1000000
-    System: SI
-}
-
-/** Nanosecond */
-unit ns physical
-impl ns {
-    LongName: "Nanosecond"
-    Symbol: "ns"
-    BaseUnit: false
-    Status: active
-    Dimension: [time^1]
-    Scale: 1 / 1000000000
-    System: SI
-}
+// ms, us and ns are declared once in core (core/baseunits.sec) together
+// with s; see types/temporal.md "Core time units".
 
 /** Picosecond */
 unit ps physical

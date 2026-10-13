@@ -95,8 +95,8 @@ impl Reference {
     }
 
     /** Serializes the reference according to RFC 3986 component recomposition. */
-    fn ToString() string {
-        return ""
+    fn ToString() Result[string, StringError] {
+        return Ok("")
     }
 
     /** Serializes the reference while redacting any authority userinfo. */
@@ -115,13 +115,22 @@ impl Reference {
     }
 
     /** Returns a syntactically normalized reference. */
-    fn Normalize() Reference
+    fn Normalize() Result[Reference, BuildError] {
+        let rv := try new Reference(None, None, new Path(), None, None)
+        return Ok(rv)
+    }
 
     /** Returns a copy with the supplied fragment. */
-    fn WithFragment(fragment: Option[Fragment]) Reference
+    fn WithFragment(fragment: Option[Fragment]) Result[Reference, BuildError] {
+        let rv := try new Reference(None, None, new Path(), None, None)
+        return Ok(rv)
+    }
 
     /** Returns a copy with no fragment delimiter. */
-    fn WithoutFragment() Reference
+    fn WithoutFragment() Result[Reference, BuildError] {
+        let rv := try new Reference(None, None, new Path(), None, None)
+        return Ok(rv)
+    }
 }
 
 /**

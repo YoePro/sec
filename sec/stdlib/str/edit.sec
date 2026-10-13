@@ -98,7 +98,9 @@ fn Insert(value: string, byteIndex: uint, insertion: string) Result[string, Edit
         }
     }
 
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf) {
+        Err(error) => return Err(EditError.Allocation(error))
+    }
 
     try builder.Append(prefix) {
         Err(error) => {
@@ -172,7 +174,9 @@ fn Insert(value: string, byteIndex: uint, insertion: rune) Result[string, EditEr
         }
     }
 
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf) {
+        Err(error) => return Err(EditError.Allocation(error))
+    }
 
     try builder.Append(prefix) {
         Err(error) => {
@@ -258,7 +262,9 @@ fn RemoveRange(value: string, startByte: uint, endByte: uint) Result[string, Edi
         }
     }
 
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf) {
+        Err(error) => return Err(EditError.Allocation(error))
+    }
 
     try builder.Append(prefix) {
         Err(error) => {
@@ -341,7 +347,9 @@ fn ReplaceRange(value: string, startByte: uint, endByte: uint, replacement: stri
         }
     }
 
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf) {
+        Err(error) => return Err(EditError.Allocation(error))
+    }
 
     try builder.Append(prefix) {
         Err(error) => {

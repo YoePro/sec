@@ -1,0 +1,5 @@
+module wrong
+
+fn Value() int {
+    return 7
+}

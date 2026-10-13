@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -39,6 +40,14 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 	groups := map[string][]document{}
 	for _, snapshot := range snapshots {
 		path := pathFromURI(snapshot.URI)
+		if isProjectManifest(path) {
+			results[snapshot.URI] = projectVersionDiagnostics(snapshot.URI, snapshot.Text)
+			if dependencies != nil {
+				dependencies[snapshot.URI] = map[string]bool{normalizedSourcePath(path): true}
+			}
+			continue
+		}
+		collectProjectVersionDiagnostics(path, overlay, results)
 		parsed := parser.New(lexer.NewWithFile(snapshot.Text, path)).Parse()
 		results[snapshot.URI] = []diagnostic{}
 		for _, value := range parsed.Diagnostics {
@@ -73,6 +82,9 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 			for _, doc := range docs {
 				if len(importErrors) == 0 {
 					dependencies[doc.snapshot.URI] = diagnosticSourceDependencies(first.program, pathFromURI(doc.snapshot.URI))
+					if manifest, _, found := lspProjectManifest(pathFromURI(doc.snapshot.URI), overlay); found {
+						dependencies[doc.snapshot.URI][normalizedSourcePath(manifest)] = true
+					}
 				} else {
 					dependencies[doc.snapshot.URI] = nil // unresolved source closure requires conservative refresh
 				}
@@ -181,6 +193,41 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 		}); err != nil {
 			return err
 		}
+		if isProjectManifest(pathFromURI(snapshot.URI)) {
+			if s.publishedProjectManifests == nil {
+				s.publishedProjectManifests = map[string]bool{}
+			}
+			s.publishedProjectManifests[snapshot.URI] = len(published) > 0
+		}
+	}
+	if s.publishedProjectManifests == nil {
+		s.publishedProjectManifests = map[string]bool{}
+	}
+	// Deleted manifests no longer have a source snapshot to diagnose. Clear
+	// their retained errors; an unsaved overlay still wins over disk deletion.
+	for uri, published := range s.publishedProjectManifests {
+		if _, current := results[uri]; published && !current {
+			if _, err := lspserver.ReadSource(pathFromURI(uri), overlay.Sources); os.IsNotExist(err) {
+				results[uri] = []diagnostic{}
+			}
+		}
+	}
+	selectedURIs := map[string]bool{}
+	for _, snapshot := range selected {
+		selectedURIs[snapshot.URI] = true
+	}
+	manifestURIs := []string{}
+	for uri, items := range results {
+		if !selectedURIs[uri] && isProjectManifest(pathFromURI(uri)) && (len(items) > 0 || s.publishedProjectManifests[uri]) {
+			manifestURIs = append(manifestURIs, uri)
+		}
+	}
+	sort.Strings(manifestURIs)
+	for _, uri := range manifestURIs {
+		if err := s.notify("textDocument/publishDiagnostics", map[string]any{"uri": uri, "diagnostics": results[uri]}); err != nil {
+			return err
+		}
+		s.publishedProjectManifests[uri] = len(results[uri]) > 0
 	}
 	return nil
 }

@@ -35,7 +35,8 @@ func (r *diagnosticReporter) semaDiagnostic(diagnostic sema.Error, human string,
 			End:   occurrencePosition{Line: endLine, Column: endColumn},
 		}}
 	}
-	for _, location := range diagnostic.RelatedLocations() {
+	provenance := diagnostic.DiagnosticProvenance()
+	for _, location := range provenance.Related {
 		start := occurrencePosition{Line: location.Line, Column: location.Column}
 		end := start
 		if location.EndLine > 0 && location.EndColumn > 0 {
@@ -47,7 +48,6 @@ func (r *diagnosticReporter) semaDiagnostic(diagnostic sema.Error, human string,
 	}
 
 	occurrence.addHelp(diagnostic.Help)
-	human = appendEscapeCausePaths(&occurrence, diagnostic, human)
-	human = appendAllocationCausePath(&occurrence, diagnostic, human)
+	human = appendDiagnosticCauseNotes(&occurrence, provenance.Notes, human)
 	r.record(occurrence, human)
 }

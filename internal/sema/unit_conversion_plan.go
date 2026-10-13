@@ -231,6 +231,9 @@ func (a *Analyzer) canInitialize(target, value Type, expr ast.Expression) bool {
 	if accepted, handled := a.shapeForeignCharacterLiteral(expr, target); handled {
 		return accepted
 	}
+	if a.contextualDurationConversion(target, value, expr, true) {
+		return true
+	}
 	if !a.canInitializeUnrecorded(target, value, expr) {
 		return false
 	}
@@ -240,6 +243,9 @@ func (a *Analyzer) canInitialize(target, value Type, expr ast.Expression) bool {
 
 func (a *Analyzer) canInitializeUnrecorded(target, value Type, expr ast.Expression) bool {
 	if canInitialize(target, value, expr) {
+		return true
+	}
+	if a.contextualDurationConversion(target, value, expr, false) {
 		return true
 	}
 	_, ok := a.implicitUnitConversionPlan(target, value, expr)

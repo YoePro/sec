@@ -97,6 +97,7 @@ const (
 // runTestCommand discovers, compiles, selects and reports source tests.
 //
 // Rules:
+//   - rules/projects/projects.md — §§8–11,48(1–3) manifest version prerequisites
 //   - rules/tooling/testing.md — §4 "Test source files", §26 "TestCompilationPlan"
 //   - rules/tooling/testing.md — §27 "Test discovery", §28 "sec test", §29 "Runner behavior"
 //   - rules/tooling/testing.md — §30 "Exit status and aggregate result", §31 "Test result reporting"
@@ -110,6 +111,17 @@ func runTestCommand(args []string, out io.Writer) int {
 	if err != nil {
 		reportToolError("test", "%v", err)
 		return 1
+	}
+	versionSources := append([]string(nil), command.inputs...)
+	if len(versionSources) == 0 {
+		versionSources = append(versionSources, ".")
+	}
+	for _, group := range groups {
+		versionSources = append(versionSources, group.dir)
+	}
+	if versions := validateDiscoveredProjectVersions(versionSources); versions.Errors > 0 {
+		printDiagnosticSummary(versions)
+		return testExitCompilationFailure
 	}
 	report := testRunReport{}
 	if command.run != nil {
@@ -292,14 +304,26 @@ func compileTestGroup(group testSourceGroup, command testCommand, report *testRu
 	for _, file := range group.files {
 		selected[sameSourceFileKey(file)] = true
 	}
+	pattern := ""
+	if command.run != nil {
+		pattern = command.run.String()
+	}
+	resolved, err := analyzer.SelectTests(pattern)
+	if err != nil {
+		reportToolError("test selection", "%v", err)
+		result.Compiled = false
+		return result
+	}
 	for _, metadata := range analyzer.ResolvedTests() {
+		if selected[sameSourceFileKey(metadata.Source.File)] {
+			report.FilteredOut++
+		}
+	}
+	for _, metadata := range resolved {
 		if !selected[sameSourceFileKey(metadata.Source.File)] {
 			continue
 		}
-		if command.run != nil && !command.run.MatchString(metadata.Name) {
-			report.FilteredOut++
-			continue
-		}
+		report.FilteredOut--
 		status, message := testExecutionUnavailable, executionUnavailableReason
 		if command.list {
 			status, message = testListed, ""

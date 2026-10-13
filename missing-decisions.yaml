@@ -39,35 +39,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-015
-    area: types-units-and-temporal
-    rulebooks:
-      - rules/types/units.md
-      - rules/types/temporal.md
-      - rules/foundations/grammar.md
-      - rules/concurrency/mutex.md
-      - rules/concurrency/channels.md
-      - rules/concurrency/select.md
-      - rules/concurrency/cancellation.md
-    description: >-
-      mutex.md § 12, channels.md § 28(7), select.md § 30(3) and
-      cancellation.md let a time-unit expression such as `5<s>` or
-      `250<ms>` materialize as `duration` "through the canonical
-      temporal/unit conversion rules", but units.md and grammar.md define only
-      unit-annotated types (`decimal<s>`, `<m>`) and no `5<s>` quantity
-      literal, and neither units.md nor temporal.md defines a conversion from a
-      time-dimension quantity to `duration` (scale resolution, carrier,
-      rounding to nanoseconds, overflow, negative values). Decide the
-      quantity-literal syntax and the conversion contract before
-      the time-quantity conversion in frontend.temporal-duration can be implemented.
-      The separate no-hard-coded-unit-spellings audit completed on 2026-10-08:
-      call boundaries retain nominal duration checks for familiar and arbitrary
-      unit names, dimensions and scales, and the represented legacy mutex calls
-      do not invent unit-specific timeout overloads. This removes no conversion
-      requirement and does not implement the canonical timeout overload surface.
-    classification: blocking
-    status: open
-
   - id: MD-016
     area: compiler-known-declarations
     rulebooks:
@@ -528,6 +499,9 @@ decisions:
       decimal carriers and, by compiler-proven value ranges, for bounded
       integer carriers; inexact conversions are rejected and the help offers
       only the explicit unit conversion, never an invented rounding policy.
+      MD-015 (2026-10-13) declared the RoundingMode enum once in core
+      (core-library.md § 10.3) and defined its use for duration(q, mode);
+      this decision must reuse that enum for general unit conversions.
     classification: localized
     status: open
 

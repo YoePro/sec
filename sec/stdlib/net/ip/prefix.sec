@@ -44,8 +44,9 @@ impl Ipv4Network {
         return false
     }
 
-    fn ToString() string {
-        return "" + self.Address.ToString() + "/" + self.PrefixLength.ToString()
+    fn ToString() Result[string, StringError] {
+        let text := try self.Address.ToString() + "/" + self.PrefixLength.ToString()
+        return Ok(text)
     }
 }
 
@@ -73,8 +74,9 @@ impl Ipv6Network {
     fn Contains(address: Ipv6Address) bool {
         return false
     }
-    fn ToString() string {
-        return "" + self.Address.ToString() + "/" + self.PrefixLength.ToString()
+    fn ToString() Result[string, StringError] {
+        let text := try self.Address.ToString() + "/" + self.PrefixLength.ToString()
+        return Ok(text)
     }
 }
 
@@ -107,12 +109,12 @@ impl Network {
             }
         }
     }
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         match self {
-            V4(v4) => {
+            V4(ref v4) => {
                 return v4.ToString()
             }
-            V6(v6) => {
+            V6(ref v6) => {
                 return v6.ToString()
             }
         }

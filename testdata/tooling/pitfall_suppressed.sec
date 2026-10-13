@@ -1,0 +1,8 @@
+module pitfall_suppressed
+
+fn Last(values: ref int[]) int {
+    if values.IsEmpty {
+        return 0
+    }
+    return values[values.Len - 1]
+}

@@ -21,6 +21,10 @@ module url
  * stdlib/net/url/std-net-url.md
  */
 
+import (
+    "str"
+)
+
 /*
  * Representation rationale: the package supports a closed set of RFC 3986 generic component encoding contexts.
  * Each context has a defined allowed-character set; arbitrary user-defined contexts belong in application code.
@@ -81,7 +85,13 @@ fn PercentEncode(value: string, component: Component) Result[string, PercentErro
         index += 1
     }
 
-    return Ok(result.ToString())
+    let rv := try result.ToString() {
+        Err(_) => {
+            return Err(PercentError.Allocation(CollectionError.AllocationFailed))
+        }
+    }
+
+    return Ok(rv)
 }
 
 /**
@@ -120,15 +130,21 @@ fn PercentEncode(value: ref byte[], component: Component) Result[string, Percent
         }
 
         try result.Append(_UpperHexDigit((current >> 4) & 0x0F)) {
-            Err(error) => return Err(PercentError.Allocation(error))
+            Err(_) => return Err(PercentError.Allocation(CollectionError.AllocationFailed))
         }
 
         try result.Append(_UpperHexDigit(current & 0x0F)) {
-            Err(error) => return Err(PercentError.Allocation(error))
+            Err(_) => return Err(PercentError.Allocation(CollectionError.AllocationFailed))
         }
     }
 
-    return Ok(result.ToString())
+    let rv := try result.ToString() {
+        Err(_) => {
+            return Err(PercentError.Allocation(CollectionError.AllocationFailed))
+        }
+    }
+
+    return Ok(rv)
 }
 
 /**
@@ -157,16 +173,16 @@ fn PercentDecode(value: string) Result[string, PercentError] {
             return Err(PercentError.InvalidUtf8(index))
         }
 
-        Err(StringError.AllocationFailed) => {
+        Err(StringError.Allocation(_)) => {
             return Err(PercentError.Allocation)
         }
 
         Err(StringError.InvalidCodePoint) => {
-            unreachable
+            return Err(PercentError.InvalidUtf8(StringError.InvalidCodePoint))
         }
 
         Err(StringError.OutOfBounds) => {
-            unreachable
+            return Err(PercentError.InvalidUtf8(StringError.OutOfBounds))
         }
     }
 
@@ -307,17 +323,23 @@ fn NormalizePercentEncoding(value: string) Result[string, PercentError] {
         }
 
         try result.Append(_UpperHexDigit((decoded >> 4) & 0x0F)) {
-            Err(error) => return Err(PercentError.Allocation(error))
+            Err(_) => return Err(PercentError.Allocation(CollectionError.AllocationFailed))
         }
 
         try result.Append(_UpperHexDigit(decoded & 0x0F)) {
-            Err(error) => return Err(PercentError.Allocation(error))
+            Err(_) => return Err(PercentError.Allocation(CollectionError.AllocationFailed))
         }
 
         index += 3
     }
 
-    return Ok(result.ToString())
+    let rv := try string.FromByteArray(result) {
+        Err(_) => {
+            return Err(PercentError.Allocation(CollectionError.AllocationFailed))
+        }
+    }
+
+    return Ok(rv)
 }
 
 /**
@@ -326,19 +348,20 @@ fn NormalizePercentEncoding(value: string) Result[string, PercentError] {
  * Returns None when value is not an ASCII hexadecimal digit.
  */
 fn _HexDigitValue(value: byte) Option[byte] {
-    if value in byte('0')..byte('9') {
-        return Some(value - byte('0'))
+    // Early return for non-hexadecimal digits to avoid branching on every character.
+    if !char(value).IsHexDigit {
+        return None
     }
-
-    if value in byte('A')..byte('F') {
-        return Some(value - byte('A') + 10)
+    switch value {
+        case byte('0')..byte('9'):
+            return Some(value - byte('0'))
+        case byte('A')..byte('F'):
+            return Some(value - byte('A') + 10)
+        case byte('a')..byte('f'):
+            return Some(value - byte('a') + 10)
+        default:
+            return None
     }
-
-    if value in byte('a')..byte('f') {
-        return Some(value - byte('a') + 10)
-    }
-
-    return None
 }
 
 /**
@@ -373,8 +396,8 @@ fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
         return Err(PercentError.InvalidEscape(index))
     }
 
-    let high := _HexDigitValue((value.ByteAt(index + 1)))
-    let low := _HexDigitValue((value.ByteAt(index + 2)))
+    let high := _HexDigitValue(value.ByteAt(index + 1))
+    let low := _HexDigitValue(value.ByteAt(index + 2))
 
     match high {
         Some(highValue) => {

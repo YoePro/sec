@@ -69,7 +69,8 @@ var (
 // `[target.<name>.version]` table of a manifest, validates their fields, and
 // reports every error found. Other tables are skipped. It accepts the TOML
 // subset these tables use: decimal integers (with `_` digit separators),
-// basic and literal strings, and comments.
+// basic and literal strings, and comments. Other integer bases and multiline
+// strings fail with explicit capability messages rather than being reinterpreted.
 //
 // Rules:
 //   - rules/projects/projects.md — § 8(1)–(3), § 9(3), § 10, § 11, § 48 "Project validation"
@@ -85,8 +86,15 @@ func ParseManifestVersions(text string) (ManifestVersions, []ManifestError) {
 	target := ""
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	lineNumber := 0
+	unsupportedString := ""
 	for scanner.Scan() {
 		lineNumber++
+		if unsupportedString != "" {
+			if unsupportedMultilineClosed(scanner.Text(), unsupportedString) {
+				unsupportedString = ""
+			}
+			continue
+		}
 		line := strings.TrimSpace(stripComment(scanner.Text()))
 		if line == "" {
 			continue
@@ -116,6 +124,13 @@ func ParseManifestVersions(text string) (ManifestVersions, []ManifestError) {
 			continue
 		}
 		if section == "" {
+			// Unowned multiline values must not forge version tables during recovery.
+			if _, raw, found := strings.Cut(line, "="); found {
+				raw = strings.TrimSpace(raw)
+				if delimiter, _ := unsupportedVersionString(raw); delimiter != "" && !unsupportedMultilineClosed(strings.TrimPrefix(raw, delimiter), delimiter) {
+					unsupportedString = delimiter
+				}
+			}
 			continue
 		}
 		key, raw, found := strings.Cut(line, "=")
@@ -130,6 +145,13 @@ func ParseManifestVersions(text string) (ManifestVersions, []ManifestError) {
 				errors = append(errors, ManifestError{Line: lineNumber, Message: fmt.Sprintf("duplicate version field %s", key)})
 			}
 			project.fields[key] = true
+		}
+		if delimiter, message := unsupportedVersionString(raw); delimiter != "" {
+			errors = append(errors, ManifestError{Line: lineNumber, Message: fmt.Sprintf("version.%s: %s", key, message)})
+			if !unsupportedMultilineClosed(strings.TrimPrefix(raw, delimiter), delimiter) {
+				unsupportedString = delimiter
+			}
+			continue
 		}
 		override := result.TargetOverrides[target]
 		switch key {
@@ -268,8 +290,13 @@ func formatPlaceholderError(format string) (string, bool) {
 }
 
 // parseVersionNumber accepts a non-negative decimal TOML integer, with `_`
-// between digits, in 0..9223372036854775807 (§ 8(3)).
+// between digits, in 0..9223372036854775807. Unsupported bases are explicit
+// reader capability errors rather than malformed decimal integers.
+// Rules: rules/projects/projects.md — §8(3),§48(2).
 func parseVersionNumber(raw string) (uint64, error) {
+	if message := unsupportedVersionInteger(raw); message != "" {
+		return 0, fmt.Errorf("%s", message)
+	}
 	if raw == "" {
 		return 0, fmt.Errorf("expected a non-negative integer")
 	}

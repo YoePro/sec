@@ -10,7 +10,7 @@ impl Address {
         return Err(AddressError.InvalidFormat)
     }
 
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         match self {
             V4(ref v4) => {
                 return v4.ToString()

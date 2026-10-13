@@ -25,24 +25,42 @@ type Path string
 
 impl Path {
     /** Parses and validates one encoded RFC 3986 path component. */
-    static fn Parse(value: string) Result[Path, ParseError]
+    static fn Parse(value: string) Result[Path, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
 
     /**
      * Encodes decoded UTF-8 path text while retaining `/` as path separators.
      */
-    static fn FromDecoded(value: string) Path
+    static fn FromDecoded(value: string) Path {
+        return Path("")
+    }
 
     /** Returns true when the encoded path begins with `/`. */
-    property IsAbsolute: bool { get }
+    property IsAbsolute: bool {
+        get {
+            return false
+        }
+    }
 
     /** Returns true when the encoded path is empty. */
-    property IsEmpty: bool { get }
+    property IsEmpty: bool {
+        get {
+            return false
+        }
+    }
 
     /** Returns true when a non-empty path ends with `/`. */
-    property HasTrailingSlash: bool { get }
+    property HasTrailingSlash: bool {
+        get {
+            return false
+        }
+    }
 
     /** Decodes the complete path after preserving its already-parsed boundaries. */
-    fn Decode() Result[string, PercentError]
+    fn Decode() Result[string, PercentError] {
+        return Err(PercentError.InvalidEscape(0))
+    }
 
     /**
      * Returns decoded path segments in source order.
@@ -54,7 +72,9 @@ impl Path {
      * Returns:
      * A newly allocated owning array of decoded segment strings.
      */
-    fn Segments() Result[string[], PercentError]
+    fn Segments() Result[string[], PercentError] {
+        return Err(PercentError.InvalidEscape(0))
+    }
 
     /**
      * Applies the RFC 3986 remove_dot_segments algorithm.
@@ -63,7 +83,9 @@ impl Path {
      * A new Path with complete literal `.` and `..` segments removed according
      * to RFC 3986 section 5.2.4.
      */
-    fn RemoveDotSegments() Path
+    fn RemoveDotSegments() Path {
+        return Path("")
+    }
 
     /**
      * Normalizes percent escapes and removes dot segments.
@@ -71,7 +93,9 @@ impl Path {
      * Returns:
      * A new syntactically normalized Path.
      */
-    fn Normalize() Path
+    fn Normalize() Path {
+        return Path("")
+    }
 
     /**
      * Appends one decoded path segment.
@@ -82,5 +106,7 @@ impl Path {
      * Returns:
      * A new Path with exactly one additional segment.
      */
-    fn AppendSegment(segment: string) Path
+    fn AppendSegment(segment: string) Path {
+        return Path("")
+    }
 }

@@ -62,7 +62,7 @@ module str
  * locale-independent contextual casing rules.
  */
 fn ToLower(value: string) Result[string, CollectionError] {
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf)
 
     for character in value {
         try builder.Append(character.ToLower())

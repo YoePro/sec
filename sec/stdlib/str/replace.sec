@@ -59,7 +59,7 @@ module str
 fn ReplaceAll(value: string, search: string, replacement: string) Result[string, CollectionError] {
     // An empty search matches at rune boundaries.
     if search.SizeOf == 0 {
-        let mut builder := new Builder(value.SizeOf)
+        let mut builder := try new Builder(value.SizeOf)
 
         try builder.Append(replacement)
 
@@ -124,7 +124,7 @@ fn ReplaceN(value: string, search: string, replacement: string, count: uint) Res
 
     // Empty search matches at rune boundaries.
     if search.SizeOf == 0 {
-        let mut builder := new Builder(value.SizeOf)
+        let mut builder := try new Builder(value.SizeOf)
         let mut replaced: uint := 0
 
         try builder.Append(replacement)
@@ -147,7 +147,7 @@ fn ReplaceN(value: string, search: string, replacement: string, count: uint) Res
         return Ok(value)
     }
 
-    let mut builder := new Builder(value.SizeOf)
+    let mut builder := try new Builder(value.SizeOf)
     let mut position: uint := 0
     let mut replaced: uint := 0
 
@@ -250,7 +250,7 @@ fn ReplaceLast(value: string, search: string, replacement: string) Result[string
             return Ok(value)
         }
         Some(position) => {
-            let mut builder := new Builder(value.SizeOf)
+            let mut builder := try new Builder(value.SizeOf)
 
             let before := try value.Slice(0, position) {
                 Err(_) => {

@@ -113,13 +113,23 @@ func package15Module() *Module {
 
 	payload := &Function{ID: "main::Payload(Value)", Name: "Payload", ReturnType: t.intType, Entry: 0,
 		Parameters: []Parameter{{Name: "value", Value: v(1, t.unionType, imm)}}}
-	payload.Blocks = []*Block{{ID: 0, Operations: []Operation{
-		{Kind: OpPlaceValueRoot, Operands: []ValueID{1}, Results: []Value{v(2, t.placeUnion, tmp)}, Place: p15Place(1, PlaceRootParameter)},
-		{Kind: OpPlaceUnionPayload, Operands: []ValueID{2}, UnionVariant: 1, Results: []Value{v(3, t.placeIntRO, tmp)},
-			Place: &PlaceMetadata{Root: 1, RootKind: PlaceRootParameter, Storage: 1, AddressSpace: AddressSpaceOrdinary, VariantProven: true}},
-		{Kind: OpPlaceRead, Operands: []ValueID{3}, Results: []Value{v(4, t.intType, imm)}},
-		{Kind: OpReturn, Operands: []ValueID{4}},
-	}}}
+	payload.Blocks = []*Block{
+		{ID: 0, Operations: []Operation{
+			{Kind: OpUnionIsVariant, Operands: []ValueID{1}, UnionVariant: 1, Results: []Value{v(5, t.boolType, imm)}},
+			{Kind: OpCondBranch, Operands: []ValueID{5}, Successors: []BranchTarget{{Block: 1}, {Block: 2}}},
+		}},
+		{ID: 1, Operations: []Operation{
+			{Kind: OpPlaceValueRoot, Operands: []ValueID{1}, Results: []Value{v(2, t.placeUnion, tmp)}, Place: p15Place(1, PlaceRootParameter)},
+			{Kind: OpPlaceUnionPayload, Operands: []ValueID{2}, UnionVariant: 1, VariantGuard: 5, Results: []Value{v(3, t.placeIntRO, tmp)},
+				Place: &PlaceMetadata{Root: 1, RootKind: PlaceRootParameter, Storage: 1, AddressSpace: AddressSpaceOrdinary, VariantProven: true}},
+			{Kind: OpPlaceRead, Operands: []ValueID{3}, Results: []Value{v(4, t.intType, imm)}},
+			{Kind: OpReturn, Operands: []ValueID{4}},
+		}},
+		{ID: 2, Operations: []Operation{
+			{Kind: OpConstInt, Integer: big.NewInt(0), Results: []Value{v(6, t.intType, imm)}},
+			{Kind: OpReturn, Operands: []ValueID{6}},
+		}},
+	}
 
 	field := &Function{ID: "main::Field()", Name: "Field", ReturnType: t.intType, Entry: 0,
 		Storages: []Storage{{ID: 1, Name: "pair", Type: t.pairType, Mutable: true, Class: StorageLocalAutomatic, AddressTaken: true}}}
@@ -188,7 +198,7 @@ func TestPackage15PlaceReferenceOperationsVerifyAndFormat(t *testing.T) {
 		"ref.compare %7, %8 eq",
 		"place.array-element %8, %9 bounds=proven-safe proof=constant index=18446744073709551619",
 		"index-id=#1",
-		"place.union-payload %2 variant=#1",
+		"place.union-payload %2 variant=#1 guard=%5",
 		"variant-proven",
 		"ref.deref-place %3 valid=%4",
 		"domain=#1 epoch=#1",
@@ -245,7 +255,8 @@ func TestPackage15VerifierRejectsMalformedPlaceReferenceIR(t *testing.T) {
 			m.Functions[1].Blocks[0].Operations[2].Integer = big.NewInt(3)
 		}, "outside the exact length"},
 		{"runtime element without guard", func(m *Module, _ package15Types) { m.Functions[1].Blocks[1].Operations[0].ArrayGuard = 0 }, "invalid runtime bounds provenance"},
-		{"union payload without variant proof", func(m *Module, _ package15Types) { m.Functions[2].Blocks[0].Operations[1].Place.VariantProven = false }, "active-variant proof"},
+		{"union payload without variant proof", func(m *Module, _ package15Types) { m.Functions[2].Blocks[1].Operations[1].Place.VariantProven = false }, "active-variant proof"},
+		{"union payload without variant guard", func(m *Module, _ package15Types) { m.Functions[2].Blocks[1].Operations[1].VariantGuard = 0 }, "matching union.is-variant guard"},
 		{"move-only read", func(m *Module, t package15Types) {
 			m.Structs[0].CopyClassification = "move-only"
 			m.Structs[0].TriviallyDestructible = false
@@ -261,7 +272,7 @@ func TestPackage15VerifierRejectsMalformedPlaceReferenceIR(t *testing.T) {
 			ops := m.Functions[0].Blocks[0].Operations
 			ops[12], ops[11] = ops[11], ops[12]
 		}, "used after its resolved borrow end"},
-		{"place returned", func(m *Module, _ package15Types) { m.Functions[2].Blocks[0].Operations[3].Operands = []ValueID{3} }, "escapes through return"},
+		{"place returned", func(m *Module, _ package15Types) { m.Functions[2].Blocks[1].Operations[3].Operands = []ValueID{3} }, "escapes through return"},
 		{"place stored", func(m *Module, t package15Types) {
 			m.Functions[0].Storages = append(m.Functions[0].Storages, Storage{ID: 2, Name: "escape", Type: t.placeIntRW, Mutable: true, Class: StorageLocalAutomatic})
 			ops := m.Functions[0].Blocks[0].Operations

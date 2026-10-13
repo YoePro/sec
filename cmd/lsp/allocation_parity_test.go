@@ -70,6 +70,9 @@ func TestAllocationConsumerParity(t *testing.T) {
 				if target == "linux-amd64" {
 					manifest = strings.ReplaceAll(strings.ReplaceAll(manifest, "linux", "baremetal"), "amd64", "cortex-m3")
 				}
+				// Keep project versions valid so this parity test reaches allocation
+				// analysis rather than the mandatory manifest-version diagnostic.
+				manifest += "[version]\nmajor=0\nminor=1\nrevision=0\nbuild=0\nformat='[major].[minor].[revision].[build]'\n"
 				if err := os.WriteFile(filepath.Join(dir, ".sec", "sec.toml"), []byte(manifest), 0644); err != nil {
 					t.Fatal(err)
 				}

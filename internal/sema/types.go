@@ -105,6 +105,10 @@ type Type struct {
 	// Rules: rules/memory/arena.md — §4.5; rules/memory/reference_model.md — §30(2–6).
 	ReferenceOriginGeneration  int
 	ReferenceOriginDisplayName string
+	// ReferenceOriginAlternatives retains every possible flow-joined origin;
+	// nil means the scalar origin above is the sole represented origin.
+	// Rules: rules/memory/arena.md — §§36,44; rules/memory/lifetime_analysis.md — §11.2.
+	ReferenceOriginAlternatives []ReferenceOriginAlternative
 	// ArenaDomainID remains stable across owner moves and Reset; fresh Arena
 	// owners receive distinct logical identities even when backing is reused.
 	// Rules: rules/memory/arena.md — §§4.2(1–5), 7(6), 44(3–4).
@@ -830,6 +834,10 @@ type DecimalValue struct {
 type Symbol struct {
 	// FloatingConstant is an immutable finite value in this binding's unit coordinates.
 	FloatingConstant *big.Rat
+	// QuantityConstant is the exact value of an immutable unit-bearing
+	// binding in its own unit coordinates (rules/types/temporal.md,
+	// "Conversion of time quantities to duration").
+	QuantityConstant *big.Rat
 	// IntegerMinimum and IntegerMaximum bound an immutable integer binding by
 	// the proven interval of its initializer (nil when unknown).
 	IntegerMinimum *big.Int

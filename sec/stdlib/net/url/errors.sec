@@ -42,6 +42,7 @@ type ParseError union error {
     InvalidQuery(uint),
     InvalidFragment(uint),
     InvalidPercentEncoding(uint),
+    Allocation(CollectionError),
 }
 
 /* Representation rationale: construction failures are a closed set without additional payload, so an error enum is the exact representation */

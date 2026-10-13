@@ -1,0 +1,25 @@
+module main
+
+type Direct[T] union {
+    Next(Direct[T])
+    End
+}
+
+type Fixed[T] union {
+    Next(Fixed[T][2])
+    End
+}
+
+type InlineBox[T] struct {
+    value: T
+}
+
+type Wrapped[T] union {
+    Next(InlineBox[Wrapped[T]])
+    End
+}
+
+type Optional[T] union {
+    Next(Option[Optional[T]])
+    End
+}

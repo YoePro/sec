@@ -6,10 +6,9 @@ import (
 )
 
 // inspectFinalElementAccess recognizes collection[collection.Len - 1] through
-// resolved collection identity and canonical integer facts. A directly
-// preceding empty-check that exits the current path is retained as suppression
-// evidence, including across a proven read-only scalar traversal. Without a
-// supported proof, the final-element requirement remains unproven.
+// resolved collection identity and canonical integer facts. Resolved type
+// contracts and mutation-aware dominating flow facts supply suppression
+// evidence. Without a supported proof, the requirement remains unproven.
 //
 // Rules:
 //   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof"
@@ -47,25 +46,29 @@ func (b *pitfallBuilder) inspectFinalElementAccess(index *ast.IndexExpression) {
 		}},
 	}
 	proof, proven := b.activeNonEmptyProofs[lengthCollection]
-	if !proven {
-		proof, proven = b.nonEmptyAcrossScalarTraversal(lengthCollection, index.Left)
+	proofReason := "control flow proves the collection is non-empty before the final-element access"
+	if !proven && b.pitfallPureOperand(index.Left) {
+		if typ, resolved := b.analyzer.ResolvedTypeOf(index.Left); resolved {
+			proof, proven = nonEmptyCollectionTypeProof(dereferenceType(typ), lengthToken)
+			if proven {
+				proofReason = "the resolved collection type proves a positive minimum length"
+			}
+		}
 	}
 	if proven {
-		evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: "control flow proves the collection is non-empty before the final-element access", Source: proof}
+		evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: proofReason, Source: proof}
 		finding.State = PitfallStateSuppressed
 		finding.EvidenceAgainst = []PitfallEvidence{evidence}
 		finding.Suppression = &PitfallSuppression{
-			Reason:   "the continuing path proves the collection is non-empty",
+			Reason:   proofReason,
 			Evidence: []PitfallEvidence{evidence},
 		}
 	}
 	b.add(finding)
 }
 
-// walkIfStatement applies a condition-derived non-empty fact only to the first
-// straight-line statement of the branch where that fact holds. This is a
-// deliberately mutation-safe initial slice: later statements must re-establish
-// the fact until the general path-sensitive collection-state analysis exists.
+// walkIfStatement carries inherited and condition-derived non-empty facts
+// into reachable branches. walkBlock invalidates them on possible length changes.
 //
 // Rules:
 //   - rules/analysis/pitfall_analysis.md — "Guards participate in pitfall reasoning"
@@ -110,7 +113,7 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 		}
 		b.activeCapacityEqualities = merged
 	}
-	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, true)
+	b.activeNonEmptyProofs = mergePitfallNonEmptyProofs(outerProofs, b.nonEmptyBranchProof(statement.Condition, true))
 	outerLengthConditions := b.activeLengthConditions
 	b.activeLengthConditions = append(append([]ast.Expression(nil), outerLengthConditions...), statement.Condition)
 	if trueReachable {
@@ -118,7 +121,7 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	}
 	b.activeLengthConditions = outerLengthConditions
 	b.activeCapacityEqualities = outerCapacityEqualities
-	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, false)
+	b.activeNonEmptyProofs = mergePitfallNonEmptyProofs(outerProofs, b.nonEmptyBranchProof(statement.Condition, false))
 	if falseReachable {
 		b.withIndexGuards(b.falseIndexGuards(statement.Condition), func() { b.walkBlock(statement.Alternative) })
 	}
@@ -142,6 +145,10 @@ func (b *pitfallBuilder) nonEmptyBranchProof(condition ast.Expression, truthBran
 	comparison, ok := condition.(*ast.InfixExpression)
 	if !ok {
 		return nil
+	}
+	if comparison.Operator == "&&" && truthBranch || comparison.Operator == "||" && !truthBranch {
+		proofs := mergePitfallNonEmptyProofs(b.nonEmptyBranchProof(comparison.Left, truthBranch), b.nonEmptyBranchProof(comparison.Right, truthBranch))
+		return b.survivingNonEmptyProofs(proofs, &ast.ExpressionStatement{Expression: condition})
 	}
 
 	var collection string
@@ -181,31 +188,6 @@ func (b *pitfallBuilder) nonEmptyBranchProof(condition ast.Expression, truthBran
 		return nil
 	}
 	return map[string]lexer.Token{collection: token}
-}
-
-// emptyCollectionExitGuard recognizes the canonical dominating proof
-// `if collection.Len == 0 { return }`. Restricting the proof to an unconditional
-// exit and resolved Len receiver prevents spelling-based correlation.
-//
-// Rules:
-//   - rules/analysis/pitfall_analysis.md — "Guards participate in pitfall reasoning"
-//   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof"
-func (b *pitfallBuilder) emptyCollectionExitGuard(statement ast.Statement) (string, lexer.Token, bool) {
-	conditional, ok := statement.(*ast.IfStatement)
-	if !ok || conditional.Alternative != nil || !pitfallBlockDefinitelyExits(conditional.Consequence) {
-		return "", lexer.Token{}, false
-	}
-	if collection, token, emptyWhenTrue, ok := b.isEmptyCondition(conditional.Condition); ok && emptyWhenTrue {
-		return collection, token, true
-	}
-	comparison, ok := conditional.Condition.(*ast.InfixExpression)
-	if !ok || comparison.Operator != "==" {
-		return "", lexer.Token{}, false
-	}
-	if collection, token, ok := b.zeroLengthComparison(comparison.Left, comparison.Right); ok {
-		return collection, token, true
-	}
-	return b.zeroLengthComparison(comparison.Right, comparison.Left)
 }
 
 // isEmptyCondition resolves compiler-known IsEmpty and its direct boolean

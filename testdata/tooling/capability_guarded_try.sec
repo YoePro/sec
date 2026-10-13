@@ -1,0 +1,8 @@
+module main
+
+fn Add(left: int, right: int) int {
+    return try left + right {
+        Err(error) where left > 0 => 1
+        Err(_) => 0
+    }
+}

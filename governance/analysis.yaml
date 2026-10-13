@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-07"
+    updated: "2026-10-13"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -53,7 +53,7 @@ integrations:
       - internal/sema/analyzer_analysis_pipeline.go
       - internal/diagnostics/diagnostics.go
       - internal/sema/pitfall_idioms.go
-      - internal/sema/pitfall_nonempty_traversal.go
+      - internal/sema/pitfall_nonempty_flow.go
       - internal/sema/pitfall_final_element.go
       - internal/sema/pitfall_fix_safety.go
       - internal/sema/pitfall_constant_fixes.go
@@ -132,6 +132,10 @@ integrations:
       - cmd/compiler/analyse_guard_flow_test.go
       - testdata/sema/pitfall_guard_flow_valid.sec
       - cmd/compiler/analyse_test.go
+      - internal/sema/pitfall_nonempty_flow_test.go
+      - cmd/compiler/pitfall_nonempty_flow_test.go
+      - cmd/lsp/pitfall_nonempty_flow_test.go
+      - testdata/sema/pitfall_nonempty_flow.sec
     implemented:
       - canonical idiom suggestions are a shared value-only action contract distinguishing range membership with in and half-open traversal with ..<; publication prefers supported canonical replacements over explanation-only actions without changing confidence, severity, validity, analysis depth or automatic-fix proof requirements, and suppressed findings carry no preferred idiom
       - interval membership, inclusive-length endpoint, fragile inclusive Len-1 and omitted-last-element producers publish their canonical suggestions through the same preference gate; omitted-last-element suggestions now include the complete half-open replacement, while behavior-changing intent edits remain SuggestedEdit and certified equivalent rewrites remain ProvenFix
@@ -208,10 +212,10 @@ integrations:
       - changed producer revisions or explicit Invalidate evict precisely their completed and pending body consumers, retaining unrelated units and plans; unique single-publication leases reject obsolete completion, invalidated work, foreign leases and repeated publication, and only successful analysis commits detached findings and deeply cloned foreign/Place evidence
       - cache hits replay findings through current safety/ownership publication and reconstruct current counts/coverage, including empty complete body results without persisting global NotEvaluated/Pending states; cold/warm validity, evidence/actions/suppression, FFI inputs and evaluations are equivalent, and analyzer request context is restored after every indexed run
       - cache lifetime and complete prerequisite revision production belong to the calling compiler service; this explicit in-memory integration does not activate default CLI/LSP caching or persistent checkpoint/storage policy
+      - final-element non-empty suppression consumes resolved positive fixed extents, notEmpty and positive inherited minLen/exactLen contracts; guard and assert facts dominate later length-preserving statements and nested branches, while canonical assignment, structural mutation, mutable/opaque call and loop invalidation revoke flow proofs; callable and deferred bodies establish their own facts, and cache revisions require expression types and operation contracts
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
-      - generalize final-element non-empty proof consumption beyond the implemented adjacent exit, first-statement branch and read-only scalar traversal facts to contracts, non-empty types, and mutation-aware dominating control flow
       - generalize skipped-first-element suppression beyond the implemented predecessor and same-block dominating element-zero facts to explicit suffix-traversal contracts, mutation-aware dominance, and other canonical intent evidence
       - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
       - extend collection bound-source correlation to inclusive and offset bounds, bounds held in locals, while loops with manual indexes, and length relations proven by contracts or transitive chains
@@ -221,6 +225,14 @@ integrations:
       - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
     verification:
+      - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|NonEmptyProofs' -count=1
+        result: passed on 2026-10-13 after complete proof-flow extraction and removal of the superseded adjacent-guard/scalar-traversal derivation; pitfall regressions, cold/warm cache checks, eleven suppressions, seven controls and CLI/LSP parity pass
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|NonEmptyProofs' -count=1
+        result: passed on 2026-10-13; eleven suppressed contract/fixed-extent/guard/assert/nested/else-exit cases and seven retained mutation/wrong-subject/independent-execution controls at every depth, with equivalent CLI report and LSP filtering
+      - command: go test ./internal/sema/... ./cmd/compiler -count=1
+        result: passed on 2026-10-13; complete semantic subtree and compiler CLI suites with contract-backed and mutation-aware final-element proofs
       - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-08 after consolidating pitfall_foreign_{extent,origin,units}.go into pitfall_foreign.go, their tests into pitfall_foreign_test.go, and pitfall_cache_{storage,consumer}.go into pitfall_cache.go without behavior or API changes
       - command: go test ./... -count=1
@@ -967,7 +979,7 @@ integrations:
     area: frontend-analysis
     status: partial
     audited: "2026-08-20"
-    updated: "2026-10-11"
+    updated: "2026-10-13"
     repository_baseline: c515862
     primary_rule: rules/memory/allocation.md
     canonical_arena_rule: rules/memory/arena.md
@@ -998,6 +1010,9 @@ integrations:
       - internal/sema/analyzer_switch.go
       - internal/sema/analyzer_if_statement.go
       - internal/sema/analyzer_logical.go
+      - internal/sema/reference_plans.go
+      - internal/sema/place_identities.go
+      - internal/sema/semantic_snapshot.go
     tests:
       - internal/sema/arena_invalidation_diagnostics_test.go
       - cmd/compiler/arena_invalidation_diagnostics_test.go
@@ -1009,6 +1024,11 @@ integrations:
       - internal/sema/lifetime_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/reference_origin_join_test.go
+      - internal/sema/arena_multi_origin_test.go
+      - cmd/compiler/arena_multi_origin_test.go
+      - cmd/lsp/arena_multi_origin_test.go
+      - testdata/sema/arena_multi_origin_invalid.sec
+      - testdata/sema/arena_multi_origin_valid.sec
     implemented:
       - represented live-dependency failures at explicit Reset and Release use separate mandatory registered S1126 (arena.reset-live-dependency) and S1127 (arena.release-live-dependency) identities, Invalid proof state, exact method spans, the live dependency declaration as a labelled related location, and operation-specific epoch versus terminal-domain/owner help
       - dependency selection is deterministic by declaration source and name, yielding one witness per rejected operation; rejection does not advance the represented epoch, consume the owner, end backing borrows or publish a successful Reset/Release effect
@@ -1029,14 +1049,20 @@ integrations:
       - stable ArenaDomain identity across owner moves
       - corrected defer, switch, match, and loop generation-state propagation in the represented frontend subset
       - "corrected flow state for reference-holder origins (2026-10-11, arena.md §§36, 44; correction25/correction28 branch/switch/loop propagation): branch analysis restored the outer symbol table, so an origin a branch gave an outer reference holder (for example a holder rebound to an Arena allocation) was dropped at the join and later Reset/Release stale-use and dependency checks missed it; branches, match arms, switch cases and logical right-hand sides now snapshot reference-holder origins and every join merges them conservatively (Arena storage first, oldest generation per domain, then invocation-local storage); loopEdgeState carries the origins on break and continue edges, loop exits join zero-iteration, end-of-body and break origins, and the loop header joins entry, fall-through and continue origins so a Reset in one iteration makes a holder stale in the next; defer bodies keep their existing deferred-use dependency records"
+      - flow joins preserve the full deterministic set of reference-holder origins and expected epochs across continuing branches, switch/match arms and loop edges; Reset/Release dependency queries and stale-use checks inspect every possible Arena domain, derived references/views preserve alternatives, and scalar storage/epoch consumers retain Unknown rather than claiming one origin
     partial:
       - dependency liveness is conservative and does not yet model every nested Arena, container, capture, task/thread, foreign-retained, weak-handle, or implicit-destruction path
     remaining:
-      - "known hole (verified 2026-10-11): a reference holder carries one origin, so when branches rebind it into different Arenas (first in one branch, second in the other) the join keeps only one domain; a Reset of the other Arena followed by a use of the holder is accepted. The join needs a multi-origin holder state instead of the strongest single origin (internal/sema/reference_origin_join.go)"
       - broaden the ArenaDomain dependency query to full NLL/last-use semantics
       - distinguish weak/stale-capable handles from strong validity-preserving dependencies
       - integrate nested Arena, container, capture, task/thread, foreign-retained, and deferred-use dependencies
     verification:
+      - command: go vet ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Arena|ReferenceOrigin|ReferenceFacts|ReferencePlan|StorageIdentity' -count=1
+        result: passed on 2026-10-13; nine multi-origin invalidation/stale-use cases, valid terminating/rebound/fresh-allocation/final-use controls, all depths, analyzer reuse, deterministic joins, detached snapshots, conservative single-domain consumers, CLI analyse and LSP source links
+      - command: go test ./internal/sema ./internal/ir/semantic ./cmd/compiler -count=1
+        result: passed on 2026-10-13; complete semantic, Semantic IR and compiler CLI suites
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-07 after focused Arena Reset/Release dependency diagnostics
       - command: go vet ./...
@@ -1142,8 +1168,8 @@ integrations:
       - rules/memory/unsafe.md
     remaining:
       - build trust-provenance graph
-      - "propagate unsafe callable compatibility through interfaces/generics/dynamic dispatch and through unsafe function values once an unsafe function type exists (MD-059); named function values are covered, and interface requirements and impl methods have no unsafe form yet"
-      - "integrate canonical effects beyond the verified @noPanic/@noAlloc/@noBlock contracts (MayIO, MayAccessVolatile and the other § 15(2) effects have no unsafe-specific facts yet)"
+      - propagate unsafe callable compatibility through interfaces/generics/dynamic dispatch and through unsafe function values once an unsafe function type exists (MD-059); named function values are covered, and interface requirements and impl methods have no unsafe form yet
+      - integrate canonical effects beyond the verified @noPanic/@noAlloc/@noBlock contracts (MayIO, MayAccessVolatile and the other § 15(2) effects have no unsafe-specific facts yet)
       - "reject compiler-known false caller obligations even inside unsafe beyond the proven-null raw-pointer dereference slice: alignment, lifetime/dangling, range, alias and representation obligations, null facts carried through copies, fields and calls, and proven-null raw-to-safe conversion (raw_pointers.md § 18(5), unsafe.md § 21(3)-(5), § 22(4))"
       - "known hole (verified 2026-10-10): Sema treats the whole body of an unsafe fn as an unsafe context, so unsafe operations inside it need no explicit unsafe marker, contrary to unsafe.md § 7(1)-(2) and § 4(7); the fix waits for MD-060, which decides how platform asm bodies and named asm outputs migrate"
     implemented:
@@ -1191,32 +1217,31 @@ integrations:
   - id: interprocedural.references
     area: returned-reference-retention-summaries
     status: partial
-    integrated: '2026-08-29'
-    document_revision: '2.0'
+    integrated: "2026-08-29"
+    document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
-    - rules/memory/references.md
-    - rules/memory/lifetime_analysis.md
-    - rules/analysis/escape_analysis.md
-    - rules/declarations/functions.md
-    - rules/declarations/interfaces.md
-    - rules/declarations/lambda-functions.md
+      - rules/memory/references.md
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/declarations/functions.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/lambda-functions.md
     implemented:
-    - deterministic direct function/method returned-reference summaries for supported parameter, receiver, projection, multi-source
-      and aggregate paths
-    - supported direct-call instantiation of returned-reference summaries
+      - deterministic direct function/method returned-reference summaries for supported parameter, receiver, projection, multi-source and aggregate paths
+      - supported direct-call instantiation of returned-reference summaries
     remaining:
-    - persist and validate versioned returned-reference/retention metadata for separate compilation
-    - support imported modules, function values, indirect target sets, interfaces and generic specializations
-    - support recursive and mutually recursive summary fixed points
-    - represent bodyless/opaque callable retention and returned-borrow relationships without source lifetime parameters
-    - integrate closure callback, foreign retention, task/thread/deferred-work and ISR execution relationships
+      - persist and validate versioned returned-reference/retention metadata for separate compilation
+      - support imported modules, function values, indirect target sets, interfaces and generic specializations
+      - support recursive and mutually recursive summary fixed points
+      - represent bodyless/opaque callable retention and returned-borrow relationships without source lifetime parameters
+      - integrate closure callback, foreign retention, task/thread/deferred-work and ISR execution relationships
     required_tests:
-    - summary independent of declaration order
-    - summary survives serialization/import validation
-    - interface implementation cannot weaken declared reference relationship
-    - unknown indirect retention is conservative
-    - recursive summary convergence deterministic
+      - summary independent of declaration order
+      - summary survives serialization/import validation
+      - interface implementation cannot weaken declared reference relationship
+      - unknown indirect retention is conservative
+      - recursive summary convergence deterministic
 
   - id: analysis.arena
     area: arena-domain-epoch-dependency-capacity-effects
@@ -1243,7 +1268,7 @@ integrations:
     remaining:
       - replace legacy storage-origin/root approximations with canonical ArenaDomain/storage identities
       - complete path-aware Arena owner/state/epoch merging
-      - "complete Reset/Release blockers through closures, results, defer, nested Arenas and FFI retention, and apply callee Arena parameter summaries through function values, interface dispatch and arguments that are not visible Arena bindings (for example a field such as self.arena)"
+      - complete Reset/Release blockers through closures, results, defer, nested Arenas and FFI retention, and apply callee Arena parameter summaries through function values, interface dispatch and arguments that are not visible Arena bindings (for example a field such as self.arena)
       - complete task/thread/cancellation/structured-concurrency dependency propagation
       - complete allocation-context propagation
       - complete ordered Arena effects beyond summary MayAllocate
@@ -1387,40 +1412,40 @@ integrations:
       - propagate trust provenance from FFI/platform/unsafe contracts
       - support execution-root-specific summaries for task/thread/ISR/callback contexts
 
-  - id: "interprocedural.lifetime-analysis"
-    area: "interprocedural-lifetime-summaries"
-    status: "partial"
+  - id: interprocedural.lifetime-analysis
+    area: interprocedural-lifetime-summaries
+    status: partial
     integrated: "2026-08-29"
     document_revision: "2.0"
-    repository_baseline: "fafd8cb"
+    repository_baseline: fafd8cb
     rules:
-      - "rules/memory/lifetime_analysis.md"
-      - "rules/analysis/escape_analysis.md"
-      - "rules/analysis/call_graph.md"
-      - "rules/declarations/functions.md"
-      - "rules/declarations/interfaces.md"
-      - "rules/declarations/lambda-functions.md"
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/declarations/functions.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/lambda-functions.md
     code:
-      - "internal/sema/analyzer.go"
-      - "internal/sema/escape_analysis.go"
-      - "internal/sema/types.go"
+      - internal/sema/analyzer.go
+      - internal/sema/escape_analysis.go
+      - internal/sema/types.go
     implemented:
-      - "direct function/method returned-reference summaries independent of declaration order"
-      - "symbolic parameter, receiver, projection, finite multi-source, aggregate return paths"
-      - "supported transitive direct-call return-origin instantiation"
-      - "selected immutable escape/capture facts"
+      - direct function/method returned-reference summaries independent of declaration order
+      - symbolic parameter, receiver, projection, finite multi-source, aggregate return paths
+      - supported transitive direct-call return-origin instantiation
+      - selected immutable escape/capture facts
     remaining:
-      - "persist versioned validated lifetime/return-origin summaries in module metadata for separate compilation"
-      - "compose summaries through function values, callable target sets, interfaces, imported modules, generic instantiations, and opaque contracts"
-      - "implement recursive and mutually recursive SCC fixed points with deterministic widening/termination"
-      - "encode explicit retention/no-retention and returned-borrow relations needed by bodyless declarations without inventing general source lifetime parameters"
-      - "integrate mapping/view, storage-domain, generation/epoch, closure-environment, FFI retention, task/thread, and future ISR callback dependencies"
+      - persist versioned validated lifetime/return-origin summaries in module metadata for separate compilation
+      - compose summaries through function values, callable target sets, interfaces, imported modules, generic instantiations, and opaque contracts
+      - implement recursive and mutually recursive SCC fixed points with deterministic widening/termination
+      - encode explicit retention/no-retention and returned-borrow relations needed by bodyless declarations without inventing general source lifetime parameters
+      - integrate mapping/view, storage-domain, generation/epoch, closure-environment, FFI retention, task/thread, and future ISR callback dependencies
     required_tests:
-      - "summary stable regardless of declaration order"
-      - "summary stable across separate compilation serialization/deserialization"
-      - "interface implementation cannot weaken declared lifetime relationship"
-      - "indirect call with unknown retention is conservative"
-      - "recursive summary fixed point terminates deterministically"
+      - summary stable regardless of declaration order
+      - summary stable across separate compilation serialization/deserialization
+      - interface implementation cannot weaken declared lifetime relationship
+      - indirect call with unknown retention is conservative
+      - recursive summary fixed point terminates deterministically
 
   - id: analysis.incremental-coordination
     area: snapshot-plan-cache-invalidation
@@ -1705,10 +1730,10 @@ integrations:
       - internal/sema/escape_diagnostics.go
       - internal/sema/escape_cause_paths.go
       - internal/sema/errors.go
-      - cmd/compiler/escape_cause_paths.go
+      - cmd/compiler/diagnostic_provenance.go
       - cmd/compiler/diagnostic_output.go
       - cmd/compiler/diagnostic_catalog.go
-      - cmd/lsp/escape_cause_paths.go
+      - cmd/lsp/diagnostic_provenance.go
       - cmd/lsp/main.go
       - internal/diagnostics/diagnostics.go
       - internal/sema/analyzer.go
@@ -1777,6 +1802,8 @@ integrations:
         result: passed
       - command: go vet ./...
         result: passed
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'DiagnosticProvenance|EscapeCause|AllocationCause|StackBudgetDiagnosticTransport|ProofDiagnostic|OwnershipNavigation|Pitfall.*Ownership' -count=1
+        result: passed on 2026-10-13; escape cause transport consumes the shared detached Sema DiagnosticProvenance view and common CLI/LSP renderers, preserving ordered source links and incomplete markers; moved renderer evidence paths synchronized without changing remaining analysis scope
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run TestEscape -count=1
         result: passed
       - command: emit-mlir --verify over testdata/ir

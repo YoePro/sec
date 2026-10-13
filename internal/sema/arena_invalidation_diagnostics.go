@@ -47,8 +47,14 @@ func (a *Analyzer) checkArenaInvalidationDependencies(operation, domain, owner s
 		if _, unavailable := a.moved[name]; unavailable {
 			continue
 		}
-		if !typeCarriesReferenceOrigin(symbol.Type) || symbol.Type.ReferenceOriginStorage != StorageOriginArena ||
-			symbol.Type.ReferenceOriginName != domain || symbol.Type.ReferenceOriginGeneration != current {
+		depends := false
+		for _, origin := range referenceOriginAlternatives(symbol.Type) {
+			if origin.Storage == StorageOriginArena && origin.Name == domain && origin.Generation == current {
+				depends = true
+				break
+			}
+		}
+		if !typeCarriesReferenceOrigin(symbol.Type) || !depends {
 			continue
 		}
 		if !a.arenaDependencyEscapesImmediateLocal(name, owner) {

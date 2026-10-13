@@ -2432,6 +2432,7 @@ Sema determines whether the context provides an instance.
 Literal
     ::= IntegerLiteral
       | FloatingLiteral
+      | QuantityLiteral
       | StringLiteral
       | InterpolatedStringLiteral
       | CharacterLiteral
@@ -2440,6 +2441,22 @@ Literal
 
 Numeric suffixes, bases, escapes, and literal token boundaries belong to
 `lexical_structure.md` and `types.md`.
+
+## Quantity literals
+
+```text
+QuantityLiteral
+    ::= (IntegerLiteral | FloatingLiteral) UnitAnnotation
+```
+
+The `<` of the `UnitAnnotation` (see "Unit annotation") follows the numeric
+literal with no intervening whitespace, and the annotation closes with `>` on
+the same line. When either condition fails the parser does not form a
+quantity literal and `<` is the comparison operator, so `5 < s` and
+`5<count && ...` are comparisons. A leading sign is a `PrefixExpression`:
+`-5<s>` negates the quantity `5<s>`. Typing, carriers and the conversion of
+time quantities to `duration` belong to `rules/types/units.md` ("Quantity
+literals") and `rules/types/temporal.md` § 5 (MD-015, 2026-10-13).
 
 ---
 

@@ -85,6 +85,7 @@ integrations:
       - testdata/units_advanced_valid.sec
       - testdata/units_invalid.sec
     implemented:
+      - "quantity literals (MD-015, 2026-10-13, units.md 'Quantity literals', grammar.md 'Quantity literals'): a numeric literal immediately followed by a same-line unit annotation parses as one QuantityLiteral (`5<s>`, `0.5<ns>`, `100<m/s^2>`); a separated or unclosed `<` stays a comparison and a leading sign is a prefix expression. Sema resolves the unit through ordinary unit metadata, takes the carrier from an expected unit type with identical coordinates or else the unit default carrier, requires the literal to initialize it exactly, and never turns a time quantity into duration by itself; the formatter keeps the adjacent spelling (TestQuantityLiteralParsing, TestQuantityLiteralsKeepUnitSemantics, TestFormatKeepsQuantityLiteralsAdjacent). Semantic IR and the legacy backends keep their explicit unit-quantity unsupported boundaries."
       - "representation audit boundary (2026-10-09, frontend.types-core): Semantic IR and raw/analyzed legacy LLVM/MLIR reject unresolved quantity representations with source locations instead of silently erasing units to numeric carriers; analyzed checks follow nested/imported resolved quantity facts. Full quantity propagation and lowering remain in this integration's existing remaining items."
       - unit declarations support an omitted decimal default carrier or an explicit plain compiler-known numeric scalar default
       - unit identity is retained separately from the selected numeric carrier on resolved numeric types
@@ -128,7 +129,8 @@ integrations:
       - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
     remaining:
       - validate affine and logarithmic Reference compatibility and implement their specialized explicit conversion plans; blocked on MD-048 (logarithmic forward/inverse formulas, dimensional Reference semantics, carrier precision and failure policy), with MD-047 and MD-012 dependencies
-      - explicit rounding policy integration for inexact unit conversions; the rounding modes, source spelling, and checked-policy error type are undecided (MD-047)
+      - explicit rounding policy integration for inexact unit conversions; the source spelling and checked-policy error type for general unit conversions are undecided (MD-047); the RoundingMode enum itself is now declared once in core by MD-015 and must be reused
+      - "Kind metadata for the remaining core time units (min, h, day, week, ps, fs, as, zs, ys and the calendar-like mo/yr/decade/century/millennia): only s/ms/us/ns carry Kind: time (MD-015), so known hole (verified 2026-10-13): implicit conversions between them and s/ms/us/ns are still rejected as Kind-incompatible, as they were before; their duration conversion works because an unknown Kind is admitted there"
       - observed value type and write representability of `bit[N]<unit>` register fields; writes of unbounded unit values are still accepted pending the open part of MD-046 (plain bit[N] fields are decided, see frontend.registers)
       - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
       - complete Semantic IR, MLIR, runtime, standard-library, and end-to-end unit coverage
@@ -704,20 +706,29 @@ integrations:
   - id: frontend.temporal-duration
     area: timeout-conversion
     status: partial
-    revised: "2026-10-08"
+    revised: "2026-10-13"
     normative:
       - duration is the canonical timeout parameter type.
       - Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced.
-      - Time-unit quantities may materialize as duration at compatible call boundaries under canonical temporal/unit rules.
+      - Time quantities convert to duration only through temporal.md § 5 (MD-015): explicitly with duration(q) or duration(q, RoundingMode), or contextually at a duration declaration or argument when proved exact and in the signed 64-bit nanosecond range.
     rules:
       - rules/concurrency/mutex.md
       - rules/types/temporal.md
       - rules/types/units.md
       - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/md015-time-unit-duration-conversion-correction-20261013.md
     code:
       - internal/sema/analyzer_mutex_calls.go
       - internal/sema/analyzer_inference.go
+      - internal/sema/duration_conversion.go
+      - internal/sema/quantity_literal.go
+      - internal/parser/expression.go
+      - sec/core/rounding.sec
+      - sec/core/baseunits.sec
     tests:
+      - internal/sema/temporal/duration_conversion_test.go
+      - internal/parser/quantity_literal_test.go
+      - internal/formatter/quantity_literal_test.go
       - internal/sema/temporal/duration_boundary_test.go
       - testdata/sema/temporal/duration_call_boundary.sec.in
       - testdata/sema/temporal/duration_mutex_boundary.sec.in
@@ -725,8 +736,11 @@ integrations:
       - "complete no-hard-coded-unit-spellings audit (2026-10-08, mutex.md §12(2)-(6)): represented mutex dispatch contains no unit-name list or unit-specific timeout overloads; mutex-like, context-like, ordinary and user member names use the same nominal duration argument checks, without accepting quantities by familiar spelling, dimension alone or numeric carrier"
       - 72 source cases vary s/ms/us/ns and custom unit identities, time versus length metadata, exact scales 1 and 1/1000, and actual duration, unit quantity and plain integer inputs; all duration values are accepted, and other inputs report the same four nominal argument errors with original source locations; six intrinsic-dispatch cases verify the existing zero-argument mutex forms do not invent timeout overloads for familiar or custom units
       - the existing mutex call inference function was extracted unchanged from analyzer_inference.go into its focused responsibility file with explicit timeout/MD-015 traceability; conformance tests live in the existing temporal subpackage rather than increasing parent test-file count
+      - "time-quantity-to-duration conversion (MD-015, 2026-10-13, temporal.md § 5): Sema plans every conversion exactly with big rationals (value * scale * 1e9, rounding once by an explicit RoundingMode, then the int64 range check) and publishes DurationConversionPlanOf. Constant quantities, immutable quantity bindings and bounded integer domains are proved (constant / bounded-domain proofs); a dynamic explicit duration(q) is a checked conversion requiring try with ConversionError (PrecisionLoss or OutOfRange); an unprovable contextual conversion, an inexact constant without a mode, an out-of-range result and a non-time, point, non-linear or scale-less unit are S1153 temporal.invalid-duration-conversion errors with the reason. Unit names resolve through ordinary metadata (dimension time^1, Kind time or unknown); there is no per-API spelling table. Core declares s/ms/us/ns once with Kind: time (stdlib/unit no longer redeclares ms/us/ns) and the RoundingMode enum (TestDurationConversionsAreExact, TestInvalidDurationConversionsAreRejected, TestDurationRoundingModes)"
     remaining:
-      - Define/verify compiler-known conversion from time-dimension unit quantity to duration (blocked on MD-015).
+      - "Semantic IR representation of duration and unit quantities, so the recorded conversion plan (source unit, scale, proof or checked conversion, rounding mode, final nanosecond value) reaches Semantic IR and the backends; today Semantic IR and the legacy LLVM/MLIR paths reject `type duration` and unit quantities with explicit unsupported-lowering errors"
+      - "duration arithmetic (temporal.md § 5.8 fixes its checked-overflow behavior; the operators themselves are not implemented)"
+      - "LSP hover for quantity literals and duration conversion plans"
     verification:
       - command: GOCACHE=/tmp/sec-go-cache go test ./... -count=1
         result: passed on 2026-10-08 with the focused mutex inference extraction and all duration boundary fixtures; the extracted function body also matches HEAD exactly

@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-18
-- **Last updated:** 2026-08-18
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-13
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/units.md`
 - **Replaces:** `rules/types/units.txt`
@@ -693,6 +693,56 @@ float64<m/s>   explicit binary floating-point carrier
 
 This rule avoids accidentally inheriting an unsuitable integer carrier from one
 factor of a derived expression.
+
+---
+
+## Quantity literals
+
+Decided by MD-015 (2026-10-13,
+`rules/corrections/applied/md015-time-unit-duration-conversion-correction-20261013.md`).
+
+A numeric literal immediately followed by a unit annotation is one
+unit-bearing numeric quantity:
+
+```text
+QuantityLiteral
+    ::= (IntegerLiteral | FloatingLiteral) UnitAnnotation
+
+UnitAnnotation
+    ::= "<" UnitExpression ">"
+```
+
+```sec
+let seconds := 5<s>
+let milliseconds := 250<ms>
+let negative := -5<s>
+let fractional := 0.5<ns>
+let distance := 100<m>
+let velocity := distance / seconds
+```
+
+`UnitAnnotation` and `UnitExpression` are the ordinary unit grammar and name
+resolution of "Structural unit expressions"; there is one general production,
+not a time-only parser. A leading sign is an ordinary unary expression, not
+part of the literal.
+
+The `<` must follow the literal without intervening whitespace and the
+complete annotation must close on the same line; otherwise `<` is the ordinary
+comparison operator (`5 < s`, `5<count`). Formatting keeps the adjacent
+spelling (`500<ms>`).
+
+The numeric carrier is the expected unit-bearing numeric type when it has the
+same unit coordinates (`let t: int64<ms> := 250<ms>`), otherwise the unit's
+default carrier exactly as for the unit-only type shorthand (`5<s>` is
+`decimal<s>` unless `s` declares another default). An integral literal does
+not by itself select an integer carrier. The literal must initialize that
+carrier exactly. Unknown units and malformed unit expressions receive the
+ordinary unit diagnostics.
+
+A quantity with the dimension of time stays a unit-bearing quantity; it
+becomes a `duration` only through the conversion of
+`rules/types/temporal.md` § 5. The time units `s`, `ms`, `us` and `ns` are
+core units (`rules/types/temporal.md` § 5.2).
 
 ---
 

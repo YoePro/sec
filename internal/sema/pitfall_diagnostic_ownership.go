@@ -66,6 +66,8 @@ func (a *Analyzer) coalescePitfallDiagnostic(finding *PitfallFinding, operation 
 func (a *Analyzer) enrichPitfallDiagnostic(index int, finding *PitfallFinding) {
 	e := &a.errors[index]
 	finding.DiagnosticID = e.ID
+	finding.DiagnosticSource = lexer.Token{File: e.File, Line: e.Line, Column: e.Column,
+		EndLine: e.EndLine, EndColumn: e.EndColumn}
 	note := fmt.Sprintf("\n%s (%s):", finding.Rule, finding.Classification)
 	if strings.Contains(e.Help, note) {
 		return

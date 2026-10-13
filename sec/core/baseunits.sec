@@ -39,6 +39,7 @@ impl s {
     Symbol: "s"
     BaseUnit: true
     Status: active
+    Kind: time
     Dimension: [time^1]
     Scale: 1
     System: SI
@@ -151,6 +152,7 @@ impl ms {
     Symbol: "ms"
     BaseUnit: false
     Status: active
+    Kind: time
     Dimension: [time^1]
     Scale: 1 / 1000
     System: SI
@@ -163,6 +165,7 @@ impl us {
     Symbol: "us"
     BaseUnit: false
     Status: active
+    Kind: time
     Dimension: [time^1]
     Scale: 1 / 1000000
     System: SI
@@ -175,6 +178,7 @@ impl ns {
     Symbol: "ns"
     BaseUnit: false
     Status: active
+    Kind: time
     Dimension: [time^1]
     Scale: 1 / 1000000000
     System: SI

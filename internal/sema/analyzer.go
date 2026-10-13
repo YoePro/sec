@@ -110,6 +110,10 @@ type Analyzer struct {
 	// unitConversionPlans records each implicit fixed unit conversion Sema
 	// proved exact (rules/types/units.md, "Exact fixed conversions").
 	unitConversionPlans map[ast.Expression]UnitConversionPlan
+	// durationConversions records each resolved time-quantity-to-duration
+	// conversion (rules/types/temporal.md, "Conversion of time quantities to
+	// duration").
+	durationConversions map[ast.Expression]DurationConversionPlan
 	// synthesizedStructTypes holds the exact struct or union type of each
 	// struct-shaped literal that Sema materialized as a default, so a generic
 	// instance such as Box[int] is not re-resolved from its bare name.
@@ -529,6 +533,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedRangeMemberships = map[*ast.InfixExpression]ResolvedRangeMembership{}
 	a.resolvedRangeAppends = map[*ast.CallExpression]ResolvedArrayLiteralEntry{}
 	a.unitConversionPlans = map[ast.Expression]UnitConversionPlan{}
+	a.durationConversions = map[ast.Expression]DurationConversionPlan{}
 	a.synthesizedStructTypes = map[*ast.StructLiteral]Type{}
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
@@ -724,34 +729,6 @@ func (a *Analyzer) validateTestDeclarations(program *ast.Program) {
 			a.recordResolvedTestMetadata(declaration)
 		}
 	})
-}
-
-// recordResolvedTestMetadata retains the stable, structured identity and source
-// location of a valid top-level test without inventing a generated callable or
-// linker-symbol identity.
-//
-// Rules:
-//   - rules/tooling/testing.md — § 6 "Test identity"
-//   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
-func (a *Analyzer) recordResolvedTestMetadata(declaration *ast.TestDeclaration) {
-	if declaration == nil || declaration.Name == nil {
-		return
-	}
-	metadata := ResolvedTestMetadata{
-		Identity: TestIdentity{
-			Module: a.currentModule,
-			Path:   []string{declaration.Name.Value},
-		},
-		Name: declaration.Name.Value,
-		Source: TestSourceLocation{
-			File:   declaration.Name.Token.File,
-			Line:   declaration.Name.Token.Line,
-			Column: declaration.Name.Token.Column,
-		},
-		Declaration: declaration,
-	}
-	a.resolvedTestMetadata[declaration] = metadata
-	a.resolvedTests = append(a.resolvedTests, metadata)
 }
 
 // refreshTypesResolvedThroughNestedImplDeclarations closes the forward
@@ -8076,34 +8053,6 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 	return typ
 }
 
-func genericRecursiveStorageKind(owner string, parameters []string, ref *ast.TypeReference) string {
-	if ref == nil {
-		return ""
-	}
-
-	if ref.ElementType != nil {
-		length := big.NewInt(ref.ArrayLength)
-		if ref.ArrayLengthExpression != nil {
-			if exact, ok := constantIntegerValue(ref.ArrayLengthExpression); ok {
-				length = exact
-			}
-		}
-		if !ref.Slice && length.Sign() > 0 {
-			return genericRecursiveStorageKind(owner, parameters, ref.ElementType)
-		}
-		return ""
-	}
-
-	if ref.Name != owner {
-		return ""
-	}
-
-	if genericTypeArgsMatchParameters(ref.TypeArgs, parameters) {
-		return "direct"
-	}
-	return "nonconverging"
-}
-
 func genericTypeArgsMatchParameters(args []*ast.TypeReference, parameters []string) bool {
 	if len(args) != len(parameters) {
 		return false
@@ -9743,66 +9692,6 @@ func (a *Analyzer) updateReferenceSymbolOrigin(name string, typ Type) {
 	a.symbols[name] = symbol
 }
 
-func referenceTypeWithOrigin(target Type, source Type) Type {
-	target.ReferenceOriginName = source.ReferenceOriginName
-	target.ReferenceOriginToken = source.ReferenceOriginToken
-	target.ReferenceOriginLocal = source.ReferenceOriginLocal
-	target.ReferenceOriginMatchScoped = source.ReferenceOriginMatchScoped
-	target.ReferenceOriginStorage = source.ReferenceOriginStorage
-	target.ReferenceOriginGeneration = source.ReferenceOriginGeneration
-	target.ReferenceOriginDisplayName = source.ReferenceOriginDisplayName
-	return target
-}
-
-func (a *Analyzer) referenceTypeWithOriginFromExpression(target Type, expr ast.Expression) Type {
-	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr)
-	target.ReferenceOriginName = originName
-	target.ReferenceOriginToken = originToken
-	target.ReferenceOriginLocal = originLocal
-	target.ReferenceOriginStorage = originStorage
-	target.ReferenceOriginGeneration = generation
-	target.ReferenceOriginMatchScoped = a.referenceOriginMatchScopedForExpression(expr)
-	return target
-}
-
-func (a *Analyzer) referenceOriginMatchScopedForExpression(expr ast.Expression) bool {
-	root, ok := borrowRootName(expr)
-	if !ok {
-		return false
-	}
-	symbol, ok := a.symbols[root]
-	return ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped
-}
-
-func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, lexer.Token, bool, StorageOrigin, int) {
-	root, ok := borrowRootName(expr)
-	if !ok {
-		return "", lexer.Token{}, false, StorageOriginUnknown, 0
-	}
-	symbol, ok := a.symbols[root]
-	if !ok {
-		return root, expressionToken(expr), true, StorageOriginUnknown, 0
-	}
-	// rules/memory/reference_model.md: parameter roots use the symbolic origin
-	// seeded by seedParameterReferenceOrigin. The binding is local, while the
-	// referenced storage remains caller-owned.
-	if origin, exists := a.localRefContainers[root]; exists && !origin.Unknown {
-		name, token := origin.Name, origin.Token
-		if name == "" {
-			name, token = root, symbol.Token
-		}
-		return name, token, origin.Local, symbol.Storage, a.arenaGenerations[name]
-	}
-	if typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginName != "" {
-		return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, symbol.Type.ReferenceOriginLocal, symbol.Type.ReferenceOriginStorage, symbol.Type.ReferenceOriginGeneration
-	}
-	return symbol.Name, symbol.Token, symbol.Local, symbol.Storage, a.arenaGenerations[symbol.Name]
-}
-
-func typeCarriesReferenceOrigin(typ Type) bool {
-	return typ.Kind == ReferenceType || typ.Kind == SliceType
-}
-
 // variadicPackSymbol identifies a callee-local pack binding for the pack
 // escape restrictions in rules/declarations/functions.md sections 32 and 34.
 func (a *Analyzer) variadicPackSymbol(name string) bool {
@@ -10513,18 +10402,6 @@ func genericNamedTypeWithRepresentation(template Type, representation Type) Type
 		out.NoCopyPolicyOrigin = representation.NoCopyPolicyOrigin
 	}
 	return out
-}
-
-func genericStructFieldHasDirectRecursiveStorage(owner Type, field Type) bool {
-	if sameConcreteType(owner, field) {
-		return true
-	}
-	switch field.Kind {
-	case ArrayType:
-		return field.Element != nil && genericStructFieldHasDirectRecursiveStorage(owner, *field.Element)
-	default:
-		return false
-	}
 }
 
 // substituteGenericType replaces parameters in representation, element and
@@ -13354,6 +13231,10 @@ type matchPatternInfo struct {
 	PayloadBorrow        bool
 	PayloadBorrowMutable bool
 	PayloadToken         lexer.Token
+	// PayloadNode is the bound identifier of a borrowed payload, the stable
+	// pattern node (MatchPattern.Expression builds fresh wrappers) that keys
+	// its resolved reference plan (P15-45).
+	PayloadNode ast.Expression
 	// InitializesSubject names a possibly-empty union subject binding that
 	// this arm proves initialized (every variant arm of such a match).
 	InitializesSubject string
@@ -13752,7 +13633,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			variant, variantOK := lookupUnionVariant(subjectType, pattern.Property.Value)
 			if ownerOK && a.resolveTypeName(owner) == subjectType.Name && variantOK {
 				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-					a.addErrorAtToken(pattern.Property.Token, "union variant %s.%s requires payload binding", typeDisplayName(subjectType), variant.Name)
+					a.reportUnionPatternPayloadBindingRequired(pattern.Property.Token, subjectType, variant)
 					return matchPatternInfo{}, false
 				}
 				a.bindDefinition(pattern.Property.Token, variant.Token)
@@ -13793,7 +13674,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		if subjectType.Kind == UnionType {
 			if variant, ok := lookupUnionVariant(subjectType, pattern.Value); ok {
 				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-					a.addErrorAtToken(pattern.Token, "union variant %s.%s requires payload binding", typeDisplayName(subjectType), variant.Name)
+					a.reportUnionPatternPayloadBindingRequired(pattern.Token, subjectType, variant)
 					return matchPatternInfo{}, false
 				}
 				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
@@ -13879,6 +13760,9 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 	info.PayloadToken = binding.Token
 	info.PayloadBorrow = borrowed
 	info.PayloadBorrowMutable = mutable
+	if borrowed {
+		info.PayloadNode = binding
+	}
 	var payloadType Type
 	if variant.Payload != nil {
 		payloadType = *variant.Payload
@@ -13936,6 +13820,7 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 	info.PayloadBorrow = borrowed
 	info.PayloadBorrowMutable = mutable
 	if borrowed {
+		info.PayloadNode = binding
 		info.BindingType = Type{
 			Name: referenceTypeName(payloadType, mutable), Kind: ReferenceType,
 			Element: &payloadType, ReferenceMutable: mutable,
@@ -14012,6 +13897,9 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 						Local: info.BindingType.ReferenceOriginLocal, MatchScoped: true,
 						Place: clonePlace(info.PayloadPlace), HasPlace: true,
 					}
+					// package 15 § 99: publish the payload borrow's plan for
+					// Semantic IR, keyed by the ref pattern node.
+					a.recordReferencePlan(info.PayloadNode, info.PayloadPlace, info.PayloadBorrowMutable, false, info.PayloadToken)
 				}
 			}
 		}
@@ -15614,6 +15502,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.IntegerLiteral:
 		return expr.Token
 	case *ast.FloatLiteral:
+		return expr.Token
+	case *ast.QuantityLiteral:
 		return expr.Token
 	case *ast.StringLiteral:
 		return expr.Token

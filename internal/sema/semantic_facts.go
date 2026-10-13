@@ -45,9 +45,11 @@ type TestIdentity struct {
 // Rules:
 //   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
 type TestSourceLocation struct {
-	File   string
-	Line   int
-	Column int
+	File      string
+	Line      int
+	Column    int
+	EndLine   int
+	EndColumn int
 }
 
 // ResolvedTestMetadata is the compiler-owned frontend description consumed by
@@ -283,6 +285,13 @@ type ResolvedOperator struct {
 	ResultType      Type
 	RuntimeCheck    bool
 	FailureBehavior OperatorFailureBehavior
+	// ShiftCountProven marks a shift whose count is a compile-time constant
+	// inside 0..<width and which cannot otherwise fail (right shift, unsigned
+	// left shift, or signed left shift of a constant whose result fits): it
+	// needs no runtime check, is no try failure point and has no panic
+	// effect. Semantic IR has only a checked shift operation, so lowering
+	// keeps that form and its failure edge is dead.
+	ShiftCountProven bool
 }
 
 type ResolvedConditionFactKind string
@@ -1725,8 +1734,51 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 		return
 	}
 	if resolved.Kind != "" {
+		if infix, ok := expr.(*ast.InfixExpression); ok {
+			resolved = a.proveShiftCount(resolved, infix.Left, infix.Right)
+		}
 		a.resolvedOperators[expr] = resolved
 	}
+}
+
+// proveShiftCount discharges the runtime check of a shift whose validity is
+// compile-time known. Invalid constant counts and overflowing constant signed
+// left shifts are already compile errors (validateShiftExpression).
+//
+// Rules:
+//   - rules/foundations/operators.md — "Shift count": "When invalidity is
+//     compile-time known, compilation fails. Otherwise the program performs a
+//     deterministic arithmetic failure"; "Unsigned left shift" is defined bit
+//     behavior; right shifts are defined for every valid count
+func (a *Analyzer) proveShiftCount(resolved ResolvedOperator, left, right ast.Expression) ResolvedOperator {
+	switch resolved.Kind {
+	case ResolvedIntegerShiftLeftUnsignedChecked, ResolvedIntegerShiftLeftSignedChecked,
+		ResolvedIntegerShiftRightUnsignedChecked, ResolvedIntegerShiftRightSignedChecked:
+	default:
+		return resolved
+	}
+	count, known := a.integerConstantValue(right)
+	if !known {
+		return resolved
+	}
+	representation, width, ok := a.integerRepresentation(resolved.LeftType)
+	if !ok || count.Sign() < 0 || !count.IsUint64() || count.Uint64() >= uint64(width) {
+		return resolved
+	}
+	if resolved.Kind == ResolvedIntegerShiftLeftSignedChecked {
+		value, constant := a.integerConstantValue(left)
+		if !constant || representation.MinInteger == nil || representation.MaxInteger == nil {
+			return resolved
+		}
+		shifted := new(big.Int).Lsh(new(big.Int).Set(value), uint(count.Uint64()))
+		if shifted.Cmp(representation.MinInteger) < 0 || shifted.Cmp(representation.MaxInteger) > 0 {
+			return resolved
+		}
+	}
+	resolved.RuntimeCheck = false
+	resolved.FailureBehavior = OperatorDoesNotFail
+	resolved.ShiftCountProven = true
+	return resolved
 }
 
 // resolvedIntegerInfixOperator classifies one binary operator over built-in
@@ -1823,6 +1875,7 @@ func (a *Analyzer) recordResolvedCompoundAssignment(stmt *ast.AssignmentStatemen
 	if !ok {
 		return
 	}
+	resolved = a.proveShiftCount(resolved, stmt.Target, stmt.Value)
 	a.resolvedCompoundAssignments[stmt] = resolved
 	a.recordArithmeticPanicEffect(resolved, stmt.Token)
 }

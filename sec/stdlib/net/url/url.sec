@@ -90,9 +90,9 @@ impl URL {
     }
 
     /** Serializes the URL using RFC 3986 component recomposition. */
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         // TODO: Implement stdlib/net/URL.ToString()
-        return ""
+        return Ok("")
     }
 
     /** Serializes the URL while replacing authority userinfo with `REDACTED`. */

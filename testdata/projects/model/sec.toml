@@ -1,0 +1,47 @@
+# The human name, machine identity and physical location are independent.
+[project]
+name = "SEC Compiler Suite"
+uuid = "550e8400-e29b-41d4-a716-446655440000"
+module = "suite"
+
+[version]
+major = 1
+minor = 0
+revision = 3
+build = 123
+userdefined = "alpha"
+format = "[major].[minor].[revision]-[userdefined].[build]"
+
+[target.sec]
+kind = "command"
+source = "cmd/sec"
+artifact = "sec"
+variants = ["linux-amd64", "windows-amd64"]
+
+[target.sec.version]
+build = 421
+
+[target.lsp]
+kind = "command"
+source = "cmd/lsp"
+variants = ["linux-amd64"]
+
+[target.lsp.version]
+major = 0
+minor = 8
+revision = 2
+build = 97
+userdefined = "beta"
+
+[target.library]
+kind = "library"
+source = "compiler/library"
+variants = ["linux-amd64"]
+
+[variant.linux-amd64]
+os = "linux"
+arch = "amd64"
+
+[variant.windows-amd64]
+os = "windows"
+arch = "amd64"

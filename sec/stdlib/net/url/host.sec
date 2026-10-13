@@ -92,7 +92,9 @@ impl Host {
         // that RFC 3986 does not, so the canonical spelling must also match.
         match ip.Ipv4Address.Parse(value) {
             Ok(address) => {
-                let canonical := address.ToString()
+                let canonical := try address.ToString() {
+                    Err(_) => return Err(ParseError.Allocation(CollectionError.AllocationFailed))
+                }
 
                 if canonical != value {
                     return Err(ParseError.InvalidHost(0))
@@ -225,7 +227,7 @@ impl Host {
             }
 
             let decoded := byte(
-                uint(high) * 16 + uint(low)
+                uint(high) * 16 + uint(low),
             )
 
             // RFC 3986 normalization permits percent-encoded unreserved
@@ -294,22 +296,24 @@ impl Host {
      * Registered names and IPv4 addresses directly; IPv6 and IPvFuture inside
      * square brackets.
      */
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         match _kind {
             HostKind.IPv6 => {
-                return "[" + _value + "]"
+                let text := try "[" + _value + "]"
+                return Ok(text)
             }
 
             HostKind.IPvFuture => {
-                return "[" + _value + "]"
+                let text := try "[" + _value + "]"
+                return Ok(text)
             }
 
             HostKind.IPv4 => {
-                return _value
+                return Ok(_value)
             }
 
             HostKind.RegisteredName => {
-                return _value
+                return Ok(_value)
             }
         }
     }
@@ -413,8 +417,12 @@ impl Host {
 
         match ip.Ipv6Address.Parse(literal) {
             Ok(address) => {
+                let canonical := try address.ToString() {
+                    Err(_) => return Err(ParseError.Allocation(CollectionError.AllocationFailed))
+                }
+
                 return Ok(Host{
-                    _value: address.ToString(),
+                    _value: canonical,
                     _kind: HostKind.IPv6,
                 })
             }

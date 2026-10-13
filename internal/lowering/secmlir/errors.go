@@ -2,6 +2,7 @@ package secmlir
 
 import (
 	"fmt"
+	"sec/internal/diagnostics"
 
 	"sec/internal/ir/semantic"
 )
@@ -12,6 +13,13 @@ import (
 type UnsupportedLoweringError struct {
 	Feature  string
 	Function semantic.FunctionID
+}
+
+// ImplementationCapability preserves the emitter's exact feature, callable
+// identity and schema boundary; a callable ID is not a source location.
+// Rules: rules/compiler/compiler_pipeline.md — §32(1–5), §35(4).
+func (e *UnsupportedLoweringError) ImplementationCapability() diagnostics.ImplementationCapability {
+	return diagnostics.ImplementationCapability{Feature: e.Feature, Callable: string(e.Function), Boundary: fmt.Sprintf("Sec MLIR schema %d", dialectSchemaVersion)}
 }
 
 func (e *UnsupportedLoweringError) Error() string {

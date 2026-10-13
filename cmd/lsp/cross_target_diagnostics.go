@@ -48,6 +48,9 @@ func documentTextHash(text string) string {
 //   - rules/tooling/lsp.md — "Multi-target diagnostics", "Target status" (per-target diagnostics)
 //   - rules/platform/platform_model.md — diagnostics retain Target identity
 func (s *server) scheduleCrossTargetDiagnostics(uri string) {
+	if isProjectManifest(pathFromURI(uri)) {
+		return
+	}
 	if s == nil || s.documentSnapshots == nil {
 		return
 	}
@@ -178,12 +181,20 @@ func semanticDiagnosticsForTarget(uri string, text string, overlay sourceOverlay
 	return out
 }
 
+// crossTargetKey keeps distinct owner proof outcomes separate when grouping
+// target applicability, even if their primary text and source range agree.
+// Rules: rules/tooling/lsp.md — Multi-target diagnostics;
+// rules/compiler/compiler_analysis.md — §7(4–8), §58(3).
 func crossTargetKey(item diagnostic) string {
 	message := item.Message
 	if index := strings.Index(message, "\n"); index >= 0 {
 		message = message[:index]
 	}
-	return fmt.Sprintf("%s|%d:%d|%s", item.Code, item.Range.Start.Line, item.Range.Start.Character, message)
+	proof := ""
+	if item.Data != nil {
+		proof = string(item.Data.ProofState)
+	}
+	return fmt.Sprintf("%s|%d:%d|%s|%s", item.Code, item.Range.Start.Line, item.Range.Start.Character, message, proof)
 }
 
 // mergeCrossTargetDiagnostics records applicability: a diagnostic on every

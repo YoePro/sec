@@ -18,70 +18,209 @@ integrations:
       - cmd/compiler/main.go
       - cmd/compiler/module_sources.go
       - cmd/lsp/target_plan.go
+      - cmd/compiler/init_manifest.go
+      - internal/project/source_layout.go
+      - internal/sema/project_source_layout.go
+      - cmd/compiler/import_sources.go
+      - cmd/lsp/project_root_modules.go
+      - cmd/lsp/import_sources.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - cmd/compiler/main_test.go
+      - cmd/compiler/init_dry_run_test.go
+      - internal/project/source_layout_test.go
+      - internal/sema/project_source_layout_test.go
+      - cmd/compiler/project_source_layout_test.go
+      - cmd/lsp/project_source_layout_test.go
+      - testdata/projects/source_layout/entry.sec
+      - testdata/projects/source_layout/support.sec
+      - testdata/projects/source_layout/bin_import.sec
+      - testdata/projects/source_layout/internal_import.sec
+      - testdata/projects/source_layout/store.sec
     implemented:
       - the nearest ancestor `.sec/sec.toml` is discovered by the compiler and the LSP (§ 36)
       - "`sec init` rejects a nested manifest below an existing project (§ 4, § 53(3))"
+      - project-root source files (§ 14) and reserved and recognized directories `cmd`, `bin`, `.sec`, and `internal` (§ 15)
+      - Shared project SourceLocation and ProjectImportAccess enforce root-only cmd/bin/.sec roles and internal access markers alongside the existing root ModuleName contract. Represented source files directly in cmd or any internal marker and source modules below root bin/.sec are rejected; ordinary nested bin/cmd directories remain ordinary. Imports from reserved storage and inaccessible internal subtrees are rejected before imported declaration visibility; nested internal markers all apply, root internal is project-wide, and component-aware prefix checks avoid granting similarly named siblings access.
+      - CLI and LSP consume one shared Sema validator with registered mandatory S1149 on the exact module-name or import-path token. CLI checks selected and sibling sources and recursively loaded project imports; root cmd child entry modules assemble their module main helpers. LSP discovers ancestor disk or unsaved-overlay manifests and validates before recursive import loading, with UTF-16 protocol spans. Root naming, minimal entries and ordinary/internal children remain supported, trusted compiler library provenance is excluded, and validation never deletes output/user files. Complete whole-project discovery/schema validation remains a separate remaining point.
     remaining:
       - complete project validation of § 48 with registered diagnostics, including nested manifests found during discovery rather than only at init
-      - project-root source files (§ 14) and reserved and recognized directories `cmd`, `bin`, `.sec`, and `internal` (§ 15)
-      - "standard library and platform roots (§ 16) resolved through the project model instead of repository-relative lookup"
-      - "stable cache and module identity under Project directory moves (§ 34, § 50(1))"
+      - standard library and platform roots (§ 16) resolved through the project model instead of repository-relative lookup
+      - stable cache and module identity under Project directory moves (§ 34, § 50(1))
+    revised: "2026-10-13"
+    verification:
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler -run 'EntrySiblings|ProjectSource|RootModule' -count=1
+        result: passed on 2026-10-13 after restricting the cmd entry-assembly exception to the Project-root cmd directory
+      - command: go test -race ./cmd/compiler ./cmd/lsp ./internal/project ./internal/sema -run 'ProjectSource|ProjectInternal|EntrySiblings|RootModule|AssembleModule' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./cmd/lsp ./internal/project ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-10-13; full compiler/LSP/project/Sema/diagnostic suites; root naming and minimal entries retained, cmd entry helper assembly, reserved storage rejection, nested/root internal access, segment-boundary checks, exact registered S1149 token spans, unsaved ancestor manifest overlays and output/user-file preservation; remaining discovery-and-boundary 4 to 3 and tooling_projects.yaml 10 to 9
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; init uses the governing ancestor manifest from any project subdirectory, rejects actual nested manifests and refuses new-project creation enclosing a child manifest; complete discovered-project CLI/LSP validation remains a separate remaining point
 
   - id: tooling.project-identity
     area: tooling-projects
     status: partial
     integrated: "2026-10-04"
     summary: >-
-      Human-readable ProjectName and stable RFC 9562 ProjectUUID identity
-      (§ 3.2, § 3.3, § 7).
+      Human-readable ProjectName and stable RFC 9562 ProjectUUID identity (§
+      3.2, § 3.3, § 7).
     rules:
       - rules/projects/projects.md
     code:
       - cmd/compiler/init.go
+      - internal/project/identity.go
+      - cmd/compiler/init_module.go
+      - cmd/compiler/init_manifest.go
+      - internal/project/manifest.go
+      - cmd/compiler/build_entry.go
+      - internal/project/root_module.go
+      - internal/sema/project_root_modules.go
+      - cmd/compiler/module_sources.go
+      - cmd/lsp/project_root_modules.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - cmd/compiler/main_test.go
+      - internal/project/identity_test.go
+      - cmd/compiler/init_identity_test.go
+      - internal/project/manifest_test.go
+      - cmd/compiler/build_entry_test.go
+      - testdata/projects/model/sec.toml
+      - internal/project/root_module_test.go
+      - internal/sema/project_root_modules_test.go
+      - cmd/compiler/project_root_modules_test.go
+      - cmd/lsp/project_root_modules_test.go
+      - testdata/projects/root_module/library.sec
+      - testdata/projects/root_module/mismatched_module.sec
     implemented:
       - "`sec init` writes `[project].name` and a newly generated UUIDv4 `[project].uuid` once and never regenerates it for an existing manifest (§ 37, § 53(6))"
-    remaining:
-      - parse and validate `[project]`, rejecting a nil or malformed UUID (§ 7, § 48)
-      - make the resolved ProjectUUID, ProjectName, ProjectRoot, and ProjectVersion facts available without reparsing strings (§ 49(1)–(2))
-      - make module resolution consume ProjectUUID/import-root identity rather than ProjectName (§ 49(4), rules/projects/modules.md)
-      - "`[project].module` root ModuleName override (§ 53(8))"
       - conformance tests for UUID stability across repeated init, rename without UUID change, and invalid UUID rejection (§ 50(1))
+      - parse and validate `[project]`, rejecting a nil or malformed UUID (§ 7, § 48)
+      - ParseManifestIdentity validates exactly one [project] table, required non-empty name and canonical non-nil RFC 9562 UUID, duplicate fields, typed optional module and single-identifier ModuleName. Name whitespace is retained with a located warning; all defined ordinary UUID versions and special Max are supported. Single-line basic/literal strings are read; unsupported multiline strings receive explicit reader-capability diagnostics and their contents are skipped. Init validates existing and generated identities; discovered-project CLI/LSP diagnostic integration remains in tooling.project-discovery-and-boundary.
+      - make the resolved ProjectUUID, ProjectName, ProjectRoot, and ProjectVersion facts available without reparsing strings (§ 49(1)–(2))
+      - internal/project Manifest resolves ProjectUUID, ProjectName, absolute clean ProjectRoot and structured ProjectVersion from one validated source snapshot. Facts and identity warnings are copied on access; original text is retained for precise editing, and accessors perform no I/O or reparsing. Rename and directory moves change only the appropriate name/root facts and preserve UUID; explicit reload sees new values while older snapshots remain stable. Init consumes the shared loader; build entry selection uses its root/Target facts for valid manifests. Legacy entry-kind fallback and complete discovered-manifest CLI/LSP diagnostics remain separate work.
+      - "`[project].module` root ModuleName override (§ 53(8))"
+      - Manifest.RootModuleName resolves the optional root-library override or the complete ProjectName when it is a valid ModuleName; other human names require an override only when root source exists. Root command/firmware Targets use main; a simultaneously different root library name is rejected (§14). Shared Sema validation emits registered mandatory S1148 on the exact module-name token for mismatches or explicitly malformed/duplicate overrides. CLI checks selected roots and otherwise omitted mismatched siblings before analysis; LSP consumes the same checker and unsaved manifest overlays. Nested ordinary modules are unaffected; general invalid-manifest CLI/LSP diagnostics remain separate work.
+      - Unsupported multiline identity strings now name their owning project field in reader-capability errors, allowing malformed root overrides to be diagnosed without attributing unrelated identity/version failures to root module naming.
+    remaining:
+      - make module resolution consume ProjectUUID/import-root identity rather than ProjectName (§ 49(4), rules/projects/modules.md)
+    revised: "2026-10-13"
+    verification:
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./cmd/lsp ./internal/project ./internal/sema -run 'RootModule|ManifestIdentity|InitMinimal|AssembleModule' -count=1
+        result: passed on 2026-10-13; shared root checker, malformed/duplicate/multiline overrides, exact token spans, nested-module exclusion, CLI/LSP parity and minimal-root regressions
+      - command: go test ./cmd/compiler ./cmd/lsp ./internal/project ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-10-13; full affected suites; root override and identifier-only name fallback, required override for human names, minimal command/firmware main, conflicting library/entry roots, display-name rename stability, exact source-token diagnostic S1148, mismatched sibling rejection and unsaved LSP manifest overlays; remaining project-identity 2 to 1 and tooling_projects.yaml 18 to 17
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'Manifest|Init|BuildTargetKind' -count=1
+        result: passed on 2026-10-13; immutable snapshot access and concurrent fact readers, shared init validation and resolved build-entry selection
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; resolved project facts and Target versions, identity/version rejection, snapshot copies, rename/move/reload independence and existing init/build entry regressions; remaining project-identity 3 to 2, project-version-model 3 to 2, tooling_projects.yaml 20 to 18
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; init identity/manifest reader extracted to cmd/compiler/init_manifest.go; repeated and subdirectory init preserve UUID and human name, while existing identity and version errors are rejected before writes
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'InitIdentity|InitModule|ProjectUUID|ManifestIdentity|ValidModuleName|InitProject|InitMinimal' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; full affected compiler, project and formatconfig suites; identity conformance verifies UUIDv4 generation, repeated init and human-name rename without changing UUID, and rejection of malformed or nil UUID without writes; module CLI verifies normal/internal paths, root-relative invocation, compatible-source preservation, unchanged manifest, invalid paths, source and directory conflicts, symlinks and nested boundaries; remaining project-identity 5 to 3, sec-init 6 to 5, tooling_projects.yaml 26 to 23
 
   - id: tooling.project-version-model
     area: tooling-projects
     status: partial
     integrated: "2026-10-04"
+    revised: "2026-10-13"
     summary: >-
       Revision 2.0 structured project version: `[version]` with major, minor,
       revision, build, optional userdefined, and format; rendering through the
-      five recognized placeholders; and per-Target version overrides
-      (§ 8–§ 12, § 31).
+      five recognized placeholders; and per-Target version overrides (§ 8–§ 12,
+      § 31).
     rules:
       - rules/projects/projects.md
     code:
       - internal/project/version.go
+      - internal/project/version_forms.go
       - cmd/compiler/init.go
+      - internal/project/manifest.go
+      - cmd/compiler/init_manifest.go
+      - cmd/compiler/build_entry.go
+      - internal/project/manifest_edit.go
+      - internal/project/version_diagnostics.go
+      - internal/sema/project_version_diagnostics.go
+      - internal/diagnostics/diagnostics.go
+      - cmd/compiler/project_version_diagnostics.go
+      - cmd/compiler/analysis_pipeline.go
+      - cmd/compiler/test_command.go
+      - cmd/lsp/project_version_diagnostics.go
+      - cmd/lsp/diagnostics_batch.go
+      - cmd/lsp/analysis_dependencies.go
     tests:
       - internal/project/version_test.go
+      - internal/project/version_forms_test.go
+      - internal/project/manifest_test.go
+      - testdata/projects/model/sec.toml
+      - internal/project/manifest_edit_test.go
+      - internal/project/version_diagnostics_test.go
+      - cmd/compiler/project_version_diagnostics_test.go
+      - cmd/lsp/project_version_diagnostics_test.go
+      - cmd/lsp/allocation_parity_test.go
     implemented:
-      - "internal/project ParseManifestVersions reads exactly one `[version]` table and every `[target.<name>.version]` table into structured fields, requiring major, minor, revision, build, and format and rejecting duplicates, unknown fields, and non-decimal, negative, leading-zero, or out-of-range VersionNumbers outside 0..9223372036854775807 (§ 8(1)–(3))"
-      - "optional userdefined must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an empty Project value is rejected, and an empty Target value clears the inherited component (§ 9(3), § 11(7)–(8))"
-      - "Version.Render replaces exactly `[major]`, `[minor]`, `[revision]`, `[build]`, and `[userdefined]` from the parsed fields with unpadded base-10 numbers and verbatim userdefined, keeps every other character literal, and rejects unknown bracketed identifiers, a format that references a missing userdefined component, and an empty result (§ 10, § 49(3))"
-      - "Version.Resolve applies a Target override field by field, and validation reports a Target whose cleared userdefined leaves an inherited format referencing `[userdefined]` (§ 11(4)–(9)); the § 8(10)–(11) and § 11(10)–(11) examples render as specified"
+      - internal/project ParseManifestVersions reads exactly one `[version]` table and every `[target.<name>.version]` table into structured fields, requiring major, minor, revision, build, and format and rejecting duplicates, unknown fields, and non-decimal, negative, leading-zero, or out-of-range VersionNumbers outside 0..9223372036854775807 (§ 8(1)–(3))
+      - optional userdefined must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an empty Project value is rejected, and an empty Target value clears the inherited component (§ 9(3), § 11(7)–(8))
+      - Version.Render replaces exactly `[major]`, `[minor]`, `[revision]`, `[build]`, and `[userdefined]` from the parsed fields with unpadded base-10 numbers and verbatim userdefined, keeps every other character literal, and rejects unknown bracketed identifiers, a format that references a missing userdefined component, and an empty result (§ 10, § 49(3))
+      - Version.Resolve applies a Target override field by field, and validation reports a Target whose cleared userdefined leaves an inherited format referencing `[userdefined]` (§ 11(4)–(9)); the § 8(10)–(11) and § 11(10)–(11) examples render as specified
       - "`sec init` validates the version model of the manifest it generates before writing it (§ 37(1))"
-    remaining:
-      - validate `[version]` of discovered manifests in the compiler and the LSP, with registered diagnostics and source ranges in sec.toml (§ 48)
-      - rendered version during a build (§ 31) and build metadata (§ 32)
+      - The version manifest reader explicitly rejects unsupported hexadecimal, octal and binary TOML integers with their form named and a decimal VersionNumber alternative. Multiline basic/literal strings are rejected with a single-line alternative and source line; recovery skips their contents, including escaped delimiters, so string text cannot become phantom version fields or Target tables. This is a reader capability restriction, not a language prohibition.
       - make the resolved ProjectVersion available as a Project fact to builds and tooling (§ 49(1)–(2))
-      - accept the remaining TOML integer and string forms (hexadecimal, octal, binary, multi-line strings) or reject them with a dedicated message
+      - ProjectVersion is available as a structured value in Manifest.Facts; declared Target versions are resolved once through existing inheritance/override rules and returned as value copies by TargetVersion. Unknown Target names have no version. Invalid identity/version input publishes no resolved project, located failures are retained with deterministic ordering, and explicit reload refreshes facts without mutating prior snapshots (§§8,11,49). Build-time version display is supplied by tooling.project-build-numbering; source-level build metadata remains unimplemented.
+      - Version reading now skips multiline values in unowned sections as well, so permitted parameter text containing apparent version or Target-version headers cannot forge resolved version facts; complete TOML syntax parsing likewise separates real Target declarations from string contents.
+      - Build-time rendered versions now come from the final automatic or explicit component in tooling.project-build-numbering. CLI success output follows commit, and retained LLVM artifacts include the same rendered value. The combined remaining item stays open for the separately owned source-level build-metadata API of §32.
+      - validate `[version]` of discovered manifests in the compiler and the LSP, with registered diagnostics and source ranges in sec.toml (§ 48)
+      - Shared version-snapshot validation emits registered mandatory S1150 (projects.invalid-version) with deterministic ordering and Unicode-scalar source spans in sec.toml. Required fields, duplicate/malformed TOML, numeric bounds, placeholder errors and Target inheritance are diagnosed independently of unrelated identity errors; reader-capability errors remain explicit. CLI sema/analyse/emission/build, named builds, init and test validate governing manifests before semantic compilation or writes, deduplicating manifests across sources. The analysis pipeline was extracted from main.go into a cohesive sibling file.
+      - LSP distinguishes manifest TOML from Sec source, diagnoses open or discovered ancestor manifests on their own URI and consumes unsaved overlays. Manifest dependencies invalidate source batches on document/configuration changes, obsolete jobs are discarded and stale errors clear on correction, overlay close or deletion. Protocol spans use the same shared compiler renderer; cross-target Sec parsing is skipped for manifest documents. Allocation consumer-parity fixtures now declare the required version table so they retain their intended analysis coverage.
+    remaining:
+      - rendered version during a build (§ 31) and build metadata (§ 32)
+    verification:
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project -run 'Version|RootModule|BuildCLI|Init' -count=1
+        result: passed on 2026-10-13 after extracting the analysis pipeline from main.go
+      - command: go test -race ./cmd/compiler ./cmd/lsp ./internal/project -run 'VersionSnapshot|DiscoveredProjectVersion|ProjectVersionPublication|DiagnosticBatch' -count=1
+        result: passed on 2026-10-13 after final extraction and table-shape validation; source-token ranges, named and file builds, init/test failures before writes, discovered/open manifest URI publication, overlay correction/close, deleted-manifest clearing and batch lifecycle regressions
+      - command: go test ./cmd/lsp -count=1
+        result: passed on 2026-10-13 after adding mandatory version tables to allocation consumer-parity fixtures; full LSP suite including source/manifest routing and overlay behavior
+      - command: go test ./cmd/compiler ./internal/project ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-10-13; shared version validation, registered manifest spans and compiler/init/test/build/emission integration; remaining project-version-model 2 to 1 and tooling_projects.yaml 9 to 8
+      - command: go test -race ./cmd/compiler -run 'BuildCLI|ParseBuild' -count=1
+        result: passed on 2026-10-13; final automatic and explicit components render consistently in CLI success output and retained LLVM artifacts; source-level build metadata remains separate remaining work
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'Init|Manifest|TargetsUseReal|VersionIgnores' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; final affected suites after extracting Target scaffold logic; custom user entries/artifacts/Target version overrides and partial declarations remain preserved; additional registered variants and concurrent manifest edits are handled without lost updates
+      - command: go test ./cmd/compiler ./cmd/lsp ./internal/project ./internal/sema ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; broad compiler/LSP/project/Sema/formatter regressions; all Target kinds, version inheritance, retained identity/user metadata, dry run and idempotence, source/entry conflicts, precise table insertion and fault-injected manifest rollback; tooling.sec-init remaining 2 to 0 and status implemented, tooling_projects.yaml 17 to 15
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'Manifest|Init|BuildTargetKind' -count=1
+        result: passed on 2026-10-13; immutable snapshot access and concurrent fact readers, shared init validation and resolved build-entry selection
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; resolved project facts and Target versions, identity/version rejection, snapshot copies, rename/move/reload independence and existing init/build entry regressions; remaining project-identity 3 to 2, project-version-model 3 to 2, tooling_projects.yaml 20 to 18
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project ./internal/formatconfig -run 'InitDocumentsFormatting|InitMinimal|ManifestVersion|UnsupportedMultiline|Resolve' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; project and Target version tables explicitly reject hexadecimal/octal/binary integers and multiline basic/literal strings with located reader-capability messages and supported alternatives; rejected string bodies, escaped delimiters and unterminated bodies never create phantom fields or Target facts; remaining 4 to 3 for this ID and 27 to 26 in tooling_projects.yaml
 
   - id: tooling.project-build-numbering
     area: tooling-projects
-    status: planned
+    status: implemented
     integrated: "2026-10-04"
     summary: >-
       Visible, manually editable manifest build numbers with transactional
@@ -90,12 +229,64 @@ integrations:
       implemented.
     rules:
       - rules/projects/projects.md
-    remaining:
-      - project-scoped counter on `[version].build` and Target-scoped counter requiring a Target-local build field (§ 28)
-      - candidate allocation committed exactly once after all requested builds succeed, unchanged manifest after a failed build, one candidate across a multi-Variant Target, and serialized parallel builds (§ 29)
-      - "explicit `--build-number` for one invocation without mutating the manifest (§ 30)"
+    remaining: []
+    implemented:
       - comment- and layout-preserving manifest mutation through the parsed manifest syntax (§ 49(5))
+      - PlanBuildNumberEdit and ManifestDocument.ReplaceBuildNumber locate exactly one explicit Project or Target-local build integer through parsed TOML key components and byte ranges; quoted/escaped/dotted keys and inline tables are supported, comments/string/array contents cannot forge storage, missing local fields never mutate inherited Project storage, and invalid VersionNumbers or duplicate/malformed TOML are rejected. Only the selected scalar changes; comments, order, whitespace, CRLF and unrelated values remain byte-identical. Equal values retain their existing spelling.
+      - BuildNumberEdit.Commit uses the shared permission-preserving same-directory staged atomic manifest replacement, checks original bytes and inode before publication, rejects stale snapshots, removes staged files and avoids rewriting byte-identical edits. The extracted writer also serves init transactions and retains protected rollback. The build invocation layer owns automatic allocation, locking, success-only publication and explicit overrides.
       - manual reset and jump acceptance, and no automatic reset after major, minor, or revision changes (§ 8(6)–(7))
+      - project-scoped counter on `[version].build` and Target-scoped counter requiring a Target-local build field (§ 28)
+      - "Manifest resolves immutable per-Target BuildCounter facts from parsed TOML: enabled must be boolean, scope defaults to target and accepts only target/project, unknown settings fail, active target scope requires explicit local version.build, and active project scope owns Project version.build and rejects local build overrides. Disabled counters retain ordinary version inheritance. Shared model validation is consumed by init and discovered compiler build projects; diagnostics identify counter keys and source lines, including inline or quoted declarations, without accepting text inside strings."
+      - BuildNumberCandidate and LoadBuildNumberCandidate derive a bounded next value and complete Target version plus an exact edit from the current manifest snapshot. Explicit reload honors forward jumps, backward edits and zero resets, preserves the build baseline across major/minor/revision changes, ignores legacy hidden state, and reports overflow without producing an edit. Candidate calculation performs no reservation or mutation. The separate BuildInvocation layer and CLI build now own serialized reservation and success-only commit across requested Variants.
+      - explicit `--build-number` for one invocation without mutating the manifest (§ 30)
+      - candidate allocation committed exactly once after all requested builds succeed, unchanged manifest after a failed build, one candidate across a multi-Variant Target, and serialized parallel builds (§ 29)
+      - BuildInvocation reserves the current baseline plus one under a project-wide OS file lock, rereading the manifest after waiting and keeping one candidate/version across the requested Target Variants. Compiler build replans against the locked snapshot, commits once after every Variant links, and prints the successful version only after commit. Frontend/backend/link failures, aborted invocations, overflow and stale manifest commits leave authoritative values unchanged; process exit releases OS locks. Independent Target counters are conservatively serialized to avoid concurrent replacement of the shared manifest. Persistent lock inodes contain no counter authority.
+      - sec build accepts a declared Target name (all configured Variants) or the existing source-file form; --target filters named builds, while ambiguous multi-Variant -o is rejected. --build-number is a bounded invocation-only override used by every selected Variant, bypasses automatic allocation/locks and performs no manifest edits. Final structured versions are rendered once; retained LLVM artifacts carry the rendered version and a version-sensitive identity based on ProjectUUID, Target and Variant, without timestamps. Source-level build metadata API and complete configuration/cache policy remain separate work.
+    revised: "2026-10-13"
+    code:
+      - internal/project/build_number_edit.go
+      - internal/project/manifest_write.go
+      - cmd/compiler/init_manifest_write.go
+      - internal/project/build_counter.go
+      - internal/project/manifest.go
+      - internal/project/manifest_locations.go
+      - cmd/compiler/build_counter_validation.go
+      - cmd/compiler/build_command.go
+      - internal/project/build_invocation.go
+      - cmd/compiler/build_options.go
+      - cmd/compiler/build_selection.go
+    tests:
+      - internal/project/build_number_edit_test.go
+      - internal/project/build_counter_test.go
+      - cmd/compiler/build_counter_validation_test.go
+      - internal/project/build_invocation_test.go
+      - cmd/compiler/build_invocation_test.go
+      - testdata/projects/build_tools/clang_stub.sh
+    verification:
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler -run 'BuildCLI|ParseBuild' -count=1
+        result: passed on 2026-10-13 after final snapshot replanning; actual parallel compiler processes commit consecutive values, failed later Variant and concurrent editor preserve manifest state, named and filtered Target builds share one candidate, explicit numbers affect retained IR without mutation, real clang produces an executable returning the fixture result
+      - command: go test -race ./internal/project ./cmd/compiler -run 'BuildInvocation|BuildCLI|BuildNumber|BuildCounter|ParseBuild' -count=1
+        result: passed on 2026-10-13; OS lock serialization, canceled waits and explicit bypass, candidate reuse, double-commit prevention and no premature writes
+      - command: go test ./cmd/compiler ./internal/project ./internal/sema ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; full affected suites; automatic and explicit numbers, immutable/version-sensitive identity, project and Target storage, one candidate across multiple Variants, aborted/failed builds, native clang compile and fixture execution, external edits and overflow; remaining build-numbering 2 to 0 and status implemented, tooling_projects.yaml 12 to 10
+      - command: go test ./cmd/lsp -run 'ProjectRootModule|TargetPlan|Manifest' -count=1
+        result: passed on 2026-10-13; shared manifest and project-root regressions
+      - command: go test -race ./internal/project ./cmd/compiler -run 'BuildCounter|BuildAndInitRejectInvalidCounter|Manifest' -count=1
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/project -count=1
+        result: passed on 2026-10-13; final full project suite including ignored pre-existing hidden counter state and shared project scopes
+      - command: go test ./cmd/compiler ./internal/project ./internal/sema ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; resolved counter scope/storage and copied snapshot facts, shared project sequence across Targets, disabled inheritance, default target scope, malformed declarations and exact key lines; CLI build and init reject invalid counter storage before tools/writes; manual forward/backward/zero baselines and release-component changes produce the current baseline plus one, with overflow rejection and no implicit commit; remaining build-numbering 4 to 2 and tooling_projects.yaml 14 to 12
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler -run 'InitTarget|InitTransaction' -count=1
+        result: passed on 2026-10-13; extracted shared atomic writer retains init transaction behavior
+      - command: go test -race ./internal/project -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project -count=1
+        result: passed on 2026-10-13; exact scalar edits for Project and Target storage, quoted/escaped/dotted keys and inline tables, CRLF/comments/distractors, bounded values, missing local storage, immutable/no-op snapshots, atomic permission-preserving commit, stale external edits and guarded rollback; existing compiler and init regressions pass; remaining build-numbering 5 to 4 and tooling_projects.yaml 15 to 14
 
   - id: tooling.project-targets-and-configuration
     area: tooling-projects
@@ -103,9 +294,9 @@ integrations:
     integrated: "2026-10-04"
     summary: >-
       Targets, Variants, profiles, compile-time parameters, configuration
-      precedence, and build output from the manifest (§ 17–§ 26). CompilationPlan
-      construction itself remains governed by the compiler and platform
-      fragments (§ 51(4)).
+      precedence, and build output from the manifest (§ 17–§ 26).
+      CompilationPlan construction itself remains governed by the compiler and
+      platform fragments (§ 51(4)).
     rules:
       - rules/projects/projects.md
       - rules/platform/platform_model.md
@@ -122,28 +313,92 @@ integrations:
 
   - id: tooling.sec-init
     area: tooling-projects
-    status: partial
+    status: implemented
     integrated: "2026-10-04"
+    revised: "2026-10-13"
     summary: >-
-      Additive, idempotent, conflict-aware, transactional, non-destructive
-      `sec init` for new projects, modules, and Targets (§ 35–§ 45).
+      Additive, idempotent, conflict-aware, transactional, non-destructive `sec
+      init` for new projects, modules, and Targets (§ 35–§ 45).
     rules:
       - rules/projects/projects.md
       - rules/projects/modules.md
     code:
       - cmd/compiler/init.go
+      - cmd/compiler/init_scaffold.go
+      - cmd/compiler/module_sources.go
+      - cmd/compiler/main.go
+      - cmd/compiler/init_module.go
+      - cmd/compiler/init_manifest.go
+      - cmd/compiler/init_transaction.go
+      - internal/project/manifest.go
+      - cmd/compiler/init_target.go
+      - cmd/compiler/init_target_scaffold.go
+      - cmd/compiler/init_manifest_write.go
+      - internal/project/manifest_edit.go
     tests:
       - cmd/compiler/main_test.go
+      - cmd/compiler/init_minimal_test.go
+      - cmd/compiler/init_format_test.go
+      - testdata/projects/init/main.sec
+      - cmd/compiler/init_module_test.go
+      - testdata/projects/init_module/orders/orders.sec
+      - testdata/projects/init_module/conflict/conflict.sec
+      - cmd/compiler/init_transaction_test.go
+      - cmd/compiler/init_dry_run_test.go
+      - cmd/compiler/init_target_test.go
+      - internal/project/manifest_edit_test.go
+      - testdata/projects/init_target/owned.sec
+      - testdata/projects/init_target/bad_entry.sec
     implemented:
       - new-project scaffold `.sec/sec.toml`, `cmd/<target>/main.sec`, `bin/`, and `internal/` (§ 37(6))
       - an existing starter source is never overwritten and a repeated init on an existing manifest is a no-op (§ 40, § 42)
       - nested manifests are rejected (§ 4)
-      - "the new-project manifest contains the revision-2.0 `[version]` table with major 0, minor 1, revision 0, build 0, format `[major].[minor].[revision].[build]`, and no userdefined, validated before it is written (§ 37(1)–(3), 2026-10-04)"
-    remaining:
-      - minimal profile with a root `main.sec` command Target (§ 37(8))
+      - the new-project manifest contains the revision-2.0 `[version]` table with major 0, minor 1, revision 0, build 0, format `[major].[minor].[revision].[build]`, and no userdefined, validated before it is written (§ 37(1)–(3), 2026-10-04)
+      - "`sec init --minimal` creates only `.sec/sec.toml` and root `main.sec` with a command Target whose source is `.` (§ 14(8), § 37(8)). Scaffold selection is independent of the build profile. Existing sources and manifests remain unchanged on repeat init, including cross-layout requests, and CLI module assembly skips the `.sec` metadata directory when collecting root siblings."
+      - Both standard and minimal init scaffolds write a complete [format] table with the canonical defaults and TOML comments describing supported alternatives, meanings and numeric constraints (§ 4 of rules/tooling/formatter.md). Existing manifests are not rewritten by init.
       - "`sec init module <path>` with module/path validation, including internal modules (§ 38)"
-      - "`sec init command|library|firmware|test <name>` additive Target creation that inherits the Project version (§ 39)"
-      - additive extension of an existing manifest instead of the current no-op, preserving its contents (§ 41)
-      - conflict detection with rollback and transactional writes (§ 42, § 43)
-      - dry run (§ 44) and project-root invocation rules (§ 45)
       - conformance tests for dry run, conflict rollback, and no-op idempotent init (§ 50(1))
+      - dry run (§ 44) and project-root invocation rules (§ 45)
+      - conflict detection with rollback and transactional writes (§ 42, § 43)
+      - sec init module resolves the ancestor project root, validates identity/version and relative logical paths, creates <path>/<ModuleName>.sec, and supports internal marker paths without changing the manifest or adding a Target. Compatible user sources survive repeat init; source conflicts, invalid identifiers, traversal, reserved roots, nested manifests and symlink directories fail before writes. Project and module creation share the transactional plan executor.
+      - Current project/minimal/module commands fully plan directory and exclusive file creates before application, inspect existing source membership and command-entry conflicts, and preserve compatible user files. Apply rechecks inspected directories and preserved content; file creation/write/sync/close failures remove only owned files and empty directories in reverse order, never overwrite concurrent files, and report rollback failures or replaced paths. New manifests are published last (§§42–43).
+      - "--dry-run is supported for project and module init, performs the same discovery, validation and change planning, prints creates/preserved files or no changes, and never writes or prompts. Invocation from any project subdirectory uses its governing manifest without generating a nested scaffold or changing UUID/name/version; actual nested manifests and new-project creation enclosing a child project are rejected (§§4,44–45)."
+      - additive extension of an existing manifest instead of the current no-op, preserving its contents (§ 41)
+      - "`sec init command|library|firmware|test <name>` additive Target creation that inherits the Project version (§ 39)"
+      - sec init command|library|firmware|test <ProjectKey> [--target <os-arch>] [--dry-run] creates a validated entry/source scaffold and an additive Target declaration in the ancestor project. Command and firmware entries use the canonical int/void signatures, libraries receive an ordinary module, and test products receive an ordinary test declaration and compiler-generated harness rather than main or friend visibility. Registered existing Variants are reused or a canonical selected-platform Variant is added. Targets inherit Project versions; existing artifacts, source modules, explicit version overrides and optional metadata are preserved, with no implicit counter activation.
+      - TOML syntax is parsed with github.com/BurntSushi/toml v1.6.0 while source edits insert only missing requested table fields or append new tables. Existing comments, spelling, ordering, CRLF and unrelated parameter text remain unchanged; multiline strings/arrays cannot forge headers. Source creation and same-directory staged, permission-preserving atomic manifest replacement share rollback, with original-content checks and exclusive Target transaction locks. Compatible repeats do not rewrite metadata or acquire a lock; dry run plans creates and edits without mutation.
+      - Requested Source/Kind/Variant conflicts, invalid ProjectKeys and invalid entry signatures fail before writes. Target plans protect changed manifests and metadata symlink directories. internal remains an access marker and module init rejects direct files in a terminal internal segment while permitting child modules (§15.5(6)). General discovered-project schema/diagnostic validation remains owned by tooling.project-discovery-and-boundary and tooling.project-targets-and-configuration.
+    remaining: []
+    verification:
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'Init|Manifest|TargetsUseReal|VersionIgnores' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; final affected suites after extracting Target scaffold logic; custom user entries/artifacts/Target version overrides and partial declarations remain preserved; additional registered variants and concurrent manifest edits are handled without lost updates
+      - command: go test ./cmd/compiler ./cmd/lsp ./internal/project ./internal/sema ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; broad compiler/LSP/project/Sema/formatter regressions; all Target kinds, version inheritance, retained identity/user metadata, dry run and idempotence, source/entry conflicts, precise table insertion and fault-injected manifest rollback; tooling.sec-init remaining 2 to 0 and status implemented, tooling_projects.yaml 17 to 15
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'Init' -count=1
+        result: passed on 2026-10-13; all init tests, including actual CLI dry runs, project-root invocation, rollback fault injection, concurrent-file protection, existing version validation and prior identity/module/scaffold conformance
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; full affected suites; dry-run new/minimal/module commands perform validation and print planned creates without filesystem changes or prompting; root/subdirectory repeated init preserves manifest bytes and modification time, UUID/name/version and layout; preflight rejects metadata/source/entry/nested-manifest conflicts without early creates; injected second-file creation and partial-write failures roll back owned paths while preserving user and concurrently-created files; remaining 5 to 2 for tooling.sec-init and 23 to 20 in tooling_projects.yaml
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'InitIdentity|InitModule|ProjectUUID|ManifestIdentity|ValidModuleName|InitProject|InitMinimal' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; full affected compiler, project and formatconfig suites; identity conformance verifies UUIDv4 generation, repeated init and human-name rename without changing UUID, and rejection of malformed or nil UUID without writes; module CLI verifies normal/internal paths, root-relative invocation, compatible-source preservation, unchanged manifest, invalid paths, source and directory conflicts, symlinks and nested boundaries; remaining project-identity 5 to 3, sec-init 6 to 5, tooling_projects.yaml 26 to 23
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project ./internal/formatconfig -run 'InitDocumentsFormatting|InitMinimal|ManifestVersion|UnsupportedMultiline|Resolve' -count=1
+        result: passed on 2026-10-13
+      - command: go test ./cmd/compiler ./internal/project ./internal/formatconfig -count=1
+        result: passed on 2026-10-13; standard and minimal init write all nine documented formatting parameters; both generated tables resolve to canonical formatter defaults with language corrections disabled; prior scaffold and existing-manifest preservation tests pass
+      - command: go test ./cmd/compiler ./internal/project -count=1
+        result: passed on 2026-10-13; complete compiler CLI and project model suites passed, including minimal scaffold generation, root-module analysis and default application scaffold regressions
+      - command: go vet ./...
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler ./internal/project -run 'InitMinimal|InitProject|ParseInit|ManifestTargets|TargetForSource' -count=1
+        result: passed on 2026-10-13; actual CLI creates exactly the two minimal entries with a root command Target, valid default version and independent build profile; generated main type-checks; existing source, manifest/UUID and both layouts remain unchanged on repeated init, and nested creation is rejected before any files are created; remaining 7 to 6 for this ID and 28 to 27 in tooling_projects.yaml

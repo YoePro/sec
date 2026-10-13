@@ -732,7 +732,10 @@ func TestInitProjectDoesNotOverwriteMainSource(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(mainPath), 0755); err != nil {
 		t.Fatal(err)
 	}
-	existing := []byte("module custom\n")
+	existing, err := os.ReadFile("../../testdata/projects/init/main.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(mainPath, existing, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -799,12 +802,27 @@ func TestInitProjectRejectsNestedManifest(t *testing.T) {
 	nested := options
 	nested.ProjectDir = filepath.Join(root, "nested")
 	nested.ProjectName = "nested"
+	if err := initProject(nested); err != nil {
+		t.Fatal("ancestor invocation failed", err)
+	}
+	if fileExists(nested.ProjectDir) {
+		t.Fatal("ancestor invocation created a nested scaffold")
+	}
+	nestedManifest := filepath.Join(nested.ProjectDir, ".sec", "sec.toml")
+	if err := os.MkdirAll(filepath.Dir(nestedManifest), 0755); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := os.ReadFile(filepath.Join(root, ".sec", "sec.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedManifest, parent, 0644); err != nil {
+		t.Fatal(err)
+	}
 	if err := initProject(nested); err == nil || !strings.Contains(err.Error(), "nested Sec project manifest is not allowed") {
-		t.Fatalf("initProject nested error = %v, want nested manifest error", err)
+		t.Fatal(err)
 	}
-	if fileExists(filepath.Join(nested.ProjectDir, ".sec", "sec.toml")) {
-		t.Fatal("nested sec.toml was created")
-	}
+
 }
 
 func TestParseCompilerTarget(t *testing.T) {

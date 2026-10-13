@@ -26,7 +26,7 @@ func pitfallCodeActions(uri, text string, requested lspRange, overlay sourceOver
 	}
 	prepareProgramForLSP(parsed.Program, path, overlay)
 	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, overlay)
-	analyzer.Analyze(parsed.Program)
+	errors := analyzer.Analyze(parsed.Program)
 	severity := pitfallLevel(uri, settings)
 	for _, finding := range analyzer.PitfallAnalysis().Findings() {
 		if normalizedSourcePath(finding.Subject.Source.File) != normalizedSourcePath(path) {
@@ -48,6 +48,14 @@ func pitfallCodeActions(uri, text string, requested lspRange, overlay sourceOver
 			level = severity
 		}
 		d := diagnostic{Range: span, Code: code, Severity: level, Source: "sec", Message: string(finding.Rule)}
+		if finding.DiagnosticID != "" {
+			owner, found := pitfallOwnerDiagnostic(finding, errors, uri, text, overlay)
+			if !found {
+				// No exact owner in this snapshot means no owner-based action.
+				continue
+			}
+			d = owner
+		}
 		for _, suggestion := range finding.Actions {
 			action := codeAction{Title: "Suggested edit: " + suggestion.Title, Kind: "quickfix", Diagnostics: []diagnostic{d}}
 			if edit, ok := fixes.Pitfall(text, path, finding, suggestion); ok {
@@ -67,4 +75,22 @@ func pitfallCodeActions(uri, text string, requested lspRange, overlay sourceOver
 		}
 	}
 	return result
+}
+
+// pitfallOwnerDiagnostic projects the exact primary occurrence identified by
+// Sema. ID alone or nearby source text cannot establish diagnostic ownership.
+// Rules: rules/analysis/pitfall_analysis.md — Diagnostic ownership and coalescing;
+// rules/tooling/lsp.md — Shared diagnostic model, Snapshots.
+func pitfallOwnerDiagnostic(finding sema.PitfallFinding, errors []sema.Error, uri, text string, overlay sourceOverlay) (diagnostic, bool) {
+	source := finding.DiagnosticSource
+	if finding.DiagnosticID == "" || source.File == "" || source.Line <= 0 || source.Column <= 0 {
+		return diagnostic{}, false
+	}
+	for _, err := range errors {
+		if err.ID == finding.DiagnosticID && normalizedSourcePath(err.File) == normalizedSourcePath(source.File) &&
+			err.Line == source.Line && err.Column == source.Column && err.EndLine == source.EndLine && err.EndColumn == source.EndColumn {
+			return semaDiagnosticWithSources(err, 1, uri, text, overlay), true
+		}
+	}
+	return diagnostic{}, false
 }

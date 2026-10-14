@@ -1,0 +1,34 @@
+module main
+
+@noAlloc
+fn Empty(values: ref mut list[int], users: ref mut map[int, int], names: ref mut set[int], array: int[]) Result[void, CollectionError] {
+    let zero: uint := 0
+    try values.Reserve(zero)
+    try users.Reserve(0)
+    try names.Reserve(0)
+    let emptyList := try list[int].WithCapacity(0)
+    let emptyMap := try map[int, int].WithCapacity(0)
+    let emptySet := try set[int].WithCapacity(0)
+    try array.Append(1..<1)
+    return Ok()
+}
+
+@noAlloc
+fn Bounded(values: ref mut list[int, 4], names: ref mut set[int, 4]) Result[void, CollectionError] {
+    try values.Append(1)
+    let inserted := try values.Insert(0, 2)
+    let added := try names.Add(1)
+    return Ok()
+}
+
+type Lookalike struct { Value: int }
+impl Lookalike {
+    fn Append(value: int) void { }
+    fn Reserve(value: uint) void { }
+}
+
+@noAlloc
+fn User(values: Lookalike) void {
+    values.Append(1)
+    values.Reserve(1u)
+}

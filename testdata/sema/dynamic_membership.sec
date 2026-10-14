@@ -4,7 +4,7 @@ type Status int range 100..999 default 500
 impl Status {
     property IsRegistered: bool {
         get {
-            let regged: Status[] := [100, 200, 404, 511]
+            let regged: Status[4] := [100, 200, 404, 511]
             return self in regged
         }
     }
@@ -20,7 +20,6 @@ fn RuneSearch(value: rune, values: rune[]) bool {
     return value in values || 'a' in values
 }
 
-fn LiteralSearch() bool {
-    let values: uint[] := [100, 200, 404, 511]
+fn LiteralSearch(values: uint[]) bool {
     return 404 in values
 }

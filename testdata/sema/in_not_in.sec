@@ -1,7 +1,6 @@
 module notintest
 
-fn inTest() int {
-    let s: int[] := [1, 2, 3, 4]
+fn inTest(s: int[]) int {
     let mut x := 3
     if x in s {
         return 1

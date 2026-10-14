@@ -146,7 +146,7 @@ type Node struct {
 type Right[T] struct {
     left: Left[T],
 }`,
-			wantID: diagnostics.RecursiveStructLayout, wantPath: "Left.right -> Right.left -> Left",
+			wantID: diagnostics.RecursiveStructLayout, wantPath: "Left[T].right (stores Right[T]) -> Right[T].left (stores Left[T]) -> Left[T]",
 		},
 		{
 			name: "mutual unions through payloads",

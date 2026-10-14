@@ -1,0 +1,34 @@
+module main
+
+extern "C" fn Left32() float32
+extern "C" fn Right32() float32
+extern "C" fn Left64() float64
+extern "C" fn Right64() float64
+extern "C" fn Check() int32
+
+fn main() int {
+    unsafe {
+        let value32_0 := Left32() == Right32()
+        let value32_1 := Left32() != Right32()
+        let value32_2 := Left32() < Right32()
+        let value32_3 := Left32() <= Right32()
+        let value32_4 := Left32() > Right32()
+        let value32_5 := Left32() >= Right32()
+        let value32_6 := Left32() % Right32()
+        let value64_0 := Left64() == Right64()
+        let value64_1 := Left64() != Right64()
+        let value64_2 := Left64() < Right64()
+        let value64_3 := Left64() <= Right64()
+        let value64_4 := Left64() > Right64()
+        let value64_5 := Left64() >= Right64()
+        let value64_6 := Left64() % Right64()
+        let mut compound32: float32 := Left32()
+        compound32 %= Right32()
+        if compound32 != 1.5 { return 2 }
+        let mut compound64: float64 := Left64()
+        compound64 %= Right64()
+        if compound64 != 1.5 { return 2 }
+        if Check() != 0 { return 1 }
+    }
+    return 0
+}

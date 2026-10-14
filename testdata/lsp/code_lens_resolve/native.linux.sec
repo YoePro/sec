@@ -1,0 +1,4 @@
+#target(os: "linux", arch: "amd64")
+module storage
+type Handle struct {}
+impl Handle implements Native { fn Size() int { return 1 } }

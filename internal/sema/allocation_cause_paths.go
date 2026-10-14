@@ -18,7 +18,8 @@ type AllocationCauseStep struct {
 }
 
 // AllocationCausePath keeps definite allocation distinct from unknown foreign
-// or indirect behavior, with a deterministic synchronous witness.
+// or indirect behavior, with a deterministic compiler-owned policy witness.
+// The owning producer selects synchronous or whole-root execution relations.
 // Rules: rules/memory/allocation.md — §§24(6),28(4),29(4).
 type AllocationCausePath struct {
 	Unknown    bool

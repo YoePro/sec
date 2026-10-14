@@ -406,13 +406,13 @@ func TestHoverShowsCompilerOwnedUnitQuantityFacts(t *testing.T) {
 	source := `module main
 
 unit m physical
-impl m {
+impl <m> {
     Dimension: [length^1]
     Kind: length
     Scale: 1 / 1000
 }
 
-fn Use(distance: m) void {
+fn Use(distance: <m>) void {
 }
 `
 	offset := strings.LastIndex(source, "distance")
@@ -668,7 +668,7 @@ func TestAnalyzeAllowsCoreStringImpl(t *testing.T) {
 
 impl string {
 	fn Len() uint {
-		return self.len
+		return self.Len
 	}
 }
 `
@@ -3602,7 +3602,7 @@ fn Use(ptr: RawPtr[byte]) byte {
 `
 	hoverOffset := strings.Index(source, "VolatileRead") + 2
 	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
-	if !ok || !strings.Contains(hover.Contents.Value, "unsafe fn VolatileRead() T") ||
+	if !ok || !strings.Contains(hover.Contents.Value, "unsafe fn VolatileRead() byte") ||
 		!strings.Contains(hover.Contents.Value, "Result here: `byte`") ||
 		!strings.Contains(hover.Contents.Value, "CKM-RAWPTR-VOLATILE-READ") ||
 		!strings.Contains(hover.Contents.Value, "Effects: `volatile-read`") {
@@ -4914,14 +4914,14 @@ func TestHoverShowsUnitDimensionDerivation(t *testing.T) {
 	source := `module main
 
 unit km physical
-impl km {
+impl <km> {
     Dimension: [length^1]
     Kind: length
     Scale: 1000
 }
 
 unit s physical
-impl s {
+impl <s> {
     Dimension: [time^1]
     Kind: time
     Scale: 1
@@ -4955,12 +4955,12 @@ fn Use(acceleration: decimal<km/s^2>) void {
 //   - rules/tooling/lsp.md — "Unit actions"
 //   - rules/types/units.md — "LSP requirements"
 func TestUnitConversionCodeActionAppliesProvenConversion(t *testing.T) {
-	prelude := "module main\n\nunit km physical\nimpl km {\n    Dimension: [length^1]\n    Kind: length\n    Scale: 1000\n}\n\n"
+	prelude := "module main\n\nunit km physical\nimpl <km> {\n    Dimension: [length^1]\n    Kind: length\n    Scale: 1000\n}\n\n"
 	text := prelude + "fn Use(distance: decimal<km>) decimal<m> {\n    let converted: decimal<m> := distance\n    return converted\n}\n"
 	uri := "file:///units.sec"
 	reported := analyze(uri, text)
 	actions := unitConversionCodeActions(uri, text, reported, sourceOverlay{})
-	if len(actions) != 1 || actions[0].Title != "Convert explicitly to m with m(distance)" {
+	if len(actions) != 1 || actions[0].Title != "Convert explicitly to m with <m>(distance)" {
 		t.Fatalf("actions = %+v (diagnostics %+v)", actions, reported)
 	}
 	edits := actions[0].Edit.Changes[uri]
@@ -4970,7 +4970,7 @@ func TestUnitConversionCodeActionAppliesProvenConversion(t *testing.T) {
 	start := lineCharToOffset(text, edits[0].Range.Start.Line, edits[0].Range.Start.Character)
 	end := lineCharToOffset(text, edits[0].Range.End.Line, edits[0].Range.End.Character)
 	fixed := text[:start] + edits[0].NewText + text[end:]
-	if !strings.Contains(fixed, "let converted: decimal<m> := m(distance)") {
+	if !strings.Contains(fixed, "let converted: decimal<m> := <m>(distance)") {
 		t.Fatalf("fixed source:\n%s", fixed)
 	}
 	if remaining := analyze(uri, fixed); len(remaining) != 0 {

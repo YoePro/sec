@@ -6,7 +6,7 @@ module units
 
 /** Square metre */
 unit m2 physical
-impl m2 {
+impl <m2> {
     LongName: "Square Metre"
     Symbol: "m²"
     BaseUnit: false
@@ -18,7 +18,7 @@ impl m2 {
 
 /** Cubic metre */
 unit m3 physical
-impl m3 {
+impl <m3> {
     LongName: "Cubic Metre"
     Symbol: "m³"
     BaseUnit: false
@@ -30,7 +30,7 @@ impl m3 {
 
 /** Litre */
 unit L physical
-impl L {
+impl <L> {
     LongName: "Litre"
     Symbol: "L"
     BaseUnit: false
@@ -42,7 +42,7 @@ impl L {
 
 /** Millilitre */
 unit mL physical
-impl mL {
+impl <mL> {
     LongName: "Millilitre"
     Symbol: "mL"
     BaseUnit: false
@@ -54,7 +54,7 @@ impl mL {
 
 /** Hectare */
 unit ha physical
-impl ha {
+impl <ha> {
     LongName: "Hectare"
     Symbol: "ha"
     BaseUnit: false
@@ -66,7 +66,7 @@ impl ha {
 
 /** Metre per second */
 unit mps physical
-impl mps {
+impl <mps> {
     LongName: "Metre per Second"
     Symbol: "m/s"
     BaseUnit: false
@@ -78,7 +78,7 @@ impl mps {
 
 /** Kilometre per hour */
 unit kph physical
-impl kph {
+impl <kph> {
     LongName: "Kilometre per Hour"
     Symbol: "km/h"
     BaseUnit: false
@@ -90,7 +90,7 @@ impl kph {
 
 /** Metre per second squared */
 unit mps2 physical
-impl mps2 {
+impl <mps2> {
     LongName: "Metre per Second Squared"
     Symbol: "m/s²"
     BaseUnit: false
@@ -102,7 +102,7 @@ impl mps2 {
 
 /** Standard acceleration due to gravity */
 unit gee physical
-impl gee {
+impl <gee> {
     LongName: "Standard Gravity"
     Symbol: "g₀"
     BaseUnit: false
@@ -114,7 +114,7 @@ impl gee {
 
 /** Kilonewton */
 unit kN physical
-impl kN {
+impl <kN> {
     LongName: "Kilonewton"
     Symbol: "kN"
     BaseUnit: false
@@ -126,7 +126,7 @@ impl kN {
 
 /** Kilopascal */
 unit kPa physical
-impl kPa {
+impl <kPa> {
     LongName: "Kilopascal"
     Symbol: "kPa"
     BaseUnit: false
@@ -138,7 +138,7 @@ impl kPa {
 
 /** Megapascal */
 unit MPa physical
-impl MPa {
+impl <MPa> {
     LongName: "Megapascal"
     Symbol: "MPa"
     BaseUnit: false
@@ -150,7 +150,7 @@ impl MPa {
 
 /** Bar */
 unit bar physical
-impl bar {
+impl <bar> {
     LongName: "Bar"
     Symbol: "bar"
     BaseUnit: false
@@ -162,7 +162,7 @@ impl bar {
 
 /** Standard atmosphere */
 unit atm physical
-impl atm {
+impl <atm> {
     LongName: "Standard Atmosphere"
     Symbol: "atm"
     BaseUnit: false
@@ -174,7 +174,7 @@ impl atm {
 
 /** Torr */
 unit torr physical
-impl torr {
+impl <torr> {
     LongName: "Torr"
     Symbol: "Torr"
     BaseUnit: false
@@ -186,7 +186,7 @@ impl torr {
 
 /** Kilogram per cubic metre */
 unit kg_m3 physical
-impl kg_m3 {
+impl <kg_m3> {
     LongName: "Kilogram per Cubic Metre"
     Symbol: "kg/m³"
     BaseUnit: false
@@ -198,7 +198,7 @@ impl kg_m3 {
 
 /** Pascal second */
 unit Pa_s physical
-impl Pa_s {
+impl <Pa_s> {
     LongName: "Pascal Second"
     Symbol: "Pa·s"
     BaseUnit: false
@@ -210,7 +210,7 @@ impl Pa_s {
 
 /** Square metre per second */
 unit m2_s physical
-impl m2_s {
+impl <m2_s> {
     LongName: "Square Metre per Second"
     Symbol: "m²/s"
     BaseUnit: false
@@ -222,7 +222,7 @@ impl m2_s {
 
 /** Kilogram metre per second */
 unit kg_m_s physical
-impl kg_m_s {
+impl <kg_m_s> {
     LongName: "Kilogram Metre per Second"
     Symbol: "kg·m/s"
     BaseUnit: false
@@ -234,7 +234,7 @@ impl kg_m_s {
 
 /** Newton second */
 unit N_s physical
-impl N_s {
+impl <N_s> {
     LongName: "Newton Second"
     Symbol: "N·s"
     BaseUnit: false

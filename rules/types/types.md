@@ -1893,7 +1893,7 @@ The compiler-known expression
 bit[N](value)
 ```
 
-extracts the `N` least-significant bits of an integer value (MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is a deliberate, visibly lossy bit-pattern extraction, distinct from the value-preserving checked conversion `TargetType(value)`; it is not a new keyword, a general cast, a core function, a standalone `bit[N]` type or a `uintN` family.
+extracts the `N` least-significant bits of an integer value (MD-056, 2026-10-12 and 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 3, which supersedes `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is a deliberate, visibly lossy bit-pattern extraction, distinct from the value-preserving checked conversion `TargetType(value)`; it is not a new keyword, a general cast, a core function, a standalone `bit[N]` type or a `uintN` family.
 
 Semantics: with bit 0 as the least-significant bit of the source's fixed-width two's-complement representation, the result is
 
@@ -1918,7 +1918,9 @@ The result type is always unsigned and chosen from `N` alone:
 
 The compiler records the proven interval `0 <= result <= 2^N - 1`, which a later checked conversion may use to prove that it cannot fail. `bit[N](value)` returns `uint8`, never `byte` or `char`, for `N` in `1..8`.
 
-Accepted sources are the primitive signed and unsigned integer types, including target-sized `int` and `uint` with a resolved width, and the eight-bit `byte` and `char` (read as their numeric representation, not as text). Named types, constrained types, unit-bearing values, enums, registers, pointers, foreign `c::` scalars, strings, runes, booleans and floating values are rejected; they need their own explicit conversion first, and extraction never strips a contract or a unit.
+Accepted sources are the primitive signed and unsigned integer types, including target-sized `int` and `uint` with a resolved width, the eight-bit `byte` and `char` (read as their numeric representation, not as text), and — the MD-046 exception — unit-bearing integer quantities such as `uint16<rpm>`. Named types, constrained types, enums, registers, pointers, foreign `c::` scalars, strings, runes, booleans and floating values are rejected; they need their own explicit conversion first, and extraction never strips a contract.
+
+The result never inherits a unit: `bit[N](speed)` is a unitless unsigned value even when `speed` has a unit. The optional suffix `bit[N](value)<U>` (written with no space before `<`) gives the result the unit `U`: it labels a unitless source, which is the programmer's assertion at a hardware or protocol boundary, or keeps the source's own unit. It never changes a unit — `bit[12](speed)<Hz>` for a `speed` in rpm is an error; use the declared conversion `<Hz>(speed)`. The numeric bits are the same in both forms; no scale, offset, logarithm or rounding applies (MD-046, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 4).
 
 ```sec
 let word: uint32 := 0xABCD1234

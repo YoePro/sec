@@ -122,6 +122,12 @@ func requestKey(id json.RawMessage) string {
 //   - rules/tooling/lsp.md — "Responsiveness model", "Document synchronization"
 func supersededByQueuedEdit(message rpcMessage, later []rpcMessage) bool {
 	uri := requestDocumentURI(message.Params)
+	if uri == "" && message.Method == "codeLens/resolve" {
+		var lens codeLens
+		if json.Unmarshal(message.Params, &lens) == nil && lens.Data != nil {
+			uri = lens.Data.URI
+		}
+	}
 	if uri == "" {
 		return false
 	}
@@ -187,8 +193,10 @@ func isDeferrableAnalysisRequest(method string) bool {
 		"textDocument/documentHighlight",
 		"textDocument/documentSymbol",
 		"workspace/symbol",
+		"workspaceSymbol/resolve",
 		"textDocument/inlayHint",
 		"textDocument/codeLens",
+		"codeLens/resolve",
 		"sec/compilerKnownDefinition",
 		"textDocument/signatureHelp",
 		"textDocument/codeAction",

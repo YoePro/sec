@@ -1,0 +1,47 @@
+module main
+
+type Direct[T] union {
+    Next(Direct[T])
+    End
+}
+
+type Named[T] union {
+    Next { value: Named[T] }
+    End
+}
+
+type Changing[T] union {
+    Next(Changing[T[]])
+    End
+}
+
+type Stabilizes[T] union {
+    Next(Stabilizes[int])
+    End
+}
+
+type Fixed[T] struct {
+    next: Fixed[T][2]
+}
+
+type Left[T] union {
+    Next(Right)
+    End
+}
+
+type Right struct {
+    back: Left[int]
+}
+
+type Inner[T] struct {
+    value: T
+}
+
+type Outer[U] struct {
+    inner: Inner[U]
+}
+
+type Wrapped[T] union {
+    Next(Outer[Wrapped[T]])
+    End
+}

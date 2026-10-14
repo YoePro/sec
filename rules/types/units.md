@@ -163,14 +163,57 @@ valid, and unit symbol `<s>` still names the unit. Shadowing, duplicate
 declaration, and visually confusable checks do not compare unit symbols with
 ordinary identifiers (`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 8).
 
-The same holds for ordinary type declarations of another module: a project may
-declare `type A int` or `type K struct { ... }` although trusted core declares
-the units `A` (ampere) and `K` (kelvin). The ordinary type is what `A` names in
-ordinary type and expression positions, `<A>` and `decimal<A>` still name the
-unit, and the unit's `impl A` block in its own module remains the unit's
-metadata block. A unit and an ordinary type of the same spelling within one
-module remain a declaration conflict for now, because which of them `impl Name`
-targets there is undecided (`missing-decisions.yaml` MD-040).
+The same holds for ordinary type declarations: a project may declare
+`type A int` or `type K struct { ... }` although trusted core declares the
+units `A` (ampere) and `K` (kelvin), and a unit and an ordinary type of the
+same spelling may coexist even within one module (MD-040, 2026-10-13,
+`rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`
+§ 2).
+
+### Qualified unit references
+
+A reference to a unit **always** uses the `<...>` spelling, whether or not an
+ordinary type of the same name exists. A unit declaration keeps the
+`unit Name ...` syntax; it is a declaration, not a reference.
+
+```sec
+unit Volt physical
+
+type Volt uint
+
+impl <Volt> {
+    LongName: "Volt"
+    Symbol: "V"
+    Kind: electric_potential
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1
+    System: SI
+}
+
+impl Volt {
+    fn IsZero() bool {
+        return self == 0
+    }
+}
+```
+
+- `impl <Volt>` targets only the unit and holds its metadata and unit
+  functions; it must be in the module that declares the unit. `impl Volt`
+  targets only the ordinary type. Resolution never depends on declaration
+  order, fallback lookup or a preference for types over units.
+- A unit conversion is called `<Volt>(value)`; a unit function is called
+  `<Volt>.Name(...)`; unit metadata is read `<Volt>.Symbol`. The ordinary type
+  forms `Volt(value)` and `Volt.SizeOf` keep their meaning, and neither form
+  changes the other's namespace.
+- Unit annotations keep their forms: `uint16<Volt>`, `decimal<Volt>`,
+  `<Volt>` and `5<s>`.
+- A bare unit name is never a unit reference: `impl rpm`, `rpm(hz)` and a type
+  written `rpm` are errors whose help names the `<rpm>` spelling.
+
+Of the unit metadata, `<U>.Symbol` and `<U>.LongName` are readable as
+`string`. The value types of the other metadata (`Kind`, `Dimension`, `Scale`,
+`System`, `BaseUnit`, `Status` and the transform fields) are not defined in
+Sec 0.1 (`missing-decisions.yaml` MD-062), so reading them is an error.
 
 ---
 
@@ -250,7 +293,7 @@ Example:
 ```sec
 unit KiB uint information
 
-impl KiB {
+impl <KiB> {
     LongName: "Kibibyte"
     Symbol: "KiB"
     Dimension: [information^1]
@@ -332,11 +375,11 @@ exponents.
 Canonical syntax:
 
 ```sec
-impl m {
+impl <m> {
     Dimension: [length^1]
 }
 
-impl mps {
+impl <mps> {
     Dimension: [length^1, time^-1]
 }
 ```
@@ -529,7 +572,7 @@ Example:
 ```sec
 unit mps physical
 
-impl mps {
+impl <mps> {
     LongName: "Meter per second"
     Symbol: "m/s"
     Kind: velocity
@@ -876,7 +919,7 @@ Example:
 ```sec
 unit mm physical
 
-impl mm {
+impl <mm> {
     LongName: "Millimeter"
     Symbol: "mm"
     Kind: length
@@ -941,7 +984,7 @@ Example shape:
 ```sec
 unit dB ratio
 
-impl dB {
+impl <dB> {
     LongName: "Decibel"
     Symbol: "dB"
     Dimension: []
@@ -1050,7 +1093,7 @@ Example:
 ```sec
 unit percent ratio
 
-impl percent {
+impl <percent> {
     LongName: "Percent"
     Symbol: "%"
     Dimension: []
@@ -1114,7 +1157,7 @@ currency-per-time rates, but both remain valid unit expressions.
 Sec supports an explicit factor-provided conversion form:
 
 ```sec
-let eur := EUR(sek, factor)
+let eur := <EUR>(sek, factor)
 ```
 
 For a source quantity in `SEK` and a target `EUR`, `factor` must have compatible
@@ -1150,7 +1193,7 @@ Example:
 ```sec
 unit KiB uint information
 
-impl KiB {
+impl <KiB> {
     LongName: "Kibibyte"
     Symbol: "KiB"
     Kind: information_amount
@@ -1275,19 +1318,70 @@ The programmer must choose one of:
 
 - a more suitable numeric carrier;
 - an explicit numeric conversion;
-- an explicit rounding policy;
+- an explicit rounding policy (see "Explicit rounding");
 - another explicitly defined conversion operation.
 
 Unit compatibility and numeric representability are both required.
 
 ---
 
+## Explicit rounding
+
+Decided by MD-047 (2026-10-13,
+`rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`
+§ 5).
+
+No unit or numeric conversion silently rounds, truncates, overflows or loses
+precision. A program may request one explicit rounding mode as an additional
+argument of the ordinary typed numeric or unit conversion; there is no new
+keyword or rounding operator:
+
+```sec
+let speed: decimal<rpm> := 100
+let hz := try uint16<Hz>(speed, RoundingMode.Ceil)
+let low := int8(value, RoundingMode.Floor)
+```
+
+The argument is a case of the one core `RoundingMode` enum
+(`rules/library/core-library.md` § 10.3). Rounding cannot manufacture unit
+compatibility: the conversion must still satisfy every type, dimension, Kind,
+range and named-type rule, and units with different Kinds still need a
+declared conversion.
+
+Rounding happens exactly once, after the exact mathematical unit transform
+(scale and, where defined, offset), to a value representable in the target
+carrier. No intermediate value is rounded and then transformed again.
+Logarithmic and affine details remain with MD-048.
+
+| Mode | 1.6 | -1.6 | Halfway 2.5 | Halfway -2.5 |
+|---|---:|---:|---:|---:|
+| `NearestEven` | 2 | -2 | 2 | -2 |
+| `NearestAwayFromZero` | 2 | -2 | 3 | -3 |
+| `TowardZero` | 1 | -1 | 2 | -2 |
+| `AwayFromZero` | 2 | -2 | 3 | -3 |
+| `Ceil` | 2 | -1 | 3 | -2 |
+| `Floor` | 1 | -2 | 2 | -3 |
+
+Without a mode, an exact representable conversion succeeds; a statically known
+inexact or out-of-range conversion is a compile-time error, and a dynamic
+checked conversion uses `ConversionError`. With a mode, the chosen loss of the
+fractional part is permitted, but no other error is: a known out-of-range
+result is a compile-time error and a dynamic one fails with
+`ConversionError.OutOfRange`. `try` is required exactly when the conversion
+remains fallible — not merely because a rounding mode is written; a proven
+constant or bounded integer source needs none. Failures use the core
+`ConversionError` (`PrecisionLoss`, `OutOfRange`); there is no `RoundingError`.
+`duration(q, mode)` follows the same model (`rules/types/temporal.md` § 5.6).
+
+---
+
 ## Explicit unit conversion functions
 
-A unit may define explicit conversion functions in its ordinary `impl` block.
+A unit may define explicit conversion functions in its `impl <Unit>` block.
 
 A conversion function whose name equals the target unit participates in
-constructor-style conversion resolution.
+constructor-style conversion resolution and is called `<Unit>(value)`
+(MD-040). Other unit functions are called `<Unit>.Name(...)`.
 
 Example:
 
@@ -1295,14 +1389,14 @@ Example:
 unit Hz physical
 unit rpm physical
 
-impl Hz {
+impl <Hz> {
     Kind: frequency
     Dimension: [time^-1]
     Scale: 1
     System: SI
 }
 
-impl rpm {
+impl <rpm> {
     Kind: rotational_frequency
     Dimension: [time^-1]
     Scale: 1 / 60
@@ -1342,8 +1436,12 @@ Examples include:
 
 ```sec
 let exact: decimal<m> := decimal<m>(value)
-let eur := EUR(sek, factor)
+let eur := <EUR>(sek, factor)
 ```
+
+A unit conversion or factor-provided conversion is always written with the
+qualified unit reference `<Unit>(...)` (MD-040); `decimal<m>(value)` remains a
+carrier-qualified conversion.
 
 Sema resolves whether the call is:
 
@@ -1698,7 +1796,7 @@ Conversion is explicit and must receive or call the relationship explicitly.
 Currency conversion is the primary example:
 
 ```sec
-let eur := EUR(sek, factor)
+let eur := <EUR>(sek, factor)
 ```
 
 ---
@@ -1730,6 +1828,35 @@ Units may describe the semantic meaning of numeric hardware or foreign values.
 A unit annotation does not change ABI representation by itself.
 
 Register field width, FFI ABI type, and unit semantics remain separate.
+
+Decided by MD-046 (2026-10-13,
+`rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`
+§ 4); `rules/declarations/registers.md` § 12 owns the field rules:
+
+- A field `bit[N]<U>` occupies N register bits and carries the unit `<U>`.
+  Reading it gives the smallest unsigned carrier of N bits with the unit
+  preserved (`bit[12]<rpm>` reads as `uint16<rpm>`) and the field range
+  `0..2^N-1`.
+- A write proves both the unit identity and the N-bit range. It is never
+  truncated and never becomes fallible; an unknown or wider value is narrowed
+  explicitly first.
+- `bit[N](value)` never inherits a unit. The optional suffix
+  `bit[N](value)<U>` gives the result the unit `U`: it labels a unitless raw
+  value (the programmer's assertion at the hardware boundary), or keeps a
+  unit-bearing source's own unit. It never changes a unit — `bit[12](speed)<Hz>`
+  with `speed` in rpm is an error; `<Hz>(speed)` is the conversion. No scale,
+  offset, logarithm or rounding is applied.
+
+```sec
+let raw: uint16 := 0x1ABC
+let frequency: uint16<rpm> := ReadSpeed()
+
+let plain := bit[12](raw)               // uint16; unitless
+let speed := bit[12](raw)<rpm>          // uint16<rpm>
+let bare := bit[12](frequency)          // uint16; unit explicitly discarded
+let retained := bit[12](frequency)<rpm> // uint16<rpm>
+let invalid := bit[12](frequency)<Hz>   // error: unit change without conversion
+```
 
 FFI metadata or wrappers may use units to validate arguments and results, but a
 foreign ABI does not gain hidden runtime unit metadata.

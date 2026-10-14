@@ -110,7 +110,7 @@ func TestApplyProgramRolesMarksOnlyValidPostfixMutationAliases(t *testing.T) {
 }
 
 func TestApplyProgramRolesScopesUnitMetadataNames(t *testing.T) {
-	source := "unit Meter decimal physical\n\nimpl Meter {\n    long_name: \"Meter\"\n}\n\nimpl Ordinary {\n    long_name: \"ordinary\"\n}\n"
+	source := "unit Meter decimal physical\n\nimpl <Meter> {\n    long_name: \"Meter\"\n}\n\nimpl Ordinary {\n    long_name: \"ordinary\"\n}\n"
 	program := parser.New(lexer.New(source)).ParseProgram()
 	document := Build(source, "units.sec")
 	document.ApplyProgramRoles(program)

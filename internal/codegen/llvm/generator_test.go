@@ -632,10 +632,10 @@ fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 
 fn Println(s: string) void {
 	unsafe {
-		_sysWrite(1, s.ptr, s.len)
+		_sysWrite(1, s.Ptr, s.Len)
 
 		let nl := "\n"
-		_sysWrite(1, nl.ptr, 1)
+		_sysWrite(1, nl.Ptr, 1)
 	}
 }
 

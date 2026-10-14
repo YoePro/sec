@@ -1,0 +1,8 @@
+module main
+fn Invalid(numbers: int, optional: int) void {
+    for bad in numbers {}
+    if optional is Some(absent) {}
+}
+fn Negative(optional: Option[int]) void {
+    if optional is not Some(rejected) {}
+}

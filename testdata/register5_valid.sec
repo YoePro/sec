@@ -132,7 +132,7 @@ let mut SPI1_DR: SpiDataBuffer
 /** Meter per second squared for linear acceleration */
 unit MPS2 physical
 
-impl MPS2 {
+impl <MPS2> {
     LongName: "MetersPerSecondSquared"
     Symbol: "m/s^2"
     BaseUnit: false
@@ -155,13 +155,13 @@ type AccelerationBuffer register[32] {
 impl AccelerationBuffer {
     property XAxis: MPS2 {
         get {
-            return MPS2(self.AccelX)
+            return <MPS2>(self.AccelX)
         }
     }
 
     property YAxis: MPS2 {
         get {
-            return MPS2(self.AccelY)
+            return <MPS2>(self.AccelY)
         }
     }
 }
@@ -186,8 +186,8 @@ fn ReadAccelerationData() void {
     let isReady: bool := SPI1_SR.IsReadyToTransmit
 
     // 4. Läs av acceleration i X- och Y-led med typ- och enhetsvalidering
-    let xAcc: MPS2 := ADXL345_BUFFER.XAxis
-    let yAcc: MPS2 := ADXL345_BUFFER.YAxis
+    let xAcc: <MPS2> := ADXL345_BUFFER.XAxis
+    let yAcc: <MPS2> := ADXL345_BUFFER.YAxis
 
     // 5. Koppla från Chip Select
     SPI1_CR.DeselectSlave()

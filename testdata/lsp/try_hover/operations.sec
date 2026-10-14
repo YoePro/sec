@@ -1,0 +1,7 @@
+module main
+fn Add(left: int, right: int) Result[int, ArithmeticError] { return Ok(try left + right) }
+fn Divide(left: int, right: int) int { return try left / right { Err(_) => 0 } }
+fn Index(values: int[], index: uint) Result[int, IndexError] { return Ok(try values[index]) }
+fn RecoverIndex(values: int[], index: uint) int { return try values[index] { Err(_) => 0 } }
+fn Convert(value: int) Result[int8, ConversionError] { return Ok(try int8(value)) }
+fn RecoverConversion(value: int) int8 { return try int8(value) { Err(_) => 0 } }

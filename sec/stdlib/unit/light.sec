@@ -6,7 +6,7 @@ module units
 
 /** Lumen */
 unit lm physical
-impl lm {
+impl <lm> {
     Kind: luminous_flux
     LongName: "Lumen"
     Symbol: "lm"
@@ -19,7 +19,7 @@ impl lm {
 
 /** Lux */
 unit lx physical
-impl lx {
+impl <lx> {
     Kind: illuminance
     LongName: "Lux"
     Symbol: "lx"
@@ -32,7 +32,7 @@ impl lx {
 
 /** Candela per square metre */
 unit nit physical
-impl nit {
+impl <nit> {
     Kind: luminance
     LongName: "Nit"
     Symbol: "nt"
@@ -45,7 +45,7 @@ impl nit {
 
 /** Phot */
 unit phot physical
-impl phot {
+impl <phot> {
     Kind: illuminance
     LongName: "Phot"
     Symbol: "ph"
@@ -58,7 +58,7 @@ impl phot {
 
 /** Stilb */
 unit stilb physical
-impl stilb {
+impl <stilb> {
     Kind: luminance
     LongName: "Stilb"
     Symbol: "sb"
@@ -71,7 +71,7 @@ impl stilb {
 
 /** Foot-candle */
 unit fc physical
-impl fc {
+impl <fc> {
     Kind: illuminance
     LongName: "Foot Candle"
     Symbol: "fc"
@@ -84,7 +84,7 @@ impl fc {
 
 /** Lumen second */
 unit lm_s physical
-impl lm_s {
+impl <lm_s> {
     LongName: "Lumen Second"
     Symbol: "lm·s"
     BaseUnit: false
@@ -96,7 +96,7 @@ impl lm_s {
 
 /** Lumen per watt */
 unit lm_W physical
-impl lm_W {
+impl <lm_W> {
     LongName: "Lumen per Watt"
     Symbol: "lm/W"
     BaseUnit: false

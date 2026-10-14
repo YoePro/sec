@@ -50,10 +50,10 @@ unit DuplicateUnit decimal other
 
 fn InvalidUnderlyingLiterals() void {
     // ERROR: A negative value is not representable by uint.
-    let negative: UnsignedCount := -1
+    let negative: <UnsignedCount> := -1
 
     // ERROR: A decimal literal is not assignable to an int-backed unit.
-    let fractional: Count := 1.5
+    let fractional: <Count> := 1.5
 }
 
 // =============================================================================

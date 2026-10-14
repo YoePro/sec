@@ -6,7 +6,7 @@ module units
 
 /** Minute */
 unit min physical
-impl min {
+impl <min> {
     LongName: "Minute"
     Symbol: "min"
     BaseUnit: false
@@ -18,7 +18,7 @@ impl min {
 
 /** Hour */
 unit h physical
-impl h {
+impl <h> {
     LongName: "Hour"
     Symbol: "h"
     BaseUnit: false
@@ -30,7 +30,7 @@ impl h {
 
 /** Day */
 unit day physical
-impl day {
+impl <day> {
     LongName: "Day"
     Symbol: "d"
     BaseUnit: false
@@ -42,7 +42,7 @@ impl day {
 
 /** Week */
 unit week physical
-impl week {
+impl <week> {
     LongName: "Week"
     Symbol: "wk"
     BaseUnit: false
@@ -54,7 +54,7 @@ impl week {
 
 /** Kilohertz */
 unit kHz physical
-impl kHz {
+impl <kHz> {
     Kind: frequency
     LongName: "Kilohertz"
     Symbol: "kHz"
@@ -67,7 +67,7 @@ impl kHz {
 
 /** Megahertz */
 unit MHz physical
-impl MHz {
+impl <MHz> {
     Kind: frequency
     LongName: "Megahertz"
     Symbol: "MHz"
@@ -80,7 +80,7 @@ impl MHz {
 
 /** Gigahertz */
 unit GHz physical
-impl GHz {
+impl <GHz> {
     Kind: frequency
     LongName: "Gigahertz"
     Symbol: "GHz"
@@ -93,7 +93,7 @@ impl GHz {
 
 /** Revolution per minute */
 unit rpm physical
-impl rpm {
+impl <rpm> {
     Kind: rotational_frequency
     LongName: "Revolution per Minute"
     Symbol: "rpm"
@@ -106,7 +106,7 @@ impl rpm {
 
 /** Radian */
 unit rad physical
-impl rad {
+impl <rad> {
     Kind: plane_angle
     LongName: "Radian"
     Symbol: "rad"
@@ -119,7 +119,7 @@ impl rad {
 
 /** Steradian */
 unit sr physical
-impl sr {
+impl <sr> {
     Kind: solid_angle
     LongName: "Steradian"
     Symbol: "sr"
@@ -132,7 +132,7 @@ impl sr {
 
 /** Degree of arc */
 unit deg physical
-impl deg {
+impl <deg> {
     Kind: plane_angle
     LongName: "Degree"
     Symbol: "°"
@@ -145,7 +145,7 @@ impl deg {
 
 /** Radian per second */
 unit radps physical
-impl radps {
+impl <radps> {
     Kind: angular_velocity
     LongName: "Radian per Second"
     Symbol: "rad/s"
@@ -158,7 +158,7 @@ impl radps {
 
 /** Radian per second squared */
 unit radps2 physical
-impl radps2 {
+impl <radps2> {
     Kind: angular_acceleration
     LongName: "Radian per Second Squared"
     Symbol: "rad/s²"

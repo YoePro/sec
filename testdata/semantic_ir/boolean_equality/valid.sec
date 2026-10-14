@@ -1,0 +1,11 @@
+module main
+
+fn Equal(left: bool, right: bool) bool { return left == right }
+fn Unequal(left: bool, right: bool) bool { return left != right }
+fn Left() bool { return false }
+fn Right() bool { return true }
+fn BothEqual() bool { return Left() == Right() }
+fn BothUnequal() bool { return Left() != Right() }
+fn ConstantEqual() bool { return false == Right() }
+fn ConstantUnequal() bool { return true != Right() }
+fn Nested(left: bool, right: bool) bool { return Equal(left, right) != false }

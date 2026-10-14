@@ -5,11 +5,11 @@ integrations:
   - id: frontend.dynamic-array-semantic-identity
     area: frontend-collections-and-ownership
     status: implemented
-    audited: '2026-08-20'
+    audited: "2026-08-20"
     repository_baseline: c515862
-    document_revision: '1'
-    document_created: '2026-08-11'
-    document_last_updated: '2026-08-11'
+    document_revision: "1"
+    document_created: "2026-08-11"
+    document_last_updated: "2026-08-11"
     summary: >-
       Owning T[] and fixed T[N] share the Sema ArrayType representation, with
       ArrayLength=-1 as a robust dynamic-owner category. Core frontend traits
@@ -17,157 +17,147 @@ integrations:
       destructible, is excluded from ordinary fixed-array equality, and is not
       implicitly initialization-compatible with T[N].
     rules:
-    - rules/collections/collections.md
-    - rules/memory/copy_move.md
-    - rules/memory/ownership.md
-    - rules/memory/destruction.md
-    - rules/compiler/semantic_ir.md
+      - rules/collections/collections.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/destruction.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/types.go
-    - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
     implemented:
-    - canonical parser syntax for fixed T[N] and owning T[]
-    - type resolver retains fixed array length N
-    - type resolver uses a dedicated dynamic-array length sentinel for T[]
-    - omitted mutable T[] initialization has the canonical empty-owner path
-    - fixed-array copy classification derives from element classification
-    - fixed-array elementwise equality infrastructure exists
-    - dynamic-array compiler-known public member signatures are independently registered
-    - every owning T[] is MoveOnly independently of element type
-    - every owning T[] is non-trivially destructible independently of element type
-    - ordinary fixed-array equality excludes owning T[]
-    - implicit initialization preserves fixed-array versus dynamic-owner identity
-    - explicit owner-to-slice borrowing remains separate from owner conversion
+      - canonical parser syntax for fixed T[N] and owning T[]
+      - type resolver retains fixed array length N
+      - type resolver uses a dedicated dynamic-array length sentinel for T[]
+      - omitted mutable T[] initialization has the canonical empty-owner path
+      - fixed-array copy classification derives from element classification
+      - fixed-array elementwise equality infrastructure exists
+      - dynamic-array compiler-known public member signatures are independently registered
+      - every owning T[] is MoveOnly independently of element type
+      - every owning T[] is non-trivially destructible independently of element type
+      - ordinary fixed-array equality excludes owning T[]
+      - implicit initialization preserves fixed-array versus dynamic-owner identity
+      - explicit owner-to-slice borrowing remains separate from owner conversion
     remaining:
-    - audit every ArrayType consumer across Sema, Semantic IR, formatter, LSP, lowering, ABI, FFI, layout, ownership,
-      equality, and destruction
+      - audit every ArrayType consumer across Sema, Semantic IR, formatter, LSP, lowering, ABI, FFI, layout, ownership, equality, and destruction
     bug_reference:
-    - correction26.md
+      - correction26.md
     governance_reconciliation:
-    - Keep frontend.collections partial, but add an explicit dynamic-array semantic-identity gap. Parser/type spelling
-      recognition exists; core semantic traits do not yet preserve fixed-array versus owning T[] identity reliably.
-    - Narrow frontend.copy-move implemented wording for recursive "array" classification. Fixed-array classification
-      is implemented, while owning T[] classification is incorrect until it is unconditionally MoveOnly.
-    - Keep frontend.dynamic-array-public-api member availability/signatures as implemented within its current scope;
-      this correction concerns owner value semantics.
-    - Keep the allocation-free empty mutable T[] default as implemented; the resulting owner's copy/destruction/equality
-      traits are the defect.
+      - Keep frontend.collections partial, but add an explicit dynamic-array semantic-identity gap. Parser/type spelling recognition exists; core semantic traits do not yet preserve fixed-array versus owning T[] identity reliably.
+      - Narrow frontend.copy-move implemented wording for recursive "array" classification. Fixed-array classification is implemented, while owning T[] classification is incorrect until it is unconditionally MoveOnly.
+      - Keep frontend.dynamic-array-public-api member availability/signatures as implemented within its current scope; this correction concerns owner value semantics.
+      - Keep the allocation-free empty mutable T[] default as implemented; the resulting owner's copy/destruction/equality traits are the defect.
     traceability:
       policy_source: correction25.md
       touched_functions_should_reference:
-      - rules/collections/collections.md §5 fixed arrays
-      - rules/collections/collections.md §6 owning dynamic arrays
-      - rules/collections/collections.md §10 equality
-      - rules/collections/collections.md §11 parameters and return values
-      - rules/collections/collections.md §12 destruction
-      - relevant copy_move, ownership, and destruction rules
+        - rules/collections/collections.md §5 fixed arrays
+        - rules/collections/collections.md §6 owning dynamic arrays
+        - rules/collections/collections.md §10 equality
+        - rules/collections/collections.md §11 parameters and return values
+        - rules/collections/collections.md §12 destruction
+        - relevant copy_move, ownership, and destruction rules
       functions:
-      - collection type resolution for T[N] and T[]
-      - copyClassificationOf
-      - triviallyDestructible
-      - equalityComparable
-      - canCompareEquality
-      - sameComparableArrayType
-      - canInitialize
+        - collection type resolution for T[N] and T[]
+        - copyClassificationOf
+        - triviallyDestructible
+        - equalityComparable
+        - canCompareEquality
+        - sameComparableArrayType
+        - canInitialize
     required_tests:
-    - int[] copy classification is MoveOnly
-    - copyable-struct[] copy classification is MoveOnly
-    - fixed copyable array retains element-derived copyability
-    - int[] is non-trivially destructible
-    - fixed trivial int[N] remains trivially destructible
-    - int[] ordinary equality is rejected
-    - fixed int[N] equality remains valid
-    - T[N] cannot implicitly initialize T[]
-    - T[] cannot implicitly initialize T[N]
-    - by-value T[] transfer consumes the owner
-    - explicit slices remain borrowed and distinct
-    - Semantic IR preserves fixed versus dynamic owner identity
+      - int[] copy classification is MoveOnly
+      - copyable-struct[] copy classification is MoveOnly
+      - fixed copyable array retains element-derived copyability
+      - int[] is non-trivially destructible
+      - fixed trivial int[N] remains trivially destructible
+      - int[] ordinary equality is rejected
+      - fixed int[N] equality remains valid
+      - T[N] cannot implicitly initialize T[]
+      - T[] cannot implicitly initialize T[N]
+      - by-value T[] transfer consumes the owner
+      - explicit slices remain borrowed and distinct
+      - Semantic IR preserves fixed versus dynamic owner identity
 
   - id: frontend.shaped-static-extent-product
     area: frontend-shaped-types
     status: partial
-    audited: '2026-08-20'
+    audited: "2026-08-20"
     repository_baseline: c515862
     rulebook_generation: v2
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-13'
-    summary: Sema validates static vector/matrix/tensor dimensions and computes their canonical element-count product
-      with arbitrary-precision arithmetic. Zero extents short-circuit the product, and the retained count must fit
-      the selected target uint representation. Downstream consumers do not yet all reuse this canonical fact.
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-13"
+    summary: Sema validates static vector/matrix/tensor dimensions and computes their canonical element-count product with arbitrary-precision arithmetic. Zero extents short-circuit the product, and the retained count must fit the selected target uint representation. Downstream consumers do not yet all reuse this canonical fact.
     rules:
-    - rules/collections/shaped-types.md
-    - rules/types/types.md
-    - rules/memory/layout.md
-    - rules/compiler/semantic_ir.md
+      - rules/collections/shaped-types.md
+      - rules/types/types.md
+      - rules/memory/layout.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
     tests:
-    - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_test.go
     implemented:
-    - vector static arity validation
-    - matrix static arity validation
-    - variadic static tensor dimension arity validation
-    - individual shaped const arguments must be compile-time integers
-    - individual shaped const arguments must fit int64
-    - individual shaped dimensions must be non-negative
-    - zero dimensions are currently accepted syntactically and semantically
-    - static extent products use arbitrary-precision arithmetic
-    - zero extents produce a canonical zero element count without intermediate overflow
-    - static element count is checked against the selected target uint representation
-    - the canonical static element count is retained on the resolved Sema type
+      - vector static arity validation
+      - matrix static arity validation
+      - variadic static tensor dimension arity validation
+      - individual shaped const arguments must be compile-time integers
+      - individual shaped const arguments must fit int64
+      - individual shaped dimensions must be non-negative
+      - zero dimensions are currently accepted syntactically and semantically
+      - static extent products use arbitrary-precision arithmetic
+      - zero extents produce a canonical zero element count without intermediate overflow
+      - static element count is checked against the selected target uint representation
+      - the canonical static element count is retained on the resolved Sema type
     partial:
-    - layout, Semantic IR, and lowering do not yet uniformly consume the retained static element-count fact
+      - layout, Semantic IR, and lowering do not yet uniformly consume the retained static element-count fact
     remaining:
-    - reuse that fact for Len, SizeOf, dense strides, storage eligibility, Semantic IR, and lowering
+      - reuse that fact for Len, SizeOf, dense strides, storage eligibility, Semantic IR, and lowering
     bug_reference:
-    - correction27.md
+      - correction27.md
 
   - id: frontend.shaped-contextual-x
     area: frontend-shaped-algebra
     status: partial
-    audited: '2026-08-20'
+    audited: "2026-08-20"
     repository_baseline: c515862
     rulebook_generation: v2
-    document_revision: '2.0'
-    summary: Parser and Sema implement static contextual matrix x algebra. The result element is derived through ordinary
-      scalar multiplication and must support stable ordinary scalar accumulation; operand element types need not be
-      identical merely because the shaped operands differ. Runtime-shaped x and resolved Semantic IR facts remain.
+    document_revision: "2.0"
+    summary: Parser and Sema implement static contextual matrix x algebra. The result element is derived through ordinary scalar multiplication and must support stable ordinary scalar accumulation; operand element types need not be identical merely because the shaped operands differ. Runtime-shaped x and resolved Semantic IR facts remain.
     rules:
-    - rules/collections/shaped-types.md
-    - rules/foundations/operators.md
-    - rules/types/units.md
+      - rules/collections/shaped-types.md
+      - rules/foundations/operators.md
+      - rules/types/units.md
     code:
-    - internal/parser/expression.go
-    - internal/sema/analyzer.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
     tests:
-    - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_test.go
     implemented:
-    - contextual identifier x recognized as infix operator only when followed by an expression
-    - x uses PRODUCT precedence
-    - x is left-associative through Pratt parser behavior
-    - Sema dispatches x to shaped matrix multiplication analysis
-    - static matrix by matrix inner-dimension validation
-    - static matrix by vector length validation
-    - static matrix by matrix result shape
-    - static matrix by vector result shape
-    - result element type derived from ordinary scalar multiplication
-    - product-term accumulation validated through ordinary scalar addition semantics
-    - focused Sema tests exercise the active subset
+      - contextual identifier x recognized as infix operator only when followed by an expression
+      - x uses PRODUCT precedence
+      - x is left-associative through Pratt parser behavior
+      - Sema dispatches x to shaped matrix multiplication analysis
+      - static matrix by matrix inner-dimension validation
+      - static matrix by vector length validation
+      - static matrix by matrix result shape
+      - static matrix by vector result shape
+      - result element type derived from ordinary scalar multiplication
+      - product-term accumulation validated through ordinary scalar addition semantics
+      - focused Sema tests exercise the active subset
     partial:
-    - runtime shaped x and ShapeError behavior remain absent
-    - no explicit resolved shaped-algebra fact is published to Semantic IR
+      - runtime shaped x and ShapeError behavior remain absent
+      - no explicit resolved shaped-algebra fact is published to Semantic IR
     remaining:
-    - implement runtime-shaped x with ShapeError and try where required
-    - publish canonical resolved x facts for Semantic IR/lowering
+      - implement runtime-shaped x with ShapeError and try where required
+      - publish canonical resolved x facts for Semantic IR/lowering
     bug_reference:
-    - correction27.md
+      - correction27.md
     governance_reconciliation:
-    - 'Move contextual x from a wholly-remaining description to an explicit partial implementation: parser, precedence,
-      static matrix/matrix and matrix/vector Sema, shape checks, and tests already exist.'
-    - Record the active same-element restriction/result-type shortcut as incorrect relative to shaped-types v2.
-    - Keep runtime ShapeError, complete scalar algebra, Semantic IR, and lowering work as remaining.
+      - "Move contextual x from a wholly-remaining description to an explicit partial implementation: parser, precedence, static matrix/matrix and matrix/vector Sema, shape checks, and tests already exist."
+      - Record the active same-element restriction/result-type shortcut as incorrect relative to shaped-types v2.
+      - Keep runtime ShapeError, complete scalar algebra, Semantic IR, and lowering work as remaining.
 
   - id: frontend.shaped-types
     area: frontend-and-lowering
@@ -179,9 +169,9 @@ integrations:
       and MemorySpace independently from ordinary collections. The canonical
       shaped rulebook now also specifies runtime-shaped owning tensors,
       compiler-known shaped properties, affine view slicing and step semantics,
-      explicit broadcasting, ownership-preserving reshape operations,
-      structured storage requests and transfers, vector algebra, matrix
-      multiplication, and general tensor contraction.
+      explicit broadcasting, ownership-preserving reshape operations, structured
+      storage requests and transfers, vector algebra, matrix multiplication, and
+      general tensor contraction.
     rules:
       - rules/collections/shaped-types.md
     code:
@@ -196,12 +186,10 @@ integrations:
     implemented:
       - parser and AST accept mixed type/value generic arguments used by shaped types
       - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
-      - loader-proven core sources may attach additive impl helpers to all shaped families and their Shape, Strides,
-        TensorLayout, and MemorySpace support identities without redefining compiler-owned intrinsic semantics
+      - loader-proven core sources may attach additive impl helpers to all shaped families and their Shape, Strides, TensorLayout, and MemorySpace support identities without redefining compiler-owned intrinsic semantics
       - rank-one vector values participate in iterable type inference
       - contextual x parsing, multiplicative precedence, and static matrix/matrix and matrix/vector Sema with inner-dimension checks; scalar result algebra is partial
-      - the shared compiler-known member registry exposes read-only Rank, Shape, and Len properties for statically shaped vector,
-        matrix, and tensor values and their type-level inventory; Shape has the exact Shape[Rank] result and retains ordered static extents for tooling; tensor_view exposes only its type-known Rank
+      - the shared compiler-known member registry exposes read-only Rank, Shape, and Len properties for statically shaped vector, matrix, and tensor values and their type-level inventory; Shape has the exact Shape[Rank] result and retains ordered static extents for tooling; tensor_view exposes only its type-known Rank
       - Sema, LSP completion, and hover consume those same shaped Rank/Shape/Len entries, including useful compile-time rank, ordered-extents, and total-element-count facts
       - statically shaped vector, matrix, and tensor values expose instance Strides with the exact Strides[Rank] result and arbitrary-precision canonical dense row-major element-stride facts shared by Sema and LSP
       - canonical dense owning vector, matrix, and tensor values expose instance IsContiguous as a compiler-known bool fact fixed to true; Sema and LSP consume the shared registry entry and no type-level property is invented
@@ -244,7 +232,7 @@ integrations:
     status: partial
     integrated: "2026-08-07"
     audited: "2026-08-18"
-    revised: "2026-10-05"
+    revised: "2026-10-14"
     summary: >-
       Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
       against the unified collections rulebook. Parser/type recognition and
@@ -252,6 +240,8 @@ integrations:
       allocation-aware owners, library collections, and lowering remain.
     rules:
       - rules/collections/collections.md
+      - rules/types/types.md
+      - rules/corrections/applied/md027-md033-md036-md054-contextual-literals-formatter-configuration-correction-20261012.md
     code:
       - internal/ast
       - internal/parser
@@ -261,6 +251,8 @@ integrations:
       - internal/sema/compiler_known_members.go
       - internal/formatter
       - internal/lsp
+      - internal/sema/analyzer_inference.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -273,11 +265,14 @@ integrations:
       - testdata/sema/list_indexing_valid.sec
       - testdata/sema/list_indexing_invalid.sec
       - testdata/sema/list_indexing_no_panic_invalid.sec
+      - internal/sema/dynamic_array_literals_test.go
+      - cmd/compiler/dynamic_array_literal_test.go
+      - cmd/lsp/dynamic_array_literal_test.go
+      - testdata/sema/dynamic_array_literal_invalid.sec
     implemented:
       - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
       - Sema recognition and arity validation for compiler-known collection families
-      - loader-proven core sources may define ordinary impl members for list, map, and set through the shared
-        compiler/LSP privilege gate; stdlib and user sources remain rejected
+      - loader-proven core sources may define ordinary impl members for list, map, and set through the shared compiler/LSP privilege gate; stdlib and user sources remain rejected
       - Place-backed fixed-array and slice indexing used by borrow and ownership analysis
       - contextual collection type identities exposed to formatter and LSP registries
       - omitted initialization of mutable owning T[] produces its canonical allocation-free empty default
@@ -285,12 +280,11 @@ integrations:
       - list indexing accepts built-in and compatible named integer indexes, rejects invalid types and statically provable negative or bounded-capacity failures, and records mandatory runtime Len checks otherwise
       - list index facts remain separate from array facts so unavailable list Semantic IR and lowering cannot be inferred accidentally
       - "array literal range segments (2026-10-05, collections.md § 5.6a, user decisions: fixed arrays only, rune segments may not cover surrogates): the parser reads `lower..upper` and `lower..<upper` elements; Sema resolves each to an ArrayLiteralRange plan entry with inclusive compile-time bounds and its value count (rune and character literals by scalar value, integers by the shared constant evaluation), infers or checks the fixed length from the contributed values, and rejects runtime bounds, descending bounds, non-integer or contract element types, bounds outside the element type, surrogate-covering rune segments, and a T[] target with S1119 collections.range-segment-invalid; a range anywhere else (for example an ordinary call argument) is S1119 'a range is not a value in Sec 0.1' instead of a silent invalid type; Semantic IR builds one compact array.construct range segment per source segment (constant lower-bound operand, count length) and drops empty segments; the legacy emit-mlir generator rejects range segments explicitly (TestArrayLiteralRangeSegments, TestArrayLiteralRangeSegmentErrors, TestRangeSegmentsParseInArrayLiteralsAndArguments, TestArrayLiteralRangeSegmentsBuildCompactSegments)"
-      - "sec/core/rune.sec IsLowerLetter builds its table as an inferred fixed rune array of range segments (2026-10-05)"
+      - sec/core/rune.sec IsLowerLetter builds its table as an inferred fixed rune array of range segments (2026-10-05)
       - "MD-058 capacity surface (2026-10-12, collections.md §§ 3.1, 13.12, 14.3, 14.8, 15.2, 15.5, 16; rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md): the compiler-known registry gives every list, map and set a read-only Capacity (CKM-LIST/MAP/SET-CAPACITY), and dynamic forms (no ConstArgs bound) Reserve(additional: uint) Result[void, CollectionError] (structural mutation) and the associated factory WithCapacity(capacity: uint) Result[Collection, CollectionError]; list[T].WithCapacity (parsed as an indexed owner) and map[K, V]/set[T].WithCapacity (type arguments on the call) resolve their receiver type; bounded forms, T[], slices and fixed arrays reject Reserve and WithCapacity, T[] keeps no Capacity, and no Capacity() method exists; synthetic LSP declarations document every new member (TestCollectionCapacityReservationSurface, TestCollectionCapacityReservationRejections)"
+      - Nonempty literals targeting owning T[] are rejected with mandatory S1155 (collections.dynamic-array-literal-invalid), a source location and guidance to use an empty mutable owner plus Append or fixed T[N]. Range segments retain S1119. Contextual [] remains valid under the later MD-027 correction, including declarations, assignments, returns, fields and calls. Rejected literals publish no literal plan; CLI stops before lowering and preserves existing output; LSP carries the same diagnostic. Older fixtures use fixed backing, typed owner inputs or empty defaults according to their original test purpose.
     remaining:
       - "MD-058 runtime behaviour: lower Reserve and WithCapacity with the guaranteed Capacity >= Len + n, the no-op path, transactional failure including map/set rehash, allocation-context use and CollectionError classification; verify borrow conflicts, relocation invalidation and fault-injected rollback (collections.md §§ 13.12, 14.8, 15.5); Semantic IR and both legacy backends have no list/map/set operations today"
-      - "owning dynamic-array literals are not defined in Sec 0.1 (user decision 2026-10-05), yet Sema accepts `let values: T[] := [elements]` without an allocation context or try (11 uses in tests and fixtures); reject it with a focused diagnostic and migrate those uses to Append, or define the form in collections.md"
-
       - preserve owning dynamic-array identity across copyability, destruction, equality, initialization, and ownership transfer instead of inheriting fixed-array traits through ArrayType
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
@@ -299,6 +293,16 @@ integrations:
       - explicit array, slice, and list operations in Semantic IR and lowering through MLIR and LLVM
       - focused valid, invalid, recovery, analysis, and backend test coverage
     verification:
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'DynamicArrayLiteral|ArenaFromBuffer|ContextualArguments|ArrayLiteralRange' -count=1
+        result: passed on 2026-10-14; focused frontend, CLI and LSP regressions
+      - command: go test ./cmd/lsp -run TestAnalyzeDynamicArrayLiteralDiagnostic -count=1
+        result: passed on 2026-10-14; unsaved source retains S1155, location and Append guidance
+      - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test ./internal/sema ./cmd/compiler -run 'DynamicArrayLiteral|ArenaFromBuffer' -count=1
+        result: passed on 2026-10-14; final regression checks, structured S1155 and untouched output across sema/check/emit-ir/emit-llvm/build
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic ./internal/lowering/secmlir ./internal/codegen/mlir -count=1
+        result: passed on 2026-10-14; full package tests, with external MLIR execution depending on configured tool availability
       - command: go test ./internal/sema -run 'ListIndex' -count=1
         result: passed
 
@@ -314,23 +318,50 @@ integrations:
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
       - cmd/lsp/main.go
+      - internal/codegen/mlir/member_expressions.go
+      - sec/stdlib/net/ip/ipv4.sec
+      - internal/sema/compiler_known_presentation.go
+      - internal/sema/compiler_known_synthetic.go
+      - cmd/lsp/compiler_known_definition.go
     tests:
       - internal/sema/compiler_known_members_test.go
       - internal/sema/analyzer_test.go
       - cmd/lsp/main_test.go
+      - internal/codegen/mlir/member_expressions_test.go
+      - internal/codegen/mlir/scalar/generator_test.go
+      - internal/codegen/llvm/scalar/generator_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/compiler_known_presentation_test.go
+      - cmd/lsp/compiler_known_definition_test.go
     implemented:
-      - "synthetic definitions (2026-10-04): every compiler-known member registry entry now carries signature, documentation, normative rule section, receiver pattern, and target restriction (internal/sema/compiler_known_synthetic.go, filled only where the builder left them empty); go-to-definition on a compiler-known member without an ordinary core declaration returns `sec-compiler-known:/<ID>.sec`, whose read-only text from sec/compilerKnownDefinition states compiler-known status, rule, receiver, effects, unsafe requirement, target, legacy spellings, and structural mutation before the signature line; the VS Code extension shows it through a content provider with Sec highlighting; hover shows the generic signature with the receiver-resolved result and rule. Tests: cmd/lsp/compiler_known_definition_test.go"
+      - "synthetic definitions (2026-10-04): every compiler-known member registry entry now carries signature, documentation, normative rule section, receiver pattern, and target restriction (internal/sema/compiler_known_synthetic.go, filled only where the builder left them empty); go-to-definition on a compiler-known member without an ordinary core declaration returns `sec-compiler-known:/<ID>.sec`, whose read-only text from sec/compilerKnownDefinition states compiler-known status, rule, receiver, effects, unsafe requirement, target, legacy spellings, and structural mutation before the signature line; the VS Code extension shows it through a content provider with Sec highlighting; hover shows the shared registry signature with the receiver-resolved result and rule (receiver-instantiated presentation completed on 2026-10-14). Tests: cmd/lsp/compiler_known_definition_test.go"
       - one canonical Sema registry supplies compiler and LSP member availability
       - Len, IsEmpty, Ptr, and property-form instance and associated SizeOf resolution
       - global len validation and property-form SizeOf semantics without treating an associated type receiver as a runtime value
       - list, map, set, dynamic-array, and mutable-slice member surfaces with stable semantic IDs
       - LSP completion, hover, and semantic-token classification consume registry and resolved Sema facts
       - removed LSP-local array, rune-sequence, and RawPtr completion duplication
+      - Migrated remaining source-corpus compiler-known .len/.ptr uses to .Len/.Ptr in stdlib IPv4, target-width fixtures, Sema lifetime/unsafe/core-authority tests, backend fixtures and LSP tests (2026-10-14). Ordinary user fields such as StringBuilder.len and Buffer.len, and internal LLVM SSA suffixes, remain unchanged. Lowercase compatibility is retained deliberately in the fundamental-member and backend migration tests. Legacy MLIR now accepts canonical fixed-array Len as well as migration len, with identical lowering on 32-bit and 64-bit targets; member emission is extracted into a focused sibling file.
+      - Receiver-instantiated registry signatures and synthetic definitions preserve concrete element, key, value, carrier and nominal types, while method-local generic parameters remain generic (2026-10-14). CompilerKnownDocumentationForType emits the same definition text for instance and associated APIs. LSP uses stable member-ID paths with receiver-instance queries, preventing navigation to list[int] from replacing list[string] metadata; the synchronized cache is bounded to 512 documents, unresolved or evicted instance URIs fail rather than silently returning generic text, and ID-only registry requests retain generic definitions. Iterator requirements use the same specialized presentation; ordinary core definitions retain source navigation.
     remaining:
-      - migrate remaining bootstrap and source-corpus uses of legacy .len and .ptr spellings
       - represent stable member IDs and collection payload-byte SizeOf explicitly in Semantic IR and lowering
       - add target-layout evaluation and backend verification for instance and type SizeOf
-      - render receiver-instantiated signatures (element and key types) in synthetic definitions instead of the generic registry signature, and generate the same text for documentation output
+    revised: "2026-10-14"
+    verification:
+      - command: go test -race ./cmd/lsp -run 'CompilerKnown|SyntheticDefinition|CompilerInterfaceRequirement|IntrinsicDefinition|CoreOnlyDefinition' -count=1
+        result: passed on 2026-10-14; concrete hover/navigation, stable ID-only fallback, receiver isolation, bounded cache and private-intrinsic authority
+      - command: go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/codegen/mlir/... ./internal/codegen/llvm/... -count=1
+        result: passed on 2026-10-14; full package suites including nominal and nested receiver presentation, method-local generics and shared documentation text
+      - command: rg -n '\.(len|ptr)\b' sec testdata --glob '*.sec*'
+        result: "audited on 2026-10-14: only ordinary StringBuilder.len accesses remain; no compiler-known migration spellings in Sec source fixtures or library corpus"
+      - command: go vet ./internal/sema ./internal/codegen/llvm/... ./internal/codegen/mlir/... ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test ./cmd/lsp -run 'TestAnalyzeAllowsCoreStringImpl|TestAnalyzeReports|TestAnalyzePublishes' -count=1
+        result: passed on 2026-10-14; focused LSP core authority and diagnostic regressions
+      - command: go test ./internal/sema ./internal/codegen/llvm/... ./internal/codegen/mlir/... -count=1
+        result: passed on 2026-10-14; full package suites include canonical target-width fixtures, identical array Len/len lowering and ordinary lowercase struct fields
 
   - id: frontend.dynamic-array-public-api
     area: frontend-and-lowering
@@ -375,10 +406,16 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/compiler_known_members.go
       - internal/codegen/mlir/generator.go
+      - internal/sema/compiler_known_fill.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/sema/compiler_known_members_test.go
       - internal/codegen/mlir/generator_test.go
       - testdata/ir/test_fixed_array_fill.sec
+      - internal/sema/fill_copyability_test.go
+      - cmd/compiler/fill_copyability_test.go
+      - cmd/lsp/fill_copyability_test.go
+      - testdata/sema/fill_copyability_invalid.sec
     implemented:
       - reserve fill as a compiler-known global and expose it through ordinary compiler/LSP function inventories
       - resolve fixed-array fill(value) from expected target element type and extent
@@ -386,16 +423,26 @@ integrations:
       - reject missing target context, wrong arity, incompatible values, and non-integer counts
       - expose mutable-slice Fill only on ref mut T[] and reject non-copyable element types
       - lower fixed-array fill to one source-value evaluation followed by one inline aggregate insertion per element without allocation, runtime helpers, memset, or a runtime fill symbol
+      - Contextual fixed-array and owning-array fill require an ordinarily infallibly copyable element type before construction, including fixed extent zero and dynamic count zero (2026-10-14). Move-only, explicitly non-copyable and unresolved conditional elements receive mandatory S1156 collections.fill-element-not-copyable with source position and repeated-copy guidance. Mutable-slice Fill uses the same check and diagnostic; copyable struct elements and existing string fill remain valid. Fill inference is extracted into a focused sibling file. CLI rejects before lowering and preserves output, and LSP publishes the same diagnostic. This is frontend validation; dynamic/string fill lowering and stable Semantic IR operations remain tracked below.
     remaining:
       - lower dynamic-array and string fill through explicit allocation and CollectionError paths
       - represent fill and mutable-slice Fill as stable Semantic IR operations
     verification:
+      - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test ./cmd/lsp -run 'FillCopyability|CompilerKnownMemberHover' -count=1
+        result: passed on 2026-10-14; stable ID, range and explanatory help reach the editor
+      - command: go test ./cmd/compiler -run FillCopyability -count=1
+        result: passed on 2026-10-14; sema/check/emit-ir/emit-llvm return structured S1156 and preserve existing output
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic ./internal/codegen/mlir/... -count=1
+        result: passed on 2026-10-14; full package suites including copyability rejection, zero extents/counts, positive struct construction and slice replacement
       - command: go test ./internal/codegen/mlir -run 'TestGenerateFixedArray' -v
         result: passed
       - command: go run ./cmd/compiler emit-mlir testdata/ir/test_fixed_array_fill.sec --verify -o /tmp/sec-fixed-array-fill.mlir
         result: passed; value evaluated once, seven total inline insertions emitted, and no allocation or runtime fill dependency introduced
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./... && go vet ./...
         result: passed
+    revised: "2026-10-14"
 
   - id: frontend.map-indexed-upsert
     area: frontend
@@ -411,13 +458,33 @@ integrations:
 
   - id: frontend.collection-errors
     area: frontend-and-core
-    status: planned
+    status: partial
     integrated: "2026-08-11"
     rules:
       - rules/collections/collections.md
       - rules/library/core-library.md
+      - rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md
     remaining:
       - use bool or Option for normal absence and rejection where specified
-      - normalize CollectionError with AllocationFailed, CapacityExceeded, and SizeOverflow
       - map lower-level AllocationError at collection API boundaries
       - retain IndexError, RangeError, and key-access errors for checked access
+    implemented:
+      - The canonical compiler-known CollectionError definition is centralized in builtinCollectionErrorType with exactly AllocationFailed, CapacityExceeded and SizeOverflow, its existing uint enum representation and Error eligibility (2026-10-14). Fresh builtin registrations own their case metadata. Unknown cases and implicit AllocationError-to-CollectionError returns are rejected. Semantic IR preserves core::CollectionError, its three case identities and typed constant producers; real Sec MLIR verification preserves the same family on 32-bit and 64-bit scalar plans through current scalar/trivial passes. Native enum representation conversion and allocation-failure mapping are not implied by this normalization.
+    revised: "2026-10-14"
+    summary: Canonical public collection failure identity and case inventory are normalized and verified through Sema, Semantic IR and Sec MLIR. Absence/rejection APIs, allocation-failure mapping and checked-access integration remain separate work.
+    code:
+      - internal/sema/collection_errors.go
+      - internal/sema/types.go
+    tests:
+      - internal/sema/collection_errors_test.go
+      - internal/ir/semantic/collection_errors_test.go
+      - internal/lowering/secmlir/collection_errors_test.go
+      - testdata/sema/collection_errors_invalid.sec
+      - testdata/semantic_ir/collection_errors/valid.sec
+    verification:
+      - command: go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-10-14
+      - command: go test ./internal/ir/semantic -run CollectionError -count=1
+        result: passed on 2026-10-14; final stronger assertions verify core nominal identity and the exact case returned by each fixture producer
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-14; full package suites, including real dialect verification of canonical CollectionError on 32-bit/64-bit plans; native enum conversion remains unavailable in the current maintained scalar pipeline

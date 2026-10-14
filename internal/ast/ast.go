@@ -1819,10 +1819,37 @@ func (ql *QuantityLiteral) String() string {
 	return value + "<" + ql.Unit + ">"
 }
 
+// UnitReferenceExpression is the qualified unit reference `<U>` in
+// expression position: the callee of a unit conversion `<U>(value)` or the
+// object of a unit member access `<U>.Member` (MD-040).
+type UnitReferenceExpression struct {
+	// Token is the opening `<`; EndToken the closing `>`.
+	Token          lexer.Token
+	Unit           string
+	UnitExpression *UnitExpression
+	EndToken       lexer.Token
+}
+
+func (ur *UnitReferenceExpression) expressionNode() {}
+
+func (ur *UnitReferenceExpression) TokenLiteral() string {
+	return ur.Token.Lexeme
+}
+
+func (ur *UnitReferenceExpression) String() string {
+	return "<" + ur.Unit + ">"
+}
+
 type BitExtractionExpression struct {
 	Token lexer.Token
 	Width Expression
 	Value Expression
+	// Unit is the optional `<U>` suffix of `bit[N](value)<U>` (MD-046):
+	// UnitToken is its `<`, EndToken its `>`.
+	UnitToken      lexer.Token
+	Unit           string
+	UnitExpression *UnitExpression
+	EndToken       lexer.Token
 }
 
 func (be *BitExtractionExpression) expressionNode() {}
@@ -1839,13 +1866,20 @@ func (be *BitExtractionExpression) String() string {
 	if be.Value != nil {
 		value = be.Value.String()
 	}
-	return "bit[" + width + "](" + value + ")"
+	suffix := ""
+	if be.Unit != "" {
+		suffix = "<" + be.Unit + ">"
+	}
+	return "bit[" + width + "](" + value + ")" + suffix
 }
 
 type ConversionExpression struct {
 	Token lexer.Token
 	Type  *TypeReference
 	Value Expression
+	// Rounding is the optional second argument, a RoundingMode, of
+	// `T<U>(value, RoundingMode.M)` (MD-047).
+	Rounding Expression
 }
 
 func (ce *ConversionExpression) expressionNode() {}
@@ -1863,6 +1897,9 @@ func (ce *ConversionExpression) String() string {
 	target := ce.Type.Name
 	if ce.Type.Unit != "" {
 		target += "<" + ce.Type.Unit + ">"
+	}
+	if ce.Rounding != nil {
+		value += ", " + ce.Rounding.String()
 	}
 	return target + "(" + value + ")"
 }

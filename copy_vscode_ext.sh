@@ -6,12 +6,13 @@ DEST="${1:-$HOME/.vscode-server/extensions/sec-lang.sec-syntax}"
 DEST2="${2:-$HOME/.vscode/extensions/}"
 
 echo "Building SEC language server...linux (current system)"
-go build -o "$ROOT/bin/lsp-sec" "$ROOT/cmd/lsp"
+go build -trimpath -o "$ROOT/bin/lsp-sec" "$ROOT/cmd/lsp"
 echo "Building SEC language server...windows"
-GOOS=windows GOARCH=amd64 go build -o "$ROOT/bin/lsp-sec.exe" "$ROOT/cmd/lsp"
+GOOS=windows GOARCH=amd64 go build -trimpath -o "$ROOT/bin/lsp-sec.exe" "$ROOT/cmd/lsp"
 
 mkdir -p "$ROOT/vscode/bin"
 cp "$ROOT/bin/lsp-sec" "$ROOT/vscode/bin/lsp-sec"
+cp "$ROOT/bin/lsp-sec.exe" "$ROOT/vscode/bin/lsp-sec.exe"
 chmod +x "$ROOT/vscode/bin/lsp-sec"
 
 echo "Building VS Code extension..."

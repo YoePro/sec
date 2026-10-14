@@ -14,13 +14,13 @@ module main
 unit Meter physical
 unit Milli physical
 
-impl Meter {
+impl <Meter> {
 	Dimension: [length^1]
 	Kind: length
 	Scale: 1
 }
 
-impl Milli {
+impl <Milli> {
 	Dimension: [length^1]
 	Kind: length
 	Scale: 1 / 1000

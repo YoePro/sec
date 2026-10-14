@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
 	"sort"
 	"sync"
 
@@ -274,9 +275,9 @@ func sortGraphScopes(scopes []CallGraphScope) {
 	})
 }
 
-// Version 4 includes static panic messages in registered effect sites; older
-// payloads cannot retain the complete cause metadata promised by this model.
-const callGraphCheckpointVersion = 4
+// Version 5 preserves validated allocation summaries and coverage uncertainty;
+// older payloads cannot establish allocation freedom from empty effect lists.
+const callGraphCheckpointVersion = 5
 
 type graphCheckpoint struct {
 	Format  string
@@ -290,14 +291,16 @@ type graphCheckpointEntry struct {
 	Graph        persistedCallGraph
 }
 type persistedCallGraph struct {
-	Scope    CallGraphScope
-	Nodes    []CallableNode
-	Bodies   map[CallableBodyID]CallableID
-	Sites    []CallSite
-	Roots    []CallRoot
-	Arena    map[CallableID][]ArenaEffectSite
-	Effects  map[CallableID][]EffectSite
-	Blocking map[CallableID][]BlockEffectSite
+	Allocation []AllocationCallableFact
+	Coverage   map[CallableID][]AllocationEvidence
+	Scope      CallGraphScope
+	Nodes      []CallableNode
+	Bodies     map[CallableBodyID]CallableID
+	Sites      []CallSite
+	Roots      []CallRoot
+	Arena      map[CallableID][]ArenaEffectSite
+	Effects    map[CallableID][]EffectSite
+	Blocking   map[CallableID][]BlockEffectSite
 }
 
 // Checkpoint serializes only committed graphs, binding metadata and graph
@@ -324,7 +327,7 @@ func (index *WorkspaceCallGraphIndex) Checkpoint() ([]byte, error) {
 		for _, id := range graph.rootOrder {
 			roots = append(roots, graph.roots[id])
 		}
-		entries = append(entries, graphCheckpointEntry{scope, entry.dependencies, persistedCallGraph{graph.scope, graph.Nodes(), graph.bodyNodes, graph.sites, roots, graph.arenaEffects, graph.effects, graph.blockEffects}})
+		entries = append(entries, graphCheckpointEntry{scope, entry.dependencies, persistedCallGraph{Allocation: graph.AllocationFacts(), Coverage: graph.allocationCoverage, Scope: graph.scope, Nodes: graph.Nodes(), Bodies: graph.bodyNodes, Sites: graph.sites, Roots: roots, Arena: graph.arenaEffects, Effects: graph.effects, Blocking: graph.blockEffects}})
 	}
 	payload, err := json.Marshal(entries)
 	if err != nil {
@@ -368,6 +371,9 @@ func RestoreWorkspaceCallGraphIndex(data []byte, current map[CallGraphScope][]Ca
 		graph, err := restoreCheckpointGraph(entry.Graph)
 		if err != nil || !validWorkspaceGraph(graph, deps) || !validTestRootScope(graph, entry.Scope) || graph.scope != entry.Scope {
 			return nil, errors.New("invalid graph checkpoint identities or sources")
+		}
+		if !reflect.DeepEqual(entry.Graph.Allocation, graph.AllocationFacts()) {
+			return nil, errors.New("invalid allocation summaries in graph checkpoint")
 		}
 		fresh, err := normalizeGraphDependencies(entry.Scope, current[entry.Scope])
 		if err != nil || !sameGraphDependencies(deps, fresh) {
@@ -436,6 +442,7 @@ func restoreCheckpointGraph(wire persistedCallGraph) (*CallGraph, error) {
 		graph.rootOrder = append(graph.rootOrder, root.ID)
 	}
 	graph.arenaEffects, graph.effects, graph.blockEffects = wire.Arena, wire.Effects, wire.Blocking
+	graph.allocationCoverage = wire.Coverage
 	return graph, nil
 }
 
@@ -472,6 +479,16 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 		}
 	}
 	source := func(token lexer.Token) bool { return sources[token.File] && token.Line > 0 && token.Column > 0 }
+	for id, evidence := range graph.allocationCoverage {
+		if _, exists := graph.nodes[id]; !exists {
+			return false
+		}
+		for _, item := range evidence {
+			if item.Reason == "" || item.Source != (lexer.Token{}) && !source(item.Source) {
+				return false
+			}
+		}
+	}
 	for _, node := range graph.Nodes() {
 		if node.ID == "" || !source(node.Declaration) {
 			return false
@@ -565,7 +582,7 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 			return false
 		}
 		for _, effect := range effects {
-			if effect.Kind == "" || !source(effect.Source) {
+			if !validPersistedAllocationEffect(effect) || !source(effect.Source) {
 				return false
 			}
 		}
@@ -581,4 +598,20 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 		}
 	}
 	return true
+}
+
+// validPersistedAllocationEffect validates the versioned direct-effect contract
+// before derived summaries can serve as proof. Unknown kinds and contradictory
+// flags cannot erase an allocating/unknown operation in a restored graph.
+// Rules: rules/memory/allocation.md — §24(2),(5)-(6).
+func validPersistedAllocationEffect(site ArenaEffectSite) bool {
+	switch site.Kind {
+	case ArenaEffectAllocate, ArenaEffectCollectionGrowth, ArenaEffectCreateOwned, ArenaEffectCreateGrowable:
+		return site.MayAllocate && !site.UnknownAllocation
+	case ArenaEffectCreateBorrowed, ArenaEffectReset, ArenaEffectRelease:
+		return !site.MayAllocate && !site.UnknownAllocation
+	case ArenaEffectUnknownCallee, ArenaEffectForeign:
+		return !site.MayAllocate && site.UnknownAllocation
+	}
+	return false
 }

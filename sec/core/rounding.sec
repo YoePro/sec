@@ -1,15 +1,30 @@
 module core
 
-// The rounding policies of explicit numeric and unit conversions, owned once
-// by numeric core. An explicit duration conversion applies the selected mode
-// exactly once to the exact mathematical nanosecond count.
-// Rulebook: types/temporal.md "Explicit rounding"; correction
-// md015-time-unit-duration-conversion-correction-20261013.md § 7.
+// Rulebook: library/core-library.md § 10.3; types/units.md "Explicit
+// rounding"; types/temporal.md § 5.6 (MD-015, MD-047).
+
+/**
+ * Selects the rounding policy for explicit numeric conversions.
+ *
+ * Description:
+ *   No mode is applied implicitly.
+ */
 enum RoundingMode {
+    // Rounds to the nearest representable value; exact ties select an even result.
     NearestEven
+
+    // Rounds to the nearest representable value; exact ties move away from zero.
     NearestAwayFromZero
+
+    // Rounds toward zero.
     TowardZero
+
+    // Rounds away from zero.
     AwayFromZero
+
+    // Rounds toward positive infinity.
     Ceil
+
+    // Rounds toward negative infinity.
     Floor
 }

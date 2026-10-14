@@ -9,49 +9,49 @@ module units_advanced
 // =============================================================================
 
 unit m decimal physical
-impl m {
+impl <m> {
     dimension: [length^1]
     scale: 1
     system: SI
 }
 
 unit kg decimal physical
-impl kg {
+impl <kg> {
     dimension: [mass^1]
     scale: 1
     system: SI
 }
 
 unit s decimal physical
-impl s {
+impl <s> {
     dimension: [time^1]
     scale: 1
     system: SI
 }
 
 unit A decimal physical
-impl A {
+impl <A> {
     dimension: [electric_current^1]
     scale: 1
     system: SI
 }
 
 unit K decimal physical
-impl K {
+impl <K> {
     dimension: [thermodynamic_temperature^1]
     scale: 1
     system: SI
 }
 
 unit mol decimal physical
-impl mol {
+impl <mol> {
     dimension: [amount_of_substance^1]
     scale: 1
     system: SI
 }
 
 unit cd decimal physical
-impl cd {
+impl <cd> {
     dimension: [luminous_intensity^1]
     scale: 1
     system: SI
@@ -62,90 +62,90 @@ impl cd {
 // =============================================================================
 
 unit mm decimal physical
-impl mm {
+impl <mm> {
     dimension: [length^1]
     scale: 1 / 1000
     system: SI
 
-    fn mm(value: m) mm {
-        return value * 1000
+    fn mm(value: <m>) <mm> {
+        return decimal<mm>(value * 1000)
     }
 }
 
 unit cm decimal physical
-impl cm {
+impl <cm> {
     dimension: [length^1]
     scale: 1 / 100
     system: SI
 
-    fn cm(value: m) cm {
-        return value * 100
+    fn cm(value: <m>) <cm> {
+        return decimal<cm>(value * 100)
     }
 }
 
 unit km decimal physical
-impl km {
+impl <km> {
     dimension: [length^1]
     scale: 1000
     system: SI
 
-    fn km(value: m) km {
-        return value / 1000
+    fn km(value: <m>) <km> {
+        return decimal<km>(value / 1000)
     }
 }
 
 unit inch decimal physical
-impl inch {
+impl <inch> {
     dimension: [length^1]
     scale: 127 / 5000
     system: Imperial
 
-    fn inch(value: m) inch {
-        return value / 0.0254
+    fn inch(value: <m>) <inch> {
+        return decimal<inch>(value / 0.0254)
     }
 }
 
 unit ft decimal physical
-impl ft {
+impl <ft> {
     dimension: [length^1]
     scale: 381 / 1250
     system: Imperial
 
-    fn ft(value: m) ft {
-        return value / 0.3048
+    fn ft(value: <m>) <ft> {
+        return decimal<ft>(value / 0.3048)
     }
 }
 
 unit g decimal physical
-impl g {
+impl <g> {
     dimension: [mass^1]
     scale: 1 / 1000
     system: SI
 
-    fn g(value: kg) g {
-        return value * 1000
+    fn g(value: <kg>) <g> {
+        return decimal<g>(value * 1000)
     }
 }
 
 unit min decimal physical
-impl min {
+impl <min> {
     dimension: [time^1]
     scale: 60
     system: Other
 
-    fn min(value: s) min {
-        return value / 60
+    fn min(value: <s>) <min> {
+        return decimal<min>(value / 60)
     }
 }
 
 unit h decimal physical
-impl h {
+impl <h> {
     dimension: [time^1]
     scale: 3600
     system: Other
 
-    fn h(value: s) h {
-        return value / 3600
+    fn h(value: <s>) <h> {
+        return decimal<h>(value / 3600)
     }
 }
 
@@ -154,71 +154,71 @@ impl h {
 // =============================================================================
 
 unit mps decimal physical
-impl mps {
+impl <mps> {
     dimension: [length^1, time^-1]
     scale: 1
     system: SI
 
-    fn mps(value: kph) mps {
-        return value * 5 / 18
+    fn mps(value: <kph>) <mps> {
+        return decimal<mps>(value * 5 / 18)
     }
 }
 
 unit kph decimal physical
-impl kph {
+impl <kph> {
     dimension: [length^1, time^-1]
     scale: 5 / 18
     system: SI
 
-    fn kph(value: mps) kph {
-        return value * 18 / 5
+    fn kph(value: <mps>) <kph> {
+        return decimal<kph>(value * 18 / 5)
     }
 }
 
 unit mph decimal physical
-impl mph {
+impl <mph> {
     dimension: [length^1, time^-1]
     scale: 1397 / 3125
     system: Imperial
 
-    fn mph(value: mps) mph {
-        return value / 0.44704
+    fn mph(value: <mps>) <mph> {
+        return decimal<mph>(value / 0.44704)
     }
 }
 
 unit mps2 decimal physical
-impl mps2 {
+impl <mps2> {
     dimension: [length^1, time^-2]
     scale: 1
     system: SI
 }
 
 unit Hz decimal physical
-impl Hz {
+impl <Hz> {
     dimension: [time^-1]
     scale: 1
     system: SI
 
-    fn Hz(value: rpm) Hz {
-        return value / 60
+    fn Hz(value: <rpm>) <Hz> {
+        return decimal<Hz>(value / 60)
     }
 }
 
 // The omitted storage type defaults to decimal.
 unit rpm physical
-impl rpm {
+impl <rpm> {
     dimension: [time^-1]
     scale: 1 / 60
     system: Other
 
-    fn rpm(value: Hz) rpm {
-        return value * 60
+    fn rpm(value: <Hz>) <rpm> {
+        return decimal<rpm>(value * 60)
     }
 }
 
 // Becquerel deliberately shares the Hz dimension and scale but not its meaning.
 unit Bq decimal physical
-impl Bq {
+impl <Bq> {
     dimension: [time^-1]
     scale: 1
     system: SI
@@ -229,77 +229,77 @@ impl Bq {
 // =============================================================================
 
 unit N decimal physical
-impl N {
+impl <N> {
     dimension: [mass^1, length^1, time^-2]
     scale: 1
     system: SI
 }
 
 unit kN decimal physical
-impl kN {
+impl <kN> {
     dimension: [mass^1, length^1, time^-2]
     scale: 1000
     system: SI
 }
 
 unit Pa decimal physical
-impl Pa {
+impl <Pa> {
     dimension: [mass^1, length^-1, time^-2]
     scale: 1
     system: SI
 }
 
 unit J decimal physical
-impl J {
+impl <J> {
     dimension: [mass^1, length^2, time^-2]
     scale: 1
     system: SI
 }
 
 unit kJ decimal physical
-impl kJ {
+impl <kJ> {
     dimension: [mass^1, length^2, time^-2]
     scale: 1000
     system: SI
 }
 
 unit W decimal physical
-impl W {
+impl <W> {
     dimension: [mass^1, length^2, time^-3]
     scale: 1
     system: SI
 }
 
 unit kW decimal physical
-impl kW {
+impl <kW> {
     dimension: [mass^1, length^2, time^-3]
     scale: 1000
     system: SI
 }
 
 unit Momentum decimal physical
-impl Momentum {
+impl <Momentum> {
     dimension: [mass^1, length^1, time^-1]
     scale: 1
     system: SI
 }
 
 unit DynamicViscosity decimal physical
-impl DynamicViscosity {
+impl <DynamicViscosity> {
     dimension: [mass^1, length^-1, time^-1]
     scale: 1
     system: SI
 }
 
 unit SpecificHeatCapacity decimal physical
-impl SpecificHeatCapacity {
+impl <SpecificHeatCapacity> {
     dimension: [length^2, time^-2, thermodynamic_temperature^-1]
     scale: 1
     system: SI
 }
 
 unit ThermalConductivity decimal physical
-impl ThermalConductivity {
+impl <ThermalConductivity> {
     dimension: [mass^1, length^1, time^-3, thermodynamic_temperature^-1]
     scale: 1
     system: SI
@@ -310,56 +310,56 @@ impl ThermalConductivity {
 // =============================================================================
 
 unit C decimal physical
-impl C {
+impl <C> {
     dimension: [electric_current^1, time^1]
     scale: 1
     system: SI
 }
 
 unit V decimal physical
-impl V {
+impl <V> {
     dimension: [mass^1, length^2, time^-3, electric_current^-1]
     scale: 1
     system: SI
 }
 
 unit ohm decimal physical
-impl ohm {
+impl <ohm> {
     dimension: [mass^1, length^2, time^-3, electric_current^-2]
     scale: 1
     system: SI
 }
 
 unit S decimal physical
-impl S {
+impl <S> {
     dimension: [mass^-1, length^-2, time^3, electric_current^2]
     scale: 1
     system: SI
 }
 
 unit F decimal physical
-impl F {
+impl <F> {
     dimension: [mass^-1, length^-2, time^4, electric_current^2]
     scale: 1
     system: SI
 }
 
 unit Wb decimal physical
-impl Wb {
+impl <Wb> {
     dimension: [mass^1, length^2, time^-2, electric_current^-1]
     scale: 1
     system: SI
 }
 
 unit T decimal physical
-impl T {
+impl <T> {
     dimension: [mass^1, time^-2, electric_current^-1]
     scale: 1
     system: SI
 }
 
 unit H decimal physical
-impl H {
+impl <H> {
     dimension: [mass^1, length^2, time^-2, electric_current^-2]
     scale: 1
     system: SI
@@ -370,35 +370,35 @@ impl H {
 // =============================================================================
 
 unit lm decimal physical
-impl lm {
+impl <lm> {
     dimension: [luminous_intensity^1]
     scale: 1
     system: SI
 }
 
 unit lx decimal physical
-impl lx {
+impl <lx> {
     dimension: [luminous_intensity^1, length^-2]
     scale: 1
     system: SI
 }
 
 unit Gy decimal physical
-impl Gy {
+impl <Gy> {
     dimension: [length^2, time^-2]
     scale: 1
     system: SI
 }
 
 unit Sv decimal physical
-impl Sv {
+impl <Sv> {
     dimension: [length^2, time^-2]
     scale: 1
     system: SI
 }
 
 unit kat decimal physical
-impl kat {
+impl <kat> {
     dimension: [amount_of_substance^1, time^-1]
     scale: 1
     system: SI
@@ -409,56 +409,56 @@ impl kat {
 // =============================================================================
 
 unit Item uint other
-impl Item {
+impl <Item> {
     dimension: [item^1]
     scale: 1
     system: Domain
 }
 
 unit Batch uint other
-impl Batch {
+impl <Batch> {
     dimension: [batch^1]
     scale: 1
     system: Domain
 }
 
 unit Packet uint other
-impl Packet {
+impl <Packet> {
     dimension: [packet^1]
     scale: 1
     system: Domain
 }
 
 unit SEK decimal other
-impl SEK {
+impl <SEK> {
     dimension: [currency.SEK^1]
     scale: 1
     system: Currency
 }
 
 unit EUR decimal other
-impl EUR {
+impl <EUR> {
     dimension: [currency.EUR^1]
     scale: 1
     system: Currency
 }
 
 unit ItemsPerBatch uint other
-impl ItemsPerBatch {
+impl <ItemsPerBatch> {
     dimension: [item^1, batch^-1]
     scale: 1
     system: Domain
 }
 
 unit PacketsPerSecond decimal other
-impl PacketsPerSecond {
+impl <PacketsPerSecond> {
     dimension: [packet^1, time^-1]
     scale: 1
     system: Domain
 }
 
 unit SEKPerItem decimal other
-impl SEKPerItem {
+impl <SEKPerItem> {
     dimension: [currency.SEK^1, item^-1]
     scale: 1
     system: Domain
@@ -468,56 +468,56 @@ impl SEKPerItem {
 // Base and scaled conversion calls
 // =============================================================================
 
-fn ExplicitLengthConversions(value: m) void {
-    let millimetres: mm := mm(value)
-    let centimetres: cm := cm(value)
-    let kilometres: km := km(value)
-    let inches: inch := inch(value)
-    let feet: ft := ft(value)
+fn ExplicitLengthConversions(value: <m>) void {
+    let millimetres: <mm> := <mm>(value)
+    let centimetres: <cm> := <cm>(value)
+    let kilometres: <km> := <km>(value)
+    let inches: <inch> := <inch>(value)
+    let feet: <ft> := <ft>(value)
 }
 
-fn ExplicitMassAndTimeConversions(mass: kg, elapsed: s) void {
-    let grams: g := g(mass)
-    let minutes: min := min(elapsed)
-    let hours: h := h(elapsed)
+fn ExplicitMassAndTimeConversions(mass: <kg>, elapsed: <s>) void {
+    let grams: <g> := <g>(mass)
+    let minutes: <min> := <min>(elapsed)
+    let hours: <h> := <h>(elapsed)
 }
 
-fn ExplicitSpeedConversions(speed: mps) void {
-    let metric: kph := kph(speed)
-    let imperial: mph := mph(speed)
-    let restored: mps := mps(metric)
+fn ExplicitSpeedConversions(speed: <mps>) void {
+    let metric: <kph> := <kph>(speed)
+    let imperial: <mph> := <mph>(speed)
+    let restored: <mps> := <mps>(metric)
 }
 
-fn ExplicitFrequencyConversions(frequency: Hz, rotation: rpm) void {
-    let rotational: rpm := rpm(frequency)
-    let cycles: Hz := Hz(rotation)
+fn ExplicitFrequencyConversions(frequency: <Hz>, rotation: <rpm>) void {
+    let rotational: <rpm> := <rpm>(frequency)
+    let cycles: <Hz> := <Hz>(rotation)
 }
 
 // =============================================================================
 // Scale-aware algebra
 // =============================================================================
 
-fn MetresPerSecond(distance: m, elapsed: s) mps {
+fn MetresPerSecond(distance: <m>, elapsed: <s>) <mps> {
     return distance / elapsed
 }
 
-fn KilometresPerHour(distance: km, elapsed: h) kph {
+fn KilometresPerHour(distance: <km>, elapsed: <h>) <kph> {
     return distance / elapsed
 }
 
-fn Acceleration(speed: mps, elapsed: s) mps2 {
+fn Acceleration(speed: <mps>, elapsed: <s>) <mps2> {
     return speed / elapsed
 }
 
-fn Force(mass: kg, acceleration: mps2) N {
+fn Force(mass: <kg>, acceleration: <mps2>) <N> {
     return mass * acceleration
 }
 
-fn ScaledEnergy(force: kN, distance: m) kJ {
+fn ScaledEnergy(force: <kN>, distance: <m>) <kJ> {
     return force * distance
 }
 
-fn ScaledPower(energy: kJ, elapsed: s) kW {
+fn ScaledPower(energy: <kJ>, elapsed: <s>) <kW> {
     return energy / elapsed
 }
 
@@ -525,63 +525,63 @@ fn ScaledPower(energy: kJ, elapsed: s) kW {
 // Mechanical dimension chains
 // =============================================================================
 
-fn Pressure(force: N, width: m, height: m) Pa {
+fn Pressure(force: <N>, width: <m>, height: <m>) <Pa> {
     return force / width / height
 }
 
-fn RecoverForce(pressure: Pa, width: m, height: m) N {
+fn RecoverForce(pressure: <Pa>, width: <m>, height: <m>) <N> {
     return pressure * width * height
 }
 
-fn Work(force: N, distance: m) J {
+fn Work(force: <N>, distance: <m>) <J> {
     return force * distance
 }
 
-fn PowerFromEnergy(energy: J, elapsed: s) W {
+fn PowerFromEnergy(energy: <J>, elapsed: <s>) <W> {
     return energy / elapsed
 }
 
-fn PowerFromForce(force: N, speed: mps) W {
+fn PowerFromForce(force: <N>, speed: <mps>) <W> {
     return force * speed
 }
 
-fn MomentumFromForce(force: N, elapsed: s) Momentum {
+fn MomentumFromForce(force: <N>, elapsed: <s>) <Momentum> {
     return force * elapsed
 }
 
-fn MomentumFromMass(mass: kg, speed: mps) Momentum {
+fn MomentumFromMass(mass: <kg>, speed: <mps>) <Momentum> {
     return mass * speed
 }
 
 fn EnergyFromPressureVolume(
-    pressure: Pa,
-    length: m,
-    width: m,
-    height: m,
-) J {
+    pressure: <Pa>,
+    length: <m>,
+    width: <m>,
+    height: <m>,
+) <J> {
     return pressure * length * width * height
 }
 
 fn DynamicViscosityFromPressureTime(
-    pressure: Pa,
-    elapsed: s,
-) DynamicViscosity {
+    pressure: <Pa>,
+    elapsed: <s>,
+) <DynamicViscosity> {
     return pressure * elapsed
 }
 
 fn HeatCapacity(
-    energy: J,
-    mass: kg,
-    temperature: K,
-) SpecificHeatCapacity {
+    energy: <J>,
+    mass: <kg>,
+    temperature: <K>,
+) <SpecificHeatCapacity> {
     return energy / mass / temperature
 }
 
 fn Conductivity(
-    power: W,
-    length: m,
-    temperature: K,
-) ThermalConductivity {
+    power: <W>,
+    length: <m>,
+    temperature: <K>,
+) <ThermalConductivity> {
     return power / length / temperature
 }
 
@@ -589,59 +589,59 @@ fn Conductivity(
 // Electrical dimension chains
 // =============================================================================
 
-fn Charge(current: A, elapsed: s) C {
+fn Charge(current: <A>, elapsed: <s>) <C> {
     return current * elapsed
 }
 
-fn Current(charge: C, elapsed: s) A {
+fn Current(charge: <C>, elapsed: <s>) <A> {
     return charge / elapsed
 }
 
-fn VoltageFromPower(power: W, current: A) V {
+fn VoltageFromPower(power: <W>, current: <A>) <V> {
     return power / current
 }
 
-fn VoltageFromEnergy(energy: J, charge: C) V {
+fn VoltageFromEnergy(energy: <J>, charge: <C>) <V> {
     return energy / charge
 }
 
-fn Resistance(voltage: V, current: A) ohm {
+fn Resistance(voltage: <V>, current: <A>) <ohm> {
     return voltage / current
 }
 
-fn Conductance(current: A, voltage: V) S {
+fn Conductance(current: <A>, voltage: <V>) <S> {
     return current / voltage
 }
 
-fn Capacitance(charge: C, voltage: V) F {
+fn Capacitance(charge: <C>, voltage: <V>) <F> {
     return charge / voltage
 }
 
-fn Flux(voltage: V, elapsed: s) Wb {
+fn Flux(voltage: <V>, elapsed: <s>) <Wb> {
     return voltage * elapsed
 }
 
-fn FluxDensity(flux: Wb, width: m, height: m) T {
+fn FluxDensity(flux: <Wb>, width: <m>, height: <m>) <T> {
     return flux / width / height
 }
 
-fn Inductance(flux: Wb, current: A) H {
+fn Inductance(flux: <Wb>, current: <A>) <H> {
     return flux / current
 }
 
-fn ElectricalPower(voltage: V, current: A) W {
+fn ElectricalPower(voltage: <V>, current: <A>) <W> {
     return voltage * current
 }
 
-fn VoltageFromResistance(resistance: ohm, current: A) V {
+fn VoltageFromResistance(resistance: <ohm>, current: <A>) <V> {
     return resistance * current
 }
 
-fn ChargeFromCapacitance(capacitance: F, voltage: V) C {
+fn ChargeFromCapacitance(capacitance: <F>, voltage: <V>) <C> {
     return capacitance * voltage
 }
 
-fn FluxFromInductance(inductance: H, current: A) Wb {
+fn FluxFromInductance(inductance: <H>, current: <A>) <Wb> {
     return inductance * current
 }
 
@@ -649,15 +649,15 @@ fn FluxFromInductance(inductance: H, current: A) Wb {
 // Photometric, radiological and catalytic algebra
 // =============================================================================
 
-fn Illuminance(intensity: cd, width: m, height: m) lx {
+fn Illuminance(intensity: <cd>, width: <m>, height: <m>) <lx> {
     return intensity / width / height
 }
 
-fn AbsorbedDose(energy: J, mass: kg) Gy {
+fn AbsorbedDose(energy: <J>, mass: <kg>) <Gy> {
     return energy / mass
 }
 
-fn CatalyticActivity(amount: mol, elapsed: s) kat {
+fn CatalyticActivity(amount: <mol>, elapsed: <s>) <kat> {
     return amount / elapsed
 }
 
@@ -665,19 +665,19 @@ fn CatalyticActivity(amount: mol, elapsed: s) kat {
 // Domain algebra
 // =============================================================================
 
-fn BatchDensity(items: Item, batches: Batch) ItemsPerBatch {
+fn BatchDensity(items: <Item>, batches: <Batch>) <ItemsPerBatch> {
     return items / batches
 }
 
-fn PacketRate(packets: Packet, elapsed: s) PacketsPerSecond {
+fn PacketRate(packets: <Packet>, elapsed: <s>) <PacketsPerSecond> {
     return packets / elapsed
 }
 
-fn UnitPrice(total: SEK, items: Item) SEKPerItem {
+fn UnitPrice(total: <SEK>, items: <Item>) <SEKPerItem> {
     return total / items
 }
 
-fn InvoiceTotal(price: SEKPerItem, items: Item) SEK {
+fn InvoiceTotal(price: <SEKPerItem>, items: <Item>) <SEK> {
     return price * items
 }
 
@@ -686,31 +686,31 @@ fn InvoiceTotal(price: SEKPerItem, items: Item) SEK {
 // =============================================================================
 
 fn DimensionlessMechanicalIdentity(
-    force: N,
-    distance: m,
-    energy: J,
+    force: <N>,
+    distance: <m>,
+    energy: <J>,
 ) decimal {
     return force * distance / energy
 }
 
 fn DimensionlessElectricalIdentity(
-    voltage: V,
-    current: A,
-    power: W,
+    voltage: <V>,
+    current: <A>,
+    power: <W>,
 ) decimal {
     return voltage * current / power
 }
 
 fn NormalizeReorderedForce(
-    distance: m,
-    mass: kg,
-    firstDuration: s,
-    secondDuration: s,
-) N {
+    distance: <m>,
+    mass: <kg>,
+    firstDuration: <s>,
+    secondDuration: <s>,
+) <N> {
     return distance * mass / secondDuration / firstDuration
 }
 
-fn AnonymousInverseTime(elapsed: s) void {
+fn AnonymousInverseTime(elapsed: <s>) void {
     // Hz, Bq and rpm share this dimension. Without a target, the result remains
     // anonymous instead of selecting one named unit arbitrarily.
     let inverseTime := 1 / elapsed

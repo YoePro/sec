@@ -1,0 +1,6 @@
+module main
+extern "Sec" fn Foreign() void
+
+fn Leaf() void { Foreign() }
+fn Forward() void { Leaf() }
+fn main() void { Forward() }

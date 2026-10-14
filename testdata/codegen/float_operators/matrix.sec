@@ -1,0 +1,180 @@
+module main
+
+type FloatBox32 struct { value: float32, }
+type FloatBox64 struct { value: float64, }
+
+fn Eq32(a: float32, b: float32) bool { return a == b }
+fn Ne32(a: float32, b: float32) bool { return a != b }
+fn Lt32(a: float32, b: float32) bool { return a < b }
+fn Le32(a: float32, b: float32) bool { return a <= b }
+fn Gt32(a: float32, b: float32) bool { return a > b }
+fn Ge32(a: float32, b: float32) bool { return a >= b }
+fn Rem32(a: float32, b: float32) float32 { return a % b }
+fn Compound32(a: float32, b: float32) float32 {
+    let mut result: float32 := a
+    result %= b
+    return result
+}
+fn Divide32(a: float32, b: float32) float32 { return a / b }
+
+fn Eq64(a: float64, b: float64) bool { return a == b }
+fn Ne64(a: float64, b: float64) bool { return a != b }
+fn Lt64(a: float64, b: float64) bool { return a < b }
+fn Le64(a: float64, b: float64) bool { return a <= b }
+fn Gt64(a: float64, b: float64) bool { return a > b }
+fn Ge64(a: float64, b: float64) bool { return a >= b }
+fn Rem64(a: float64, b: float64) float64 { return a % b }
+fn Compound64(a: float64, b: float64) float64 {
+    let mut result: float64 := a
+    result %= b
+    return result
+}
+fn Divide64(a: float64, b: float64) float64 { return a / b }
+
+fn main() int {
+    let nan32: float32 := Divide32(0.0, 0.0)
+    let inf32: float32 := Divide32(1.0, 0.0)
+    if Eq32(nan32, nan32) { return 1 }
+    if !Ne32(nan32, nan32) { return 2 }
+    if Lt32(nan32, nan32) { return 3 }
+    if Le32(nan32, nan32) { return 4 }
+    if Gt32(nan32, nan32) { return 5 }
+    if Ge32(nan32, nan32) { return 6 }
+    if Eq32(nan32, 1.0) { return 7 }
+    if !Ne32(nan32, 1.0) { return 8 }
+    if Lt32(nan32, 1.0) { return 9 }
+    if Le32(nan32, 1.0) { return 10 }
+    if Gt32(nan32, 1.0) { return 11 }
+    if Ge32(nan32, 1.0) { return 12 }
+    if Eq32(1.0, nan32) { return 13 }
+    if !Ne32(1.0, nan32) { return 14 }
+    if Lt32(1.0, nan32) { return 15 }
+    if Le32(1.0, nan32) { return 16 }
+    if Gt32(1.0, nan32) { return 17 }
+    if Ge32(1.0, nan32) { return 18 }
+    if !Eq32(0.0, -0.0) { return 19 }
+    if Ne32(0.0, -0.0) { return 20 }
+    if Lt32(0.0, -0.0) { return 21 }
+    if !Le32(0.0, -0.0) { return 22 }
+    if Gt32(0.0, -0.0) { return 23 }
+    if !Ge32(0.0, -0.0) { return 24 }
+    if Eq32(1.0, 2.0) { return 25 }
+    if !Ne32(1.0, 2.0) { return 26 }
+    if !Lt32(1.0, 2.0) { return 27 }
+    if !Le32(1.0, 2.0) { return 28 }
+    if Gt32(1.0, 2.0) { return 29 }
+    if Ge32(1.0, 2.0) { return 30 }
+    if Rem32(7.5, 2.0) != 1.5 { return 31 }
+    if Rem32(-7.5, 2.0) != -1.5 { return 32 }
+    if Rem32(7.5, -2.0) != 1.5 { return 33 }
+    if Rem32(-7.5, -2.0) != -1.5 { return 34 }
+    if Rem32(7.5, inf32) != 7.5 { return 35 }
+    if Rem32(7.5, -inf32) != 7.5 { return 36 }
+    let result37: float32 := Rem32(7.5, 0.0)
+    if !Ne32(result37, result37) { return 37 }
+    let result38: float32 := Rem32(7.5, -0.0)
+    if !Ne32(result38, result38) { return 38 }
+    let result39: float32 := Rem32(inf32, 2.0)
+    if !Ne32(result39, result39) { return 39 }
+    let result40: float32 := Rem32(nan32, 2.0)
+    if !Ne32(result40, result40) { return 40 }
+    let result41: float32 := Rem32(2.0, nan32)
+    if !Ne32(result41, result41) { return 41 }
+    if Divide32(1.0, Rem32(-4.0, 2.0)) != -inf32 { return 42 }
+    if Compound32(7.5, 2.0) != 1.5 { return 43 }
+    if Compound32(-7.5, 2.0) != -1.5 { return 44 }
+    if Compound32(7.5, -2.0) != 1.5 { return 45 }
+    if Compound32(-7.5, -2.0) != -1.5 { return 46 }
+    if Compound32(7.5, inf32) != 7.5 { return 47 }
+    if Compound32(7.5, -inf32) != 7.5 { return 48 }
+    let result49: float32 := Compound32(7.5, 0.0)
+    if !Ne32(result49, result49) { return 49 }
+    let result50: float32 := Compound32(7.5, -0.0)
+    if !Ne32(result50, result50) { return 50 }
+    let result51: float32 := Compound32(inf32, 2.0)
+    if !Ne32(result51, result51) { return 51 }
+    let result52: float32 := Compound32(nan32, 2.0)
+    if !Ne32(result52, result52) { return 52 }
+    let result53: float32 := Compound32(2.0, nan32)
+    if !Ne32(result53, result53) { return 53 }
+    if Divide32(1.0, Compound32(-4.0, 2.0)) != -inf32 { return 54 }
+    let nan64: float64 := Divide64(0.0, 0.0)
+    let inf64: float64 := Divide64(1.0, 0.0)
+    if Eq64(nan64, nan64) { return 55 }
+    if !Ne64(nan64, nan64) { return 56 }
+    if Lt64(nan64, nan64) { return 57 }
+    if Le64(nan64, nan64) { return 58 }
+    if Gt64(nan64, nan64) { return 59 }
+    if Ge64(nan64, nan64) { return 60 }
+    if Eq64(nan64, 1.0) { return 61 }
+    if !Ne64(nan64, 1.0) { return 62 }
+    if Lt64(nan64, 1.0) { return 63 }
+    if Le64(nan64, 1.0) { return 64 }
+    if Gt64(nan64, 1.0) { return 65 }
+    if Ge64(nan64, 1.0) { return 66 }
+    if Eq64(1.0, nan64) { return 67 }
+    if !Ne64(1.0, nan64) { return 68 }
+    if Lt64(1.0, nan64) { return 69 }
+    if Le64(1.0, nan64) { return 70 }
+    if Gt64(1.0, nan64) { return 71 }
+    if Ge64(1.0, nan64) { return 72 }
+    if !Eq64(0.0, -0.0) { return 73 }
+    if Ne64(0.0, -0.0) { return 74 }
+    if Lt64(0.0, -0.0) { return 75 }
+    if !Le64(0.0, -0.0) { return 76 }
+    if Gt64(0.0, -0.0) { return 77 }
+    if !Ge64(0.0, -0.0) { return 78 }
+    if Eq64(1.0, 2.0) { return 79 }
+    if !Ne64(1.0, 2.0) { return 80 }
+    if !Lt64(1.0, 2.0) { return 81 }
+    if !Le64(1.0, 2.0) { return 82 }
+    if Gt64(1.0, 2.0) { return 83 }
+    if Ge64(1.0, 2.0) { return 84 }
+    if Rem64(7.5, 2.0) != 1.5 { return 85 }
+    if Rem64(-7.5, 2.0) != -1.5 { return 86 }
+    if Rem64(7.5, -2.0) != 1.5 { return 87 }
+    if Rem64(-7.5, -2.0) != -1.5 { return 88 }
+    if Rem64(7.5, inf64) != 7.5 { return 89 }
+    if Rem64(7.5, -inf64) != 7.5 { return 90 }
+    let result91: float64 := Rem64(7.5, 0.0)
+    if !Ne64(result91, result91) { return 91 }
+    let result92: float64 := Rem64(7.5, -0.0)
+    if !Ne64(result92, result92) { return 92 }
+    let result93: float64 := Rem64(inf64, 2.0)
+    if !Ne64(result93, result93) { return 93 }
+    let result94: float64 := Rem64(nan64, 2.0)
+    if !Ne64(result94, result94) { return 94 }
+    let result95: float64 := Rem64(2.0, nan64)
+    if !Ne64(result95, result95) { return 95 }
+    if Divide64(1.0, Rem64(-4.0, 2.0)) != -inf64 { return 96 }
+    if Compound64(7.5, 2.0) != 1.5 { return 97 }
+    if Compound64(-7.5, 2.0) != -1.5 { return 98 }
+    if Compound64(7.5, -2.0) != 1.5 { return 99 }
+    if Compound64(-7.5, -2.0) != -1.5 { return 100 }
+    if Compound64(7.5, inf64) != 7.5 { return 101 }
+    if Compound64(7.5, -inf64) != 7.5 { return 102 }
+    let result103: float64 := Compound64(7.5, 0.0)
+    if !Ne64(result103, result103) { return 103 }
+    let result104: float64 := Compound64(7.5, -0.0)
+    if !Ne64(result104, result104) { return 104 }
+    let result105: float64 := Compound64(inf64, 2.0)
+    if !Ne64(result105, result105) { return 105 }
+    let result106: float64 := Compound64(nan64, 2.0)
+    if !Ne64(result106, result106) { return 106 }
+    let result107: float64 := Compound64(2.0, nan64)
+    if !Ne64(result107, result107) { return 107 }
+    if Divide64(1.0, Compound64(-4.0, 2.0)) != -inf64 { return 108 }
+    let mut box32 := FloatBox32 { value: 7.5 }
+    box32.value %= 2.0
+    if box32.value != 1.5 { return 109 }
+    let mut array32: float32[1] := [7.5]
+    array32[0] %= 2.0
+    if array32[0] != 1.5 { return 110 }
+    let mut box64 := FloatBox64 { value: 7.5 }
+    box64.value %= 2.0
+    if box64.value != 1.5 { return 111 }
+    let mut array64: float64[1] := [7.5]
+    array64[0] %= 2.0
+    if array64[0] != 1.5 { return 112 }
+    return 0
+}

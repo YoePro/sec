@@ -1,0 +1,5 @@
+module main
+fn Leaf() void { let arena := Arena.WithCapacity(64u) }
+fn main() void {
+    defer { Leaf() }
+}

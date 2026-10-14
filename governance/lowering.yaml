@@ -7,74 +7,74 @@ integrations:
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - dedicated Semantic IR model, builder, printer, verifier and source-to-Semantic-IR compiler path exist
-    - current struct semantic-value representation and resolved struct plans are implemented for the Package 13 scope
-    - match CFG and match records are implemented for the current Package 12 executable subset
-    - typed Result/errorhandling Semantic IR operations and handler-plan integration exist for represented forms
-    - ownership availability facts and several move/discard/reference-holder transitions are represented
-    - compiler-known static/default/property/unit/FFI facts are represented in existing vertical slices
+      - dedicated Semantic IR model, builder, printer, verifier and source-to-Semantic-IR compiler path exist
+      - current struct semantic-value representation and resolved struct plans are implemented for the Package 13 scope
+      - match CFG and match records are implemented for the current Package 12 executable subset
+      - typed Result/errorhandling Semantic IR operations and handler-plan integration exist for represented forms
+      - ownership availability facts and several move/discard/reference-holder transitions are represented
+      - compiler-known static/default/property/unit/FFI facts are represented in existing vertical slices
     remaining:
-    - integrate one canonical Place/location identity across every Semantic IR operation
-    - complete availability/partial/conditional ownership representation across all source forms
-    - complete iterator resolved-plan bridge for compiler-known Iterator[T]
-    - complete collection and shaped-value Semantic IR generation
-    - complete Arena and allocation-context Semantic IR generation
-    - complete task/thread/channel/synchronization Semantic IR generation
-    - complete panic/assert/runtime-check semantic operations
-    - complete reference/storage invalidation/domain facts
-    - complete platform/interrupt/volatile/hardware operation generation across maintained targets
+      - integrate one canonical Place/location identity across every Semantic IR operation
+      - complete availability/partial/conditional ownership representation across all source forms
+      - complete iterator resolved-plan bridge for compiler-known Iterator[T]
+      - complete collection and shaped-value Semantic IR generation
+      - complete Arena and allocation-context Semantic IR generation
+      - complete task/thread/channel/synchronization Semantic IR generation
+      - complete panic/assert/runtime-check semantic operations
+      - complete reference/storage invalidation/domain facts
+      - complete platform/interrupt/volatile/hardware operation generation across maintained targets
     required_tests:
-    - source-to-Semantic-IR coverage for every canonical source category
-    - Iterator[T] user conformance and static Next target
-    - Arena create/alloc/reset/release
-    - task/thread transfer
-    - panic/assert/check representation
-    - collection/shaped representation
+      - source-to-Semantic-IR coverage for every canonical source category
+      - Iterator[T] user conformance and static Next target
+      - Arena create/alloc/reset/release
+      - task/thread transfer
+      - panic/assert/check representation
+      - collection/shaped representation
+
   - id: semantic-ir.core-v2
     area: canonical-semantic-ir-model-and-verifier
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - canonical TypeID/SymbolID/ValueID-oriented model exists
-    - dedicated verifier exists
-    - deterministic printer exists
-    - Package 13 struct operations and current match/errorhandling operations are implemented
-    - "static methods (2026-10-12, impl.md §§ 11, 13; semantic_ir.md §§ 60-61): every `static fn` of a non-generic impl block in the requested module lowers as an ordinary function under its qualified Target.Name identity (Sema ResolvedMethodForDeclaration), and a resolved static-method call is a direct call to it, including calls between methods; Sec MLIR emits them as qualified functions; instance method calls report the explicit `instance method call` boundary and static methods of generic implementations stay unsupported (TestStaticMethodsLowerAsDirectCalls, TestMethodLoweringBoundaries, TestStaticMethodsEmitAsQualifiedFunctions)"
+      - canonical TypeID/SymbolID/ValueID-oriented model exists
+      - dedicated verifier exists
+      - deterministic printer exists
+      - Package 13 struct operations and current match/errorhandling operations are implemented
+      - "static methods (2026-10-12, impl.md §§ 11, 13; semantic_ir.md §§ 60-61): every `static fn` of a non-generic impl block in the requested module lowers as an ordinary function under its qualified Target.Name identity (Sema ResolvedMethodForDeclaration), and a resolved static-method call is a direct call to it, including calls between methods; Sec MLIR emits them as qualified functions; instance method calls report the explicit `instance method call` boundary and static methods of generic implementations stay unsupported (TestStaticMethodsLowerAsDirectCalls, TestMethodLoweringBoundaries, TestStaticMethodsEmitAsQualifiedFunctions)"
     remaining:
-    - "instance methods (since 2026-10-12, package 15): shared and mutable receivers lower as an explicit ref/ref mut `self` parameter with field reads/writes and receiver passing (sec-mlir-package15 P15-47); remaining are consuming receivers (by-value move), `self` used as a value, reborrowing a mutable `self` for nested calls, temporary receivers without a Place (needed by try-chain-intermediate-lowering), and generic implementations through specialization identities"
-    - "add static (module-level), thread-local and addressed (fixed-address binding, register/MMIO) storage classes to Semantic IR storage, which today represents only local-automatic storage, with initialization, mutability, address-stability and memory-space facts and verifier rules (identified 2026-10-11 by SEC-MLIR-P15 P15-42)"
-    - add/normalize canonical Place identity and state records
-    - add explicit ArenaDomain/state/epoch operations
-    - add reference/storage invalidation operations
-    - add Iterator[T] resolved-iteration records/operations
-    - add collection/shaped records/operations
-    - add concurrency transfer and task/thread lifecycle operations
-    - add panic/assert/check operation records
-    - add complete effect/trust/target plan fields
-    - extend verifier with cross-operation ownership/storage/effect/concurrency invariants
-    - remove historical package-amendment dependency from the normative conceptual model
+      - "instance methods (since 2026-10-12, package 15): shared and mutable receivers lower as an explicit ref/ref mut `self` parameter with field reads/writes and receiver passing (sec-mlir-package15 P15-47); remaining are consuming receivers (by-value move), `self` used as a value, reborrowing a mutable `self` for nested calls, temporary receivers without a Place (needed by try-chain-intermediate-lowering), and generic implementations through specialization identities"
+      - add static (module-level), thread-local and addressed (fixed-address binding, register/MMIO) storage classes to Semantic IR storage, which today represents only local-automatic storage, with initialization, mutability, address-stability and memory-space facts and verifier rules (identified 2026-10-11 by SEC-MLIR-P15 P15-42)
+      - add/normalize canonical Place identity and state records
+      - add explicit ArenaDomain/state/epoch operations
+      - add reference/storage invalidation operations
+      - add Iterator[T] resolved-iteration records/operations
+      - add collection/shaped records/operations
+      - add concurrency transfer and task/thread lifecycle operations
+      - add panic/assert/check operation records
+      - add complete effect/trust/target plan fields
+      - extend verifier with cross-operation ownership/storage/effect/concurrency invariants
+      - remove historical package-amendment dependency from the normative conceptual model
     required_tests:
-    - malformed Place/ownership state rejected
-    - duplicate Arena owner state rejected
-    - invalid iterator target/conformance rejected
-    - panic versus Result contradiction rejected
-    - invalid transfer/concurrency state rejected
-    - invalid target operation rejected
+      - malformed Place/ownership state rejected
+      - duplicate Arena owner state rejected
+      - invalid iterator target/conformance rejected
+      - panic versus Result contradiction rejected
+      - invalid transfer/concurrency state rejected
+      - invalid target operation rejected
+
   - id: semantic-ir.compiler-pipeline
     area: semantic-ir-boundary-and-capability-gating
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - dedicated Semantic IR exists with verification
-    - current P1-P14 vertical slices intentionally reject unsupported dependency-bounded source paths at Semantic
-      IR/lowering boundaries rather than emit partial invalid IR
-    - Sec MLIR emitter consumes canonical Semantic IR for implemented package paths
+      - dedicated Semantic IR exists with verification
+      - current P1-P14 vertical slices intentionally reject unsupported dependency-bounded source paths at Semantic IR/lowering boundaries rather than emit partial invalid IR
+      - Sec MLIR emitter consumes canonical Semantic IR for implemented package paths
     remaining:
-    - complete Semantic IR coverage for all canonical Sec constructs
-    - centralize UnsupportedLowering/implementation-capability diagnostics and ensure they are not reported as language
-      errors
-    - consume compiler_analysis/Iterator/Arena/reference/effect/transfer facts from one canonical lowering-readiness
-      plan
+      - complete Semantic IR coverage for all canonical Sec constructs
+      - centralize UnsupportedLowering/implementation-capability diagnostics and ensure they are not reported as language errors
+      - consume compiler_analysis/Iterator/Arena/reference/effect/transfer facts from one canonical lowering-readiness plan
+
   - id: lowering.sec-mlir-package13
     package: SEC-MLIR-P13
     name: Struct Semantic Value Representation
@@ -247,8 +247,8 @@ integrations:
         dominance/SSA verifier.
       lowering_and_compatibility: >-
         Deterministic Go emission for 32-bit and 64-bit plans, recursive P6
-        target-scalar conversion, P8 wrapper boundary, P11/P12 union values,
-        P13 struct nesting, schema-9 compatibility, and maintained legacy array
+        target-scalar conversion, P8 wrapper boundary, P11/P12 union values, P13
+        struct nesting, schema-9 compatibility, and maintained legacy array
         paths behind explicit representability checks.
       safety_boundary: >-
         Dynamic arrays, slices, element references, array-to-slice borrowing,
@@ -473,13 +473,13 @@ integrations:
         result: passed after trusted core IndexError integration
       - command: go test ./internal/ir/semantic -run TestPackage14BuildsFallibleBoundsPropagationAndLocalHandler -count=1
         result: passed
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-scalar-layout-(32|64)' $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv --filter='schema10-array-scalar-layout-(32|64)' $PWD/build/sec-mlir/test
         result: passed (2/2), resolving nested array and struct-wrapped target-sized elements for 32-bit and 64-bit plans
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv $PWD/build/sec-mlir/test
         result: passed (84/84) after Package 6 fixed-array scalar-layout integration
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-boundary' $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv --filter='schema10-array-boundary' $PWD/build/sec-mlir/test
         result: passed (1/1), lowering ordinary checked arithmetic while preserving signed and unsigned fixed-array wrappers and operations
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv $PWD/build/sec-mlir/test
         result: passed (85/85) after Package 8 fixed-array normalization-boundary coverage
       - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsNestedArrayStructReplacementMatrix|BuildsCompactFixedArrayDefaultMatrix)' -count=1 -v
         result: passed, preserving exact Pair/Holder identities, wide nested fields, recursive defaults, and both array/struct replacement directions
@@ -489,9 +489,9 @@ integrations:
         result: passed, including negative matching-variant guard enforcement for an int128[2] union payload
       - command: go test ./... && go vet ./...
         result: passed after Package 11/12 fixed-array union and match value integration
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-ops' $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv --filter='schema10-array-ops' $PWD/build/sec-mlir/test
         result: passed (2/2), covering round-trip and local verifier failures for every P14-57 operation
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv $PWD/build/sec-mlir/test
         result: passed (87/87) after the complete schema-10 fixed-array operation set
       - command: go test ./internal/sema -run TestResolvedFixedArrayIndexRefinementProofs -count=1 -v
         result: passed, covering branch, assertion/analysis and contract provenance plus incomplete, disjunctive, out-of-scope, mutated and zero-length negative cases
@@ -501,7 +501,7 @@ integrations:
         result: passed after P14-40 refinement integration
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (87/87) after P14-40 refinement integration
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
         result: passed (2/2), covering runtime extract/replace, proven-safe access, SSA mismatches, false-edge use, and post-merge use
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (89/89) after P14-58 array-index guard verification
@@ -513,7 +513,7 @@ integrations:
         result: passed after P14-54/P14-59 schema-10 emission and version-gate integration
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (91/91) after P14-54/P14-59 schema-10 emission and version-gate integration
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
         result: passed (2/2) for the complete section-101 extract/replace guard, edge-dominance, SSA-identity, and proven-provenance matrix
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (91/91) after the P14-60 section-100/101 audit
@@ -565,13 +565,13 @@ integrations:
         result: passed in a clean worktree before and after execution
       - command: isolated detached snapshot 8b2266b8da6d18c9daaf42eb20fe86bda8d743fd (tree 42802a3733a0d5032390ea355e14c6d2ebed814f) from HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the exact pending P14-70/P14-71 files; go vet ./...
         result: passed in a clean worktree before and after execution
-      - command: build/sec-mlir/bin/sec-mlir-opt --version; /home/jonas/mlir/llvm-project/build/bin/llvm-lit --version
+      - command: build/sec-mlir/bin/sec-mlir-opt --version; ${LLVM_LIT} --version
         result: LLVM 24.0.0git optimized build with assertions; lit 24.0.0dev
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (91/91) for P14-73
-      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema(9|10|11)' /home/jonas/small-projects/sec/build/sec-mlir/test
+      - command: ${LLVM_LIT} -sv --filter='schema(9|10|11)' ${SEC_MLIR_TEST_DIR}
         result: passed all 17 selected adjacent schema-9, schema-10, and schema-11 regressions (74 unrelated tests excluded)
-      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./internal/lowering/secmlir -run '^TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans$' -count=1 -v
+      - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./internal/lowering/secmlir -run '^TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans$' -count=1 -v
         result: passed 32-bit and 64-bit source-to-Sema-to-verified-Semantic-IR-to-schema-10 guard-verification and scalar-lowering pipelines for P14-74
       - command: go test ./internal/sema -run 'Test(Package14Section95ConstantIndexMatrix|FixedArrayIndexPlansRejectExactWideBounds|ResolvedFixedArrayIndexRefinementProofs|FixedArrayBoundsTryPublishesTypedFlowAndRemovesPanicEffect|NoPanicFixedArrayIndexGuarantees|FallibleFixedArrayBoundsRetainOnlyOperandEffects)' -count=1 -v
         result: passed the focused P14-48 Sema constant, proof, fallible, effect, and noPanic matrix
@@ -583,7 +583,7 @@ integrations:
         result: passed for the complete P14 handoff diff, including the new acceptance matrix and implementation report
       - command: python3 inline governance audit of implementation-status.yaml and the section-108 report
         result: passed with 164 unique integration IDs, implemented status, existing referenced paths, and exactly 41 ordered report items
-      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./...
+      - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./...
         result: passed for P14-77
       - command: go vet ./...
         result: passed for P14-77
@@ -601,7 +601,7 @@ integrations:
     baseline:
       repository_head: 2c67853ee31358a9a8a486aa11fba57c6b6a7270
       tree: 225922f80c0537e8c2b21e3388d6a068cbb032ee
-      worktree: /home/jonas/small-projects/sec-p15-baseline-2c67853ee313
+      worktree: ${P15_BASELINE}
       state: clean detached HEAD; dirty primary worktree excluded from final acceptance evidence
     predecessors:
       - SEC-MLIR-P13 implemented with schema-9 struct values and storage
@@ -610,8 +610,8 @@ integrations:
       go: go1.26.0 linux/amd64
       sec_mlir_opt: LLVM 24.0.0git optimized build with assertions
       llvm_lit: lit 24.0.0dev
-      sec_mlir_bin: /home/jonas/small-projects/sec/build/sec-mlir/bin
-      llvm_lit_path: /home/jonas/mlir/llvm-project/build/bin/llvm-lit
+      sec_mlir_bin: ${SEC_MLIR_BIN}
+      llvm_lit_path: ${LLVM_LIT}
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package15.md
       - rules/mlir/packages/sec-mlir-dialect_package15.yaml
@@ -694,22 +694,22 @@ integrations:
       - "union payload reference bindings (P15-45 partial, 2026-10-13): Sema publishes the ResolvedReferencePlan of a ref/ref mut match payload binding, keyed by its stable bound identifier; Semantic IR forms the match subject's own Place root, one place.union-payload naming the arm's union.is-variant predicate (guard=) as its active-variant proof, and the borrow with the plan's facts unchanged, never unwrapping or copying the union or payload; ref mut needs read/write storage and writes through place.write. The verifier no longer trusts the variant-proven flag alone: the guard must be a union.is-variant of the same variant over the Place root's own union value (value root operand or load of the storage root's storage), and the payload Place must be confined to its true edge, counting only paths that avoid the test so matches inside loops verify (TestPackage15LowersUnionPayloadReferenceBindings, TestPackage15PayloadReferenceBoundaries, TestPackage15VerifierRejectsUnprovenPayloadPlaces)"
     remaining:
       - lower source reference behavior solely from resolved plans
-      - "lower returned input/subfield references with preserved return-origin summaries (P15-47 remainder) and instance-method receivers as ref/ref mut parameters (unblocks semantic-ir.core-v2 instance methods and try-chain-intermediate-lowering)"
+      - lower returned input/subfield references with preserved return-origin summaries (P15-47 remainder) and instance-method receivers as ref/ref mut parameters (unblocks semantic-ir.core-v2 instance methods and try-chain-intermediate-lowering)
       - implement schema-11 types, operations, emitter support, and all three P15 verifiers
       - prove predecessor integration, architecture boundaries, determinism, and unsupported-feature rejection
       - complete the section-155 acceptance matrix, isolated final gates, governance promotion, and section-156 report
-      - "lower explicit reborrow expressions (P15-46 remainder); blocked on MD-061, which decides whether `ref r` over a reference holder is a reborrow, a reference to the holder or rejected (Sema currently types it ref ref T while its plan marks a reborrow)"
+      - lower explicit reborrow expressions (P15-46 remainder); blocked on MD-061, which decides whether `ref r` over a reference holder is a reborrow, a reference to the holder or rejected (Sema currently types it ref ref T while its plan marks a reborrow)
       - "P15-45 remainder: borrowed Result Ok/Err payloads (Result is not a Semantic IR union, so place.union-payload cannot name its variant), struct-like payload Places (P13 synthetic payload identity) and subjects reached through fields, elements or references (reborrow) are package-15 unsupported with precise reasons"
-      - "lower static and addressed (fixed-address/MMIO) Place roots, the P15-42 remainder; blocked on the semantic-ir.core-v2 static/addressed storage classes, so these roots are package-15 unsupported today"
+      - lower static and addressed (fixed-address/MMIO) Place roots, the P15-42 remainder; blocked on the semantic-ir.core-v2 static/addressed storage classes, so these roots are package-15 unsupported today
     deferred:
       - slice values and fixed-array-to-slice borrowing to P16
       - move-only or semantic-copy reads and non-trivial replacement or destruction to P17
       - owning dynamic-array backing-storage transitions to P18
       - stable and weak handles, RawPtr conversions, physical reference ABI/layout, LLVM lowering, physical epochs, pinning, and concurrent invalidation
     verification:
-      - command: git -C /home/jonas/small-projects/sec-p15-baseline-2c67853ee313 status --porcelain=v1
+      - command: git -C ${P15_BASELINE} status --porcelain=v1
         result: passed; no output
-      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./internal/testsupport ./internal/lowering/secmlir ./cmd/compiler -run 'Test(ConfiguredSecMLIRBinRequiresAbsolutePathForPackages13Through15|SecMLIROptPathIsIndependentOfPackageWorkingDirectory|EmitPackage14ArraysEndToEnd|Package10SourceEmitsAndVerifiesResultHandlers|Package11SourceEmitsAndVerifiesEnumUnionValues)' -count=1
+      - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./internal/testsupport ./internal/lowering/secmlir ./cmd/compiler -run 'Test(ConfiguredSecMLIRBinRequiresAbsolutePathForPackages13Through15|SecMLIROptPathIsIndependentOfPackageWorkingDirectory|EmitPackage14ArraysEndToEnd|Package10SourceEmitsAndVerifiesResultHandlers|Package11SourceEmitsAndVerifiesEnumUnionValues)' -count=1
         result: passed with the real sec-mlir-opt from the recorded absolute tool directory
       - command: go vet ./internal/testsupport ./internal/lowering/secmlir ./cmd/compiler
         result: passed
@@ -719,6 +719,7 @@ integrations:
         result: passed with zero errors and zero warnings
       - command: go test ./internal/sema -run 'Relationship|PlacesOverlap' -count=1
         result: passed
+
   - id: lowering.sec-mlir-schema-2
     area: semantic-ir-lowering
     status: implemented
@@ -726,8 +727,8 @@ integrations:
     summary: >-
       Implements SEC-MLIR-P4 as the first verified Semantic IR v1 to Sec MLIR
       bridge. The emitter consumes only canonical Semantic IR, emits dialect
-      schema 2, and publishes CLI output only after verification by the real
-      Sec MLIR toolchain.
+      schema 2, and publishes CLI output only after verification by the real Sec
+      MLIR toolchain.
     rules:
       - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
@@ -776,15 +777,16 @@ integrations:
         result: passed
       - command: validate implementation-status.yaml
         result: passed
+
   - id: lowering.sec-mlir-trivial-core
     area: mlir-dialect-conversion
     status: implemented
     integrated: "2026-08-09"
     summary: >-
-      Implements SEC-MLIR-P5 as a deliberately partial dialect conversion.
-      Fully discharged boolean, trivial-storage, and ordinary direct-call
-      semantics lower to core MLIR while unresolved Sec representation and ABI
-      obligations remain explicit.
+      Implements SEC-MLIR-P5 as a deliberately partial dialect conversion. Fully
+      discharged boolean, trivial-storage, and ordinary direct-call semantics
+      lower to core MLIR while unresolved Sec representation and ABI obligations
+      remain explicit.
     rules:
       - rules/mlir/sec_mlir_lowering.md
       - rules/mlir/sec_mlir_dialect.md
@@ -823,6 +825,7 @@ integrations:
         result: passed with expected partial conversion and no LLVM dialect
       - command: validate implementation-status.yaml with duplicate-key rejection
         result: passed
+
   - id: lowering.sec-mlir-scalar-layout
     area: semantic-ir-and-mlir-dialect-conversion
     status: implemented
@@ -898,14 +901,15 @@ integrations:
         result: passed with si128 storage, ui256 calls, and high-level decimal128
       - command: validate implementation-status.yaml with duplicate-key rejection
         result: passed
+
   - id: lowering.sec-mlir-typed-arithmetic-failure
     area: frontend-analysis-semantic-ir-and-mlir
     status: partial
     integrated: "2026-08-10"
     summary: >-
       Implements the Package 9 typed arithmetic failure path from compiler-known
-      ArithmeticError and resolved naked arithmetic try facts through Semantic IR
-      Result construction, Sec MLIR schema 5, guard verification, and exact
+      ArithmeticError and resolved naked arithmetic try facts through Semantic
+      IR Result construction, Sec MLIR schema 5, guard verification, and exact
       dynamic failure-reason computation. General callable effect summaries and
       @noPanic validation remain outside this vertical slice.
     rules:
@@ -972,6 +976,7 @@ integrations:
         result: passed with schema-v5 checked-guard verification
       - command: go test ./internal/sema -run 'TestArithmeticTry|TestInvalidArithmeticTry' -v
         result: passed with direct, handled, transitive operand-call, ordinary Result try, and invalid-try effect coverage
+
   - id: lowering.sec-mlir-local-try-handlers
     area: frontend-analysis-semantic-ir-and-mlir
     status: implemented
@@ -1043,6 +1048,7 @@ integrations:
         result: passed
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir ./cmd/compiler ./internal/mlir
         result: passed with real sec-mlir-opt integration
+
   - id: lowering.sec-mlir-enum-union-values
     area: frontend-analysis-semantic-ir-and-mlir
     status: implemented
@@ -1139,6 +1145,7 @@ integrations:
         result: passed through parse, Sema, Semantic IR, schema-7 emission, and all Sec verification passes
       - command: go test ./internal/ir/semantic ./cmd/compiler -run Package11 -count=1
         result: passed with nominal identity, concrete type-argument, copy-classification, and updated enum-conversion coverage
+
   - id: lowering.sec-mlir-match-cfg
     area: frontend-analysis-semantic-ir-and-mlir
     status: implemented
@@ -1146,8 +1153,8 @@ integrations:
     summary: >-
       Completes the dependency-bounded SEC-MLIR Package 12 CFG for enum, union,
       Result, and Option matches, including copy-trivial payloads, guards,
-      expression merges, statement continuations, terminating arms, and
-      schema-8 verification. Newer match revision-2 ownership, field, and empty
+      expression merges, statement continuations, terminating arms, and schema-8
+      verification. Newer match revision-2 ownership, field, and empty
       initialization-state features remain tracked by the frontend match item.
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package12.md
@@ -1198,7 +1205,7 @@ integrations:
       - return and failure terminators carry body-exit provenance, while ignored statement-arm values are limited to trivial copyable and trivially destructible values
       - complete finite enum chains retain the final test and terminate its impossible false edge with exhaustive-match-fallthrough
       - schema-8 emission attaches match ID, arm index, stage and pattern-kind provenance to tests, projections, guards, exits, and residuals
-      - --sec-verify-match-cfg validates complete provenance, source arm order, a shared enum, union, Option, or Result subject, immediate test branches, guard form, catch-all finality, common merge arity, terminating exits, and exhaustive residual
+      - "--sec-verify-match-cfg validates complete provenance, source arm order, a shared enum, union, Option, or Result subject, immediate test branches, guard form, catch-all finality, common merge arity, terminating exits, and exhaustive residual"
       - Result guard verification preserves the strict Package 10 try shape while accepting match-specific edge direction and payload discard
       - union payload verification accepts projections only in the dedicated matching successor selected by the corresponding variant test
       - the package document and YAML are synchronized with flowcontrol_match.md revision 2.0 and distinguish payload-less variants from compiler-known empty initialization state
@@ -1226,6 +1233,7 @@ integrations:
           the currently edited fixture has a parser error at line 32.
       - command: go vet ./...
         result: passed
+
   - id: lowering.sec-mlir-checked-integers
     area: frontend-analysis-semantic-ir-and-mlir
     status: implemented
@@ -1315,6 +1323,7 @@ integrations:
         result: passed; target-sized int resolved to si64 and wide integer widths were preserved
       - command: validate implementation-status.yaml
         result: passed
+
   - id: lowering.sec-mlir-checked-integer-arith
     area: mlir-dialect-conversion
     status: implemented
@@ -1373,6 +1382,7 @@ integrations:
         result: passed
       - command: emit-sec-mlir checked_integer_ops.sec for linux-armv7 and linux-amd64 followed by --sec-lower-integer-core
         result: passed; target int became i32/i64 respectively, all sec.int operations were discharged, explicit arithmetic failures remained, and no unrealized cast, poison flag, or LLVM operation was emitted
+
   - id: lowering.abi-model
     area: platform-and-lowering
     status: planned
@@ -1380,12 +1390,12 @@ integrations:
     document_revision: "1"
     summary: >-
       Adds the canonical Sec ABI model selected by each CompilationPlan,
-      including Sec, C, and system calling-convention resolution,
-      target-neutral parameter and return classification,
-      aggregate/direct/indirect transport, MLIR-stage CallABIPlan construction
-      and verification, native-versus-foreign representation boundaries, ABI
-      signatures and fingerprints, and separate-compilation compatibility
-      without duplicating FFI legality or source ownership semantics.
+      including Sec, C, and system calling-convention resolution, target-neutral
+      parameter and return classification, aggregate/direct/indirect transport,
+      MLIR-stage CallABIPlan construction and verification,
+      native-versus-foreign representation boundaries, ABI signatures and
+      fingerprints, and separate-compilation compatibility without duplicating
+      FFI legality or source ownership semantics.
     rules:
       - rules/platform/abi.md
       - rules/platform/platform_model.md
@@ -1446,43 +1456,45 @@ integrations:
       - stable native Sec ABI compatibility across arbitrary compiler releases
       - implicit string or collection decomposition for C ABI
       - hard-coded physical register names in the target-neutral ABI classification model
+
   - id: lowering.semantic-ir-v2
     area: semantic-ir-to-sec-mlir
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - multiple Semantic IR packages lower into versioned Sec MLIR schemas
-    - struct semantic values and current checked arithmetic/errorhandling slices have end-to-end lowering coverage
+      - multiple Semantic IR packages lower into versioned Sec MLIR schemas
+      - struct semantic values and current checked arithmetic/errorhandling slices have end-to-end lowering coverage
     remaining:
-    - lower canonical iterator semantics without runtime-dispatch or closed-whitelist assumptions
-    - lower collection/shaped semantic operations
-    - lower Arena state/domain/epoch and allocation-context operations
-    - lower task/thread/channel/synchronization operations
-    - lower reference/storage invalidation and profile-selected checks
-    - lower panic/assert/check semantics without inventing exception unwinding
-    - lower complete effect/volatile/hardware/interrupt contracts
-    - prevent backend metadata assumptions stronger than Semantic IR proof
-    - ensure lowering never re-runs source semantic resolution
+      - lower canonical iterator semantics without runtime-dispatch or closed-whitelist assumptions
+      - lower collection/shaped semantic operations
+      - lower Arena state/domain/epoch and allocation-context operations
+      - lower task/thread/channel/synchronization operations
+      - lower reference/storage invalidation and profile-selected checks
+      - lower panic/assert/check semantics without inventing exception unwinding
+      - lower complete effect/volatile/hardware/interrupt contracts
+      - prevent backend metadata assumptions stronger than Semantic IR proof
+      - ensure lowering never re-runs source semantic resolution
     required_tests:
-    - Iterator[T] static target reaches Sec MLIR
-    - Arena epoch semantics preserved
-    - panic and Result remain distinct
-    - task/thread ownership transfer preserved
-    - hardware transaction plan preserved
-    - no hidden allocation introduced
+      - Iterator[T] static target reaches Sec MLIR
+      - Arena epoch semantics preserved
+      - panic and Result remain distinct
+      - task/thread ownership transfer preserved
+      - hardware transaction plan preserved
+      - no hidden allocation introduced
+
   - id: lowering.compiler-pipeline
     area: sec-mlir-to-target-pipeline
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - P1-P14 establish versioned Sec MLIR schemas and verified vertical lowering slices
-    - real sec-mlir-opt/MLIR verification is used for represented package paths
-    - target-plan scalar/layout support exists for 32-bit and 64-bit plans
-    - legacy direct LLVM paths remain for represented compatibility subsets
+      - P1-P14 establish versioned Sec MLIR schemas and verified vertical lowering slices
+      - real sec-mlir-opt/MLIR verification is used for represented package paths
+      - target-plan scalar/layout support exists for 32-bit and 64-bit plans
+      - legacy direct LLVM paths remain for represented compatibility subsets
     remaining:
-    - make Sec MLIR the canonical complete lowering path for all maintained language features
-    - retire or clearly isolate legacy direct LLVM semantic duplication
-    - ensure every emitted Sec MLIR artifact is verified before publication
-    - complete lower-dialect/LLVM/object/link coverage for currently frontend-valid unsupported features
-    - ensure backend attributes never exceed Semantic IR proof
-    - integrate inline assembly through the canonical resolved contract once its rulebook is finalized
+      - make Sec MLIR the canonical complete lowering path for all maintained language features
+      - retire or clearly isolate legacy direct LLVM semantic duplication
+      - ensure every emitted Sec MLIR artifact is verified before publication
+      - complete lower-dialect/LLVM/object/link coverage for currently frontend-valid unsupported features
+      - ensure backend attributes never exceed Semantic IR proof
+      - integrate inline assembly through the canonical resolved contract once its rulebook is finalized

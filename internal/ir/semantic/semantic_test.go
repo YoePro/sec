@@ -457,8 +457,8 @@ fn Calculate() Result[int, Failure] { return Ok(1) }
 		},
 		{
 			name:    "unit-bearing arithmetic",
-			source:  "module main\nunit ticks uint physical\nfn Add(a: ticks, b: ticks) ticks { return a + b }\n",
-			feature: "named type contracts or units",
+			source:  "module main\nunit ticks uint physical\nfn Add(a: uint32<ticks>, b: uint32<ticks>) uint32<ticks> { return a + b }\n",
+			feature: "unit quantity representation for uint32",
 		},
 		{
 			name: "compound assignment",

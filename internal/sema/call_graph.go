@@ -97,8 +97,11 @@ const (
 	ArenaEffectCreateOwned    ArenaEffectKind = "create-owned"
 	ArenaEffectCreateGrowable ArenaEffectKind = "create-growable"
 	ArenaEffectAllocate       ArenaEffectKind = "allocate"
-	ArenaEffectReset          ArenaEffectKind = "reset"
-	ArenaEffectRelease        ArenaEffectKind = "release"
+	// Backing growth is allocation-capable, without inventing an Arena domain.
+	// Rules: rules/memory/allocation.md — §§3,24.
+	ArenaEffectCollectionGrowth ArenaEffectKind = "collection-growth"
+	ArenaEffectReset            ArenaEffectKind = "reset"
+	ArenaEffectRelease          ArenaEffectKind = "release"
 	// ArenaEffectUnknownCallee is a call whose target is not known here (a
 	// function value, an interface method, or a constrained generic method),
 	// so its allocation behavior is unknown.
@@ -216,6 +219,7 @@ type CallRoot struct {
 type CallGraph struct {
 	allocationMu         sync.Mutex // protects the derived cache on immutable graph snapshots
 	allocationFixedPoint *arenaAllocationFixedPoint
+	allocationCoverage   map[CallableID][]AllocationEvidence
 	scope                CallGraphScope
 	syntaxOrigins        map[sourceTokenKey]string
 	nodes                map[CallableID]CallableNode
@@ -403,6 +407,12 @@ func (g *CallGraph) clone() *CallGraph {
 		return copyGraph
 	}
 	copyGraph.scope = g.scope
+	if g.allocationCoverage != nil {
+		copyGraph.allocationCoverage = map[CallableID][]AllocationEvidence{}
+		for id, evidence := range g.allocationCoverage {
+			copyGraph.allocationCoverage[id] = append([]AllocationEvidence(nil), evidence...)
+		}
+	}
 	if g.syntaxOrigins != nil {
 		copyGraph.syntaxOrigins = map[sourceTokenKey]string{}
 		for key, origin := range g.syntaxOrigins {

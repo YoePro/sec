@@ -78,6 +78,12 @@ func (a *Analyzer) validateFunctionNoAllocGuarantee(fn *ast.FunctionDeclaration,
 		message += fmt.Sprintf("; introduced at %s", formatLocation(site.Source.File, site.Source.Line, site.Source.Column))
 	}
 	help := noAllocEffectHelp(site.Kind)
+	for _, requirement := range []Guarantee{GuaranteeISR, GuaranteeInterruptSafe} {
+		if context, exists := EffectiveGuaranteeOf(fn.Attributes, requirement); exists {
+			help = interruptAllocationHelp(site.Kind, context.Source.Name.Value)
+			break
+		}
+	}
 	if len(chain) > 1 {
 		help = "It comes from " + chain[len(chain)-1] + ", which " + name + " calls. " + help
 	}

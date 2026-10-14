@@ -10,11 +10,16 @@ import (
 )
 
 type structLayoutEdge struct {
-	owner  string
-	field  string
-	via    string
-	target string
-	token  lexer.Token
+	owner            string
+	field            string
+	via              string
+	target           string
+	token            lexer.Token
+	ownerDeclaration lexer.Token
+	ownerDisplay     string
+	targetDisplay    string
+	storageType      string
+	carriers         []layoutCarrierWitness
 }
 
 type layoutDeclarationKind uint8
@@ -47,9 +52,11 @@ type layoutMember struct {
 // either a source-declared type or a generic parameter of the owning
 // declaration. via names the instantiation that carried the containment.
 type layoutTarget struct {
-	name      string
-	parameter int
-	via       string
+	name              string
+	parameter         int
+	via               string
+	carriers          []layoutCarrierWitness
+	incompleteCarrier bool
 }
 
 // validateStructLayoutCycles builds the module-level by-value layout
@@ -102,15 +109,20 @@ func (a *Analyzer) validateStructLayoutCycles(program *ast.Program) {
 	})
 
 	byValueParameters := layoutByValueParameters(nodes, order)
+	parameterPaths := layoutParameterWitnesses(nodes, order, byValueParameters)
 	for _, name := range order {
 		node := nodes[name]
 		for _, member := range layoutMembers(node) {
-			for _, target := range layoutTargets(member.reference, node.parameters, nodes, byValueParameters, "") {
+			for _, target := range layoutTargets(member.reference, node.parameters, nodes, byValueParameters, "", parameterPaths) {
 				if target.name == "" {
 					continue
 				}
 				node.edges = append(node.edges, structLayoutEdge{
 					owner: node.name, field: member.label, via: target.via, target: target.name, token: member.token,
+					ownerDeclaration: node.token,
+					ownerDisplay:     layoutNodeDisplay(node), targetDisplay: layoutNodeDisplay(nodes[target.name]),
+					storageType: typeReferenceDisplayName(member.reference),
+					carriers:    target.carriers,
 				})
 			}
 		}
@@ -231,7 +243,7 @@ func layoutByValueParameters(nodes map[string]*structLayoutNode, order []string)
 				continue
 			}
 			for _, member := range layoutMembers(node) {
-				for _, target := range layoutTargets(member.reference, node.parameters, nodes, result, "") {
+				for _, target := range layoutTargets(member.reference, node.parameters, nodes, result, "", nil) {
 					if target.name == "" && !result[name][target.parameter] {
 						result[name][target.parameter] = true
 						changed = true
@@ -252,7 +264,7 @@ func layoutByValueParameters(nodes map[string]*structLayoutNode, order []string)
 //
 // Rules:
 //   - rules/memory/layout.md — §13(7), §16(1), §25(1), §25(2), §25(4), and §25(5)
-func layoutTargets(reference *ast.TypeReference, parameters map[string]int, nodes map[string]*structLayoutNode, byValueParameters map[string]map[int]bool, via string) []layoutTarget {
+func layoutTargets(reference *ast.TypeReference, parameters map[string]int, nodes map[string]*structLayoutNode, byValueParameters map[string]map[int]bool, via string, parameterPaths map[string]map[int][]layoutCarrierWitness) []layoutTarget {
 	if reference == nil || reference.Invalid || reference.Ref {
 		return nil
 	}
@@ -260,7 +272,7 @@ func layoutTargets(reference *ast.TypeReference, parameters map[string]int, node
 		if reference.Slice {
 			return nil
 		}
-		return layoutTargets(reference.ElementType, parameters, nodes, byValueParameters, via)
+		return layoutTargets(reference.ElementType, parameters, nodes, byValueParameters, via, parameterPaths)
 	}
 	if reference.Name == "" || len(reference.ConstArgs) != 0 {
 		return nil
@@ -285,12 +297,18 @@ func layoutTargets(reference *ast.TypeReference, parameters map[string]int, node
 		targets = append(targets, layoutTarget{name: reference.Name, via: via})
 		for index, argument := range reference.TypeArgs {
 			if byValueParameters[reference.Name][index] {
-				targets = append(targets, layoutTargets(argument, parameters, nodes, byValueParameters, carrier)...)
+				nested := layoutTargets(argument, parameters, nodes, byValueParameters, carrier, parameterPaths)
+				path, complete := parameterPaths[reference.Name][index]
+				for i := range nested {
+					nested[i].carriers = append(append([]layoutCarrierWitness(nil), path...), nested[i].carriers...)
+					nested[i].incompleteCarrier = nested[i].incompleteCarrier || parameterPaths != nil && !complete
+				}
+				targets = append(targets, nested...)
 			}
 		}
 	case reference.Name == "Option" || reference.Name == "Result":
 		for _, argument := range reference.TypeArgs {
-			targets = append(targets, layoutTargets(argument, parameters, nodes, byValueParameters, carrier)...)
+			targets = append(targets, layoutTargets(argument, parameters, nodes, byValueParameters, carrier, parameterPaths)...)
 		}
 	}
 	return targets
@@ -313,8 +331,9 @@ func layoutCycleDiagnostic(names []string, nodes map[string]*structLayoutNode) (
 }
 
 // layoutCycleAlreadyDiagnosed keeps one diagnostic per root cause: the
-// declaration-time direct generic and direct union self-recursion checks may
-// already have rejected a storage position of this cycle.
+// an earlier owning recursive-layout check may already have rejected a
+// storage position of this cycle. Generic template containment guards defer
+// their errors to this graph instead of supplying a competing classification.
 // Rule: rules/tooling/diagnostics.md — one root cause, one diagnostic.
 func (a *Analyzer) layoutCycleAlreadyDiagnosed(cycle []structLayoutEdge) bool {
 	for _, edge := range cycle {
@@ -334,42 +353,4 @@ func structLayoutStackIndex(stack []string, target string) int {
 		}
 	}
 	return -1
-}
-
-// reportStructLayoutCycle emits the stable mandatory diagnostic with the
-// concrete field, variant, and instantiation path that closes the infinite
-// by-value layout.
-//
-// Rules:
-//   - rules/declarations/struct.md — §21 "Diagnostics"
-//   - rules/declarations/unions.md — §26 "Required diagnostics"
-//   - rules/memory/layout.md — §25(3) and §42(4)
-//   - rules/tooling/diagnostics.md — §5, §8, and §12
-func (a *Analyzer) reportStructLayoutCycle(id string, cycle []structLayoutEdge) {
-	if len(cycle) == 0 {
-		return
-	}
-	parts := make([]string, 0, len(cycle)+1)
-	for _, edge := range cycle {
-		part := edge.owner
-		if edge.field != "" {
-			part += "." + edge.field
-		}
-		if edge.via != "" {
-			part += " (via " + edge.via + ")"
-		}
-		parts = append(parts, part)
-	}
-	parts = append(parts, cycle[len(cycle)-1].target)
-	kind := "struct"
-	if id == diagnostics.RecursiveUnionLayout {
-		kind = "union"
-	}
-	a.addErrorAtTokenWithMetadata(
-		cycle[len(cycle)-1].token,
-		id,
-		"Break the cycle with a reference, raw pointer, slice, or owning dynamic-storage boundary.",
-		"recursive by-value "+kind+" layout has infinite size: %s",
-		strings.Join(parts, " -> "),
-	)
 }

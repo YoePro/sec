@@ -93,7 +93,10 @@ fn Read() Result[Point, IOError] {
 		t.Fatalf("Analyze returned errors: %v", errors)
 	}
 
-	for _, name := range []string{"m", "IOError", "Point", "MaybePoint"} {
+	if !TriviallyDestructible(analyzer.unitTypeEntry("m")) {
+		t.Fatalf("unit m should be trivially destructible: %+v", analyzer.unitTypeEntry("m"))
+	}
+	for _, name := range []string{"IOError", "Point", "MaybePoint"} {
 		typ, ok := analyzer.types[name]
 		if !ok {
 			t.Fatalf("missing type %s", name)

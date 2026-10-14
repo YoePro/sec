@@ -1,16 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
-
 	"sec/internal/ast"
-	"sec/internal/diagnostics"
 	"sec/internal/modules"
 	"sec/internal/sema"
+	"sec/internal/sourceimports"
 )
 
 // canonicalLSPImportPath keeps editor-side source discovery inside the same
@@ -32,26 +26,7 @@ func canonicalLSPImportPath(path string) bool {
 //   - rules/projects/modules.md — § 9 "Import resolution"
 //   - rules/tooling/lsp.md — "Project and source integration"
 func lspStandardLibraryIncludePaths(root string, importPath string) ([]string, bool) {
-	trimmed := strings.Trim(strings.TrimSuffix(importPath, ".sec"), "/")
-	if trimmed == "" || strings.HasPrefix(trimmed, "platform/") {
-		return nil, false
-	}
-
-	base := filepath.Join(root, "sec", "stdlib", filepath.FromSlash(trimmed))
-	file := base + ".sec"
-	if info, err := os.Stat(file); err == nil && !info.IsDir() {
-		return []string{filepath.Clean(file)}, true
-	}
-
-	if info, err := os.Stat(base); err != nil || !info.IsDir() {
-		return nil, false
-	}
-	matches, err := filepath.Glob(filepath.Join(base, "*.sec"))
-	if err != nil || len(matches) == 0 {
-		return nil, false
-	}
-	sort.Strings(matches)
-	return matches, true
+	return sourceimports.StandardLibrarySources(root, importPath)
 }
 
 // unresolvedImportError preserves the import spelling and exact path-token
@@ -61,20 +36,5 @@ func lspStandardLibraryIncludePaths(root string, importPath string) ([]string, b
 //   - rules/projects/modules.md — § 9 "Import resolution"
 //   - rules/projects/modules.md — § 21 "Diagnostics"
 func unresolvedImportError(stmt *ast.ImportStatement) sema.Error {
-	token := stmt.PathToken
-	if token.Line == 0 || token.Column == 0 {
-		token = stmt.Token
-	}
-	endLine, endColumn := token.EndPosition()
-	return sema.Error{
-		ID:        diagnostics.UnresolvedImport,
-		Severity:  diagnostics.SeverityError,
-		Message:   fmt.Sprintf("unresolved import %q", stmt.Path),
-		Help:      "Verify the canonical import path and ensure the module exists in the selected standard-library, platform, or project source root.",
-		File:      token.File,
-		Line:      token.Line,
-		Column:    token.Column,
-		EndLine:   endLine,
-		EndColumn: endColumn,
-	}
+	return sema.UnresolvedSourceImport(stmt)
 }

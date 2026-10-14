@@ -1,0 +1,12 @@
+module main
+enum ReadError error { Missing, Busy }
+enum OtherError error { Failed }
+fn Read() Result[int, ReadError] { return Ok(1) }
+fn Find() Option[int] { return Some(1) }
+fn NakedMismatch() Result[int, OtherError] { return Ok(try Read()) }
+fn PartialMismatch() Result[int, OtherError] { return Ok(try Read() { Err(ReadError.Missing) => 0 }) }
+fn PartialNoChannel() int { return try Read() { Err(ReadError.Missing) => 0 } }
+fn OptionToResult() Result[int, ReadError] { return Ok(try Find()) }
+fn ResultToOption() Option[int] { return Some(try Read()) }
+fn BadRecovery() int { return try Read() { Err(_) => "text" } }
+fn ValidNeighbor() int { return try Read() { Err(_) => 0 } }

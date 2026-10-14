@@ -25,7 +25,7 @@ func TestStructuralMutationDuringIterationIsRejected(t *testing.T) {
 		{name: "append during ref mut iteration", body: "for ref mut item in items {\n        try items.Append(1)\n    }", want: "cannot Append items"},
 		{name: "clear during ref iteration", body: "for ref item in items {\n        items.Clear()\n    }", want: "cannot Clear items"},
 		{name: "remove at during indexed iteration", body: "for i, item in items {\n        discard items.RemoveAt(i)\n    }", want: "cannot RemoveAt items"},
-		{name: "replace whole collection", body: "for item in items {\n        items = [1]\n    }", want: "cannot assign items while the enclosing for loop iterates items"},
+		{name: "replace whole collection", body: "for item in items {\n        items <- other\n    }", want: "cannot assign items while the enclosing for loop iterates items"},
 		{name: "map remove", body: "for k, v in lookup {\n        discard lookup.Remove(k)\n    }", want: "cannot Remove lookup"},
 		{name: "set add", body: "for value in seen {\n        try seen.Add(value + 1)\n    }", want: "cannot Add seen"},
 		{name: "field collection", body: "for item in store.items {\n        store.items.Clear()\n    }", want: "cannot Clear store.items while the enclosing for loop iterates store.items"},
@@ -69,9 +69,9 @@ type Store struct {
     count: int
 }
 fn Use(lookup: ref mut map[int, int], seen: ref mut set[int], holder: ref mut Store) Result[void, CollectionError] {
-    let mut items: int[] := [1, 2]
-    let mut other: int[] := [0]
-    let mut grid: int[][] := [[1]]
+    let mut items: int[]
+    let mut other: int[]
+    let mut grid: int[][]
     let mut store := Store {}
     `+body+`
     return Ok()

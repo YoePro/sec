@@ -68,6 +68,11 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 		}
 		groups[key] = append(groups[key], document{snapshot, parsed.Program, parsed.Recovery})
 	}
+	// Collect after version snapshots, which initialize manifest result entries.
+	boundaryChecked := map[string]bool{}
+	for _, snapshot := range snapshots {
+		collectProjectBoundaryDiagnostics(pathFromURI(snapshot.URI), overlay, results, boundaryChecked)
+	}
 	keys := make([]string, 0, len(groups))
 	for key := range groups {
 		keys = append(keys, key)
@@ -96,8 +101,12 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 			paths = append(paths, pathFromURI(doc.snapshot.URI))
 		}
 		analyzer.SetPitfallSourcePriority(paths)
-		errors := append(importErrors, analyzer.Analyze(first.program)...)
-		errors = append(errors, lspProgramEntryErrors(analyzer, first.program, pathFromURI(first.snapshot.URI), first.snapshot.Text, overlay)...)
+		semanticErrors := analyzer.Analyze(first.program)
+		errors := importErrors
+		if len(importErrors) == 0 {
+			errors = append(errors, semanticErrors...)
+			errors = append(errors, lspProgramEntryErrors(analyzer, first.program, pathFromURI(first.snapshot.URI), first.snapshot.Text, overlay)...)
+		}
 		for _, doc := range docs {
 			path := pathFromURI(doc.snapshot.URI)
 			for _, err := range errors {

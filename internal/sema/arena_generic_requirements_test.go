@@ -39,7 +39,7 @@ fn Recurse[V](arena: ref mut Arena, depth: int) Result[ref mut V, AllocationErro
 }
 
 fn Main() void {
-    let mut buffer: byte[] := [0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u]
+    let mut buffer: byte[8] := [0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u]
     let mut arena := Arena.FromBuffer(buffer)
     let ok := Make[Point](arena)
     discard ok

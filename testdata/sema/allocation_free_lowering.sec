@@ -1,0 +1,22 @@
+module main
+
+fn Copy(value: int) int {
+    let mut copied := value
+    copied = value
+    return copied
+}
+
+fn Select(value: int) int {
+    if value > 0 { return Copy(value) }
+    return Copy(0)
+}
+
+fn Move(value: int) int {
+    let moved :<- value
+    return moved
+}
+
+fn main() int {
+    let value := Select(3)
+    return Move(value)
+}

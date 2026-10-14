@@ -29,6 +29,15 @@ type initializeParams struct {
 	RootPath              string            `json:"rootPath"`
 	WorkspaceFolders      []workspaceFolder `json:"workspaceFolders"`
 	InitializationOptions json.RawMessage   `json:"initializationOptions"`
+	Capabilities          struct {
+		Workspace struct {
+			Symbol struct {
+				ResolveSupport struct {
+					Properties []string `json:"properties"`
+				} `json:"resolveSupport"`
+			} `json:"symbol"`
+		} `json:"workspace"`
+	} `json:"capabilities"`
 }
 
 type didChangeWorkspaceFoldersParams struct {
@@ -55,9 +64,10 @@ type workspaceSymbolEntry struct {
 }
 
 type workspaceSymbolFile struct {
-	key     string
-	module  string
-	entries []workspaceSymbolEntry
+	key         string
+	fingerprint string
+	module      string
+	entries     []workspaceSymbolEntry
 }
 
 // workspaceSymbolIndex caches per-file declaration summaries keyed by the
@@ -301,7 +311,7 @@ func (index *workspaceSymbolIndex) summary(path string, overlay sourceOverlay) (
 // blocks contribute their members under the implemented type; module
 // headers, let groups, init, and free are not symbols of their own.
 func workspaceSymbolSummary(uri string, text string) workspaceSymbolFile {
-	summary := workspaceSymbolFile{}
+	summary := workspaceSymbolFile{fingerprint: sourceContentFingerprint(text)}
 	program := parseProgramForLSP(uri, text)
 	if program == nil {
 		return summary

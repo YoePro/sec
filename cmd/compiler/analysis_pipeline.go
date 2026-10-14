@@ -37,7 +37,7 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 // rules/compiler/compiler_pipeline.md — §26 semantic validation boundary;
 // rules/compiler/compiler_analysis.md — §62 analysis-depth modes.
 func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool, depth sema.AnalysisDepth) *sema.Analyzer {
-	versions := validateDiscoveredProjectVersions(sourceFiles)
+	versions := validateDiscoveredProjectManifests(sourceFiles)
 	if versions.Errors > 0 {
 		summary.Errors += versions.Errors
 		printDiagnosticSummary(summary)

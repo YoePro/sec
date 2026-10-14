@@ -21,6 +21,9 @@ const (
 )
 
 type CompilerKnownMember struct {
+	// BoundReceiver identifies the receiver instance for presentation only;
+	// ID retains the stable semantic operation identity.
+	BoundReceiver string
 	ID            string
 	Name          string
 	LegacyNames   []string
@@ -211,7 +214,9 @@ func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 		members = compilerKnownStaticMembers(typ)
 	}
 	for index := range members {
+		members[index].AllocationBehavior = collectionGrowthContract(typ, members[index])
 		members[index] = withSyntheticMetadata(classifyCompilerKnownMember(members[index]))
+		members[index] = instantiateCompilerKnownPresentation(members[index], typ)
 	}
 	return members
 }

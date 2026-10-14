@@ -268,14 +268,20 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 			g.functionNames[fn] = symbol
 		}
 	}
-	for name := range g.structs {
+	mainFn := findMainFunction(program)
+	// Validate source-local layouts eagerly, but imported/core layouts only
+	// when consumed. Unused imported declarations must not block lowering.
+	// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites.
+	for name, info := range g.structs {
+		if mainFn != nil && mainFn.Token.File != "" && info.declaration.Token.File != mainFn.Token.File {
+			continue
+		}
 		if _, err := g.resolveStruct(name); err != nil {
 			return "", err
 		}
 	}
 
 	g.write("module attributes {llvm.target_triple = %q} {\n", g.targetTriple)
-	mainFn := findMainFunction(program)
 	for _, stmt := range program.Statements {
 		fn, ok := stmt.(*ast.FunctionDeclaration)
 		if ok && fn.Name != nil && (mainFn == nil || mainFn.Token.File == "" || fn.Token.File == mainFn.Token.File) {
@@ -1396,7 +1402,7 @@ func (g *Generator) emitAssignmentOperation(token lexer.Token, operator string, 
 	case "/=":
 		return g.emitIntegerOrFloatBinary(signedIntegerOp("sdiv", "udiv", left.unsigned), "fdiv", left, right)
 	case "%=":
-		return g.emitIntegerBinary(signedIntegerOp("srem", "urem", left.unsigned), left, right)
+		return g.emitRemainder(left, right)
 	case "&=":
 		return g.emitIntegerBinary("and", left, right)
 	case "|=":
@@ -1881,6 +1887,13 @@ func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetT
 	}
 	switch expr := expr.(type) {
 	case *ast.PrefixExpression:
+		if (expr.Operator == "-" || expr.Operator == "+") && isMLIRFloatType(targetType) {
+			operand, err := g.emitExpressionForTargetUnsigned(expr.Right, targetType, false)
+			if err != nil || expr.Operator == "+" {
+				return operand, err
+			}
+			return g.emitFloatNegate(operand)
+		}
 		if expr.Operator == "-" && isMLIRIntegerType(targetType) {
 			if literal, ok := expr.Right.(*ast.IntegerLiteral); ok && literal.Suffix() != "u" {
 				integer, ok := ast.ParseIntegerLiteralLexeme(literal.Token.Lexeme)
@@ -2141,16 +2154,19 @@ func (g *Generator) resolveTopLevelConstant(stmt *ast.LetStatement) (mlirConstan
 	return mlirConstant{literal: integer.String(), typ: typ, unsigned: unsigned}, true
 }
 
+// emitStructLiteral resolves a consumed struct layout before constructing its
+// stored fields. Rules: rules/types/types.md — Struct types;
+// rules/compiler/compiler_pipeline.md — §§32–34 (lowering prerequisites).
 func (g *Generator) emitStructLiteral(expr *ast.StructLiteral) (value, error) {
 	if expr.Type == nil {
 		return value{}, fmt.Errorf("emit-mlir struct literal is missing its type")
 	}
-	info, ok := g.structs[expr.Type.Name]
-	if !ok {
-		return value{}, fmt.Errorf("emit-mlir unknown struct type %s", expr.Type.Name)
-	}
 	if len(expr.Type.TypeArgs) > 0 {
 		return value{}, fmt.Errorf("emit-mlir does not support generic struct literal %s yet", expr.Type.Name)
+	}
+	info, err := g.resolveStruct(expr.Type.Name)
+	if err != nil {
+		return value{}, err
 	}
 
 	for _, literalField := range expr.Fields {
@@ -2190,72 +2206,6 @@ func (g *Generator) emitStructLiteral(expr *ast.StructLiteral) (value, error) {
 	return value{typ: info.typ, ref: aggregate, structName: info.name}, nil
 }
 
-// emitMemberExpression preserves native uint identity for string and fixed-array length values.
-// Rules: rules/types/types.md — "int and uint", "Context shaping";
-// rules/declarations/enums.md — "Underlying type"; correction5.md — selected scalar facts.
-func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, error) {
-	if expr.Object == nil || expr.Property == nil {
-		return value{}, fmt.Errorf("emit-mlir member expression is incomplete")
-	}
-	if typeName, ok := mlirExpressionPath(expr.Object); ok {
-		if info, exists := g.enums[typeName]; exists {
-			literal, found := info.values[expr.Property.Value]
-			if !found {
-				return value{}, fmt.Errorf("emit-mlir unknown enum value %s.%s", typeName, expr.Property.Value)
-			}
-			result := g.emitIntegerConstantUnsigned(literal, info.typ, info.unsigned)
-			result.enumName = info.name
-			return result, nil
-		}
-	}
-	object, err := g.emitExpression(expr.Object)
-	if err != nil {
-		return value{}, err
-	}
-	if object.typ == "string" {
-		switch expr.Property.Value {
-		case "ptr", "Ptr":
-			return value{typ: "!llvm.ptr", ref: object.ref}, nil
-		case "Len", "len":
-			return g.coerceValue(g.emitStringRuneLength(object), g.nativeIntegerType(), true)
-		case "SizeOf":
-			// MD-058: the value-form SizeOf of a string is its UTF-8 payload bytes.
-			return g.coerceValue(value{typ: "i64", ref: object.len, unsigned: true}, g.nativeIntegerType(), true)
-		default:
-			return value{}, fmt.Errorf("emit-mlir unknown string property %s", expr.Property.Value)
-		}
-	}
-	if length, _, ok := parseMLIRArrayType(object.typ); ok {
-		if expr.Property.Value != "len" {
-			return value{}, fmt.Errorf("emit-mlir unknown array property %s", expr.Property.Value)
-		}
-		return g.emitIntegerConstantUnsigned(strconv.FormatInt(length, 10), g.nativeIntegerType(), true), nil
-	}
-	if object.structName == "" {
-		return value{}, fmt.Errorf("emit-mlir member access currently requires a struct value")
-	}
-	info, ok := g.structs[object.structName]
-	if !ok {
-		return value{}, fmt.Errorf("emit-mlir unknown struct type %s", object.structName)
-	}
-	index, field, ok := info.field(expr.Property.Value)
-	if !ok {
-		return value{}, fmt.Errorf("emit-mlir unknown field %s.%s", info.name, expr.Property.Value)
-	}
-	result := g.nextTemp()
-	g.write("    %s = llvm.extractvalue %s[%d] : %s\n", result, object.ref, index, info.typ)
-	if field.string {
-		return g.unpackString(value{typ: mlirStringType, ref: result})
-	}
-	return value{
-		typ:        field.typ,
-		ref:        result,
-		structName: field.structName,
-		enumName:   field.enumName,
-		unsigned:   field.unsigned,
-	}, nil
-}
-
 // emitPrefixExpression preserves exact literal negation and rejects dynamic wide
 // negation until deterministic overflow failure is available.
 // Rules: rules/foundations/operators.md — Signed integer negation, Runtime overflow.
@@ -2293,6 +2243,9 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 	case "+":
 		return right, nil
 	case "-":
+		if isMLIRFloatType(right.typ) {
+			return g.emitFloatNegate(right)
+		}
 		if !isMLIRIntegerType(right.typ) {
 			return value{}, fmt.Errorf("emit-mlir unary - expects a signed integer")
 		}
@@ -2385,7 +2338,7 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	case "/":
 		return g.emitIntegerOrFloatBinary(signedIntegerOp("sdiv", "udiv", left.unsigned), "fdiv", left, right)
 	case "%":
-		return g.emitIntegerBinary(signedIntegerOp("srem", "urem", left.unsigned), left, right)
+		return g.emitRemainder(left, right)
 	case "&":
 		return g.emitIntegerBinary("and", left, right)
 	case "|":
@@ -2975,23 +2928,6 @@ func integerComparePredicate(operator string, unsigned bool) string {
 	}
 }
 
-func (g *Generator) emitFloatCompare(operator string, left value, right value) (value, error) {
-	if left.typ != right.typ {
-		return value{}, fmt.Errorf("emit-mlir comparison currently expects matching float operands")
-	}
-	predicate := map[string]string{
-		"==": "oeq",
-		"!=": "one",
-		"<":  "olt",
-		"<=": "ole",
-		">":  "ogt",
-		">=": "oge",
-	}[operator]
-	tmp := g.nextTemp()
-	g.write("    %s = llvm.fcmp %q %s, %s : %s\n", tmp, predicate, left.ref, right.ref, left.typ)
-	return value{typ: "i1", ref: tmp}, nil
-}
-
 func (g *Generator) emitNumericOne(typ string, negative bool) (value, error) {
 	literal := "1"
 	if negative {
@@ -3325,6 +3261,12 @@ func (g *Generator) mlirType(ref *ast.TypeReference) string {
 			return info.typ
 		}
 		if info, ok := g.structs[ref.Name]; ok {
+			if info.typ == "" {
+				if _, err := g.resolveStruct(ref.Name); err != nil {
+					g.failure = err
+					return "void"
+				}
+			}
 			return info.typ
 		}
 		return "void"

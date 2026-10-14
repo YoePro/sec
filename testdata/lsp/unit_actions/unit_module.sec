@@ -1,6 +1,6 @@
 module quantities
 unit LocalLength physical
-impl LocalLength {
+impl <LocalLength> {
  Dimension: [length^1]
  Kind: length
  Scale: 1

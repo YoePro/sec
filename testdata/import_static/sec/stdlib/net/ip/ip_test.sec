@@ -1,0 +1,2 @@
+module ip
+fn TestOnly() UnknownTestOnlyType { return Missing() }

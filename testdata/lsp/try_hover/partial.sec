@@ -1,0 +1,31 @@
+module main
+enum ReadError error { Missing, Busy, Failed }
+fn Read(value: int) Result[int, ReadError] { return Ok(value) }
+fn Partial(value: int) Result[int, ReadError] {
+    return Ok(try Read(value) { Err(ReadError.Missing) => 0 })
+}
+fn Guarded(value: int) Result[int, ReadError] {
+    return Ok(try Read(value) { Err(err) where err == ReadError.Busy => 1 })
+}
+fn Mixed(value: int) int {
+    return try Read(value) {
+        Err(err) where err == ReadError.Busy => 1
+        Err(ReadError.Missing) => 2
+        Err(_) => 3
+    }
+}
+fn Widen(value: int) Result[int, error] {
+    return Ok(try Read(value) { Err(ReadError.Missing) => 4 })
+}
+fn Multiple(value: int) Result[int, ReadError] {
+    return Ok(try Read(value) {
+        Err(ReadError.Missing) => 0
+        Err(ReadError.Failed) => 2
+    })
+}
+fn GuardedThenPartial(value: int) Result[int, ReadError] {
+    return Ok(try Read(value) {
+        Err(err) where err == ReadError.Busy => 1
+        Err(ReadError.Missing) => 2
+    })
+}

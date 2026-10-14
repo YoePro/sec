@@ -33,7 +33,7 @@ func TestArenaFromBufferBorrowsBackingForArenaLifetime(t *testing.T) {
 		"cannot return Arena.FromBuffer(...): its borrowed backing must outlive the Arena at 39:17",
 		"cannot move arena arena out of its binding while it controls borrowed backing buffer at 45:15, previous declaration at 44:23",
 		"cannot create mutable reference to immutable variable buffer at 50:39",
-		"Arena.FromBuffer requires mutable contiguous byte storage borrowed as ref mut byte[], such as a let mut byte[] or byte[N], got int[] at 56:39",
+		"Arena.FromBuffer requires mutable contiguous byte storage borrowed as ref mut byte[], such as a let mut byte[] or byte[N], got int[2] at 56:39",
 		"Arena.Release cannot consume arena arena through a borrowed reference at 61:5",
 		"Arena.Reset requires mutable arena arena at 65:5",
 		"cannot use values after arena arena was reset at 71:5, previous declaration at 69:23",

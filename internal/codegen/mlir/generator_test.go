@@ -218,7 +218,7 @@ unsafe fn write(fd: uint, ref ptr: byte, len: uint) int {
 
 fn main() int {
     let text := "Hello"
-    write(1, text.ptr, text.len)
+    write(1, text.Ptr, text.Len)
     return 0
 }
 `
@@ -1708,7 +1708,7 @@ fn main() int {
     matrix[1][0] = 30
     let inferred := [5, 6]
     let pair := BuildPair(matrix[0][1], inferred[0])
-    return pair[0] + pair[1] + int(matrix.len)
+    return pair[0] + pair[1] + int(matrix.Len)
 }
 `
 	program := parseTestProgram(t, input)
@@ -1803,7 +1803,7 @@ fn Make() Token {
 
 fn main() int {
     let token := Make()
-    let length := token.kind.len + token.lexeme.len
+    let length := token.kind.Len + token.lexeme.Len
     return 0
 }
 `

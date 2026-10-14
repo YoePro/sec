@@ -290,6 +290,7 @@ type server struct {
 	shutdown                  bool          //
 	workspaceRoots            []string
 	workspaceSymbols          *workspaceSymbolIndex
+	workspaceSymbolLazyRanges bool
 	parameterInsight          parameterInsightSettings
 	pitfallSettings           pitfallDiagnosticSettings
 	inlayHints                *inlayHintSettings
@@ -392,6 +393,12 @@ func (s *server) handle(message rpcMessage) error {
 		var params initializeParams
 		if len(message.Params) > 0 && json.Unmarshal(message.Params, &params) == nil {
 			s.workspaceRoots = workspaceRootsFromInitialize(params)
+			s.workspaceSymbolLazyRanges = false
+			for _, property := range params.Capabilities.Workspace.Symbol.ResolveSupport.Properties {
+				if property == "location.range" {
+					s.workspaceSymbolLazyRanges = true
+				}
+			}
 			settings := inlayHintSettingsFrom(s.inlayHintSettings(), params.InitializationOptions)
 			s.inlayHints = &settings
 			s.updateParameterInsight(params.InitializationOptions)
@@ -411,10 +418,10 @@ func (s *server) handle(message rpcMessage) error {
 				"experimental":               map[string]any{"targetSelection": true},
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
-				"workspaceSymbolProvider":    true,
+				"workspaceSymbolProvider":    map[string]any{"resolveProvider": true},
 				"inlayHintProvider":          true,
 				"codeLensProvider": map[string]any{
-					"resolveProvider": false,
+					"resolveProvider": true,
 				},
 				"workspace": map[string]any{
 					"workspaceFolders": map[string]any{
@@ -472,7 +479,14 @@ func (s *server) handle(message rpcMessage) error {
 		if s.workspaceSymbols == nil {
 			s.workspaceSymbols = newWorkspaceSymbolIndex()
 		}
-		return s.respond(message.ID, workspaceSymbolsForQuery(s.workspaceSymbols, s.workspaceRoots, params.Query, s.sourceOverlay()))
+		overlay := s.sourceOverlay()
+		symbols := workspaceSymbolsForQuery(s.workspaceSymbols, s.workspaceRoots, params.Query, overlay)
+		if s.workspaceSymbolLazyRanges {
+			return s.respond(message.ID, s.workspaceSymbols.unresolvedSymbols(symbols))
+		}
+		return s.respond(message.ID, symbols)
+	case "workspaceSymbol/resolve":
+		return s.handleWorkspaceSymbolResolve(message)
 	case "workspace/didChangeConfiguration":
 		var params struct {
 			Settings json.RawMessage `json:"settings"`
@@ -495,7 +509,9 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []codeLens{})
 		}
-		return s.respond(message.ID, interfaceConformanceCodeLenses(params.TextDocument.URI, snapshot.Text, s.sourceOverlay()))
+		return s.respond(message.ID, unresolvedInterfaceCodeLenses(params.TextDocument.URI, snapshot.Text))
+	case "codeLens/resolve":
+		return s.handleCodeLensResolve(message)
 	case "textDocument/inlayHint":
 		var params inlayHintParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -1042,6 +1058,9 @@ func definitionTokenRange(text string, token lexer.Token) lspRange {
 // complete the active cursor receiver, including incomplete source.
 // Rules: rules/tooling/lsp.md — "Completion" and "Recovery nodes".
 func completeSource(uri string, text string, offset int, overlays ...sourceOverlay) []completionItem {
+	if items, recognized := stateTestCompletionItems(uri, text, offset, firstSourceOverlay(overlays)); recognized {
+		return items
+	}
 	context := completionContextAt(text, offset)
 	parseText := completionParseText(text, offset, context)
 
@@ -4184,7 +4203,7 @@ func textPositionOffset(text string, line int, column int) int {
 func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	path := pathFromURI(uri)
 	if isProjectManifest(path) {
-		return projectVersionDiagnostics(uri, text)
+		return analyzeProjectManifest(uri, text, firstSourceOverlay(overlays))
 	}
 	l := lexer.NewWithFile(text, path)
 	p := parser.New(l)
@@ -4203,6 +4222,9 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 		if diagnosticBelongsToSource(err, path) {
 			diagnostics = append(diagnostics, semaDiagnosticWithSources(err, 1, uri, text, firstSourceOverlay(overlays)))
 		}
+	}
+	if len(importErrors) != 0 {
+		return diagnostics
 	}
 
 	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))

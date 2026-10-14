@@ -211,7 +211,7 @@ fn ArenaState() Result[void, AllocationError] {
 	while 3 == 4 {
 		arena.Reset()
 	}
-	let length := storage.len
+	let length := storage.Len
 	discard length
 	return Ok()
 }

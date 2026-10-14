@@ -7,34 +7,35 @@ integrations:
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - 'legacy file-level #target(os, arch) parsing/validation exists'
-    - target-aware platform file filtering exists in current frontend/LSP bootstrap paths
-    - project/platform imports and target-aware source assembly exist in partial bootstrap form
+      - "legacy file-level #target(os, arch) parsing/validation exists"
+      - target-aware platform file filtering exists in current frontend/LSP bootstrap paths
+      - project/platform imports and target-aware source assembly exist in partial bootstrap form
     remaining:
-    - implement canonical @target file and statement forms with os, arch, cpu, device and board selectors
-    - implement overlap/public-shape validation for target variants
-    - implement @when with typed config.<name> compile-time parameters
-    - 'migrate legacy #target/#if/compiler.target_os/compiler.target_arch paths to compatibility-only or retire them'
-    - ensure excluded source is parsed/tool-visible but absent from active symbols/Sema/Semantic IR
-    - route platform source selection from canonical CompilationPlan identities rather than directory heuristics
+      - implement canonical @target file and statement forms with os, arch, cpu, device and board selectors
+      - implement overlap/public-shape validation for target variants
+      - implement @when with typed config.<name> compile-time parameters
+      - "migrate legacy #target/#if/compiler.target_os/compiler.target_arch paths to compatibility-only or retire them"
+      - ensure excluded source is parsed/tool-visible but absent from active symbols/Sema/Semantic IR
+      - route platform source selection from canonical CompilationPlan identities rather than directory heuristics
+
   - id: frontend.compiler-pipeline
     area: workspace-plan-source-and-frontend-boundaries
     status: partial
     repository_baseline: 998d8d1
     implemented:
-    - project/target-aware source assembly exists for current CLI/LSP paths
-    - target filtering occurs before target-aware Sema for represented platform sources
-    - frontend parsing/Sema stop lowering on mandatory semantic failures
-    - compiler-owned test plan model is specified and partially integrated through testing governance
-    - current Iterator[T] frontend governance has explicit conformance/Next lowering requirements
+      - project/target-aware source assembly exists for current CLI/LSP paths
+      - target filtering occurs before target-aware Sema for represented platform sources
+      - frontend parsing/Sema stop lowering on mandatory semantic failures
+      - compiler-owned test plan model is specified and partially integrated through testing governance
+      - current Iterator[T] frontend governance has explicit conformance/Next lowering requirements
     remaining:
-    - formalize one canonical CompilationRequest/CompilationPlan construction path for CLI, LSP, build, emit and test
-      commands
-    - move all target-dependent source selection/platform routing to canonical plan facts
-    - eliminate duplicated bootstrap module/platform source-resolution paths
-    - integrate compile-time evaluation as a query service at every consuming frontend phase
-    - integrate compiler_analysis.md graph scheduling rather than relying on one hard-coded semantic pass ordering
-    - implement explicit lowering-readiness/implementation-capability classification
+      - formalize one canonical CompilationRequest/CompilationPlan construction path for CLI, LSP, build, emit and test commands
+      - move all target-dependent source selection/platform routing to canonical plan facts
+      - eliminate duplicated bootstrap module/platform source-resolution paths
+      - integrate compile-time evaluation as a query service at every consuming frontend phase
+      - integrate compiler_analysis.md graph scheduling rather than relying on one hard-coded semantic pass ordering
+      - implement explicit lowering-readiness/implementation-capability classification
+
   - id: compiler.platform-resolution
     area: target-variant-platform-compilation-plan
     status: planned
@@ -57,7 +58,7 @@ integrations:
       - P1-P14 provide versioned Sec MLIR schemas and executable verified vertical lowering slices
       - real sec-mlir-opt / MLIR verification participates in represented package paths
       - legacy direct LLVM and legacy AST-to-LLVM-dialect paths remain for represented subsets
-      - "emit-ir builds Semantic IR through the newest completed package, P14, by default (2026-10-05); constructs outside the SEC-MLIR package sequence (while loops, compound assignment, &&/||/!, range membership) are admitted from package gate 13, so emit-sec-mlir (P12) keeps rejecting them explicitly"
+      - emit-ir builds Semantic IR through the newest completed package, P14, by default (2026-10-05); constructs outside the SEC-MLIR package sequence (while loops, compound assignment, &&/||/!, range membership) are admitted from package gate 13, so emit-sec-mlir (P12) keeps rejecting them explicitly
     remaining:
       - make the Semantic IR -> Sec MLIR path cover all maintained Sec 0.1 features
       - "route `sec build` through Semantic IR: both --pipeline llvm and --pipeline mlir currently generate code from the AST through internal/codegen, bypassing Semantic IR and its verifier (observed 2026-10-05)"
@@ -66,22 +67,23 @@ integrations:
       - centralize implementation-capability diagnostics distinct from source/target errors
       - preserve verified target/profile/reference/ownership/effect facts through object/link generation
       - preserve, transform, or explicitly invalidate canonical debug provenance through final emission under compiler.debug-information-v1
+
   - id: compiler.debug-information-v1
     area: compiler-debug-information-and-artifact-correlation
-    status: planned
+    status: partial
     integrated: null
     document_revision: "1.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
-      Implements the canonical Sec 0.1 debug-information model with exactly three
-      levels (None, LineTables, Full), range/origin-aware source provenance,
-      semantic step points, truthful optimized-value tracking, ownership/lifetime
-      availability, concrete generic-specialization identities, logical Task /
-      physical Thread / Process debug identities, embedded or separate debug
-      artifacts with exact image and source-content correlation, target-neutral
-      lowering to supported physical debug formats, and compiler verification plus
-      conformance obligations. Debug information is artifact/tooling metadata and
-      never changes Sec program semantics.
+      Implements the canonical Sec 0.1 debug-information model with exactly
+      three levels (None, LineTables, Full), range/origin-aware source
+      provenance, semantic step points, truthful optimized-value tracking,
+      ownership/lifetime availability, concrete generic-specialization
+      identities, logical Task / physical Thread / Process debug identities,
+      embedded or separate debug artifacts with exact image and source-content
+      correlation, target-neutral lowering to supported physical debug formats,
+      and compiler verification plus conformance obligations. Debug information
+      is artifact/tooling metadata and never changes Sec program semantics.
     rules:
       - rules/compiler/debug_information.md
       - rules/compiler/semantic_ir.md
@@ -106,7 +108,10 @@ integrations:
       - rules/platform/hardware-register-access.md
       - rules/tooling/lsp.md
       - rules/compiler/compiler_testing.md
-    implemented: []
+    implemented:
+      - "Canonical compiler-internal DebugInformationLevel (2026-10-14): internal/debuginfo defines exactly None, LineTables and Full with canonical names, explicit validation and internal text metadata round trips. Invalid values and extra tiers are rejected without changing an existing selection; backend support, debug emission and CLI/manifest spellings remain separate obligations."
+      - "Target-neutral debug placement (2026-10-14): internal/debuginfo represents exactly Embedded and Separate and preserves the independent Level and Placement axes in Selection. Canonical internal metadata round trips preserve all six combinations; invalid placements fail without changing the prior selection. Physical emission, target capability resolution and exact companion correlation remain separate remaining items."
+      - "Source-content identity (2026-10-14): immutable algorithm-tagged SHA-256 metadata fingerprints exact in-memory compiler input without retaining source text. Lexer.SourceContent associates the fingerprint with token-source provenance before BOM/UTF-8 decoding, preserving editor overlays, path independence and parser rewind. Consumers detect source-version mismatch; missing or malformed identity fails closed. Physical debug emission and debugger mismatch policy remain separate."
     existing_foundations:
       - Semantic IR already preserves canonical source provenance and semantic identities required by debug lowering.
       - Monomorphization already distinguishes concrete semantic specialization identity from physical PlanEntry and implementation-body identity.
@@ -114,7 +119,6 @@ integrations:
       - Task, await, thread, and process rulebooks already define the execution identities and suspension/lifecycle relations consumed by debugger metadata.
       - LSP/source-position infrastructure already provides shared source-coordinate concepts that debug mapping must not contradict.
     remaining:
-      - introduce canonical compiler-internal DebugInformationLevel with exactly None, LineTables, and Full
       - keep debug level orthogonal to optimization, runtime checks, panic strategy, ABI, ownership, scheduling, and program semantics
       - introduce target-neutral debug step-point and source-provenance facts with source range, lexical scope, semantic operation identity, user/synthetic/inlined origin, and inline chain
       - preserve same-line distinct source step points using columns/ranges/discriminators where the target encoding permits
@@ -131,12 +135,10 @@ integrations:
       - implement logical Task frame identity across suspension/resumption and worker migration without requiring physical worker stack preservation
       - preserve distinct Process, physical Thread, and logical Task identities plus causal spawn/await/join relations without fabricating call frames
       - provide debugger-facing runtime hooks for active logical-task inspection where selected target support requires them while keeping them outside Sec source reflection
-      - introduce target-neutral debug placement support for Embedded and Separate independently from debug level
       - introduce exact generated-image/debug-companion correlation identity and reject stale or incompatible companion artifacts
       - make debug mapping image-aware and relocatable across ASLR, shared libraries, dynamic images, and firmware placement
       - separate debug stripping from generation and protect metadata required by runtime, ABI, panic, loader, or other non-debug semantics
       - separate canonical SourceFileIdentity from SourceLookupPath and support deterministic source-root/path remapping
-      - add source-content identity sufficient for debugger tooling to detect source-version mismatch without requiring embedded source text
       - make debug artifact generation deterministic/reproducible under the build reproducibility contract and exclude incidental host paths, timestamps, random IDs, process IDs, and traversal order where configured/avoidable
       - define backend lowering from the target-neutral Sec debug model to target-supported physical formats such as DWARF or CodeView without relabeling Sec as another source language
       - use Sec-specific debugger extensions/companion records when a standard physical debug format cannot faithfully encode required Sec availability, logical-task, or causal facts
@@ -175,6 +177,37 @@ integrations:
       - leave target/platform capability ownership in the existing CompilationPlan/target governance model; debug-information consumes resolved target facts
       - testing.compiler-verification-v1 in governance/testing.yaml actively owns the shared compiler-test harness and debugger-driving infrastructure; this integration retains feature-specific debug-information evidence obligations
       - rules/compiler/incremental_compilation.md and compiler.incremental-compilation-v1 own cache invalidation and reuse rules for debug/backend artifact state
+    revised: "2026-10-14"
+    code:
+      - internal/debuginfo/level.go
+      - internal/debuginfo/placement.go
+      - internal/debuginfo/content.go
+      - internal/lexer/source.go
+    tests:
+      - internal/debuginfo/level_test.go
+      - internal/debuginfo/placement_test.go
+      - internal/debuginfo/content_test.go
+      - internal/lexer/source_content_test.go
+    verification:
+      - command: go test ./internal/debuginfo ./internal/lexer ./internal/parser -race -count=1
+        result: Passed on 2026-10-14 after source-content identity support, including the full parser suite; the final rewind-specific lexer case also passed its targeted race run.
+      - command: go test ./cmd/lsp -run TestLSPCollectionGrowth\|TestLSPGenericStoragePaths -count=1
+        result: Passed on 2026-10-14 after lexer source-content provenance capture; unsaved document semantic diagnostic regressions.
+      - command: go vet ./internal/debuginfo ./internal/lexer ./internal/parser
+        result: Passed on 2026-10-14 after source-content identity implementation.
+      - command: go test ./internal/sema/... ./cmd/compiler -count=1
+        result: Passed on 2026-10-14 after source-content provenance capture in the lexer; full Sema and compiler suites.
+      - command: go test ./internal/debuginfo ./internal/lexer ./internal/parser -count=1
+        result: Passed on 2026-10-14 after exact-input source-content identities; empty-source digest, byte changes, metadata validation and lexer provenance tests, plus full parser regressions.
+      - command: go vet ./internal/debuginfo
+        result: Passed on 2026-10-14 after level and placement support.
+      - command: go test ./internal/debuginfo -race -count=1
+        result: Passed on 2026-10-14 after target-neutral placement support; exhaustive level/placement validity, all six independent combinations, internal metadata round trips, and invalid placement rejection without silent downgrade.
+      - command: go vet ./internal/debuginfo
+        result: Passed on 2026-10-14.
+      - command: go test ./internal/debuginfo -race -count=1
+        result: Passed on 2026-10-14; exhaustive level validity, canonical internal metadata round trips and rejection of extra tiers/numeric metadata without silent downgrade.
+
   - id: compiler.incremental-compilation-v1
     area: compiler-incremental-compilation-and-cache-validity
     status: planned
@@ -182,13 +215,14 @@ integrations:
     document_revision: "1.0"
     repository_baseline: main-reviewed-2026-09-27
     summary: >-
-      Implements the canonical Sec 0.1 incremental-compilation correctness model:
-      logically consistent snapshots, dependency/fingerprint validity, fail-closed
-      reuse, set-valued and negative invalidation, transactional publication,
-      persistent/shared cache integrity, ModuleSurface-aware downstream invalidation,
-      source/provenance separation, plan-specific lowering and artifact reuse,
-      history independence, and cold-versus-incremental conformance. Incremental
-      state is compiler acceleration state and never becomes Sec source semantics.
+      Implements the canonical Sec 0.1 incremental-compilation correctness
+      model: logically consistent snapshots, dependency/fingerprint validity,
+      fail-closed reuse, set-valued and negative invalidation, transactional
+      publication, persistent/shared cache integrity, ModuleSurface-aware
+      downstream invalidation, source/provenance separation, plan-specific
+      lowering and artifact reuse, history independence, and
+      cold-versus-incremental conformance. Incremental state is compiler
+      acceleration state and never becomes Sec source semantics.
     rules:
       - rules/compiler/incremental_compilation.md
       - rules/compiler/compiler_pipeline.md
@@ -208,24 +242,27 @@ integrations:
       - id: compiler.incremental-compilation-v1.foundation.pipeline-cache-boundaries
         description: >-
           compiler_pipeline.md already defines cacheable pipeline boundaries,
-          dependency-complete cache keys, semantic rather than timestamp invalidation,
-          required verification on reuse, plan-sensitive invalidation, and deterministic
-          parallel cache behavior.
+          dependency-complete cache keys, semantic rather than timestamp
+          invalidation, required verification on reuse, plan-sensitive
+          invalidation, and deterministic parallel cache behavior.
       - id: compiler.incremental-compilation-v1.foundation.analysis-invalidation
         description: >-
-          compiler_analysis.md already defines compiler-owned invalidation domains,
-          dependency graphs, semantic invalidation, snapshot consistency, deterministic
-          cache keys, and fixed-point analysis contracts consumed by this integration.
+          compiler_analysis.md already defines compiler-owned invalidation
+          domains, dependency graphs, semantic invalidation, snapshot
+          consistency, deterministic cache keys, and fixed-point analysis
+          contracts consumed by this integration.
       - id: compiler.incremental-compilation-v1.foundation.module-surfaces
         description: >-
           projects/modules.md already defines ModuleIdentity, ModuleInstance,
-          deterministic ModuleSurface fingerprints, importer-visible surface invalidation,
-          and conservative fail-closed incremental module processing.
+          deterministic ModuleSurface fingerprints, importer-visible surface
+          invalidation, and conservative fail-closed incremental module
+          processing.
       - id: compiler.incremental-compilation-v1.foundation.generic-fingerprints
         description: >-
-          monomorphization.md already distinguishes canonical InstantiationKey identity
-          from cache validity, defines generic cache layers, semantic/provenance
-          fingerprints, and dependency-sensitive specialization invalidation.
+          monomorphization.md already distinguishes canonical InstantiationKey
+          identity from cache validity, defines generic cache layers,
+          semantic/provenance fingerprints, and dependency-sensitive
+          specialization invalidation.
       - id: compiler.incremental-compilation-v1.foundation.link-cache-identity
         description: >-
           linking.md already requires link reuse identity to include LinkPlan,
@@ -233,101 +270,116 @@ integrations:
           output kind, and reproducibility inputs.
       - id: compiler.incremental-compilation-v1.foundation.debug-artifact-identity
         description: >-
-          debug_information.md already separates debug configuration from program
-          semantics and requires debug-related physical settings to participate in
-          backend/artifact/link cache identities.
+          debug_information.md already separates debug configuration from
+          program semantics and requires debug-related physical settings to
+          participate in backend/artifact/link cache identities.
       - id: compiler.incremental-compilation-v1.foundation.testing-hook
         description: >-
-          testing.compiler-verification-v1 already reserves generic cold-versus-incremental
-          differential and matrix infrastructure; this rulebook now supplies the concrete
-          incremental invariants that hook must verify.
+          testing.compiler-verification-v1 already reserves generic
+          cold-versus-incremental differential and matrix infrastructure; this
+          rulebook now supplies the concrete incremental invariants that hook
+          must verify.
     unimplemented:
       - id: compiler.incremental-compilation-v1.snapshot-generations
         description: >-
-          Implement canonical logical snapshot/generation tracking and fail-closed
-          publication so obsolete work cannot overwrite current compilation state.
+          Implement canonical logical snapshot/generation tracking and
+          fail-closed publication so obsolete work cannot overwrite current
+          compilation state.
       - id: compiler.incremental-compilation-v1.dependency-query-model
         description: >-
-          Implement compiler-wide dependency/query-result tracking capable of representing
-          direct/transitive semantic dependencies across frontend, analysis, CTE,
-          specialization, realization, debug, and artifact layers.
+          Implement compiler-wide dependency/query-result tracking capable of
+          representing direct/transitive semantic dependencies across frontend,
+          analysis, CTE, specialization, realization, debug, and artifact
+          layers.
       - id: compiler.incremental-compilation-v1.negative-set-dependencies
         description: >-
-          Implement dependency identities for candidate/member/conformance/import sets and
-          absence results so additions and removals invalidate prior positive or negative
-          answers correctly.
+          Implement dependency identities for
+          candidate/member/conformance/import sets and absence results so
+          additions and removals invalidate prior positive or negative answers
+          correctly.
       - id: compiler.incremental-compilation-v1.domain-fingerprints
         description: >-
           Implement deterministic domain-specific semantic, provenance, layout,
-          realization, debug, and artifact fingerprints with explicit compatibility
-          versioning and no dependence on worker/map/cache discovery order.
+          realization, debug, and artifact fingerprints with explicit
+          compatibility versioning and no dependence on worker/map/cache
+          discovery order.
       - id: compiler.incremental-compilation-v1.reuse-validation
         description: >-
-          Implement fail-closed cache candidate validation using all relevant dependency,
-          schema, semantic-rule, CompilationPlan, verifier, and toolchain contracts.
+          Implement fail-closed cache candidate validation using all relevant
+          dependency, schema, semantic-rule, CompilationPlan, verifier, and
+          toolchain contracts.
       - id: compiler.incremental-compilation-v1.fixed-point-incremental
         description: >-
-          Integrate cyclic/fixed-point analyses with incremental invalidation so prior
-          results may be seeds only where sound and removed facts cannot become permanent
-          stale state.
+          Integrate cyclic/fixed-point analyses with incremental invalidation so
+          prior results may be seeds only where sound and removed facts cannot
+          become permanent stale state.
       - id: compiler.incremental-compilation-v1.concurrent-publication
         description: >-
-          Implement logically atomic reusable-result publication, in-flight sharing where
-          useful, cancellation/supersession handling, and generation protection against
-          stale late completion.
+          Implement logically atomic reusable-result publication, in-flight
+          sharing where useful, cancellation/supersession handling, and
+          generation protection against stale late completion.
       - id: compiler.incremental-compilation-v1.persistent-cache-format
         description: >-
-          Define and implement persistent artifact-kind/schema identities, payload/metadata
-          integrity, crash-safe commit behavior, verifier-contract handling, and safe
-          concurrent reader/writer/eviction behavior if persistent caching is enabled.
+          Define and implement persistent artifact-kind/schema identities,
+          payload/metadata integrity, crash-safe commit behavior,
+          verifier-contract handling, and safe concurrent reader/writer/eviction
+          behavior if persistent caching is enabled.
       - id: compiler.incremental-compilation-v1.shared-cache-trust
         description: >-
-          Define trust, authenticity/integrity, producer compatibility, and consumer
-          validation for shared or remote cache use before that capability is claimed.
+          Define trust, authenticity/integrity, producer compatibility, and
+          consumer validation for shared or remote cache use before that
+          capability is claimed.
       - id: compiler.incremental-compilation-v1.module-surface-integration
         description: >-
-          Wire canonical ModuleSurface and domain-specific exported summaries into
-          dependency-driven downstream invalidation, including file addition/removal,
-          public candidate sets, exported generic templates, and analysis summaries.
+          Wire canonical ModuleSurface and domain-specific exported summaries
+          into dependency-driven downstream invalidation, including file
+          addition/removal, public candidate sets, exported generic templates,
+          and analysis summaries.
       - id: compiler.incremental-compilation-v1.source-syntax-provenance
         description: >-
-          Implement safe incremental source/syntax reuse with parser-context validity,
-          fail-closed semantic identity remapping, and separate current-snapshot provenance
-          updates for diagnostics, LSP, documentation, and debug information.
+          Implement safe incremental source/syntax reuse with parser-context
+          validity, fail-closed semantic identity remapping, and separate
+          current-snapshot provenance updates for diagnostics, LSP,
+          documentation, and debug information.
       - id: compiler.incremental-compilation-v1.plan-isolation
         description: >-
-          Enforce target/Variant/TestCompilationPlan isolation so target-independent work
-          may be shared only when compatible and no layout, ABI, target, CTE, or test-view
-          state can leak between plans.
+          Enforce target/Variant/TestCompilationPlan isolation so
+          target-independent work may be shared only when compatible and no
+          layout, ABI, target, CTE, or test-view state can leak between plans.
       - id: compiler.incremental-compilation-v1.lowering-artifact-reuse
         description: >-
-          Integrate verified Semantic IR, Sec MLIR/lower IR, backend/object, generic
-          realization, debug, and link artifact reuse with layer-specific transformation,
-          plan, ABI/layout, optimizer, verifier, and toolchain compatibility.
+          Integrate verified Semantic IR, Sec MLIR/lower IR, backend/object,
+          generic realization, debug, and link artifact reuse with
+          layer-specific transformation, plan, ABI/layout, optimizer, verifier,
+          and toolchain compatibility.
       - id: compiler.incremental-compilation-v1.reachability-roots
         description: >-
-          Make current semantic demand and LinkPlan roots authoritative so cached artifacts
-          never create reachability and removed helpers, symbols, tests, specializations,
-          or debug metadata cannot survive as ghost output.
+          Make current semantic demand and LinkPlan roots authoritative so
+          cached artifacts never create reachability and removed helpers,
+          symbols, tests, specializations, or debug metadata cannot survive as
+          ghost output.
       - id: compiler.incremental-compilation-v1.transactional-final-output
         description: >-
-          Ensure incremental object/link candidates are fully generated and verified before
-          replacing previously successful published outputs.
+          Ensure incremental object/link candidates are fully generated and
+          verified before replacing previously successful published outputs.
       - id: compiler.incremental-compilation-v1.history-independence
         description: >-
-          Verify and enforce convergence to the same canonical result across different edit
-          sequences, invalid intermediate states, reverts, cache warmth, restarts, worker
-          schedules, and supported local/shared reuse paths.
+          Verify and enforce convergence to the same canonical result across
+          different edit sequences, invalid intermediate states, reverts, cache
+          warmth, restarts, worker schedules, and supported local/shared reuse
+          paths.
       - id: compiler.incremental-compilation-v1.inspection
         description: >-
-          Provide stable compiler inspection metadata for reuse/recompute decisions,
-          dependency/fingerprint domains, invalidation causes, snapshot/plan identity,
-          persistent-cache provenance, verification, and rejection reasons.
+          Provide stable compiler inspection metadata for reuse/recompute
+          decisions, dependency/fingerprint domains, invalidation causes,
+          snapshot/plan identity, persistent-cache provenance, verification, and
+          rejection reasons.
       - id: compiler.incremental-compilation-v1.stateful-conformance
         description: >-
           Implement feature-specific edit-sequence, wrong-cache, plan-isolation,
-          persistent-restart, race, stateful fuzz/property, and mutation-test evidence using
-          the shared testing.compiler-verification-v1 infrastructure.
+          persistent-restart, race, stateful fuzz/property, and mutation-test
+          evidence using the shared testing.compiler-verification-v1
+          infrastructure.
     excluded:
       - a source-visible Sec cache or fingerprint API
       - one mandatory query-engine implementation
@@ -347,20 +399,22 @@ integrations:
       - generic differential, fuzzing, mutation, matrix, fault-injection, and regression infrastructure remains under testing.compiler-verification-v1
       - debug-information and compiler-testing handoffs point to rules/compiler/incremental_compilation.md
       - language-rulebook-status.md records compiler/incremental_compilation.md as Written and removes the planned closure entry
+
   - id: compiler.linking
     area: compiler-linking-and-artifacts
     status: partial
     integrated: "2026-08-24"
     document_revision: "1"
-    repository_baseline: "c515862"
+    repository_baseline: c515862
     summary: >-
-      Implements the canonical Sec linking model: CompilationPlan-specific LinkPlan and
-      LinkEnvironment authority, deterministic binary symbol identity, native/foreign
-      symbol resolution, typed dependency inputs and provenance, archive fixed-point
-      resolution, link roots/reachability, dead stripping/LTO constraints, reproducible
-      toolchain invocation, and final artifact verification.
-      The current sec build direct clang-driver path is recorded only as a
-      legacy implementation slice, not as the canonical model.
+      Implements the canonical Sec linking model: CompilationPlan-specific
+      LinkPlan and LinkEnvironment authority, deterministic binary symbol
+      identity, native/foreign symbol resolution, typed dependency inputs and
+      provenance, archive fixed-point resolution, link roots/reachability, dead
+      stripping/LTO constraints, reproducible toolchain invocation, and final
+      artifact verification. The current sec build direct clang-driver path is
+      recorded only as a legacy implementation slice, not as the canonical
+      model.
     rules:
       - rules/compiler/linking.md
       - rules/compiler/initialization.md
@@ -472,20 +526,21 @@ integrations:
       - cross-link platform model LinkEnvironment work and ABI stale-artifact checks
       - keep CanLink as a coarse compiler/toolchain support summary rather than target-linkage semantics
       - do not describe the existing direct clang invocation as canonical linking completion
+
   - id: compiler.program-initialization
     area: projects-initialization-and-build
     status: partial
     integrated: "2026-08-18"
     revised: "2026-10-05"
     document_revision: "1"
-    repository_baseline: "20b3606"
+    repository_baseline: 20b3606
     summary: >-
       Implements canonical Sec executable initialization and shutdown planning:
       target-kind entry contracts, no implicit module initialization, optional
       runtime-free startup, CompilationPlan-specific ProgramInitializationPlan
-      and ProgramShutdownPlan artifacts, dependency-ordered startup and teardown,
-      startup-failure rollback, deterministic static-destruction integration,
-      and explicit lowering/linking handoff.
+      and ProgramShutdownPlan artifacts, dependency-ordered startup and
+      teardown, startup-failure rollback, deterministic static-destruction
+      integration, and explicit lowering/linking handoff.
     rules:
       - rules/compiler/initialization.md
       - rules/projects/modules.md
@@ -512,7 +567,7 @@ integrations:
       - cmd/lsp/program_entry_test.go
     implemented:
       - "entry contract validation (2026-10-05): Analyzer.ValidateProgramEntry checks a command Target for exactly one concrete, non-generic, non-extern, module-level `fn main() int` without parameters in the entry module and a firmware Target for `fn main() void`; main in the entry module is the entry identity, so an overload is a duplicate; impl methods named main are not entries; library and test Targets are not checked. Diagnostics distinguish S1109 initialization.missing-entry (at the entry module declaration), S1110 initialization.invalid-entry (naming each departure: generic, extern, parameters, wrong return type such as Result), and S1111 initialization.duplicate-entry (with the first entry as related location), each with help (§ 21, § 22, § 25, § 26, § 27, § 42; TestProgramEntryContract covers the § 45.1 list except the generated test harness)"
-      - "Target kind and source come from `[target.<name>]` through internal/project ParseManifestTargets and TargetForSource; sec build validates the input file's module against the owning Target's kind, defaulting to command for a linked executable outside every declared Target, and the LSP reports the same diagnostics while a command or firmware Target's source is edited (TestBuildTargetKindComesFromTheManifest, TestLSPReportsProgramEntryContract)"
+      - Target kind and source come from `[target.<name>]` through internal/project ParseManifestTargets and TargetForSource; sec build validates the input file's module against the owning Target's kind, defaulting to command for a linked executable outside every declared Target, and the LSP reports the same diagnostics while a command or firmware Target's source is edited (TestBuildTargetKindComesFromTheManifest, TestLSPReportsProgramEntryContract)
     remaining:
       - introduce canonical ProgramInitializationPlan and ProgramShutdownPlan artifacts for every executable concrete CompilationPlan
       - ensure library targets acquire no program entry, startup, shutdown, or hidden module-initialization behavior merely by being compiled (entry validation already skips library Targets; the call graph still treats any `main` of module main as a program-entry root regardless of Target kind)
@@ -561,162 +616,163 @@ integrations:
       - exact Sec MLIR operation syntax
       - operating-system loader or firmware startup implementation details
       - C++-style global constructors and Go-style package initialization
+
   - id: compiler.compile-time-evaluation
     area: compiler-semantic-evaluation
     status: partial
     integrated: null
-    document_revision: '1.0'
+    document_revision: "1.0"
     repository_baseline: 0f5027d
-    summary: 'Tracks canonical Sec 0.1 compile-time evaluation: restricted plan-time contexts plus typed semantic CTE over canonical Sec semantics, including ordinary user functions, path-sensitive effect legality, loops/recursion, transient allocation, ownership/borrowing/destruction, cross-module semantic execution, generic concrete callables, dependency tracking, resource limits, typed compile-time values, static materialization, diagnostics, caching, and integration around the Semantic IR -> Sec MLIR -> MLIR -> LLVM -> artifact pipeline. The repository already contains partial compile-time/constant evaluation behavior for several declaration and folding paths, but the complete semantic CTE service is not yet implemented.'
+    summary: "Tracks canonical Sec 0.1 compile-time evaluation: restricted plan-time contexts plus typed semantic CTE over canonical Sec semantics, including ordinary user functions, path-sensitive effect legality, loops/recursion, transient allocation, ownership/borrowing/destruction, cross-module semantic execution, generic concrete callables, dependency tracking, resource limits, typed compile-time values, static materialization, diagnostics, caching, and integration around the Semantic IR -> Sec MLIR -> MLIR -> LLVM -> artifact pipeline. The repository already contains partial compile-time/constant evaluation behavior for several declaration and folding paths, but the complete semantic CTE service is not yet implemented."
     rules:
-    - rules/compiler/compile_time_evaluation.md
-    - rules/foundations/attributes.md
-    - rules/declarations/static.md
-    - rules/declarations/generics.md
-    - rules/compiler/generics_lowering.md
-    - rules/compiler/monomorphization.md
-    - rules/compiler/compiler_known_members.md
-    - rules/compiler/semantic_ir.md
-    - rules/compiler/compiler_pipeline.md
-    - rules/projects/modules.md
-    - rules/memory/layout.md
-    - rules/memory/ownership.md
-    - rules/memory/borrowing.md
-    - rules/memory/copy_move.md
-    - rules/memory/destruction.md
-    - rules/memory/raw_pointers.md
-    - rules/analysis/effect_analysis.md
-    - rules/errors/panic.md
-    - rules/errors/runtime_checks.md
-    - rules/mlir/sec_mlir.md
-    - rules/mlir/sec_mlir_dialect.md
-    - rules/mlir/sec_mlir_lowering.md
+      - rules/compiler/compile_time_evaluation.md
+      - rules/foundations/attributes.md
+      - rules/declarations/static.md
+      - rules/declarations/generics.md
+      - rules/compiler/generics_lowering.md
+      - rules/compiler/monomorphization.md
+      - rules/compiler/compiler_known_members.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/projects/modules.md
+      - rules/memory/layout.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/memory/raw_pointers.md
+      - rules/analysis/effect_analysis.md
+      - rules/errors/panic.md
+      - rules/errors/runtime_checks.md
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
     implemented:
-    - value.SizeOf and TypeName.SizeOf are the only SizeOf forms; global SizeOf(TypeName) is rejected as an unknown function and is absent from the registry, completion, and tests (TestCompilerKnownCanonicalPropertyAndCollectionRestrictions)
-    - compiler-known registry entries carry an explicit CompilerKnownMemberCategory (CompilerProvidedFallbackMember, AuthoritativeCompilerSemanticProperty, CompilerKnownOperation, PrivilegedCoreMember, OrdinaryUserMember) with UserReplacementPermitted policy; ToString() is the replaceable fallback, compiler-known properties are authoritative, methods are operations
-    - a user impl member that would replace an authoritative compiler-known property applicable to its target (SizeOf on any sized type, Len on a named sequence type, and similar) is rejected with mandatory S1070 members.authoritative-compiler-property and help; exact ToString() replacement and other ToString overloads keep ordinary method resolution, and loader-proven trusted core keeps its privileged implementing members
-    - LSP hover states whether a compiler-known member is a fallback, authoritative property, operation, or privileged core member
-    - language-rulebook-status.md lists compile_time_evaluation.md as Written and narrows the reflection exclusion to general-purpose structural compile-time reflection and declaration metaprogramming
-    - parser/Sema infrastructure already recognizes multiple compile-time-required declaration facts such as enum values, fixed sizes/extents, static facts, attributes, and compiler-known layout/member queries
-    - compiler-known SizeOf resolves target-plan-dependent layout information in the value and type property forms
-    - current frontend and semantic analyses already perform constant propagation/folding and static validation in several narrow language paths
-    - generic frontend and Semantic IR infrastructure can represent concrete generic identities required by future generic CTE execution
-    - module and separate-compilation infrastructure already defines canonical declaration identities and semantic artifacts that can be extended for CTE bodies/dependencies
-    - effect analysis already provides canonical effect facts that CTE can consume for permitted-effect decisions
-    - ownership, borrowing, destruction, layout, and Semantic IR rulebooks already define the semantic facts the CTE service must preserve
-    - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): compile_time_evaluation.md § 8(5)–(7) classifies contract arguments and explicit defaults as SemanticCompileTimeRequiredContexts; internal/sema/contract_cte.go evaluates them through the shared compile-time evaluation (literals and operators, immutable module bindings via the shared integer evaluator, immutable primitive bindings) instead of a contract-only evaluator, and classifies calls and property getters as legal semantic CTE awaiting the executor (S1101)"
+      - value.SizeOf and TypeName.SizeOf are the only SizeOf forms; global SizeOf(TypeName) is rejected as an unknown function and is absent from the registry, completion, and tests (TestCompilerKnownCanonicalPropertyAndCollectionRestrictions)
+      - compiler-known registry entries carry an explicit CompilerKnownMemberCategory (CompilerProvidedFallbackMember, AuthoritativeCompilerSemanticProperty, CompilerKnownOperation, PrivilegedCoreMember, OrdinaryUserMember) with UserReplacementPermitted policy; ToString() is the replaceable fallback, compiler-known properties are authoritative, methods are operations
+      - a user impl member that would replace an authoritative compiler-known property applicable to its target (SizeOf on any sized type, Len on a named sequence type, and similar) is rejected with mandatory S1070 members.authoritative-compiler-property and help; exact ToString() replacement and other ToString overloads keep ordinary method resolution, and loader-proven trusted core keeps its privileged implementing members
+      - LSP hover states whether a compiler-known member is a fallback, authoritative property, operation, or privileged core member
+      - language-rulebook-status.md lists compile_time_evaluation.md as Written and narrows the reflection exclusion to general-purpose structural compile-time reflection and declaration metaprogramming
+      - parser/Sema infrastructure already recognizes multiple compile-time-required declaration facts such as enum values, fixed sizes/extents, static facts, attributes, and compiler-known layout/member queries
+      - compiler-known SizeOf resolves target-plan-dependent layout information in the value and type property forms
+      - current frontend and semantic analyses already perform constant propagation/folding and static validation in several narrow language paths
+      - generic frontend and Semantic IR infrastructure can represent concrete generic identities required by future generic CTE execution
+      - module and separate-compilation infrastructure already defines canonical declaration identities and semantic artifacts that can be extended for CTE bodies/dependencies
+      - effect analysis already provides canonical effect facts that CTE can consume for permitted-effect decisions
+      - ownership, borrowing, destruction, layout, and Semantic IR rulebooks already define the semantic facts the CTE service must preserve
+      - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): compile_time_evaluation.md § 8(5)–(7) classifies contract arguments and explicit defaults as SemanticCompileTimeRequiredContexts; internal/sema/contract_cte.go evaluates them through the shared compile-time evaluation (literals and operators, immutable module bindings via the shared integer evaluator, immutable primitive bindings) instead of a contract-only evaluator, and classifies calls and property getters as legal semantic CTE awaiting the executor (S1101)"
     remaining:
-    - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state beyond the contract/default positions (MD-011 contract and default positions use Analyzer.semanticCompileTimeConstant since 2026-10-03)
-    - implement the semantic CTE executor for ordinary functions, static and instance methods, and property getters with path-sensitive legality; contract/default positions currently report S1101 compile-time.execution-unavailable for calls and getters
-    - preserve the existing restricted plan-time evaluator for attributes/source selection and prevent ordinary semantic function calls from creating phase cycles
-    - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
-    - execute ordinary user-defined functions during semantic CTE without requiring const-fn/comptime source modifiers
-    - implement nested calls, if/switch/match/for/while execution, recursion, and mutual recursion
-    - implement path-sensitive CTE effect legality so forbidden effects on unexecuted branches do not invalidate the concrete evaluation
-    - reject executed filesystem, network, environment, clock, ambient-random, target-memory, volatile, atomic, barrier, concurrency, foreign-call, and unsupported-runtime operations
-    - support deterministic transient evaluator-local allocation independently of runtime target allocators
-    - execute ordinary Sec ownership, move, borrow, destruction, defer, Result/Option, try, assert, and panic semantics during CTE
-    - represent evaluator-local references/raw pointers using deterministic semantic identity independent of compiler-host addresses
-    - prevent transient addresses and generational/liveness identities from escaping materialization
-    - implement typed CompileTimeValue representation with canonical Sec TypeIdentity and SemanticValue
-    - separate evaluation, owning-context validation, and static materialization
-    - materialize supported scalar, fixed aggregate, enum/union/Option/Result, and immutable string values through ordinary target storage/layout lowering
-    - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
-    - implement recursive materialization graph validation and explicit materialization-failure reasons
-    - detect compile-time value/type/layout dependency cycles without conflating them with ordinary terminating function recursion
-    - implement finite ExecutionSteps, CallDepth, TransientMemory, and AggregateValueSize evaluator budgets
-    - distinguish resource exhaustion from semantic nontermination and from target runtime out-of-memory
-    - implement cross-module CTE body availability using compatible canonical semantic artifacts
-    - preserve origin scope for private/sourcefile-only helper execution without leaking source visibility to importers
-    - request and execute canonical generic concrete instances through the monomorphization/generic-lowering contracts
-    - implement conservative CTE dependency tracking for declaration semantics, immutable values, generic concrete instances, type facts, layout facts, CompilationPlan facts, and imported semantic artifacts
-    - implement deterministic CTE result memoization and correct invalidation
-    - prevent resource-limit and cancellation outcomes from becoming permanent semantic negative caches
-    - implement CompileTimeProvenance including RequiredBy, RootExpression, CurrentCallStack, GenericInstantiationContext, and OriginModule
-    - distinguish NotEvaluable, EvaluationFailed, DependencyCycle, ResourceLimit, ResultNotMaterializable, ImplementationGap, Cancelled, and CompilerInvariantFailure
-    - rename/standardize ordinary semantic operation failure classification as SemanticOperationFailed
-    - make required CTE fail closed rather than silently emitting runtime initializers or host-executed substitutes
-    - permit optional optimizer early evaluation to reuse evaluator machinery without turning optional failure into source diagnostics
-    - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
-    - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
-    - ensure required CTE does not depend on optional MLIR/LLVM constant folding
-    - audit every compiler-known Sec declaration for complete canonical declaration and owning module (rulebook A/B choices are MD-016)
-    - expose compiler CTE values/provenance/diagnostics through LSP without a separate editor evaluator
+      - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state beyond the contract/default positions (MD-011 contract and default positions use Analyzer.semanticCompileTimeConstant since 2026-10-03)
+      - implement the semantic CTE executor for ordinary functions, static and instance methods, and property getters with path-sensitive legality; contract/default positions currently report S1101 compile-time.execution-unavailable for calls and getters
+      - preserve the existing restricted plan-time evaluator for attributes/source selection and prevent ordinary semantic function calls from creating phase cycles
+      - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
+      - execute ordinary user-defined functions during semantic CTE without requiring const-fn/comptime source modifiers
+      - implement nested calls, if/switch/match/for/while execution, recursion, and mutual recursion
+      - implement path-sensitive CTE effect legality so forbidden effects on unexecuted branches do not invalidate the concrete evaluation
+      - reject executed filesystem, network, environment, clock, ambient-random, target-memory, volatile, atomic, barrier, concurrency, foreign-call, and unsupported-runtime operations
+      - support deterministic transient evaluator-local allocation independently of runtime target allocators
+      - execute ordinary Sec ownership, move, borrow, destruction, defer, Result/Option, try, assert, and panic semantics during CTE
+      - represent evaluator-local references/raw pointers using deterministic semantic identity independent of compiler-host addresses
+      - prevent transient addresses and generational/liveness identities from escaping materialization
+      - implement typed CompileTimeValue representation with canonical Sec TypeIdentity and SemanticValue
+      - separate evaluation, owning-context validation, and static materialization
+      - materialize supported scalar, fixed aggregate, enum/union/Option/Result, and immutable string values through ordinary target storage/layout lowering
+      - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
+      - implement recursive materialization graph validation and explicit materialization-failure reasons
+      - detect compile-time value/type/layout dependency cycles without conflating them with ordinary terminating function recursion
+      - implement finite ExecutionSteps, CallDepth, TransientMemory, and AggregateValueSize evaluator budgets
+      - distinguish resource exhaustion from semantic nontermination and from target runtime out-of-memory
+      - implement cross-module CTE body availability using compatible canonical semantic artifacts
+      - preserve origin scope for private/sourcefile-only helper execution without leaking source visibility to importers
+      - request and execute canonical generic concrete instances through the monomorphization/generic-lowering contracts
+      - implement conservative CTE dependency tracking for declaration semantics, immutable values, generic concrete instances, type facts, layout facts, CompilationPlan facts, and imported semantic artifacts
+      - implement deterministic CTE result memoization and correct invalidation
+      - prevent resource-limit and cancellation outcomes from becoming permanent semantic negative caches
+      - implement CompileTimeProvenance including RequiredBy, RootExpression, CurrentCallStack, GenericInstantiationContext, and OriginModule
+      - distinguish NotEvaluable, EvaluationFailed, DependencyCycle, ResourceLimit, ResultNotMaterializable, ImplementationGap, Cancelled, and CompilerInvariantFailure
+      - rename/standardize ordinary semantic operation failure classification as SemanticOperationFailed
+      - make required CTE fail closed rather than silently emitting runtime initializers or host-executed substitutes
+      - permit optional optimizer early evaluation to reuse evaluator machinery without turning optional failure into source diagnostics
+      - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
+      - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
+      - ensure required CTE does not depend on optional MLIR/LLVM constant folding
+      - audit every compiler-known Sec declaration for complete canonical declaration and owning module (rulebook A/B choices are MD-016)
+      - expose compiler CTE values/provenance/diagnostics through LSP without a separate editor evaluator
     required_tests:
-    - plan-time attribute expression accepts permitted plan inputs and rejects ordinary semantic user-function dependency
-    - semantic CTE executes an ordinary user function without const-fn/comptime syntax
-    - same ordinary function executes at runtime when used from an ordinary local runtime context
-    - ordinary local constant expression remains valid when optional folding is disabled
-    - required static initializer fails compilation when semantic CTE cannot produce a value
-    - required static initializer never falls back to hidden runtime initialization
-    - path-sensitive CTE succeeds when a forbidden-effect branch is not executed
-    - path-sensitive CTE rejects the same function when the forbidden-effect branch is executed
-    - immutable compile-time value may be read during CTE
-    - mutable runtime static may not be read or mutated during CTE
-    - filesystem, network, environment, clock, ambient random, MMIO, volatile, atomic, barrier, concurrency, and foreign operations are rejected when executed by required CTE
-    - explicit deterministic PRNG state using only compile-time values remains ordinary deterministic computation
-    - unsafe block does not grant extra CTE capability
-    - transient allocation succeeds without using target runtime heap state
-    - explicit runtime allocator resource is not silently replaced by evaluator allocation
-    - move-only value preserves move semantics during CTE
-    - borrow/reborrow/lifetime rules remain valid during CTE
-    - destruction and defer ordering follow ordinary Sec execution during successful CTE
-    - assert failure becomes required CTE evaluation failure with provenance
-    - panic reached during required CTE becomes evaluation failure without crashing the compiler
-    - Result.Err remains a successfully evaluated Result value
-    - semantic operation failure uses owning language diagnostic plus SemanticOperationFailed category
-    - ordinary recursion can succeed during CTE
-    - compile-time value dependency cycle is rejected distinctly from function recursion
-    - type/layout/value dependency cycle is diagnosed with the semantic cycle
-    - ExecutionSteps limit exhaustion reports resource limit rather than semantic nontermination
-    - larger evaluation budget may retry an earlier resource-limited evaluation
-    - transient-memory exhaustion is not target runtime OOM
-    - scalar/fixed-array/struct/enum/union/Option/Result values materialize when their owning rules permit
-    - CTE-generated immutable string materializes without preserving evaluator-host address
-    - dynamic list may be used transiently to compute a scalar result
-    - dynamic list result without static materialization reports ResultNotMaterializable rather than NotEvaluable
-    - transient safe-reference address cannot escape static materialization
-    - transient raw-pointer numeric host address cannot escape static materialization
-    - target platform address metadata is distinct from evaluator-local address identity
-    - public cross-module function executes under semantic CTE
-    - public cross-module function may execute its already-resolved private origin-module helper without exposing that helper to importing source
-    - sourcefile-only origin helper remains inaccessible to other source files/importers
-    - generic concrete callable uses the same canonical specialization identity for CTE and runtime demand
-    - unresolved generic parameter never executes as runtime-like CTE generic state
-    - SizeOf result uses active CompilationPlan and cross-target tests do not use host size
-    - TypeName.SizeOf and value.SizeOf resolve as canonical properties
-    - global SizeOf(TypeName) is rejected after correction migration
-    - CTE cache invalidates on relevant body/helper/immutable-value/layout/CompilationPlan changes
-    - cancellation does not produce a source diagnostic or permanent negative cache
-    - optional early evaluation resource failure leaves ordinary runtime code intact
-    - valid-but-unimplemented semantic CTE path reports implementation gap
-    - impossible evaluator type/value mismatch reports compiler invariant failure
-    - LSP displays compiler-established CTE result/provenance without re-evaluating source independently
+      - plan-time attribute expression accepts permitted plan inputs and rejects ordinary semantic user-function dependency
+      - semantic CTE executes an ordinary user function without const-fn/comptime syntax
+      - same ordinary function executes at runtime when used from an ordinary local runtime context
+      - ordinary local constant expression remains valid when optional folding is disabled
+      - required static initializer fails compilation when semantic CTE cannot produce a value
+      - required static initializer never falls back to hidden runtime initialization
+      - path-sensitive CTE succeeds when a forbidden-effect branch is not executed
+      - path-sensitive CTE rejects the same function when the forbidden-effect branch is executed
+      - immutable compile-time value may be read during CTE
+      - mutable runtime static may not be read or mutated during CTE
+      - filesystem, network, environment, clock, ambient random, MMIO, volatile, atomic, barrier, concurrency, and foreign operations are rejected when executed by required CTE
+      - explicit deterministic PRNG state using only compile-time values remains ordinary deterministic computation
+      - unsafe block does not grant extra CTE capability
+      - transient allocation succeeds without using target runtime heap state
+      - explicit runtime allocator resource is not silently replaced by evaluator allocation
+      - move-only value preserves move semantics during CTE
+      - borrow/reborrow/lifetime rules remain valid during CTE
+      - destruction and defer ordering follow ordinary Sec execution during successful CTE
+      - assert failure becomes required CTE evaluation failure with provenance
+      - panic reached during required CTE becomes evaluation failure without crashing the compiler
+      - Result.Err remains a successfully evaluated Result value
+      - semantic operation failure uses owning language diagnostic plus SemanticOperationFailed category
+      - ordinary recursion can succeed during CTE
+      - compile-time value dependency cycle is rejected distinctly from function recursion
+      - type/layout/value dependency cycle is diagnosed with the semantic cycle
+      - ExecutionSteps limit exhaustion reports resource limit rather than semantic nontermination
+      - larger evaluation budget may retry an earlier resource-limited evaluation
+      - transient-memory exhaustion is not target runtime OOM
+      - scalar/fixed-array/struct/enum/union/Option/Result values materialize when their owning rules permit
+      - CTE-generated immutable string materializes without preserving evaluator-host address
+      - dynamic list may be used transiently to compute a scalar result
+      - dynamic list result without static materialization reports ResultNotMaterializable rather than NotEvaluable
+      - transient safe-reference address cannot escape static materialization
+      - transient raw-pointer numeric host address cannot escape static materialization
+      - target platform address metadata is distinct from evaluator-local address identity
+      - public cross-module function executes under semantic CTE
+      - public cross-module function may execute its already-resolved private origin-module helper without exposing that helper to importing source
+      - sourcefile-only origin helper remains inaccessible to other source files/importers
+      - generic concrete callable uses the same canonical specialization identity for CTE and runtime demand
+      - unresolved generic parameter never executes as runtime-like CTE generic state
+      - SizeOf result uses active CompilationPlan and cross-target tests do not use host size
+      - TypeName.SizeOf and value.SizeOf resolve as canonical properties
+      - global SizeOf(TypeName) is rejected after correction migration
+      - CTE cache invalidates on relevant body/helper/immutable-value/layout/CompilationPlan changes
+      - cancellation does not produce a source diagnostic or permanent negative cache
+      - optional early evaluation resource failure leaves ordinary runtime code intact
+      - valid-but-unimplemented semantic CTE path reports implementation gap
+      - impossible evaluator type/value mismatch reports compiler invariant failure
+      - LSP displays compiler-established CTE result/provenance without re-evaluating source independently
     excluded:
-    - source-level const fn or comptime fn modifiers
-    - source-level comptime expression or block syntax
-    - a source-visible CTE namespace or IsCompileTime-style query
-    - first-class Sec Type/TypeInfo values introduced solely by this rulebook
-    - TypeOf introduced by this rulebook
-    - arbitrary value/const generic parameters
-    - general-purpose structural compile-time reflection
-    - declaration generation, AST rewriting, source-string reparsing, or Zig-style compiler-language metaprogramming
-    - runtime generic dictionaries, type erasure, hidden reflection metadata, or runtime specialization as CTE fallback
-    - ambient host filesystem/environment/time/random/network as implicit semantic CTE input
-    - target hardware execution or MMIO reads during CTE
-    - optional MLIR/LLVM constant folding as the semantic implementation of required CTE
+      - source-level const fn or comptime fn modifiers
+      - source-level comptime expression or block syntax
+      - a source-visible CTE namespace or IsCompileTime-style query
+      - first-class Sec Type/TypeInfo values introduced solely by this rulebook
+      - TypeOf introduced by this rulebook
+      - arbitrary value/const generic parameters
+      - general-purpose structural compile-time reflection
+      - declaration generation, AST rewriting, source-string reparsing, or Zig-style compiler-language metaprogramming
+      - runtime generic dictionaries, type erasure, hidden reflection metadata, or runtime specialization as CTE fallback
+      - ambient host filesystem/environment/time/random/network as implicit semantic CTE input
+      - target hardware execution or MMIO reads during CTE
+      - optional MLIR/LLVM constant folding as the semantic implementation of required CTE
     corrections_applied:
-    - rules/corrections/applied/compile-time-evaluation-cross-rulebook-correction-20260907.md
-    - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/compile-time-evaluation-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
     verification:
-    - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -run 'Test(UserSizeOfReplacementIsRejected|CompilerKnownRegistryCategoriesDrivePolicy|CompilerKnownCanonicalPropertyAndCollectionRestrictions|CompilerKnownUniversalToStringAndTextSequences|HoverShowsCompilerKnownMemberCategory)' -count=1
-      result: passed on 2026-10-02 with S1070 rejection, trusted-core exemption, registry categories and replacement policy, ordinary Len on non-sequence types, ToString fallback/replacement, and hover categories
-    - command: go test ./...
-      result: passed on 2026-10-02
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -run 'Test(UserSizeOfReplacementIsRejected|CompilerKnownRegistryCategoriesDrivePolicy|CompilerKnownCanonicalPropertyAndCollectionRestrictions|CompilerKnownUniversalToStringAndTextSequences|HoverShowsCompilerKnownMemberCategory)' -count=1
+        result: passed on 2026-10-02 with S1070 rejection, trusted-core exemption, registry categories and replacement policy, ordinary Len on non-sequence types, ToString fallback/replacement, and hover categories
+      - command: go test ./...
+        result: passed on 2026-10-02
     tests:
-    - internal/sema/compiler_known_members_test.go
-    - cmd/lsp/main_test.go
+      - internal/sema/compiler_known_members_test.go
+      - cmd/lsp/main_test.go
     code:
-    - internal/sema/compiler_known_members.go
-    - internal/diagnostics/diagnostics.go
-    - cmd/lsp/main.go
+      - internal/sema/compiler_known_members.go
+      - internal/diagnostics/diagnostics.go
+      - cmd/lsp/main.go

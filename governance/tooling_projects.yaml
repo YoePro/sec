@@ -43,11 +43,12 @@ integrations:
       - project-root source files (§ 14) and reserved and recognized directories `cmd`, `bin`, `.sec`, and `internal` (§ 15)
       - Shared project SourceLocation and ProjectImportAccess enforce root-only cmd/bin/.sec roles and internal access markers alongside the existing root ModuleName contract. Represented source files directly in cmd or any internal marker and source modules below root bin/.sec are rejected; ordinary nested bin/cmd directories remain ordinary. Imports from reserved storage and inaccessible internal subtrees are rejected before imported declaration visibility; nested internal markers all apply, root internal is project-wide, and component-aware prefix checks avoid granting similarly named siblings access.
       - CLI and LSP consume one shared Sema validator with registered mandatory S1149 on the exact module-name or import-path token. CLI checks selected and sibling sources and recursively loaded project imports; root cmd child entry modules assemble their module main helpers. LSP discovers ancestor disk or unsaved-overlay manifests and validates before recursive import loading, with UTF-16 protocol spans. Root naming, minimal entries and ordinary/internal children remain supported, trusted compiler library provenance is excluded, and validation never deletes output/user files. Complete whole-project discovery/schema validation remains a separate remaining point.
+      - ordinary discovered-project nested-manifest validation in CLI/LSP is complete and owned by tooling.project-nested-manifest-discovery; init creation checks and the remaining schema constraints retain their separate ownership
     remaining:
-      - complete project validation of § 48 with registered diagnostics, including nested manifests found during discovery rather than only at init
+      - complete remaining project validation of § 48 with registered diagnostics for manifest/schema constraints; discovered nested-manifest validation is implemented and owned by tooling.project-nested-manifest-discovery
       - standard library and platform roots (§ 16) resolved through the project model instead of repository-relative lookup
       - stable cache and module identity under Project directory moves (§ 34, § 50(1))
-    revised: "2026-10-13"
+    revised: "2026-10-14"
     verification:
       - command: go vet ./...
         result: passed on 2026-10-13
@@ -402,3 +403,49 @@ integrations:
         result: passed on 2026-10-13
       - command: go test -race ./cmd/compiler ./internal/project -run 'InitMinimal|InitProject|ParseInit|ManifestTargets|TargetForSource' -count=1
         result: passed on 2026-10-13; actual CLI creates exactly the two minimal entries with a root command Target, valid default version and independent build profile; generated main type-checks; existing source, manifest/UUID and both layouts remain unchanged on repeated init, and nested creation is rejected before any files are created; remaining 7 to 6 for this ID and 28 to 27 in tooling_projects.yaml
+
+  - id: tooling.project-nested-manifest-discovery
+    status: implemented
+    summary: >-
+      Reject nested manifests during ordinary project discovery in compiler
+      commands and LSP snapshots. Shared read-only ancestor/descendant discovery
+      includes disk and unsaved manifests, registered mandatory S1154 spans and
+      governing-manifest references, per-batch coalescing, edit invalidation and
+      stale diagnostic clearing. General manifest/schema validation remains
+      owned by tooling.project-discovery-and-boundary.
+    rules:
+      - rules/projects/projects.md
+      - rules/projects/modules.md
+      - rules/tooling/diagnostics.md
+      - rules/tooling/lsp.md
+    implemented:
+      - validate nested project manifests during ordinary CLI/LSP discovery, including ancestor and descendant manifests, unsaved overlays, registered diagnostics, source/Target command rejection before writes, batch deduplication and stale diagnostic clearing
+    remaining: []
+    area: tooling-projects
+    integrated: "2026-10-14"
+    code:
+      - internal/project/boundary.go
+      - internal/sema/project_boundary.go
+      - internal/diagnostics/diagnostics.go
+      - cmd/compiler/project_version_diagnostics.go
+      - cmd/compiler/analysis_pipeline.go
+      - cmd/compiler/build_command.go
+      - cmd/compiler/test_command.go
+      - cmd/compiler/init.go
+      - cmd/lsp/project_boundary_diagnostics.go
+      - cmd/lsp/diagnostics_batch.go
+      - cmd/lsp/analysis_dependencies.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/project/boundary_test.go
+      - cmd/compiler/project_boundary_test.go
+      - cmd/lsp/project_boundary_test.go
+      - testdata/projects/boundary/sec.toml
+      - testdata/projects/boundary/main.sec
+    verification:
+      - command: go vet ./internal/project ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test -race ./internal/project ./internal/sema ./cmd/compiler ./cmd/lsp -run 'ProjectBoundary|ProjectVersion|DiscoveredProject|DependencyInvalidation' -count=1
+        result: passed on 2026-10-14; final compiler discovery coalescing was also rechecked with the corresponding compiler-only race selection
+      - command: go test ./internal/project ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-14; full affected suites, CLI source and named Target rejection, ancestor/descendant/disk/unsaved discovery, exact mandatory S1154 manifest spans and outer-manifest references, stale clearing and preservation of user outputs/manifests

@@ -65,7 +65,7 @@ func (a *Analyzer) inferBitExtractionExpression(expr *ast.BitExtractionExpressio
 	sourceWidth, reason := a.bitExtractionSourceWidth(sourceType)
 	if reason != "" {
 		a.addErrorAtTokenWithMetadata(expressionToken(expr.Value), "",
-			"bit[N](value) reads the bits of a primitive integer, byte or char. Convert a named, unit-bearing or other value explicitly to a primitive integer first; extraction never strips its contracts or unit.",
+			"bit[N](value) reads the bits of a primitive integer, byte or char, with or without a unit. Convert a named or other value explicitly to a primitive integer first; extraction never strips its contracts.",
 			"bit[%s] cannot extract bits from %s: %s", width.String(), typeDisplayName(sourceType), reason)
 		return invalid, display
 	}
@@ -77,6 +77,13 @@ func (a *Analyzer) inferBitExtractionExpression(expr *ast.BitExtractionExpressio
 		return invalid, display
 	}
 	result := a.bitExtractionResultType(n)
+	if expr.Unit != "" {
+		labelled, ok := a.bitExtractionUnitResult(expr, sourceType, result)
+		if !ok {
+			return invalid, display
+		}
+		result = labelled
+	}
 	if a.resolvedBitExtractions == nil {
 		a.resolvedBitExtractions = map[*ast.BitExtractionExpression]ResolvedBitExtraction{}
 	}
@@ -87,8 +94,10 @@ func (a *Analyzer) inferBitExtractionExpression(expr *ast.BitExtractionExpressio
 // bitExtractionSourceWidth returns the representation width of an accepted
 // source, or why the source is not accepted.
 func (a *Analyzer) bitExtractionSourceWidth(typ Type) (int64, string) {
-	if typ.Named || typ.Unit != "" || !typ.Dimension.IsZero() || len(typ.Contracts) > 0 {
-		return 0, "named, constrained and unit-bearing values need an explicit conversion first"
+	// MD-046 § 3.8: a unit-bearing integer source is accepted; its unit is
+	// not inherited (§ 4.4). Named and constrained types are not unwrapped.
+	if typ.Named || len(typ.Contracts) > 0 {
+		return 0, "named and constrained values need an explicit conversion first"
 	}
 	switch typ.Kind {
 	case CharType:
@@ -148,26 +157,24 @@ func (a *Analyzer) bitExtractionInterval(expr *ast.BitExtractionExpression) (*bi
 	return big.NewInt(0), maximum.Sub(maximum, big.NewInt(1)), true
 }
 
-// bitExtractionFitsRegisterField reports an explicit extraction whose width
-// does not exceed a plain (unit-free) register field width, so its proven
-// interval fits the field (registers.md § 12, MD-046 § 6).
-func (a *Analyzer) bitExtractionFitsRegisterField(member *ast.MemberExpression, value ast.Expression) bool {
-	extraction, ok := value.(*ast.BitExtractionExpression)
-	if !ok || member == nil || member.Property == nil {
-		return false
-	}
-	fact, ok := a.resolvedBitExtractions[extraction]
+// bitExtractionUnitResult applies the `<U>` suffix of `bit[N](value)<U>`
+// (MD-046 §§ 4.4-4.6): the unsigned result bears U. A unitless source is
+// labelled explicitly; a unit-bearing source may only keep its own unit. The
+// bits are unchanged: no scale, offset, logarithm or rounding applies.
+func (a *Analyzer) bitExtractionUnitResult(expr *ast.BitExtractionExpression, source, result Type) (Type, bool) {
+	unit, ok := a.resolveUnitOnlyType(&ast.TypeReference{Token: expr.UnitToken, Unit: expr.Unit, UnitExpression: expr.UnitExpression, UnitOnly: true})
 	if !ok {
-		return false
+		return Type{}, false
 	}
-	objectType := dereferenceType(a.expressionTypes[member.Object])
-	if objectType.Kind != RegisterType {
-		return false
+	labelled := result
+	labelled.Unit = unit.Unit
+	labelled.Dimension = unit.Dimension
+	labelled.UnitSemantics = unit.UnitSemantics
+	if hasUnitSemantics(source) && !sameSemanticUnit(source, labelled) {
+		a.addErrorAtTokenWithMetadata(expr.UnitToken, "",
+			"bit[N](value)<U> may keep the source's own unit or label a unitless value; convert units first with a declared conversion such as <"+expr.Unit+">(value).",
+			"bit extraction cannot change the unit of %s to <%s>", typeDisplayName(source), expr.Unit)
+		return Type{}, false
 	}
-	for _, field := range objectType.RegisterFields {
-		if field.Name == member.Property.Value {
-			return field.Unit == "" && field.Type.Unit == "" && fact.Width <= field.Width
-		}
-	}
-	return false
+	return labelled, true
 }

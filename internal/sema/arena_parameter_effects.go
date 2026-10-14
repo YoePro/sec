@@ -51,14 +51,19 @@ func equalIntSlices(left, right []int) bool {
 }
 
 // recordArenaParameterReset notes that the current function resets the Arena
-// behind one of its own Arena reference parameters, which callers apply to
-// the Arena they pass.
+// behind one of its own Arena reference parameters by domain identity, even
+// after the reference holder moves. Names alone cannot prove this relationship.
+// Rules: rules/memory/arena.md — §§4.2,44,68(3)-(4).
 func (a *Analyzer) recordArenaParameterReset(name string) {
 	if a.currentArenaParameterResets == nil || a.inLambda {
 		return
 	}
+	symbol, ok := a.symbols[name]
+	if !ok || symbol.Type.ArenaDomainID == "" {
+		return
+	}
 	for index, parameter := range a.currentFunctionMetadata.Parameters {
-		if parameter.Name == name {
+		if isArenaReferenceType(parameter.Type) && symbol.Type.ArenaDomainID == a.newArenaDomainID(parameter.Token, "parameter") {
 			a.currentArenaParameterResets[index] = true
 			return
 		}
@@ -102,7 +107,7 @@ func (a *Analyzer) applyCalleeArenaParameterResets(callee Function, args []ast.E
 		case symbol.Type.Name == "Arena":
 			domain, owner = symbol.Type.ArenaDomainID, receiver.Value
 			if domain == "" {
-				domain = a.newArenaDomainID(symbol.Token, "owner:"+receiver.Value)
+				domain = a.newArenaDomainID(symbol.Token, "owner")
 				symbol.Type.ArenaDomainID = domain
 				a.symbols[receiver.Value] = symbol
 			}

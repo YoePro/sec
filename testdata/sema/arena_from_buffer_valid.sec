@@ -5,7 +5,7 @@ module main
 // the dependency exact.
 
 fn ImplicitBorrow() byte {
-    let mut buffer: byte[] := [0u, 0u, 0u, 0u]
+    let mut buffer: byte[4] := [0u, 0u, 0u, 0u]
     let mut arena := Arena.FromBuffer(buffer)
     arena.Release()
     return buffer[0]
@@ -18,13 +18,13 @@ fn FixedBacking() void {
 }
 
 fn ExplicitMarker() void {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let mut arena := Arena.FromBuffer(ref mut buffer)
     arena.Reset()
 }
 
 fn ScopeEndsBorrow() byte {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     if true {
         let mut arena := Arena.FromBuffer(buffer)
         arena.Reset()
@@ -33,7 +33,7 @@ fn ScopeEndsBorrow() byte {
 }
 
 fn LocalMoveCarriesBorrow() byte {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let arena := Arena.FromBuffer(buffer)
     let mut owner :<- arena
     owner.Release()
@@ -45,7 +45,7 @@ fn Fill(arena: ref mut Arena) void {
 }
 
 fn BorrowArenaToHelper() byte {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let mut arena := Arena.FromBuffer(buffer)
     Fill(arena)
     arena.Release()
@@ -61,4 +61,12 @@ fn FillThroughReference(arena: ref mut Arena) Result[ref mut byte[], AllocationE
 fn BindThenReturn(arena: ref mut Arena) Result[ref mut byte[], AllocationError] {
     let values := try arena.Alloc[byte](4u)
     return Ok(values)
+}
+
+// Dynamic owners remain valid backing when supplied by an ordinary owner
+// transfer; no nonempty dynamic literal is needed to test this borrow path.
+fn DynamicBacking(-> buffer: byte[]) void {
+    let mut storage :<- buffer
+    let mut arena := Arena.FromBuffer(storage)
+    arena.Release()
 }

@@ -1,0 +1,7 @@
+module symbols
+fn Select(value: int) int { return value }
+fn Select(value: bool) bool { return value }
+fn _Internal() void {}
+fn __Private() void {}
+type Holder struct { value: int }
+impl Holder { fn Select(value: int) int { return value } }

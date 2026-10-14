@@ -1,0 +1,72 @@
+module main
+
+fn Grow(values: ref mut list[int]) Result[void, CollectionError] {
+    try values.Append(1)
+    return Ok()
+}
+
+@noAlloc
+fn Forward(values: ref mut list[int]) Result[void, CollectionError] {
+    try Grow(values)
+    return Ok()
+}
+
+@noAlloc
+fn Insert(values: ref mut list[int]) Result[void, CollectionError] {
+    let inserted := try values.Insert(0, 1)
+    return Ok()
+}
+
+@noAlloc
+fn Array(values: int[]) Result[void, CollectionError] {
+    try values.Append(1)
+    return Ok()
+}
+
+@noAlloc
+fn Range(values: int[]) Result[void, CollectionError] {
+    try values.Append(1..3)
+    return Ok()
+}
+
+@noAlloc
+fn Add(values: ref mut set[int]) Result[void, CollectionError] {
+    let inserted := try values.Add(1)
+    return Ok()
+}
+
+@noAlloc
+fn ReserveList(values: ref mut list[int], count: uint) Result[void, CollectionError] {
+    try values.Reserve(count)
+    return Ok()
+}
+
+@noAlloc
+fn ReserveMap(values: ref mut map[int, int]) Result[void, CollectionError] {
+    try values.Reserve(1)
+    return Ok()
+}
+
+@noAlloc
+fn ReserveSet(values: ref mut set[int]) Result[void, CollectionError] {
+    try values.Reserve(1)
+    return Ok()
+}
+
+@noAlloc
+fn CapacityList() Result[void, CollectionError] {
+    let values := try list[int].WithCapacity(1)
+    return Ok()
+}
+
+@noAlloc
+fn CapacityMap() Result[void, CollectionError] {
+    let values := try map[int, int].WithCapacity(1)
+    return Ok()
+}
+
+@noAlloc
+fn CapacitySet() Result[void, CollectionError] {
+    let values := try set[int].WithCapacity(1)
+    return Ok()
+}

@@ -282,7 +282,7 @@ implementation_status:
     llvm_mlir_version: 24.0.0git
     build_kind: Optimized build with assertions
   commands:
-    configure: cmake -S mlir -B build/sec-mlir -G Ninja -DMLIR_DIR=/home/jonas/mlir/llvm-project/build/lib/cmake/mlir -DLLVM_DIR=/home/jonas/mlir/llvm-project/build/lib/cmake/llvm
+    configure: cmake -S mlir -B build/sec-mlir -G Ninja -DMLIR_DIR=${MLIR_DIR} -DLLVM_DIR=${LLVM_DIR}
     build: cmake --build build/sec-mlir
     dialect_tests: cmake --build build/sec-mlir --target check-sec-mlir
     go_tests: go test ./...

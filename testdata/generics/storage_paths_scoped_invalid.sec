@@ -1,0 +1,15 @@
+module main
+
+fn LocalDeclaration() void {
+    type Local[T] struct {
+        next: Local[T]
+    }
+}
+
+type Owner struct {}
+
+impl Owner {
+    type Nested[T] struct {
+        next: Owner.Nested[T]
+    }
+}

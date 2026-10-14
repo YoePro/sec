@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"os"
 
 	"sec/internal/ast"
+	"sec/internal/lexer"
+	"sec/internal/parser"
+	"sec/internal/sema"
+	"sec/internal/sourceimports"
 )
 
 // resolveStdlibImportsWithSources loads the source closure for one target.
@@ -30,9 +35,19 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 		if !ok {
 			continue
 		}
+
 		sourcePaths, ok := sourceIncludePathsWithSources(importStmt.Path, target, sourceFiles)
 		if !ok {
-			continue
+			printSemaError(os.Stderr, sema.UnresolvedSourceImport(importStmt))
+			printDiagnosticSummary(diagnosticSummary{Errors: 1})
+			exitCLI(3)
+		}
+		if issues := sema.ImportedModuleConflicts(importStmt, sourcePaths, os.ReadFile); len(issues) != 0 {
+			for _, issue := range issues {
+				printSemaError(os.Stderr, issue)
+			}
+			printDiagnosticSummary(diagnosticSummary{Errors: len(issues)})
+			exitCLI(3)
 		}
 		imported := &ast.Program{}
 		module := ""
@@ -63,4 +78,28 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 		qualifyImportedModule(imported, module)
 		program.Statements = append(program.Statements, imported.Statements...)
 	}
+}
+
+// compilerStandardLibrarySources shares canonical library discovery with LSP
+// and applies the selected compiler target before parsing the source closure.
+// Rules: rules/projects/modules.md — §§3,8,9;
+// rules/platform/platform_model.md — source selection by target.
+func compilerStandardLibrarySources(path string, target CompilerTarget, sources []string) ([]string, bool) {
+	paths, ok := sourceimports.StandardLibrarySources(findCompilerSourceRoot(sources), path)
+	if !ok {
+		return nil, false
+	}
+	selected := []string{}
+	for _, path := range paths {
+		if sourcePathMatchesTarget(path, target) {
+			if data, err := os.ReadFile(path); err == nil && bytes.Contains(data, []byte("#target")) {
+				program := parser.New(lexer.NewWithFile(string(data), path)).ParseProgram()
+				if validateProgramTarget(program, target) != nil {
+					continue
+				}
+			}
+			selected = append(selected, path)
+		}
+	}
+	return selected, true
 }

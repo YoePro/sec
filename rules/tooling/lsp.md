@@ -482,8 +482,25 @@ freebsd-armv7: Open, Close; …` naming each failing target with its S1106/S1107
 members, and targets without an implementation. Its command
 (`sec.showLocations`) lists the failing implementation members, or the
 implementing types when every target conforms. Results are cached until a
-module source changes. Pending: code-lens resolve for lazy computation,
-lenses on implementations, and the same cross-target summary in `sec analyse`.
+module source changes.
+
+As of 2026-10-14, listing code lenses only parses the active snapshot and returns
+interface-name ranges with versioned declaration/snapshot data and no command.
+`codeLensProvider.resolveProvider` advertises `codeLens/resolve`; resolving the
+item runs the existing compiler-owned cross-target conformance projection on
+the bounded read-only worker pool, using current module sources and its shared
+cache. Concurrent resolves with the same source key share one in-flight
+computation; failed computations publish no partial report and are not cached
+as success. No second conformance engine or worker pool is introduced. Exact name,
+range, URI and source fingerprint validate the declaration; malformed items
+return `InvalidParams`, while changed or closed active documents return
+`ContentModified`, including changes arriving during analysis. Client-supplied
+commands are recomputed from compiler facts. Queued cancellation and edits can
+skip obsolete resolve work, and formatting may overtake it. Cancellation inside
+an already-running compiler analysis remains separate scheduling work.
+
+Pending: lenses on implementations and the same cross-target summary in
+`sec analyse`.
 
 ### Workspace symbols
 
@@ -500,7 +517,10 @@ Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
   members, fields, properties, events, and enum and union members; impl
   members appear under the implemented type; module headers, `init`, and
   `free` are not workspace symbols;
-- `SymbolInformation` locations at the exact declaration name with the
+- complete `SymbolInformation` locations for clients without lazy-range support,
+  and `WorkspaceSymbol` URI-only locations with declaration snapshot data for
+  clients advertising `workspace.symbol.resolveSupport` for `location.range`;
+- locations at the exact declaration name with the
   container: the module path for top-level declarations and the owning type
   for members;
 - case-insensitive subsequence matching ranked exact, prefix, substring, then
@@ -514,9 +534,18 @@ Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
   marked `core (read-only)` in their container name;
 - per-file declaration summaries cached by on-disk size and modification time
   or by the open snapshot's content hash, so only changed files are
-  re-parsed.
+  re-parsed;
+- `workspaceSymbol/resolve`, advertised by `workspaceSymbolProvider.resolveProvider`,
+  fills the exact declaration range from the shared document-symbol projection.
+  It preserves distinct overloads and member containers, validates source content
+  (including edits preserving disk size and timestamp), and rechecks current
+  workspace membership and editor-context visibility. Stale content returns
+  `ContentModified`; malformed or no-longer-accessible symbols return
+  `InvalidParams`. It uses the selected file's cached summary without another
+  semantic analysis or workspace traversal. Resolve is a read-only request that
+  formatting may overtake.
 
-Pending: workspace-symbol resolve, generated and dependency read-only
+Pending: generated and dependency read-only
 provenance once the shared compiler workspace exposes it, and project-manifest
 source roots instead of folder traversal.
 
@@ -751,9 +780,7 @@ The following major areas are not yet implemented:
 - prepare rename;
 - signature help;
 - workspace symbols;
-- workspace-symbol resolve;
 - code lens;
-- code-lens resolve;
 - inlay hints;
 - inlay-hint resolve;
 - inline values;
@@ -1695,7 +1722,16 @@ The same expected-type rule applies to subject and operand positions
   enum members already named by another case left out;
 - the pattern at the start of a `match` arm offers the subject's variants not
   yet covered by an unguarded arm — qualified enum members, bare union and
-  Option variants, `Ok` and `Err` for a Result — followed by `_`.
+  Option variants, `Ok` and `Err` for a Result — followed by `_`;
+- the variant position of a non-binding `is` or `is not` test offers only
+  the Sema-resolved subject's union variants, `Some`/`None` for Option, or
+  `Ok`/`Err` for Result, filtered by the typed prefix. A matching type
+  qualifier may precede the variant. This works in if/while headers and
+  ordinary boolean expression positions, including unfinished headers,
+  member and call subjects, and negated tests. It introduces no payload
+  binding or wildcard and invents no variants for unknown or non-union
+  subjects. Strings, comments, completed tests, and ordinary members named
+  `is` retain their ordinary completion behavior (2026-10-14).
 
 Within a `select` operation position, completion offers only canonical
 selectable operations valid for the resolved type and context. In Sec 0.1 it
@@ -1821,6 +1857,16 @@ unhandled states that propagate, propagation target, concrete-to-`error`
 widening, and remaining panic effect where relevant. For Option it explains
 Some success and None propagation/recovery; it must not claim Option cannot use
 try.
+
+Focused coverage includes single and multiple partial Result handlers, guarded
+catch-all handlers, guarded handlers followed by variant handlers, exhaustive
+catch-all fallback, and residual concrete-to-`error` widening. Checked arithmetic,
+indexing, and narrowing conversions are covered at both the `try` keyword and
+protected operation. Invalid operands, incompatible enclosing error channels,
+and invalid handler recovery values do not receive a successful try-flow hover;
+valid neighboring tries remain visible in a document with unrelated errors.
+Handler presentation requires a completed Sema handler plan, and incompatible
+Result propagation does not publish a completed Sema propagation fact.
 
 Carrier-incompatible handler diagnostics explain the actual carrier and offer
 the correct Result or Option patterns. Completion and hover expose `.Ok()` and
@@ -1978,11 +2024,29 @@ Implemented (2026-10-04), `textDocument/inlayHint` from Sema facts:
   without a declared type, from the resolved binding; left out when the
   initializer already spells the type (struct literal, `new`, or a conversion
   call named like the type);
+- inferred loop/pattern/Option-if binding types (`sec.inlayHints.types`,
+  2026-10-14): `: T` after each resolved non-discard loop name, match payload
+  binding, positive `is Some(binding)` name, and plain `Err(name)` try-handler
+  binding. The exact declaration/navigation fact supplies the type and borrow
+  authority, so shadowed names stay distinct. These hints use the same active-file
+  and requested-range filters and type-category setting as let hints. Unsupported
+  or unresolved patterns acquire no guessed binding type; underlying shallow
+  field-pattern analysis remains tracked by `frontend.match-v2` in
+  `governance/control_flow.yaml`;
 - parameter name (`sec.inlayHints.parameters`): `name:` before each argument
   of a Sema-resolved call with two or more arguments, stopping at a variadic
   parameter or spread argument and left out where the argument's final name
   already equals the parameter name;
-- both categories are on by default and individually switchable through
+- omitted struct-field defaults (`sec.inlayHints.defaults`, 2026-10-14): a
+  `defaults: field: value, …` preview immediately before a source literal's
+  closing brace, from the validated struct construction plan's default-sourced
+  final fields and the shared rendering of its stored `DefaultValueOf` results.
+  Explicit fields and spread-supplied fields are excluded. Nested literals get
+  their own hints; synthetic defaults and invalid/incomplete literals get none.
+  Preview labels are limited to eight fields and 160 Unicode scalars, with
+  individual values limited to 80 scalars and ellipsis denoting omitted preview
+  text. No source edit or inferred semantic default is introduced;
+- these categories are on by default and individually switchable through
   `initializationOptions.inlayHints` and `workspace/didChangeConfiguration`
   (`sec.inlayHints.*` in VS Code); hints are restricted to the requested range
   and never change source.
@@ -2003,9 +2067,9 @@ Explicit `<-` and `ref` forms, temporaries, existing references, and trivial
 copies get no hint.
 
 Pending: `move` hints for implicit consuming construction (explicit `<-` is
-required today), loop and pattern binding types, generic instantiation, resolved
-overload, unit conversion, contract, error type, allocation, target, defaulted
-struct fields, and inlay-hint resolve.
+required today), generic instantiation, resolved
+overload, unit conversion, contract, error type, allocation, target, and
+inlay-hint resolve.
 
 Possible categories:
 

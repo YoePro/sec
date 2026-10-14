@@ -24,7 +24,7 @@ func runBuildCommand(args []string) {
 		printUsage()
 		exitCLI(1)
 	}
-	if versions := validateDiscoveredProjectVersions([]string{options.InputFile}); versions.Errors > 0 {
+	if versions := validateDiscoveredProjectManifests([]string{options.InputFile}); versions.Errors > 0 {
 		printDiagnosticSummary(versions)
 		exitCLI(3)
 	}
@@ -100,6 +100,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		}
 	}
 	llvmPath := ""
+	var runtimeLibraries []string
 	switch options.Pipeline {
 	case "llvm":
 		ir, err := llvmcodegen.GenerateAnalyzed(program, analyzed.Analyzer, targetDefinition.LLVMTriple)
@@ -128,7 +129,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		}
 	case "mlir":
 		var cleanup func()
-		llvmPath, cleanup = runMLIRBuildPipeline(analyzed, targetDefinition.LLVMTriple, options)
+		llvmPath, runtimeLibraries, cleanup = runMLIRBuildPipeline(analyzed, targetDefinition.LLVMTriple, options)
 		defer cleanup()
 	default:
 		reportToolError("build", "unknown pipeline %q", options.Pipeline)
@@ -156,6 +157,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		}
 	}
 	clangArgs := []string{"-target", targetDefinition.LLVMTriple, llvmPath, "-o", options.OutputFile}
+	clangArgs = append(clangArgs, runtimeLibraries...)
 	cmd := exec.Command(clangPath, clangArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -170,7 +172,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 // translation, preserving structured analysis failures through build reporting.
 // Rules: rules/compiler/compiler_pipeline.md — §§2(8–9), 32–34;
 // rules/compiler/compiler_analysis.md — §58(3).
-func runMLIRBuildPipeline(analyzed analyzedProgram, triple string, options buildCommandOptions) (string, func()) {
+func runMLIRBuildPipeline(analyzed analyzedProgram, triple string, options buildCommandOptions) (string, []string, func()) {
 	cleanupPaths := []string{}
 	cleanup := func() {
 		for _, path := range cleanupPaths {
@@ -223,7 +225,7 @@ func runMLIRBuildPipeline(analyzed analyzedProgram, triple string, options build
 		reportPipelineError("mlir", err)
 		exitCLI(4)
 	}
-	return llvmPath, cleanup
+	return llvmPath, legacyMLIRRuntimeLibraries(mlirText, options.Target.OS), cleanup
 }
 
 // buildVersionLLVMComment records the invocation's version and artifact identity

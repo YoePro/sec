@@ -1,6 +1,6 @@
 # MD-046 / MD-056 — Explicit Low-Bit Extraction with `bit[N](value)`
 
-- **Status:** Applied 2026-10-12 to `rules/types/types.md` ("Explicit low-bit extraction"), `rules/declarations/registers.md` (§ 4, § 12.1), `rules/foundations/grammar.md` ("Bit extraction expression"), `rules/foundations/operators.md` (bitwise cross-reference) and `rules/platform/hardware-register-access.md` (§ 37.3); MD-056 is closed, MD-046 stays open for unit-annotated fields (§ 7.3), and enforcing the try requirement for Sec-only conversions with the platform migration to `bit[N]` remains tracked in governance
+- **Status:** Applied 2026-10-12 to `rules/types/types.md` ("Explicit low-bit extraction"), `rules/declarations/registers.md` (§ 4, § 12.1), `rules/foundations/grammar.md` ("Bit extraction expression"), `rules/foundations/operators.md` (bitwise cross-reference) and `rules/platform/hardware-register-access.md` (§ 37.3); MD-056 is closed, MD-046 stays open for unit-annotated fields (§ 7.3), and enforcing the try requirement for Sec-only conversions with the platform migration to `bit[N]` remains tracked in governance — **Superseded in full 2026-10-13** by `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`; its unit-source exclusion and open MD-046 status no longer apply.
 - **Created:** 2026-10-12
 - **Last updated:** 2026-10-12
 - **Document revision:** 1.0

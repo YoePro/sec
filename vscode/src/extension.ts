@@ -39,7 +39,8 @@ export function activate(context: vscode.ExtensionContext) {
       inlayHints: {
         types: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("types", true),
         parameters: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("parameters", true),
-        ownership: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("ownership", true)
+        ownership: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("ownership", true),
+        defaults: vscode.workspace.getConfiguration("sec.inlayHints").get<boolean>("defaults", true)
       }
     }
   };

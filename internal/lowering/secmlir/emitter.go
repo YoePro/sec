@@ -314,6 +314,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		}
 		fmt.Fprintf(&e.out, "\"sec.const.bool\"() <{value = %t}> : () -> ", *operation.Bool)
 		return e.finishResultOperation(operation)
+	case semantic.OpBoolNot:
+		return e.emitBooleanNot(operation)
 	case semantic.OpConstFloat:
 		if err := e.emitResult(operation); err != nil {
 			return err

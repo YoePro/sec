@@ -12,6 +12,9 @@ import (
 	"sec/internal/parser"
 )
 
+// The deliberate .len/.ptr uses retain bootstrap compatibility coverage;
+// ordinary source-corpus fixtures use the canonical public member spellings.
+// Rules: rules/compiler/compiler_known_members.md — "Legacy lowercase member spellings".
 func TestCompilerKnownFundamentalMembers(t *testing.T) {
 	input := `
 module main
@@ -34,6 +37,7 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
 	let fromBytes: Result[string, StringError] := string.FromByteArray(bytes)
 	unsafe {
 		let address: RawPtr[byte] := text.Ptr
+		let migrationAddress: RawPtr[byte] := text.ptr
 		let value: int := ptr.Read()
 		ptr.Write(value)
 	}
@@ -70,8 +74,7 @@ impl Formatted {
 	}
 }
 
-fn Bytes(high: byte, low: byte) Result[string, StringError] {
-	let bytes: byte[] := [high, low]
+fn Bytes(bytes: byte[]) Result[string, StringError] {
 	return bytes.ToString()
 }
 

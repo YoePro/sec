@@ -5,7 +5,7 @@ fn Consume(-> arena: Arena) void {
 }
 
 fn ReadWhileLive() byte {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let mut arena := Arena.FromBuffer(buffer)
     let first := buffer[0]
     arena.Release()
@@ -13,7 +13,7 @@ fn ReadWhileLive() byte {
 }
 
 fn TwoArenas() void {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let mut first := Arena.FromBuffer(buffer)
     let mut second := Arena.FromBuffer(buffer)
     first.Release()
@@ -21,7 +21,7 @@ fn TwoArenas() void {
 }
 
 fn MovedArenaStillControls() byte {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let arena := Arena.FromBuffer(buffer)
     let mut owner :<- arena
     let first := buffer[0]
@@ -30,7 +30,7 @@ fn MovedArenaStillControls() byte {
 }
 
 fn ReturnBinding() Arena {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let arena := Arena.FromBuffer(buffer)
     return arena
 }
@@ -40,19 +40,19 @@ fn ReturnDirect(buffer: ref mut byte[]) Arena {
 }
 
 fn PassConsuming() void {
-    let mut buffer: byte[] := [0u, 0u]
+    let mut buffer: byte[2] := [0u, 0u]
     let arena := Arena.FromBuffer(buffer)
     Consume(<-arena)
 }
 
 fn ImmutableBacking() void {
-    let buffer: byte[] := [0u, 0u]
+    let buffer: byte[2] := [0u, 0u]
     let mut arena := Arena.FromBuffer(buffer)
     arena.Reset()
 }
 
 fn WrongElement() void {
-    let mut buffer: int[] := [0, 0]
+    let mut buffer: int[2] := [0, 0]
     let mut arena := Arena.FromBuffer(buffer)
     arena.Reset()
 }

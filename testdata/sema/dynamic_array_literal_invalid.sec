@@ -1,0 +1,6 @@
+module main
+
+fn Main() int {
+    let values: int[] := [1, 2]
+    return 0
+}

@@ -2,7 +2,7 @@ module units
 
 /** Hertz */
 unit Hz physical
-impl Hz {
+impl <Hz> {
     Kind: frequency
     LongName: "Hertz"
     Symbol: "Hz"
@@ -31,7 +31,7 @@ impl Hz {
 
 /** Newton */
 unit N decimal physical
-impl N {
+impl <N> {
     LongName: "Newton"
     Symbol: "N"
     BaseUnit: false
@@ -51,7 +51,7 @@ impl N {
 
 /** Pascal */
 unit Pa decimal physical
-impl Pa {
+impl <Pa> {
     LongName: "Pascal"
     Symbol: "Pa"
     BaseUnit: false

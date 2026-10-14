@@ -107,5 +107,5 @@ fn CheckTimerStatus() void {
     let active := TMR0_CONFIG.IsRunning
 
     // Read the current elapsed ticks with unit safety verification
-    let currentCount: ticks := TMR0_VALUE.Ticks
+    let currentCount: <ticks> := TMR0_VALUE.Ticks
 }

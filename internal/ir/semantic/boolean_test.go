@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -164,15 +165,15 @@ func TestRangeMembershipBuildsBoundComparisons(t *testing.T) {
 	}
 }
 
-// Boolean operators outside the integer subset stay behind package gate 13,
-// so the Sec MLIR path (package 12) keeps rejecting them explicitly.
-func TestBooleanOperatorsAreRejectedBeforePackage13(t *testing.T) {
-	_, err := analyzedModule(t, `module main
-
-fn Not(ready: bool) bool {
-    return !ready
-}
-`, 12)
+// Short-circuit logical flow remains behind package gate 13. Builtin boolean
+// equality and unary negation use existing primitive operations before it.
+// Rules: rules/foundations/operators.md — "Short-circuit evaluation".
+func TestShortCircuitLogicalOperatorsAreRejectedBeforePackage13(t *testing.T) {
+	data, err := os.ReadFile("../../../testdata/semantic_ir/boolean_negation/short_circuit.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = analyzedModule(t, string(data), 12)
 	var unsupported *UnsupportedFeatureError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("err = %v, want an unsupported feature", err)

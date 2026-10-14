@@ -8,11 +8,11 @@ import (
 	"sec/internal/sema"
 )
 
-// validateDiscoveredProjectVersions reports each governing manifest once,
-// before body analysis. Source spans belong to sec.toml rather than the source
+// validateDiscoveredProjectManifests validates versions and project boundaries
+// before body analysis, deduplicating occurrences across governing manifests. Source spans belong to sec.toml rather than the source
 // file that caused discovery.
 // Rules: rules/projects/projects.md — §§8–11,36,48(1–3).
-func validateDiscoveredProjectVersions(sources []string) diagnosticSummary {
+func validateDiscoveredProjectManifests(sources []string) diagnosticSummary {
 	paths := map[string]bool{}
 	for _, source := range sources {
 		if source != "" {
@@ -31,7 +31,23 @@ func validateDiscoveredProjectVersions(sources []string) diagnosticSummary {
 	}
 	sort.Strings(ordered)
 	summary := diagnosticSummary{}
+	boundarySeen := map[string]bool{}
+	boundaryChecked := map[string]bool{}
 	for _, path := range ordered {
+		if !boundaryChecked[path] {
+			boundaryChecked[path] = true
+			for _, issue := range sema.ValidateProjectBoundary(path, nil) {
+				boundaryChecked[issue.File] = true
+				if issue.PreviousFile != "" {
+					boundaryChecked[issue.PreviousFile] = true
+				}
+				if !boundarySeen[issue.File] {
+					boundarySeen[issue.File] = true
+					printSemaError(os.Stderr, issue)
+					summary.Errors++
+				}
+			}
+		}
 		text, err := os.ReadFile(path)
 		if err != nil {
 			reportToolError("project", "%v", err)

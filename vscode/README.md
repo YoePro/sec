@@ -43,8 +43,8 @@ This repository now contains a first server entrypoint at `cmd/lsp`. Build it
 with:
 
 ```bash
-go build -o bin/lsp-sec ./cmd/lsp
-GOOS=windows GOARCH=amd64 go build -o bin/lsp-sec.exe ./cmd/lsp
+go build -trimpath -o bin/lsp-sec ./cmd/lsp
+GOOS=windows GOARCH=amd64 go build -trimpath -o bin/lsp-sec.exe ./cmd/lsp
 ```
 
 When the extension is installed/copied, put the language-server binaries in the

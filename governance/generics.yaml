@@ -350,7 +350,7 @@ integrations:
     document_revision: "2.0"
     document_created: "2026-08-14"
     document_last_updated: "2026-08-14"
-    summary: Generic struct and union inline-storage edges are checked before type resolution for direct, fixed-array-mediated, and changing-argument recursion. Concrete generic union payloads are checked again after substitution. Complete cross-template forward-reference finalization and storage-cycle reporting remain partial. This entry covers represented recursive storage, not the canonical InstantiationGraph or general monomorphization termination model.
+    summary: Generic struct and union inline-storage guards avoid recursive host-type construction, while the shared source by-value layout graph owns complete field, variant, source-argument and nested generic-carrier dependency diagnostics. Concrete union payloads are checked again after substitution. Cross-template forward-reference finalization and unresolved field/variant metadata remain partial. This entry covers recursive storage, independently of canonical specialization demand and non-convergence.
     rules:
       - rules/declarations/generics.md
       - rules/declarations/unions.md
@@ -363,6 +363,8 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/types.go
       - internal/sema/generic_storage.go
+      - internal/sema/analyzer_struct_layout.go
+      - internal/sema/generic_layout_paths.go
     tests:
       - internal/sema/analyzer_test.go
       - testdata/generics_valid.sec
@@ -372,12 +374,18 @@ integrations:
       - cmd/lsp/generic_storage_test.go
       - testdata/generics/recursive_boundaries_valid.sec
       - testdata/generics/recursive_boundaries_invalid.sec
+      - internal/sema/generic_layout_paths_test.go
+      - cmd/compiler/generic_layout_paths_test.go
+      - cmd/lsp/generic_layout_paths_test.go
+      - testdata/generics/storage_paths_invalid.sec
+      - testdata/generics/storage_paths_cross_a.sec
+      - testdata/generics/storage_paths_cross_b.sec
+      - testdata/generics/storage_paths_scoped_invalid.sec
     implemented:
       - generic declaration name and arity pre-registration
       - generic struct template parameter scopes
       - generic struct direct recursive-storage diagnostic
       - generic struct fixed-array-mediated recursive-storage diagnostic
-      - generic struct changing-argument non-convergence diagnostic for the implemented forms
       - generic struct selected finite-indirection cases remain accepted
       - generic union template registration
       - generic union ordinary payload substitution for non-recursive examples
@@ -387,12 +395,13 @@ integrations:
       - generic union fixed-array-mediated and changing-argument recursion diagnostics
       - post-substitution recursive-storage checks for concrete union payloads
       - template and concrete generic storage checks preserve shared and mutable references, references to arrays and views, raw pointers, dynamic arrays and owning list/map/set boundaries; fixed arrays, Option payloads and ordinary by-value wrappers remain subject to recursive-layout rejection
+      - changing generic source arguments, including argument transformations that stabilize at a finite instantiation set, are rejected as recursive by-value storage when the layout graph proves infinite representation; source spelling alone never supplies a non-converging InstantiationKey proof
+      - one shared by-value layout diagnostic carries the complete field/variant path, declared ordered generic parameters, source argument transformations, shortest nested generic-carrier field witnesses and navigable declaration/dependency locations across files; registered S1055/S1071 Invalid proofs replace competing local generic-recursion messages in CLI and LSP
     partial:
       - generic type references encountered before a referenced generic declaration has completed body analysis can retain InvalidType template metadata, requiring a broader forward-template finalization audit
     remaining:
       - ensure no representation-dependent accepted generic instance contains unresolved InvalidType field or variant metadata
       - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete predeclaration skeletons
-      - evolve recursive storage diagnostics from the current local cases to complete layout/storage dependency paths without conflating them with canonical InstantiationKey non-convergence
     bug_reference:
       - correction8.md
     governance_reconciliation:
@@ -409,8 +418,14 @@ integrations:
       - forward generic type reference cannot leave unresolved InvalidType storage metadata
       - existing generic struct recursion tests remain green
       - existing Maybe[T] generic union substitution and construction tests remain green
-    revised: "2026-10-13"
+    revised: "2026-10-14"
     verification:
+      - command: go vet ./internal/sema/... ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'GenericStorage|Generic.*Recursive|ByValueLayout|StructLayoutCycle' -count=1
+        result: passed on 2026-10-14; seven local/indirect storage cycles, nested generic carriers, finite argument stabilization, cross-file declaration-order controls, local/associated declarations, immutable source navigation, preserved finite boundaries and seven CLI frontend/backend entry paths
+      - command: go test ./internal/sema/... ./internal/ir/semantic ./cmd/compiler -count=1
+        result: passed on 2026-10-14; complete semantic subtree, Semantic IR and compiler CLI suites after shared recursive-storage diagnostics and scoped-declaration validation
       - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-13
       - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Generic|Generics|Recursive.*Layout' -count=1

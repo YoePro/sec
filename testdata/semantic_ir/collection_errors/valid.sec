@@ -1,0 +1,6 @@
+module main
+
+fn Allocation() CollectionError { return CollectionError.AllocationFailed }
+fn Capacity() CollectionError { return CollectionError.CapacityExceeded }
+fn Overflow() CollectionError { return CollectionError.SizeOverflow }
+fn Same(left: CollectionError, right: CollectionError) bool { return left == right }

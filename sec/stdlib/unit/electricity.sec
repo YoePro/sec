@@ -6,7 +6,7 @@ module units
 
 /** Coulomb */
 unit C decimal physical
-impl C {
+impl <C> {
     LongName: "Coulomb"
     Symbol: "C"
     BaseUnit: false
@@ -90,7 +90,7 @@ impl C {
 
 /** Volt */
 unit V decimal physical
-impl V {
+impl <V> {
     LongName: "Volt"
     Symbol: "V"
     BaseUnit: false
@@ -128,7 +128,7 @@ impl V {
 
 /** Ohm */
 unit ohm decimal physical
-impl ohm {
+impl <ohm> {
     LongName: "Ohm"
     Symbol: "Ω"
     BaseUnit: false
@@ -184,7 +184,7 @@ impl ohm {
 
 /** Siemens */
 unit S decimal physical
-impl S {
+impl <S> {
     LongName: "Siemens"
     Symbol: "S"
     BaseUnit: false
@@ -212,7 +212,7 @@ impl S {
 
 /** Farad */
 unit F decimal physical
-impl F {
+impl <F> {
     LongName: "Farad"
     Symbol: "F"
     BaseUnit: false
@@ -240,7 +240,7 @@ impl F {
 
 /** Weber */
 unit Wb decimal physical
-impl Wb {
+impl <Wb> {
     LongName: "Weber"
     Symbol: "Wb"
     BaseUnit: false
@@ -268,7 +268,7 @@ impl Wb {
 
 /** Tesla */
 unit T decimal physical
-impl T {
+impl <T> {
     LongName: "Tesla"
     Symbol: "T"
     BaseUnit: false
@@ -281,7 +281,7 @@ impl T {
 
 /** Henry */
 unit H decimal physical
-impl H {
+impl <H> {
     LongName: "Henry"
     Symbol: "H"
     BaseUnit: false
@@ -309,7 +309,7 @@ impl H {
 
 /** Radians per second (Angular frequency) */
 unit rad_s decimal physical
-impl rad_s {
+impl <rad_s> {
     Kind: angular_velocity
     LongName: "Radian per Second"
     Symbol: "rad/s"
@@ -331,7 +331,7 @@ impl rad_s {
 
 /** Decibel (Ratio/Gain) */
 unit dB decimal physical
-impl dB {
+impl <dB> {
     LongName: "Decibel"
     Symbol: "dB"
     BaseUnit: false
@@ -357,7 +357,7 @@ impl dB {
 
 /** Volt-Ampere (Apparent Power) */
 unit VA decimal physical
-impl VA {
+impl <VA> {
     Kind: apparent_power
     LongName: "Volt Ampere"
     Symbol: "VA"
@@ -378,7 +378,7 @@ impl VA {
 
 /** Volt-Ampere Reactive (Reactive Power) */
 unit var decimal physical
-impl var {
+impl <var> {
     Kind: reactive_power
     LongName: "Volt Ampere Reactive"
     Symbol: "var"
@@ -400,7 +400,7 @@ impl var {
 
 /** Ampere-hour (Battery Charge Capacity) */
 unit Ah decimal physical
-impl Ah {
+impl <Ah> {
     LongName: "Ampere Hour"
     Symbol: "Ah"
     BaseUnit: false

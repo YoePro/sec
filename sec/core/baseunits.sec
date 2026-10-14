@@ -10,7 +10,7 @@ module core
 
 /** Metre or meter */
 unit m physical
-impl m {
+impl <m> {
     LongName: "Meter"
     Symbol: "m"
     BaseUnit: true
@@ -22,7 +22,7 @@ impl m {
 
 /** Kilogram */
 unit kg physical
-impl kg {
+impl <kg> {
     LongName: "Kilogram"
     Symbol: "kg"
     BaseUnit: true
@@ -34,7 +34,7 @@ impl kg {
 
 /** Second */
 unit s physical
-impl s {
+impl <s> {
     LongName: "Second"
     Symbol: "s"
     BaseUnit: true
@@ -47,7 +47,7 @@ impl s {
 
 /** Ampere */
 unit A physical
-impl A {
+impl <A> {
     LongName: "Ampere"
     Symbol: "A"
     BaseUnit: true
@@ -59,7 +59,7 @@ impl A {
 
 /** Kelvin */
 unit K physical
-impl K {
+impl <K> {
     LongName: "Kelvin"
     Symbol: "K"
     BaseUnit: true
@@ -71,7 +71,7 @@ impl K {
 
 /** Mol */
 unit mol physical
-impl mol {
+impl <mol> {
     LongName: "Mole"
     Symbol: "mol"
     BaseUnit: true
@@ -83,7 +83,7 @@ impl mol {
 
 /** Candela */
 unit cd physical
-impl cd {
+impl <cd> {
     LongName: "Candela"
     Symbol: "cd"
     BaseUnit: true
@@ -99,7 +99,7 @@ impl cd {
 
 /** Minute */
 unit min physical
-impl min {
+impl <min> {
     LongName: "Minute"
     Symbol: "min"
     BaseUnit: false
@@ -111,7 +111,7 @@ impl min {
 
 /** Hour */
 unit h physical
-impl h {
+impl <h> {
     LongName: "Hour"
     Symbol: "h"
     BaseUnit: false
@@ -123,7 +123,7 @@ impl h {
 
 /** Day */
 unit day physical
-impl day {
+impl <day> {
     LongName: "Day"
     Symbol: "day"
     BaseUnit: false
@@ -135,7 +135,7 @@ impl day {
 
 /** Week */
 unit week physical
-impl week {
+impl <week> {
     LongName: "Week"
     Symbol: "week"
     BaseUnit: false
@@ -147,7 +147,7 @@ impl week {
 
 /** Millisecond */
 unit ms physical
-impl ms {
+impl <ms> {
     LongName: "Millisecond"
     Symbol: "ms"
     BaseUnit: false
@@ -160,7 +160,7 @@ impl ms {
 
 /** Microsecond */
 unit us physical
-impl us {
+impl <us> {
     LongName: "Microsecond"
     Symbol: "us"
     BaseUnit: false
@@ -173,7 +173,7 @@ impl us {
 
 /** Nanosecond */
 unit ns physical
-impl ns {
+impl <ns> {
     LongName: "Nanosecond"
     Symbol: "ns"
     BaseUnit: false
@@ -189,7 +189,7 @@ impl ns {
 
 /** Picosecond */
 unit ps physical
-impl ps {
+impl <ps> {
     LongName: "Picosecond"
     Symbol: "ps"
     BaseUnit: false
@@ -201,7 +201,7 @@ impl ps {
 
 /** Femtosecond */
 unit fs physical
-impl fs {
+impl <fs> {
     LongName: "Femtosecond"
     Symbol: "fs"
     BaseUnit: false
@@ -213,7 +213,7 @@ impl fs {
 
 /** Attosecond */
 unit as physical
-impl as {
+impl <as> {
     LongName: "Attosecond"
     Symbol: "as"
     BaseUnit: false
@@ -225,7 +225,7 @@ impl as {
 
 /** Zeptosecond */
 unit zs physical
-impl zs {
+impl <zs> {
     LongName: "Zeptosecond"
     Symbol: "zs"
     BaseUnit: false
@@ -237,7 +237,7 @@ impl zs {
 
 /** Yoctosecond */
 unit ys physical
-impl ys {
+impl <ys> {
     LongName: "Yoctosecond"
     Symbol: "ys"
     BaseUnit: false
@@ -253,7 +253,7 @@ impl ys {
  * The scale is based on the average length of a month in seconds (30.44 days).
  */
 unit mo physical
-impl mo {
+impl <mo> {
     LongName: "Month"
     Symbol: "mo"
     BaseUnit: false
@@ -265,7 +265,7 @@ impl mo {
 
 /** Year */
 unit yr physical
-impl yr {
+impl <yr> {
     LongName: "Year"
     Symbol: "yr"
     BaseUnit: false
@@ -277,7 +277,7 @@ impl yr {
 
 /** Decade */
 unit decade physical
-impl decade {
+impl <decade> {
     LongName: "Decade"
     Symbol: "decade"
     BaseUnit: false
@@ -289,7 +289,7 @@ impl decade {
 
 /** Century */
 unit century physical
-impl century {
+impl <century> {
     LongName: "Century"
     Symbol: "century"
     BaseUnit: false
@@ -301,7 +301,7 @@ impl century {
 
 /** Millennia */
 unit millennia physical
-impl millennia {
+impl <millennia> {
     LongName: "Millennia"
     Symbol: "millennia"
     BaseUnit: false

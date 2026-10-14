@@ -1,0 +1,4 @@
+module main
+
+fn Unknown() CollectionError { return CollectionError.Missing }
+fn WrongDomain(value: AllocationError) CollectionError { return value }

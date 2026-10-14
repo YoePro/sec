@@ -1,0 +1,7 @@
+module main
+
+fn main() int {
+    let data := Supported { value: 7.5 }
+    if data.value % 2.0 != 1.5 { return 1 }
+    return 0
+}

@@ -70,7 +70,8 @@ function activate(context) {
             inlayHints: {
                 types: vscode.workspace.getConfiguration("sec.inlayHints").get("types", true),
                 parameters: vscode.workspace.getConfiguration("sec.inlayHints").get("parameters", true),
-                ownership: vscode.workspace.getConfiguration("sec.inlayHints").get("ownership", true)
+                ownership: vscode.workspace.getConfiguration("sec.inlayHints").get("ownership", true),
+                defaults: vscode.workspace.getConfiguration("sec.inlayHints").get("defaults", true)
             }
         }
     };

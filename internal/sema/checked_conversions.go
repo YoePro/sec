@@ -204,14 +204,14 @@ func conversionDomainMayFailAt(target, source Type) (ConversionFailureKind, bool
 // operand, any conversion whose relation can fail (even where this target
 // proves the value fits). Nested Sec-only conversions stay outside the
 // failure set until MD-056 allows their try requirement to be enforced.
-func (a *Analyzer) appendCheckedConversionPoint(points []TryFailurePoint, call *ast.CallExpression, root bool) []TryFailurePoint {
+func (a *Analyzer) appendCheckedConversionPoint(points []TryFailurePoint, call ast.Expression, root bool) []TryFailurePoint {
 	_, checked := a.checkedConversions[call]
 	_, relation := a.fallibleConversionRelations[call]
 	if !checked && !(relation && root) {
 		return points
 	}
 	a.protectedCheckedConversions[call] = true
-	return append(points, TryFailurePoint{Kind: TryFailureConversion, ErrorType: a.types["ConversionError"], Expression: call, Token: call.Token})
+	return append(points, TryFailurePoint{Kind: TryFailureConversion, ErrorType: a.types["ConversionError"], Expression: call, Token: expressionToken(call)})
 }
 
 // CheckedConversionOf returns the intrinsic failure a checked explicit
@@ -227,14 +227,14 @@ func (a *Analyzer) CheckedConversionOf(call *ast.CallExpression) (ConversionFail
 // reportCheckedConversions rejects every checked conversion that no try
 // protects, once all bodies are analyzed.
 func (a *Analyzer) reportCheckedConversions() {
-	calls := make([]*ast.CallExpression, 0, len(a.checkedConversions))
+	calls := make([]ast.Expression, 0, len(a.checkedConversions))
 	for call := range a.checkedConversions {
 		if !a.protectedCheckedConversions[call] {
 			calls = append(calls, call)
 		}
 	}
 	sort.SliceStable(calls, func(i, j int) bool {
-		left, right := calls[i].Token, calls[j].Token
+		left, right := expressionToken(calls[i]), expressionToken(calls[j])
 		if left.File != right.File {
 			return left.File < right.File
 		}
@@ -245,7 +245,7 @@ func (a *Analyzer) reportCheckedConversions() {
 	})
 	for _, call := range calls {
 		conversion := a.checkedConversions[call]
-		a.addErrorAtTokenWithMetadata(call.Token, diagnostics.CheckedConversionRequiresTry,
+		a.addErrorAtTokenWithMetadata(expressionToken(call), diagnostics.CheckedConversionRequiresTry,
 			"Write try before the conversion to propagate ConversionError, handle it with try ... { Err(_) => ... }, or prove the value range first (for example with an if condition).",
 			"converting %s to %s may fail with ConversionError.%s and requires try", typeDisplayName(conversion.source), typeDisplayName(conversion.target), conversion.failure)
 	}

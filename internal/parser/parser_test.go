@@ -275,7 +275,7 @@ func TestParseRevisionTwoUnitCategoriesAndMetadata(t *testing.T) {
 unit Octet uint information
 unit Percent ratio
 
-impl Percent {
+impl <Percent> {
 	Kind: ratio
 	Transform: logarithmic
 	Offset: 0

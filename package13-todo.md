@@ -19,7 +19,7 @@ Verified in this checkout:
 
 - `go test ./internal/sema -run ResolvedStructPlans -count=1` — passed.
 - `go test ./internal/ir/semantic -run Package13 -count=1` — passed.
-- `SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./internal/lowering/secmlir -run Package13 -count=1` — passed.
+- `SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./internal/lowering/secmlir -run Package13 -count=1` — passed.
 - `cmake --build build/sec-mlir --target check-sec-mlir -j2` — passed, 78/78.
 
 The command must use an **absolute** `SEC_MLIR_BIN`: Go runs package tests

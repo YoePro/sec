@@ -1614,6 +1614,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if fb.owner.maxPackage < 7 {
 			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
 		}
+		if value, handled, err := fb.buildBuiltinBooleanEquality(expr); handled {
+			return value, err
+		}
 		if fb.owner.maxPackage >= 13 {
 			if value, handled, err := fb.buildBooleanOperator(expr); handled {
 				return value, err
@@ -3174,9 +3177,12 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 //
 // Rules:
 //   - rules/foundations/operators.md — "Compound arithmetic failure"
+//   - rules/foundations/operators.md — "Logical negation"
 //   - rules/compiler/semantic_ir.md — § 58 "Arithmetic"
 func semanticOperatorKind(resolved sema.ResolvedOperator, op *Operation) bool {
 	switch resolved.Kind {
+	case sema.ResolvedBoolNot:
+		op.Kind = OpBoolNot
 	case sema.ResolvedIntegerUnaryPlus:
 		op.Kind = OpIntUnaryPlus
 	case sema.ResolvedIntegerNegateChecked:
@@ -3321,6 +3327,10 @@ func operatorSpelling(expr ast.Expression) string {
 // Rules: rules/compiler/semantic_ir.md — resolved call facts;
 // rules/declarations/interfaces.md — §6; compiler_pipeline.md — lowering prerequisites.
 func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, error) {
+	if _, rounded := fb.owner.analyzer.RoundedConversionOf(call); rounded {
+		// MD-047: Semantic IR has no rounding-conversion operation yet.
+		return builtValue{}, fb.unsupported("explicit rounded conversion (RoundingMode)", call.Token)
+	}
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {
 		return builtValue{}, fb.unsupported("unresolved function call", call.Token)

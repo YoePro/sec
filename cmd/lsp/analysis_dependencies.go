@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"sec/internal/ast"
 )
@@ -78,9 +79,37 @@ func sourceDependencyAffected(dependencies map[string]bool, source string) bool 
 	if dependencies[source] {
 		return true
 	}
+	// A new/closed manifest changes the project boundary even when its path
+	// could not occur in the previously resolved source closure.
+	// Rules: rules/projects/projects.md — §§4,36,48.
+	if isProjectManifest(source) {
+		changedRoot := filepath.Dir(filepath.Dir(source))
+		for file := range dependencies {
+			root := filepath.Dir(file)
+			if isProjectManifest(file) {
+				root = filepath.Dir(filepath.Dir(file))
+			}
+			if projectPathsOverlap(root, changedRoot) {
+				return true
+			}
+		}
+	}
 	dir := filepath.Dir(source)
 	for file := range dependencies {
 		if filepath.Dir(file) == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// projectPathsOverlap checks ancestor boundaries by path components, so a
+// similarly named neighboring project does not acquire a dependency.
+// Rules: rules/projects/projects.md — §§4,36; modules.md — source-tree boundaries.
+func projectPathsOverlap(left, right string) bool {
+	for _, pair := range [][2]string{{left, right}, {right, left}} {
+		relative, err := filepath.Rel(pair[0], pair[1])
+		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return true
 		}
 	}

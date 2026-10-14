@@ -1,0 +1,6 @@
+module main
+import "net/ip"
+
+fn Main() int {
+    return ip.Ipv6Address.Parse("::").Value
+}

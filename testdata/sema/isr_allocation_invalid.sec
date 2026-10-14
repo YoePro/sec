@@ -1,0 +1,35 @@
+module main
+fn Leaf(buffer: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(buffer)
+    discard arena.New[int]()
+    arena.Release()
+}
+fn Middle(buffer: ref mut byte[]) void { Leaf(buffer) }
+extern "C" fn Foreign() void
+@noAlloc
+extern "C" fn Trusted() void
+@isr
+fn Direct(buffer: ref mut byte[]) void { Leaf(buffer) }
+@interrupt(vector: 3)
+fn Bound() void { unsafe { Foreign() } }
+@interruptSafe
+fn Helper(buffer: ref mut byte[]) void { Middle(buffer) }
+@isr
+@noAlloc
+unsafe fn Redundant(buffer: ref mut byte[]) void { unsafe { Middle(buffer) } }
+@interruptSafe
+fn Deferred(buffer: ref mut byte[]) void { defer { Middle(buffer) } }
+@interruptSafe
+fn Unknown(action: fn() void) void { action() }
+@interruptSafe
+fn ForeignRoot() void { unsafe { Foreign() } }
+@isr
+fn Proven() void {}
+@interruptSafe
+fn ContractProven() void { unsafe { Trusted() } }
+@isr
+fn Local(buffer: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(buffer)
+    discard arena.New[int]()
+    arena.Release()
+}

@@ -1,0 +1,3 @@
+module main
+
+fn Bad(value: int) bool { return !value }

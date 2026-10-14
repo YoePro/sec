@@ -68,7 +68,7 @@ func compilerKnownInterfaceMember(method Function) (CompilerKnownMember, bool) {
 			if required.ReceiverMutable {
 				receiver += " (mutable)"
 			}
-			return CompilerKnownMember{
+			member := CompilerKnownMember{
 				ID: required.CompilerKnownID, Name: required.Name, Kind: CompilerKnownMethod,
 				Result: method.ReturnType, Signature: "fn " + required.Name + "(" + strings.Join(parameters, ", ") + ") " + typeDisplayName(required.ReturnType),
 				Category:          CompilerKnownOperation,
@@ -76,7 +76,14 @@ func compilerKnownInterfaceMember(method Function) (CompilerKnownMember, bool) {
 				Receiver:          receiver,
 				Documentation:     "The mutable pull-iteration requirement; returns the next owned element or None.",
 				TargetRestriction: "none; compile-time interface contract",
-			}, true
+			}
+			// Iterator[T].Next carries the specialized T in Option[T].
+			// Keep direct requirement facts aligned with registry presentation.
+			// Rules: rules/declarations/interfaces.md — §9.1.
+			if iface.Name == "Iterator" && len(method.ReturnType.TypeArgs) == 1 {
+				member = instantiateCompilerKnownPresentation(member, Type{Name: iface.Name, Kind: InterfaceType, TypeArgs: method.ReturnType.TypeArgs})
+			}
+			return member, true
 		}
 	}
 	return CompilerKnownMember{}, false

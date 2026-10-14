@@ -1,0 +1,3 @@
+module main
+
+fn Deferred(ready: bool) bool { return ready && true }

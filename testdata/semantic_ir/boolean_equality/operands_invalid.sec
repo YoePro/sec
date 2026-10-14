@@ -1,0 +1,4 @@
+module main
+
+fn Bad(left: bool, right: int) bool { return left == right }
+fn BadOther(left: int, right: bool) bool { return left != right }

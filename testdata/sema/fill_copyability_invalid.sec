@@ -1,0 +1,25 @@
+module main
+
+type Resource struct { handle: ref mut int }
+
+fn Fixed(resource: Resource) void {
+    let values: Resource[2] := fill(resource)
+}
+
+fn EmptyFixed(resource: Resource) void {
+    let values: Resource[0] := fill(resource)
+}
+
+fn Dynamic(resource: Resource, count: uint) Result[void, CollectionError] {
+    let values: Resource[] := try fill(resource, count)
+    return Ok()
+}
+
+fn EmptyDynamic(resource: Resource) Result[void, CollectionError] {
+    let values: Resource[] := try fill(resource, 0u)
+    return Ok()
+}
+
+fn Slice(values: ref mut Resource[], resource: Resource) void {
+    values.Fill(resource)
+}

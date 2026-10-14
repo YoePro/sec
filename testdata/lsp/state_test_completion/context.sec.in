@@ -1,0 +1,10 @@
+module main
+type State union { Idle, Running(int), Done }
+type Other union { Wrong }
+type Holder struct { state: State }
+enum Mode { First, Second }
+fn Current(value: State) State { return value }
+fn Check(state: State, holder: Holder, optional: Option[int], result: Result[int, IndexError], number: int, mode: Mode) bool {
+    @
+    return false
+}

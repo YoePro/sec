@@ -41,7 +41,7 @@ type Ipv4WireHeader register[160] msb-first big-endian {
 
 impl Ipv4WireHeader {
     init(buffer: ref byte[]) NetError {
-        if buffer.len < 20 {
+        if buffer.Len < 20 {
             return Err(NetError.BufferTooSmall)
         }
 

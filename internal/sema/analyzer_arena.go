@@ -40,14 +40,14 @@ func (a *Analyzer) referencedArenaDomain(receiver *ast.Identifier, symbol Symbol
 	if name, _, _, _, _ := a.referenceOriginForExpression(receiver); name != "" && name != receiver.Value {
 		if target, ok := a.symbols[name]; ok && target.Type.Kind != ReferenceType && target.Type.Name == "Arena" {
 			if target.Type.ArenaDomainID == "" {
-				target.Type.ArenaDomainID = a.newArenaDomainID(target.Token, "owner:"+name)
+				target.Type.ArenaDomainID = a.newArenaDomainID(target.Token, "owner")
 				a.symbols[name] = target
 			}
 			return target.Type.ArenaDomainID, name, target.Local
 		}
 	}
 	if symbol.Type.ArenaDomainID == "" {
-		symbol.Type.ArenaDomainID = a.newArenaDomainID(symbol.Token, "referenced:"+receiver.Value)
+		symbol.Type.ArenaDomainID = a.newArenaDomainID(symbol.Token, "referenced")
 		a.symbols[receiver.Value] = symbol
 	}
 	return symbol.Type.ArenaDomainID, receiver.Value, false
@@ -93,7 +93,7 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 		}
 	}
 	if domain == "" {
-		domain = a.newArenaDomainID(expressionToken(expr), "binding:"+holder)
+		domain = a.newArenaDomainID(expressionToken(expr), "binding")
 	}
 	symbol.Type.ArenaDomainID = domain
 	a.symbols[holder] = symbol
@@ -102,7 +102,7 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 // newArenaDomainID records the abstract lexical creation/owner site with its
 // callable context. Re-analysis of one site retains its identity; distinct sites
 // stay distinct. Runtime allocation instances and epoch exhaustion remain separate.
-// Rules: rules/memory/arena.md — §§4.2(1–5), 44(3–4); compiler/compiler.md — §71.
+// Rules: rules/memory/arena.md — §§4.2(1–5), 44(3–4); rules/compiler/compiler.md — §71.
 func (a *Analyzer) newArenaDomainID(source lexer.Token, role string) string {
 	record, ok := a.generatedIdentities.Resolve("arena-domain", string(a.currentCallable)+"/"+role, source, "")
 	if !ok {
@@ -366,7 +366,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		// allocated from it belongs to the caller and may be returned.
 		domain, owner, allocationLocal = a.referencedArenaDomain(receiver, symbol)
 	} else if domain == "" {
-		domain = a.newArenaDomainID(symbol.Token, "owner:"+receiver.Value)
+		domain = a.newArenaDomainID(symbol.Token, "owner")
 		symbol.Type.ArenaDomainID = domain
 		a.symbols[receiver.Value] = symbol
 	}

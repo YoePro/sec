@@ -30,7 +30,7 @@ fn CodeValue(value: Code) int {
         _ => 0
     }
 }
-fn Length(value: string) uint { return value.len }
+fn Length(value: string) uint { return value.Len }
 
 fn main() int { return 0 }
 

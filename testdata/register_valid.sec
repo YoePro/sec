@@ -148,8 +148,8 @@ fn ReadStatusFields() void {
 }
 
 fn ReadUnitFields() void {
-    let speed: rpm := readOnlyMotor.Speed
-    let voltage: volt := readOnlyPower.Voltage
+    let speed: uint8<rpm> := readOnlyMotor.Speed
+    let voltage: uint16<volt> := readOnlyPower.Voltage
     let inferredSpeed := readOnlyMotor.Speed
 }
 
@@ -176,9 +176,10 @@ fn WriteBoundedConstants() void {
     writableControl.Mode = 7
 }
 
-// Unit-compatible values may be written to unit-aware fields.
-fn WriteUnitFields(speed: rpm) void {
-    writableMotor.Speed = speed
+// A unit-aware field write needs the same unit and a proven N-bit range;
+// bit[N](value)<U> narrows explicitly while keeping the unit (MD-046).
+fn WriteUnitFields(speed: uint16<rpm>) void {
+    writableMotor.Speed = bit[4](speed)<rpm>
 }
 
 // =============================================================================

@@ -48,8 +48,8 @@ fn Nested() Result[int, ParseError] {
     return Ok(value)
 }
 
-fn ArrayElements() Result[int[], ParseError] {
-    let values: int[] := [try Parse("1"), try Parse("2")]
+fn ArrayElements() Result[int[2], ParseError] {
+    let values: int[2] := [try Parse("1"), try Parse("2")]
     return Ok(values)
 }
 

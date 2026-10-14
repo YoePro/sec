@@ -2,7 +2,7 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-10-12 (MD-046/MD-056 bit extraction)
+**Last updated:** 2026-10-13 (MD-046 unit-annotated fields, field observation types)
 **Replaces:** register-type portions of `rules/platform/registers.txt`  
 **Document revision:** 3
 **Sec language version:** 0.1
@@ -465,7 +465,40 @@ sensor.Reading = bit[12](source)
 
 The extraction's result is its ordinary unsigned carrier (`uint16` here); no second conversion and no `uint12` type are required. Access permissions, special write semantics, shadow contracts and platform operation plans still apply, and extraction never bypasses them.
 
-A unit-annotated field such as `Speed: bit[12]<rpm>` also carries a unit contract. `bit[N](value)` performs no unit conversion and never supplies or removes a unit, so it is not a way to write a unitless value into such a field. The observation type and the checked or provably safe write form of unit-annotated fields remain open (MD-046).
+### 12.2 Field observations and unit-annotated fields
+
+Decided by MD-046 (2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 4). Field width and unit identity are independent: `bit[N]<U>` occupies `N` physical bits and carries the unit contract `<U>`; `N` stays within the enclosing register and its specification.
+
+Reading a plain multi-bit `bit[N]` field gives the smallest unsigned carrier of `N` bits; reading `bit[N]<U>` gives the same carrier with the unit preserved. The compiler retains the field range `0..2^N-1` in both cases. A one-bit plain field reads as `bool` (§ 4).
+
+| Field | Read value type |
+|---|---|
+| `bit[4]` | `uint8` |
+| `bit[12]` | `uint16` |
+| `bit[24]` | `uint32` |
+| `bit[12]<rpm>` | `uint16<rpm>` |
+| `bit[24]<Hz>` | `uint32<Hz>` |
+
+A write to a multi-bit field must prove both the unit identity — exactly `<U>` for `bit[N]<U>`, no unit for a plain field — and that the value lies in `0..2^N-1`, from a constant or a proven value range (an untyped integer literal takes the field's unit). It is never truncated and never becomes fallible; an unknown or wider value is narrowed explicitly first, and a compound assignment (`+=`, ...) to such a field is rejected because its result is not proven to fit. Reading and writing never bypass the declared access permissions or special write semantics.
+
+```sec
+unit rpm uint physical
+
+type Motor register[16] {
+    Speed: bit[12]<rpm>,
+    _: bit[4],
+}
+
+let raw: uint16 := ReadRawSpeed()
+let speed: uint16<rpm> := ReadSpeed()
+
+motor.Speed = bit[12](raw)<rpm>     // labels raw bits with <rpm>
+motor.Speed = bit[12](speed)<rpm>   // keeps the source's own unit
+// motor.Speed = bit[12](raw)       // error: missing unit identity
+// motor.Speed = speed              // error: not proven to fit 0..4095
+```
+
+`bit[N](value)` never inherits a unit; the suffix `bit[N](value)<U>` labels a unitless value or keeps the source's own unit, and never changes a unit (`types.md` "Explicit low-bit extraction"; `units.md` "Interaction with registers and FFI").
 
 Byte-oriented encoding and decoding are separate operations and must obey the register type's byte-order contract.
 

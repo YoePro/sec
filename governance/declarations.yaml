@@ -11,10 +11,10 @@ integrations:
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
       including integer-backed and string-backed closed enums, generic nominal
-      enum templates and concrete identities, Go-style iota
-      initializer repetition for integer-backed enums, declared-member
-      defaults, aliases, checked underlying-value conversions, match coverage,
-      register integration, and tooling. The frontend now covers string-backed
+      enum templates and concrete identities, Go-style iota initializer
+      repetition for integer-backed enums, declared-member defaults, aliases,
+      checked underlying-value conversions, match coverage, register
+      integration, and tooling. The frontend now covers string-backed
       declarations, constant members and aliases, defaults, member lookup,
       equality-compatible nominal typing, switch/match coverage, explicit
       conversions, diagnostics, and LSP completion. Semantic IR, Sec MLIR, and
@@ -150,6 +150,7 @@ integrations:
         result: passed; a malformed member retains invalid recovery metadata, the later member, the following enum, and the following function
       - command: go test ./internal/sema -run TestInvalidEnumRecoveryMemberDoesNotAdvanceIota -count=1
         result: passed; recovery-only enum members create no dependent semantic errors and do not advance the iota ordinal of later valid members
+
   - id: frontend.registers
     area: frontend-analysis-and-lowering
     status: partial
@@ -199,6 +200,7 @@ integrations:
       - explicit integer-to-register conversion rejects statically out-of-range values, converts proven fitting integer domains directly, and exposes uncertain runtime narrowing as Result[Register, ArithmeticError] for try handling
       - parser AST preserves width expressions while Sema owns evaluation, and LSP renders nested nominal fields plus checked conversion result types from the same semantic facts
       - "plain bit[N] field writes (MD-046 partial, 2026-10-12, registers.md § 12.1): an explicit `bit[M](value)` with M not above the width of a unit-free register field proves the fit and is accepted as the field write; any other unproven wider integer is still rejected (never silently truncated), and unit-annotated fields keep their current behavior pending the open part of MD-046"
+      - "register field observations and unit-annotated fields (MD-046, 2026-10-13, registers.md § 12.2, rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md): a multi-bit `bit[N]` field reads as the smallest unsigned carrier of N bits and `bit[N]<U>` as that carrier with the unit preserved (bit[12]<rpm> reads as uint16<rpm>), both keeping the field range 0..2^N-1; a one-bit plain field stays bool. A write to such a field proves the exact unit identity (no unit for a plain field; an untyped integer literal takes the field unit) and the 0..2^N-1 range from a constant or a clamped proven value range, is never truncated or fallible, and a compound assignment is rejected; explicit narrowing is bit[N](value) or bit[N](value)<U>. Before, a unit field had the unit's own type and accepted unbounded unit values (TestRegisterValidFixture, TestRegisterValidationErrors, TestBitExtractionRejections)"
     remaining:
       - preserve unnamed open bit-backed enum encodings through field extraction and insertion
       - carry ordinary, the complete write-one/write-zero clear/set/toggle family, canonical read-clear, and canonical read-set field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
@@ -219,6 +221,7 @@ integrations:
         result: passed on 2026-09-21 with canonical read-set AST/Sema facts, compound-read rejection, and compiler-fact-driven LSP hover
       - command: go test ./internal/parser ./internal/sema ./cmd/lsp -run 'RegisterFieldAccess|SpecialWriteAccess' -count=1
         result: passed on 2026-09-21 with complete write-one/write-zero clear/set/toggle parsing, semantic facts, compound-read rejection, and LSP hover
+
   - id: frontend.unions
     area: frontend-analysis-and-lowering
     status: partial
@@ -310,15 +313,17 @@ integrations:
         result: passed on 2026-10-01; empty arms, catch-all coverage, per-arm initialization refinement, termination, and missing, impossible, duplicate, and still-empty diagnostics are covered
       - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'Test(ConditionStateTestsParse|UnionState|FormatUnionStateTests)' -count=1
         result: passed on 2026-10-01; state tests parse, type, refine definite assignment, diagnose impossible and invalid tests, and format canonically
-      - command: "go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1"
+      - command: go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1
         result: passed on 2026-10-02 with Option/Result payload, instantiation-only, nested-generic parameter, mutual generic, mutual union, and union-payload-field-through-struct cycles, valid slice/ref/dynamic boundaries inside tagged and generic carriers, and a single diagnostic for direct union self-recursion
+
   - id: frontend.properties
     area: frontend-analysis
     status: partial
     integrated: "2026-08-13"
     summary: >-
       Parses, registers, and semantically checks impl properties, including
-      ordinary, static, and fallible accessors, without claiming property lowering.
+      ordinary, static, and fallible accessors, without claiming property
+      lowering.
     rules:
       - rules/declarations/properties.md
       - rules/declarations/interfaces.md
@@ -382,12 +387,12 @@ integrations:
   - id: frontend.property-readability
     area: frontend-property-access
     status: partial
-    audited: '2026-08-19'
-    revised: '2026-09-22'
+    audited: "2026-08-19"
+    revised: "2026-09-22"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-13'
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-13"
     summary: >-
       Supplements frontend.properties with read-access validation for write-only
       properties. Raw metadata lookup remains available to writes, while a
@@ -544,12 +549,12 @@ integrations:
       deterministic call entry, overloads, and native typed variadics. The
       established parser and Sema cover explicit ordinary declarations,
       signatures, bodies, calls, overloads, returns, generics, fixed-array
-      spread, and receiver contracts. Owned by-value parameter bindings now
-      have the required callee-local mutability and call ownership is committed
-      only after every source argument has analyzed successfully; consuming
-      arrow parameters and native typed variadics now have verified parser and
-      Sema slices, while complete callable/backend ownership metadata remains
-      major work.
+      spread, and receiver contracts. Owned by-value parameter bindings now have
+      the required callee-local mutability and call ownership is committed only
+      after every source argument has analyzed successfully; consuming arrow
+      parameters and native typed variadics now have verified parser and Sema
+      slices, while complete callable/backend ownership metadata remains major
+      work.
     rules:
       - rules/declarations/functions.md
       - rules/declarations/generics.md
@@ -725,120 +730,109 @@ integrations:
     verification:
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Lambda|FunctionType|CallableCapability|OwnedLambdaParameter' -count=1
         result: passed
+
   - id: frontend.names-scopes-visibility
     area: frontend-name-resolution
     status: partial
-    audited: '2026-08-19'
-    updated: '2026-10-09'
+    audited: "2026-08-19"
+    updated: "2026-10-09"
     repository_baseline: c515862
-    summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing,
-      visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module,
-      member, overload, and ordinary lexical-scope support, but the cross-cutting namespace and naming rules are not
-      yet enforced uniformly.
+    summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing, visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module, member, overload, and ordinary lexical-scope support, but the cross-cutting namespace and naming rules are not yet enforced uniformly.
     rules:
-    - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/names_scopes_visibility.md
     code:
-    - internal/sema/function_visibility.go
-    - internal/sema/analyzer.go
-    - internal/sema/generic_naming.go
-    - internal/sema/nominal_naming.go
-    - internal/sema/parameter_naming.go
-    - internal/diagnostics/diagnostics.go
-    - internal/parser/parser.go
-    - internal/lsp/server
-    - cmd/lsp/main.go
+      - internal/sema/function_visibility.go
+      - internal/sema/analyzer.go
+      - internal/sema/generic_naming.go
+      - internal/sema/nominal_naming.go
+      - internal/sema/parameter_naming.go
+      - internal/diagnostics/diagnostics.go
+      - internal/parser/parser.go
+      - internal/lsp/server
+      - cmd/lsp/main.go
     tests:
-    - internal/sema/corehelpers/frontend_test.go
-    - cmd/lsp/function_visibility_test.go
-    - testdata/core/private_helpers
-    - internal/sema/analyzer_test.go
-    - internal/sema/generic_naming_test.go
-    - internal/sema/generic_type_shadowing_test.go
-    - internal/sema/nominal_naming_test.go
-    - internal/sema/parameter_type_shadowing_test.go
-    - internal/sema/local_shadowing_test.go
-    - testdata/names/local_shadowing_invalid.sec
-    - internal/diagnostics/diagnostics_test.go
-    - cmd/lsp/generic_naming_test.go
-    - testdata/names/generic_capitalization_valid.sec
-    - testdata/names/generic_capitalization_invalid.sec
-    - testdata/names/generic_type_shadowing_valid.sec
-    - testdata/names/generic_type_shadowing_invalid.sec
-    - testdata/names/nominal_capitalization_valid.sec
-    - testdata/names/nominal_capitalization_invalid.sec
-    - internal/parser/parser_test.go
-    - cmd/lsp/main_test.go
+      - internal/sema/corehelpers/frontend_test.go
+      - cmd/lsp/function_visibility_test.go
+      - testdata/core/private_helpers
+      - internal/sema/analyzer_test.go
+      - internal/sema/generic_naming_test.go
+      - internal/sema/generic_type_shadowing_test.go
+      - internal/sema/nominal_naming_test.go
+      - internal/sema/parameter_type_shadowing_test.go
+      - internal/sema/local_shadowing_test.go
+      - testdata/names/local_shadowing_invalid.sec
+      - internal/diagnostics/diagnostics_test.go
+      - cmd/lsp/generic_naming_test.go
+      - testdata/names/generic_capitalization_valid.sec
+      - testdata/names/generic_capitalization_invalid.sec
+      - testdata/names/generic_type_shadowing_valid.sec
+      - testdata/names/generic_type_shadowing_invalid.sec
+      - testdata/names/nominal_capitalization_valid.sec
+      - testdata/names/nominal_capitalization_invalid.sec
+      - internal/parser/parser_test.go
+      - cmd/lsp/main_test.go
     implemented:
-    - "ordinary module-scope private functions (2026-10-09, core.string-slice-helper frontend slice): direct calls, contextual generic calls and first-class callable binding require the exact declaring source file; trusted core provenance does not grant sibling-file access. Source context is restored across semantic passes, shadowing/confusable surfaces are file-aware, and ordinary/expected-return LSP completion shares the function boundary. Private types/module variables and type-member owner enforcement retain their existing separate work."
-    - "unit and type namespaces (2026-10-04): an ordinary type, enum, struct, or interface of one module may use the spelling of a unit declared in another module (core `A`/`K`, stdlib units); the unit entry moves to a separate unit table, its impl block in its own module binds to the unit with its own impl-block key, unit metadata and representation updates go to the unit entry, and the ordinary type keeps its definition, impl, and methods, in either declaration order. Tests: internal/sema/unit_type_namespace_test.go"
-    - "visible-declaration shadowing (2026-10-04): one lookup of the unqualified visible scope (the current module's first top-level declaration per name from the module namespace pass, accessible always-available core declarations, and uppercase compiler-known types such as Event; units excluded; declarations of imported modules count only qualified, rule §17) now drives parameters, setter value parameters, generic parameters, and locals. Parameters report S1104 names.parameter-shadows-declaration for visible generic parameters, functions, and module variables and S1040 for types; generic parameters report S1105 names.generic-parameter-shadows-declaration or S1039; locals keep S1057. Every diagnostic points at the hidden declaration when it has a source location. Lowercase always-available type spellings (error, duration, ...) stay usable as bindings, as in `Err(error)`. LSP rename inherits the rules through its re-analysis safety check. Tests: internal/sema/shadowing_visible_declarations_test.go"
-    - top-level module declaration conflict checks across types, units, enums, interfaces, function overload groups,
-      and module variables
-    - function overload groups distinguished by parameter signature with return type excluded from overload identity
-    - substantial member conflict checking across fields, properties, methods, events, and nested types
-    - function, method, property, and impl declaration surfaces are substantially registered before body analysis
-    - ordinary nested lexical scopes inherit visible value symbols, so a subset of local and loop-binding shadowing
-      is rejected
-    - duplicate generic parameter names are rejected
-    - generic type-parameter names require an uppercase initial after visibility prefixes, including Unicode uppercase letters
-    - generic type parameters cannot shadow source-defined types from the same module, including forward declarations and nested type parameters; S1039 points to both declarations
-    - function and method parameters cannot shadow source-defined types in the same module, including forward declarations; mandatory S1040 points to the parameter and the hidden type declaration
-    - user-defined nominal type, enum, interface, and nested nominal names require an uppercase initial after any visibility prefix; unit names remain exempt
-    - nominal naming checks inspect the final declared component of qualified internal names, allowing lowercase module prefixes without accepting lowercase type names
-    - naming checks cover function, nominal, enum, interface, and nested impl type declarations with one diagnostic per source declaration
-    - S1027 names.invalid-generic-type-parameter is a mandatory compiler diagnostic with a source range and naming guidance; LSP publishes the same Sema result
-    - S1038 names.invalid-nominal-type is a mandatory compiler diagnostic with a source range and naming guidance
-    - S1040 names.parameter-shadows-type is a mandatory compiler diagnostic with the previous type declaration location
-    - "unit symbols occupy a separate unit-symbol namespace (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 8): parameters (S1040), generic parameters, and locals (S1057) never shadow a unit, and module functions and variables may share a unit's spelling; unit-vs-unit duplicates are still rejected. This clears the former S1040 errors for parameters day/ms/us in sec/core/date.sec and sec/core/duration.sec"
-    - local variables, loop bindings, pattern bindings, and lambda parameters that hide a visible generic parameter, a same-module source type, or an accessible free function report mandatory S1057 names.local-shadows-declaration with the hidden declaration's location; the binding is still declared to avoid cascades, and unit names are exempt because unit symbols occupy their own namespace
+      - "ordinary module-scope private functions (2026-10-09, core.string-slice-helper frontend slice): direct calls, contextual generic calls and first-class callable binding require the exact declaring source file; trusted core provenance does not grant sibling-file access. Source context is restored across semantic passes, shadowing/confusable surfaces are file-aware, and ordinary/expected-return LSP completion shares the function boundary. Private types/module variables and type-member owner enforcement retain their existing separate work."
+      - "unit and type namespaces (2026-10-04): an ordinary type, enum, struct, or interface of one module may use the spelling of a unit declared in another module (core `A`/`K`, stdlib units); the unit entry moves to a separate unit table, its impl block in its own module binds to the unit with its own impl-block key, unit metadata and representation updates go to the unit entry, and the ordinary type keeps its definition, impl, and methods, in either declaration order. Tests: internal/sema/unit_type_namespace_test.go"
+      - "visible-declaration shadowing (2026-10-04): one lookup of the unqualified visible scope (the current module's first top-level declaration per name from the module namespace pass, accessible always-available core declarations, and uppercase compiler-known types such as Event; units excluded; declarations of imported modules count only qualified, rule §17) now drives parameters, setter value parameters, generic parameters, and locals. Parameters report S1104 names.parameter-shadows-declaration for visible generic parameters, functions, and module variables and S1040 for types; generic parameters report S1105 names.generic-parameter-shadows-declaration or S1039; locals keep S1057. Every diagnostic points at the hidden declaration when it has a source location. Lowercase always-available type spellings (error, duration, ...) stay usable as bindings, as in `Err(error)`. LSP rename inherits the rules through its re-analysis safety check. Tests: internal/sema/shadowing_visible_declarations_test.go"
+      - top-level module declaration conflict checks across types, units, enums, interfaces, function overload groups, and module variables
+      - function overload groups distinguished by parameter signature with return type excluded from overload identity
+      - substantial member conflict checking across fields, properties, methods, events, and nested types
+      - function, method, property, and impl declaration surfaces are substantially registered before body analysis
+      - ordinary nested lexical scopes inherit visible value symbols, so a subset of local and loop-binding shadowing is rejected
+      - duplicate generic parameter names are rejected
+      - generic type-parameter names require an uppercase initial after visibility prefixes, including Unicode uppercase letters
+      - generic type parameters cannot shadow source-defined types from the same module, including forward declarations and nested type parameters; S1039 points to both declarations
+      - function and method parameters cannot shadow source-defined types in the same module, including forward declarations; mandatory S1040 points to the parameter and the hidden type declaration
+      - user-defined nominal type, enum, interface, and nested nominal names require an uppercase initial after any visibility prefix; unit names remain exempt
+      - nominal naming checks inspect the final declared component of qualified internal names, allowing lowercase module prefixes without accepting lowercase type names
+      - naming checks cover function, nominal, enum, interface, and nested impl type declarations with one diagnostic per source declaration
+      - S1027 names.invalid-generic-type-parameter is a mandatory compiler diagnostic with a source range and naming guidance; LSP publishes the same Sema result
+      - S1038 names.invalid-nominal-type is a mandatory compiler diagnostic with a source range and naming guidance
+      - S1040 names.parameter-shadows-type is a mandatory compiler diagnostic with the previous type declaration location
+      - "unit symbols occupy a separate unit-symbol namespace (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 8): parameters (S1040), generic parameters, and locals (S1057) never shadow a unit, and module functions and variables may share a unit's spelling; unit-vs-unit duplicates are still rejected. This clears the former S1040 errors for parameters day/ms/us in sec/core/date.sec and sec/core/duration.sec"
+      - local variables, loop bindings, pattern bindings, and lambda parameters that hide a visible generic parameter, a same-module source type, or an accessible free function report mandatory S1057 names.local-shadows-declaration with the hidden declaration's location; the binding is still declared to avoid cascades, and unit names are exempt because unit symbols occupy their own namespace
     partial:
-    - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters,
-      members, types, generics, imports, aliases, and compiler-provided contextual bindings
-    - the compiler maintains separate symbol, type, generic-type, function, and member registries rather than one
-      uniformly collision-checked declaration namespace
-    - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed
-      across feature-specific code paths
+      - "qualified unit references (MD-040, 2026-10-13, units.md 'Qualified unit references', rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md): unit type entries live in the unit table, never the ordinary type table, and module declaration checks give units their own namespace, so `unit Volt` and `type Volt` coexist in one module in either order; `impl <Volt>` (parser target name = unit) resolves only the unit in its own module and holds metadata and unit functions, registered as `<Volt>.Name` and the conversion function as `<Volt>`; `impl Volt` resolves only the type; `<Volt>(value)` calls the conversion function or converts to `<Volt>`, `<Volt>.Name(...)` calls a unit function and `<Volt>.Symbol`/`.LongName` read metadata as string; bare `impl rpm`, `rpm(x)` and a type `rpm` are errors with <rpm> help. All core, stdlib, testdata and test sources were migrated; LSP unit conversion actions now offer `<U>(value)` (TestUnitAndSameSpelledTypeInOneModuleCoexist, TestLegacyUnqualifiedUnitReferencesAreRejected, TestExtendedUnitCodeActions)"
+      - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters, members, types, generics, imports, aliases, and compiler-provided contextual bindings
+      - the compiler maintains separate symbol, type, generic-type, function, and member registries rather than one uniformly collision-checked declaration namespace
+      - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed across feature-specific code paths
     remaining:
-    - "enforce the no-shadowing rule for nested declarations, import bindings and aliases (needs the file-local import bindings of frontend.modules), and members made directly visible by the declaration grammar"
-    - "module-level variables live in the analyzer's shared symbol table, so a project `let value` at module scope leaks into the analysis of other modules (core locals named `value` then report S1004); module variables must be scoped to their module (found 2026-10-04)"
-    - "unit-vs-type separation, remainder (MD-040): a unit and a same-spelled type within one module are still an S1003 conflict, constructor-style bare-name unit conversion and unit-impl `Name.Method` functions are not yet disambiguated from a visible same-spelled type, and unit symbols are not yet compared only within the unit-symbol namespace by every consumer"
-    - "todo (2026-10-04, proposal, MD-040): consider `impl <s>` as the unit impl spelling (`unit s physical` then `impl <s> { ... }`) to keep unit impls syntactically apart from type impls"
-    - reject generic parameters that shadow an enclosing generic parameter (blocked on generic methods with additional type parameters) or directly visible members
-    - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific
-      registries and collision checks
-    - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration
-    - make LSP rename validation consume the same namespace, shadowing, reserved-name, capitalization, overload, and
-      visibility rules as Sema
+      - enforce the no-shadowing rule for nested declarations, import bindings and aliases (needs the file-local import bindings of frontend.modules), and members made directly visible by the declaration grammar
+      - module-level variables live in the analyzer's shared symbol table, so a project `let value` at module scope leaks into the analysis of other modules (core locals named `value` then report S1004); module variables must be scoped to their module (found 2026-10-04)
+      - reject generic parameters that shadow an enclosing generic parameter (blocked on generic methods with additional type parameters) or directly visible members
+      - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific registries and collision checks
+      - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration
+      - make LSP rename validation consume the same namespace, shadowing, reserved-name, capitalization, overload, and visibility rules as Sema
     required_tests:
-    - lowercase generic type parameter is rejected
-    - generic parameter shadowing a visible value is rejected
-    - function parameter shadowing a visible declaration is rejected
-    - local declaration shadowing a visible type is rejected
-    - compiler-provided property-setter binding cannot silently replace a visible declaration
-    - reuse of the same local name in disjoint sibling scopes remains valid
-    - overloads differing only by return type remain rejected
-
+      - lowercase generic type parameter is rejected
+      - generic parameter shadowing a visible value is rejected
+      - function parameter shadowing a visible declaration is rejected
+      - local declaration shadowing a visible type is rejected
+      - compiler-provided property-setter binding cannot silently replace a visible declaration
+      - reuse of the same local name in disjoint sibling scopes remains valid
+      - overloads differing only by return type remain rejected
     verification:
-    - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
-      result: passed, including same-module generic type shadowing diagnostics and prior naming regressions
-    - command: go test ./internal/sema ./internal/diagnostics -run 'TestNominalTypeCapitalization|TestGenericParameterCapitalization|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
-      result: passed, including Unicode and visibility-prefixed nominal names, nested types, and unit exemption
-    - command: go test ./internal/sema -run 'Test(NominalTypeCapitalization|QualifiedNominalTypeCapitalization)' -count=1
-      result: passed, including qualified module and nested names with invalid final components still rejected
-    - command: go test ./cmd/compiler -run 'TestCompilerLoadsIOReadFileIntoAPI|TestCompilerLoadsIOWriteSeekAndDirectoryAPIs|TestCompilerLoadsUnicodeIsLetter' -count=1
-      result: passed; standard-library nominal declarations are no longer rejected because of lowercase module prefixes
-    - command: go test ./internal/sema ./internal/diagnostics -run 'TestFunctionParameterCannotShadowSameModuleType|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
-      result: passed; S1040 is registered and ordinary, forward-declared, and method parameter shadowing report both source locations
-    - command: go test ./...
-      result: passed after the qualified nominal-name and same-module parameter shadowing fixes
-    - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
-      result: passed
-    - command: go test ./...
-      result: all packages passed except cmd/compiler, which still fails on six unrelated try requires Result expression errors in sec/core/string.sec
-    - command: go test ./internal/sema -run TestGenericParameterCapitalization -count=1
-      result: regression test failed before the implementation because nine invalid parameter names were accepted
-    - command: go test ./...
-      result: passed, including Sema naming and LSP diagnostic regressions
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
+        result: passed, including same-module generic type shadowing diagnostics and prior naming regressions
+      - command: go test ./internal/sema ./internal/diagnostics -run 'TestNominalTypeCapitalization|TestGenericParameterCapitalization|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
+        result: passed, including Unicode and visibility-prefixed nominal names, nested types, and unit exemption
+      - command: go test ./internal/sema -run 'Test(NominalTypeCapitalization|QualifiedNominalTypeCapitalization)' -count=1
+        result: passed, including qualified module and nested names with invalid final components still rejected
+      - command: go test ./cmd/compiler -run 'TestCompilerLoadsIOReadFileIntoAPI|TestCompilerLoadsIOWriteSeekAndDirectoryAPIs|TestCompilerLoadsUnicodeIsLetter' -count=1
+        result: passed; standard-library nominal declarations are no longer rejected because of lowercase module prefixes
+      - command: go test ./internal/sema ./internal/diagnostics -run 'TestFunctionParameterCannotShadowSameModuleType|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
+        result: passed; S1040 is registered and ordinary, forward-declared, and method parameter shadowing report both source locations
+      - command: go test ./...
+        result: passed after the qualified nominal-name and same-module parameter shadowing fixes
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
+        result: passed
+      - command: go test ./...
+        result: all packages passed except cmd/compiler, which still fails on six unrelated try requires Result expression errors in sec/core/string.sec
+      - command: go test ./internal/sema -run TestGenericParameterCapitalization -count=1
+        result: regression test failed before the implementation because nine invalid parameter names were accepted
+      - command: go test ./...
+        result: passed, including Sema naming and LSP diagnostic regressions
 
   - id: frontend.impl-extensions
     area: frontend-analysis-and-tooling
@@ -1003,6 +997,12 @@ integrations:
       - internal/lsp/server/module_sources.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
+      - internal/sourceimports/stdlib_sources.go
+      - internal/sourceimports/module_headers.go
+      - internal/sema/import_diagnostics.go
+      - cmd/compiler/import_sources.go
+      - cmd/lsp/import_sources.go
+      - cmd/lsp/import_resolution.go
     tests:
       - cmd/compiler/module_sources_test.go
       - testdata/module_siblings/active.sec
@@ -1014,6 +1014,9 @@ integrations:
       - internal/lsp/server/module_sources_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
+      - cmd/compiler/import_static_test.go
+      - cmd/lsp/import_static_test.go
+      - testdata/import_static/main.sec
     implemented:
       - CLI semantic and build/emit entry paths assemble unselected same-module sibling files for canonical directory modules and manifest-bearing project roots before Sema; existing input files are deduplicated
       - sibling selection is non-recursive, ordered, target-filtered, excludes automatically discovered test sources, and retains original source paths
@@ -1033,6 +1036,7 @@ integrations:
       - deterministic same-directory LSP module assembly with editor overlays and shared declaration analysis
       - partial project, std, and platform source import discovery with deterministic source-file ordering
       - mandatory S1051 modules.unresolved-import diagnostics preserve the unresolved canonical spelling and exact import-path source range in individual and batched LSP analysis
+      - Canonical standard-library source discovery is shared by CLI and LSP before project fallback, including arbitrary nested paths such as net/ip and all production siblings rather than only bootstrap fmt/io/unicode (2026-10-14). Selected target directives are respected and production discovery excludes _test.sec; LSP production import assembly removes test-only siblings. Directory imports with conflicting ModuleName headers fail with registered S1158 modules.inconsistent-source-module on the import-path span and the offending declaration as a related location. Failed imports use shared S1051 metadata and stop misleading dependent lookup diagnostics. Missing function/type call targets use mandatory S1157 names.unknown-call-target with lookup guidance. Regression fixtures verify imported associated Parse calls, missing modules, missing methods, inactive target files, and inconsistent headers in both CLI and LSP. Flattened AST inclusion and complete module binding/surface identity remain tracked below.
     remaining:
       - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
       - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
@@ -1063,6 +1067,16 @@ integrations:
       - module graph as an implicit initialization or deinitialization order
       - ABI, mangling, or linker spelling defined by ModuleSurface
     verification:
+      - command: go test -race ./cmd/compiler ./cmd/lsp -run 'ImportedAssociatedFunction|UnresolvedImport|DiagnosticBatch' -count=1
+        result: passed on 2026-10-14 after final production-surface and target-filtering changes
+      - command: go vet ./internal/sourceimports ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-14
+      - command: go test ./cmd/lsp -run 'ImportedAssociatedFunction|UnresolvedImport|DiagnosticBatch|Target|RawPtrVolatile' -count=1
+        result: passed on 2026-10-14; final target-filtered loading and production-surface checks; the full LSP run found only a stale generic volatile-hover expectation from earlier receiver specialization, now corrected and rechecked here
+      - command: go test ./cmd/compiler -count=1
+        result: passed on 2026-10-14 after migrating an older analysis fixture to the permitted empty dynamic-array default
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/modules ./internal/sourceimports -count=1
+        result: passed on 2026-10-14 as part of the broader package run
       - command: go test ./cmd/compiler -run TestSingleFileAnalysisLoadsModuleSiblings -count=1
         result: passed; same-directory types resolve from a single-file input and assembly is idempotent
       - command: go test ./internal/modules ./internal/parser -run 'Module|Import' -count=1
@@ -1071,273 +1085,257 @@ integrations:
         result: passed
       - command: go test ./internal/modules -run 'ModuleInstanceGraph|ModuleDependencyFacts' -count=1
         result: passed
+    revised: "2026-10-14"
+
   - id: frontend.enum-to-integer-checked-conversion
     area: frontend-analysis-semantic-ir-and-lowering
     status: partial
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '1.0'
-    document_created: '2026-08-13'
-    document_last_updated_metadata: '2026-08-13'
-    document_later_sync: '2026-08-16'
-    summary: Sema checks enum-to-integer conversion against a known member value or the complete closed/open enum domain.
-      Proven conversions remain direct; narrowing returns Result[target, ArithmeticError] and requires ordinary try.
+    document_revision: "1.0"
+    document_created: "2026-08-13"
+    document_last_updated_metadata: "2026-08-13"
+    document_later_sync: "2026-08-16"
+    summary: Sema checks enum-to-integer conversion against a known member value or the complete closed/open enum domain. Proven conversions remain direct; narrowing returns Result[target, ArithmeticError] and requires ordinary try.
     rules:
-    - rules/declarations/enums.md
-    - rules/types/types.md
-    - rules/errors/errorhandling.md
-    - rules/compiler/semantic_ir.md
-    - rules/mlir/packages/sec-mlir-dialect_package11.md
-    - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
+      - rules/declarations/enums.md
+      - rules/types/types.md
+      - rules/errors/errorhandling.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/packages/sec-mlir-dialect_package11.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/semantic_facts.go
-    - internal/ir/semantic/model.go
-    - internal/ir/semantic/builder.go
-    - internal/ir/semantic/verifier.go
-    - internal/lowering/secmlir/emitter.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/ir/semantic/package11_test.go
-    - internal/ir/semantic/package11_verifier_test.go
-    - cmd/compiler/emit_sec_mlir_package11_test.go
-    - testdata/semantic_ir/enum_union_values.sec
+      - internal/sema/analyzer_test.go
+      - internal/ir/semantic/package11_test.go
+      - internal/ir/semantic/package11_verifier_test.go
+      - cmd/compiler/emit_sec_mlir_package11_test.go
+      - testdata/semantic_ir/enum_union_values.sec
     implemented:
-    - explicit enum-to-integer conversion is recognized by Sema
-    - Package 11 Semantic IR represents Sema-proven infallible enum-to-integer conversion
-    - Package 11 Sec MLIR represents and verifies the infallible enum-to-integer operation
-    - existing Package 11 enum conversion fixtures stay within an infallible conversion boundary
-    - integer-to-enum checked conversion has separate Result-valued frontend handling
-    - known enum member conversion uses exact integer representability checking
-    - closed enum runtime conversion proves every numeric value class fits the target
-    - open bit enum runtime conversion uses the complete bit domain
-    - unproven narrowing is Result-valued with ArithmeticError and records a fallible enum conversion fact
+      - explicit enum-to-integer conversion is recognized by Sema
+      - Package 11 Semantic IR represents Sema-proven infallible enum-to-integer conversion
+      - Package 11 Sec MLIR represents and verifies the infallible enum-to-integer operation
+      - existing Package 11 enum conversion fixtures stay within an infallible conversion boundary
+      - integer-to-enum checked conversion has separate Result-valued frontend handling
+      - known enum member conversion uses exact integer representability checking
+      - closed enum runtime conversion proves every numeric value class fits the target
+      - open bit enum runtime conversion uses the complete bit domain
+      - unproven narrowing is Result-valued with ArithmeticError and records a fallible enum conversion fact
     partial:
-    - Semantic IR and lowering do not yet consume the represented fallible enum-to-integer conversion path
+      - Semantic IR and lowering do not yet consume the represented fallible enum-to-integer conversion path
     remaining:
-    - add enum-to-integer checked-conversion analysis in Sema
-    - for statically known enum values apply the canonical checked integer-conversion rule to the resolved numeric
-      value
-    - for closed ordinary enums prove target representability over all unique declared numeric value classes
-    - for open bit-backed enums prove target representability over the complete unsigned bit[N] domain
-    - return the direct target integer type only when conversion is proven infallible
-    - use the canonical fallible checked integer-conversion Result/error semantics when proof fails
-    - require ordinary try handling for runtime-fallible enum-to-integer conversions
-    - preserve infallibility/fallibility and source enum identity in immutable Sema/Semantic IR facts
-    - prevent unconditional OpEnumToInteger emission for conversions that may fail
-    - lower the fallible case through canonical checked-integer conversion and explicit failure control flow
-    - add fixed-width narrowing tests independent of target-sized int/uint behavior
-    - add open-bit-enum tests proving the complete bit domain is used rather than declared members only
+      - add enum-to-integer checked-conversion analysis in Sema
+      - for statically known enum values apply the canonical checked integer-conversion rule to the resolved numeric value
+      - for closed ordinary enums prove target representability over all unique declared numeric value classes
+      - for open bit-backed enums prove target representability over the complete unsigned bit[N] domain
+      - return the direct target integer type only when conversion is proven infallible
+      - use the canonical fallible checked integer-conversion Result/error semantics when proof fails
+      - require ordinary try handling for runtime-fallible enum-to-integer conversions
+      - preserve infallibility/fallibility and source enum identity in immutable Sema/Semantic IR facts
+      - prevent unconditional OpEnumToInteger emission for conversions that may fail
+      - lower the fallible case through canonical checked-integer conversion and explicit failure control flow
+      - add fixed-width narrowing tests independent of target-sized int/uint behavior
+      - add open-bit-enum tests proving the complete bit domain is used rather than declared members only
     bug_reference:
-    - correction7.md
+      - correction7.md
     governance_reconciliation:
-    - Keep lowering.sec-mlir-enum-union-values at implemented for Package 11's dependency-bounded scope. Its own governance
-      text explicitly says the enum conversion fixtures remain inside the Sema-proven infallible boundary.
-    - Qualify Package 11's implemented enum-to-integer conversion as the Sema-proven infallible form. The missing
-      functionality is frontend proof and checked/fallible conversion outside that boundary.
-    - frontend.enums tracks Result-valued integer-to-enum and string-to-string-enum runtime conversion; this
-      integration remains the reciprocal integer-backed enum-to-integer checked narrowing slice.
+      - Keep lowering.sec-mlir-enum-union-values at implemented for Package 11's dependency-bounded scope. Its own governance text explicitly says the enum conversion fixtures remain inside the Sema-proven infallible boundary.
+      - Qualify Package 11's implemented enum-to-integer conversion as the Sema-proven infallible form. The missing functionality is frontend proof and checked/fallible conversion outside that boundary.
+      - frontend.enums tracks Result-valued integer-to-enum and string-to-string-enum runtime conversion; this integration remains the reciprocal integer-backed enum-to-integer checked narrowing slice.
     required_tests:
-    - closed enum whose complete domain fits target integer converts infallibly
-    - closed enum with one out-of-range member produces a fallible runtime conversion
-    - closed enum aliases are normalized for conversion-domain proof
-    - known fitting enum member converts infallibly
-    - known out-of-range enum member receives checked-conversion diagnostic
-    - bit[8] enum to uint8 is infallible
-    - bit[16] enum to uint8 is fallible even when declared members all fit uint8
-    - fallible enum-to-integer conversion requires ordinary try handling
-    - fallible conversion is not emitted as unconditional OpEnumToInteger
-    - existing Package 11 infallible enum conversion fixtures continue to pass
+      - closed enum whose complete domain fits target integer converts infallibly
+      - closed enum with one out-of-range member produces a fallible runtime conversion
+      - closed enum aliases are normalized for conversion-domain proof
+      - known fitting enum member converts infallibly
+      - known out-of-range enum member receives checked-conversion diagnostic
+      - bit[8] enum to uint8 is infallible
+      - bit[16] enum to uint8 is fallible even when declared members all fit uint8
+      - fallible enum-to-integer conversion requires ordinary try handling
+      - fallible conversion is not emitted as unconditional OpEnumToInteger
+      - existing Package 11 infallible enum conversion fixtures continue to pass
+
   - id: frontend.impl-core-privilege
     area: frontend-source-provenance-and-impl-coherence
     status: implemented
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-14'
-    summary: Compiler-known implementation authority requires immutable trusted-core source provenance supplied by
-      the compiler or LSP loader after canonical source-root resolution. User-controlled path spelling cannot grant
-      the privilege, and the explicit compiler-known target allowlist remains enforced.
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-14"
+    summary: Compiler-known implementation authority requires immutable trusted-core source provenance supplied by the compiler or LSP loader after canonical source-root resolution. User-controlled path spelling cannot grant the privilege, and the explicit compiler-known target allowlist remains enforced.
     rules:
-    - rules/declarations/impl.md
-    - rules/projects/modules.md
-    - rules/collections/collections.md
-    - rules/collections/shaped-types.md
+      - rules/declarations/impl.md
+      - rules/projects/modules.md
+      - rules/collections/collections.md
+      - rules/collections/shaped-types.md
     code:
-    - internal/sema/analyzer.go
-    - cmd/compiler/main.go
-    - cmd/lsp/main.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
     tests:
-    - internal/sema/analyzer_test.go
-    - cmd/lsp/main_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
     implemented:
-    - ordinary non-named compiler-known types are rejected as user impl targets unless the core privilege predicate
-      succeeds
-    - interface types are rejected as ordinary impl targets
-    - an explicit allowlist limits which compiler-known targets may receive core implementations
-    - the allowlist includes the compiler-known temporal identities date, time, datetime, and duration for trusted core sources
-    - trusted core sources may attach ordinary methods to the canonical list, map, and set collection families while
-      stdlib and user sources remain unable to monkey-patch them
-    - trusted core sources may attach additive helpers to vector, matrix, tensor, tensor_view, Shape, Strides,
-      TensorLayout, and MemorySpace without replacing their compiler-owned intrinsic semantics
-    - compiler and LSP analysis share the same provenance gate and builtin-target allowlist for collection impls
-    - ast.Program carries explicit source provenance independently of token path text
-    - compiler and LSP core loaders canonicalize roots and resolve symlinks before assigning trusted-core provenance
-    - Sema requires trusted-core provenance and the target allowlist for compiler-known implementations
-    - forged core-looking paths remain ordinary user sources
+      - ordinary non-named compiler-known types are rejected as user impl targets unless the core privilege predicate succeeds
+      - interface types are rejected as ordinary impl targets
+      - an explicit allowlist limits which compiler-known targets may receive core implementations
+      - the allowlist includes the compiler-known temporal identities date, time, datetime, and duration for trusted core sources
+      - trusted core sources may attach ordinary methods to the canonical list, map, and set collection families while stdlib and user sources remain unable to monkey-patch them
+      - trusted core sources may attach additive helpers to vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace without replacing their compiler-owned intrinsic semantics
+      - compiler and LSP analysis share the same provenance gate and builtin-target allowlist for collection impls
+      - ast.Program carries explicit source provenance independently of token path text
+      - compiler and LSP core loaders canonicalize roots and resolve symlinks before assigning trusted-core provenance
+      - Sema requires trusted-core provenance and the target allowlist for compiler-known implementations
+      - forged core-looking paths remain ordinary user sources
     remaining:
-    - audit core target/module ownership against the canonical core-library rulebook when that ownership matrix is
-      centralized
+      - audit core target/module ownership against the canonical core-library rulebook when that ownership matrix is centralized
     bug_reference:
-    - correction9.md
+      - correction9.md
     required_tests:
-    - trusted compiler-selected core source may implement permitted builtin
-    - ordinary user source cannot implement permitted builtin
-    - user project/sec/core source does not gain core privilege
-    - absolute user path containing /sec/core/ does not gain core privilege
-    - module name alone cannot grant core privilege
-    - trusted core source cannot implement a compiler-known target outside the explicit allowlist
-    - LSP and CLI Sema enforce identical provenance rules
+      - trusted compiler-selected core source may implement permitted builtin
+      - ordinary user source cannot implement permitted builtin
+      - user project/sec/core source does not gain core privilege
+      - absolute user path containing /sec/core/ does not gain core privilege
+      - module name alone cannot grant core privilege
+      - trusted core source cannot implement a compiler-known target outside the explicit allowlist
+      - LSP and CLI Sema enforce identical provenance rules
+
   - id: frontend.interface-method-overloads
     area: frontend-interface-analysis
     status: implemented
-    audited: '2026-08-19'
-    revised: '2026-10-08'
+    audited: "2026-08-19"
+    revised: "2026-10-08"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-14'
-    summary: Interface declarations and inheritance preserve canonical same-name overload sets. Distinct parameter
-      signatures coexist, exact duplicates are diagnosed or merged according to origin, incompatible contracts are
-      rejected, and conformance checks every retained requirement independently. Resolved calls retain the exact
-      selected requirement and the same open invocation contract identity as the call graph.
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-14"
+    summary: Interface declarations and inheritance preserve canonical same-name overload sets. Distinct parameter signatures coexist, exact duplicates are diagnosed or merged according to origin, incompatible contracts are rejected, and conformance checks every retained requirement independently. Resolved calls retain the exact selected requirement and the same open invocation contract identity as the call graph.
     rules:
-    - rules/declarations/interfaces.md
-    - rules/declarations/functions.md
-    - rules/declarations/generics.md
-    - rules/declarations/impl.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/declarations/impl.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
-    - internal/sema/semantic_facts.go
-    - internal/sema/resolved_calls.go
-    - internal/sema/analyzer_inference.go
-    - internal/sema/call_graph_callables.go
-    - internal/ir/semantic/builder.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/resolved_calls.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/call_graph_callables.go
+      - internal/ir/semantic/builder.go
     tests:
-    - internal/sema/analyzer_test.go
-    - testdata/interface_valid.sec
-    - testdata/interface_invalid.sec
-    - internal/sema/interfaces/resolved_calls_test.go
-    - internal/ir/semantic/interface_call_test.go
-    - testdata/sema/interface_calls/selected.sec
-    - testdata/sema/interface_calls/rejected_invalid.sec
-    - testdata/sema/interface_calls/ambiguous_invalid.sec
+      - internal/sema/analyzer_test.go
+      - testdata/interface_valid.sec
+      - testdata/interface_invalid.sec
+      - internal/sema/interfaces/resolved_calls_test.go
+      - internal/ir/semantic/interface_call_test.go
+      - testdata/sema/interface_calls/selected.sec
+      - testdata/sema/interface_calls/rejected_invalid.sec
+      - testdata/sema/interface_calls/ambiguous_invalid.sec
     implemented:
-    - interface methods retain parameter, return, static, receiver, and parameter-ownership contract facts
-    - concrete interface conformance searches the concrete method overload group by target name plus method name
-    - concrete conformance compares explicit parameter types and borrow or consuming parameter modes
-    - return type is checked as a compatibility requirement
-    - inherited requirements with distinct names are merged
-    - direct and inherited same-name requirements are grouped by canonical parameter signature
-    - distinct same-name overloads from one or more parents are retained
-    - exact duplicates and same-signature incompatible contracts are distinguished
-    - interface inheritance cycle diagnostics are implemented
-    - resolved interface calls preserve the exact selected overload, source declaration, dispatch kind, and open contract
-    - named parameter identities, inherited requirements, and instantiated generic overloads remain exact during selection
-    - invocation contracts retain borrow, mutable borrow, consuming, variadic, and receiver capability facts
-    - instance and qualified static interface calls share their invocation identity with call-graph target sets
-    - rejected and ambiguous interface calls publish no resolved target
-    - Semantic IR explicitly rejects interface dispatch before emitting an incorrect direct call
+      - interface methods retain parameter, return, static, receiver, and parameter-ownership contract facts
+      - concrete interface conformance searches the concrete method overload group by target name plus method name
+      - concrete conformance compares explicit parameter types and borrow or consuming parameter modes
+      - return type is checked as a compatibility requirement
+      - inherited requirements with distinct names are merged
+      - direct and inherited same-name requirements are grouped by canonical parameter signature
+      - distinct same-name overloads from one or more parents are retained
+      - exact duplicates and same-signature incompatible contracts are distinguished
+      - interface inheritance cycle diagnostics are implemented
+      - resolved interface calls preserve the exact selected overload, source declaration, dispatch kind, and open contract
+      - named parameter identities, inherited requirements, and instantiated generic overloads remain exact during selection
+      - invocation contracts retain borrow, mutable borrow, consuming, variadic, and receiver capability facts
+      - instance and qualified static interface calls share their invocation identity with call-graph target sets
+      - rejected and ambiguous interface calls publish no resolved target
+      - Semantic IR explicitly rejects interface dispatch before emitting an incorrect direct call
     remaining:
-    - add future dynamic-dispatch lowering coverage once that backend contract is implemented
+      - add future dynamic-dispatch lowering coverage once that backend contract is implemented
     bug_reference:
-    - correction10.md
+      - correction10.md
     governance_reconciliation:
-    - The correction10 requirement-set loss is resolved by retaining direct and inherited overloads. The selected-overload
-      fact gap is also resolved as of 2026-10-08, including nominal parameter identity and instantiated generic requirements.
-    - Keep frontend.interfaces partial for its remaining runtime interface representation and dispatch work. This entry's
-      implemented status covers requirement sets and exact frontend call selection, not runtime dynamic dispatch.
-    - Ordinary concrete calls keep their existing resolution category; interface requirements have a distinct call kind
-      and an open contract rather than a concrete implementation body.
+      - The correction10 requirement-set loss is resolved by retaining direct and inherited overloads. The selected-overload fact gap is also resolved as of 2026-10-08, including nominal parameter identity and instantiated generic requirements.
+      - Keep frontend.interfaces partial for its remaining runtime interface representation and dispatch work. This entry's implemented status covers requirement sets and exact frontend call selection, not runtime dynamic dispatch.
+      - Ordinary concrete calls keep their existing resolution category; interface requirements have a distinct call kind and an open contract rather than a concrete implementation body.
     required_tests:
-    - direct interface same-name different-type overloads accepted
-    - direct interface same-name different-arity overloads accepted
-    - exact duplicate interface requirement rejected
-    - same parameter signature different return type rejected
-    - two parent interfaces contribute distinct same-name overloads
-    - inherited same-overload incompatible return contract rejected
-    - inherited same-overload incompatible receiver contract rejected
-    - concrete implementation must provide every required overload
-    - one missing concrete overload is diagnosed
-    - selected interface overload is resolved before future dynamic dispatch
+      - direct interface same-name different-type overloads accepted
+      - direct interface same-name different-arity overloads accepted
+      - exact duplicate interface requirement rejected
+      - same parameter signature different return type rejected
+      - two parent interfaces contribute distinct same-name overloads
+      - inherited same-overload incompatible return contract rejected
+      - inherited same-overload incompatible receiver contract rejected
+      - concrete implementation must provide every required overload
+      - one missing concrete overload is diagnosed
+      - selected interface overload is resolved before future dynamic dispatch
     verification:
-    - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
-      result: passed on 2026-10-08 after consolidating the call_graph family from 17 to 10 files (plan identity into call_graph_identity.go; contract, defer and test-root producers into call_graph_callables.go; effect-domain and arena allocation fixed-point summaries into call_graph_summaries.go; checkpoints into call_graph_workspace.go; tests regrouped, call_graph_scc_test.go renamed call_graph_test.go) without behavior or API changes
-    - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema/interfaces ./internal/sema ./internal/ir/semantic -count=1
-      result: passed; exact overload facts, generic substitution, inherited and static requirements, ownership modes, rejected calls, and explicit lowering boundary
-    - command: GOCACHE=/tmp/sec-go-cache go test ./...
-      result: passed; final receiver-preservation adjustment additionally verified by the complete Sema and Semantic IR suites
-    - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema/interfaces ./internal/sema ./internal/ir/semantic
-      result: passed
-    - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema/... ./internal/ir/semantic/...
-      result: passed
+      - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-08 after consolidating the call_graph family from 17 to 10 files (plan identity into call_graph_identity.go; contract, defer and test-root producers into call_graph_callables.go; effect-domain and arena allocation fixed-point summaries into call_graph_summaries.go; checkpoints into call_graph_workspace.go; tests regrouped, call_graph_scc_test.go renamed call_graph_test.go) without behavior or API changes
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema/interfaces ./internal/sema ./internal/ir/semantic -count=1
+        result: passed; exact overload facts, generic substitution, inherited and static requirements, ownership modes, rejected calls, and explicit lowering boundary
+      - command: GOCACHE=/tmp/sec-go-cache go test ./...
+        result: passed; final receiver-preservation adjustment additionally verified by the complete Sema and Semantic IR suites
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema/interfaces ./internal/sema ./internal/ir/semantic
+        result: passed
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema/... ./internal/ir/semantic/...
+        result: passed
+
   - id: frontend.lambda-capture-binding-classification
     area: frontend-lambda-scope-and-capture-resolution
     status: implemented
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-14'
-    document_last_updated: '2026-08-14'
-    summary: Lambda lookup separates capture-eligible enclosing locals from ordinary module/type lookup. Module values
-      remain directly visible, explicit non-local captures are rejected, and function parameters are capture-eligible.
+    document_revision: "2.0"
+    document_created: "2026-08-14"
+    document_last_updated: "2026-08-14"
+    summary: Lambda lookup separates capture-eligible enclosing locals from ordinary module/type lookup. Module values remain directly visible, explicit non-local captures are rejected, and function parameters are capture-eligible.
     rules:
-    - rules/declarations/lambda-functions.md
-    - rules/declarations/functions.md
-    - rules/foundations/names_scopes_visibility.md
-    - rules/projects/modules.md
+      - rules/declarations/lambda-functions.md
+      - rules/declarations/functions.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/projects/modules.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/semantic_facts.go
-    - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/types.go
     tests:
-    - internal/sema/analyzer_test.go
-    - testdata/lambda_valid.sec
-    - testdata/lambda_invalid.sec
+      - internal/sema/analyzer_test.go
+      - testdata/lambda_valid.sec
+      - testdata/lambda_invalid.sec
     implemented:
-    - lambda-local symbol environment
-    - explicit plain-name capture syntax
-    - duplicate capture diagnostics
-    - undefined capture diagnostics
-    - unassigned enclosing-symbol capture diagnostics
-    - missing explicit-capture diagnostic for represented enclosing symbols
-    - parameter/capture collision is rejected through the current symbol collision path
-    - named functions remain separately resolvable as callable values inside lambdas
-    - capture candidates are filtered by local-binding identity rather than the complete enclosing symbol map
-    - module-level values resolve normally inside lambdas without capture
-    - explicit capture of a non-local declaration receives a focused diagnostic
-    - ordinary function parameters are classified as capture-eligible local bindings
+      - lambda-local symbol environment
+      - explicit plain-name capture syntax
+      - duplicate capture diagnostics
+      - undefined capture diagnostics
+      - unassigned enclosing-symbol capture diagnostics
+      - missing explicit-capture diagnostic for represented enclosing symbols
+      - parameter/capture collision is rejected through the current symbol collision path
+      - named functions remain separately resolvable as callable values inside lambdas
+      - capture candidates are filtered by local-binding identity rather than the complete enclosing symbol map
+      - module-level values resolve normally inside lambdas without capture
+      - explicit capture of a non-local declaration receives a focused diagnostic
+      - ordinary function parameters are classified as capture-eligible local bindings
     bug_reference:
-    - correction11.md
+      - correction11.md
     governance_reconciliation:
-    - Keep frontend.lambda-functions-v2 partial. Narrow the implemented plain capture/implicit-capture wording to
-      the currently represented symbol subset; binding-class correctness between enclosing locals and normal non-local
-      declarations is not implemented.
-    - This issue is independent of the already documented missing capture modes, mutable owned captures, callable
-      capability inference, escaping environments, and closure lowering.
-    - sema.closure-analysis likewise should not infer that every represented capture fact corresponds to a canonically
-      valid local capture until this binding-class boundary is corrected.
+      - Keep frontend.lambda-functions-v2 partial. Narrow the implemented plain capture/implicit-capture wording to the currently represented symbol subset; binding-class correctness between enclosing locals and normal non-local declarations is not implemented.
+      - This issue is independent of the already documented missing capture modes, mutable owned captures, callable capability inference, escaping environments, and closure lowering.
+      - sema.closure-analysis likewise should not infer that every represented capture fact corresponds to a canonically valid local capture until this binding-class boundary is corrected.
     required_tests:
-    - module-level value readable inside lambda without capture
-    - module-level value rejected as explicit capture
-    - enclosing local still requires explicit capture
-    - enclosing function parameter remains capture-eligible
-    - named function usable without capture and rejected as explicit capture
-    - imported non-local declaration follows ordinary lookup
-    - nested lambda retains direct module-level lookup
-    - nested lambda separately enforces explicit capture of eligible enclosing local
+      - module-level value readable inside lambda without capture
+      - module-level value rejected as explicit capture
+      - enclosing local still requires explicit capture
+      - enclosing function parameter remains capture-eligible
+      - named function usable without capture and rejected as explicit capture
+      - imported non-local declaration follows ordinary lookup
+      - nested lambda retains direct module-level lookup
+      - nested lambda separately enforces explicit capture of eligible enclosing local
+
   - id: frontend.static-declarations-members
     area: frontend-analysis-and-lowering
     status: partial
@@ -1345,13 +1343,13 @@ integrations:
     revised: "2026-09-07"
     document_revision: "2.2"
     summary: >-
-      Explicit static impl bindings are type-owned; non-static impl bindings
-      are instance-owned. The previous immutable-let equivalence is corrected.
+      Explicit static impl bindings are type-owned; non-static impl bindings are
+      instance-owned. The previous immutable-let equivalence is corrected.
       Static frontend registration and qualification remain integrated, and
       formatting preserves impl static. Per-instance impl binding storage and
       initialization are not implemented; Sema diagnoses this explicitly and
-      never reinterprets instance declarations as static members. General
-      static Semantic IR, lowering, specialization and destruction remain partial.
+      never reinterprets instance declarations as static members. General static
+      Semantic IR, lowering, specialization and destruction remain partial.
     rules:
       - rules/declarations/static.md
       - rules/declarations/impl.md
@@ -1449,6 +1447,7 @@ integrations:
     verification:
       - command: go test ./...
         result: passed for corrected static/instance distinction; per-instance storage remains explicitly unsupported
+
   - id: frontend.structs
     area: frontend-analysis-and-lowering
     status: partial
@@ -1535,6 +1534,7 @@ integrations:
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (78/78)
+
   - id: frontend.spread
     area: frontend-analysis-and-semantic-ir
     status: partial
@@ -1577,444 +1577,394 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'Test(CallSpread|ArrayLiteralSpread|StructSpread|InvalidStructSpread)' -count=1
         result: passed
+
   - id: frontend.function-overload-backend-identity
     area: frontend-semantic-ir-and-lowering
     status: partial
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-14'
-    document_last_updated: '2026-08-14'
-    summary: Supplements frontend.functions-v2 with the missing backend identity status for ordinary overloads. Sema
-      resolves overloads by parameter signature and records the exact selected callable, but the legacy direct LLVM
-      generator stores only one declaration per source function name and emits ordinary overload declarations under
-      the same unmangled LLVM symbol. The legacy AST-to-LLVM-dialect MLIR generator distinguishes overloads only by
-      arity and explicitly rejects same-arity overloads. End-to-end lowering therefore does not yet preserve the canonical
-      Sema-selected overload identity for overloads distinguished by parameter type.
+    document_revision: "2.0"
+    document_created: "2026-08-14"
+    document_last_updated: "2026-08-14"
+    summary: Supplements frontend.functions-v2 with the missing backend identity status for ordinary overloads. Sema resolves overloads by parameter signature and records the exact selected callable, but the legacy direct LLVM generator stores only one declaration per source function name and emits ordinary overload declarations under the same unmangled LLVM symbol. The legacy AST-to-LLVM-dialect MLIR generator distinguishes overloads only by arity and explicitly rejects same-arity overloads. End-to-end lowering therefore does not yet preserve the canonical Sema-selected overload identity for overloads distinguished by parameter type.
     rules:
-    - rules/declarations/functions.md
-    - rules/declarations/generics.md
-    - rules/compiler/semantic_ir.md
-    - rules/mlir/sec_mlir_lowering.md
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir_lowering.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/semantic_facts.go
-    - internal/codegen/llvm/generator.go
-    - internal/codegen/llvm/functions.go
-    - internal/codegen/llvm/expressions.go
-    - internal/codegen/mlir/generator.go
-    - internal/ir/semantic
-    - internal/lowering/secmlir
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/codegen/llvm/generator.go
+      - internal/codegen/llvm/functions.go
+      - internal/codegen/llvm/expressions.go
+      - internal/codegen/mlir/generator.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/codegen/llvm/generator_test.go
-    - internal/codegen/mlir/generator_test.go
-    - internal/ir/semantic
-    - internal/lowering/secmlir
+      - internal/sema/analyzer_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
     implemented:
-    - ordinary overload groups are registered in Sema by source name
-    - overload identity excludes return type
-    - overloads differing only by ordinary versus forced-consuming parameter mode are rejected
-    - exact parameter matches are preferred over matches requiring conversion
-    - ambiguous equally ranked Sema candidates are rejected
-    - the exact selected ordinary callable is retained in resolved Sema call facts
-    - legacy MLIR provides deterministic arity-based symbols when overloads differ in arity
-    - legacy MLIR explicitly rejects same-name same-arity overload groups rather than guessing a parameter-type overload
+      - ordinary overload groups are registered in Sema by source name
+      - overload identity excludes return type
+      - overloads differing only by ordinary versus forced-consuming parameter mode are rejected
+      - exact parameter matches are preferred over matches requiring conversion
+      - ambiguous equally ranked Sema candidates are rejected
+      - the exact selected ordinary callable is retained in resolved Sema call facts
+      - legacy MLIR provides deterministic arity-based symbols when overloads differ in arity
+      - legacy MLIR explicitly rejects same-name same-arity overload groups rather than guessing a parameter-type overload
     partial:
-    - direct LLVM stores functions in map[string]*ast.FunctionDeclaration, so later declarations replace earlier declarations
-      in the name lookup used by code generation and function-value materialization
-    - direct LLVM llvmFunctionSymbol() returns the ordinary source function name for every non-extern overload, so
-      distinct ordinary overload definitions do not receive distinct backend symbols
-    - legacy AST-to-LLVM-dialect MLIR mangles overloads only by parameter count and rejects overloads that share the
-      same arity even when Sema has resolved them unambiguously by parameter type
-    - legacy MLIR resolveFunction() performs backend call lookup by source name and arity instead of consuming the
-      exact callable selected by Sema
-    - backend symbol identity is therefore not yet a preserved consequence of canonical parameter-signature overload
-      identity
+      - direct LLVM stores functions in map[string]*ast.FunctionDeclaration, so later declarations replace earlier declarations in the name lookup used by code generation and function-value materialization
+      - direct LLVM llvmFunctionSymbol() returns the ordinary source function name for every non-extern overload, so distinct ordinary overload definitions do not receive distinct backend symbols
+      - legacy AST-to-LLVM-dialect MLIR mangles overloads only by parameter count and rejects overloads that share the same arity even when Sema has resolved them unambiguously by parameter type
+      - legacy MLIR resolveFunction() performs backend call lookup by source name and arity instead of consuming the exact callable selected by Sema
+      - backend symbol identity is therefore not yet a preserved consequence of canonical parameter-signature overload identity
     remaining:
-    - preserve the exact Sema-selected callable identity in Semantic IR call facts
-    - assign deterministic backend symbols to ordinary overloads using canonical semantic signature identity rather
-      than source name or arity alone
-    - ensure symbol identity includes parameter types and all signature dimensions that participate in callable identity,
-      while excluding return type and non-discriminating ownership mode exactly as required by the rulebooks
-    - make direct LLVM retain overload groups or consume resolved callable facts rather than overwriting declarations
-      by source name
-    - prevent direct LLVM from emitting multiple distinct overload definitions under one ordinary source symbol
-    - make legacy MLIR consume the resolved overload identity instead of re-resolving calls by arity
-    - support same-arity parameter-type overloads through every maintained backend or reject the backend path with
-      an explicit unsupported-lowering diagnostic before producing IR
-    - preserve deterministic overload symbols across source order, modules, generic specialization, and repeated builds
-    - add end-to-end tests where two overloads have the same name and arity but different parameter types and both
-      are called
-    - add tests proving overload symbols cannot collide when physical lowered parameter types happen to coincide but
-      semantic overload identity remains distinct where the ABI permits the distinction
-    - integrate native variadic overload identity later without conflating it with C/foreign varargs
+      - preserve the exact Sema-selected callable identity in Semantic IR call facts
+      - assign deterministic backend symbols to ordinary overloads using canonical semantic signature identity rather than source name or arity alone
+      - ensure symbol identity includes parameter types and all signature dimensions that participate in callable identity, while excluding return type and non-discriminating ownership mode exactly as required by the rulebooks
+      - make direct LLVM retain overload groups or consume resolved callable facts rather than overwriting declarations by source name
+      - prevent direct LLVM from emitting multiple distinct overload definitions under one ordinary source symbol
+      - make legacy MLIR consume the resolved overload identity instead of re-resolving calls by arity
+      - support same-arity parameter-type overloads through every maintained backend or reject the backend path with an explicit unsupported-lowering diagnostic before producing IR
+      - preserve deterministic overload symbols across source order, modules, generic specialization, and repeated builds
+      - add end-to-end tests where two overloads have the same name and arity but different parameter types and both are called
+      - add tests proving overload symbols cannot collide when physical lowered parameter types happen to coincide but semantic overload identity remains distinct where the ABI permits the distinction
+      - integrate native variadic overload identity later without conflating it with C/foreign varargs
     governance_reconciliation:
-    - frontend.functions-v2 already records the broad remaining work to represent calls in Semantic IR and lower calls
-      through Sec MLIR/LLVM. This supplement makes the specifically missing ordinary-overload symbol and selected-callable
-      identity problem explicit.
-    - Do not downgrade Sema ordinary-overload resolution. The frontend already resolves same-arity overloads by semantic
-      parameter types.
-    - 'Do not classify the legacy MLIR same-arity error itself as a semantic compiler bug: that backend explicitly
-      reports the unsupported case. The missing implementation is preservation/lowering of the already resolved callable.'
-    - The direct LLVM path requires special care because it does not provide the same explicit same-arity-overload
-      guard and uses one source symbol for every ordinary overload.
+      - frontend.functions-v2 already records the broad remaining work to represent calls in Semantic IR and lower calls through Sec MLIR/LLVM. This supplement makes the specifically missing ordinary-overload symbol and selected-callable identity problem explicit.
+      - Do not downgrade Sema ordinary-overload resolution. The frontend already resolves same-arity overloads by semantic parameter types.
+      - "Do not classify the legacy MLIR same-arity error itself as a semantic compiler bug: that backend explicitly reports the unsupported case. The missing implementation is preservation/lowering of the already resolved callable."
+      - The direct LLVM path requires special care because it does not provide the same explicit same-arity-overload guard and uses one source symbol for every ordinary overload.
     required_tests:
-    - same-name different-arity overloads lower to distinct deterministic symbols
-    - same-name same-arity different-parameter-type overloads both lower and call the Sema-selected targets
-    - source declaration order does not change backend overload symbols
-    - return type never contributes to overload symbol identity because such source overloads are already invalid
-    - forced-consuming versus ordinary mode does not create a distinct overload symbol because such source overload
-      pairs are already invalid
-    - direct LLVM never silently overwrites overload lookup by source name
-    - direct LLVM never emits distinct overload definitions under the same backend symbol
-    - legacy MLIR no longer re-resolves a Sema-resolved call by arity
-    - unsupported backend paths fail before publishing invalid or ambiguous IR
+      - same-name different-arity overloads lower to distinct deterministic symbols
+      - same-name same-arity different-parameter-type overloads both lower and call the Sema-selected targets
+      - source declaration order does not change backend overload symbols
+      - return type never contributes to overload symbol identity because such source overloads are already invalid
+      - forced-consuming versus ordinary mode does not create a distinct overload symbol because such source overload pairs are already invalid
+      - direct LLVM never silently overwrites overload lookup by source name
+      - direct LLVM never emits distinct overload definitions under the same backend symbol
+      - legacy MLIR no longer re-resolves a Sema-resolved call by arity
+      - unsupported backend paths fail before publishing invalid or ambiguous IR
+
   - id: frontend.register-wide-bit-fields
     area: frontend-register-analysis
     status: implemented
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-13'
-    summary: Implements exact arbitrary-precision value domains for raw register bit[N] fields independently from
-      host and target-sized uint widths. Field identity retains the declared width and compile-time assignment checks
-      consume the exact big.Int bounds.
+    document_revision: "2"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-13"
+    summary: Implements exact arbitrary-precision value domains for raw register bit[N] fields independently from host and target-sized uint widths. Field identity retains the declared width and compile-time assignment checks consume the exact big.Int bounds.
     rules:
-    - rules/declarations/registers.md
-    - rules/types/types.md
-    - rules/memory/layout.md
+      - rules/declarations/registers.md
+      - rules/types/types.md
+      - rules/memory/layout.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
     tests:
-    - internal/sema/analyzer_test.go
-    - testdata/register_valid.sec
-    - testdata/register_invalid.sec
+      - internal/sema/analyzer_test.go
+      - testdata/register_valid.sec
+      - testdata/register_invalid.sec
     implemented:
-    - positive integer-literal register widths
-    - positive integer-literal raw bit-field widths
-    - exact sum-of-field-width validation
-    - lsb-first and msb-first bit-offset calculation from declared widths
-    - raw bit-field range checking through arbitrary-precision MinInteger and MaxInteger bounds
-    - arbitrary-precision MinInteger and MaxInteger storage exists in the general semantic Type representation
-    - raw bit[N] semantic type names and BitWidth facts remain distinct from target-sized uint identity
-    - bit[65] and bit[128] assignment boundaries are covered with values above uint64
+      - positive integer-literal register widths
+      - positive integer-literal raw bit-field widths
+      - exact sum-of-field-width validation
+      - lsb-first and msb-first bit-offset calculation from declared widths
+      - raw bit-field range checking through arbitrary-precision MinInteger and MaxInteger bounds
+      - arbitrary-precision MinInteger and MaxInteger storage exists in the general semantic Type representation
+      - raw bit[N] semantic type names and BitWidth facts remain distinct from target-sized uint identity
+      - bit[65] and bit[128] assignment boundaries are covered with values above uint64
     verification:
-    - command: go test ./internal/sema -run 'TestWideRegisterField|TestRegister' -count=1
-      result: passed
+      - command: go test ./internal/sema -run 'TestWideRegisterField|TestRegister' -count=1
+        result: passed
     bug_reference:
-    - correction13.md
+      - correction13.md
     governance_reconciliation:
-    - 'Narrow frontend.registers implemented wording for bit[N] field value ranges and constant assignment checks:
-      layout width is exact, but raw semantic field ranges are currently capped at 64 bits.'
-    - Keep the separately documented remaining work for nested registers, compile-time width expressions, access semantics,
-      checked integer-to-register conversions, and lowering.
+      - "Narrow frontend.registers implemented wording for bit[N] field value ranges and constant assignment checks: layout width is exact, but raw semantic field ranges are currently capped at 64 bits."
+      - Keep the separately documented remaining work for nested registers, compile-time width expressions, access semantics, checked integer-to-register conversions, and lowering.
     required_tests:
-    - bit[64] exact maximum accepted
-    - bit[64] first out-of-range value rejected
-    - bit[65] value 2^64 accepted
-    - bit[65] exact maximum accepted
-    - bit[65] first out-of-range value rejected
-    - bit[128] value 2^100 accepted
-    - bit[128] exact maximum accepted
-    - bit[128] first out-of-range value rejected
-    - backend inability to lower wide field does not change frontend semantic width
+      - bit[64] exact maximum accepted
+      - bit[64] first out-of-range value rejected
+      - bit[65] value 2^64 accepted
+      - bit[65] exact maximum accepted
+      - bit[65] first out-of-range value rejected
+      - bit[128] value 2^100 accepted
+      - bit[128] exact maximum accepted
+      - bit[128] first out-of-range value rejected
+      - backend inability to lower wide field does not change frontend semantic width
+
   - id: frontend.spread-validity-and-ownership
     area: frontend-spread-analysis
     status: partial
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-14'
-    summary: Struct spread contributes omitted fields only after full type and copyability validation. Fixed-array
-      call spread prepares non-consuming copied argument slots, including for consuming destinations, so ownership
-      bookkeeping never consumes the source array. Explicit indexed Semantic IR projection facts remain pending.
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-14"
+    summary: Struct spread contributes omitted fields only after full type and copyability validation. Fixed-array call spread prepares non-consuming copied argument slots, including for consuming destinations, so ownership bookkeeping never consumes the source array. Explicit indexed Semantic IR projection facts remain pending.
     rules:
-    - rules/declarations/spread.md
-    - rules/declarations/functions.md
-    - rules/declarations/struct.md
-    - rules/memory/copy_move.md
-    - rules/memory/ownership.md
-    - rules/compiler/semantic_ir.md
+      - rules/declarations/spread.md
+      - rules/declarations/functions.md
+      - rules/declarations/struct.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/sema/analyzer.go
+      - internal/sema/analyzer.go
     tests:
-    - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_test.go
     implemented:
-    - postfix spread source type analysis
-    - fixed-array compile-time expansion counts for calls
-    - fixed-array spread element copyability rejection for move-only elements
-    - same-exact-type validation for struct spread
-    - struct-spread source copyability diagnostic
-    - explicit-field duplicate checking remains independent of spread entries
-    - missing NonDefaultable-field diagnostics work when no spread is treated as supplying the struct
-    - invalid same-type move-only struct spreads contribute no fields to omitted-field/default resolution
-    - fixed-array expanded arguments are marked as prepared copied values for ownership analysis
-    - consuming destination parameters do not consume a valid fixed-array spread source
+      - postfix spread source type analysis
+      - fixed-array compile-time expansion counts for calls
+      - fixed-array spread element copyability rejection for move-only elements
+      - same-exact-type validation for struct spread
+      - struct-spread source copyability diagnostic
+      - explicit-field duplicate checking remains independent of spread entries
+      - missing NonDefaultable-field diagnostics work when no spread is treated as supplying the struct
+      - invalid same-type move-only struct spreads contribute no fields to omitted-field/default resolution
+      - fixed-array expanded arguments are marked as prepared copied values for ownership analysis
+      - consuming destination parameters do not consume a valid fixed-array spread source
     partial:
-    - expanded slots retain the source expression plus a prepared-value marker rather than a canonical indexed Semantic
-      IR projection fact
+      - expanded slots retain the source expression plus a prepared-value marker rather than a canonical indexed Semantic IR projection fact
     remaining:
-    - introduce resolved per-expanded-argument facts carrying source, index, prepared value, destination parameter,
-      and ownership operation
-    - preserve one source evaluation and increasing-index expansion order
-    - feed resolved spread facts into Semantic IR rather than reconstructing source semantics from repeated AST expressions
-    - audit return-reference/provenance and borrow bookkeeping for spread arguments once indexed expanded-argument
-      facts exist
+      - introduce resolved per-expanded-argument facts carrying source, index, prepared value, destination parameter, and ownership operation
+      - preserve one source evaluation and increasing-index expansion order
+      - feed resolved spread facts into Semantic IR rather than reconstructing source semantics from repeated AST expressions
+      - audit return-reference/provenance and borrow bookkeeping for spread arguments once indexed expanded-argument facts exist
     bug_reference:
-    - correction14.md
+      - correction14.md
     governance_reconciliation:
-    - Narrow frontend.spread's implemented statement that invalid spreads are unable to suppress missing NonDefaultable-field
-      diagnostics; the same-type non-copyable case currently violates it.
-    - Keep fixed-array call spread type/arity/copyability analysis as implemented within that scope, but record post-resolution
-      ownership as partial because consuming destination parameters can currently consume the whole source array.
-    - The existing remaining Semantic-IR spread-provenance item does not by itself document these frontend Sema defects.
+      - Narrow frontend.spread's implemented statement that invalid spreads are unable to suppress missing NonDefaultable-field diagnostics; the same-type non-copyable case currently violates it.
+      - Keep fixed-array call spread type/arity/copyability analysis as implemented within that scope, but record post-resolution ownership as partial because consuming destination parameters can currently consume the whole source array.
+      - The existing remaining Semantic-IR spread-provenance item does not by itself document these frontend Sema defects.
     required_tests:
-    - move-only same-type struct spread does not suppress missing field errors
-    - wrong-type struct spread does not suppress missing field errors
-    - valid struct spread supplies required fields
-    - copyable array spread into consuming parameters leaves source available
-    - direct non-spread consuming argument still becomes unavailable
-    - multiple consuming expanded slots never move source array
-    - move-only element spread remains rejected
-    - spread source analyzed exactly once
-    - expanded call slots preserve increasing indices
+      - move-only same-type struct spread does not suppress missing field errors
+      - wrong-type struct spread does not suppress missing field errors
+      - valid struct spread supplies required fields
+      - copyable array spread into consuming parameters leaves source available
+      - direct non-spread consuming argument still becomes unavailable
+      - multiple consuming expanded slots never move source array
+      - move-only element spread remains rejected
+      - spread source analyzed exactly once
+      - expanded call slots preserve increasing indices
+
   - id: frontend.static-context-receiver-storage
     area: frontend-static-analysis
     status: implemented
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-14'
-    summary: Static impl functions retain owning-type qualification without receiving self or implicit instance members.
-      Module bindings have static storage independent of redundant spelling, and static fn outside impl is rejected.
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-14"
+    summary: Static impl functions retain owning-type qualification without receiving self or implicit instance members. Module bindings have static storage independent of redundant spelling, and static fn outside impl is rejected.
     rules:
-    - rules/declarations/static.md
-    - rules/declarations/functions.md
-    - rules/declarations/impl.md
-    - rules/declarations/properties.md
-    - rules/foundations/grammar.md
-    - rules/compiler/semantic_ir.md
+      - rules/declarations/static.md
+      - rules/declarations/functions.md
+      - rules/declarations/impl.md
+      - rules/declarations/properties.md
+      - rules/foundations/grammar.md
+      - rules/compiler/semantic_ir.md
     code:
-    - internal/parser/parser.go
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
-    - internal/sema/semantic_facts.go
-    - internal/sema/call_graph.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/call_graph.go
     tests:
-    - internal/parser/parser_test.go
-    - internal/sema/analyzer_test.go
-    - internal/sema/concurrency_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/concurrency_test.go
     implemented:
-    - static keyword tokenization
-    - AST Static classification for static fn
-    - AST Static classification for static let and static let mut
-    - static fn is accepted as an impl member
-    - static function metadata retains Static=true
-    - static let symbols with an explicit static modifier are assigned StorageOriginStatic
-    - static member owner type is retained through impl-qualified function registration
-    - ordinary instance methods receive compiler-provided implicit self and instance-member aliases
-    - static method bodies do not receive self or implicit instance-member aliases
-    - receiver mutability inference and receiver-use classification exclude static methods
-    - ordinary module-level bindings use StorageOriginStatic without requiring explicit static
-    - Sema rejects static fn outside impl with focused guidance
+      - static keyword tokenization
+      - AST Static classification for static fn
+      - AST Static classification for static let and static let mut
+      - static fn is accepted as an impl member
+      - static function metadata retains Static=true
+      - static let symbols with an explicit static modifier are assigned StorageOriginStatic
+      - static member owner type is retained through impl-qualified function registration
+      - ordinary instance methods receive compiler-provided implicit self and instance-member aliases
+      - static method bodies do not receive self or implicit instance-member aliases
+      - receiver mutability inference and receiver-use classification exclude static methods
+      - ordinary module-level bindings use StorageOriginStatic without requiring explicit static
+      - Sema rejects static fn outside impl with focused guidance
     bug_reference:
-    - correction15.md
+      - correction15.md
     governance_reconciliation:
-    - Remove or downgrade the current implemented claim "ordinary impl fn declarations remain instance-bound with
-      compiler-provided implicit self while static fn bodies receive no self". The ordinary-method half is implemented;
-      the static-method half is false at c515862.
-    - Keep "static-let symbols are classified with Static storage origin by Sema" only for explicitly static declarations,
-      and add that automatic module-level static storage classification is not yet implemented.
-    - Add validation of static declaration context to remaining work; parser acceptance of static fn is currently
-      broader than revision 2.0.
-    - Existing remaining items for static properties, access qualification, compile-time initialization, specialization,
-      concurrency, destruction, formatter normalization, and explicit Semantic IR/lowering remain unchanged.
+      - Remove or downgrade the current implemented claim "ordinary impl fn declarations remain instance-bound with compiler-provided implicit self while static fn bodies receive no self". The ordinary-method half is implemented; the static-method half is false at c515862.
+      - Keep "static-let symbols are classified with Static storage origin by Sema" only for explicitly static declarations, and add that automatic module-level static storage classification is not yet implemented.
+      - Add validation of static declaration context to remaining work; parser acceptance of static fn is currently broader than revision 2.0.
+      - Existing remaining items for static properties, access qualification, compile-time initialization, specialization, concurrency, destruction, formatter normalization, and explicit Semantic IR/lowering remain unchanged.
     required_tests:
-    - static method self use rejected
-    - static method unqualified instance field read rejected
-    - static method unqualified instance field write rejected
-    - ordinary instance method retains implicit self
-    - static method semantic fact has no receiver
-    - module-level ordinary let has static storage origin
-    - module-level ordinary let mut has static storage origin
-    - redundant module static let has identical semantic storage
-    - function-local ordinary let remains automatic
-    - function-local static let remains static
-    - module-level static fn rejected
-    - block-local static fn rejected
-    - impl static fn accepted
-    - impl extends static fn accepted
+      - static method self use rejected
+      - static method unqualified instance field read rejected
+      - static method unqualified instance field write rejected
+      - ordinary instance method retains implicit self
+      - static method semantic fact has no receiver
+      - module-level ordinary let has static storage origin
+      - module-level ordinary let mut has static storage origin
+      - redundant module static let has identical semantic storage
+      - function-local ordinary let remains automatic
+      - function-local static let remains static
+      - module-level static fn rejected
+      - block-local static fn rejected
+      - impl static fn accepted
+      - impl extends static fn accepted
+
   - id: frontend.struct-field-tags
     area: frontend-struct-parser-and-metadata
     status: implemented
-    audited: '2026-08-27'
+    audited: "2026-08-27"
     repository_baseline: c515862
-    document_revision: '2.0'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-13'
-    summary: Supplements frontend.structs with quote-aware field-tag parsing. The parser now scans key/value entries
-      left-to-right, recognizes separators only outside quoted values, preserves whitespace and escape spelling,
-      rejects malformed quote structure, and recovers at the current field comma. AST and Sema retain ordered open-key
-      metadata. Section 4 supplies the normative raw-escape behavior where the compiler preserves escape spelling while
-      recognizing the structural quote. The existing generic-specialization, Semantic IR, and Sec-MLIR paths preserve
-      the resulting ordered metadata and now have regression coverage. Sema exposes immutable field metadata and LSP
-      field hover consumes it without decoding values or assigning built-in meaning to open tag keys.
+    document_revision: "2.0"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-13"
+    summary: Supplements frontend.structs with quote-aware field-tag parsing. The parser now scans key/value entries left-to-right, recognizes separators only outside quoted values, preserves whitespace and escape spelling, rejects malformed quote structure, and recovers at the current field comma. AST and Sema retain ordered open-key metadata. Section 4 supplies the normative raw-escape behavior where the compiler preserves escape spelling while recognizing the structural quote. The existing generic-specialization, Semantic IR, and Sec-MLIR paths preserve the resulting ordered metadata and now have regression coverage. Sema exposes immutable field metadata and LSP field hover consumes it without decoding values or assigning built-in meaning to open tag keys.
     rules:
-    - rules/declarations/struct.md
-    - rules/foundations/grammar.md
+      - rules/declarations/struct.md
+      - rules/foundations/grammar.md
     code:
-    - internal/parser/parser.go
-    - internal/ast/ast.go
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
-    - internal/sema/semantic_facts.go
-    - internal/ir/semantic/builder.go
-    - internal/lowering/secmlir/emitter.go
-    - cmd/lsp/main.go
+      - internal/parser/parser.go
+      - internal/ast/ast.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
+      - cmd/lsp/main.go
     tests:
-    - internal/parser/parser_test.go
-    - internal/sema/analyzer_test.go
-    - internal/sema/semantic_facts_test.go
-    - internal/ir/semantic/package13_test.go
-    - internal/lowering/secmlir/emitter_test.go
-    - cmd/lsp/main_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/package13_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/lsp/main_test.go
     implemented:
-    - optional raw-string tag token recognized after a stored field type
-    - multiple simple whitespace-separated key/value entries represented in AST
-    - open key names with no compiler hard-coded consumer allowlist
-    - tag key/value metadata copied from AST into semantic StructField metadata
-    - generic struct specialization preserves StructField metadata while substituting field types
-    - quote-aware key:"value" scanning without strings.Fields or destructive quote trimming
-    - whitespace and empty content inside quoted values are preserved
-    - malformed internal and unterminated quote structure is rejected
-    - escape spelling is preserved while escaped quotes do not terminate the value
-    - malformed tags recover at the current field comma and retain later fields
-    - canonical raw escape semantics are consumed exactly as section 4 specifies; escapes remain metadata and are not
-      decoded or normalized by the compiler
-    - generic specialization, Semantic IR construction, and Sec-MLIR schema-v9 lowering preserve ordered tag metadata
-    - resolved stored-field member facts expose ordered tag metadata through an immutable snapshot
-    - declaration-oriented consumers can query immutable ResolvedStructFieldMetadata by semantic definition identity
-    - LSP field hover displays compiler-resolved open-key metadata while retaining raw escapes, whitespace, and order
+      - optional raw-string tag token recognized after a stored field type
+      - multiple simple whitespace-separated key/value entries represented in AST
+      - open key names with no compiler hard-coded consumer allowlist
+      - tag key/value metadata copied from AST into semantic StructField metadata
+      - generic struct specialization preserves StructField metadata while substituting field types
+      - quote-aware key:"value" scanning without strings.Fields or destructive quote trimming
+      - whitespace and empty content inside quoted values are preserved
+      - malformed internal and unterminated quote structure is rejected
+      - escape spelling is preserved while escaped quotes do not terminate the value
+      - malformed tags recover at the current field comma and retain later fields
+      - canonical raw escape semantics are consumed exactly as section 4 specifies; escapes remain metadata and are not decoded or normalized by the compiler
+      - generic specialization, Semantic IR construction, and Sec-MLIR schema-v9 lowering preserve ordered tag metadata
+      - resolved stored-field member facts expose ordered tag metadata through an immutable snapshot
+      - declaration-oriented consumers can query immutable ResolvedStructFieldMetadata by semantic definition identity
+      - LSP field hover displays compiler-resolved open-key metadata while retaining raw escapes, whitespace, and order
     verification:
-    - command: go test ./internal/parser -run StructFieldTag -count=1
-      result: passed
-    - command: go test ./internal/sema -run GenericStructAndFunctionHeaders -count=1
-      result: passed
-    - command: go test ./internal/sema -run ResolvedStructPlansPreserveSourceOrderOverridesDefaultsAndMembers -count=1
-      result: passed
-    - command: go test ./internal/ir/semantic -run Package13BuildsEmptyAndConcreteGenericWideStructs -count=1
-      result: passed
-    - command: go test ./internal/lowering/secmlir -run EmitPackage13StructsEndToEnd -count=1
-      result: passed
-    - command: go test ./cmd/lsp -run StructFieldHoverPreservesOpenTagMetadata -count=1
-      result: passed
+      - command: go test ./internal/parser -run StructFieldTag -count=1
+        result: passed
+      - command: go test ./internal/sema -run GenericStructAndFunctionHeaders -count=1
+        result: passed
+      - command: go test ./internal/sema -run ResolvedStructPlansPreserveSourceOrderOverridesDefaultsAndMembers -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run Package13BuildsEmptyAndConcreteGenericWideStructs -count=1
+        result: passed
+      - command: go test ./internal/lowering/secmlir -run EmitPackage13StructsEndToEnd -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run StructFieldHoverPreservesOpenTagMetadata -count=1
+        result: passed
     bug_reference:
-    - correction16.md
+      - correction16.md
     governance_reconciliation:
-    - The correction16 quote-aware parsing and recovery requirements, together with the later canonical escape semantics
-      in struct.md section 4, are now covered through parser, Sema, Semantic IR, and Sec-MLIR lowering.
-    - struct.md requires metadata preservation for consumers but does not define built-in meanings for tag keys; package
-      13 sections 12.2 and 70 explicitly keep reflection and serialization behavior out of scope while requiring the
-      metadata bridge now implemented and exposed to tooling.
+      - The correction16 quote-aware parsing and recovery requirements, together with the later canonical escape semantics in struct.md section 4, are now covered through parser, Sema, Semantic IR, and Sec-MLIR lowering.
+      - struct.md requires metadata preservation for consumers but does not define built-in meanings for tag keys; package 13 sections 12.2 and 70 explicitly keep reflection and serialization behavior out of scope while requiring the metadata bridge now implemented and exposed to tooling.
     required_tests:
-    - simple tag entry accepted
-    - multiple simple tag entries accepted
-    - custom key accepted
-    - empty quoted tag value accepted
-    - quoted tag value containing whitespace accepted
-    - malformed internal quote structure rejected
-    - unterminated quoted value rejected
-    - tag source order preserved
-    - malformed first-field tag still permits parsing later valid fields
-    - malformed middle-field tag recovers at field boundary
-    - generic specialization preserves ordered field tags
-    - resolved member tag facts are immutable snapshots
-    - declaration field-metadata facts are immutable snapshots
-    - Semantic IR preserves field tags on concrete generic structs
-    - Sec-MLIR emission preserves raw escapes, whitespace, and tag order
-    - LSP field hover exposes resolved open-key metadata without decoding values
+      - simple tag entry accepted
+      - multiple simple tag entries accepted
+      - custom key accepted
+      - empty quoted tag value accepted
+      - quoted tag value containing whitespace accepted
+      - malformed internal quote structure rejected
+      - unterminated quoted value rejected
+      - tag source order preserved
+      - malformed first-field tag still permits parsing later valid fields
+      - malformed middle-field tag recovers at field boundary
+      - generic specialization preserves ordered field tags
+      - resolved member tag facts are immutable snapshots
+      - declaration field-metadata facts are immutable snapshots
+      - Semantic IR preserves field tags on concrete generic structs
+      - Sec-MLIR emission preserves raw escapes, whitespace, and tag order
+      - LSP field hover exposes resolved open-key metadata without decoding values
+
   - id: frontend.union-constructor-value-semantics
     area: frontend-union-construction
     status: partial
-    audited: '2026-08-19'
+    audited: "2026-08-19"
     repository_baseline: c515862
-    document_revision: '2'
-    document_created: '2026-08-13'
-    document_last_updated: '2026-08-13'
-    summary: Union constructor payloads apply ordinary compatibility and integer representability validation. Resolved
-      unnamed constructors transfer move-only payload ownership into the aggregate without treating ordinary function
-      calls as constructors. Canonical Semantic IR payload-preparation facts remain pending.
+    document_revision: "2"
+    document_created: "2026-08-13"
+    document_last_updated: "2026-08-13"
+    summary: Union constructor payloads apply ordinary compatibility and integer representability validation. Resolved unnamed constructors transfer move-only payload ownership into the aggregate without treating ordinary function calls as constructors. Canonical Semantic IR payload-preparation facts remain pending.
     rules:
-    - rules/declarations/unions.md
-    - rules/declarations/struct.md
-    - rules/types/types.md
-    - rules/memory/copy_move.md
-    - rules/memory/ownership.md
-    - rules/compiler/semantic_ir.md
-    - rules/mlir/packages/sec-mlir-dialect_package11.md
+      - rules/declarations/unions.md
+      - rules/declarations/struct.md
+      - rules/types/types.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/packages/sec-mlir-dialect_package11.md
     code:
-    - internal/sema/analyzer.go
-    - internal/sema/types.go
-    - internal/sema/semantic_facts.go
-    - internal/ir/semantic
-    - internal/lowering/secmlir
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
     tests:
-    - internal/sema/analyzer_test.go
-    - internal/sema/copy_move_test.go
-    - internal/sema/semantic_facts_test.go
-    - testdata/union_valid.sec
-    - testdata/union_invalid.sec
-    - testdata/semantic_ir/enum_union_values.sec
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/semantic_facts_test.go
+      - testdata/union_valid.sec
+      - testdata/union_invalid.sec
+      - testdata/semantic_ir/enum_union_values.sec
     implemented:
-    - payload-less union construction arity checking
-    - single unnamed payload arity checking
-    - single unnamed payload broad type compatibility checking
-    - struct-like payload known-field and duplicate-field checking
-    - struct-like payload broad field type compatibility checking
-    - omitted Defaultable struct-like payload field synthesis
-    - omitted NonDefaultable struct-like payload field diagnostics
-    - generic payload substitution before represented concrete construction
-    - union payload copyability classification
-    - struct-literal aggregate ownership walk used by struct-like payload construction
-    - resolved union variant identity and declaration-order variant index facts
-    - integer representability validation for expected, qualified, generic-substituted, and named-field payloads
-    - resolved unnamed union constructors transfer ownership from move-only payload sources
-    - ordinary function calls remain governed by ordinary call-argument ownership
+      - payload-less union construction arity checking
+      - single unnamed payload arity checking
+      - single unnamed payload broad type compatibility checking
+      - struct-like payload known-field and duplicate-field checking
+      - struct-like payload broad field type compatibility checking
+      - omitted Defaultable struct-like payload field synthesis
+      - omitted NonDefaultable struct-like payload field diagnostics
+      - generic payload substitution before represented concrete construction
+      - union payload copyability classification
+      - struct-literal aggregate ownership walk used by struct-like payload construction
+      - resolved union variant identity and declaration-order variant index facts
+      - integer representability validation for expected, qualified, generic-substituted, and named-field payloads
+      - resolved unnamed union constructors transfer ownership from move-only payload sources
+      - ordinary function calls remain governed by ordinary call-argument ownership
     partial:
-    - union constructor payload preparation is not yet represented as one explicit resolved value/ownership fact independent
-      of AST shape
+      - union constructor payload preparation is not yet represented as one explicit resolved value/ownership fact independent of AST shape
     remaining:
-    - introduce explicit resolved union-constructor payload preparation facts
-    - distinguish payload copy preparation from ownership transfer
-    - make unnamed and struct-like payload ownership semantics independent of AST representation
-    - audit reference-origin/contained-origin propagation through both union constructor forms
-    - feed resolved constructor preparation into Semantic IR and lowering without reconstructing copy/move semantics
-      from syntax
+      - introduce explicit resolved union-constructor payload preparation facts
+      - distinguish payload copy preparation from ownership transfer
+      - make unnamed and struct-like payload ownership semantics independent of AST representation
+      - audit reference-origin/contained-origin propagation through both union constructor forms
+      - feed resolved constructor preparation into Semantic IR and lowering without reconstructing copy/move semantics from syntax
     bug_reference:
-    - correction17.md
+      - correction17.md
     governance_reconciliation:
-    - 'Narrow frontend.unions implemented wording "payload construction arity and type checking": arity and broad
-      type compatibility are implemented, but complete typed initialization/representability checking is partial.'
-    - Keep implemented match payload Place ownership and copyability classification. Add union-constructor payload
-      ownership transfer as a separate partial frontend area.
-    - Keep Package 11 implemented within its documented dependency-bounded scope; this correction concerns the frontend
-      preparation/proof supplied to later IR.
-    - Generic-union recursive storage remains governed by correction8.md and should not be duplicated here.
+      - "Narrow frontend.unions implemented wording \"payload construction arity and type checking\": arity and broad type compatibility are implemented, but complete typed initialization/representability checking is partial."
+      - Keep implemented match payload Place ownership and copyability classification. Add union-constructor payload ownership transfer as a separate partial frontend area.
+      - Keep Package 11 implemented within its documented dependency-bounded scope; this correction concerns the frontend preparation/proof supplied to later IR.
+      - Generic-union recursive storage remains governed by correction8.md and should not be duplicated here.
     required_tests:
-    - unnamed uint8 payload accepts 255
-    - unnamed uint8 payload rejects 256
-    - named uint8 payload field rejects 300
-    - generic uint8 union payload rejects out-of-range literal
-    - equivalent struct and union field representability behavior
-    - copyable unnamed payload leaves source usable
-    - move-only unnamed payload transfers ownership
-    - moved unnamed payload source cannot be reused
-    - borrowed move-only source cannot be transferred into unnamed payload
-    - unnamed and struct-like payload ownership semantics agree
-    - temporary move-only payload constructor remains valid
-    - resolved constructor fact records payload ownership preparation
+      - unnamed uint8 payload accepts 255
+      - unnamed uint8 payload rejects 256
+      - named uint8 payload field rejects 300
+      - generic uint8 union payload rejects out-of-range literal
+      - equivalent struct and union field representability behavior
+      - copyable unnamed payload leaves source usable
+      - move-only unnamed payload transfers ownership
+      - moved unnamed payload source cannot be reused
+      - borrowed move-only source cannot be transferred into unnamed payload
+      - unnamed and struct-like payload ownership semantics agree
+      - temporary move-only payload constructor remains valid
+      - resolved constructor fact records payload ownership preparation

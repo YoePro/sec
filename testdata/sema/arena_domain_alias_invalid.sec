@@ -1,0 +1,22 @@
+module main
+
+fn Alias(arena: ref mut Arena) Result[void, AllocationError] {
+    let values := try arena.Alloc[byte](1u)
+    let alias :<- arena
+    alias.Reset()
+    discard values
+    return Ok()
+}
+
+fn MovedReset(arena: ref mut Arena) void {
+    let renamed :<- arena
+    renamed.Reset()
+}
+
+fn Caller() Result[void, AllocationError] {
+    let mut arena: Arena := Arena {}
+    let values := try arena.Alloc[byte](1u)
+    MovedReset(arena)
+    discard values
+    return Ok()
+}

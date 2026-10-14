@@ -35,7 +35,7 @@ func runInitCommand(args []string) {
 		printUsage()
 		os.Exit(1)
 	}
-	if versions := validateDiscoveredProjectVersions([]string{options.ProjectDir}); versions.Errors > 0 {
+	if versions := validateDiscoveredProjectManifests([]string{options.ProjectDir}); versions.Errors > 0 {
 		printDiagnosticSummary(versions)
 		exitCLI(3)
 	}

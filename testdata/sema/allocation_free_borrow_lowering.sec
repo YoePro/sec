@@ -1,0 +1,9 @@
+module main
+
+fn Borrow(value: int) int {
+    let borrowed := ref value
+    discard borrowed
+    return value
+}
+
+fn main() int { return Borrow(3) }

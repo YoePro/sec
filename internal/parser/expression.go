@@ -71,6 +71,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.FLOAT:
 		left = p.parseQuantitySuffix(p.parseFloatLiteral())
 
+	case lexer.LT:
+		left = p.parseUnitReferenceExpression()
+
 	case lexer.STRING:
 		left = p.parseStringLiteral()
 	case lexer.RAW_STRING:
@@ -1765,28 +1768,52 @@ func (p *Parser) parseFloatLiteral() ast.Expression {
 }
 
 // parseQuantitySuffix attaches a unit annotation written immediately after a
-// numeric literal, as in `5<s>`. The `<` must touch the literal and the
-// annotation must be one complete unit expression closed by `>` on the same
-// line; otherwise nothing is consumed and `<` stays an ordinary comparison
-// (`5 < s`, `5<count && ...`).
+// numeric literal, as in `5<s>`.
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Quantity literals"
 //   - rules/types/units.md — "Quantity literals"
 func (p *Parser) parseQuantitySuffix(literal ast.Expression) ast.Expression {
-	if literal == nil || p.peekToken.Type != lexer.LT {
+	if literal == nil {
 		return literal
+	}
+	annotation, ok := p.parseAdjacentUnitAnnotation()
+	if !ok {
+		return literal
+	}
+	return &ast.QuantityLiteral{
+		Token: expressionTokenOf(literal), Value: literal, UnitToken: annotation.open,
+		Unit: annotation.unit, UnitExpression: annotation.expression, EndToken: annotation.close,
+	}
+}
+
+type adjacentUnitAnnotation struct {
+	open, close lexer.Token
+	unit        string
+	expression  *ast.UnitExpression
+}
+
+// parseAdjacentUnitAnnotation consumes a `<UnitExpression>` that touches the
+// current token and closes on the same line. Otherwise it consumes nothing
+// and `<` stays an ordinary comparison (`5 < s`, `5<count && ...`,
+// `bit[8](x) < limit`).
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Quantity literals", "Bit extraction"
+func (p *Parser) parseAdjacentUnitAnnotation() (adjacentUnitAnnotation, bool) {
+	if p.peekToken.Type != lexer.LT {
+		return adjacentUnitAnnotation{}, false
 	}
 	endLine, endColumn := p.curToken.EndPosition()
 	if p.peekToken.Line != endLine || p.peekToken.Column != endColumn {
-		return literal
+		return adjacentUnitAnnotation{}, false
 	}
 	curToken, peekToken := p.curToken, p.peekToken
 	lexerState := p.l.Snapshot()
-	restore := func() ast.Expression {
+	restore := func() (adjacentUnitAnnotation, bool) {
 		p.curToken, p.peekToken = curToken, peekToken
 		p.l.Restore(lexerState)
-		return literal
+		return adjacentUnitAnnotation{}, false
 	}
 	p.nextToken()
 	open := p.curToken
@@ -1813,10 +1840,28 @@ func (p *Parser) parseQuantitySuffix(literal ast.Expression) ast.Expression {
 		return restore()
 	}
 	expression.Source = unit
-	return &ast.QuantityLiteral{
-		Token: expressionTokenOf(literal), Value: literal, UnitToken: open,
-		Unit: unit, UnitExpression: expression, EndToken: p.curToken,
+	return adjacentUnitAnnotation{open: open, close: p.curToken, unit: unit, expression: expression}, true
+}
+
+// parseUnitReferenceExpression parses the qualified unit reference `<U>` in
+// expression position. It is only valid as the callee of a unit conversion
+// `<U>(value)` or the object of a unit member access `<U>.Member` (MD-040).
+//
+// Rules:
+//   - rules/types/units.md — "Unit names and compiler-known names" (qualified unit references)
+//   - rules/foundations/grammar.md — "Qualified unit references"
+func (p *Parser) parseUnitReferenceExpression() ast.Expression {
+	open := p.curToken
+	unit, expression := p.parseUnit()
+	if unit == "" || expression == nil {
+		return nil
 	}
+	reference := &ast.UnitReferenceExpression{Token: open, Unit: unit, UnitExpression: expression, EndToken: p.curToken}
+	if p.peekToken.Type != lexer.LPAREN && p.peekToken.Type != lexer.DOT {
+		p.addError("unit reference <%s> must be called as <%s>(value) or accessed as <%s>.Member at %d:%d", unit, unit, unit, open.Line, open.Column)
+		return nil
+	}
+	return reference
 }
 
 func expressionTokenOf(literal ast.Expression) lexer.Token {
@@ -2017,12 +2062,12 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 	if !ok {
 		return nil
 	}
-	if len(args) != 1 {
-		p.addError("conversion to %s<%s> expects 1 argument at %d:%d", ident.Value, unit, ident.Token.Line, ident.Token.Column)
+	if len(args) != 1 && len(args) != 2 {
+		p.addError("conversion to %s<%s> expects a value and an optional RoundingMode at %d:%d", ident.Value, unit, ident.Token.Line, ident.Token.Column)
 		return nil
 	}
 
-	return &ast.ConversionExpression{
+	conversion := &ast.ConversionExpression{
 		Token: ident.Token,
 		Type: &ast.TypeReference{
 			Token:          ident.Token,
@@ -2032,6 +2077,10 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 		},
 		Value: args[0],
 	}
+	if len(args) == 2 {
+		conversion.Rounding = args[1]
+	}
+	return conversion
 }
 
 func (p *Parser) parseInExpression(left ast.Expression) ast.Expression {
@@ -2338,5 +2387,9 @@ func (p *Parser) parseBitExtractionExpression(identifier *ast.Identifier) ast.Ex
 		return nil
 	}
 	p.nextToken()
-	return &ast.BitExtractionExpression{Token: identifier.Token, Width: width, Value: value}
+	extraction := &ast.BitExtractionExpression{Token: identifier.Token, Width: width, Value: value}
+	if annotation, ok := p.parseAdjacentUnitAnnotation(); ok {
+		extraction.UnitToken, extraction.Unit, extraction.UnitExpression, extraction.EndToken = annotation.open, annotation.unit, annotation.expression, annotation.close
+	}
+	return extraction
 }

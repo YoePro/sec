@@ -635,7 +635,7 @@ fn Invalid() Result[void, AllocationError] {
     let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     mem.Reset()
-    let length := storage.len
+    let length := storage.Len
     return Ok()
 }
 `
@@ -655,7 +655,7 @@ fn Valid() Result[void, AllocationError] {
 	let mut mem: Arena := Arena {}
 	let storage := try mem.Alloc[byte](16)
 	defer { mem.Reset() }
-	let length := storage.len
+	let length := storage.Len
 	return Ok()
 }
 `)
@@ -672,7 +672,7 @@ fn Invalid(condition: bool) Result[void, AllocationError] {
     if condition {
         mem.Reset()
     }
-    let length := storage.len
+    let length := storage.Len
     return Ok()
 }
 `
@@ -694,7 +694,7 @@ fn Valid(condition: bool) Result[void, AllocationError] {
         mem.Reset()
         return Ok()
     }
-    let length := storage.len
+    let length := storage.Len
     return Ok()
 }
 `
@@ -713,7 +713,7 @@ fn Invalid() Result[void, AllocationError] {
     for i in 0..1 {
         mem.Reset()
     }
-    let length := storage.len
+    let length := storage.Len
     return Ok()
 }
 `
@@ -735,7 +735,7 @@ fn Invalid(condition: bool) Result[void, AllocationError] {
         mem.Reset()
         break
     }
-    let length := storage.len
+    let length := storage.Len
     return Ok()
 }
 `
@@ -757,7 +757,7 @@ fn Invalid() Result[void, AllocationError] {
         mem.Reset()
         break
     }
-    let length := storage.len
+    let length := storage.Len
     return Ok()
 }
 `
@@ -779,7 +779,7 @@ fn Invalid() Result[void, AllocationError] {
 	let storage := try original.Alloc[byte](16u)
 	let mut moved :<- original
 	moved.Reset()
-	let length := storage.len
+	let length := storage.Len
 	return Ok()
 }
 `
@@ -794,9 +794,9 @@ module main
 
 fn Invalid(buffer: ref mut byte[]) void {
 	let mut arena := Arena.FromBuffer(buffer)
-	let before := buffer.len
+	let before := buffer.Len
 	arena.Release()
-	let later := buffer.len
+	let later := buffer.Len
 	discard before
 	discard later
 }

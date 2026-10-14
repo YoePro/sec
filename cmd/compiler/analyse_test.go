@@ -17,7 +17,7 @@ fn Walk(values: ref int[], unused: int) void {
     }
 }
 fn main() void {
-    let values: int[] := [1, 2, 3]
+    let mut values: int[]
     Walk(ref values, 4)
 }
 `

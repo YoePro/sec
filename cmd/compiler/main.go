@@ -1198,6 +1198,9 @@ func sourceIncludePaths(path string, target CompilerTarget) ([]string, bool) {
 }
 
 func sourceIncludePathsWithSources(path string, target CompilerTarget, sourceFiles []string) ([]string, bool) {
+	if paths, ok := compilerStandardLibrarySources(path, target, sourceFiles); ok {
+		return paths, len(paths) != 0
+	}
 	if canSourceIncludePlatform(path) {
 		trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
 		base := filepath.Join("sec", filepath.FromSlash(trimmed))

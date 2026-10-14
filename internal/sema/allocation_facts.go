@@ -67,16 +67,23 @@ func (a *Analyzer) AllocationFact(id CallableID) AllocationCallableFact {
 // allocation model at a tooling boundary.
 // Rules: rules/memory/allocation.md — §§24(2),(6),29(1)-(2).
 func (a *Analyzer) allocationCallableFact(id CallableID, unknown map[CallableID][]AllocationEvidence) AllocationCallableFact {
+	return a.callGraph.allocationCallableFact(id, unknown)
+}
+
+// allocationCallableFact derives allocation classification from canonical graph
+// effects and explicit coverage uncertainty, shared by live and restored facts.
+// Rules: rules/memory/allocation.md — §24(2),(4)-(6).
+func (g *CallGraph) allocationCallableFact(id CallableID, unknown map[CallableID][]AllocationEvidence) AllocationCallableFact {
 	fact := AllocationCallableFact{Callable: id, Knowledge: AllocationUnknown, HasUnknown: true}
-	node, known := a.callGraph.Node(id)
+	node, known := g.Node(id)
 	if !known {
 		fact.UnknownEvidence = []AllocationEvidence{{Reason: "no canonical callable body is available"}}
 		return fact
 	}
 	fact.Declaration = node.Declaration
-	summary := a.callGraph.ArenaSummary(id)
+	summary := g.ArenaSummary(id)
 	fact.AllocationPath = append([]CallableID(nil), summary.AllocationPath...)
-	fact.UnknownPath = a.callGraph.synchronousPathTo(id, func(candidate CallableID) bool { return len(unknown[candidate]) > 0 })
+	fact.UnknownPath = g.synchronousPathTo(id, func(candidate CallableID) bool { return len(unknown[candidate]) > 0 })
 	fact.HasUnknown = len(fact.UnknownPath) > 0
 	if fact.HasUnknown {
 		fact.UnknownEvidence = append([]AllocationEvidence(nil), unknown[fact.UnknownPath[len(fact.UnknownPath)-1]]...)
@@ -101,6 +108,13 @@ func (a *Analyzer) allocationCallableFact(id CallableID, unknown map[CallableID]
 // Rules: rules/memory/allocation.md — §§3(1),6(4),13,18,19,24(6);
 // rules/compiler/compiler_analysis.md — unknown versus proven facts.
 func (a *Analyzer) allocationCoverageUnknowns() map[CallableID][]AllocationEvidence {
+	return a.allocationCoverageUnknownsForProgram(a.iteratorLoweringProgram)
+}
+
+// allocationCoverageUnknownsForProgram computes the same coverage evidence for
+// a completed body-analysis input before the final tooling snapshot is retained.
+// Rules: rules/memory/allocation.md — §24(2),(6).
+func (a *Analyzer) allocationCoverageUnknownsForProgram(program *ast.Program) map[CallableID][]AllocationEvidence {
 	unknown := map[CallableID][]AllocationEvidence{}
 	bodies := map[CallableID]*ast.BlockStatement{}
 	parameters := map[CallableID][]*ast.Parameter{}
@@ -110,8 +124,8 @@ func (a *Analyzer) allocationCoverageUnknowns() map[CallableID][]AllocationEvide
 			functions[callableID(fn)] = fn
 		}
 	}
-	if a.iteratorLoweringProgram != nil {
-		walkASTValue(reflect.ValueOf(a.iteratorLoweringProgram), func(value any) {
+	if program != nil {
+		walkASTValue(reflect.ValueOf(program), func(value any) {
 			var token lexer.Token
 			var body *ast.BlockStatement
 			var params []*ast.Parameter
@@ -290,4 +304,40 @@ func (a *Analyzer) AllocationCapabilities() layout.AllocationCapabilities {
 func (a *Analyzer) SetAllocationProfile(profile string) {
 	a.targetProfile = profile
 	a.allocationProfileSelected = true
+}
+
+// AllocationFacts exposes detached canonical summaries carried by a compiler
+// graph snapshot. A graph without coverage evidence cannot prove freedom.
+// Rules: rules/memory/allocation.md — §24(2),(4)-(6).
+func (g *CallGraph) AllocationFacts() []AllocationCallableFact {
+	unknown := map[CallableID][]AllocationEvidence{}
+	for _, node := range g.Nodes() {
+		evidence, covered := g.allocationCoverage[node.ID]
+		if !covered {
+			evidence = []AllocationEvidence{{Source: node.Declaration, Reason: "allocation coverage is unavailable"}}
+		}
+		unknown[node.ID] = evidence
+	}
+	result := []AllocationCallableFact{}
+	for _, node := range g.Nodes() {
+		result = append(result, g.allocationCallableFact(node.ID, unknown))
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Callable < result[j].Callable })
+	return result
+}
+
+// CallGraph returns an immutable snapshot of the graph produced by the most
+// recent analysis, with stable declaration/lexical identities and current
+// navigation positions and allocation coverage. Concrete plan binding is explicit.
+// Rules: rules/analysis/call_graph.md — "Callable node identity", "Call-site identity";
+// rules/memory/allocation.md — §24(2),(4)-(6).
+func (a *Analyzer) CallGraph() *CallGraph {
+	graph := a.callGraph.clone()
+	graph.syntaxOrigins = nil // Traversal lookup is not a retained semantic fact.
+	unknown := a.allocationCoverageUnknowns()
+	graph.allocationCoverage = map[CallableID][]AllocationEvidence{}
+	for _, node := range graph.Nodes() {
+		graph.allocationCoverage[node.ID] = append([]AllocationEvidence(nil), unknown[node.ID]...)
+	}
+	return graph
 }

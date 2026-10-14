@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -27,8 +26,9 @@ type lspCommand struct {
 }
 
 type codeLens struct {
-	Range   lspRange    `json:"range"`
-	Command *lspCommand `json:"command,omitempty"`
+	Range   lspRange             `json:"range"`
+	Command *lspCommand          `json:"command,omitempty"`
+	Data    *codeLensResolveData `json:"data,omitempty"`
 }
 
 // showLocationsCommand is the client command that lists locations; the VS Code
@@ -55,12 +55,6 @@ type interfaceConformanceSummary struct {
 	rng     lspRange
 	targets []interfaceTargetResult
 }
-
-var interfaceConformanceCache = struct {
-	sync.Mutex
-	key     string
-	summary []interfaceConformanceSummary
-}{}
 
 // interfaceConformanceCodeLenses answers textDocument/codeLens with one lens
 // per interface declared in the document, summarizing whether its
@@ -185,64 +179,55 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 	}
 	module := lspserver.ProgramModule(active)
 	targets, key := moduleTargets(path, module, text, overlay, active)
-	interfaceConformanceCache.Lock()
-	if interfaceConformanceCache.key == key && key != "" {
-		cached := interfaceConformanceCache.summary
-		interfaceConformanceCache.Unlock()
-		return cached
-	}
-	interfaceConformanceCache.Unlock()
+	return cachedInterfaceConformance(key, func() []interfaceConformanceSummary {
 
-	for _, declaration := range interfaces {
-		summaries = append(summaries, interfaceConformanceSummary{name: declaration.Name.Value, rng: tokenRange(text, declaration.Name.Token)})
-	}
-	for _, target := range targets {
-		program := parseProgramForLSP(uri, text)
-		if program == nil {
-			continue
+		for _, declaration := range interfaces {
+			summaries = append(summaries, interfaceConformanceSummary{name: declaration.Name.Value, rng: tokenRange(text, declaration.Name.Token)})
 		}
-		lspserver.AssembleModuleForTarget(program, path, overlay.Sources, target)
-		resolveCoreSources(program, path, overlay)
-		resolveSourceImportsForTarget(program, map[string]bool{}, path, target, overlay)
-		analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
-		if definition, ok := platformtarget.Find(target); ok {
-			if plan, err := definition.ScalarPlan(); err == nil {
-				analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
+		for _, target := range targets {
+			program := parseProgramForLSP(uri, text)
+			if program == nil {
+				continue
 			}
-		}
-		analyzer.Analyze(program)
-		facts := analyzer.InterfaceConformances()
-		for index := range summaries {
-			result := interfaceTargetResult{target: target.String(), implementers: map[string]location{}}
-			for _, fact := range facts {
-				if !sameSourceToken(fact.InterfaceDeclaration, interfaces[index].Name.Token) {
-					continue
-				}
-				definition := fact.TypeDeclaration
-				if definition.File != "" {
-					result.implementers[fact.TypeName] = location{URI: uriFromPath(definition.File), Range: lspRange{Start: position{Line: definition.Line - 1, Character: definition.Column - 1}, End: position{Line: definition.Line - 1, Character: definition.Column - 1 + len(fact.TypeName)}}}
-				} else {
-					result.implementers[fact.TypeName] = location{URI: uri, Range: summaries[index].rng}
-				}
-				for _, failure := range fact.Failures {
-					err := failure.Diagnostic
-					result.failures = append(result.failures, interfaceConformanceFailure{
-						member: failure.Member, message: err.Message,
-						location: location{URI: uriFromPath(err.File), Range: lspRange{Start: position{Line: err.Line - 1, Character: err.Column - 1}, End: position{Line: err.Line - 1, Character: err.Column - 1}}},
-					})
-				}
-				if fact.State == diagnostics.ProofUnproven {
-					result.failures = append(result.failures, interfaceConformanceFailure{member: "conformance unresolved", location: result.implementers[fact.TypeName]})
+			lspserver.AssembleModuleForTarget(program, path, overlay.Sources, target)
+			resolveCoreSources(program, path, overlay)
+			resolveSourceImportsForTarget(program, map[string]bool{}, path, target, overlay)
+			analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
+			if definition, ok := platformtarget.Find(target); ok {
+				if plan, err := definition.ScalarPlan(); err == nil {
+					analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
 				}
 			}
-			summaries[index].targets = append(summaries[index].targets, result)
+			analyzer.Analyze(program)
+			facts := analyzer.InterfaceConformances()
+			for index := range summaries {
+				result := interfaceTargetResult{target: target.String(), implementers: map[string]location{}}
+				for _, fact := range facts {
+					if !sameSourceToken(fact.InterfaceDeclaration, interfaces[index].Name.Token) {
+						continue
+					}
+					definition := fact.TypeDeclaration
+					if definition.File != "" {
+						result.implementers[fact.TypeName] = location{URI: uriFromPath(definition.File), Range: lspRange{Start: position{Line: definition.Line - 1, Character: definition.Column - 1}, End: position{Line: definition.Line - 1, Character: definition.Column - 1 + len(fact.TypeName)}}}
+					} else {
+						result.implementers[fact.TypeName] = location{URI: uri, Range: summaries[index].rng}
+					}
+					for _, failure := range fact.Failures {
+						err := failure.Diagnostic
+						result.failures = append(result.failures, interfaceConformanceFailure{
+							member: failure.Member, message: err.Message,
+							location: location{URI: uriFromPath(err.File), Range: lspRange{Start: position{Line: err.Line - 1, Character: err.Column - 1}, End: position{Line: err.Line - 1, Character: err.Column - 1}}},
+						})
+					}
+					if fact.State == diagnostics.ProofUnproven {
+						result.failures = append(result.failures, interfaceConformanceFailure{member: "conformance unresolved", location: result.implementers[fact.TypeName]})
+					}
+				}
+				summaries[index].targets = append(summaries[index].targets, result)
+			}
 		}
-	}
-	interfaceConformanceCache.Lock()
-	interfaceConformanceCache.key = key
-	interfaceConformanceCache.summary = summaries
-	interfaceConformanceCache.Unlock()
-	return summaries
+		return summaries
+	})
 }
 
 // moduleTargets lists the distinct targets selected by `#target` directives

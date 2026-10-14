@@ -1,0 +1,8 @@
+module main
+type Required struct { owner: ref int, count: int }
+type Point struct { x: int, y: int }
+fn Build() void {
+    let required := Required {}
+    let unknown := Point { absent: 1 }
+    let duplicate := Point { x: 1, x: 2 }
+}

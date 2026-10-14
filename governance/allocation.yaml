@@ -6,7 +6,7 @@ integrations:
     area: frontend-allocation-semantics
     status: partial
     repository_baseline: 57cd774
-    revised: "2026-10-09"
+    revised: "2026-10-14"
     rules:
       - rules/memory/allocation.md
       - rules/memory/arena.md
@@ -27,6 +27,10 @@ integrations:
       - internal/sema/call_graph.go
       - internal/parser/parser.go
       - internal/sema/analyzer_arena.go
+      - internal/sema/collection_allocation.go
+      - internal/sema/arena_parameter_effects.go
+      - internal/sema/reference_origin_join.go
+      - internal/sema/interrupt_allocation.go
     tests:
       - internal/sema/allocation_test.go
       - internal/sema/lifetime_test.go
@@ -36,6 +40,18 @@ integrations:
       - internal/sema/arena_from_buffer_test.go
       - testdata/sema/arena_from_buffer_valid.sec
       - testdata/sema/arena_from_buffer_invalid.sec
+      - internal/sema/collection_allocation_test.go
+      - cmd/compiler/collection_allocation_test.go
+      - cmd/lsp/collection_allocation_test.go
+      - testdata/sema/collection_growth_valid.sec
+      - testdata/sema/collection_growth_invalid.sec
+      - internal/sema/arena_domain_completion_test.go
+      - cmd/compiler/arena_domain_test.go
+      - cmd/lsp/arena_domain_test.go
+      - testdata/sema/arena_domain_alias_invalid.sec
+      - testdata/sema/arena_domain_stable_valid.sec
+      - internal/sema/isr_allocation_test.go
+      - testdata/sema/isr_allocation_invalid.sec
     cross_references:
       - analysis.arena-allocation (governance/analysis.yaml) owns the detailed Arena validation, generation, trait, and typed-allocation facts
       - analysis.arena-reset-release-dependency-legality (governance/analysis.yaml)
@@ -54,13 +70,13 @@ integrations:
       - "Arena.FromBuffer backing is an exclusive mutable-borrow dependency for the whole Arena lifetime (2026-10-09, arena.md § 10, § 45(2)): the backing is a mutable byte array, fixed byte array or byte slice borrowed implicitly at the call (no call-site marker, escape_analysis.md rev 2) or a ref mut byte reference; immutable, temporary and non-byte backing is rejected; reads, writes and a second FromBuffer over the borrowed storage are rejected while the Arena lives; a local move (:<- or <-) carries the borrow to the new owner even when the domain is already known; Release and scope end release it; returning the Arena, returning Arena.FromBuffer(...) and moving the Arena into a consuming call or another owner it cannot follow are rejected because the caller could not see the dependency (TestArenaFromBufferBorrowsBackingForArenaLifetime)"
       - "Arena operations work through ref Arena / ref mut Arena (2026-10-09, arena.md § 68(3)-(4) Fill example): New/Alloc/Reset need ref mut, Release is rejected through a borrowed reference, allocations are rooted in the reference parameter so they may be returned, and Reset through the reference invalidates them; typed Arena allocation and owned/growable construction now produce the canonical compiler-known Result instead of a Result whose name embedded its arguments, which had made Result[ref mut T[], AllocationError] returns of arena.Alloc fail"
       - "generic specializations in @noAlloc checking (2026-10-10): a @noAlloc caller of GenericCall[Loud] is rejected when the specialization reaches an allocating Loud.Name, through executable specialization call-graph nodes (analysis.call-graph)"
+      - "Collection backing growth effects (2026-10-14): validated dynamic array Append (including nonempty range segments), dynamic list Append/Insert, set Add, and list/map/set Reserve and WithCapacity publish canonical collection-growth MayAllocate sites and transitive S1108 with introducing source navigation. Bounded Append/Insert/Add, proven zero reservations/factories, empty range appends and same-spelled user methods do not acquire growth effects. This closes the verified collection-member growth hole; general operation/context/capacity and result-materialization coverage remains below."
+      - "Stable compiler-owned ArenaDomain identity (2026-10-14): canonical generated source/callable identities replace owner-name roles; Arena reference parameters receive their symbolic domain before binding/completion facts are published, and reference transfers preserve it. Reset summaries match parameter domains rather than holder names, fixing caller invalidation after a reference parameter moves to a renamed holder. Owner moves and move assignment, allocations and Reset retain domain identity; distinct owners with identical variable names remain distinct. Reanalysis/all-depth determinism and actual compiler/analyse/unsaved-LSP invalidation are verified; complete ownership/lifetime/destruction integration remains separate."
+      - "ISR-implied noAlloc verification completed (2026-10-14): isr, interrupt and interruptSafe use the canonical transitive allocation summaries, including direct allocation, defer, unknown targets and foreign calls. Diagnostic repairs now preserve the interrupt requirement even with redundant explicit noAlloc and unsafe bodies; removing noAlloc is no longer suggested. Allocation-free and trusted foreign controls are verified at all analysis depths. Unsupported ISR attributes remain rejected; ISR ABI and other interrupt guarantees are separate work."
     remaining:
-      - "known hole (verified 2026-10-11): list[T].Append and other collection growth record no allocation site, so a @noAlloc function that appends to a list is accepted without S1108 (allocation.md § 24; covered by the collection-growth classification item below)"
       - classify every remaining Sec 0.1 allocation-capable operation in the same effect model (collection growth and WithCapacity, closure environments where canonically allocation-capable, spawn control storage, shaped types, allocating core and stdlib contracts)
-      - effective @noAlloc implied by @isr, @interrupt, and @interruptSafe is verified through the implication graph (2026-10-05, frontend.attributes-v2); the implying attributes are still rejected as not implemented until their own ISR semantics exist
       - "@noAlloc coverage of destructors reached from the function and compiler-generated operations; defer bodies and (since 2026-10-10) concrete generic specializations are covered. A local whose type has an allocating free is still accepted in a @noAlloc function (no destruction edges; needs destruction-point facts). Template-level constraint calls stay unknown; constraint-carried effect contracts await MD-053"
       - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect calls
-      - replace lexical Arena binding identity with stable compiler-owned ArenaDomain identity
       - overflow and alignment checks for safe manual allocation (blocked on the layout service and MD-019)
       - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2, references-v2 and destruction-v2 facts canonically
       - complete failure behavior and only treat allocation as infallible when storage/capacity is proven
@@ -72,6 +88,22 @@ integrations:
       - Arena.Alloc alignment derived from T
       - repeated Arena allocation does not invalidate earlier allocation
     verification:
+      - command: go vet ./internal/sema
+        result: Passed on 2026-10-14 after ISR allocation diagnostic repair.
+      - command: go test ./internal/sema -race -run TestISRAllocationGuarantees\|TestNoAllocGuaranteeIsVerifiedTransitively\|TestCollectionGrowthAllocation\|TestISRPanicUsesCanonicalSummaries -count=1
+        result: "Passed on 2026-10-14: ISR-implied allocation guarantees, redundant explicit attributes, unsafe/defer/transitive paths, unknown and foreign effects, source navigation and free/trusted controls at all depths; unsupported ISR guards retained."
+      - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
+        result: Passed on 2026-10-14 after stable ArenaDomain completion.
+      - command: go test ./internal/sema/... ./internal/ir/... ./cmd/compiler -count=1
+        result: Passed on 2026-10-14 after stable ArenaDomain completion and extraction of parameter-reference provenance from analyzer.go; full Sema, Semantic IR and compiler suites.
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run TestArenaStableDomainCompletion\|TestArenaReferenceAliasRetainsDomain\|TestArenaMovedParameterDomainCLI\|TestLSPArenaMovedParameterDomain -count=1
+        result: Passed on 2026-10-14 after canonical ArenaDomain parameter and move/reset summary completion; all-depth deterministic domain facts and actual compiler/analyse/LSP regression cases.
+      - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
+        result: Passed on 2026-10-14.
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run TestCollectionGrowth\|TestLSPCollectionGrowth -count=1
+        result: Passed on 2026-10-14; all analysis depths, transitive S1108 and source navigation, bounded/zero/empty and user-method controls, CLI analysis and unsaved LSP parity.
+      - command: go test ./internal/sema/... ./internal/ir/... ./cmd/compiler -count=1
+        result: Passed on 2026-10-14 after collection growth effect classification; full Sema, Semantic IR and compiler suites.
       - command: go test ./... -count=1
         result: passed on 2026-10-09 after the Arena.FromBuffer backing-borrow and ref Arena work, including TestArenaFromBufferBorrowsBackingForArenaLifetime
 
@@ -79,7 +111,7 @@ integrations:
     area: allocation-effects-context-capacity-analysis
     status: partial
     repository_baseline: 57cd774
-    revised: "2026-10-07"
+    revised: "2026-10-14"
     rules:
       - rules/memory/allocation.md
       - rules/analysis/effect_analysis.md
@@ -89,12 +121,15 @@ integrations:
       - internal/sema/call_graph_summaries.go
       - internal/sema/allocation_facts.go
       - internal/sema/analyzer_noalloc.go
+      - internal/sema/call_graph_workspace.go
+      - internal/sema/call_graph_identity.go
     tests:
       - internal/sema/allocation_fixed_point_test.go
       - internal/sema/allocation_invalidation_test.go
       - cmd/lsp/allocation_parity_test.go
       - testdata/sema/allocation_recursive_fixed_point_valid.sec
       - testdata/sema/allocation_recursive_fixed_point_invalid.sec
+      - internal/sema/allocation_checkpoint_test.go
     implemented:
       - synchronous MayAllocate summaries with a deterministic shortest allocation path (ArenaSummary.AllocationPath)
       - separate unknown-allocation summaries (ArenaSummary.AllocationUnknown, UnknownAllocationPath) so unknown behavior is conservative under @noAlloc without being reported as allocation
@@ -105,7 +140,18 @@ integrations:
       - converged shortest distances reconstruct deterministic source-edge-ordered allocation and unknown witnesses without repeated per-callable path searches; defer effects propagate, spawned bodies remain separate, direct events and returned paths are detached, and incomplete operation/body coverage remains conservative in AllocationFacts
       - new direct allocation facts and canonical call edges invalidate the derived fixed point; graph cloning, plan binding and checkpoint reconstruction start with fresh derived state; immutable snapshot consumers may query summaries concurrently
       - all analysis depths, free/allocating/unknown/mixed/trusted-foreign mutual recursion, recursive defer, spawn exclusion, a 256-node cycle, effect/edge additions after queries, detached prior snapshots, deterministic shortest witnesses and real compiler/analyse/LSP owning diagnostics and presentation are verified
+      - "Validated allocation summary persistence/import (2026-10-14): workspace graph checkpoint v5 carries canonical AllocationCallableFact summaries and per-callable coverage uncertainty. Live and restored snapshots share the same fact derivation; clone and CompilationPlan binding detach/remap coverage. Import checks current scope/dependency fingerprints, coverage sources, direct allocation kind/flag contracts and recomputed summaries before publication. Missing coverage remains unknown; stale, incompatible, malformed or inconsistent summaries cannot prove allocation freedom. This is compiler checkpoint metadata, not new source/manifest syntax or complete callable/operation coverage."
     verification:
+      - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
+        result: Passed on 2026-10-14 after allocation summary persistence/import.
+      - command: go test ./internal/sema -run TestCallGraph\|TestAllocationCheckpoint -count=1
+        result: Passed on 2026-10-14 after final direct-effect flag validation.
+      - command: go test ./cmd/lsp -run TestAllocationConsumerParity -count=1
+        result: Passed on 2026-10-14 with actual compiler/analyse/LSP allocation diagnostics and hover parity across targets and analysis depths.
+      - command: go test ./internal/sema -race -run TestAllocationCheckpoint\|TestCallGraphWorkspace -count=1
+        result: Passed on 2026-10-14 with mixed/free/unknown/recursive summary round trips, deterministic checkpoints, detached facts, stale dependencies, incompatible scopes, recomputed-checksum tampering and contradictory flags.
+      - command: go test ./internal/sema/... ./internal/ir/... ./cmd/compiler -count=1
+        result: Passed on 2026-10-14 after allocation-summary checkpoint support and extraction of CallGraph snapshot publication from analyzer.go; full Sema, Semantic IR and compiler suites.
       - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-08 after consolidating the call_graph family from 17 to 10 files (plan identity into call_graph_identity.go; contract, defer and test-root producers into call_graph_callables.go; effect-domain and arena allocation fixed-point summaries into call_graph_summaries.go; checkpoints into call_graph_workspace.go; tests regrouped, call_graph_scc_test.go renamed call_graph_test.go) without behavior or API changes
       - command: go test ./... -count=1
@@ -118,7 +164,6 @@ integrations:
         result: passed on 2026-10-07 with 46-fragment registry parity and 304 unique IDs; analysis.allocation remaining reduced from 7 to 6, allocation total from 38 to 37
     remaining:
       - infer allocation effects through every callable form (closure targets, deferred and destruction relations, generic specializations)
-      - persist/import validated allocation-effect summaries
       - propagate allocation contexts without forcing source-level Arena threading
       - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
       - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
@@ -147,7 +192,7 @@ integrations:
 
   - id: lowering.allocation
     area: allocation-lowering-backends
-    status: planned
+    status: partial
     repository_baseline: 57cd774
     remaining:
       - lower allocation operations through maintained Sec MLIR and LLVM paths
@@ -157,19 +202,30 @@ integrations:
       - implement target-specific Arena backing storage/allocator behavior
       - eliminate allocations only after lifetime/capacity/address-stability/concurrency/failure/cleanup proof
       - support valid stack/static placement without hidden escape promotion
-      - prove allocation-free paths contain no runtime allocation helper
     required_tests:
       - allocating operation lowers with correct domain
       - allocation-free copy/move/ref path has no allocator call
       - overflow/failure path preserved
       - value destruction before Arena reclamation
       - proven static placement removes allocation without semantic change
+    implemented:
+      - "Allocation-free backend conformance proof (2026-10-14): internal/lowering/allocation verifies Sema-positive allocation-free scalar/default/copy/move/control-flow programs on 32/64-bit targets through analyzed LLVM, legacy LLVM-dialect MLIR and verified Semantic IR/Sec MLIR emission. Every emitted call is audited against source-proven function identities; unknown, quoted and indirect helper calls, runtime declarations and dynamic allocation operations fail the audit. Real clang compiles LLVM to target objects, and configured sec-mlir-opt verifies the maintained trivial/integer/scalar lowering passes. Unsupported reference lowering and legacy char transport must fail without output; these tests do not claim those features or full Sec MLIR-to-LLVM conversion are implemented."
+    revised: "2026-10-14"
+    tests:
+      - internal/lowering/allocation/conformance_test.go
+      - testdata/sema/allocation_free_lowering.sec
+      - testdata/sema/allocation_free_borrow_lowering.sec
+    verification:
+      - command: go vet ./internal/lowering/allocation
+        result: Passed on 2026-10-14.
+      - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./internal/lowering/allocation -race -count=1
+        result: "Passed on 2026-10-14: target-aware clang object verification, real Sec MLIR core lowering with verify-each, identity-based call audits, injected hidden-call rejection and explicit unsupported-reference/char boundaries."
 
   - id: target-policy.allocation
     area: allocation-target-profile-policy
     status: partial
     repository_baseline: 57cd774
-    revised: "2026-10-07"
+    revised: "2026-10-14"
     rules:
       - rules/memory/allocation.md
       - rules/platform/target_profiles.md
@@ -189,6 +245,8 @@ integrations:
       - internal/sema/allocation_context_facts.go
       - cmd/lsp/allocation_profile_resolution.go
       - cmd/lsp/analysis_configuration.go
+      - internal/sema/allocation_target_policy.go
+      - internal/sema/analyzer_analysis_pipeline.go
     tests:
       - internal/sema/allocation_physical_storage_test.go
       - testdata/sema/allocation_physical_storage_valid.sec
@@ -199,6 +257,14 @@ integrations:
       - cmd/lsp/allocation_parity_test.go
       - testdata/sema/allocation_context_facts_valid.sec
       - testdata/sema/allocation_profiles_static_valid.sec
+      - internal/sema/allocation_target_policy_test.go
+      - cmd/compiler/allocation_target_policy_test.go
+      - cmd/lsp/allocation_target_policy_test.go
+      - testdata/sema/allocation_noalloc_roots.sec
+      - testdata/sema/allocation_noalloc_roots_valid.sec
+      - testdata/sema/allocation_noalloc_allocate.sec
+      - testdata/sema/allocation_noalloc_spawn.sec
+      - testdata/sema/allocation_noalloc_defer.sec
     implemented:
       - "ResolveAllocationCapabilities and ResolvedScalarPlan.AllocationCapabilities expose canonical allocation-profile facts shared by Sema and tooling: availability is separate from activation, hosted has a compiler-managed Arena context, embedded-arena has a fixed/program/platform-supplied Arena context, and noalloc disables dynamic allocation without claiming the physical allocator is unsupported"
       - unknown/absent/derived/unmapped allocation profiles preserve unknown capabilities and provider rather than inferring support from OS, architecture, scalar width or target-family spelling; fixed/provided Arena context is positively identified only where specified, and capacity, allocator growth, ISR legality and layout guarantees remain separate proof obligations
@@ -207,7 +273,14 @@ integrations:
       - canonical profiles, disabled-but-supported and enabled-but-unsupported combinations, zero/unknown facts, all analysis depths, profile reanalysis, static operations, mixed/common variants, standalone and unknown explicit targets and real compiler/analyse/LSP parity are verified
       - fixed-address/register views remain non-owning physical storage without an Arena domain; canonical RawPtr.VolatileRead/VolatileWrite contracts prove allocation freedom independently from volatile effects, including transitive wrappers at all analysis depths and allocation profiles
       - raw-pointer cleanup never inherits pointee destruction or allocation; invalid unsafe access retains unknown coverage, similarly named user methods retain actual Arena effects, and foreign mapping without a trusted contract stays unknown; real compiler/analyse/LSP parity covers fixed storage, volatile access, mixed Arena allocation and opaque mapping
+      - "Noalloc root-graph enforcement (2026-10-14): the semantic pipeline consumes positively resolved disabled-allocation capability facts and canonical coverage/effects for every registered policy root, traversing all represented reachability relations including defer and spawned worker calls. Reachable MayAllocate is mandatory S1108 Invalid; unresolved callee/operation/body coverage is S1108 Unproven. Uncalled allocating declarations do not create root obligations, recursive graphs terminate deterministically, and compiler-owned root/call/operation cause paths drive CLI/LSP navigation. Unknown profiles retain their existing unresolved capability state; root production, profile selection, ISR and complete operation models remain owned by their respective integrations."
     verification:
+      - command: go test ./internal/sema/... ./internal/ir/... ./cmd/compiler -count=1
+        result: "On 2026-10-14 compiler suite passed; full run failed in concurrent register/unit migration: seven existing Sema register/bit expectations and Semantic IR Package7 unit-bearing arithmetic fixture. No noalloc-policy failures remained; those unrelated changes were preserved."
+      - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
+        result: Passed on 2026-10-14 after noalloc root policy implementation.
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run TestNoAllocTarget\|TestAllocationCapabilities\|TestAllocationCheckpoint -count=1
+        result: Passed on 2026-10-14 with all-depth/profile root-policy checks, transitive unknown calls, direct/transitive/deferred/worker allocation, recursive allocation-free and unused-allocator controls, and shared CLI/LSP proof/navigation rendering.
       - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-08 after merging allocation_capabilities.go into allocation_facts.go without behavior or API changes
       - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
@@ -232,7 +305,6 @@ integrations:
       - platform.target-profiles owns complete profile-family resolution, runtime/physical constraints, overrides and frozen ResolvedTargetProfile identity; these allocation-subset facts do not complete that integration
       - missing-decisions.yaml MD-034 keeps freestanding allocation-profile/context mapping unresolved; no runtime allocator or fixed storage is invented
     remaining:
-      - enforce noalloc over complete reachable call graphs
       - enforce ISR restrictions from shared allocation-effect facts
       - support runtime-free bare-metal with static/fixed/preallocated storage
       - permit statically eliminated allocation-capable operations only after complete proof

@@ -142,7 +142,11 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 
 	typ, ok := a.types[name]
 	if !ok {
-		if !a.reportUnresolvedForeignType(ref.Name, ref.Token) {
+		if _, isUnit := a.units[ref.Name]; isUnit && !ref.UnitOnly {
+			a.addErrorAtTokenWithMetadata(ref.Token, "",
+				"A unit is always referenced as <Unit> (MD-040); write <"+ref.Name+"> for its default carrier, or a carrier such as decimal<"+ref.Name+">.",
+				"%s is a unit, not a type", ref.Name)
+		} else if !a.reportUnresolvedForeignType(ref.Name, ref.Token) {
 			a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
 		}
 		return Type{Kind: InvalidType}, false

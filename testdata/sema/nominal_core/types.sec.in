@@ -11,7 +11,7 @@ interface Reader { fn Read() int }
 type Outcome Result[int,Failure]
 type Samples int[2]
 unit Meter physical
-impl Meter {
+impl <Meter> {
  Dimension: [length^1]
  Kind: length
  Scale: 1

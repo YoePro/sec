@@ -1,0 +1,6 @@
+module main
+
+fn main() int {
+    let data := Unsupported { value: 65r }
+    return 0
+}

@@ -1,0 +1,31 @@
+module main
+type Port int range 1..65535 default 8080
+type Positive int range 1..9
+type Choice int in [7, 3, 1]
+enum Mode { First, Second }
+type Inner struct { level: int }
+type Settings struct {
+    port: Port,
+    count: Positive,
+    choice: Choice,
+    enabled: bool,
+    name: string,
+    mode: Mode,
+    inner: Inner,
+    values: int[3],
+}
+type Large struct { values: int[300000] }
+type NoFields struct {}
+type Wide struct { a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int }
+fn Build() void {
+    let empty := Settings {} // empty
+    let explicit := Settings { port: Port(9000), enabled: true } // explicit
+    let spread := Settings { empty... } // spread
+    let nested := Settings {
+        inner: Inner {} // inner
+    } // outer
+    /* 🙂 { } */ let comments := Settings { /* unmatched } */ name: "}" } // comments
+    let large := Large {} // large
+    let none := NoFields {} // none
+    let wide := Wide {} // wide
+}

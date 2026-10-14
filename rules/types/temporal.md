@@ -181,7 +181,7 @@ standard library. They are declared once, in `sec/core/baseunits.sec`:
 ```sec
 unit s physical
 
-impl s {
+impl <s> {
     LongName: "Second"
     Symbol: "s"
     Kind: time
@@ -194,10 +194,9 @@ impl s {
 and likewise `ms` (`Scale: 1 / 1000`, LongName `"Millisecond"`), `us`
 (`Scale: 1 / 1000000`, `"Microsecond"`) and `ns` (`Scale: 1 / 1000000000`,
 `"Nanosecond"`). All four denote linear time differences, not absolute
-calendar or monotonic-clock points. The MD-015 correction writes these
-declarations in the `impl <Unit>` spelling of MD-040; MD-040 is still open in
-`missing-decisions.yaml`, so the core catalog keeps the current `impl Unit`
-spelling until it is integrated.
+calendar or monotonic-clock points. Their metadata blocks use the qualified
+`impl <Unit>` spelling of MD-040 (`rules/types/units.md`, "Qualified unit
+references").
 
 **§ 5.2(2)** Neither the compiler nor any API may infer that a unit with a
 convenient short name is a time quantity. Only the resolved dimension
@@ -308,11 +307,9 @@ enum RoundingMode {
 }
 ```
 
-Each mode has its mathematical meaning, including for negative values. The
-declaration is the one given by the MD-015 correction; MD-047, which owns the
-rounding policy of general unit conversions (its source spelling there and
-its checked failure), remains open and must reuse this enum rather than
-declare another.
+Each mode has its mathematical meaning, including for negative values. It is
+the same enum that general numeric and unit conversions take as an explicit
+rounding argument (MD-047, `rules/types/units.md` "Explicit rounding").
 
 **§ 5.6(3)** Rounding happens exactly once, after the full mathematical
 unit conversion and before the range check, on the exact nanosecond count —

@@ -177,13 +177,13 @@ in `sec-mlir-dialect_package14-acceptance-matrix.md`.
 35. **CMake and lit commands.** The full command is
     `cmake --build build/sec-mlir --target check-sec-mlir -j2`. Adjacent schemas
     were rerun with
-    `/home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv
+    `${LLVM_LIT} -sv
     --filter='schema(9|10|11)'
-    /home/jonas/small-projects/sec/build/sec-mlir/test`. P14-77 repeated the full
+    ${SEC_MLIR_TEST_DIR}`. P14-77 repeated the full
     CMake target after the complete report/governance diff and passed 91/91.
 36. **LLVM/MLIR version.** `build/sec-mlir/bin/sec-mlir-opt --version` reports
     LLVM `24.0.0git`, optimized build with assertions. The associated runner is
-    lit `24.0.0dev` from `/home/jonas/mlir/llvm-project/build/bin/llvm-lit`.
+    lit `24.0.0dev` from `${LLVM_LIT}`.
 37. **MLIR result.** P14-73 passed all 91 checked-in Sec MLIR tests and all 17
     explicitly selected adjacent schema-9/10/11 tests. After this report was
     installed, the P14-77 final full run again passed 91/91; the exact command
@@ -191,10 +191,10 @@ in `sec-mlir-dialect_package14-acceptance-matrix.md`.
 38. **Go result.** A clean isolated snapshot passed `go test ./...` and
     `go vet ./...` for P14-72. The complete suite also passed after the final
     P14-48 test matrix. P14-77 then passed the complete Go suite with absolute
-    `SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin`; the final
+    `SEC_MLIR_BIN="${SEC_MLIR_BIN}"`; the final
     `go vet ./...` run also passed.
 39. **End-to-end result.** With absolute
-    `SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin`, one
+    `SEC_MLIR_BIN="${SEC_MLIR_BIN}"`, one
     unedited source fixture passes parsing, target-aware Sema, verified Semantic
     IR, deterministic schema-10 emission, array-index guard verification, and
     scalar-core lowering on both 32- and 64-bit plans. Outputs retain high-level

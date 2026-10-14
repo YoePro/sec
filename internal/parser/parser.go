@@ -4964,6 +4964,10 @@ func (p *Parser) parseImplStatement() ast.Statement {
 		return nil
 	}
 	stmt.Target = p.parseTypeReference()
+	if stmt.Target != nil && stmt.Target.UnitOnly && stmt.Target.UnitExpression != nil && stmt.Target.UnitExpression.Kind == ast.UnitExpressionName {
+		// MD-040: `impl <Unit>` names the unit; Name carries its spelling.
+		stmt.Target.Name = stmt.Target.Unit
+	}
 	if p.peekToken.Type == lexer.IMPLEMENTS {
 		p.nextToken()
 		stmt.Implements = p.parseImplementsList()

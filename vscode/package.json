@@ -191,7 +191,12 @@
         "sec.inlayHints.types": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show inferred types after `let` bindings without a declared type."
+          "markdownDescription": "Show inferred types after local, loop, pattern, and Option-if bindings."
+        },
+        "sec.inlayHints.defaults": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a bounded preview of compiler-resolved defaults for omitted struct fields. Does not change source."
         },
         "sec.inlayHints.parameters": {
           "type": "boolean",

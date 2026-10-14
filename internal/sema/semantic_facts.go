@@ -1714,6 +1714,10 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 		if resolved.Kind != "" {
 			break
 		}
+		if boolean, ok := resolvedBooleanEquality(expression.Operator, left, right, result); ok {
+			resolved = boolean
+			break
+		}
 		if left.Kind == EnumType && right.Kind == EnumType && sameConcreteType(left, right) {
 			switch expression.Operator {
 			case "==":

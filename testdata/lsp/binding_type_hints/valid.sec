@@ -1,0 +1,46 @@
+module main
+type Packet union {
+    Item(int),
+    Meta { width: int, caption: string },
+    Empty,
+}
+enum ReadError error { Failed }
+fn Read() Result[int, ReadError] { return Ok(1) }
+fn Loops(numbers: ref mut int[], mapping: ref mut map[string, int], text: string) void {
+    for index, ref mut item in numbers {}
+    for _, ref item in numbers {}
+    for ref key, ref mut entry in mapping {}
+    for character in text {}
+    for item in 0..<3 {}
+}
+fn Patterns(packet: Packet) int {
+    return match packet {
+        Item(payload) => payload
+        Meta(meta) => meta.width
+        Empty => 0
+    }
+}
+fn Borrowed(packet: Packet) int {
+    return match packet {
+        Item(ref borrowed) => 0
+        _ => 0
+    }
+}
+fn Mutable(input: Packet) int {
+    let mut packet: Packet := input
+    return match packet {
+        Item(ref mut mutable) => 0
+        _ => 0
+    }
+}
+fn Presence(optional: Option[int]) int {
+    /* 🙂 */ if optional is Some(found) { return found }
+    return 0
+}
+fn TryBinding() int { return try Read() { Err(reason) => 0 } }
+fn DiscardPattern(optional: Option[int]) int {
+    return match optional {
+        Some(_) => 0
+        None => 0
+    }
+}

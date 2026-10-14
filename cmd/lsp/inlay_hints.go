@@ -20,7 +20,7 @@ type inlayHintParams struct {
 type inlayHint struct {
 	Position     position `json:"position"`
 	Label        string   `json:"label"`
-	Kind         int      `json:"kind"`
+	Kind         int      `json:"kind,omitempty"`
 	PaddingLeft  bool     `json:"paddingLeft,omitempty"`
 	PaddingRight bool     `json:"paddingRight,omitempty"`
 }
@@ -32,15 +32,16 @@ const (
 
 // inlayHintSettings are the individually configurable hint categories
 // (`sec.inlayHints.types`, `sec.inlayHints.parameters`,
-// `sec.inlayHints.ownership`).
+// `sec.inlayHints.ownership`, `sec.inlayHints.defaults`).
 type inlayHintSettings struct {
 	Types      bool `json:"types"`
 	Parameters bool `json:"parameters"`
 	Ownership  bool `json:"ownership"`
+	Defaults   bool `json:"defaults"`
 }
 
 func defaultInlayHintSettings() inlayHintSettings {
-	return inlayHintSettings{Types: true, Parameters: true, Ownership: true}
+	return inlayHintSettings{Types: true, Parameters: true, Ownership: true, Defaults: true}
 }
 
 // inlayHintSettingsFrom reads `{"inlayHints": {...}}` from initialization
@@ -75,6 +76,9 @@ func inlayHintSettingsFrom(current inlayHintSettings, raw json.RawMessage) inlay
 	if hints.Ownership != nil {
 		current.Ownership = *hints.Ownership
 	}
+	if hints.Defaults != nil {
+		current.Defaults = *hints.Defaults
+	}
 	return current
 }
 
@@ -82,6 +86,7 @@ type inlayHintSettingsPayload struct {
 	Types      *bool `json:"types"`
 	Parameters *bool `json:"parameters"`
 	Ownership  *bool `json:"ownership"`
+	Defaults   *bool `json:"defaults"`
 }
 
 // inlayHintsForSource answers textDocument/inlayHint from Sema facts:
@@ -105,7 +110,7 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			hints = []inlayHint{}
 		}
 	}()
-	if !settings.Types && !settings.Parameters && !settings.Ownership {
+	if !settings.Types && !settings.Parameters && !settings.Ownership && !settings.Defaults {
 		return hints
 	}
 	program := parseProgramForLSP(uri, text)
@@ -138,8 +143,20 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 		hints = append(hints, hint)
 	}
 
+	if settings.Types {
+		for _, hint := range inferredScopedBindingTypeHints(program, analyzer, text, inThisFile) {
+			add(hint)
+		}
+	}
+
 	walkLSPNodes(program, func(node any) {
 		switch node := node.(type) {
+		case *ast.StructLiteral:
+			if settings.Defaults && node != nil && inThisFile(node.Token) {
+				if hint, ok := omittedStructDefaultsHint(analyzer, text, node); ok {
+					add(hint)
+				}
+			}
 		case *ast.LetStatement:
 			if node == nil || node.Name == nil || node.Value == nil || !inThisFile(node.Name.Token) {
 				return

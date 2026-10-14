@@ -8,81 +8,81 @@ module units_advanced_invalid
 // =============================================================================
 
 unit m decimal physical
-impl m {
+impl <m> {
     dimension: [length^1]
     scale: 1
     system: SI
 }
 
 unit s decimal physical
-impl s {
+impl <s> {
     dimension: [time^1]
     scale: 1
     system: SI
 }
 
 unit kg decimal physical
-impl kg {
+impl <kg> {
     dimension: [mass^1]
     scale: 1
     system: SI
 }
 
 unit Hz decimal physical
-impl Hz {
+impl <Hz> {
     dimension: [time^-1]
     scale: 1
     system: SI
 }
 
 unit rpm physical
-impl rpm {
+impl <rpm> {
     dimension: [time^-1]
     scale: 1 / 60
     system: Other
 
-    fn rpm(value: Hz) rpm {
+    fn rpm(value: <Hz>) <rpm> {
         return value * 60
     }
 }
 
 unit Bq decimal physical
-impl Bq {
+impl <Bq> {
     dimension: [time^-1]
     scale: 1
     system: SI
 }
 
 unit mps decimal physical
-impl mps {
+impl <mps> {
     dimension: [length^1, time^-1]
     scale: 1
     system: SI
 }
 
 unit kph decimal physical
-impl kph {
+impl <kph> {
     dimension: [length^1, time^-1]
     scale: 5 / 18
     system: SI
 }
 
 unit N decimal physical
-impl N {
+impl <N> {
     dimension: [mass^1, length^1, time^-2]
     scale: 1
     system: SI
 }
 
 unit SEK decimal other
-impl SEK {
+impl <SEK> {
     dimension: [currency.SEK^1]
     scale: 1
     system: Currency
 }
 
 unit EUR decimal other
-impl EUR {
+impl <EUR> {
     dimension: [currency.EUR^1]
     scale: 1
     system: Currency
@@ -93,28 +93,28 @@ impl EUR {
 // =============================================================================
 
 unit MissingDimension decimal physical
-impl MissingDimension {
+impl <MissingDimension> {
     // ERROR: A physical unit must declare a dimension vector.
     scale: 1
     system: SI
 }
 
 unit MissingScale decimal physical
-impl MissingScale {
+impl <MissingScale> {
     dimension: [length^1]
     // ERROR: A physical unit must declare a scale.
     system: SI
 }
 
 unit MissingSystem decimal physical
-impl MissingSystem {
+impl <MissingSystem> {
     dimension: [length^1]
     scale: 1
     // ERROR: A physical unit must declare a system.
 }
 
 unit DuplicateDimension decimal physical
-impl DuplicateDimension {
+impl <DuplicateDimension> {
     dimension: [length^1]
     // ERROR: dimension may be declared only once.
     dimension: [length^1]
@@ -123,7 +123,7 @@ impl DuplicateDimension {
 }
 
 unit DuplicateScale decimal physical
-impl DuplicateScale {
+impl <DuplicateScale> {
     dimension: [length^1]
     scale: 1
     // ERROR: scale may be declared only once.
@@ -132,7 +132,7 @@ impl DuplicateScale {
 }
 
 unit DuplicateSystem decimal physical
-impl DuplicateSystem {
+impl <DuplicateSystem> {
     dimension: [length^1]
     scale: 1
     system: SI
@@ -145,7 +145,7 @@ impl DuplicateSystem {
 // =============================================================================
 
 unit ZeroExponent decimal physical
-impl ZeroExponent {
+impl <ZeroExponent> {
     // ERROR: Dimension exponents must be non-zero.
     dimension: [length^0]
     scale: 1
@@ -153,7 +153,7 @@ impl ZeroExponent {
 }
 
 unit FractionalExponent decimal physical
-impl FractionalExponent {
+impl <FractionalExponent> {
     // ERROR: Dimension exponents must be integers.
     dimension: [length^1.5]
     scale: 1
@@ -161,7 +161,7 @@ impl FractionalExponent {
 }
 
 unit MissingExponent decimal physical
-impl MissingExponent {
+impl <MissingExponent> {
     // ERROR: Every dimension entry requires an explicit exponent.
     dimension: [length]
     scale: 1
@@ -169,7 +169,7 @@ impl MissingExponent {
 }
 
 unit DuplicateAxis decimal physical
-impl DuplicateAxis {
+impl <DuplicateAxis> {
     // ERROR: A dimension axis may occur only once in a declaration.
     dimension: [length^1, time^-1, length^1]
     scale: 1
@@ -177,7 +177,7 @@ impl DuplicateAxis {
 }
 
 unit EmptyPhysicalDimension decimal physical
-impl EmptyPhysicalDimension {
+impl <EmptyPhysicalDimension> {
     // ERROR: An ordinary physical unit may not have an empty dimension vector.
     dimension: []
     scale: 1
@@ -189,7 +189,7 @@ impl EmptyPhysicalDimension {
 // =============================================================================
 
 unit ZeroScale decimal physical
-impl ZeroScale {
+impl <ZeroScale> {
     dimension: [length^1]
     // ERROR: Scale must be non-zero.
     scale: 0
@@ -197,7 +197,7 @@ impl ZeroScale {
 }
 
 unit NegativeScale decimal physical
-impl NegativeScale {
+impl <NegativeScale> {
     dimension: [length^1]
     // ERROR: Scale must be positive unless a future affine model permits it.
     scale: -1
@@ -205,7 +205,7 @@ impl NegativeScale {
 }
 
 unit DivisionByZeroScale decimal physical
-impl DivisionByZeroScale {
+impl <DivisionByZeroScale> {
     dimension: [length^1]
     // ERROR: Scale constant evaluation must reject division by zero.
     scale: 1 / 0
@@ -217,7 +217,7 @@ fn RuntimeScale() decimal {
 }
 
 unit NonConstantScale decimal physical
-impl NonConstantScale {
+impl <NonConstantScale> {
     dimension: [length^1]
     // ERROR: Scale must be a compile-time numeric expression.
     scale: RuntimeScale()
@@ -242,52 +242,52 @@ impl NotAUnit {
 // Implicit conversion remains forbidden
 // =============================================================================
 
-fn ImplicitFrequencyConversion(value: Hz) void {
+fn ImplicitFrequencyConversion(value: <Hz>) void {
     // ERROR: Equal dimensions do not permit implicit conversion to rpm.
-    let rotation: rpm := value
+    let rotation: <rpm> := value
 }
 
-fn ImplicitSemanticConversion(value: Hz) void {
+fn ImplicitSemanticConversion(value: <Hz>) void {
     // ERROR: Hz and Bq remain distinct nominal units.
-    let activity: Bq := value
+    let activity: <Bq> := value
 }
 
-fn ImplicitScaleConversion(value: kph) void {
+fn ImplicitScaleConversion(value: <kph>) void {
     // ERROR: kph and mps have different scales and require explicit conversion.
-    let speed: mps := value
+    let speed: <mps> := value
 }
 
-fn ImplicitCurrencyConversion(value: SEK) void {
+fn ImplicitCurrencyConversion(value: <SEK>) void {
     // ERROR: Currency dimensions are incompatible without an explicit runtime
     // conversion relationship.
-    let converted: EUR := value
+    let converted: <EUR> := value
 }
 
 // =============================================================================
 // Scale-sensitive algebra
 // =============================================================================
 
-fn KilometresPerHourAssignedToMps(distance: km, duration: h) mps {
+fn KilometresPerHourAssignedToMps(distance: <km>, duration: <h>) <mps> {
     // ERROR: km/h has the kph scale, not the mps scale.
     return distance / duration
 }
 
 // Local declarations provide the scaled units for the preceding case.
 unit km decimal physical
-impl km {
+impl <km> {
     dimension: [length^1]
     scale: 1000
     system: SI
 }
 
 unit h decimal physical
-impl h {
+impl <h> {
     dimension: [time^1]
     scale: 3600
     system: Other
 }
 
-fn MetresPerSecondAssignedToKph(distance: m, duration: s) kph {
+fn MetresPerSecondAssignedToKph(distance: <m>, duration: <s>) <kph> {
     // ERROR: m/s has the mps scale, not the kph scale.
     return distance / duration
 }
@@ -297,77 +297,77 @@ fn MetresPerSecondAssignedToKph(distance: m, duration: s) kph {
 // =============================================================================
 
 unit BadDistanceConversion decimal physical
-impl BadDistanceConversion {
+impl <BadDistanceConversion> {
     dimension: [length^1]
     scale: 1
     system: SI
 
     // ERROR: Time and length dimensions are incompatible.
-    fn BadDistanceConversion(value: s) BadDistanceConversion {
+    fn BadDistanceConversion(value: <s>) <BadDistanceConversion> {
         return value
     }
 }
 
 unit WrongConversionReturn decimal physical
-impl WrongConversionReturn {
+impl <WrongConversionReturn> {
     dimension: [length^1]
     scale: 1
     system: SI
 
     // ERROR: A unit conversion function must return its containing unit.
-    fn WrongConversionReturn(value: m) m {
+    fn WrongConversionReturn(value: <m>) <m> {
         return value
     }
 }
 
 unit WrongConversionName decimal physical
-impl WrongConversionName {
+impl <WrongConversionName> {
     dimension: [length^1]
     scale: 1
     system: SI
 
     // ERROR: Constructor-style conversion requires the target unit name.
-    fn Convert(value: m) WrongConversionName {
+    fn Convert(value: <m>) <WrongConversionName> {
         return value
     }
 }
 
 unit ReceiverConversion decimal physical
-impl ReceiverConversion {
+impl <ReceiverConversion> {
     dimension: [length^1]
     scale: 1
     system: SI
 
     // ERROR: Unit conversion functions are static and cannot declare self.
-    fn ReceiverConversion(value: m) ReceiverConversion {
+    fn ReceiverConversion(value: <m>) <ReceiverConversion> {
         return value
     }
 }
 
 unit DuplicateSourceConversion decimal physical
-impl DuplicateSourceConversion {
+impl <DuplicateSourceConversion> {
     dimension: [length^1]
     scale: 1
     system: SI
 
-    fn DuplicateSourceConversion(value: m) DuplicateSourceConversion {
+    fn DuplicateSourceConversion(value: <m>) <DuplicateSourceConversion> {
         return value
     }
 
     // ERROR: Duplicate conversion from source unit m.
-    fn DuplicateSourceConversion(other: m) DuplicateSourceConversion {
+    fn DuplicateSourceConversion(other: <m>) <DuplicateSourceConversion> {
         return other
     }
 }
 
 unit NumericSourceConversion decimal physical
-impl NumericSourceConversion {
+impl <NumericSourceConversion> {
     dimension: [length^1]
     scale: 1
     system: SI
 
     // ERROR: The source of a direct unit conversion must be another unit type.
-    fn NumericSourceConversion(value: decimal) NumericSourceConversion {
+    fn NumericSourceConversion(value: decimal) <NumericSourceConversion> {
         return value
     }
 }
@@ -376,13 +376,13 @@ impl NumericSourceConversion {
 // Invalid conversion calls
 // =============================================================================
 
-fn WrongConversionArgument(value: m) void {
+fn WrongConversionArgument(value: <m>) void {
     // ERROR: rpm has a conversion from Hz, not from m.
-    let rotation: rpm := rpm(value)
+    let rotation: <rpm> := <rpm>(value)
 }
 
-fn ConversionDoesNotHappenByAssignment(value: Hz) void {
-    let mut rotation: rpm := rpm(value)
+fn ConversionDoesNotHappenByAssignment(value: <Hz>) void {
+    let mut rotation: <rpm> := <rpm>(value)
 
     // ERROR: Later assignment still requires an explicit conversion call.
     rotation = value
@@ -392,24 +392,24 @@ fn ConversionDoesNotHappenByAssignment(value: Hz) void {
 // Invalid complex algebra
 // =============================================================================
 
-fn ForceAssignedToSpeed(mass: kg, speed: mps, duration: s) mps {
+fn ForceAssignedToSpeed(mass: <kg>, speed: <mps>, duration: <s>) <mps> {
     // ERROR: kg*m/s/s is force, not speed.
     return mass * speed / duration
 }
 
-fn PressureWithoutArea(force: N, distance: m) void {
+fn PressureWithoutArea(force: <N>, distance: <m>) void {
     // ERROR: N/m is not a pressure dimension.
-    let pressure: Pa := force / distance
+    let pressure: <Pa> := force / distance
 }
 
 unit Pa decimal physical
-impl Pa {
+impl <Pa> {
     dimension: [mass^1, length^-1, time^-2]
     scale: 1
     system: SI
 }
 
-fn CurrencySquared(first: SEK, second: SEK) void {
+fn CurrencySquared(first: <SEK>, second: <SEK>) void {
     // ERROR: Squared currency remains unsupported.
     let invalid := first * second
 }

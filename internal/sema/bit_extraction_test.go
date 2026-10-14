@@ -143,8 +143,8 @@ fn Invalid(sensor: Sensor, source: uint8, width: int, p: Percent, flag: bool, r:
 		"cannot extract bits from bool",
 		"cannot extract bits from rune",
 		"cannot extract bits from float64",
-		"cannot assign uint16 to bit[12]",
-		"cannot assign uint16 to bit[12]",
+		"cannot assign uint16 to register field Reading (bit[12]): the value is not proven to fit 0..4095",
+		"cannot assign uint16 to register field Reading (bit[12]): the value is not proven to fit 0..4095",
 	}
 	if len(errors) != len(wants) {
 		t.Fatalf("errors = %v", errors)

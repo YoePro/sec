@@ -1,0 +1,4 @@
+module main
+fn Plain(value: int) int { return try value }
+fn Missing(value: int) int { return try Unknown(value) }
+fn Constant() int { return try 1 }

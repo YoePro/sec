@@ -1,6 +1,6 @@
 module main
 unit __UNIT__ physical
-impl __UNIT__ {
+impl <__UNIT__> {
     Dimension: [__AXIS__^1]
     Kind: __AXIS__
     Scale: __SCALE__

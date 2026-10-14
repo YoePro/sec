@@ -24,8 +24,8 @@ func unitActionFixture(t *testing.T, name string) string {
 // rules/types/units.md — Explicit unit conversion functions, No hidden precision loss.
 func TestExtendedUnitCodeActions(t *testing.T) {
 	for _, test := range []struct{ name, replacement, title string }{
-		{"declared", "Rotation(value)", "Use declared conversion"},
-		{"factor", "EUR(value, rate)", "in-scope factor"},
+		{"declared", "<Rotation>(value)", "Use declared conversion"},
+		{"factor", "<EUR>(value, rate)", "in-scope factor"},
 		{"carrier", "int64(value)", "Change carrier exactly"},
 		{"float_carrier", "float64(value)", "Change carrier exactly"},
 		{"compound_carrier", "int64(value)", "Change carrier exactly"},

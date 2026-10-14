@@ -10,20 +10,22 @@
  * RFC 1122 - Requirements for Internet Hosts
  * https://www.rfc-editor.org/rfc/rfc1122
  */
-module net
+module ip
 
 // =====================================================================
 // ERRORS
 // =====================================================================
 
-enum NetError error {
-    ConnectionRefused,
-    Timeout,
-    InvalidPacketStructure,
-    NetworkUnreachable,
-    BufferTooSmall,
-    UnsupportedIpVersion,
-}
+/*
+ * enum NetError error {
+ *     ConnectionRefused,
+ *     Timeout,
+ *     InvalidPacketStructure,
+ *     NetworkUnreachable,
+ *     BufferTooSmall,
+ *     UnsupportedIpVersion,
+ * }
+ */
 
 // =====================================================================
 // IPv6
@@ -45,14 +47,14 @@ type Ipv6Address register[128] msb-first big-endian {
 // Fixed-width wire layout for IPv6 header.
 // Total size: 40 bytes (320 bits).
 type Ipv6WireHeader register[320] msb-first big-endian {
-    Version: bit[4],
-    Dscp: bit[6],
-    Ecn: IpEcn,
-    FlowLabel: bit[20],
+    Version:       bit[4],
+    Dscp:          bit[6],
+    Ecn:           IpEcn,
+    FlowLabel:     bit[20],
     PayloadLength: bit[16],
-    NextHeader: IpProtocol,
-    HopLimit: bit[8],
-    SourceIp: Ipv6Address,
+    NextHeader:    IpProtocol,
+    HopLimit:      bit[8],
+    SourceIp:      Ipv6Address,
     DestinationIp: Ipv6Address,
 }
 

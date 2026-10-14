@@ -271,7 +271,7 @@ integrations:
     verification:
       - command: go test ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-12; all four full suites passed, including exact Unquote-style union-error remapping, compiler-resolved returning handler flow, missing recovery on continuing match branches, unreachable trailing recovery values, and the real str/escape.sec LSP path
-      - command: go build -o /tmp/sec-lsp-nested-match ./cmd/lsp; python3 /tmp/sec-lsp-probe.py /home/jonas/.vscode-server/extensions/sec-lang.sec-syntax/bin/lsp-sec
+      - command: go build -o /tmp/sec-lsp-nested-match ./cmd/lsp; python3 /tmp/sec-lsp-probe.py ${SEC_LSP_BIN}
         result: verified on 2026-10-12 through initialize/didOpen/publishDiagnostics for sec/stdlib/str/escape.sec; the old installed 09:09 binary emitted the exact false missing-recovery diagnostic, the rebuilt installed binary emits zero diagnostics, and VS Code restarted the server with the new executable. Library source remained unchanged.
       - command: go vet ./...
         result: passed on 2026-10-12

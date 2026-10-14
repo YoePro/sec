@@ -12,7 +12,7 @@ import (
 const unitNamespaceUnitsModule = `
 module units
 unit A physical
-impl A {
+impl <A> {
     LongName: "Ampere"
     Symbol: "A"
     BaseUnit: true
@@ -22,7 +22,7 @@ impl A {
     System: SI
 }
 unit K physical
-impl K {
+impl <K> {
     LongName: "Kelvin"
     Symbol: "K"
     BaseUnit: true
@@ -89,17 +89,118 @@ func TestUnitAndSameSpelledTypeOfAnotherModuleCoexist(t *testing.T) {
 	}
 }
 
-// Within one module a unit and a type of the same spelling remain a
-// declaration conflict, because which one `impl Name` targets is undecided
-// (missing-decisions.yaml MD-040).
-func TestUnitAndSameSpelledTypeInOneModuleConflict(t *testing.T) {
-	for _, source := range []string{
-		"module main\nunit Volt physical\ntype Volt int\n",
-		"module main\ntype Volt int\nunit Volt physical\n",
+// MD-040: a unit is always referenced as <Unit>, so a unit and an ordinary
+// type of the same spelling coexist even in one module. `impl <Volt>` holds
+// only unit metadata and unit functions, `impl Volt` only the type's members,
+// in either declaration order; `<Volt>(value)` converts, `<Volt>.Symbol`
+// reads metadata, `<Volt>.Name(...)` calls a unit function, while
+// `Volt(value)` and `Volt.SizeOf` keep their ordinary type meaning.
+//
+// Rules:
+//   - rules/types/units.md — "Unit names and compiler-known names"
+//   - rules/declarations/impl.md — unit impl blocks
+func TestUnitAndSameSpelledTypeInOneModuleCoexist(t *testing.T) {
+	unit := `unit Volt physical
+
+impl <Volt> {
+    LongName: "Volt"
+    Symbol: "V"
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1
+    System: SI
+
+    fn Volt(millivolts: decimal<mV>) <Volt> {
+        return <Volt>(millivolts)
+    }
+
+    fn Half(value: decimal<Volt>) decimal<Volt> {
+        return value / 2
+    }
+}
+
+unit mV physical
+
+impl <mV> {
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1 / 1000
+}
+`
+	typ := `type Volt uint
+
+impl Volt {
+    fn IsZero() bool {
+        return self == 0
+    }
+}
+`
+	use := `fn Use(value: decimal<Volt>, raw: uint, small: decimal<mV>) bool {
+    let converted := <mV>(small)
+    let fromMillivolts := <Volt>(small)
+    let symbol: string := <Volt>.Symbol
+    let name: string := <Volt>.LongName
+    let half := <Volt>.Half(value)
+    let ordinary := Volt(raw)
+    let bytes := Volt.SizeOf
+    return ordinary.IsZero()
+}
+`
+	for name, source := range map[string]string{
+		"unit first": "module main\n" + unit + typ + use,
+		"type first": "module main\n" + typ + unit + use,
 	} {
-		errors := NewAnalyzer().Analyze(parser.New(lexer.New(source)).ParseProgram())
-		if len(errors) != 1 || !strings.Contains(errors[0].Message, "conflicts with") {
-			t.Fatalf("errors for %q = %+v", source, errors)
+		analyzer := NewAnalyzer()
+		if errors := analyzer.Analyze(parser.New(lexer.New(source)).ParseProgram()); len(errors) != 0 {
+			t.Fatalf("%s: unexpected errors: %+v", name, errors)
+		}
+		if typ := analyzer.Types()["Volt"]; typ.Kind != UintType || !typ.Named {
+			t.Fatalf("%s: type Volt = %+v", name, typ)
+		}
+		if unit, ok := analyzer.units["Volt"]; !ok || unit.Symbol != "V" {
+			t.Fatalf("%s: unit Volt = %+v", name, unit)
+		}
+	}
+}
+
+// Legacy unqualified unit references are rejected with the <Unit> spelling
+// as help: `impl Unit`, a bare unit conversion call and a bare unit type.
+// Unit metadata without a Sec 0.1 value type cannot be read.
+func TestLegacyUnqualifiedUnitReferencesAreRejected(t *testing.T) {
+	source := `module main
+unit rpm physical
+
+impl rpm {
+    Dimension: [time^-1]
+    Scale: 1 / 60
+}
+
+fn Use(value: decimal<rpm>) void {
+    let converted := rpm(value)
+    let typed: rpm := value
+    let kind := <rpm>.Kind
+}
+`
+	errors := NewAnalyzer().Analyze(parser.New(lexer.New(source)).ParseProgram())
+	wants := []string{
+		"impl rpm does not name an ordinary type; rpm is a unit",
+		"rpm is a unit, not a function or type",
+		"rpm is a unit, not a type",
+		"unit metadata <rpm>.Kind has no value type in Sec 0.1",
+	}
+	if len(errors) != len(wants) {
+		t.Fatalf("want %d errors, got %+v", len(wants), errors)
+	}
+	for _, want := range wants {
+		found := false
+		for _, err := range errors {
+			if strings.Contains(err.Message, want) {
+				found = true
+				if want != wants[3] && !strings.Contains(err.Help, "<rpm>") {
+					t.Errorf("%q lacks <rpm> help: %q", want, err.Help)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing %q in %+v", want, errors)
 		}
 	}
 }

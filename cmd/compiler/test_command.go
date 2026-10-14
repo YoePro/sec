@@ -119,7 +119,7 @@ func runTestCommand(args []string, out io.Writer) int {
 	for _, group := range groups {
 		versionSources = append(versionSources, group.dir)
 	}
-	if versions := validateDiscoveredProjectVersions(versionSources); versions.Errors > 0 {
+	if versions := validateDiscoveredProjectManifests(versionSources); versions.Errors > 0 {
 		printDiagnosticSummary(versions)
 		return testExitCompilationFailure
 	}

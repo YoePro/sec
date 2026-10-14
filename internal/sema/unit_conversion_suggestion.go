@@ -59,7 +59,7 @@ func (a *Analyzer) unitConversionSuggestion(expected Type, actual Type, expr ast
 	return UnitConversionSuggestion{
 		File: start.File, Line: start.Line, Column: start.Column, EndLine: endLine, EndColumn: endColumn,
 		Target:      target.Named,
-		Replacement: target.Named + "(" + spelling + ")",
+		Replacement: unitFunctionKey(target.Named, "") + "(" + spelling + ")",
 	}, true
 }
 
@@ -116,13 +116,13 @@ func (a *Analyzer) unitConversionAlternatives(expected, actual Type, expr ast.Ex
 		}
 		out = append(out, UnitConversionSuggestion{Kind: kind, File: start.File, Line: start.Line, Column: start.Column, EndLine: endLine, EndColumn: endColumn, Target: to.Named, Replacement: replacement})
 	}
-	for _, fn := range a.accessibleFunctions(a.functions[to.Named]) {
-		if fn.ImplTarget != to.Named || fn.Unsafe || len(fn.Parameters) != 1 || len(fn.GenericParameters) != 0 {
+	for _, fn := range a.accessibleFunctions(a.functions[unitFunctionKey(to.Named, "")]) {
+		if fn.ImplTarget != unitFunctionKey(to.Named, "") || fn.Unsafe || len(fn.Parameters) != 1 || len(fn.GenericParameters) != 0 {
 			continue
 		}
 		parameter := fn.Parameters[0].Type
 		if sameNumericCarrier(parameter, actual) && effectiveUnitSemantics(parameter).Named == from.Named && canInitialize(expected, fn.ReturnType, nil) {
-			add("declared-function", to.Named+"("+spelling+")")
+			add("declared-function", unitFunctionKey(to.Named, "")+"("+spelling+")")
 		}
 	}
 	if to.Named != "" && sameNumericCarrier(expected, actual) && isLinearRatioSemantics(to) && isLinearRatioSemantics(from) {
@@ -137,7 +137,7 @@ func (a *Analyzer) unitConversionAlternatives(expected, actual Type, expr ast.Ex
 			if symbol.ImplicitMember || !isNumericType(factor) || !hasUnitSemantics(factor) || !sameNumericCarrier(factor, actual) || !isLinearRatioSemantics(effectiveUnitSemantics(factor)) || !factor.Dimension.Equal(expected.Dimension.Div(actual.Dimension)) {
 				continue
 			}
-			add("in-scope-factor", to.Named+"("+spelling+", "+name+")")
+			add("in-scope-factor", unitFunctionKey(to.Named, "")+"("+spelling+", "+name+")")
 		}
 	}
 	if !sameNumericCarrier(expected, actual) && a.exactUnitCarrierChange(expected, actual, expr) {
@@ -146,7 +146,7 @@ func (a *Analyzer) unitConversionAlternatives(expected, actual Type, expr ast.Ex
 			if to.Named == "" || !explicitUnitConversionProven(expected, actual) {
 				return out
 			}
-			cast = to.Named + "(" + cast + ")"
+			cast = unitFunctionKey(to.Named, "") + "(" + cast + ")"
 		}
 		add("exact-carrier", cast)
 	}

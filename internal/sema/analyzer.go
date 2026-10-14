@@ -78,8 +78,8 @@ type Analyzer struct {
 	// checkedConversions and protectedCheckedConversions track explicit
 	// scalar conversions that may fail at run time and the subset a try
 	// protects (rules/types/types.md "Explicit conversions"; ffi.md §8).
-	checkedConversions          map[*ast.CallExpression]checkedConversion
-	protectedCheckedConversions map[*ast.CallExpression]bool
+	checkedConversions          map[ast.Expression]checkedConversion
+	protectedCheckedConversions map[ast.Expression]bool
 	// arenaGenericRequirements and genericInstantiations check deferred
 	// typed Arena allocations per specialization.
 	arenaGenericRequirements map[sourceTokenKey][]arenaGenericRequirement
@@ -87,7 +87,7 @@ type Analyzer struct {
 	genericConstraintCalls   map[sourceTokenKey][]genericConstraintCall
 	// fallibleConversionRelations holds conversions whose type domains can
 	// fail even when a value proof makes them safe on this target.
-	fallibleConversionRelations  map[*ast.CallExpression]ConversionFailureKind
+	fallibleConversionRelations  map[ast.Expression]ConversionFailureKind
 	resolvedForIterations        map[*ast.ForStatement]ResolvedForIteration
 	iteratorLoweringRequirements map[*ast.ForStatement]*iteratorLoweringRequirement
 	iteratorLoweringProgram      *ast.Program
@@ -114,6 +114,9 @@ type Analyzer struct {
 	// conversion (rules/types/temporal.md, "Conversion of time quantities to
 	// duration").
 	durationConversions map[ast.Expression]DurationConversionPlan
+	// roundedConversions records explicit conversions with a RoundingMode
+	// (MD-047, rules/types/units.md "Explicit rounding").
+	roundedConversions map[ast.Expression]RoundedConversionPlan
 	// synthesizedStructTypes holds the exact struct or union type of each
 	// struct-shaped literal that Sema materialized as a default, so a generic
 	// instance such as Box[int] is not re-resolved from its bare name.
@@ -510,12 +513,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.confusableModuleIndex = map[string]map[string][]confusableDeclaration{}
 	a.stringMaterializationSites = map[ast.Expression]stringMaterializationSite{}
 	a.protectedStringMaterializations = map[ast.Expression]bool{}
-	a.checkedConversions = map[*ast.CallExpression]checkedConversion{}
-	a.protectedCheckedConversions = map[*ast.CallExpression]bool{}
+	a.checkedConversions = map[ast.Expression]checkedConversion{}
+	a.protectedCheckedConversions = map[ast.Expression]bool{}
 	a.arenaGenericRequirements = map[sourceTokenKey][]arenaGenericRequirement{}
 	a.genericInstantiations = map[sourceTokenKey]genericInstantiation{}
 	a.genericConstraintCalls = map[sourceTokenKey][]genericConstraintCall{}
-	a.fallibleConversionRelations = map[*ast.CallExpression]ConversionFailureKind{}
+	a.fallibleConversionRelations = map[ast.Expression]ConversionFailureKind{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.iteratorLoweringRequirements = map[*ast.ForStatement]*iteratorLoweringRequirement{}
 	a.iteratorLoweringProgram = nil
@@ -534,6 +537,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedRangeAppends = map[*ast.CallExpression]ResolvedArrayLiteralEntry{}
 	a.unitConversionPlans = map[ast.Expression]UnitConversionPlan{}
 	a.durationConversions = map[ast.Expression]DurationConversionPlan{}
+	a.roundedConversions = map[ast.Expression]RoundedConversionPlan{}
 	a.synthesizedStructTypes = map[*ast.StructLiteral]Type{}
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
@@ -795,16 +799,6 @@ func (a *Analyzer) CompilerKnownMemberAt(file string, line int, column int) (Com
 		return CompilerKnownMember{}, false
 	}
 	return withSyntheticMetadata(member), true
-}
-
-// CallGraph returns an immutable snapshot of the graph produced by the most
-// recent analysis, with stable declaration/lexical identities and current
-// navigation positions. Concrete plan binding is explicit.
-// Rules: rules/analysis/call_graph.md — "Callable node identity", "Call-site identity".
-func (a *Analyzer) CallGraph() *CallGraph {
-	graph := a.callGraph.clone()
-	graph.syntaxOrigins = nil // Traversal lookup is not a retained semantic fact.
-	return graph
 }
 
 // EscapeAnalysis returns an immutable snapshot of escape facts and callable
@@ -1178,7 +1172,13 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 			if decl.Name == "" {
 				continue
 			}
-			key := a.currentModule + "\x00" + decl.Name
+			// MD-040: unit symbols form their own namespace; a unit and an
+			// ordinary declaration of one spelling coexist even in one module.
+			namespace := "\x00"
+			if decl.Kind == moduleDeclarationUnit {
+				namespace = "\x00unit\x00"
+			}
+			key := a.currentModule + namespace + decl.Name
 			previous, exists := declared[key]
 			if !exists && decl.Kind != moduleDeclarationUnit {
 				surface := a.moduleSurfaces[a.currentModule]
@@ -1195,7 +1195,7 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 				// MD-001: a distinct spelling whose UTS #39 skeleton collides
 				// with an earlier declaration of the same module namespace is
 				// an error; unit symbols live in a separate namespace (§ 8.10).
-				skeletonKey := a.currentModule + "\x00" + a.confusableSkeleton(decl.Name)
+				skeletonKey := a.currentModule + namespace + a.confusableSkeleton(decl.Name)
 				if other, collides := skeletons[skeletonKey]; collides && other.Name != decl.Name && !unitAndValueDeclaration(other.Kind, decl.Kind) {
 					a.reportConfusableIdentifier(decl.Name, decl.Token, other.Name, other.Token)
 				} else if !collides {
@@ -1214,9 +1214,11 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 				continue
 			}
 			// Unit symbols occupy a separate unit-symbol namespace, so they do
-			// not conflict with functions or variables of the same spelling.
-			// Units and nominal types still share the type table and conflict.
-			// Rules: rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 8.
+			// not conflict with functions, variables or types of the same
+			// spelling (MD-040: `<Unit>` qualification makes every reference
+			// unambiguous).
+			// Rules: rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 8;
+			// rules/types/units.md — "Unit names and compiler-known names".
 			if unitAndValueDeclaration(previous.Kind, decl.Kind) {
 				continue
 			}
@@ -1341,17 +1343,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectUnitNameCollision(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
-			ordinary, shadowedByOrdinary := a.types[stmt.Name.Value]
-			shadowedByOrdinary = shadowedByOrdinary && !a.unitTypeNames[stmt.Name.Value]
-			if shadowedByOrdinary && ordinary.Module == a.currentModule {
-				// The module declaration-conflict pass reports S1003.
-				return
-			}
-			if shadowedByOrdinary {
-				a.recordDefinition(stmt.Name.Token)
-			} else {
-				a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
-			}
+			// MD-040: a unit is always referenced as <Unit>, so its type
+			// entry lives in the unit table, never in the ordinary type table.
+			a.recordDefinition(stmt.Name.Token)
 			if previous, exists := seenUnits[stmt.Name.Value]; exists {
 				a.addErrorAtTokenWithPrevious(stmt.Name.Token, previous, "unit %s already declared", stmt.Name.Value)
 				return
@@ -1376,13 +1370,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				}
 			}
 			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
-			unitEntry := Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
-			if shadowedByOrdinary {
-				a.shadowedUnitTypes[stmt.Name.Value] = unitEntry
-			} else {
-				a.types[stmt.Name.Value] = unitEntry
-				a.unitTypeNames[stmt.Name.Value] = true
-			}
+			a.shadowedUnitTypes[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
 				return
@@ -1718,7 +1706,7 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 // implBlockKey separates the impl block of a shadowed unit from the impl
 // block of the same-spelled ordinary type in another module.
 func (a *Analyzer) implBlockKey(impl *ast.ImplStatement) string {
-	if unitEntry, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && unitEntry.Module == a.currentModule {
+	if impl.Target.UnitOnly {
 		return "unit " + impl.Target.Name
 	}
 	return impl.Target.Name
@@ -2003,13 +1991,12 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 		if !ok || !a.validImplStatements[impl] || impl.Target == nil {
 			continue
 		}
-		unit, ok := a.units[impl.Target.Name]
-		if !ok {
+		// MD-040: only `impl <Unit>` holds unit metadata.
+		if !impl.Target.UnitOnly || !a.shadowedUnitImpls[impl] {
 			continue
 		}
-		// An impl of the same-spelled ordinary type of another module is not
-		// unit metadata.
-		if _, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && !a.shadowedUnitImpls[impl] {
+		unit, ok := a.units[impl.Target.Name]
+		if !ok {
 			continue
 		}
 		changed := false
@@ -4112,14 +4099,15 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		}
 		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginAutomatic, Local: true, Parameter: true, ScopeDepth: 0}
 		a.symbols[param.Name] = symbol
+		a.seedParameterReferenceOrigin(function, param)
+		symbol = a.symbols[param.Name]
 		completionSymbol := symbol
 		completionSymbol.Local = true
 		a.completionSymbols[param.Name] = completionSymbol
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 		a.recordDefinition(param.Token)
-		a.recordBinding(param.Token, BindingParameter, param.Name, bindingType, mutableBinding)
-		a.seedParameterReferenceOrigin(function, param)
+		a.recordBinding(param.Token, BindingParameter, param.Name, symbol.Type, mutableBinding)
 		a.recordReferenceParameterFacts(param)
 	}
 	// rules/declarations/static.md, receiver semantics; correction15.md keeps the
@@ -5308,28 +5296,6 @@ func (a *Analyzer) isExplicitUnitConversionReturn(target, source Type) bool {
 		return false
 	}
 	return isLinearRatioSemantics(target.UnitSemantics) && isLinearRatioSemantics(source.UnitSemantics)
-}
-
-func (a *Analyzer) seedParameterReferenceOrigin(function Function, param FunctionParameter) {
-	if !typeCarriesReferenceOrigin(param.Type) {
-		return
-	}
-	placeType := param.Type
-	if param.Type.Kind == ReferenceType && param.Type.Element != nil {
-		placeType = *param.Type.Element
-	}
-	place := Place{
-		Root:        param.Name,
-		RootToken:   param.Token,
-		Type:        placeType,
-		Mutable:     param.Type.ReferenceMutable || param.MutableRef,
-		Addressable: true,
-	}
-	a.localRefContainers[param.Name] = localOriginWithPlaces(localReferenceOrigin{
-		Name:    param.Name,
-		Token:   param.Token,
-		Mutable: param.Type.ReferenceMutable,
-	}, []Place{place})
 }
 
 func (a *Analyzer) recordFunctionReturnOrigin(returnType Type, expr ast.Expression) {
@@ -7634,15 +7600,9 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 		a.checkConfusableInDomains(field.Name.Value, field.Name.Token, seen)
 		seen[field.Name.Value] = field.Name.Token
 
-		if len(stmt.GenericParameters) > 0 {
-			switch genericRecursiveStorageKind(name, genericParameterNameValues(stmt.GenericParameters), field.Type) {
-			case "direct":
-				a.addErrorAtToken(field.Token, "recursive generic type %s has infinite size", genericDeclarationDisplayName(name, stmt.GenericParameters))
-				continue
-			case "nonconverging":
-				a.addErrorAtToken(field.Token, "recursive generic instantiation does not converge for %s", name)
-				continue
-			}
+		if a.guardGenericInlineSelfStorage(name, stmt, field.Type, field.Name.Value, field.Name.Token) {
+			// The declaration layout graph owns the complete dependency diagnostic.
+			continue
 		}
 
 		fieldType, ok := a.resolveType(field.Type)
@@ -7879,45 +7839,29 @@ func (a *Analyzer) registerFieldType(field *ast.RegisterField, width int64) Type
 	if width == 1 && field.Unit == "" {
 		return Type{Name: "bool", Kind: BoolType}
 	}
+	// MD-046 (registers.md § 12.2): an observation of a bit[N] field is the
+	// smallest unsigned carrier holding N bits, with the unit of bit[N]<U>
+	// preserved and the field-derived interval 0..2^N-1 retained.
 	minInteger := big.NewInt(0)
 	maxInteger := new(big.Int).Lsh(big.NewInt(1), uint(width))
 	maxInteger.Sub(maxInteger, big.NewInt(1))
-	typ := Type{
-		Name:       fmt.Sprintf("bit[%d]", width),
-		Kind:       UintType,
-		BitWidth:   width,
-		MinInteger: minInteger,
-		MaxInteger: maxInteger,
-	}
+	typ := a.bitExtractionResultType(width)
+	typ.MinInteger = minInteger
+	typ.MaxInteger = maxInteger
+	typ.MinUint, typ.MaxUint = nil, nil
 	if width <= 64 {
 		min, max := uint64(0), maxInteger.Uint64()
 		typ.MinUint = &min
 		typ.MaxUint = &max
 	}
 	if field.Unit != "" {
-		if unitType, ok := a.types[field.Unit]; ok && unitType.Kind != InvalidType {
-			typ = unitType
-			typ.MinInteger = new(big.Int).Set(minInteger)
-			typ.MaxInteger = new(big.Int).Set(maxInteger)
-			typ.BitWidth = width
-			if width <= 64 {
-				min, max := uint64(0), maxInteger.Uint64()
-				typ.MinUint = &min
-				typ.MaxUint = &max
-			} else {
-				typ.MinUint = nil
-				typ.MaxUint = nil
-			}
+		typ.Unit = field.Unit
+		semantics, dimension, err := resolveUnitSemantics(field.Unit, field.UnitExpression, a.units)
+		if err == nil {
+			typ.Dimension = dimension
+			typ.UnitSemantics = semantics
 		} else {
-			typ.Named = true
-			typ.Unit = field.Unit
-			semantics, dimension, err := resolveUnitSemantics(field.Unit, field.UnitExpression, a.units)
-			if err == nil {
-				typ.Dimension = dimension
-				typ.UnitSemantics = semantics
-			} else {
-				typ.Dimension = a.parseDimension(field.Unit)
-			}
+			typ.Dimension = a.parseDimension(field.Unit)
 		}
 	}
 	return typ
@@ -7983,15 +7927,9 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 			}
 		}
 		if variant.Payload != nil {
-			if len(stmt.GenericParameters) > 0 {
-				switch genericRecursiveStorageKind(name, genericParameterNameValues(stmt.GenericParameters), variant.Payload) {
-				case "direct":
-					a.addErrorAtToken(variant.Name.Token, "recursive generic type %s has infinite size", genericDeclarationDisplayName(name, stmt.GenericParameters))
-					continue
-				case "nonconverging":
-					a.addErrorAtToken(variant.Name.Token, "recursive generic instantiation does not converge for %s", name)
-					continue
-				}
+			if a.guardGenericInlineSelfStorage(name, stmt, variant.Payload, variant.Name.Value, variant.Name.Token) {
+				// The declaration layout graph owns the complete dependency diagnostic.
+				continue
 			}
 			payload, ok := a.resolveType(variant.Payload)
 			if !ok {
@@ -8014,15 +7952,9 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 					continue
 				}
 				fieldSeen[field.Name.Value] = field.Name.Token
-				if len(stmt.GenericParameters) > 0 {
-					switch genericRecursiveStorageKind(name, genericParameterNameValues(stmt.GenericParameters), field.Type) {
-					case "direct":
-						a.addErrorAtToken(field.Name.Token, "recursive generic type %s has infinite size", genericDeclarationDisplayName(name, stmt.GenericParameters))
-						continue
-					case "nonconverging":
-						a.addErrorAtToken(field.Name.Token, "recursive generic instantiation does not converge for %s", name)
-						continue
-					}
+				if a.guardGenericInlineSelfStorage(name, stmt, field.Type, variant.Name.Value+"."+field.Name.Value, field.Name.Token) {
+					// The declaration layout graph owns the complete dependency diagnostic.
+					continue
 				}
 
 				fieldType, ok := a.resolveType(field.Type)
@@ -8051,26 +7983,6 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 	}
 
 	return typ
-}
-
-func genericTypeArgsMatchParameters(args []*ast.TypeReference, parameters []string) bool {
-	if len(args) != len(parameters) {
-		return false
-	}
-	for i, arg := range args {
-		if arg == nil || len(arg.TypeArgs) > 0 || arg.ElementType != nil || arg.Name != parameters[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func genericDeclarationDisplayName(name string, parameters []*ast.GenericParameter) string {
-	names := genericParameterNameValues(parameters)
-	if len(names) == 0 {
-		return name
-	}
-	return name + "[" + strings.Join(names, ", ") + "]"
 }
 
 func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Identifier, attributes []*ast.Attribute) Type {
@@ -8351,6 +8263,10 @@ func (a *Analyzer) setImplMethodReceiverMutable(name string, targetName string, 
 // rules/declarations/static.md — "Static declarations in implementations".
 func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	if !a.validImplStatements[stmt] {
+		return
+	}
+	if a.shadowedUnitImpls[stmt] {
+		a.registerUnitImplStatement(stmt)
 		return
 	}
 	target, ok := a.types[stmt.Target.Name]
@@ -8692,18 +8608,16 @@ func (a *Analyzer) isUnitConversionFunctionTarget(targetName string, fn *ast.Fun
 	if fn == nil || fn.Name == nil || fn.Name.Value != targetName {
 		return false
 	}
-	target, ok := a.types[targetName]
-	if !ok || target.Unit != targetName || !isNumericType(target) {
-		return false
-	}
-	return true
+	target := a.unitTypeEntry(targetName)
+	return target.Unit == targetName && isNumericType(target)
 }
 
 func (a *Analyzer) validateUnitConversionDimensions(targetName string, fn *ast.FunctionDeclaration) bool {
 	if fn == nil || len(fn.Parameters) != 1 || fn.Parameters[0] == nil || fn.Parameters[0].Type == nil {
 		return true
 	}
-	target, targetOK := a.types[targetName]
+	target := a.unitTypeEntry(targetName)
+	targetOK := target.Unit == targetName
 	source, sourceOK := a.resolveType(fn.Parameters[0].Type)
 	if !targetOK || !sourceOK || source.Unit == "" || source.Unit == targetName {
 		return true
@@ -8850,6 +8764,10 @@ func (a *Analyzer) analyzeImplBodies(program *ast.Program) {
 
 func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 	if !a.validImplStatements[stmt] {
+		return
+	}
+	if a.shadowedUnitImpls[stmt] {
+		a.analyzeUnitImplBody(stmt)
 		return
 	}
 	target, ok := a.types[stmt.Target.Name]
@@ -9845,8 +9763,17 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	if !staticProperty && !staticSymbolOK && stmt.Operator == "=" && a.isRegisterBitField(member) && a.isZeroOrOneIntegerConstant(stmt.Value) {
 		return
 	}
+	registerWrite := false
+	if !staticProperty && !staticSymbolOK {
+		if field, ok := a.registerValueField(member); ok {
+			if !a.checkRegisterFieldWrite(stmt, field, valueType) {
+				return
+			}
+			registerWrite = true
+		}
+	}
 
-	if a.checkCompileTimeContractExpression(targetType, stmt.Value) {
+	if !registerWrite && a.checkCompileTimeContractExpression(targetType, stmt.Value) {
 		return
 	}
 
@@ -9860,7 +9787,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.recordResolvedCompoundAssignment(stmt, targetType, valueType)
 	}
 
-	if !a.canInitialize(targetType, assignmentType, stmt.Value) && !(stmt.Operator == "=" && a.bitExtractionFitsRegisterField(member, stmt.Value)) {
+	if !registerWrite && !a.canInitialize(targetType, assignmentType, stmt.Value) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return
 	}
@@ -11339,6 +11266,10 @@ func typePathFromExpression(expr ast.Expression) (string, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
 		return expr.Value, true
+	case *ast.UnitReferenceExpression:
+		// MD-040: `<U>` and `<U>.Name` are the function-table keys of the
+		// unit's conversion function and unit functions (unitFunctionKey).
+		return expr.String(), true
 	case *ast.MemberExpression:
 		left, ok := typePathFromExpression(expr.Object)
 		if !ok {
@@ -15504,6 +15435,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.FloatLiteral:
 		return expr.Token
 	case *ast.QuantityLiteral:
+		return expr.Token
+	case *ast.UnitReferenceExpression:
 		return expr.Token
 	case *ast.StringLiteral:
 		return expr.Token

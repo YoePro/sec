@@ -9,7 +9,8 @@ integrations:
     summary: >-
       Accepts in over owning dynamic T[] arrays using the existing element
       equality and contextual literal typing rules. The shared frontend supports
-      diagnostics and LSP analysis; dynamic array backend support remains absent.
+      diagnostics and LSP analysis; dynamic array backend support remains
+      absent.
     rules:
       - rules/foundations/operators.md
       - rules/corrections/applied/operators-dynamic-array-membership-20260909.md
@@ -38,6 +39,7 @@ integrations:
         result: valid cases accepted; incompatible elements rejected
       - command: emit-ir testdata/sema/dynamic_membership_lowering_deferred.sec
         result: explicit unsupported array type uint[] error; no executable support claimed
+
   - id: frontend.negated-membership
     area: frontend-and-lowering
     status: partial
@@ -96,181 +98,258 @@ integrations:
         result: passed; membership tokens are operators and equal spellings in iteration or identifier roles remain positionally distinct
       - command: go test ./internal/sema ./cmd/lsp -run 'Test(SemanticFactsRetainResolvedContextualOperators|HoverUsesResolvedContextualOperatorFacts)' -count=1
         result: passed; contextual operators expose compiler-owned facts and position-specific hover without affecting iteration or identifiers
+
   - id: frontend.operators-v2
     area: frontend-semantic-ir-lowering-and-tooling
     status: partial
-    audited: '2026-08-19'
-    revised: '2026-10-05'
+    audited: "2026-08-19"
+    revised: "2026-10-14"
     repository_baseline: c515862
     document_revision: inferred 2.x
-    document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository
-      history shows substantial updates during the revision-2 period, including 2026-08-13, 2026-08-14, and 2026-08-18.
-      Later specialized rulebooks and newer governance entries take precedence on conflicts.
-    summary: Tracks the canonical Sec operator model across lexer, Pratt parsing, Sema, resolved operator facts, Semantic
-      IR, Sec MLIR, legacy/direct LLVM, formatter, diagnostics, and LSP. The frontend implements a substantial operator
-      surface and the P7-P9 checked-integer path is implemented through Semantic IR and Sec MLIR. Matrix multiplication,
-      aggregate/string operations, collection membership lowering, runtime concatenation, operator effects/tooling,
-      and some legacy backend paths remain partial.
+    document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository history shows substantial updates during the revision-2 period, including 2026-08-13, 2026-08-14, and 2026-08-18. Later specialized rulebooks and newer governance entries take precedence on conflicts.
+    summary: Tracks the canonical Sec operator model across lexer, Pratt parsing, Sema, resolved operator facts, Semantic IR, Sec MLIR, legacy/direct LLVM, formatter, diagnostics, and LSP. The frontend implements a substantial operator surface and the P7-P9 checked-integer path is implemented through Semantic IR and Sec MLIR. Matrix multiplication, aggregate/string operations, collection membership lowering, runtime concatenation, operator effects/tooling, and some legacy backend paths remain partial.
     rules:
-    - rules/foundations/operators.md
-    - rules/types/types.md
-    - rules/types/contracts.md
-    - rules/types/units.md
-    - rules/collections/collections.md
-    - rules/collections/shaped-types.md
-    - rules/memory/copy_move.md
-    - rules/memory/ownership.md
-    - rules/errors/runtime_checks.md
-    - rules/compiler/semantic_ir.md
-    - rules/mlir/sec_mlir_dialect.md
-    - rules/mlir/sec_mlir_lowering.md
-    - rules/mlir/packages/sec-mlir-dialect_package7.md
-    - rules/mlir/packages/sec-mlir-dialect_package8.md
-    - rules/mlir/packages/sec-mlir-dialect_package9.md
-    - rules/tooling/formatter.md
-    - rules/tooling/lsp.md
+      - rules/foundations/operators.md
+      - rules/types/types.md
+      - rules/types/contracts.md
+      - rules/types/units.md
+      - rules/collections/collections.md
+      - rules/collections/shaped-types.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/errors/runtime_checks.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/packages/sec-mlir-dialect_package7.md
+      - rules/mlir/packages/sec-mlir-dialect_package8.md
+      - rules/mlir/packages/sec-mlir-dialect_package9.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+      - rules/mlir/packages/sec-mlir-dialect_package20.md
+      - rules/compiler/linking.md
     code:
-    - internal/lexer/lexer.go
-    - internal/operators/precedence.go
-    - internal/parser/expression.go
-    - internal/parser/parser.go
-    - internal/parser/reserved_syntax.go
-    - internal/sema/analyzer.go
-    - internal/sema/constants.go
-    - internal/sema/semantic_facts.go
-    - internal/sema/string_materialization.go
-    - internal/ir/semantic
-    - internal/ir/semantic/string_concat.go
-    - internal/lowering/secmlir
-    - internal/codegen/mlir
-    - internal/codegen/llvm
-    - internal/formatter
-    - internal/lsp
+      - internal/lexer/lexer.go
+      - internal/operators/precedence.go
+      - internal/parser/expression.go
+      - internal/parser/parser.go
+      - internal/parser/reserved_syntax.go
+      - internal/sema/analyzer.go
+      - internal/sema/constants.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/string_materialization.go
+      - internal/ir/semantic
+      - internal/ir/semantic/string_concat.go
+      - internal/lowering/secmlir
+      - internal/codegen/mlir
+      - internal/codegen/llvm
+      - internal/formatter
+      - internal/lsp
+      - internal/codegen/mlir/float_operators.go
+      - cmd/compiler/mlir_runtime_libraries.go
+      - cmd/compiler/build_command.go
     tests:
-    - internal/lexer/lexer_test.go
-    - internal/operators/precedence_test.go
-    - internal/parser/operator_precedence_catalog_test.go
-    - internal/parser/parser_test.go
-    - internal/sema/analyzer_test.go
-    - internal/sema/semantic_facts_test.go
-    - internal/ir/semantic/string_concat_test.go
-    - internal/sema/compound_assignment_test.go
-    - internal/ir/semantic/compound_assignment_test.go
-    - internal/sema/range_membership_test.go
-    - internal/ir/semantic/boolean_test.go
-    - internal/ir/semantic
-    - internal/lowering/secmlir
-    - internal/codegen/mlir/generator_test.go
-    - internal/codegen/llvm/generator_test.go
-    - internal/formatter/formatter_test.go
+      - internal/lexer/lexer_test.go
+      - internal/operators/precedence_test.go
+      - internal/parser/operator_precedence_catalog_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/string_concat_test.go
+      - internal/sema/compound_assignment_test.go
+      - internal/ir/semantic/compound_assignment_test.go
+      - internal/sema/range_membership_test.go
+      - internal/ir/semantic/boolean_test.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
+      - internal/codegen/mlir/generator_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/formatter/formatter_test.go
+      - internal/codegen/mlir/float_operators_test.go
+      - cmd/compiler/float_operators_test.go
+      - testdata/codegen/float_operators/matrix.sec
+      - testdata/codegen/float_operators/effects.sec
+      - testdata/codegen/float_operators/effects.c
+      - testdata/codegen/float_operators/imported_layouts.sec
+      - testdata/codegen/float_operators/use_imported_layout.sec
+      - testdata/codegen/float_operators/use_unsupported_layout.sec
     implemented:
-    - "fallible text operands (decision 2026-10-03): string `+` accepts an operand of exactly Result[string, StringError] (isConcatOperand), recorded as a StringConcatFallibleText segment of the maximal StringConcatPlan, so `try \"A\" + value.ToString() + \"B\"` is one runtime plan with one StringError channel; constant text still folds without try, a missing try is S1097, other Result or non-text operands keep S1022, and compound += rejects a fallible operand with focused S1022 help while its failure policy is undecided (MD-039) (TestConcatenationAcceptsFallibleTextOperands)"
-    - "MD-004 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 5, 2026-10-03): every maximal StringConcatPlan is classified as compile-time folded (constant text only, try-free) or runtime; a runtime plan records the resolved active allocation context (hosted and embedded-arena profiles provide the Arena context, noalloc and unassigned profiles none, MD-034) and its failure type StringError (amended 2026-10-03: allocation failure is StringError.Allocation), publishes an allocation effect, is a try failure point of kind allocation, and is rejected with S1097 without try or S1098 without an allocation context"
-    - lexer recognition and longest-match tokenization for the established operator inventory
-    - Pratt expression parsing with canonical logical, bitwise, equality, comparison/membership, shift, additive,
-      multiplicative, prefix, call/index, and member precedence
-    - contextual matrix-multiply spelling x at multiplicative precedence
-    - boolean validation and short-circuit semantics for && and ||
-    - numeric arithmetic operand validation in Sema
-    - integer-only bitwise and shift validation
-    - compile-time invalid shift-count and signed-left-shift-overflow diagnostics
-    - rejection of chained comparisons
-    - ordered-comparison validation for compatible numeric operands and matching char, rune, and string operands
-    - recursive equality-comparability analysis for implemented fixed-array, struct, union, enum, reference, and scalar
-      cases
-    - rejection of ordinary equality for unsupported slice, interface, function, and opaque compiler-known categories
-    - range membership frontend semantics
-    - fixed-array and slice membership Sema validation
-    - direct string-concatenation operand matrix for built-in string, char, and rune with S1022 rejection of hidden
-      non-text conversion
-    - direct string += frontend operand validation
-    - resolved checked-integer operator facts, blocking constant division/remainder-by-zero diagnostics, and non-blocking S1023 potential-overflow warnings with checked runtime semantics retained
-    - P7 checked-integer Semantic IR and Sec MLIR foundation
-    - "compound assignment (2026-10-05): an integer `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, or `>>=` (and `++`/`--`) publishes its underlying operator through ResolvedCompoundAssignmentOf, classified by the same resolvedIntegerInfixOperator as the binary expression, and records the same arithmetic panic effect, so @noPanic now rejects `i += 1` as it rejects `i = i + 1` (previously unsound) (TestCompoundAssignmentPublishesItsCheckedOperator)"
-    - "boolean operators in Semantic IR (2026-10-05): `&&` and `||` lower from ResolvedLogicalFlow to left-first short-circuit CFG whose short-circuit edge passes the left value to a bool merge parameter and whose right operand is built only on the other edge (proven constant forms build no unused operand); `!` on bool publishes ResolvedBoolNot and lowers to bool.not (TestLogicalOperatorsBuildShortCircuitFlow)"
-    - "range membership (2026-10-05): `value in lower..upper`, `..<`, and `not in` publish ResolvedRangeMembership (negation, present bounds, exclusivity, value type), fitting untyped literal bounds take the value's type, and built-in integer membership lowers to Semantic IR with the value evaluated first and bounds left to right once each, an inclusive lower bound, an inclusive or exclusive upper bound, and negation after the test (TestRangeMembershipAndBoolNotPublishResolvedFacts, TestRangeMembershipBuildsBoundComparisons)"
-    - "compound assignment Semantic IR (2026-10-05): `local op= value` on an integer mutable local reads the destination once, evaluates the source once, applies the resolved checked operation, and stores once on the success path only (TestCompoundAssignmentBuildsCheckedReadModifyWrite)"
-    - P8 signedness-correct integer Arith lowering including signed/unsigned comparison, division, remainder, and
-      shifts
-    - P9 typed arithmetic-failure reasons and Result integration
-    - stable structured diagnostics S1016, S1017, S1018, S1019, S1021, and S1022
-    - direct LLVM CFG short-circuit lowering for && and ||
-    - legacy direct LLVM division, ordered comparison, and range membership preserve represented integer signedness
-    - legacy direct LLVM rejects string comparison explicitly instead of emitting invalid or identity-based icmp
-    - "canonical precedence catalog (2026-10-05): internal/operators owns the complete weak-to-strong precedence, associativity, hard-token, and contextual-spelling matrix; the Pratt parser and formatter multiline infix layout consume that catalog instead of maintaining unrelated tables, including contextual x, in, not in, is, and is not metadata; adjacent parser levels and left associativity are covered directly (TestCanonicalPrecedenceDefinitions, TestTokenAndContextualSpellingsShareCanonicalPrecedence, TestCanonicalAdjacentBinaryPrecedence, TestCanonicalBinaryAssociativity, TestFormatMultilineContextualInfixUsesCanonicalPrecedence)"
-    - "compile-time string concatenation materialization (2026-10-05): a fully constant maximal StringConcatPlan retains its exact lexer-decoded FoldedText; Semantic IR consumes the plan as exactly one const.string with no child evaluation, intermediate string, allocation context, failure edge, or try requirement, and the existing Sec-MLIR path emits one sec.const.string (TestCompileTimeStringConcatBuildsOneFoldedConstant; testdata/ir/test_folded_string_concat.sec)"
-    - reserved question marks in statement and expression positions produce focused P2012 diagnostics with the canonical Sec 0.1 message, structured unexpected-token metadata, and retained invalid syntax for recovery and tooling
+      - "fallible text operands (decision 2026-10-03): string `+` accepts an operand of exactly Result[string, StringError] (isConcatOperand), recorded as a StringConcatFallibleText segment of the maximal StringConcatPlan, so `try \"A\" + value.ToString() + \"B\"` is one runtime plan with one StringError channel; constant text still folds without try, a missing try is S1097, other Result or non-text operands keep S1022, and compound += rejects a fallible operand with focused S1022 help while its failure policy is undecided (MD-039) (TestConcatenationAcceptsFallibleTextOperands)"
+      - "MD-004 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 5, 2026-10-03): every maximal StringConcatPlan is classified as compile-time folded (constant text only, try-free) or runtime; a runtime plan records the resolved active allocation context (hosted and embedded-arena profiles provide the Arena context, noalloc and unassigned profiles none, MD-034) and its failure type StringError (amended 2026-10-03: allocation failure is StringError.Allocation), publishes an allocation effect, is a try failure point of kind allocation, and is rejected with S1097 without try or S1098 without an allocation context"
+      - lexer recognition and longest-match tokenization for the established operator inventory
+      - Pratt expression parsing with canonical logical, bitwise, equality, comparison/membership, shift, additive, multiplicative, prefix, call/index, and member precedence
+      - contextual matrix-multiply spelling x at multiplicative precedence
+      - boolean validation and short-circuit semantics for && and ||
+      - numeric arithmetic operand validation in Sema
+      - integer-only bitwise and shift validation
+      - compile-time invalid shift-count and signed-left-shift-overflow diagnostics
+      - rejection of chained comparisons
+      - ordered-comparison validation for compatible numeric operands and matching char, rune, and string operands
+      - recursive equality-comparability analysis for implemented fixed-array, struct, union, enum, reference, and scalar cases
+      - rejection of ordinary equality for unsupported slice, interface, function, and opaque compiler-known categories
+      - range membership frontend semantics
+      - fixed-array and slice membership Sema validation
+      - direct string-concatenation operand matrix for built-in string, char, and rune with S1022 rejection of hidden non-text conversion
+      - direct string += frontend operand validation
+      - resolved checked-integer operator facts, blocking constant division/remainder-by-zero diagnostics, and non-blocking S1023 potential-overflow warnings with checked runtime semantics retained
+      - P7 checked-integer Semantic IR and Sec MLIR foundation
+      - "compound assignment (2026-10-05): an integer `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, or `>>=` (and `++`/`--`) publishes its underlying operator through ResolvedCompoundAssignmentOf, classified by the same resolvedIntegerInfixOperator as the binary expression, and records the same arithmetic panic effect, so @noPanic now rejects `i += 1` as it rejects `i = i + 1` (previously unsound) (TestCompoundAssignmentPublishesItsCheckedOperator)"
+      - "boolean operators in Semantic IR (2026-10-05): `&&` and `||` lower from ResolvedLogicalFlow to left-first short-circuit CFG whose short-circuit edge passes the left value to a bool merge parameter and whose right operand is built only on the other edge (proven constant forms build no unused operand); `!` on bool publishes ResolvedBoolNot and lowers to bool.not (TestLogicalOperatorsBuildShortCircuitFlow)"
+      - "range membership (2026-10-05): `value in lower..upper`, `..<`, and `not in` publish ResolvedRangeMembership (negation, present bounds, exclusivity, value type), fitting untyped literal bounds take the value's type, and built-in integer membership lowers to Semantic IR with the value evaluated first and bounds left to right once each, an inclusive lower bound, an inclusive or exclusive upper bound, and negation after the test (TestRangeMembershipAndBoolNotPublishResolvedFacts, TestRangeMembershipBuildsBoundComparisons)"
+      - "compound assignment Semantic IR (2026-10-05): `local op= value` on an integer mutable local reads the destination once, evaluates the source once, applies the resolved checked operation, and stores once on the success path only (TestCompoundAssignmentBuildsCheckedReadModifyWrite)"
+      - P8 signedness-correct integer Arith lowering including signed/unsigned comparison, division, remainder, and shifts
+      - P9 typed arithmetic-failure reasons and Result integration
+      - stable structured diagnostics S1016, S1017, S1018, S1019, S1021, and S1022
+      - direct LLVM CFG short-circuit lowering for && and ||
+      - legacy direct LLVM division, ordered comparison, and range membership preserve represented integer signedness
+      - legacy direct LLVM rejects string comparison explicitly instead of emitting invalid or identity-based icmp
+      - "canonical precedence catalog (2026-10-05): internal/operators owns the complete weak-to-strong precedence, associativity, hard-token, and contextual-spelling matrix; the Pratt parser and formatter multiline infix layout consume that catalog instead of maintaining unrelated tables, including contextual x, in, not in, is, and is not metadata; adjacent parser levels and left associativity are covered directly (TestCanonicalPrecedenceDefinitions, TestTokenAndContextualSpellingsShareCanonicalPrecedence, TestCanonicalAdjacentBinaryPrecedence, TestCanonicalBinaryAssociativity, TestFormatMultilineContextualInfixUsesCanonicalPrecedence)"
+      - "compile-time string concatenation materialization (2026-10-05): a fully constant maximal StringConcatPlan retains its exact lexer-decoded FoldedText; Semantic IR consumes the plan as exactly one const.string with no child evaluation, intermediate string, allocation context, failure edge, or try requirement, and the existing Sec-MLIR path emits one sec.const.string (TestCompileTimeStringConcatBuildsOneFoldedConstant; testdata/ir/test_folded_string_concat.sec)"
+      - reserved question marks in statement and expression positions produce focused P2012 diagnostics with the canonical Sec 0.1 message, structured unexpected-token metadata, and retained invalid syntax for recovery and tooling
+      - "legacy floating operator chain (2026-10-14): float32 and float64 use oeq/une/olt/ole/ogt/oge, preserve signed zero with fneg, and lower % and %= to truncation-based llvm.frem without fast-math; native build materializes libm for Linux/FreeBSD, validates imported struct layouts on consumption, and executable source matrices verify NaN on either side, infinities, divisor signs, signed zero and exact-once left-to-right operands"
     partial:
-    - contextual matrix x has parser and fixed-shape Sema support but incomplete Semantic IR, lowering, and tooling
-      integration
-    - floating comparison lowering does not yet fully satisfy the canonical NaN predicate matrix
-    - float and decimal remainder support is incomplete
-    - fixed-array and slice membership are type-checked but Semantic IR and short-circuit backend lowering remain
-      incomplete
-    - runtime string concatenation lacks complete allocation-context, panic-versus-AllocationError, noPanic, interpolation-contract,
-      maximal-plan, and lowering semantics
-    - string += lacks complete transactional failure and commit semantics
-    - aggregate equality lowering and explicit identity/non-comparable metadata remain incomplete
-    - string equality and Unicode-scalar lexicographic ordering are not complete across maintained backend paths
-    - compound assignment to fields, indexed places, properties, dereferenced references, contract-typed, volatile, and
-      atomic destinations still requires exact-once, checked-failure, contract, ownership, and commit-order lowering;
-      Semantic IR covers integer mutable locals only
-    - operator Semantic IR metadata and effect metadata are not complete for all operator families
-    - formatter, diagnostics, LSP explanations, and quick fixes are incomplete across the full operator matrix
-    - parser recovery around malformed operator expressions is incomplete
+      - contextual matrix x has parser and fixed-shape Sema support but incomplete Semantic IR, lowering, and tooling integration
+      - fixed-array and slice membership are type-checked but Semantic IR and short-circuit backend lowering remain incomplete
+      - runtime string concatenation lacks complete allocation-context, panic-versus-AllocationError, noPanic, interpolation-contract, maximal-plan, and lowering semantics
+      - string += lacks complete transactional failure and commit semantics
+      - aggregate equality lowering and explicit identity/non-comparable metadata remain incomplete
+      - string equality and Unicode-scalar lexicographic ordering are not complete across maintained backend paths
+      - compound assignment to fields, indexed places, properties, dereferenced references, contract-typed, volatile, and atomic destinations still requires exact-once, checked-failure, contract, ownership, and commit-order lowering; Semantic IR covers integer mutable locals only
+      - operator Semantic IR metadata and effect metadata are not complete for all operator families
+      - formatter, diagnostics, LSP explanations, and quick fixes are incomplete across the full operator matrix
+      - parser recovery around malformed operator expressions is incomplete
+      - maintained Semantic IR and Sec MLIR floating comparison/remainder lowering awaits P20; the legacy MLIR NaN predicate and truncation-remainder path is implemented
+      - decimal remainder support is incomplete
     remaining:
-    - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior
-    - complete all floating NaN comparison predicates and float remainder semantics
-    - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules
-    - lower fixed-array and slice membership as exact-once left-to-right short-circuit search without allocation
-    - lower range membership over char, rune, float, decimal, and nominal ordered values (Semantic IR covers built-in integers)
-    - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every
-      maintained backend
-    - "MD-004 lowering: represent StringConcatPlan with its resolved allocation context, StringError channel, ownership, and lifetime facts in Semantic IR and maintained backends; refine the context lifetime for results that escape a local allocation lifetime, and prove allocation elimination under profiles without dynamic allocation"
-    - integrate interpolation formatting contracts and string.Concat with the same concat plan
-    - implement transactional fallible string += and only apply in-place reuse after proof
-    - complete derived aggregate equality lowering and identity/resource exclusion metadata
-    - complete compound-assignment exact-once and failure-before-commit semantics for non-local places, try-selected compound arithmetic, and contract-typed destinations
-    - complete resolved operator/effect facts in Semantic IR for every accepted operator
-    - complete formatter normalization, operator hover, precedence/result/failure explanations, and safe quick fixes
-    - complete the canonical operator regression matrices across frontend, Semantic IR, Sec MLIR, direct LLVM where
-      maintained, and end-to-end execution
+      - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior
+      - "P20 floating operators: complete NaN comparison and truncation-remainder facts in Semantic IR, schema-16 Sec MLIR verification and Arith lowering after the corrected P18/P19 predecessor chain; the current emitter and dialect support schema 10"
+      - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules
+      - lower fixed-array and slice membership as exact-once left-to-right short-circuit search without allocation
+      - lower range membership over char, rune, float, decimal, and nominal ordered values (Semantic IR covers built-in integers)
+      - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every maintained backend
+      - "MD-004 lowering: represent StringConcatPlan with its resolved allocation context, StringError channel, ownership, and lifetime facts in Semantic IR and maintained backends; refine the context lifetime for results that escape a local allocation lifetime, and prove allocation elimination under profiles without dynamic allocation"
+      - integrate interpolation formatting contracts and string.Concat with the same concat plan
+      - implement transactional fallible string += and only apply in-place reuse after proof
+      - complete derived aggregate equality lowering and identity/resource exclusion metadata
+      - complete compound-assignment exact-once and failure-before-commit semantics for non-local places, try-selected compound arithmetic, and contract-typed destinations
+      - complete resolved operator/effect facts in Semantic IR for every accepted operator
+      - complete formatter normalization, operator hover, precedence/result/failure explanations, and safe quick fixes
+      - complete the canonical operator regression matrices across frontend, Semantic IR, Sec MLIR, direct LLVM where maintained, and end-to-end execution
     governance_reconciliation:
-    - Do not migrate the operators.md statement that complete checked integer arithmetic/lowering is unimplemented
-      as a current blanket status. Newer governance entries for the P7/P8/P9 pipeline supersede that stale embedded
-      status for the implemented builtin-integer Sec MLIR path.
-    - Keep feature-specific ownership with frontend.collections, frontend.shaped-types, frontend.types-core, lowering.sec-mlir-checked-integers,
-      lowering.sec-mlir-checked-integer-arith, and lowering.sec-mlir-typed-arithmetic-failure rather than duplicating
-      their detailed implementation matrices here.
+      - Do not migrate the operators.md statement that complete checked integer arithmetic/lowering is unimplemented as a current blanket status. Newer governance entries for the P7/P8/P9 pipeline supersede that stale embedded status for the implemented builtin-integer Sec MLIR path.
+      - Keep feature-specific ownership with frontend.collections, frontend.shaped-types, frontend.types-core, lowering.sec-mlir-checked-integers, lowering.sec-mlir-checked-integer-arith, and lowering.sec-mlir-typed-arithmetic-failure rather than duplicating their detailed implementation matrices here.
+      - Builtin bool equality and inequality facts and maintained lowering are complete and owned by frontend.boolean-equality-lowering; the remaining operator-fact and regression matrices concern the other unfinished families.
+      - Builtin unary ! through maintained Semantic IR and Sec MLIR is complete and owned by frontend.boolean-negation-lowering; short-circuit logical flow retains its existing package-13 capability boundary.
     required_tests:
-    - comparison chaining rejection
-    - short-circuit exact-once side effects
-    - signed and unsigned integer division
-    - signed and unsigned ordered comparison
-    - signed and unsigned range membership
-    - dynamic invalid shift-count failure
-    - signed-left-shift dynamic overflow failure
-    - float NaN equality and ordering matrix
-    - char and rune equality and ordering
-    - exact string equality
-    - string prefix ordering
-    - Unicode-scalar string ordering
-    - fixed-array membership first-match short-circuit
-    - slice membership first-match short-circuit
-    - all nine direct string-concatenation operand pairs
-    - non-text concat rejection with S1022
-    - runtime concat evaluation order and one maximal allocation plan
-    - transactional failed string += leaves destination unchanged
-    - struct and fixed-array equality short-circuit
-    - unsupported equality and ordering categories rejected
-    - reserved ? receives focused Sec 0.1 diagnostic
-    - backend parity or explicit unsupported-lowering diagnostics
+      - comparison chaining rejection
+      - short-circuit exact-once side effects
+      - signed and unsigned integer division
+      - signed and unsigned ordered comparison
+      - signed and unsigned range membership
+      - dynamic invalid shift-count failure
+      - signed-left-shift dynamic overflow failure
+      - float NaN equality and ordering matrix
+      - char and rune equality and ordering
+      - exact string equality
+      - string prefix ordering
+      - Unicode-scalar string ordering
+      - fixed-array membership first-match short-circuit
+      - slice membership first-match short-circuit
+      - all nine direct string-concatenation operand pairs
+      - non-text concat rejection with S1022
+      - runtime concat evaluation order and one maximal allocation plan
+      - transactional failed string += leaves destination unchanged
+      - struct and fixed-array equality short-circuit
+      - unsupported equality and ordering categories rejected
+      - reserved ? receives focused Sec 0.1 diagnostic
+      - backend parity or explicit unsupported-lowering diagnostics
     verification:
-    - command: go test ./internal/parser -run 'ReservedQuestionMark|FocusedRecoveryDiagnosticMetadata|RecoveryPreservesNewlyCentralizedStatementStarts' -count=1
-      result: passed on 2026-09-26 with canonical P2012 diagnostics, invalid-expression retention, and statement recovery
-    - command: go test ./internal/diagnostics ./internal/sema -count=1 && go test ./cmd/lsp -run TestConstantIntegerOverflowReachesLSPAsWarning -count=1
-      result: passed on 2026-09-28 with S1023 registered and emitted as a non-blocking warning while constant division and remainder by zero remain errors
-    - command: go test ./internal/operators ./internal/parser ./internal/formatter -count=1
-      result: passed on 2026-10-05 with the complete canonical precedence and associativity matrix, shared hard-token and contextual spellings, parser consumption, and contextual multiline formatter coverage
-    - command: go test ./internal/sema ./internal/ir/semantic -count=1 && go run ./cmd/compiler emit-ir testdata/ir/test_folded_string_concat.sec
-      result: passed on 2026-10-05 with one decoded const.string and no intermediate concat operations; SEC_MLIR_BIN=$PWD/build/sec-mlir/bin emit-sec-mlir also verified one sec.const.string
+      - command: go test ./internal/sema ./internal/ir/semantic -count=1 && go run ./cmd/compiler emit-ir testdata/ir/test_folded_string_concat.sec
+        result: passed on 2026-10-05 with one decoded const.string and no intermediate concat operations; SEC_MLIR_BIN=$PWD/build/sec-mlir/bin emit-sec-mlir also verified one sec.const.string
+      - command: go vet ./internal/codegen/mlir ./cmd/compiler
+        result: passed on 2026-10-14
+      - command: go test ./internal/codegen/mlir ./cmd/compiler -count=1
+        result: passed on 2026-10-14 with SEC_LEGACY_MLIR_BIN configured to an absolute LLVM/MLIR tool directory; native float32/float64 matrix passed 112 checks, including field/indexed %=, and foreign probes verified exact-once left-to-right binary and compound operands; imported layout consumption regressions passed
+      - command: go test ./internal/parser -run 'ReservedQuestionMark|FocusedRecoveryDiagnosticMetadata|RecoveryPreservesNewlyCentralizedStatementStarts' -count=1
+        result: passed on 2026-09-26 with canonical P2012 diagnostics, invalid-expression retention, and statement recovery
+      - command: go test ./internal/diagnostics ./internal/sema -count=1 && go test ./cmd/lsp -run TestConstantIntegerOverflowReachesLSPAsWarning -count=1
+        result: passed on 2026-09-28 with S1023 registered and emitted as a non-blocking warning while constant division and remainder by zero remain errors
+      - command: go test ./internal/operators ./internal/parser ./internal/formatter -count=1
+        result: passed on 2026-10-05 with the complete canonical precedence and associativity matrix, shared hard-token and contextual spellings, parser consumption, and contextual multiline formatter coverage
+
+  - id: frontend.boolean-equality-lowering
+    status: implemented
+    summary: >-
+      Builtin bool equality and inequality through Sema facts, typed Semantic IR
+      control flow, Sec MLIR and executable native verification. Named boolean
+      carriers and other operator families remain owned by
+      frontend.operators-v2.
+    rules:
+      - rules/foundations/operators.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+    implemented:
+      - implement builtin bool == and != through resolved operator facts, eager left-to-right exact-once Semantic IR, existing Sec MLIR operations, and executable truth-matrix coverage
+    remaining: []
+    area: frontend-semantic-ir-and-lowering
+    integrated: "2026-10-14"
+    code:
+      - internal/sema/boolean_equality.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/boolean_equality.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
+    tests:
+      - internal/sema/boolean_equality_test.go
+      - internal/ir/semantic/boolean_equality_test.go
+      - internal/lowering/secmlir/boolean_equality_test.go
+      - testdata/semantic_ir/boolean_equality/valid.sec
+      - testdata/semantic_ir/boolean_equality/operands_invalid.sec
+      - testdata/semantic_ir/boolean_equality/native.c
+      - internal/lowering/secmlir/boolean_pipeline_test.go
+    verification:
+      - command: go test ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-14 with configured Sec MLIR and LLVM/MLIR tools; shared boolean fixture/native pipeline extraction preserves equality verification and native truth-matrix execution
+      - command: go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-10-14
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-14 with SEC_MLIR_BIN and SEC_LEGACY_MLIR_BIN configured; all package regressions and native boolean equality coverage passed
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -run BooleanEquality -count=1
+        result: passed on 2026-10-14 with SEC_MLIR_BIN and SEC_LEGACY_MLIR_BIN configured; verifies eager operand calls, constant-left RHS evaluation, rejected mixed operands without facts, 32/64-bit Sec MLIR verification, and the native equality/inequality truth matrix
+
+  - id: frontend.boolean-negation-lowering
+    status: implemented
+    summary: >-
+      Complete unary logical negation for builtin bool through resolved Sema
+      facts, Semantic IR, existing Sec MLIR constants/typed control flow,
+      lowering and native execution. Other logical operator families and nominal
+      carriers remain owned by frontend.operators-v2.
+    rules:
+      - rules/foundations/operators.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+    implemented:
+      - complete unary ! for builtin bool through the maintained Sema/Semantic IR/Sec MLIR pipeline with exact-once operand evaluation, unchanged bool type, no arithmetic failure or numeric truthiness, and executable regression coverage
+    remaining: []
+    area: frontend-semantic-ir-and-lowering
+    integrated: "2026-10-14"
+    code:
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/boolean.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/lowering/secmlir/boolean_not.go
+    tests:
+      - internal/ir/semantic/boolean_negation_test.go
+      - internal/ir/semantic/boolean_test.go
+      - internal/lowering/secmlir/boolean_not_test.go
+      - internal/lowering/secmlir/boolean_pipeline_test.go
+      - testdata/semantic_ir/boolean_negation/valid.sec
+      - testdata/semantic_ir/boolean_negation/operand_invalid.sec
+      - testdata/semantic_ir/boolean_negation/short_circuit.sec
+      - testdata/semantic_ir/boolean_negation/native.c
+    verification:
+      - command: go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-10-14
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-14 with SEC_MLIR_BIN and SEC_LEGACY_MLIR_BIN configured; verifies packages 7/12/14, exact-once call operands, numeric truthiness rejection, 32/64-bit Sec MLIR verification, native simple/double negation, equality, conditions and local storage, and the unchanged short-circuit capability boundary

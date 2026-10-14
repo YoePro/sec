@@ -1,0 +1,4 @@
+module main
+
+type Supported struct { value: float64, }
+type Unsupported struct { value: rune, }

@@ -92,7 +92,10 @@ Examples include:
 - enums;
 - unions;
 - registers;
-- units where the unit rules expose an implementation target;
+- units, through the distinct unit target `impl <Unit>` (MD-040,
+  2026-10-13): it holds only unit metadata and unit functions and resolves
+  only the unit, while `impl Name` resolves only an ordinary type of that
+  spelling (`units.md` "Qualified unit references");
 - generic named types;
 - other named nominal types explicitly permitted by their rulebooks.
 

@@ -23,10 +23,15 @@ evidence.
 
 ### Isolated execution baseline — 2026-09-10
 
+Private machine paths have been replaced by environment-variable references.
+Set `P15_BASELINE` to the local isolated worktree, `SEC_MLIR_BIN` to the absolute
+Sec MLIR tool directory, and `LLVM_LIT` to the local llvm-lit executable before
+reproducing the commands. Their expanded locations must not be published.
+
 P15 work has a clean detached baseline at:
 
 ```text
-/home/jonas/small-projects/sec-p15-baseline-2c67853ee313
+${P15_BASELINE}
 ```
 
 Recorded environment:
@@ -40,18 +45,18 @@ Go:               go1.26.0 linux/amd64
 Git:              2.53.0
 sec-mlir-opt:     LLVM 24.0.0git, optimized build with assertions
 llvm-lit:         lit 24.0.0dev
-SEC_MLIR_BIN:     /home/jonas/small-projects/sec/build/sec-mlir/bin
-llvm-lit path:    /home/jonas/mlir/llvm-project/build/bin/llvm-lit
+SEC_MLIR_BIN:     ${SEC_MLIR_BIN}
+llvm-lit path:    ${LLVM_LIT}
 ```
 
 Reproduction commands:
 
 ```sh
-git worktree add --detach /home/jonas/small-projects/sec-p15-baseline-2c67853ee313 2c67853ee31358a9a8a486aa11fba57c6b6a7270
-git -C /home/jonas/small-projects/sec-p15-baseline-2c67853ee313 status --short --branch
+git worktree add --detach ${P15_BASELINE} 2c67853ee31358a9a8a486aa11fba57c6b6a7270
+git -C ${P15_BASELINE} status --short --branch
 go version
-/home/jonas/small-projects/sec/build/sec-mlir/bin/sec-mlir-opt --version
-/home/jonas/mlir/llvm-project/build/bin/llvm-lit --version
+${SEC_MLIR_BIN}/sec-mlir-opt --version
+${LLVM_LIT} --version
 ```
 
 Verified by source inventory, not by a package acceptance run:

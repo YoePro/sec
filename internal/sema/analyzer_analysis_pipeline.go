@@ -38,7 +38,10 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 		{id: "no-panic", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 50,
 			run: once(func() { a.validateNoPanicGuarantees(program) })},
 		{id: "no-alloc", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 60,
-			run: once(func() { a.validateNoAllocGuarantees(program) })},
+			run: once(func() {
+				a.validateNoAllocGuarantees(program)
+				a.validateNoAllocTargetRoots(program)
+			})},
 		{id: "no-block", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 70,
 			run: once(func() { a.validateNoBlockGuarantees(program) })},
 		{id: "parameter-demand", dependencies: []string{"callable-bodies", "no-panic", "no-alloc", "no-block"}, priority: 80,

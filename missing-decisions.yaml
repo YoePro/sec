@@ -345,41 +345,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-040
-    area: unit-and-type-same-spelling
-    rulebooks:
-      - rules/types/units.md
-      - rules/foundations/names_scopes_visibility.md
-      - rules/declarations/impl.md
-    description: >-
-      units.md (MD-001 correction § 8) puts unit symbols in their own
-      namespace, so a unit and an ordinary declaration may share a spelling.
-      Two consequences are not decided. (1) Within one module, `unit Volt`
-      and `type Volt` together make `impl Volt` ambiguous: unit metadata and
-      unit conversion functions live in the unit's ordinary impl block, but
-      the type also needs an impl block, and no rule says which one a given
-      `impl Volt` targets or how to name the other. (2) Constructor-style unit
-      conversion is call-shaped by the bare unit name (`rpm(hz)`, `N(kg, m,
-      s)`, `EUR(sek, factor)`), so where a same-spelled ordinary type is
-      visible, `N(...)` could mean either the type's conversion or the unit
-      conversion function, and unit-impl functions share the `Name.Method`
-      call spelling with the type's static methods. The compiler (2026-10-04)
-      lets a unit and a same-spelled type of different modules coexist, with
-      the unit's impl block bound to the unit in the unit's own module and the
-      ordinary type winning in ordinary type and expression positions, and it
-      keeps reporting S1003 for the same pair in one module.
-    todo:
-      - >-
-        Proposal by the language owner (2026-10-04), not yet decided or
-        implemented: write a unit's impl block as `impl <s>` (unit-annotation
-        brackets) instead of `impl s`, so unit impls are syntactically distinct
-        from type impls; `unit s physical` followed by `impl <s> { ... }`. This
-        would resolve the same-module `impl` ambiguity; the parser, Sema,
-        formatter, LSP, core and stdlib unit sources, and units.md would then
-        need to follow.
-    classification: constraining
-    status: open
-
   - id: MD-042
     area: match-arms-excluded-by-known-variant
     rulebooks:
@@ -451,60 +416,6 @@ decisions:
     classification: localized
     status: open
 
-  - id: MD-046
-    area: unit-annotated-register-field-values
-    rulebooks:
-      - rules/types/units.md
-      - rules/platform/hardware-register-access.md
-      - rules/foundations/grammar.md
-    description: >-
-      PARTLY DECIDED 2026-10-12 by rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md:
-      plain (unit-free) bit[N] fields accept an explicit `bit[N](value)`
-      extraction no wider than the field, other unproven wider writes are never
-      silently truncated, and bit extraction never adds or strips a unit
-      (registers.md § 12.1, types.md "Explicit low-bit extraction"). STILL OPEN
-      (correction § 7.3): the remainder below for unit-annotated fields.
-      grammar.md (BitFieldType) admits `bit[N]<unit>` register fields and
-      units.md "Interaction with registers and FFI" keeps field width and unit
-      semantics separate, but no rulebook defines the value type of a field
-      observation or the representability rule for a field write. The
-      frontend gives the field the unit's own type (for example `rpm`, carried
-      in `uint`) narrowed to 0..2^N-1, so `let s: rpm := r.Speed` and
-      `r.Speed = s` with an arbitrary `s: rpm` are both accepted, while an
-      unannotated `bit[N]` field rejects both directions without an explicit
-      conversion. The accepted write can hide overflow, which units.md "No
-      hidden precision loss" forbids for unit conversions and which plain
-      fields reject. Decide the observed value type and carrier, whether a
-      write requires a compile-time-proven range (constant or value interval)
-      or an explicit conversion, and the explicit spelling of that conversion.
-      The current acceptance is kept unchanged until the decision so that
-      existing register fixtures are not reinterpreted.
-    classification: constraining
-    status: open
-
-  - id: MD-047
-    area: unit-conversion-rounding-policy
-    rulebooks:
-      - rules/types/units.md
-      - rules/foundations/grammar.md
-    description: >-
-      units.md "No hidden precision loss" lets the programmer choose "an
-      explicit rounding policy" when a unit conversion is not exactly
-      representable in the target carrier, and "Interaction with try" lists an
-      "explicit checked rounding policy" whose failure uses Result. No rulebook
-      defines the rounding modes, the source spelling that selects one for a
-      unit conversion, whether a rounding conversion is a call, a conversion
-      function argument, or an attribute, or which Result error type a checked
-      policy reports. The frontend now proves exact implicit conversions for
-      decimal carriers and, by compiler-proven value ranges, for bounded
-      integer carriers; inexact conversions are rejected and the help offers
-      only the explicit unit conversion, never an invented rounding policy.
-      MD-015 (2026-10-13) declared the RoundingMode enum once in core
-      (core-library.md § 10.3) and defined its use for duration(q, mode);
-      this decision must reuse that enum for general unit conversions.
-    classification: localized
-    status: open
-
   - id: MD-048
     area: unit-transform-conversion-plans
     rulebooks:
@@ -527,7 +438,7 @@ decisions:
       admissible reference values and compatibility checks, the numeric
       carriers and exactness/precision policy for logarithms and exponentials,
       and the behavior of invalid domains and unrepresentable results,
-      coordinating with MD-047 (rounding) and MD-012 (checked failure types, decided 2026-10-08 as the core ConversionError).
+      coordinating with MD-047 (rounding, decided 2026-10-13: units.md "Explicit rounding") and MD-012 (checked failure types, decided 2026-10-08 as the core ConversionError).
       The applied units corrections require preservation of transform and
       Reference facts but do not supply these decisions. Current Sema retains
       Reference as source text and rejects conversions between distinct
@@ -745,5 +656,26 @@ decisions:
       ref mut, mutable only from ref mut), a reference to the holder, or is
       rejected. Until then the Semantic IR builder keeps explicit reborrow
       expressions as a package-15 unsupported feature.
+    classification: localized
+    status: open
+
+  - id: MD-062
+    area: unit-metadata-member-value-types
+    rulebooks:
+      - rules/types/units.md
+      - rules/foundations/grammar.md
+    description: >-
+      MD-040 (2026-10-13) makes `<Unit>.Member` the qualified unit member
+      access and shows `<Volt>.Symbol` reading the unit's declared symbol
+      metadata. Symbol and LongName are text, so the frontend types them as
+      string. No rulebook gives a value type for the other metadata read the
+      same way: Kind (an identifier such as electric_potential), Dimension
+      (a bracketed exponent list), Scale and Offset (exact rationals),
+      System, BaseUnit, Status, Origin, LogBase, LogFactor and Reference.
+      Decide whether these are readable as values, their Sec types (for
+      example string, a compiler-known Dimension/Kind type, an exact rational
+      or decimal), and whether reading them is compile-time constant. Until
+      then the frontend rejects `<U>.Kind` and the other non-text metadata
+      with an explanatory error instead of inventing a type.
     classification: localized
     status: open

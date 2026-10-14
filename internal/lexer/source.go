@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"sec/internal/debuginfo"
 	compilerdiagnostics "sec/internal/diagnostics"
 )
 
@@ -70,13 +71,14 @@ type Diagnostic struct {
 // Rules:
 //   - rules/foundations/lexical_structure.md — §§1.1, 1.3
 type Lexer struct {
-	input       []rune
-	byteOffsets []int
-	file        string
-	pos         int
-	line        int
-	column      int
-	diagnostics []Diagnostic
+	input         []rune
+	byteOffsets   []int
+	file          string
+	pos           int
+	line          int
+	column        int
+	diagnostics   []Diagnostic
+	sourceContent debuginfo.SourceContent
 }
 
 // State is the complete rewind point required by speculative parser lookahead.
@@ -96,9 +98,18 @@ func New(input string) *Lexer {
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §§1.1, 1.3
+//   - rules/compiler/debug_information.md — §55(1)-(3)
 func NewWithFile(input string, file string) *Lexer {
 	decoded, byteOffsets, diagnostics := decodeSource(input, file)
-	return &Lexer{input: decoded, byteOffsets: byteOffsets, file: file, line: 1, column: 1, diagnostics: diagnostics}
+	return &Lexer{input: decoded, byteOffsets: byteOffsets, file: file, line: 1, column: 1, diagnostics: diagnostics,
+		sourceContent: debuginfo.SourceContent{File: file, Identity: debuginfo.IdentifySourceContent([]byte(input))}}
+}
+
+// SourceContent returns detached provenance for the exact in-memory input,
+// including editor overlays. Token consumption and rewind do not change it.
+// Rules: rules/compiler/debug_information.md — §55(1)-(5).
+func (l *Lexer) SourceContent() debuginfo.SourceContent {
+	return l.sourceContent
 }
 
 // Diagnostics returns an isolated copy of lexical diagnostics accumulated so

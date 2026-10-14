@@ -6,7 +6,7 @@ module units
 
 /** Millinewton */
 unit mN physical
-impl mN {
+impl <mN> {
     LongName: "Millinewton"
     Symbol: "mN"
     BaseUnit: false
@@ -18,7 +18,7 @@ impl mN {
 
 /** Meganewton */
 unit MN physical
-impl MN {
+impl <MN> {
     LongName: "Meganewton"
     Symbol: "MN"
     BaseUnit: false
@@ -30,7 +30,7 @@ impl MN {
 
 /** Hectopascal */
 unit hPa physical
-impl hPa {
+impl <hPa> {
     LongName: "Hectopascal"
     Symbol: "hPa"
     BaseUnit: false
@@ -42,7 +42,7 @@ impl hPa {
 
 /** Kilojoule */
 unit kJ physical
-impl kJ {
+impl <kJ> {
     Kind: energy
     LongName: "Kilojoule"
     Symbol: "kJ"
@@ -55,7 +55,7 @@ impl kJ {
 
 /** Megajoule */
 unit MJ physical
-impl MJ {
+impl <MJ> {
     Kind: energy
     LongName: "Megajoule"
     Symbol: "MJ"
@@ -68,7 +68,7 @@ impl MJ {
 
 /** Gigajoule */
 unit GJ physical
-impl GJ {
+impl <GJ> {
     Kind: energy
     LongName: "Gigajoule"
     Symbol: "GJ"
@@ -81,7 +81,7 @@ impl GJ {
 
 /** Kilowatt */
 unit kW physical
-impl kW {
+impl <kW> {
     Kind: power
     LongName: "Kilowatt"
     Symbol: "kW"
@@ -94,7 +94,7 @@ impl kW {
 
 /** Megawatt */
 unit MW physical
-impl MW {
+impl <MW> {
     Kind: power
     LongName: "Megawatt"
     Symbol: "MW"
@@ -107,7 +107,7 @@ impl MW {
 
 /** Gigawatt */
 unit GW physical
-impl GW {
+impl <GW> {
     Kind: power
     LongName: "Gigawatt"
     Symbol: "GW"
@@ -120,7 +120,7 @@ impl GW {
 
 /** Kilowatt-hour */
 unit kWh physical
-impl kWh {
+impl <kWh> {
     Kind: energy
     LongName: "Kilowatt Hour"
     Symbol: "kWh"
@@ -133,7 +133,7 @@ impl kWh {
 
 /** Millicoulomb */
 unit mC physical
-impl mC {
+impl <mC> {
     LongName: "Millicoulomb"
     Symbol: "mC"
     BaseUnit: false
@@ -145,7 +145,7 @@ impl mC {
 
 /** Kilocoulomb */
 unit kC physical
-impl kC {
+impl <kC> {
     LongName: "Kilocoulomb"
     Symbol: "kC"
     BaseUnit: false
@@ -157,7 +157,7 @@ impl kC {
 
 /** Microvolt */
 unit uV physical
-impl uV {
+impl <uV> {
     LongName: "Microvolt"
     Symbol: "µV"
     BaseUnit: false
@@ -169,7 +169,7 @@ impl uV {
 
 /** Millivolt */
 unit mV physical
-impl mV {
+impl <mV> {
     LongName: "Millivolt"
     Symbol: "mV"
     BaseUnit: false
@@ -181,7 +181,7 @@ impl mV {
 
 /** Kilovolt */
 unit kV physical
-impl kV {
+impl <kV> {
     LongName: "Kilovolt"
     Symbol: "kV"
     BaseUnit: false
@@ -193,7 +193,7 @@ impl kV {
 
 /** Megavolt */
 unit MV physical
-impl MV {
+impl <MV> {
     LongName: "Megavolt"
     Symbol: "MV"
     BaseUnit: false
@@ -205,7 +205,7 @@ impl MV {
 
 /** Milliohm */
 unit mohm physical
-impl mohm {
+impl <mohm> {
     LongName: "Milliohm"
     Symbol: "mΩ"
     BaseUnit: false
@@ -217,7 +217,7 @@ impl mohm {
 
 /** Kiloohm */
 unit kohm physical
-impl kohm {
+impl <kohm> {
     LongName: "Kiloohm"
     Symbol: "kΩ"
     BaseUnit: false
@@ -229,7 +229,7 @@ impl kohm {
 
 /** Megaohm */
 unit Mohm physical
-impl Mohm {
+impl <Mohm> {
     LongName: "Megaohm"
     Symbol: "MΩ"
     BaseUnit: false
@@ -241,7 +241,7 @@ impl Mohm {
 
 /** Microsiemens */
 unit uS physical
-impl uS {
+impl <uS> {
     LongName: "Microsiemens"
     Symbol: "µS"
     BaseUnit: false
@@ -253,7 +253,7 @@ impl uS {
 
 /** Millisiemens */
 unit mS physical
-impl mS {
+impl <mS> {
     LongName: "Millisiemens"
     Symbol: "mS"
     BaseUnit: false
@@ -265,7 +265,7 @@ impl mS {
 
 /** Microfarad */
 unit uF physical
-impl uF {
+impl <uF> {
     LongName: "Microfarad"
     Symbol: "µF"
     BaseUnit: false
@@ -277,7 +277,7 @@ impl uF {
 
 /** Nanofarad */
 unit nF physical
-impl nF {
+impl <nF> {
     LongName: "Nanofarad"
     Symbol: "nF"
     BaseUnit: false
@@ -289,7 +289,7 @@ impl nF {
 
 /** Picofarad */
 unit pF physical
-impl pF {
+impl <pF> {
     LongName: "Picofarad"
     Symbol: "pF"
     BaseUnit: false
@@ -301,7 +301,7 @@ impl pF {
 
 /** Millihenry */
 unit mH physical
-impl mH {
+impl <mH> {
     LongName: "Millihenry"
     Symbol: "mH"
     BaseUnit: false
@@ -313,7 +313,7 @@ impl mH {
 
 /** Microhenry */
 unit uH physical
-impl uH {
+impl <uH> {
     LongName: "Microhenry"
     Symbol: "µH"
     BaseUnit: false
@@ -325,7 +325,7 @@ impl uH {
 
 /** Millitesla */
 unit mT physical
-impl mT {
+impl <mT> {
     LongName: "Millitesla"
     Symbol: "mT"
     BaseUnit: false
@@ -337,7 +337,7 @@ impl mT {
 
 /** Microtesla */
 unit uT physical
-impl uT {
+impl <uT> {
     LongName: "Microtesla"
     Symbol: "µT"
     BaseUnit: false

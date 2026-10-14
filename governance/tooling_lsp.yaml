@@ -285,7 +285,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-03"
+    revised: "2026-10-14"
     summary: >-
       Makes hover at try and its operand explain the callable's declared
       carrier, the value produced on success, and the exact failure-handling
@@ -300,9 +300,14 @@ integrations:
       - cmd/lsp/main.go
       - cmd/lsp/hover_try.go
       - cmd/lsp/hover_property.go
+      - cmd/lsp/hover_try_handlers.go
+      - cmd/lsp/hover_assert.go
+      - internal/sema/analyzer_inference.go
     tests:
       - cmd/lsp/hover_try_test.go
       - cmd/lsp/hover_property_test.go
+      - cmd/lsp/hover_try_coverage_test.go
+      - testdata/lsp/try_hover
     implemented:
       - hover on a resolved Result try keyword shows the exact protected Result[T, E] carrier and the T produced by the try expression
       - hover on the protected root callable shows the same compiler-owned try facts while nested argument tokens retain their ordinary hover
@@ -313,12 +318,23 @@ integrations:
       - property hover and completion consume Sema's resolved accessor contract; fallible setters show try set, their exact declared error type, and the explicit try requirement while ordinary setters remain infallible
       - all displayed try semantics come from ResolvedTryOf, ResolvedTryPlanOf, and ResolvedTypeOf rather than an LSP-owned Result model
       - focused hover tests cover Result and Option propagation at both the keyword and operand, exhaustive local Result handling, and exhaustive plus guarded-partial local Option recovery
+      - extend focused hover coverage to additional partial Result handler combinations, fallible operations, invalid try operands, and mismatched enclosing error types
+      - focused source-fixture coverage exercises single/multiple partial variant handlers, guarded catch-all and guarded-plus-variant partial handlers, exhaustive fallback, partial error-root widening, arithmetic checks, indexing and narrowing conversions at the keyword and protected operation; nested arguments retain ordinary hover
+      - invalid operands, incompatible Result/Option channels, partial handlers without a compatible return channel, and invalid recovery values publish no valid-looking try-flow hover; completed handler plans are required, incompatible Result propagation retains no resolved propagation fact, and valid neighboring tries remain visible
+      - try handler/failure-set presentation and assertion hover have focused sibling files; hover reuses compiler-owned facts and contains no second error-handling engine
     remaining:
       - show the remaining panic effect when Sema exposes that presentation fact on resolved try operations
-      - extend focused hover coverage to additional partial Result handler combinations, fallible operations, invalid try operands, and mismatched enclosing error types
     reconciliation:
       - the migrated legacy statement that Option cannot propagate with try was superseded by errorhandling revision 2; rules/errors/errorhandling.md §§ 9 and 12.2 permit Option try
     verification:
+      - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/... -count=1
+        result: passed on 2026-10-14; complete LSP, Sema and shared LSP suites; final extended invalid operand assertions additionally passed in focused coverage tests
+      - command: go vet ./cmd/lsp ./internal/sema/...
+        result: passed on 2026-10-14
+      - command: go test -race ./cmd/lsp -run 'TestTryHover|TestTryAssignmentHover|TestAssertionHover|TestFalliblePropertyHover|TestOrdinaryPropertyHover' -count=1
+        result: passed on 2026-10-14
+      - command: go test ./cmd/lsp -run 'TestTryHover|TestTryAssignmentHover|TestAssertionHover|TestFalliblePropertyHover|TestOrdinaryPropertyHover' -count=1
+        result: passed on 2026-10-14; new fixture coverage also passed after extending invalid keyword tests to their operands
       - command: go test ./cmd/lsp -run 'TestTryHover' -count=1
         result: passed on 2026-10-03, including local Option None recovery and guarded residual propagation
       - command: go test ./cmd/lsp -run 'Test(FalliblePropertyHoverAndCompletionShowSetterContract|OrdinaryPropertyHoverDoesNotClaimFallibility)' -count=1
@@ -357,7 +373,7 @@ integrations:
       - "threaded request handling (2026-10-13, cmd/lsp/concurrency.go): the server loop still reads, dequeues and handles document synchronization, formatting and every other non-analysis message in order, while read-only analysis requests run on a bounded worker pool (NumCPU/2, clamped to 2..4) with back-pressure on the loop; settings and workspace fields are guarded by an RWMutex (workers shared, initialize/configuration/workspace/watched-file/shutdown messages exclusive), lazily created shared stores are created before workers start, the analysis cache locks each entry from its analysis until its user releases it (one analysis per document state even under concurrent requests, one user per analyzer), worker panics answer -32603 instead of ending the server, and the loop waits for its workers before returning (TestServerAnswersConcurrentRequestsExactlyOnce, race-detector clean over three runs). The typing burst on header.sec now finishes in about 3.4 s"
     remaining:
       - reuse parsed core and unchanged module sources across requests instead of re-parsing and re-analyzing them for every new document version (completion, rename, code lenses and diagnostics still analyze afresh)
-      - "Sema copies the complete symbol table (copySymbols) for every branch, loop, switch case, test, function and accessor body; with imported modules and core this map copy and its garbage collection is about half of an analysis of sec/stdlib/net/http/header.sec (profiled 2026-10-13). Layered scope tables would remove the copies"
+      - Sema copies the complete symbol table (copySymbols) for every branch, loop, switch case, test, function and accessor body; with imported modules and core this map copy and its garbage collection is about half of an analysis of sec/stdlib/net/http/header.sec (profiled 2026-10-13). Layered scope tables would remove the copies
     verification:
       - command: scripted stdio LSP session on sec/stdlib/net/url/url.sec (initialize, didOpen, semanticTokens, documentSymbol, formatting, hover x3, willSaveWaitUntil, didSave)
         result: measured on 2026-10-02 after the change; per-request latency about 0.12 s, formatting 0.004 s
@@ -413,8 +429,13 @@ integrations:
       - cmd/lsp/workspace_symbol.go
       - cmd/lsp/main.go
       - cmd/lsp/request_queue.go
+      - cmd/lsp/workspace_symbol_resolve.go
+      - cmd/lsp/source_fingerprint.go
     tests:
       - cmd/lsp/workspace_symbol_test.go
+      - cmd/lsp/workspace_symbol_resolve_test.go
+      - testdata/lsp/workspace_symbols
+      - cmd/lsp/protocol_request_test.go
     implemented:
       - initialize advertises workspaceSymbolProvider and workspace-folder change notifications; roots come from workspaceFolders, rootUri, or rootPath and follow workspace/didChangeWorkspaceFolders
       - workspace/symbol answers SymbolInformation at the exact declaration name for types, structs, unions, enums, interfaces, functions, units, module-scope variables, methods, properties, events, struct fields, and enum and union members of every workspace source and open document, including unopened files; impl members are contained by the implemented type, top-level declarations by their module
@@ -425,14 +446,27 @@ integrations:
       - per-file summaries are cached by on-disk size and modification time or the open snapshot hash; the repository answers cold in about 190 ms and warm in about 3 ms
       - hidden directories, testdata fixtures, and node_modules are not workspace source
       - workspace/symbol is a deferrable read-only request that formatting may overtake
-    remaining:
       - workspace-symbol resolve
+      - workspaceSymbolProvider.resolveProvider advertises workspaceSymbol/resolve; clients advertising workspace.symbol.resolveSupport for location.range receive URI-only WorkspaceSymbol items with versioned source fingerprints and declaration entry identities; other clients retain complete SymbolInformation replies
+      - workspaceSymbol/resolve preserves exact overload and member locations, UTF-16 ranges, core containers and round-trip data; validates actual source content and current workspace/editor-context visibility; stale content returns ContentModified, malformed or inaccessible items return InvalidParams; resolves one selected cached file without semantic re-analysis or workspace traversal and participates in the read-only request queue
+    remaining:
       - generated and dependency read-only provenance once the shared compiler workspace exposes it
       - project-manifest source roots instead of folder traversal
       - move the summaries into the shared compiler workspace index (rules/tooling/lsp.md "Shared compiler workspace")
     verification:
+      - command: go test -race ./cmd/lsp -run 'CodeLensResolve|InterfaceConformance|InterfaceLensConsumes|WorkspaceSymbol|TestRequestQueue|TestServerAnswersConcurrentRequestsExactlyOnce|TestFormatting' -count=1
+        result: passed on 2026-10-14 after extracting unchanged SHA-256 content fingerprints and framed request test helpers for shared deferred LSP features
+      - command: go test ./cmd/lsp ./internal/lsp/... -count=1
+        result: passed on 2026-10-14; complete LSP and shared protocol/server suites; final visibility guard and additional core/non-Sec cases also passed in the targeted race run
+      - command: go vet ./cmd/lsp ./internal/lsp/...
+        result: passed on 2026-10-14
+      - command: go test -race ./cmd/lsp -run 'TestWorkspaceSymbol|TestWorkspaceRoots|TestServerAnswersConcurrentRequestsExactlyOnce|TestRequestQueue' -count=1
+        result: passed on 2026-10-14; concurrent resolve/query access to cached immutable summaries and concurrent server request handling
+      - command: go test ./cmd/lsp -run 'TestWorkspaceSymbol|TestWorkspaceRoots|TestRequestQueue' -count=1
+        result: passed on 2026-10-14; capability negotiation, older-client compatibility, lazy resolve and repeated resolve, exact overload/member ranges, UTF-16, core containers, content changes, source deletion, malformed payloads, workspace removal, visibility and open-only sources
       - command: go test ./cmd/lsp -run 'TestWorkspaceSymbols|TestWorkspaceRoots|TestDocumentSymbols' -count=1
         result: passed on 2026-10-03 for open and unopened files with testdata excluded and cache refresh on change, case-insensitive ranked ordering, module-internal and private visibility from open documents, core marking, and workspace-folder changes
+    revised: "2026-10-14"
 
   - id: tooling.lsp-missing-comma-quick-fix
     area: tooling-lsp
@@ -474,10 +508,16 @@ integrations:
       2026-10-03: only, not merely ranked first).
     rules:
       - rules/tooling/lsp.md
+      - rules/declarations/unions.md
+      - rules/foundations/operators.md
     code:
       - cmd/lsp/main.go
+      - cmd/lsp/state_test_completion.go
+      - cmd/lsp/subject_completion.go
     tests:
       - cmd/lsp/expected_type_completion_test.go
+      - cmd/lsp/state_test_completion_test.go
+      - testdata/lsp/state_test_completion/context.sec.in
     implemented:
       - property getter bodies supply the property's declared Sema type as the expected return type, alongside function and method bodies
       - "`return receiver.` member completion filters fields, properties, events, compiler-known members, static symbols, enum members, and union variants by their type, and methods by any overload's return type"
@@ -488,15 +528,24 @@ integrations:
       - "switch case items (2026-10-03): `case` in a subject switch offers the subject type's values and omits enum members already named by another case"
       - "match arm patterns (2026-10-03): a new arm line offers the subject's uncovered qualified enum members, bare union and Option variants, or Ok and Err for a Result, followed by `_`; arms with guards do not count as covering"
       - the in-progress case or arm line is blanked and a comparison gets a placeholder operand so the enclosing construct parses; identifier subjects fall back to their resolved Sema binding
-    remaining:
       - "`is` state tests offering the subject's variants"
+      - is/is not completion uses shared analyzed subject types to offer only union variants, Option Some/None and Result Ok/Err, with prefix filtering, valid one-owner qualifiers and deterministic ordering; supports member and call subjects, stored/returned booleans, incomplete if/while headers, grouped tests, negation, Unicode and CRLF positions without introducing payload bindings or wildcards
+      - a focused state_test_completion.go recovers only the unfinished variant and consumes shared cached compiler analysis; unknown/non-union subjects and mismatched owners yield no guessed variants, and lexical tokens distinguish tests from strings, comments, payload bindings and contextual members named is
+    remaining:
       - expected types from typed let initializers, assignments, call arguments, struct literal fields, and match arm values
       - assignability beyond nominal equality (widening, Option/Result wrapping, generic instantiation, interface satisfaction)
     verification:
+      - command: go test ./cmd/lsp ./internal/lsp/... -count=1
+        result: passed on 2026-10-14; complete LSP, protocol and server suites; final operator-word guard also passed in targeted race verification
+      - command: go vet ./cmd/lsp ./internal/lsp/...
+        result: passed on 2026-10-14
+      - command: go test -race ./cmd/lsp -run 'TestStateTestCompletion|TestComparisonCompletion|TestMatchArmCompletion|TestSwitchCaseCompletion|TestBlankLineOutside|TestServerAnswersConcurrentRequestsExactlyOnce' -count=1
+        result: passed on 2026-10-14; variant and qualifier completion, negation, incomplete headers, Option/Result, stored/returned tests, member/call subjects, grouped expressions, Unicode/CRLF and exclusion of comments, strings, payload bindings, contextual members and operator-word replacement; previous subject completion and concurrent request handling remain verified
       - command: go test ./cmd/lsp -run MemberCompletion -count=1
         result: passed on 2026-10-03 for a FileMode getter offering only FileMode fields and methods without the getter's own property, an unfiltered non-return selector, and a string method return
       - command: go test ./cmd/lsp -run 'Comparison|SwitchCaseCompletion|MatchArmCompletion|BlankLineOutside' -count=1
         result: passed on 2026-10-03 for == and != self. operands, an uncovered switch case, union, Option, and Result match arms, and unchanged global completion on a blank line outside match
+    revised: "2026-10-14"
 
   - id: tooling.lsp-inlay-hints
     area: tooling-lsp
@@ -508,14 +557,25 @@ integrations:
       of the rulebook's inlay-hint catalogue.
     rules:
       - rules/tooling/lsp.md
+      - rules/types/default_values.md
+      - rules/declarations/struct.md
     code:
       - cmd/lsp/inlay_hints.go
       - cmd/lsp/main.go
       - cmd/lsp/request_queue.go
       - vscode/src/extension.ts
       - vscode/package.json
+      - cmd/lsp/inlay_binding_types.go
+      - cmd/lsp/inlay_struct_defaults.go
+      - internal/sema/defaults_presentation.go
     tests:
       - cmd/lsp/inlay_hints_test.go
+      - cmd/lsp/inlay_binding_types_test.go
+      - testdata/lsp/binding_type_hints/valid.sec
+      - testdata/lsp/binding_type_hints/bindings_invalid.sec
+      - cmd/lsp/inlay_struct_defaults_test.go
+      - testdata/lsp/struct_default_hints/valid.sec
+      - testdata/lsp/struct_default_hints/literals_invalid.sec
     implemented:
       - initialize advertises inlayHintProvider; textDocument/inlayHint is a deferrable read-only request
       - "inferred-type hints `: T` after a let without a declared type, from the resolved binding, omitted when a struct literal, new, or same-named conversion call already spells the type"
@@ -523,18 +583,43 @@ integrations:
       - hints are limited to the requested range and to the active file
       - sec.inlayHints.types and sec.inlayHints.parameters (default on) arrive through initializationOptions and workspace/didChangeConfiguration; the VS Code extension contributes both settings and synchronizes the sec section
       - "ownership hints (sec.inlayHints.ownership, default on, 2026-10-04): `ref`/`ref mut` before a plain place passed to a reference parameter (implicit call-site borrow, borrowing.md § 15.2), `moves if selected` after a by-value match payload binding whose resolved action is a move (on the binding, never the subject), and `copy` for semantic copies of plain places at by-value arguments, let initializers, and match bindings; explicit `<-`/`ref`, temporaries, existing references, and trivial copies get no hint"
+      - types of for-loop, pattern, and Option-if bindings
+      - inferred scoped-binding hints consume shared declaration or navigation binding identities for loop bindings, match whole payloads, positive Option-if bindings and plain Err(name) handlers; preserve exact borrow types and distinguish repeated names in different scopes without a second typing engine
+      - scoped-binding hints share the Types setting, active-file and requested-range filtering, sorting and deduplication; discard bindings and unresolved or rejected binding forms receive no guessed type hint; shallow field-pattern and borrowed-subject support remain frontend.match-v2 work in control_flow.yaml
+      - resolved defaults of omitted defaultable struct fields through DefaultValueOf
+      - sec.inlayHints.defaults independently controls default-value previews at source struct literal closing braces; validated final-field plans distinguish actual default sources from explicit and spread fields, and shared Sema rendering consumes the stored DefaultValueOf result without a second selection engine or source edits
+      - default previews cover explicit type, range, membership, enum, recursive struct and array defaults; nested literals remain distinct, lexical closing-brace scanning ignores comments and strings, synthetic/invalid constructions have no hint, and labels are bounded to eight fields and 160 Unicode scalars while retaining active-file/range filtering
     remaining:
       - "`copy` hints currently never fire because no type classifies as CopySemantic yet; they follow the classification once semantic copies exist"
       - "`move` hints for implicit consuming construction and receiver ownership effects of method calls"
-      - types of for-loop, pattern, and Option-if bindings
       - generic instantiation, resolved overload, unit conversion, contract check, error type, allocation, and target hints
-      - resolved defaults of omitted defaultable struct fields through DefaultValueOf
       - inlayHint/resolve with hover-style tooltips and navigable label parts
     verification:
+      - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/... -count=1
+        result: passed on 2026-10-14 with unchanged final fixtures; complete LSP, Sema, protocol and server suites
+      - command: go test -race ./cmd/lsp -run 'InlayHints|TestServerAnswersConcurrentRequestsExactlyOnce' -count=1
+        result: passed on 2026-10-14 with final fixtures; exact struct default previews, bounded wide/large cases, existing hint categories and concurrent server requests
+      - command: cd vscode && ./node_modules/.bin/tsc --noEmit -p ./
+        result: passed on 2026-10-14; default-preview configuration is forwarded by the VS Code client
+      - command: go vet ./cmd/lsp ./internal/sema/... ./internal/lsp/...
+        result: passed on 2026-10-14
+      - command: go test ./internal/sema -run Default -count=1
+        result: passed on 2026-10-14; shared default presentation extraction preserves default selection and existing preview behavior
+      - command: go test ./cmd/lsp -run 'InlayHints.*Struct' -count=1
+        result: passed on 2026-10-14; exact selected defaults, explicit/spread exclusion, nested literals, comment/string brace positioning, UTF-16 and CRLF, compact large-array default, wide-struct preview bound, range restriction, independent settings, invalid/missing fields and optional protocol kind with no text edits
+      - command: go test ./cmd/lsp ./internal/lsp/... -count=1
+        result: passed on 2026-10-14; complete LSP, protocol and server suites
+      - command: go test -race ./cmd/lsp -run 'InlayHints|TestServerAnswersConcurrentRequestsExactlyOnce' -count=1
+        result: passed on 2026-10-14; scoped binding and existing type/parameter/ownership hints plus concurrent server requests
+      - command: go vet ./cmd/lsp ./internal/lsp/...
+        result: passed on 2026-10-14
+      - command: go test ./cmd/lsp -run InlayHints -count=1
+        result: passed on 2026-10-14; loop index/element, shared/mutable borrow, map key/value, string rune/range, whole struct-like payload, match borrows, Option-if, named error handler, repeated names, Unicode positions, discard, range, settings and invalid binding cases
       - command: go test ./cmd/lsp -run InlayHints -count=1
         result: passed on 2026-10-04 for inferred let types, omitted hints for struct literals, declared types, single-argument calls, and same-named arguments, range restriction, and per-category settings
       - command: go test ./cmd/lsp -run 'InlayHints' -count=1
         result: passed on 2026-10-04 for moves-if-selected on a move-only union payload binding without a hint on a trivially copied binding, implicit ref and ref mut call-site borrows, no hint for explicit ref or existing references, and the ownership setting
+    revised: "2026-10-14"
 
   - id: tooling.lsp-interface-conformance-lens
     area: tooling-lsp
@@ -553,27 +638,45 @@ integrations:
       - cmd/lsp/interface_conformance_lens.go
       - internal/sema/interface_conformance.go
       - vscode/src/extension.ts
+      - cmd/lsp/code_lens_resolve.go
+      - cmd/lsp/source_fingerprint.go
+      - cmd/lsp/request_queue.go
+      - cmd/lsp/interface_conformance_cache.go
     tests:
       - cmd/lsp/interface_conformance_lens_test.go
       - internal/sema/interface_conformance_test.go
+      - cmd/lsp/code_lens_resolve_test.go
+      - cmd/lsp/protocol_request_test.go
+      - testdata/lsp/code_lens_resolve
+      - cmd/lsp/interface_conformance_cache_test.go
     implemented:
       - initialize advertises codeLensProvider; textDocument/codeLens is a deferrable read-only request
-      - one analysis per distinct
       - per interface, the implementing types and the S1106/S1107 conformance failures of each target are summarized as a conforming lens or a failing lens naming targets, members, and targets without an implementation
       - the lens command sec.showLocations (VS Code peek references) lists failing implementation members or the implementing types
       - "results are cached by a hash over the module's sources and the active text (stdlib/os interface: about 1.9 s cold over 18 targets, about 10 ms cached)"
       - an unresolved parameter type in an interface requirement is kept as an invalid type and neither the requirement nor an implementation with unresolved types reports a conformance cascade
       - Conformance lenses consume compiler-owned InterfaceConformances snapshots keyed by exact interface declaration identity, including member names and validity states; no local Implements scan or diagnostic-text inference remains, and unresolved conformance is not presented as valid.
-    remaining:
       - codeLens/resolve so the cross-target analysis runs lazily and off the request path
+      - textDocument/codeLens lists source interface ranges and round-trip data without target loading or Sema analysis; codeLensProvider.resolveProvider advertises codeLens/resolve, which computes the existing conformance report lazily on the bounded read-only worker pool
+      - resolve validates exact interface name/range and active source content, ignores client-supplied commands, rejects changed/closed snapshots before and after analysis, reuses current module-source cache keys, and supports queued cancellation, queued edit/close supersession and formatting priority without introducing a second conformance engine
+      - one conformance analysis per distinct selected target within a module snapshot; concurrent lens resolves with the same source key share one in-flight computation and immutable report, while failed computations publish no partial result and are not retained as successful cache entries
+    remaining:
       - lenses on implementing types showing their conformance on other targets
       - the same cross-target conformance report in sec analyse
     verification:
+      - command: go test ./internal/lsp/... -count=1
+        result: passed on 2026-10-14; complete shared protocol/server suites
+      - command: go vet ./cmd/lsp ./internal/lsp/...
+        result: passed on 2026-10-14
+      - command: go test -race ./cmd/lsp -run 'CodeLensResolve|InterfaceConformance|InterfaceLensConsumes|WorkspaceSymbol|TestRequestQueue|TestServerAnswersConcurrentRequestsExactlyOnce|TestFormatting' -count=1
+        result: passed on 2026-10-14; deferred resolution, current dependency report, exact declaration validation, coalesced concurrent computations, failed-computation recovery, queue cancellation/formatting priority and shared fingerprint/protocol regressions
+      - command: go test ./cmd/lsp ./internal/lsp/... -run 'CodeLensResolve|InterfaceConformanceLens|InterfaceLensConsumes|WorkspaceSymbol|TestRequestQueue|TestServerAnswersConcurrentRequestsExactlyOnce|TestFormatting' -count=1
+        result: passed on 2026-10-14; lazy enumeration proven not to invoke the conformance cache, identical eager/resolve reports, multiple declaration identities, changing implementation files, round-trip/repeated resolve, ignored client commands, malformed/stale inputs, queued edit/close/cancellation and formatting priority; shared workspace-symbol transport/fingerprint regressions covered
       - command: go test ./cmd/lsp -run 'InterfaceLensConsumes|InterfaceConformanceLens' -count=1
         result: passed on 2026-10-10 with compiler-owned conformance snapshots instead of LSP inference from Implements or diagnostic text; same-name-prefix and unresolved-requirement regressions covered
       - command: go test ./cmd/lsp -run InterfaceConformanceLens -count=1
         result: passed on 2026-10-04 for a module with linux and windows implementations, conforming on both and failing on windows only with the failing location
-    revised: "2026-10-10"
+    revised: "2026-10-14"
 
   - id: tooling.lsp-multi-target-diagnostics
     area: tooling-lsp

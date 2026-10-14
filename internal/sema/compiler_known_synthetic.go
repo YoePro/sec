@@ -196,6 +196,9 @@ func CompilerKnownSyntheticDefinition(member CompilerKnownMember) string {
 	text.WriteString("\n")
 	fmt.Fprintf(&text, "// Rule:       %s\n", orEmpty(member.Rule, ruleCompilerKnownMembers))
 	fmt.Fprintf(&text, "// Receiver:   %s\n", orEmpty(member.Receiver, "see the rulebook section"))
+	if member.BoundReceiver != "" {
+		fmt.Fprintf(&text, "// Instance:   %s\n", member.BoundReceiver)
+	}
 	fmt.Fprintf(&text, "// Effects:    %s\n", effects)
 	fmt.Fprintf(&text, "// Unsafe:     %s\n", unsafe)
 	fmt.Fprintf(&text, "// Target:     %s\n", orEmpty(member.TargetRestriction, noTargetRestriction))

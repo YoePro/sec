@@ -1,0 +1,7 @@
+module ip
+type Ipv6Address struct { Value: int }
+impl Ipv6Address {
+    static fn Parse(text: string) Ipv6Address {
+        return Ipv6Address { Value: 6 }
+    }
+}

@@ -1159,7 +1159,8 @@ Existing compiler rules already describe or partially implement:
   interfaces, function overload groups and module-level variables; unit
   symbols are excluded from parameter, generic-parameter, local, function, and
   variable conflicts, and a unit and a nominal type of the same spelling may
-  coexist across modules (within one module they still conflict, MD-040);
+  coexist in any module, including the same one, because a unit is always
+  referenced as `<Unit>` (MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 2);
 - method and property registration before body analysis;
 - qualified nested type lookup;
 - one module namespace across module source files in the project model;

@@ -4,7 +4,7 @@ module units
 
 /** Nanometer */
 unit nm physical
-impl nm {
+impl <nm> {
     LongName: "Nanometer"
     Symbol: "nm"
     BaseUnit: false
@@ -16,7 +16,7 @@ impl nm {
 
 /** Micrometer */
 unit um physical
-impl um {
+impl <um> {
     LongName: "Micrometer"
     Symbol: "um"
     BaseUnit: false
@@ -28,7 +28,7 @@ impl um {
 
 /** Millimeter */
 unit mm physical
-impl mm {
+impl <mm> {
     LongName: "Millimeter"
     Symbol: "mm"
     BaseUnit: false
@@ -40,7 +40,7 @@ impl mm {
 
 /** Centimeter */
 unit cm physical
-impl cm {
+impl <cm> {
     LongName: "Centimeter"
     Symbol: "cm"
     BaseUnit: false
@@ -52,7 +52,7 @@ impl cm {
 
 /** Decimeter */
 unit dm physical
-impl dm {
+impl <dm> {
     LongName: "Decimeter"
     Symbol: "dm"
     BaseUnit: false
@@ -64,7 +64,7 @@ impl dm {
 
 /** Kilometer */
 unit km physical
-impl km {
+impl <km> {
     LongName: "Kilometer"
     Symbol: "km"
     BaseUnit: false
@@ -80,7 +80,7 @@ impl km {
 
 /** Hektogram */
 unit hg physical
-impl hg {
+impl <hg> {
     LongName: "Hektogram"
     Symbol: "hg"
     BaseUnit: false
@@ -92,7 +92,7 @@ impl hg {
 
 /** Gram */
 unit g physical
-impl g {
+impl <g> {
     LongName: "Gram"
     Symbol: "g"
     BaseUnit: false
@@ -104,7 +104,7 @@ impl g {
 
 /** Milligram */
 unit mg physical
-impl mg {
+impl <mg> {
     LongName: "Milligram"
     Symbol: "mg"
     BaseUnit: false
@@ -120,7 +120,7 @@ impl mg {
 
 /** Tonne or Metric Ton */
 unit t physical
-impl t {
+impl <t> {
     LongName: "Tonne"
     Symbol: "t"
     BaseUnit: false
@@ -132,7 +132,7 @@ impl t {
 
 /** Kilotonne */
 unit kt physical
-impl kt {
+impl <kt> {
     LongName: "Kilotonne"
     Symbol: "kt"
     BaseUnit: false
@@ -144,7 +144,7 @@ impl kt {
 
 /** Megatonne */
 unit Mt physical
-impl Mt {
+impl <Mt> {
     LongName: "Megatonne"
     Symbol: "Mt"
     BaseUnit: false
@@ -163,7 +163,7 @@ impl Mt {
 
 /** Picosecond */
 unit ps physical
-impl ps {
+impl <ps> {
     LongName: "Picosecond"
     Symbol: "ps"
     BaseUnit: false
@@ -175,7 +175,7 @@ impl ps {
 
 /** Femtosecond */
 unit fs physical
-impl fs {
+impl <fs> {
     LongName: "Femtosecond"
     Symbol: "fs"
     BaseUnit: false
@@ -191,7 +191,7 @@ impl fs {
 
 /** Megaampere - Used in plasma physics and lightning research */
 unit MA physical
-impl MA {
+impl <MA> {
     LongName: "Megaampere"
     Symbol: "MA"
     BaseUnit: false
@@ -203,7 +203,7 @@ impl MA {
 
 /** Kiloampere - Used in power grids and heavy industry */
 unit kA physical
-impl kA {
+impl <kA> {
     LongName: "Kiloampere"
     Symbol: "kA"
     BaseUnit: false
@@ -215,7 +215,7 @@ impl kA {
 
 /** Milliampere */
 unit mA physical
-impl mA {
+impl <mA> {
     LongName: "Milliampere"
     Symbol: "mA"
     BaseUnit: false
@@ -227,7 +227,7 @@ impl mA {
 
 /** Microampere */
 unit uA physical
-impl uA {
+impl <uA> {
     LongName: "Microampere"
     Symbol: "uA"
     BaseUnit: false
@@ -239,7 +239,7 @@ impl uA {
 
 /** Nanoampere */
 unit nA physical
-impl nA {
+impl <nA> {
     LongName: "Nanoampere"
     Symbol: "nA"
     BaseUnit: false
@@ -251,7 +251,7 @@ impl nA {
 
 /** Picoampere */
 unit pA physical
-impl pA {
+impl <pA> {
     LongName: "Picoampere"
     Symbol: "pA"
     BaseUnit: false
@@ -267,7 +267,7 @@ impl pA {
 
 /** Millikelvin */
 unit mK physical
-impl mK {
+impl <mK> {
     LongName: "Millikelvin"
     Symbol: "mK"
     BaseUnit: false
@@ -279,7 +279,7 @@ impl mK {
 
 /** Microkelvin */
 unit uK physical
-impl uK {
+impl <uK> {
     LongName: "Microkelvin"
     Symbol: "uK"
     BaseUnit: false
@@ -295,7 +295,7 @@ impl uK {
 
 /** Millimole */
 unit mmol physical
-impl mmol {
+impl <mmol> {
     LongName: "Millimole"
     Symbol: "mmol"
     BaseUnit: false
@@ -307,7 +307,7 @@ impl mmol {
 
 /** Micromole */
 unit umol physical
-impl umol {
+impl <umol> {
     LongName: "Micromole"
     Symbol: "umol"
     BaseUnit: false
@@ -323,7 +323,7 @@ impl umol {
 
 /** Millicandela */
 unit mcd physical
-impl mcd {
+impl <mcd> {
     LongName: "Millicandela"
     Symbol: "mcd"
     BaseUnit: false

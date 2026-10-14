@@ -1089,6 +1089,10 @@ property forms. Sec does not provide an implicit setter-value binding.
 ```text
 ImplDeclaration
     ::= "impl" [ "extends" ] TypeReference ImplBody
+      | "impl" UnitImplTarget ImplBody
+
+UnitImplTarget
+    ::= "<" UnitExpression ">"
 
 ImplBody
     ::= "{" { ImplMember } "}"
@@ -1112,6 +1116,8 @@ ImplMember
 InstanceLetDeclaration
     ::= "let" [ "mut" ] Identifier [ ":" TypeReference ] ":=" Expression
 ```
+
+`impl <Unit>` (`UnitImplTarget`, MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 2) targets only the unit named by a single `UnitExpression` name, in the unit's own module, and holds `UnitMetadataDeclaration` and `FunctionDeclaration` members only. `impl Name` targets only an ordinary type; a unit is never named bare.
 
 `InstanceLetDeclaration` requires an instance; `mut` controls mutability.
 `StaticLetDeclaration` requires explicit `static` and is type-owned. The two
@@ -2673,7 +2679,10 @@ Sema resolves a type conversion.
 ```text
 BitExtractionExpression
     ::= Contextual("bit") "[" IntegerConstant "]" "(" Expression ")"
+        [ UnitAnnotation ]
 ```
+
+The optional `UnitAnnotation` suffix (MD-046, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 4) is admitted only directly after `bit[N](expression)`; it does not authorize a general `Call()<U>` form. Its `<` follows the closing parenthesis with no whitespace and the annotation closes on the same line; otherwise `<` is the comparison operator (`bit[8](x) < limit`). The formatter writes `bit[N](expression)<U>` with no space before the suffix.
 
 A contextual call-shaped expression use of the existing `bit[N]` spelling (MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is not a declaration, a general type conversion, an ordinary call or a user-definable generic, and parsing it never makes `bit[N]` a variable type. When `bit[...]` is not followed by a parenthesized operand, the source is ordinary indexing of a value named `bit`. `IntegerConstant` is evaluated as a compile-time integer constant; its domain and the semantics are owned by `types.md` "Explicit low-bit extraction". The formatter writes `bit[N](expression)` without spaces inside the extraction syntax.
 
@@ -2684,8 +2693,25 @@ A contextual call-shaped expression use of the existing `bit[N]` spelling (MD-04
 ```text
 UnitConversionExpression
     ::= NumericTypeReference UnitAnnotation
-        "(" Expression ")"
+        "(" Expression [ "," RoundingModeExpression ] ")"
+
+RoundedNumericConversion
+    ::= NumericTypeReference "(" Expression "," RoundingModeExpression ")"
 ```
+
+`RoundingModeExpression` is an ordinary expression that must resolve to a case of the core `RoundingMode` enum; it is not a special token (MD-047, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 5). `RoundedNumericConversion` is the ordinary call-shaped numeric conversion `T(value)` with the rounding argument; semantics are owned by `units.md` "Explicit rounding".
+
+# Qualified unit references
+
+```text
+QualifiedUnitCall
+    ::= UnitAnnotation "(" [ ArgumentList ] ")"
+
+QualifiedUnitMemberAccess
+    ::= UnitAnnotation "." Identifier
+```
+
+A `UnitAnnotation` in expression position (MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 2) is valid only as the callee of a unit conversion or unit function call (`<Volt>(value)`, `<rpm>.FromHz(x)`) or the object of a unit member access (`<Volt>.Symbol`). Because no other expression begins with `<`, the form is unambiguous. `QualifiedUnitMemberAccess` followed by an argument list is a unit function call.
 
 Example:
 

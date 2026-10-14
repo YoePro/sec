@@ -1,0 +1,46 @@
+module main
+
+fn Stable() Result[void, AllocationError] {
+    let mut original: Arena := Arena {}
+    let first := try original.Alloc[byte](1u)
+    discard first
+    let mut moved :<- original
+    let second := try moved.Alloc[byte](1u)
+    discard second
+    moved.Reset()
+    let third := try moved.Alloc[byte](1u)
+    discard third
+    let mut destination: Arena := Arena {}
+    destination <- moved
+    let last := try destination.Alloc[byte](1u)
+    discard last
+    destination.Release()
+    return Ok()
+}
+
+fn Shadow() Result[void, AllocationError] {
+    let mut arena: Arena := Arena {}
+    let first := try arena.Alloc[byte](1u)
+    discard first
+    let last := try arena.Alloc[byte](1u)
+    discard last
+    arena.Release()
+    return Ok()
+}
+
+fn SameName() Result[void, AllocationError] {
+    let mut arena: Arena := Arena {}
+    let values := try arena.Alloc[byte](1u)
+    discard values
+    arena.Reset()
+    arena.Release()
+    return Ok()
+}
+
+fn Parameter(arena: ref mut Arena) Result[void, AllocationError] {
+    let renamed :<- arena
+    let values := try renamed.Alloc[byte](1u)
+    discard values
+    renamed.Reset()
+    return Ok()
+}

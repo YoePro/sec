@@ -17,25 +17,25 @@ unit rpm decimal physical
 unit metre decimal physical
 unit meter decimal physical
 
-impl m {
+impl <m> {
     Dimension: [length^1]
 }
-impl s {
+impl <s> {
     Dimension: [time^1]
 }
-impl kg {
+impl <kg> {
     Dimension: [mass^1]
 }
-impl Hz {
+impl <Hz> {
     Dimension: [time^-1]
 }
-impl rpm {
+impl <rpm> {
     Dimension: [time^-1]
 }
-impl metre {
+impl <metre> {
     Dimension: [length^1]
 }
-impl meter {
+impl <meter> {
     Dimension: [length^1]
 }
 
@@ -54,7 +54,7 @@ unit FloatingTemperature float physical
 unit PlainDecimal decimal
 
 unit PacketsPerBatch decimal other
-impl PacketsPerBatch {
+impl <PacketsPerBatch> {
     Dimension: [packet^1, batch^-1]
 }
 
@@ -113,11 +113,11 @@ fn LiteralInitialization() void {
     let packetRate: PacketRate := 500
     let itemsPerBatch: ItemsPerBatch := 24
 
-    let signed: SignedCount := -12
-    let unsigned: UnsignedCount := 12
-    let temperature: FloatingTemperature := 21.5
-    let plain: PlainDecimal := 3.1415
-    let directComposite: PacketsPerBatch := 128
+    let signed: <SignedCount> := -12
+    let unsigned: <UnsignedCount> := 12
+    let temperature: <FloatingTemperature> := 21.5
+    let plain: <PlainDecimal> := 3.1415
+    let directComposite: <PacketsPerBatch> := 128
 }
 
 fn ExplicitConstruction() void {
@@ -126,8 +126,8 @@ fn ExplicitConstruction() void {
     let rawUnsigned := 7
 
     let distance: Distance := Distance(rawDistance)
-    let signed: SignedCount := SignedCount(rawCount)
-    let unsigned: UnsignedCount := UnsignedCount(rawUnsigned)
+    let signed: <SignedCount> := <SignedCount>(rawCount)
+    let unsigned: <UnsignedCount> := <UnsignedCount>(rawUnsigned)
 
     let mut updated: Distance := 1
     updated = Distance(2)
@@ -402,20 +402,20 @@ fn CalculateRequestRate(
 // Unit types in function signatures
 // =============================================================================
 
-fn AddSignedCounts(first: SignedCount, second: SignedCount) SignedCount {
+fn AddSignedCounts(first: <SignedCount>, second: <SignedCount>) <SignedCount> {
     return first + second
 }
 
 fn AddUnsignedCounts(
-    first: UnsignedCount,
-    second: UnsignedCount,
-) UnsignedCount {
+    first: <UnsignedCount>,
+    second: <UnsignedCount>,
+) <UnsignedCount> {
     return first + second
 }
 
 fn AverageTemperature(
-    first: FloatingTemperature,
-    second: FloatingTemperature,
-) FloatingTemperature {
+    first: <FloatingTemperature>,
+    second: <FloatingTemperature>,
+) <FloatingTemperature> {
     return (first + second) / 2
 }

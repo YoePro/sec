@@ -116,17 +116,31 @@ func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
 	if impl == nil || impl.Target == nil {
 		return Type{}, false
 	}
-	// A unit whose spelling an ordinary type of another module took keeps its
-	// impl block in the unit's own module (rules/types/units.md).
-	if unitEntry, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && unitEntry.Module == a.currentModule {
-		if unit, ok := a.units[impl.Target.Name]; ok {
-			a.bindDefinition(impl.Target.Token, unit.Token)
+	// MD-040: `impl <Unit>` targets only the unit, in the unit's own module;
+	// `impl Name` targets only an ordinary type.
+	if impl.Target.UnitOnly {
+		unitEntry, declared := a.shadowedUnitTypes[impl.Target.Name]
+		unit, known := a.units[impl.Target.Name]
+		if !declared || !known || impl.Target.UnitExpression == nil || impl.Target.UnitExpression.Kind != ast.UnitExpressionName {
+			a.addErrorAtToken(impl.Target.Token, "unknown unit impl target <%s>; impl <Unit> names one declared unit", impl.Target.Unit)
+			return Type{}, false
 		}
+		if unitEntry.Module != a.currentModule {
+			a.addErrorAtToken(impl.Target.Token, "impl <%s> must be in module %s, which declares the unit", impl.Target.Name, moduleDisplayName(unitEntry.Module))
+			return Type{}, false
+		}
+		a.bindDefinition(impl.Target.Token, unit.Token)
 		a.shadowedUnitImpls[impl] = true
 		return unitEntry, true
 	}
 	target, ok := a.types[impl.Target.Name]
 	if !ok {
+		if _, isUnit := a.units[impl.Target.Name]; isUnit {
+			a.addErrorAtTokenWithMetadata(impl.Target.Token, "",
+				"A unit is always referenced as <Unit> (MD-040); write impl <"+impl.Target.Name+"> for its metadata and conversion functions.",
+				"impl %s does not name an ordinary type; %s is a unit", impl.Target.Name, impl.Target.Name)
+			return Type{}, false
+		}
 		a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
 		return Type{}, false
 	}

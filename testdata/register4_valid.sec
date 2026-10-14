@@ -7,7 +7,7 @@ module i2c_sensor_driver
 /** Kelvin for absolute thermodynamic temperature */
 unit K physical
 
-impl K {
+impl <K> {
     LongName: "Kelvin"
     Symbol: "K"
     BaseUnit: true
@@ -20,7 +20,7 @@ impl K {
 /** Pascal for pressure (Derived SI: kg * m^-1 * s^-2) */
 unit Pa physical
 
-impl Pa {
+impl <Pa> {
     LongName: "Pascal"
     Symbol: "Pa"
     BaseUnit: false
@@ -114,14 +114,14 @@ impl SensorDataBuffer {
     // Read-only property returning Temperature safely typed with its unit
     property Temperature: K {
         get {
-            return K(self.RawTemperature)
+            return <K>(self.RawTemperature)
         }
     }
 
     // Read-only property returning Pressure safely typed with its unit
     property Pressure: Pa {
         get {
-            return Pa(self.RawPressure)
+            return <Pa>(self.RawPressure)
         }
     }
 
@@ -160,6 +160,6 @@ fn ReadEnvironmentSensors() void {
     I2C_CR1.SendStartCondition()
 
     // Read the values safely with unit validation guarantees
-    let currentTemp: K := BME280_BUFFER.Temperature
-    let currentPressure: Pa := BME280_BUFFER.Pressure
+    let currentTemp: <K> := BME280_BUFFER.Temperature
+    let currentPressure: <Pa> := BME280_BUFFER.Pressure
 }

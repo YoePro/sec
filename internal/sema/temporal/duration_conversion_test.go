@@ -16,35 +16,35 @@ import (
 // through ordinary unit metadata rather than any fixed list.
 const timeUnits = `
 unit s physical
-impl s {
+impl <s> {
     Kind: time
     Dimension: [time^1]
     Scale: 1
 }
 
 unit ms physical
-impl ms {
+impl <ms> {
     Kind: time
     Dimension: [time^1]
     Scale: 1 / 1000
 }
 
 unit us physical
-impl us {
+impl <us> {
     Kind: time
     Dimension: [time^1]
     Scale: 1 / 1000000
 }
 
 unit ns physical
-impl ns {
+impl <ns> {
     Kind: time
     Dimension: [time^1]
     Scale: 1 / 1000000000
 }
 
 unit m physical
-impl m {
+impl <m> {
     Kind: length
     Dimension: [length^1]
     Scale: 1

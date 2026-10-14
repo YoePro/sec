@@ -33,7 +33,7 @@ fn Concat(values: ref string[]) int {
 }
 
 fn Main() int {
-    let words: string[] := ["a"]
+    let words: string[1] := ["a"]
     let total := Concat(ref words[..])
     discard total
     return Concat(Words { index: 0 })

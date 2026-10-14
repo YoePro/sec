@@ -278,6 +278,12 @@ func (g *CallGraph) ForCompilationPlan(scope CallGraphScope) (*CallGraph, error)
 	result := newCallGraph()
 	result.scope = scope
 	callable := func(id CallableID) CallableID { return CallableID(scopedGraphIdentity(scope, "callable", string(id))) }
+	if g.allocationCoverage != nil {
+		result.allocationCoverage = map[CallableID][]AllocationEvidence{}
+		for id, evidence := range g.allocationCoverage {
+			result.allocationCoverage[callable(id)] = append([]AllocationEvidence(nil), evidence...)
+		}
+	}
 	body := func(id CallableBodyID) CallableBodyID {
 		return CallableBodyID(scopedGraphIdentity(scope, "body", string(id)))
 	}

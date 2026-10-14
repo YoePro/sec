@@ -1,0 +1,3 @@
+module storage
+interface Native { fn Size() int }
+interface NativeMore { fn Other() int }

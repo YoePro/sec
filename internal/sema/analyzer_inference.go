@@ -218,6 +218,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 	case *ast.QuantityLiteral:
 		return a.inferQuantityLiteral(expr)
+	case *ast.UnitReferenceExpression:
+		a.addErrorAtToken(expr.Token, "unit reference %s must be called as %s(value) or accessed as %s.Member", expr.String(), expr.String(), expr.String())
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	case *ast.StringLiteral:
 		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
 	case *ast.InterpolatedStringLiteral:
@@ -1069,6 +1072,9 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 }
 
 func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool) {
+	if reference, unit := expr.Object.(*ast.UnitReferenceExpression); unit {
+		return a.inferUnitMemberExpression(expr, reference)
+	}
 	if enumType, ok := a.inferEnumValueExpression(expr); ok {
 		return enumType, true
 	}
@@ -1302,6 +1308,8 @@ func (a *Analyzer) inferArrayLiteral(expr *ast.ArrayLiteral) (Type, expressionVa
 //
 // Rules:
 //   - rules/collections/collections.md — §5.5 "Array literals" and §5.6 "Spread in fixed-array literals"
+//   - rules/collections/collections.md — §5.6a excludes nonempty owning dynamic-array literals
+//   - rules/types/types.md — "Contextual None and empty-literal arguments" (MD-027 permits contextual [])
 //   - rules/types/contracts.md — "String and collection contracts"
 func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expected Type) (Type, expressionValue) {
 	if expected.Kind != ArrayType || expected.Element == nil {
@@ -1317,6 +1325,12 @@ func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expecte
 					"range segment cannot initialize owning dynamic array %s; range segments build fixed arrays", typeDisplayName(expected))
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
+		}
+		if len(expr.Elements) != 0 {
+			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.DynamicArrayLiteralInvalid,
+				"Declare an empty mutable owner (`let mut values: T[]`) and populate it with `try values.Append(value)`, or use a fixed array T[N]. Contextually typed [] remains valid.",
+				"nonempty array literal cannot initialize owning dynamic array %s; owning dynamic-array literals with elements are not defined in Sec 0.1", typeDisplayName(expected))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
 	plan, ok := a.resolveArrayLiteralPlan(expr, *expected.Element)
@@ -1600,6 +1614,13 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	targetType, ok := a.resolveType(expr.Type)
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if expr.Rounding != nil {
+		if !a.isRoundingModeArgument(expr.Rounding) {
+			a.addErrorAtToken(expressionToken(expr.Rounding), "the second argument of %s(...) must be a RoundingMode such as RoundingMode.Ceil", typeDisplayName(targetType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return a.inferRoundedConversion(expr, expr.Value, expr.Rounding, targetType)
 	}
 
 	valueType, _ := a.inferExpression(expr.Value)
@@ -2439,62 +2460,17 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 	return a.refinedCompilerKnownType(known.Result), result, true
 }
 
-func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Type, hasExpected bool) (Type, expressionValue, bool) {
-	result := expressionValue{Display: expr.String()}
-	if len(expr.GenericArguments) > 0 {
-		a.addErrorAtToken(expr.Token, "fill uses target context and does not accept generic arguments")
-		return Type{Kind: InvalidType}, result, true
-	}
-	if !hasExpected || expected.Kind == InvalidType || expected.Kind == "" {
-		a.addErrorAtToken(expr.Token, "fill requires an explicit array or string target type")
-		return Type{Kind: InvalidType}, result, true
-	}
-	if expected.Kind == ArrayType && expected.Element != nil {
-		if arrayShapeOf(expected) == ArrayShapeFixed {
-			if !a.checkCompilerKnownCallArity(expr, "fill", 1, 1) {
-				return Type{Kind: InvalidType}, result, true
-			}
-			valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], *expected.Element)
-			if !a.canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
-				a.addErrorAtToken(expressionToken(expr.Arguments[0]), "fill value must be %s, got %s", typeDisplayName(*expected.Element), typeDisplayName(valueType))
-				return Type{Kind: InvalidType}, result, true
-			}
-			return expected, result, true
-		}
-		if !a.checkCompilerKnownCallArity(expr, "fill", 2, 2) {
-			return Type{Kind: InvalidType}, result, true
-		}
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], *expected.Element)
-		if !a.canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "fill value must be %s, got %s", typeDisplayName(*expected.Element), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, result, true
-		}
-		if !a.compilerKnownCountArgument(expr.Arguments[1], "fill") {
-			return Type{Kind: InvalidType}, result, true
-		}
-		return compilerKnownResult(expected, a.types["CollectionError"]), result, true
-	}
-	if expected.Kind == StringType {
-		if !a.checkCompilerKnownCallArity(expr, "fill", 2, 2) {
-			return Type{Kind: InvalidType}, result, true
-		}
-		fragmentType, _ := a.inferExpressionWithExpected(expr.Arguments[0], expected)
-		if fragmentType.Kind != StringType && fragmentType.Kind != CharType && fragmentType.Kind != RuneType {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "string fill fragment must be string, char, or rune, got %s", typeDisplayName(fragmentType))
-			return Type{Kind: InvalidType}, result, true
-		}
-		if !a.compilerKnownCountArgument(expr.Arguments[1], "fill") {
-			return Type{Kind: InvalidType}, result, true
-		}
-		return compilerKnownResult(expected, a.types["CollectionError"]), result, true
-	}
-	a.addErrorAtToken(expr.Token, "fill target must be a fixed array, owning dynamic array, or string, got %s", typeDisplayName(expected))
-	return Type{Kind: InvalidType}, result, true
-}
-
-func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+// inferValidatedCompilerKnownMemberCall resolves compiler-owned receiver and
+// argument contracts before publishing a result.
+// Rules: rules/compiler/compiler_known_members.md — "Lookup order";
+// rules/collections/collections.md — §§6.7,13.10,13.12,14.8,15.5.
+func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	memberExpr, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || memberExpr == nil || memberExpr.Property == nil {
+		return Type{}, expressionValue{}, false
+	}
+	if _, unit := memberExpr.Object.(*ast.UnitReferenceExpression); unit {
+		// `<U>.Name(...)` calls a unit function, never a compiler-known member.
 		return Type{}, expressionValue{}, false
 	}
 
@@ -2626,9 +2602,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s value must be %s, got %s", member.Name, typeDisplayName(elementType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		classification := CopyClassificationOf(elementType)
-		if member.Name == "Fill" && classification != CopyTrivial && classification != CopySemantic {
-			a.addErrorAtToken(memberExpr.Property.Token, "Fill requires a copyable element type, got %s", typeDisplayName(elementType))
+		if member.Name == "Fill" && a.rejectNonCopyableFillElement(elementType, memberExpr.Property.Token, "Fill") {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
@@ -3561,23 +3535,45 @@ func (a *Analyzer) inferRuntimeCallExpression(expr *ast.RuntimeCallExpression) (
 
 func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expressionValue) {
 	name := callExpressionName(expr)
-	typeName := a.resolveTypeName(name)
-	if _, exists := a.types[typeName]; !exists {
-		a.addErrorAtToken(expr.Token, "unknown function or type %s", name)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	targetRef := &ast.TypeReference{
-		Token:    expr.Token,
-		Name:     name,
-		TypeArgs: expr.GenericArguments,
-	}
-	targetType, ok := a.resolveType(targetRef)
-	if !ok {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	var targetType Type
+	if reference, qualified := expr.Callee.(*ast.UnitReferenceExpression); qualified {
+		// MD-040: `<U>(value)` converts to the unit-bearing type `<U>` when
+		// the unit declares no conversion function for the argument.
+		resolved, ok := a.resolveUnitOnlyType(&ast.TypeReference{Token: reference.Token, Unit: reference.Unit, UnitExpression: reference.UnitExpression, UnitOnly: true})
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		targetType = resolved
+	} else {
+		typeName := a.resolveTypeName(name)
+		if _, exists := a.types[typeName]; !exists {
+			if _, isUnit := a.units[name]; isUnit {
+				a.addErrorAtTokenWithMetadata(expr.Token, "",
+					"A unit is always referenced as <Unit> (MD-040); write <"+name+">(...) for a unit conversion.",
+					"%s is a unit, not a function or type", name)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget,
+				"Verify the import and qualifier, the type name, and the associated static function. The compiler could not resolve this complete call target; imported modules are not ordinary value variables.",
+				"unknown function or type %s", name)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		targetRef := &ast.TypeReference{
+			Token:    expr.Token,
+			Name:     name,
+			TypeArgs: expr.GenericArguments,
+		}
+		resolved, ok := a.resolveType(targetRef)
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		targetType = resolved
 	}
 	if a.isDurationType(targetType) {
 		return a.inferDurationConversion(expr, targetType)
+	}
+	if len(expr.Arguments) == 2 && a.isRoundingModeArgument(expr.Arguments[1]) {
+		return a.inferRoundedConversion(expr, expr.Arguments[0], expr.Arguments[1], targetType)
 	}
 	if len(expr.Arguments) == 2 && hasUnitSemantics(targetType) {
 		return a.inferFactorProvidedUnitConversion(expr, targetType)
@@ -3748,6 +3744,9 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
 	if !a.canInitialize(functionErrorType, valueErrorType, expr.Expression) {
 		a.addBodylessTryError(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(valueErrorType), typeDisplayName(functionErrorType))
+		// rules/errors/errorhandling.md §12.1: an incompatible channel
+		// cannot publish a completed propagation decision to tooling.
+		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 	a.resolvedTries[expr] = ResolvedTry{
 		Kind: ResolvedTryResultPropagation, SuccessType: valueType.TypeArgs[0], ErrorType: valueErrorType,

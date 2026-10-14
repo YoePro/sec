@@ -6,7 +6,7 @@ module units
 
 /** Becquerel */
 unit Bq physical
-impl Bq {
+impl <Bq> {
     Kind: radioactivity
     LongName: "Becquerel"
     Symbol: "Bq"
@@ -19,7 +19,7 @@ impl Bq {
 
 /** Gray */
 unit Gy physical
-impl Gy {
+impl <Gy> {
     Kind: absorbed_dose
     LongName: "Gray"
     Symbol: "Gy"
@@ -32,7 +32,7 @@ impl Gy {
 
 /** Sievert */
 unit Sv physical
-impl Sv {
+impl <Sv> {
     Kind: dose_equivalent
     LongName: "Sievert"
     Symbol: "Sv"
@@ -45,7 +45,7 @@ impl Sv {
 
 /** Katal */
 unit kat physical
-impl kat {
+impl <kat> {
     LongName: "Katal"
     Symbol: "kat"
     BaseUnit: false
@@ -57,7 +57,7 @@ impl kat {
 
 /** Mole per cubic metre */
 unit mol_m3 physical
-impl mol_m3 {
+impl <mol_m3> {
     LongName: "Mole per Cubic Metre"
     Symbol: "mol/m³"
     BaseUnit: false
@@ -69,7 +69,7 @@ impl mol_m3 {
 
 /** Mole per litre */
 unit mol_L physical
-impl mol_L {
+impl <mol_L> {
     LongName: "Mole per Litre"
     Symbol: "mol/L"
     BaseUnit: false
@@ -81,7 +81,7 @@ impl mol_L {
 
 /** Joule per kelvin */
 unit J_K physical
-impl J_K {
+impl <J_K> {
     LongName: "Joule per Kelvin"
     Symbol: "J/K"
     BaseUnit: false
@@ -93,7 +93,7 @@ impl J_K {
 
 /** Joule per kilogram kelvin */
 unit J_kg_K physical
-impl J_kg_K {
+impl <J_kg_K> {
     LongName: "Joule per Kilogram Kelvin"
     Symbol: "J/(kg·K)"
     BaseUnit: false
@@ -105,7 +105,7 @@ impl J_kg_K {
 
 /** Watt per metre kelvin */
 unit W_m_K physical
-impl W_m_K {
+impl <W_m_K> {
     LongName: "Watt per Metre Kelvin"
     Symbol: "W/(m·K)"
     BaseUnit: false
@@ -117,7 +117,7 @@ impl W_m_K {
 
 /** Newton metre */
 unit Nm physical
-impl Nm {
+impl <Nm> {
     Kind: torque
     LongName: "Newton Metre"
     Symbol: "N·m"
@@ -130,7 +130,7 @@ impl Nm {
 
 /** Reciprocal metre */
 unit per_m physical
-impl per_m {
+impl <per_m> {
     LongName: "Reciprocal Metre"
     Symbol: "m⁻¹"
     BaseUnit: false
@@ -142,7 +142,7 @@ impl per_m {
 
 /** Cubic metre per second */
 unit m3_s physical
-impl m3_s {
+impl <m3_s> {
     LongName: "Cubic Metre per Second"
     Symbol: "m³/s"
     BaseUnit: false
@@ -154,7 +154,7 @@ impl m3_s {
 
 /** Litre per second */
 unit L_s physical
-impl L_s {
+impl <L_s> {
     LongName: "Litre per Second"
     Symbol: "L/s"
     BaseUnit: false

@@ -1,0 +1,6 @@
+module main
+fn Worker() void { let arena := Arena.WithCapacity(64u) }
+fn main() void {
+    let worker := spawn Worker()
+    detach worker
+}

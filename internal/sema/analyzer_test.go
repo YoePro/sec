@@ -1519,15 +1519,15 @@ unit Hertz physical
 unit Packet uint other
 type Frequency decimal<Hertz>
 
-let hz: Hertz := 10
+let hz: <Hertz> := 10
 let f: Frequency := 10
-let p: Packet := 3u
+let p: <Packet> := 3u
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	hertz := analyzer.types["Hertz"]
+	hertz := analyzer.unitTypeEntry("Hertz")
 	if !hertz.Named || hertz.Kind != DecimalType || hertz.Unit != "Hertz" {
 		t.Fatalf("wrong Hertz type: %+v", hertz)
 	}
@@ -1539,7 +1539,7 @@ let p: Packet := 3u
 		t.Fatalf("Hertz should be a physical unit. got=%q", unit.Category)
 	}
 
-	packet := analyzer.types["Packet"]
+	packet := analyzer.unitTypeEntry("Packet")
 	if !packet.Named || packet.Kind != UintType || packet.Unit != "Packet" {
 		t.Fatalf("wrong Packet type: %+v", packet)
 	}
@@ -1555,7 +1555,7 @@ func TestUnitMetadataAllowsDimensionlessInlineComment(t *testing.T) {
 	input := `
 unit dB decimal physical
 
-impl dB {
+impl <dB> {
 	dimension: [] // Dimensionless ratio
 	scale: 1 // Identity scale
 	system: SI // Standard unit system
@@ -1576,7 +1576,7 @@ func TestUnitDefaultNumericMetadataAndUnitOnlyType(t *testing.T) {
 unit s physical
 unit hp float physical
 
-impl hp {
+impl <hp> {
 	LongName: "Horsepower"
 	Symbol: "hp"
 	BaseUnit: false
@@ -1744,7 +1744,7 @@ let identity: <widget/widget> := 1
 func TestUnitMetadataKindAndTransforms(t *testing.T) {
 	input := `
 unit Celsius physical
-impl Celsius {
+impl <Celsius> {
 	Kind: temperature
 	Scale: 1
 	Transform: affine
@@ -1753,7 +1753,7 @@ impl Celsius {
 }
 
 unit Decibel ratio
-impl Decibel {
+impl <Decibel> {
 	Kind: ratio
 	Transform: logarithmic
 	LogBase: 10
@@ -1778,11 +1778,11 @@ func TestUnitMetadataRejectsIncompleteTransforms(t *testing.T) {
 module main
 
 unit BadAffine physical
-impl BadAffine {
+impl <BadAffine> {
 	Transform: affine
 }
 unit BadLog ratio
-impl BadLog {
+impl <BadLog> {
 	Transform: logarithmic
 	LogBase: 10
 }
@@ -1799,18 +1799,18 @@ func TestUnitConversionRequiresCompatibleDimensions(t *testing.T) {
 module main
 
 unit Distance decimal physical
-impl Distance {
+impl <Distance> {
 	dimension: [length^1]
 	scale: 1
 	system: SI
 
-	fn Distance(value: Duration) Distance {
+	fn Distance(value: <Duration>) <Distance> {
 		return 0
 	}
 }
 
 unit Duration decimal physical
-impl Duration {
+impl <Duration> {
 	dimension: [time^1]
 	scale: 1
 	system: SI
@@ -1819,7 +1819,7 @@ impl Duration {
 
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	expected := []string{
-		"unit conversion Distance from Duration requires compatible dimensions at 10:21",
+		"unit conversion Distance from decimal<Duration> requires compatible dimensions at 10:21",
 	}
 	assertSemaErrors(t, errors, expected)
 	if errors[0].ID != diagnostics.IncompatibleUnitConversion {
@@ -1838,19 +1838,19 @@ func TestIntegerBackedUnitConversionUsesDimensionValidation(t *testing.T) {
 module main
 
 unit Packet uint other
-impl Packet {
+impl <Packet> {
 	dimension: [packet^1]
 	scale: 1
 	system: Domain
 }
 
 unit Batch uint other
-impl Batch {
+impl <Batch> {
 	dimension: [packet^1]
 	scale: 10
 	system: Domain
 
-	fn Batch(value: Packet) Batch {
+	fn Batch(value: <Packet>) <Batch> {
 		return 0
 	}
 }
@@ -1858,8 +1858,8 @@ impl Batch {
 
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	assertSemaErrors(t, errors, nil)
-	if len(analyzer.functions["Batch"]) != 1 {
-		t.Fatalf("integer-backed unit conversion was not registered: %+v", analyzer.functions["Batch"])
+	if len(analyzer.functions["<Batch>"]) != 1 {
+		t.Fatalf("integer-backed unit conversion was not registered: %+v", analyzer.functions["<Batch>"])
 	}
 }
 
@@ -2009,8 +2009,8 @@ type MotorProtocol register[8] {
 @address(0x40021000)
 let mut motorProtocol: MotorProtocol
 
-fn StartMotor(speed: rpm) void {
-	motorProtocol.Speed = speed
+fn StartMotor(speed: uint16<rpm>) void {
+	motorProtocol.Speed = bit[4](speed)<rpm>
 	motorProtocol.Enabled = true
 }
 `
@@ -2505,17 +2505,19 @@ fn Update() void {
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, []string{
-		"value 36893488147419103232 overflows bit[65] at 20:17",
-		"value 340282366920938463463374607431768211456 overflows bit[128] at 23:18",
+		"value 36893488147419103232 does not fit register field Value (bit[65], 0..36893488147419103231) at 20:17",
+		"value 340282366920938463463374607431768211456 does not fit register field Value (bit[128], 0..340282366920938463463374607431768211455) at 23:18",
 	})
 
-	field65 := analyzer.types["Wide65"].RegisterFields[0].Type
-	if field65.Name != "bit[65]" || field65.BitWidth != 65 || field65.MaxInteger.String() != "36893488147419103231" {
-		t.Fatalf("bit[65] field type = %+v", field65)
+	// MD-046: a field observation is the smallest unsigned carrier with the
+	// exact field interval retained.
+	field65 := analyzer.types["Wide65"].RegisterFields[0]
+	if field65.Type.Name != "uint128" || field65.Width != 65 || field65.Type.MaxInteger.String() != "36893488147419103231" {
+		t.Fatalf("bit[65] field = %+v", field65)
 	}
-	field128 := analyzer.types["Wide128"].RegisterFields[0].Type
-	if field128.Name != "bit[128]" || field128.BitWidth != 128 || field128.MaxInteger.String() != "340282366920938463463374607431768211455" {
-		t.Fatalf("bit[128] field type = %+v", field128)
+	field128 := analyzer.types["Wide128"].RegisterFields[0]
+	if field128.Type.Name != "uint128" || field128.Width != 128 || field128.Type.MaxInteger.String() != "340282366920938463463374607431768211455" {
+		t.Fatalf("bit[128] field = %+v", field128)
 	}
 }
 
@@ -2568,7 +2570,7 @@ fn Test() void {
 		"register field BadField.Value width must be positive at 13:13",
 		"reserved register field _ cannot be accessed at 36:30",
 		"cannot assign to field Running on read-only addressed register motorStatus at 37:14",
-		"value 19 overflows rpm at 38:24",
+		"value 19 does not fit register field Speed (bit[4]<rpm>, 0..15) at 38:24",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2617,7 +2619,7 @@ let value: TimerValue
 fn Test() void {
 	config.Start(ClockSource.PLL_CLK)
 	let active := config.IsRunning
-	let count: ticks := value.Ticks
+	let count: uint32<ticks> := value.Ticks
 }
 `
 
@@ -2807,17 +2809,17 @@ func TestUnitsV2KindBlocksDimensionOnlyAddition(t *testing.T) {
 	input := `
 unit Hz physical
 unit rpm physical
-impl Hz {
+impl <Hz> {
  Dimension: [time^-1]
  Kind: frequency
  Scale: 1
 }
-impl rpm {
+impl <rpm> {
  Dimension: [time^-1]
  Kind: rotational_frequency
  Scale: 1 / 60
 }
-fn Invalid(left: Hz, right: rpm) Hz { return left + right }
+fn Invalid(left: <Hz>, right: <rpm>) <Hz> { return left + right }
 `
 	errors := analyzeSource(t, input)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "incompatible unit dimension or Kind") {
@@ -2830,22 +2832,22 @@ func TestUnitsV2StructuralResultDoesNotInventNamedUnit(t *testing.T) {
 unit m physical
 unit s physical
 unit Speed physical
-impl m {
+impl <m> {
  Dimension: [length^1]
  Kind: length
  Scale: 1
 }
-impl s {
+impl <s> {
  Dimension: [time^1]
  Kind: duration
  Scale: 1
 }
-impl Speed {
+impl <Speed> {
  Dimension: [length^1, time^-1]
  Kind: speed
  Scale: 1
 }
-fn Derive(distance: m, elapsed: s) decimal<m/s> { return distance / elapsed }
+fn Derive(distance: <m>, elapsed: <s>) decimal<m/s> { return distance / elapsed }
 `
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
@@ -2860,7 +2862,7 @@ func TestUnitsV2PointAndLogarithmicArithmetic(t *testing.T) {
 unit C physical
 unit DeltaC physical
 unit dB ratio
-impl C {
+impl <C> {
  Dimension: [temperature^1]
  Kind: temperature
  Scale: 1
@@ -2868,12 +2870,12 @@ impl C {
  Offset: 27315 / 100
  Origin: absolute_zero
 }
-impl DeltaC {
+impl <DeltaC> {
  Dimension: [temperature^1]
  Kind: temperature
  Scale: 1
 }
-impl dB {
+impl <dB> {
  Dimension: []
  Kind: ratio
  Transform: logarithmic
@@ -2881,10 +2883,10 @@ impl dB {
  LogFactor: 10
  Reference: 1
 }
-fn Shift(point: C, delta: DeltaC) C { return point + delta }
-fn Difference(left: C, right: C) void { let difference := left - right }
-fn Bad(left: C, right: C) C { return left + right }
-fn BadLog(left: dB, right: dB) dB { return left + right }
+fn Shift(point: <C>, delta: <DeltaC>) <C> { return point + delta }
+fn Difference(left: <C>, right: <C>) void { let difference := left - right }
+fn Bad(left: <C>, right: <C>) <C> { return left + right }
+fn BadLog(left: <dB>, right: <dB>) <dB> { return left + right }
 `
 	errors := analyzeSource(t, input)
 	if len(errors) != 2 || !strings.Contains(errors[0].Message, "two unit points") || !strings.Contains(errors[1].Message, "logarithmic") {
@@ -2896,8 +2898,8 @@ func TestUnitsV2CurrencyDerivationWarnsAndFactorConversionValidates(t *testing.T
 	input := `
 unit EUR currency
 unit SEK currency
-fn Convert(value: SEK, factor: decimal<EUR/SEK>) EUR { return EUR(value, factor) }
-fn Rate(value: EUR, seconds: decimal) decimal<EUR> { return value / seconds }
+fn Convert(value: <SEK>, factor: decimal<EUR/SEK>) <EUR> { return <EUR>(value, factor) }
+fn Rate(value: <EUR>, seconds: decimal) decimal<EUR> { return value / seconds }
 `
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
@@ -2910,11 +2912,11 @@ func TestUnitsV2RejectsNonPositiveOrInexactMetadata(t *testing.T) {
 	input := `
 unit Zero physical
 unit Dynamic physical
-impl Zero {
+impl <Zero> {
  Dimension: [length^1]
  Scale: 0
 }
-impl Dynamic {
+impl <Dynamic> {
  Dimension: [length^1]
  Scale: runtime_value
 }
@@ -2929,17 +2931,17 @@ func TestUnitsV2RejectsLossyImplicitFixedConversion(t *testing.T) {
 	input := `
 unit Whole physical
 unit Third physical
-impl Whole {
+impl <Whole> {
  Dimension: [length^1]
  Kind: length
  Scale: 1
 }
-impl Third {
+impl <Third> {
  Dimension: [length^1]
  Kind: length
  Scale: 1 / 3
 }
-fn Add(left: Whole, right: Third) Whole { return left + right }
+fn Add(left: <Whole>, right: <Third>) <Whole> { return left + right }
 `
 	errors := analyzeSource(t, input)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "without loss") {
@@ -2952,7 +2954,7 @@ func TestUnitsV2FactorConversionRejectsWrongAlgebra(t *testing.T) {
 unit EUR currency
 unit SEK currency
 unit s physical
-fn Invalid(value: SEK, factor: decimal<s>) EUR { return EUR(value, factor) }
+fn Invalid(value: <SEK>, factor: decimal<s>) <EUR> { return <EUR>(value, factor) }
 `
 	errors := analyzeSource(t, input)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "conversion factor") {
@@ -3812,7 +3814,7 @@ func TestCoreStringCanImplementBuiltinString(t *testing.T) {
 
 impl string {
 	fn Len() uint {
-		return self.len
+		return self.Len
 	}
 }
 `
@@ -6009,13 +6011,13 @@ func TestFunctionOverloadsIncludeUnits(t *testing.T) {
 unit V decimal physical
 unit W decimal physical
 
-impl V {
+impl <V> {
 	dimension: [mass^1, length^2, time^-3, electric_current^-1]
 	scale: 1
 	system: SI
 }
 
-impl W {
+impl <W> {
 	dimension: [mass^1, length^2, time^-3]
 	scale: 1
 	system: SI
@@ -6046,13 +6048,13 @@ func TestFunctionOverloadsIncludeNumericKindAndUnits(t *testing.T) {
 unit s decimal physical
 unit Hz decimal physical
 
-impl s {
+impl <s> {
 	dimension: [time^1]
 	scale: 1
 	system: SI
 }
 
-impl Hz {
+impl <Hz> {
 	dimension: [time^-1]
 	scale: 1
 	system: SI
@@ -7499,7 +7501,7 @@ fn Use(value: Node[int]) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"recursive generic type Node[T] has infinite size at 5:2",
+		"Invalid: recursive by-value struct layout has infinite size: Node[T].next (stores Node[T]) -> Node[T] at 5:2, layout declaration Node[T] at 4:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -7518,12 +7520,12 @@ fn Use(value: Node[int]) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"recursive generic type Node[T] has infinite size at 5:2",
+		"Invalid: recursive by-value struct layout has infinite size: Node[T].children (stores Node[T][2]) -> Node[T] at 5:2, layout declaration Node[T] at 4:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestGenericChangingRecursiveInstantiationErrors(t *testing.T) {
+func TestGenericChangingArgumentsHaveRecursiveStorageErrors(t *testing.T) {
 	input := `
 module main
 
@@ -7537,7 +7539,7 @@ fn Use(value: Infinite[int]) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"recursive generic instantiation does not converge for Infinite at 5:2",
+		"Invalid: recursive by-value struct layout has infinite size: Infinite[T].next (stores Infinite[T[]]) -> Infinite[T] at 5:2, layout declaration Infinite[T] at 4:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -8001,10 +8003,10 @@ type Diverging[T] union {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"recursive generic type Direct[T] has infinite size at 5:2",
-		"recursive generic type Named[T] has infinite size at 10:9",
-		"recursive generic type ArrayWrapped[T] has infinite size at 15:2",
-		"recursive generic instantiation does not converge for Diverging at 20:2",
+		"Invalid: recursive by-value union layout has infinite size: Direct[T].Next (stores Direct[T]) -> Direct[T] at 5:2, layout declaration Direct[T] at 4:6",
+		"Invalid: recursive by-value union layout has infinite size: Named[T].Next.value (stores Named[T]) -> Named[T] at 10:9, layout declaration Named[T] at 9:6",
+		"Invalid: recursive by-value union layout has infinite size: ArrayWrapped[T].Next (stores ArrayWrapped[T][2]) -> ArrayWrapped[T] at 15:2, layout declaration ArrayWrapped[T] at 14:6",
+		"Invalid: recursive by-value union layout has infinite size: Diverging[T].Next (stores Diverging[T[]]) -> Diverging[T] at 20:2, layout declaration Diverging[T] at 19:6",
 	})
 }
 
@@ -8282,8 +8284,8 @@ func TestGenericsInvalidFixture(t *testing.T) {
 		`duplicate generic parameter "T" at 11:19`,
 		"unknown generic parameter U in impl target Box at 105:10",
 		"Box requires 1 generic arguments, got 0 at 108:6",
-		"recursive generic type Node[T] has infinite size at 98:5",
-		"recursive generic instantiation does not converge for Infinite at 102:5",
+		"Invalid: recursive by-value struct layout has infinite size: Node[T].next (stores Node[T]) -> Node[T] at 98:5, layout declaration Node[T] at 97:6",
+		"Invalid: recursive by-value struct layout has infinite size: Infinite[T].next (stores Infinite[T[]]) -> Infinite[T] at 102:5, layout declaration Infinite[T] at 101:6",
 		"generic methods with additional type parameters are not supported yet at 112:8",
 		"Box requires 1 generic arguments, got 0 at 61:35",
 		"Box requires 1 generic arguments, got 2 at 64:35",
@@ -10704,10 +10706,10 @@ fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 
 fn Println(s: string) void {
 	unsafe {
-		_sysWrite(1, s.ptr, s.len)
+		_sysWrite(1, s.Ptr, s.Len)
 
 		let nl := "\n"
-		_sysWrite(1, nl.ptr, 1)
+		_sysWrite(1, nl.Ptr, 1)
 	}
 }
 `
@@ -10721,13 +10723,13 @@ func TestPtrMemberRequiresUnsafe(t *testing.T) {
 module main
 
 fn Invalid(value: int) RawPtr[int] {
-	return value.ptr
+	return value.Ptr
 }
 `
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"member ptr requires unsafe at 5:15",
+		"member Ptr requires unsafe at 5:15",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10742,19 +10744,19 @@ type Packet struct {
 
 fn IntPointer(value: int) RawPtr[int] {
 	unsafe {
-		return value.ptr
+		return value.Ptr
 	}
 }
 
 fn FieldPointer(packet: Packet) RawPtr[int] {
 	unsafe {
-		return packet.value.ptr
+		return packet.value.Ptr
 	}
 }
 
 fn StringPointer(value: string) RawPtr[byte] {
 	unsafe {
-		return value.ptr
+		return value.Ptr
 	}
 }
 `
@@ -11391,7 +11393,7 @@ fn Use(values: int[]) int {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	packet := analyzer.types["Packet"]
+	packet := analyzer.unitTypeEntry("Packet")
 	if len(packet.Fields) != 1 || packet.Fields[0].Type.Kind != ArrayType || packet.Fields[0].Type.ArrayShape != ArrayShapeDynamic || packet.Fields[0].Type.ArrayLengthDecimal != "" {
 		t.Fatalf("Packet.payload should be owned byte[] array, got %+v", packet.Fields)
 	}

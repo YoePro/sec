@@ -1,0 +1,16 @@
+module main
+
+fn Not(value: bool) bool { return !value }
+fn Double(value: bool) bool { return !!value }
+fn Probe() bool { return false }
+fn Once() bool { return !Probe() }
+fn EqualNegated(left: bool, right: bool) bool { return !left == !right }
+fn Choice(value: bool) bool {
+    if !value { return !false }
+    return !true
+}
+fn Stored(value: bool) bool {
+    let mut result := !value
+    result = !result
+    return result
+}

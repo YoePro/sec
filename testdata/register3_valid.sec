@@ -3,7 +3,7 @@ module raspberry_Matter
 /** Decibel-milliwatts for RF signal strength */
 unit dBm physical
 
-impl dBm {
+impl <dBm> {
     LongName: "Decibel-milliwatt"
     Symbol: "dBm"
     BaseUnit: false
@@ -102,7 +102,7 @@ impl MatterStatus {
     // Property returning the raw signal strength safely typed with its unit
     property Rssi: dBm {
         get {
-            return dBm(self.SignalStrength)
+            return <dBm>(self.SignalStrength)
         }
     }
 }
@@ -138,5 +138,5 @@ fn ResetMatterHat() void {
 
 fn MonitorNetwork() void {
     let isProvisioned: bool := MATTER_HAT.IsReady
-    let currentSignal: dBm := MATTER_HAT.Rssi
+    let currentSignal: <dBm> := MATTER_HAT.Rssi
 }

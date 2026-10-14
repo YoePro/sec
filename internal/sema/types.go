@@ -985,13 +985,7 @@ func newBuiltinTypes() map[string]Type {
 			EnumDefault: "UndeclaredValue",
 		},
 		"ContractError": {Name: "ContractError", Kind: StructType},
-		"CollectionError": {
-			Name:       "CollectionError",
-			Kind:       EnumType,
-			Underlying: "uint",
-			EnumValues: []string{"AllocationFailed", "CapacityExceeded", "SizeOverflow"},
-			EnumConsts: builtinEnumConsts([]string{"AllocationFailed", "CapacityExceeded", "SizeOverflow"}),
-		},
+		"CollectionError": builtinCollectionErrorType(),
 		"Option": {
 			Name:              "Option",
 			Kind:              UnionType,

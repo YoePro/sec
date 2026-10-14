@@ -272,6 +272,23 @@ const (
 	// ProjectInvalidVersion reports invalid structured manifest versions.
 	// Rules: rules/projects/projects.md — §§8–11,48(1–3).
 	ProjectInvalidVersion = "S1150"
+	// ProjectInvalidBoundary rejects nested project manifests during discovery.
+	// Rules: rules/projects/projects.md — §§4,48(1–3).
+	ProjectInvalidBoundary = "S1154"
+	// DynamicArrayLiteralInvalid rejects nonempty literals targeting an owning T[].
+	// Rules: rules/collections/collections.md — §5.6a; rules/types/types.md — contextual empty literals (MD-027).
+	DynamicArrayLiteralInvalid = "S1155"
+	// FillElementNotCopyable rejects repeated-copy construction or replacement
+	// when the element type has no ordinary infallible copying operation.
+	// Rules: rules/compiler/compiler_known_members.md — Contextual fill;
+	// rules/collections/collections.md — §7.9 Slice Fill.
+	FillElementNotCopyable = "S1156"
+	// UnknownCallTarget identifies a failed function/type call lookup.
+	// Rules: rules/projects/modules.md — §21; rules/declarations/static.md — static methods.
+	UnknownCallTarget = "S1157"
+	// ImportedModuleMismatch rejects conflicting module headers in one import.
+	// Rules: rules/projects/modules.md — §§3,9,21.
+	ImportedModuleMismatch = "S1158"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -298,6 +315,11 @@ var registry = map[string]Definition{
 	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	ProjectInvalidVersion:                 {ID: ProjectInvalidVersion, Name: "projects.invalid-version", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
+	ProjectInvalidBoundary:                {ID: ProjectInvalidBoundary, Name: "projects.invalid-project-boundary", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
+	DynamicArrayLiteralInvalid:            {ID: DynamicArrayLiteralInvalid, Name: "collections.dynamic-array-literal-invalid", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
+	FillElementNotCopyable:                {ID: FillElementNotCopyable, Name: "collections.fill-element-not-copyable", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
+	UnknownCallTarget:                     {ID: UnknownCallTarget, Name: "names.unknown-call-target", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	ImportedModuleMismatch:                {ID: ImportedModuleMismatch, Name: "modules.inconsistent-source-module", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
 	ProjectSourceLayout:                   {ID: ProjectSourceLayout, Name: "projects.invalid-source-layout", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	ProjectRootModuleMismatch:             {ID: ProjectRootModuleMismatch, Name: "projects.root-module-name-mismatch", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	DefaultCycle:                          {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},

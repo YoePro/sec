@@ -1,0 +1,13 @@
+module main
+
+fn Unused() void { let arena := Arena.WithCapacity(64u) }
+
+fn Recursive(value: int) int {
+    if value == 0 { return 0 }
+    return Recursive(value - 1)
+}
+
+fn main() void {
+    let value := Recursive(3)
+    discard value
+}

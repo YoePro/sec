@@ -255,6 +255,7 @@ func loopHeaderReferenceOrigins(entry map[string]Symbol, body map[string]Symbol,
 // referenceTypeWithOrigin copies all represented dependencies onto a derived type.
 // Rules: rules/memory/arena.md — §§38,44; rules/memory/lifetime_analysis.md — §8.1.
 func referenceTypeWithOrigin(target Type, source Type) Type {
+	target.ArenaDomainID = source.ArenaDomainID
 	target.ReferenceOriginAlternatives = append([]ReferenceOriginAlternative(nil), source.ReferenceOriginAlternatives...)
 	target.ReferenceOriginName = source.ReferenceOriginName
 	target.ReferenceOriginToken = source.ReferenceOriginToken
@@ -323,4 +324,35 @@ func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, le
 // Rules: rules/memory/lifetime_analysis.md — §8.1; rules/collections/collections.md — Slices.
 func typeCarriesReferenceOrigin(typ Type) bool {
 	return typ.Kind == ReferenceType || typ.Kind == SliceType
+}
+
+// seedParameterReferenceOrigin binds caller-owned provenance and a canonical
+// symbolic ArenaDomain before aliases or moves can rename a parameter holder.
+// Rules: rules/memory/reference_model.md — Provenance;
+// rules/memory/arena.md — §§4.2,44,68(3)-(4).
+func (a *Analyzer) seedParameterReferenceOrigin(function Function, param FunctionParameter) {
+	if !typeCarriesReferenceOrigin(param.Type) {
+		return
+	}
+	if isArenaReferenceType(param.Type) {
+		symbol := a.symbols[param.Name]
+		symbol.Type.ArenaDomainID = a.newArenaDomainID(param.Token, "parameter")
+		a.symbols[param.Name] = symbol
+	}
+	placeType := param.Type
+	if param.Type.Kind == ReferenceType && param.Type.Element != nil {
+		placeType = *param.Type.Element
+	}
+	place := Place{
+		Root:        param.Name,
+		RootToken:   param.Token,
+		Type:        placeType,
+		Mutable:     param.Type.ReferenceMutable || param.MutableRef,
+		Addressable: true,
+	}
+	a.localRefContainers[param.Name] = localOriginWithPlaces(localReferenceOrigin{
+		Name:    param.Name,
+		Token:   param.Token,
+		Mutable: param.Type.ReferenceMutable,
+	}, []Place{place})
 }

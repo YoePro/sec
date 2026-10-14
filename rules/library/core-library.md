@@ -870,13 +870,16 @@ enum RoundingMode {
 }
 ```
 
-An explicit conversion that accepts a rounding policy takes it as a
-`RoundingMode` argument and applies it exactly once to the exact mathematical
-result; no mode is ever selected implicitly. The time-quantity conversion
-`duration(q, mode)` is defined in `rules/types/temporal.md` § 5.6. The
-rounding policy of general unit conversions (MD-047) remains open and must
-reuse this enum. `stdlib/math` rounding functions are separate and do not
-declare another enum.
+`RoundingMode` belongs to core's numeric API, not to `core/error.sec`, and is
+available without importing `stdlib/math`. An explicit conversion that accepts
+a rounding policy takes it as a `RoundingMode` argument and applies it exactly
+once to the exact mathematical result; no mode is ever selected implicitly.
+Numeric and unit conversions (`T(value, mode)`, `T<U>(value, mode)`) are
+defined in `rules/types/units.md` "Explicit rounding" (MD-047, 2026-10-13) and
+the time-quantity conversion `duration(q, mode)` in
+`rules/types/temporal.md` § 5.6. An ordinary `math.Round()` belongs to
+`stdlib/math` and consumes this enum; its overload family is specified by the
+`stdlib/math` rulebook, not here, and no other rounding enum exists.
 
 ---
 

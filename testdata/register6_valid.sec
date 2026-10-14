@@ -7,7 +7,7 @@ module tmp126_driver
 /** Degree Celsius for relative thermodynamic temperature */
 unit DegC physical
 
-impl DegC {
+impl <DegC> {
     LongName: "DegreeCelsius"
     Symbol: "°C"
     BaseUnit: false
@@ -88,7 +88,7 @@ impl TmpResultBuffer {
     // Read-only property that return temperature safely typed in °C
     property Temperature: DegC {
         get {
-            return DegC(self.RawTemp)
+            return <DegC>(self.RawTemp)
         }
     }
 }
@@ -137,5 +137,5 @@ fn ReadTmp126Temperature() void {
     let crcFailed: bool := TMP126_STAT.HasCrcFailed
 
     // 3. Read temperature with full unit safety
-    let currentTemp: DegC := TMP126_RESULT.Temperature
+    let currentTemp: <DegC> := TMP126_RESULT.Temperature
 }

@@ -14,9 +14,9 @@ fn Shape(value: int[3]) int[2] { return value }
 fn Dimension(value: decimal<DiagnosticTime>) decimal<DiagnosticLength> { return value }
 fn Conversion(value: bool) int { return int(value) }
 
-impl DiagnosticLength {
+impl <DiagnosticLength> {
  Dimension: [length^1]
 }
-impl DiagnosticTime {
+impl <DiagnosticTime> {
  Dimension: [time^1]
 }

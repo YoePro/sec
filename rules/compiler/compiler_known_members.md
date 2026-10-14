@@ -2805,8 +2805,14 @@ source code, followed by the member and ID, category, rule section, receiver
 pattern, effects, unsafe requirement, target restriction, legacy spellings,
 structural-mutation fact, and documentation, and ends with the signature line
 where navigation places the cursor. The VS Code extension presents it through
-a read-only content provider. Signatures are the registry's generic forms;
-receiver-instantiated signatures remain pending.
+a read-only content provider. Receiver-instantiated signatures are implemented
+(2026-10-14): element, key, value and carrier parameters retain their concrete
+nominal types, while method-local generic parameters remain generic. Navigation
+adds an instance query to the stable member-ID URI so different receiver types
+cannot overwrite each other's definitions. The presentation cache is bounded;
+an evicted instance requires renewed navigation. ID-only requests retain the
+generic registry definition. `CompilerKnownDocumentationForType` generates
+derived documentation using the same synthetic-definition renderer.
 
 ---
 

@@ -1,0 +1,5 @@
+module main
+
+type Bridge struct {
+    back: Cross[int]
+}

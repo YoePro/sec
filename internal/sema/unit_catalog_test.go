@@ -93,7 +93,7 @@ func TestUnitCatalogKinds(t *testing.T) {
 	}
 	for _, source := range []string{
 		"fn Same(value: decimal<Hz>) decimal<kHz> { return value }",
-		"fn Explicit(value: decimal<J>) decimal<Nm> { return Nm(value) }",
+		"fn Explicit(value: decimal<J>) decimal<Nm> { return <Nm>(value) }",
 	} {
 		consumer := parser.New(lexer.New(source)).ParseProgram()
 		combined := &ast.Program{Statements: append(append([]ast.Statement{}, program.Statements...), consumer.Statements...)}

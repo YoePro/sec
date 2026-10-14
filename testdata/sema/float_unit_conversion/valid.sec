@@ -1,12 +1,12 @@
 module main
 unit FloatSource physical
 unit FloatTarget physical
-impl FloatSource {
+impl <FloatSource> {
  Dimension: [length^1]
  Kind: length
  Scale: 2
 }
-impl FloatTarget {
+impl <FloatTarget> {
  Dimension: [length^1]
  Kind: length
  Scale: 1

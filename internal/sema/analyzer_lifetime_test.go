@@ -385,6 +385,7 @@ fn StillBorrowed() void {
 	if resource is available {
 		let shared := ref resource
 	}
+	discard exclusive
 }
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot create shared reference to resource while it is mutably borrowed") {

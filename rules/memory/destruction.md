@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-08-28
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-15
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/destruction.md`
 - **Replaces:** `rules/memory/destruction.txt`
@@ -352,6 +352,8 @@ Consume(<-package.Payload)
 
 **§ 10.3(2)** This restriction guarantees that a completed-value `free` body may rely on the complete valid ownership state promised by the type's lifecycle contract.
 
+**§ 10.3(3)** The same restriction applies to `discard` of an owned field or nested owned sub-Place of such a value, whatever the field's destruction class; whole-value destruction and legal whole-value `discard` run `free` and then the field cleanup (MD-025.2, 2026-10-15, `rules/corrections/applied/md025-custom-free-correction-20261015.md` § 3).
+
 ---
 
 ## § 11 Conditional availability and conditional destruction
@@ -542,6 +544,10 @@ type Resources struct {
 
 **§ 15.4(4)** The compiler must reject a statically provable manual release that would cause the same owned resource to be released again by automatic field destruction.
 
+**§ 15.4(5)** A proof rests on sound semantic facts: the identity and provenance of the resource, a known release or consume effect on that same resource on a reachable path, and an already scheduled automatic release. A coincidental handle value, a function name such as `Close`, or a guess about opaque FFI behavior is no proof; where the compiler cannot prove what an operation does it must not claim a double release, and the existing FFI, unsafe and resource contracts still apply. A proven conflict is a compile-time error naming the releasing operation and the automatically destroyed field. In Sec 0.1 the compiler proves the case it owns: `discard self.Field` of a nontrivially destroyed owned field inside `free`, which § 15.5 destroys again (MD-025.5, 2026-10-15, `rules/corrections/applied/md025-custom-free-correction-20261015.md` § 6).
+
+**§ 15.4(6)** This narrower rule is distinct from the general exact-once destruction rule (§ 4): every still-owned nontrivial value has exactly one terminal destruction on each path where it exists, and the compiler's own cleanup never releases it twice. A manual release inside `free` does not mark the field unavailable, and writing `free` never turns off field destruction. A legal `discard` of an already unavailable whole Place stays a no-op (§ 12.2), not a second destruction.
+
 ### § 15.5 Order
 
 **§ 15.5(1)** Destruction of a completed custom-`free` type occurs conceptually as:
@@ -563,6 +569,19 @@ release/deallocate representation-owned storage where required
 ### § 15.7 Fallibility
 
 **§ 15.7(1)** `free` has no ordinary return value and must not return `Result`.
+
+**§ 15.7(1a)** A `free` body may contain a bare `return`, an ordinary early exit producing no value; `return expression` — including `return true`, `return Ok(...)` and `return Err(...)` — is an error. On every bare-`return` path the body's completed locals and temporaries are cleaned up and destruction continues with the same field destruction and storage cleanup of § 15.5 as after normal completion; an early return never skips them. `defer` stays forbidden inside `free` (§ 15.6) (MD-025.6, 2026-10-15, `rules/corrections/applied/md025-custom-free-correction-20261015.md` § 7).
+
+```sec
+impl Connection {
+    free {
+        if self.Handle == 0 {
+            return
+        }
+        ReleaseHandle(self.Handle)
+    }
+}
+```
 
 **§ 15.7(2)** Destruction cannot require a caller to recover from a cleanup failure after the value's ownership lifetime has already ended.
 

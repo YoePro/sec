@@ -1,0 +1,196 @@
+module capacitywhile
+
+fn Change(values: ref mut list[int]) void { values.Clear() }
+
+fn CaseStrict(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseReverse(values: ref list[int]) void {
+    let mut i := 0u
+    while values.Capacity > i {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseNegated(values: ref list[int]) void {
+    let mut i := 0u
+    while !(i >= values.Capacity) {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseInclusive(values: ref list[int]) void {
+    assert values.Len == values.Capacity
+    let mut i := 0u
+    while i <= values.Capacity {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseEqual(values: ref list[int]) void {
+    assert values.Len == values.Capacity
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseConditionEqual(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity && values.Len == values.Capacity {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseInnerEqual(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        assert values.Len == values.Capacity
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseConditionGuard(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity && i < values.Len {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseInnerGuard(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        if i < values.Len { discard values[i] }
+        i += 1u
+    }
+}
+
+fn CaseExitGuard(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        if i >= values.Len { break }
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseAssertGuard(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        assert i < values.Len
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseOther(values: ref list[int], other: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard other[i]
+        i += 1u
+    }
+}
+
+fn CaseOr(values: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity || flag {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseIndexChanged(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        i = 0u
+        discard values[i]
+        break
+    }
+}
+
+fn CaseDeferred(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        defer { discard values[i] }
+        break
+    }
+}
+
+fn CaseClosure(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        let action := capture(values, i) fn() void { discard values[i] }
+        discard action
+        break
+    }
+}
+
+fn CaseDifferentIndex(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        for j in 0u..<values.Len { discard values[j] }
+        break
+    }
+}
+
+fn CaseShortCircuit(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i < values.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseNoIndex(values: ref list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity { i += 1u }
+}
+
+fn CaseBothBounds(values: ref list[int]) void {
+    assert values.Len == values.Capacity
+    let mut i := 0u
+    while i <= values.Capacity && i < values.Capacity {
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseCallee(values: ref mut list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        Change(values)
+        discard values[i]
+        i += 1u
+    }
+}
+
+fn CaseStaleEquality(values: ref mut list[int]) void {
+    assert values.Len == values.Capacity
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values[i]
+        values.Clear()
+        i += 1u
+    }
+}
+
+fn CaseFreshEquality(values: ref mut list[int]) void {
+    let mut i := 0u
+    while i < values.Capacity && values.Len == values.Capacity {
+        discard values[i]
+        values.Clear()
+        i += 1u
+    }
+}

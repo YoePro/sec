@@ -1,0 +1,44 @@
+module main
+
+type Reading int
+type Address RawPtr[byte]
+
+type Holder struct {
+    pointer: RawPtr[byte],
+}
+
+fn Identity(pointer: RawPtr[byte]) RawPtr[byte] {
+    let copy := pointer
+    return copy
+}
+
+fn Forward(pointer: RawPtr[byte]) RawPtr[byte] {
+    let mut address := pointer
+    address = Identity(pointer)
+    return address
+}
+
+fn Untyped(pointer: RawPtr[void]) RawPtr[void] {
+    return pointer
+}
+
+fn NominalPointee(pointer: RawPtr[Reading]) RawPtr[Reading] {
+    return pointer
+}
+
+fn NominalAddress(pointer: Address) Address {
+    return pointer
+}
+
+fn Nested(pointer: RawPtr[RawPtr[byte]]) RawPtr[RawPtr[byte]] {
+    return pointer
+}
+
+fn Reference(pointer: ref RawPtr[byte]) void {
+}
+
+fn Aggregate(pointer: RawPtr[byte]) RawPtr[byte] {
+    let holder := Holder { pointer: pointer }
+    let addresses := [holder.pointer, pointer]
+    return addresses[0]
+}

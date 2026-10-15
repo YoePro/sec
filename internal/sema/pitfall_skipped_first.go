@@ -8,7 +8,8 @@ import (
 // inspectSkippedFirstElement recognizes the canonical start-at-one traversal
 // over a collection's Len. It reports only when the same resolved induction
 // binding directly indexes that collection. A predecessor access in the loop
-// or a dominating direct access to element zero suppresses the advisory.
+// or a dominating unconditional access to element zero suppresses the advisory
+// while canonical collection-shape effects preserve that earlier witness.
 //
 // Rules:
 //   - rules/analysis/pitfall_analysis.md — "Skipped-first-element advisory"
@@ -66,33 +67,25 @@ func (b *pitfallBuilder) inspectSkippedFirstElement(loop *ast.ForStatement, prec
 
 	if predecessor != nil {
 		b.suppressSkippedFirstElement(&finding, "a predecessor access explains the start-at-one traversal", predecessor.Token)
-	} else if zero := b.dominatingZeroElementAccess(preceding, collection); zero != nil {
-		b.suppressSkippedFirstElement(&finding, "element zero is handled on the preceding dominating path", zero.Token)
+	} else if witnesses := b.dominatingZeroElementAccesses(preceding, collection); len(witnesses) != 0 {
+		sources := make([]lexer.Token, 0, len(witnesses))
+		for _, access := range witnesses {
+			sources = append(sources, access.Token)
+		}
+		b.suppressSkippedFirstElement(&finding, "element zero is handled on every preceding continuing path", sources...)
 	}
 	b.add(finding)
 }
 
-func (b *pitfallBuilder) suppressSkippedFirstElement(finding *PitfallFinding, reason string, source lexer.Token) {
-	evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: reason, Source: source}
+// suppressSkippedFirstElement retains an intent witness as explicit evidence
+// against an advisory rather than declaring the source traversal invalid.
+// Rules: rules/analysis/pitfall_analysis.md — "Suppressing evidence".
+func (b *pitfallBuilder) suppressSkippedFirstElement(finding *PitfallFinding, reason string, sources ...lexer.Token) {
 	finding.State = PitfallStateSuppressed
-	finding.EvidenceAgainst = []PitfallEvidence{evidence}
-	finding.Suppression = &PitfallSuppression{Reason: reason, Evidence: []PitfallEvidence{evidence}}
-}
-
-// dominatingZeroElementAccess deliberately accepts only straight-line
-// statements in the same block. An access nested in a conditional does not
-// establish that element zero is handled on every path reaching the loop.
-func (b *pitfallBuilder) dominatingZeroElementAccess(preceding []ast.Statement, collection string) *ast.IndexExpression {
-	for _, statement := range preceding {
-		if !pitfallStraightLineStatement(statement) {
-			continue
-		}
-		for _, index := range indexesInStatement(statement) {
-			indexedCollection, sameCollection := b.expressionIdentity(index.Left)
-			if sameCollection && indexedCollection == collection && b.pitfallIntegerEquals(index.Index, 0) {
-				return index
-			}
-		}
+	finding.Suppression = &PitfallSuppression{Reason: reason}
+	for _, source := range sources {
+		evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: reason, Source: source}
+		finding.EvidenceAgainst = append(finding.EvidenceAgainst, evidence)
+		finding.Suppression.Evidence = append(finding.Suppression.Evidence, evidence)
 	}
-	return nil
 }

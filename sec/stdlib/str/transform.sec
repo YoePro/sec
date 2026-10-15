@@ -227,11 +227,11 @@ fn FilterIndexed(value: string, predicate: fn(uint, rune) bool) Result[string, C
  * Allocates storage for the resulting string.
  * The callback may perform additional allocations.
  */
-fn Collect(value: string, transform: fn(rune) string) Result[string, CollectionError] {
+fn Collect(value: string, transform: fn(rune) Result[string, CollectionError]) Result[string, CollectionError] {
     let mut builder := try new Builder(value.Len)
 
     for character in value {
-        let mapped := transform(character)
+        let mapped := try transform(character)
         try builder.Append(mapped)
     }
 
@@ -272,12 +272,12 @@ fn Collect(value: string, transform: fn(rune) string) Result[string, CollectionE
  * Allocates storage for the resulting string.
  * The callback may perform additional allocations.
  */
-fn CollectIndexed(value: string, transform: fn(uint, rune) string) Result[string, CollectionError] {
+fn CollectIndexed(value: string, transform: fn(uint, rune) Result[string, CollectionError]) Result[string, CollectionError] {
     let mut builder := try new Builder(value.Len)
     let mut index: uint := 0
 
     for character in value {
-        let mapped := transform(index, character)
+        let mapped := try transform(index, character)
         try builder.Append(mapped)
         index += 1
     }

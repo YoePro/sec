@@ -315,7 +315,7 @@ impl duration {
 
 **Governance tags:** `concurrency.context-v1`, `frontend.temporal-duration`, `frontend.units-v2`
 
-§ 12(1) A time-dimension unit expression may be accepted at a `duration` parameter when the canonical conversion of `rules/types/temporal.md` § 5 (MD-015) proves it exact and in range; an unprovable runtime quantity must be converted explicitly with `try duration(...)`.
+§ 12(1) A time-dimension unit expression may be accepted at a `duration` parameter when the canonical conversion of `rules/types/temporal.md` § 5 (MD-015) accepts it: only a quantity literal such as `250<ms>` is materialized contextually, and an already typed quantity needs a written `duration(...)` (or `try duration(...)` when the conversion can fail).
 
 Examples:
 

@@ -51,6 +51,11 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
 			return fb.lowerPlaceBorrow(reference, plan)
 		}
+		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit && plan.Reborrow {
+			if holder, named := reference.Value.(*ast.Identifier); named {
+				return fb.lowerExplicitReborrow(reference, holder, plan)
+			}
+		}
 		if _, explicit := expr.(*ast.RefExpression); !explicit && plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
 			// package 15 § 59: Sema resolved an implicit borrow of an owned
 			// Place passed to a ref or ref mut parameter.

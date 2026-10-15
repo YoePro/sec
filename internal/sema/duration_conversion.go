@@ -243,7 +243,7 @@ func (a *Analyzer) planDurationConversion(expr ast.Expression, source Type, roun
 		}
 	}
 	if !explicit {
-		return DurationConversionPlan{}, fmt.Sprintf("the compiler cannot prove that every value of %s converts exactly to an in-range duration; write try duration(...) to check it", typeDisplayName(source)), false
+		return DurationConversionPlan{}, "an already typed quantity is not converted to duration implicitly", false
 	}
 	plan.Proof = DurationConversionChecked
 	plan.Failure = ConversionFailureOutOfRange
@@ -311,12 +311,14 @@ func (a *Analyzer) roundingModeArgument(arg ast.Expression) (string, bool) {
 	return member.Property.Value, true
 }
 
-// contextualDurationConversion accepts a time quantity where duration is
-// expected (typed initialization, call argument) only when the conversion is
-// proved exact and in range; it records the plan. A bare quantity never
-// becomes a duration without such a context.
+// contextualDurationConversion materializes a quantity *literal* where
+// duration is expected (typed initialization, assignment, call argument) when
+// its exact conversion is valid; it records the plan. An already typed
+// quantity — a binding, parameter or any other non-literal expression — never
+// becomes duration implicitly, even when its value is provable (MD-015
+// 2026-10-15, temporal.md § 5.5).
 func (a *Analyzer) contextualDurationConversion(target, value Type, expr ast.Expression, record bool) bool {
-	if expr == nil || !a.isDurationType(target) || !hasUnitSemantics(value) {
+	if expr == nil || !a.isDurationType(target) || !hasUnitSemantics(value) || !isQuantityLiteralExpression(expr) {
 		return false
 	}
 	plan, _, ok := a.planDurationConversion(expr, value, "", false)
@@ -332,6 +334,9 @@ func (a *Analyzer) durationConversionRejection(target, value Type, expr ast.Expr
 	if expr == nil || !a.isDurationType(target) || !hasUnitSemantics(value) {
 		return ""
 	}
+	if !isQuantityLiteralExpression(expr) {
+		return "an already typed quantity is not converted to duration implicitly; only a literal such as 5<s> is. Write duration(" + expr.String() + "), or try duration(" + expr.String() + ") when the conversion can fail"
+	}
 	_, reason, ok := a.planDurationConversion(expr, value, "", false)
 	if ok {
 		return ""
@@ -340,3 +345,15 @@ func (a *Analyzer) durationConversionRejection(target, value Type, expr ast.Expr
 }
 
 const durationConversionHelp = "A time quantity converts to duration only when its exact nanosecond count is a whole number inside the signed 64-bit range: use whole nanoseconds, pass a RoundingMode (duration(q, RoundingMode.Ceil)), or check a runtime value with try duration(q)."
+
+// isQuantityLiteralExpression reports a quantity literal, optionally signed:
+// the only expressions a duration context may materialize implicitly.
+func isQuantityLiteralExpression(expr ast.Expression) bool {
+	switch node := expr.(type) {
+	case *ast.QuantityLiteral:
+		return true
+	case *ast.PrefixExpression:
+		return (node.Operator == "-" || node.Operator == "+") && isQuantityLiteralExpression(node.Right)
+	}
+	return false
+}

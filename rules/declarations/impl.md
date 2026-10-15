@@ -4,7 +4,7 @@
 **Document revision:** 2.2
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-09-07
+**Last updated:** 2026-10-15
 
 **Supersedes:** `rules/declarations/impl.txt`
 
@@ -816,7 +816,20 @@ impl ForeignBuffer {
 - must not allow the complete value to escape or be resurrected;
 - is followed by automatic destruction of remaining initialized owned fields
   according to the destruction rules;
-- exists at most once for the complete merged implementation of a type.
+- exists at most once for the complete merged implementation of a type;
+- may leave early with a bare `return` (never `return value`), after which
+  field destruction still runs (`destruction.md` § 15.7(1a));
+- makes its type MoveOnly (`copy_move.md` § 3.5(6)).
+
+Eligible targets (MD-025.4, 2026-10-15, `rules/corrections/applied/md025-custom-free-correction-20261015.md` § 5): `free` may be
+declared for structs, unions, enums, named scalars, generic named types and
+registers under the ordinary `impl` eligibility rules; a register is not
+excluded by its target category, though hardware, volatile and ISR rules still
+constrain its operations. An interface cannot declare `free` and is not the
+target of an `impl` that supplies one; a concrete type with `free` may still
+implement interfaces. A unit cannot declare `free` (`impl <Unit>` holds only
+metadata and unit functions). A syntactically well-formed `free` on an
+ineligible target is a semantic error.
 
 Detailed destruction, cleanup ordering, partial-move restrictions, and
 deallocation rules are defined by `destruction.md`.

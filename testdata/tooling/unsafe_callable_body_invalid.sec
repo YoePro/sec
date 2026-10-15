@@ -1,0 +1,18 @@
+module main
+
+unsafe fn Leaf() void {
+}
+
+unsafe fn Unmarked(pointer: RawPtr[byte]) void {
+    pointer.Write(1u)
+    Leaf()
+    unsafe {
+        pointer.Write(2u)
+        Leaf()
+    }
+    pointer.Write(3u)
+}
+
+fn Caller() void {
+    Leaf()
+}

@@ -41,8 +41,8 @@ integrations:
       - "Borrow-conflict diagnostics distinguish ownership availability from access authority using canonical Place availability: an available Place is explicitly described as still owned while an active borrow blocks access, and is available is explained as an ownership query rather than a borrow-status test. Shared/mutable borrow creation, owner reads/writes, move/discard, loop-carried conflicts and Arena backing reads share the explanation, with original primary messages and related borrow locations preserved through CLI human/JSON and LSP diagnostics."
       - Borrow-conflict diagnostics expose named source links to borrow creation and the current holder, including moved holders and the previous-iteration origin in loop-carried conflicts. CLI and LSP project these compiler-owned links without a parallel borrow model.
       - "Borrow conflicts identify creation/holder and conflicting access and explain canonical Place overlap: equal storage, whole/sub-Place containment, or conservative dynamic/range/property/alternative provenance. Call-bounded reservations and defer retention use the same compiler-owned explanation and navigable origins without an LSP overlap model."
+      - Stable mandatory semantic IDs S1159–S1167 identify shared/mutable borrow creation conflicts, owner-read conflicts, mutation/replacement conflicts, ownership-ending move/discard/destruction conflicts, loop-carried conflicts, invalid mutable authority, unknown borrow provenance and escaping borrowed Arena carriers (2026-10-15). Semantic producers select explicit categories; loop-carried facts select their dedicated ID without parsing message text. Existing origin/holder/overlap mentor explanations and ordinary reference/closure escape IDs remain intact. CLI human/JSON and LSP preserve the same identities, help and source links, including call reservations, defer retention, Arena backing access and mutable authority. Unknown-provenance classification is tested at the canonical Place producer without fabricating a referent origin. Conflict rendering is extracted into a focused sibling file.
     remaining:
-      - register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape
       - surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful
       - offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics
       - preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting
@@ -54,8 +54,18 @@ integrations:
       - LSP hover shows shared versus mutable borrow and canonical referent Place
       - LSP handles finite alternative origins conservatively without presenting one false definitive origin
       - formatter round-trips ref/ref mut function, match, and capture syntax
-    revised: "2026-10-12"
+    revised: "2026-10-15"
     verification:
+      - command: go test ./cmd/lsp -count=1
+        result: passed on 2026-10-15; full language-server regression suite
+      - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'BorrowDiagnostic|BorrowAuthority|AdditionalBorrowDiagnostic|BorrowConflict|OwnershipNavigation|Mentor|CallArguments|Call.*Borrow|ArenaFromBuffer|BorrowedArena' -count=1
+        result: passed on 2026-10-15; final mentor, borrow, call, defer, navigation and Arena regression coverage
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'BorrowDiagnostic|BorrowAuthority|BorrowConflictUnknown|AdditionalBorrowDiagnostic' -count=1
+        result: passed on 2026-10-15; all new categories and existing escape identity are checked, with CLI JSON at all seven frontend gates and human/LSP identity parity
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler -count=1
+        result: passed on 2026-10-15; full suites retain prior semantic decisions, primary messages and origin/holder links with registered borrow identities
       - command: go vet ./...
         result: passed on 2026-10-12
       - command: go test ./internal/sema ./internal/ir/semantic ./internal/codegen/llvm ./internal/lowering/secmlir ./cmd/compiler ./cmd/lsp -count=1
@@ -82,6 +92,12 @@ integrations:
         result: completed on 2026-10-12; all packages except cmd/unicodegen passed. TestGeneratedUnicodeSourceIsCurrent reports the pre-existing generated sec/stdlib/unicode/unicode.sec as stale; this unrelated library artifact was left untouched.
       - command: go test ./internal/sema ./cmd/lsp ./cmd/compiler -run 'BorrowAuthorityDiagnostics|BorrowedArenaRetains' -count=1
         result: passed on 2026-10-12; seven invalid fixtures/actions distinguish true ownership availability from borrow authority, including Arena backing, and shared owner reads and writes after borrow release remain valid; human/JSON diagnostics at all six frontend gates and LSP retain help and borrow origin; remaining 8 to 7 for this ID and 59 to 58 in tooling.yaml
+    code:
+      - internal/sema/borrow_conflict_diagnostics.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/sema/borrow_diagnostic_ids_test.go
+      - testdata/tooling/borrow_additional_ids_invalid.sec
 
   - id: tooling.copy-move
     area: formatter-lsp-diagnostics-analysis

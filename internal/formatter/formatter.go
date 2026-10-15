@@ -267,6 +267,7 @@ func format(text string, options Options) string {
 	result = formatExecutableBlocks(result, options.indentationWidth())
 	result = formatCSTRoles(result, options.maximumAlignmentPadding())
 	result = formatMultilineInfixLayout(result, options.indentationWidth())
+	result = formatExpressionContinuations(result, options.indentationWidth())
 	// The role pass may widen field, register, and named-type columns; align
 	// trailing comments again against those final columns so a second
 	// formatting pass is a fixed point (rules/tooling/formatter.md §29).

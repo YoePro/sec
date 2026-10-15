@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-13"
+    updated: "2026-10-15"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -76,6 +76,13 @@ integrations:
       - internal/sema/pitfall_foreign.go
       - internal/sema/foreign_extent_provenance.go
       - cmd/compiler/analyse.go
+      - internal/sema/pitfall_block_flow.go
+      - internal/sema/pitfall_capacity_flow.go
+      - internal/sema/pitfall_capacity_length.go
+      - internal/sema/pitfall_while.go
+      - internal/sema/pitfall_capacity_expression.go
+      - internal/sema/pitfall_wrong_bound_source.go
+      - internal/sema/pitfall_zero_element_flow.go
     tests:
       - internal/sema/pitfall_cache_test.go
       - testdata/sema/pitfall_cache_valid.sec
@@ -136,6 +143,23 @@ integrations:
       - cmd/compiler/pitfall_nonempty_flow_test.go
       - cmd/lsp/pitfall_nonempty_flow_test.go
       - testdata/sema/pitfall_nonempty_flow.sec
+      - internal/sema/pitfall_capacity_flow_test.go
+      - cmd/compiler/pitfall_capacity_flow_test.go
+      - cmd/lsp/pitfall_capacity_flow_test.go
+      - testdata/sema/pitfall_capacity_flow.sec
+      - internal/sema/pitfall_capacity_while_test.go
+      - testdata/sema/pitfall_capacity_while.sec
+      - internal/sema/pitfall_capacity_expression_test.go
+      - testdata/sema/pitfall_capacity_expressions.sec
+      - testdata/sema/pitfall_capacity_shortcircuit_invalid.sec
+      - internal/sema/pitfall_inclusive_bound_source_test.go
+      - cmd/compiler/pitfall_inclusive_bound_source_test.go
+      - cmd/lsp/pitfall_inclusive_bound_source_test.go
+      - testdata/sema/pitfall_inclusive_bound_source.sec
+      - internal/sema/pitfall_zero_element_flow_test.go
+      - testdata/sema/pitfall_zero_element_flow.sec
+      - cmd/compiler/pitfall_zero_element_flow_test.go
+      - cmd/lsp/pitfall_zero_element_flow_test.go
     implemented:
       - canonical idiom suggestions are a shared value-only action contract distinguishing range membership with in and half-open traversal with ..<; publication prefers supported canonical replacements over explanation-only actions without changing confidence, severity, validity, analysis depth or automatic-fix proof requirements, and suppressed findings carry no preferred idiom
       - interval membership, inclusive-length endpoint, fragile inclusive Len-1 and omitted-last-element producers publish their canonical suggestions through the same preference gate; omitted-last-element suggestions now include the complete half-open replacement, while behavior-changing intent edits remain SuggestedEdit and certified equivalent rewrites remain ProvenFix
@@ -213,18 +237,105 @@ integrations:
       - cache hits replay findings through current safety/ownership publication and reconstruct current counts/coverage, including empty complete body results without persisting global NotEvaluated/Pending states; cold/warm validity, evidence/actions/suppression, FFI inputs and evaluations are equivalent, and analyzer request context is restored after every indexed run
       - cache lifetime and complete prerequisite revision production belong to the calling compiler service; this explicit in-memory integration does not activate default CLI/LSP caching or persistent checkpoint/storage policy
       - final-element non-empty suppression consumes resolved positive fixed extents, notEmpty and positive inherited minLen/exactLen contracts; guard and assert facts dominate later length-preserving statements and nested branches, while canonical assignment, structural mutation, mutable/opaque call and loop invalidation revoke flow proofs; callable and deferred bodies establish their own facts, and cache revisions require expression types and operation contracts
+      - Capacity-equals-length suppression consumes dominating assertions and continuing branch proofs across nested blocks, including false/negated conditions and ordered short-circuit evaluation. Canonical collection/parent replacement, structural and mutable/opaque call effects and loop backedges revoke stale witnesses; element writes preserve them, and deferred/callable bodies establish independent proofs. Local-bound, manual-while and contract extensions remain separately listed.
+      - Manual while capacity traversals correlate compiler-known Capacity with stable collection/index Places, normalize strict/inclusive/reversed/negated comparisons and deduplicate equivalent bounds. Canonical per-access guards suppress live-Len checks and valid strict Len==Capacity proofs; inclusive endpoints remain advisory, loop equality is re-established each iteration, stale/unknown relationships and independently executed or unproven expression-local conditional accesses are withheld. Diagnostics and suggested edits reuse the shared pitfall owner and remain non-automatic.
+      - Short-circuit RHS capacity accesses consume canonical strict-Len guards from true && and false || paths, including negation, nested and reversed comparisons. Exact access/index/collection identity and operand order retain outer protection without leaking across sibling expressions, while mutable effects, wrong boundaries and independent execution provide no guessed proof. Suppression evidence is preserved in cold/warm reports; the capacity rule requires operator-semantics revisions and cache contract v5.
+      - short-circuit Len == Capacity witnesses protect exact RHS accesses in strict capacity-bounded while traversals, including reversed equality, negation, false-path inequality, nested conjunctions and disjunctions; witnesses remain separate from strict-Len guards so inclusive capacity endpoints retain advice, and wrong collections, unrelated expressions, late checks, mutation, changed indexes and independent execution cannot fabricate suppression; body cache contract v6 invalidates prior optional results
+      - direct Capacity-offset accesses consume short-circuit equality witnesses in true && and false || RHS expressions, including reversed/negated equality and nested logical paths; proof state is scoped to the expression and invalidated by subsequent mutable effects, with fresh ordered guards able to re-establish it. Wrong branches/collections, late checks, siblings and independently executed bodies retain advisory results; an exact Capacity index remains ProvenInvalid despite equality. Optional proof evaluation is isolated from mandatory bounds reachability, and body cache contract v7 invalidates earlier results.
+      - inclusive direct-index range loops bounded by another collection's compiler-known Len receive optional wrong-bound-source advice; suppression requires indexed.Len > bound.Len rather than equality or >=, with mirrored comparisons, exit guards and enclosing conditions supported. Canonical collection/parent mutation and mutable-call effects revoke relation proofs before and inside the loop. Suggested actions require a half-open range and do not offer a misleading member-only replacement. Parallel/same-collection uses remain with their owning analysis, unsupported offset and explicit-step domains remain unknown, prerequisite revisions include expression types/operator semantics, and optional body cache contract v8 invalidates older results.
+      - inclusive cross-collection bound-source analysis accepts explicit positive integer constant steps, including folded integer expressions, as canonical ascending progression evidence. Strict indexed.Len > bound.Len proofs suppress intent findings; equality/non-strict proofs and collection mutation retain advice. Runtime steps remain outside this normalized domain. CLI and LSP preserve shared proof/suggestion policy, and optional body cache contract v9 invalidates results from before this domain extension.
+      - dominating element-zero intent witnesses are searched backward from start-at-one traversals and revoked by canonical collection/parent replacement, structural mutation and mutable/opaque call effects; reads and element writes preserve the witness, and a fresh unconditional zero access can re-establish it after mutation. Conditional logical RHS, match arms, callable/spawn and deferred bodies do not establish same-block dominance; unconditional logical LHS accesses can. This remains optional Standard/Deep advice with Interactive exclusion, shared CLI/LSP presentation and cache contract v10, consuming expression-type, operation-contract and operator-semantics prerequisite revisions.
+      - skipped-first-element intent witnesses join over every continuing if/else path, including nested branches, canonical constant-true reachability and return-only siblings. Each continuing branch must establish fresh element-zero handling; branch-local mutation revokes stale witnesses, fresh handling after mutation can restore them, and exiting-branch mutation cannot erase proof of the continuing path. Every contributing access retains its own suppression evidence/source token. Missing, wrong-collection or deferred branch witnesses and mutations after the join retain advisory results; shared CLI/LSP and body cache contract v11 preserve this evidence.
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
-      - generalize skipped-first-element suppression beyond the implemented predecessor and same-block dominating element-zero facts to explicit suffix-traversal contracts, mutation-aware dominance, and other canonical intent evidence
       - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
-      - extend collection bound-source correlation to inclusive and offset bounds, bounds held in locals, while loops with manual indexes, and length relations proven by contracts or transitive chains
-      - extend length-versus-capacity reasoning to bounds held in locals, while loops, proofs from contracts, and proofs established in an enclosing block outside an if condition
       - extend structural-mutation-during-indexed-iteration reasoning to while loops with manual indexes, reverse traversal, bounds held in local bindings, mutations through aliases or callees, and user-declared structural operations
       - support explicit Sec FFI contracts, trusted imported metadata, generated binding metadata, and compiler-known platform/library metadata through one canonical FFI fact representation
       - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
+      - "define and implement a dedicated pitfall for callback contracts with an infallible owning string return, such as fn A(v: fn(T) string), that may conceal an allocation-failure propagation requirement; recommend fn(T) Result[string, E] when recoverable allocation failure must reach the caller, with E covering the relevant allocation error; define evidence, confidence and suppression using canonical callable target/effect/error-flow facts, distinguishing unknown allocation behavior from proven allocation and suppressing callbacks proven allocation-free or already handling failure under their contract; a string return alone must not imply allocation or a mandatory Result conversion; cover positive, negative, opaque-callback, CLI and LSP cases and avoid automatic signature rewrites without a complete proven caller/callee edit set"
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after zero-element branch-join integration
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'SkippedFirst|ZeroElementFlow|PitfallCache' -count=1
+        result: passed on 2026-10-15 with branch witness joins, multi-source suppression evidence, mutation and exact warm/cold cache regressions plus CLI/LSP presentation
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15 after zero-element continuing-branch proof joins
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty|InclusiveBoundSource|ZeroElementFlow' -count=1
+        result: passed on 2026-10-15; eleven new branch-join cases extend the zero-element fixture to thirty cases, with fourteen suppressions and sixteen advisories at Standard/Deep and no skipped-zero results at Interactive; all branch witness locations survive cold/warm cache replay, mutation and branch-witness edits invalidate one additional body, and CLI/LSP intent policy passes
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'SkippedFirst|ZeroElementFlow|PitfallCache' -count=1
+        result: passed on 2026-10-15 with zero-element mutation, replacement, execution-domain, cache and CLI/LSP regressions
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after zero-element dominance integration
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15 after integrating mutation-aware same-block zero-element intent witnesses
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty|InclusiveBoundSource|ZeroElementFlow' -count=1
+        result: passed on 2026-10-15; 19 zero-element flow cases give seven suppressions and twelve intent advisories at Standard/Deep and no skipped-zero results at Interactive; exact cold/warm cache evidence, single-body read-to-mutation edit invalidation, CLI evidence and LSP Standard-depth disabled actions pass
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after explicit positive constant-step inclusive bound-source integration
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15 after explicit positive constant-step inclusive bound-source integration
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'InclusiveBoundSource' -count=1
+        result: passed on 2026-10-15 after adding positive-step proof evidence and endpoint/step cache invalidation checks; all depths and CLI/LSP boundaries pass
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty|InclusiveBoundSource' -count=1
+        result: passed on 2026-10-15 after adding explicit positive-step inclusive bound-source coverage; 25 cases at all three depths cover seven suppressions, thirteen advisories and five excluded domains, with exact cold/warm equality and single additional body invalidation for length-proof and runtime-to-constant-step edits
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15; complete Sema root suite after inclusive bound-source integration and endpoint-specific semantic identity expectation update
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'WrongBoundSource|InclusiveBoundSource|PitfallCache' -count=1
+        result: passed on 2026-10-15; inclusive endpoint, prior half-open relation, cache and CLI/LSP regressions
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after inclusive bound-source integration
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty|InclusiveBoundSource' -count=1
+        result: passed on 2026-10-15; 18 inclusive bound-source cases at all three depths cover four suppressions, nine advisories and five excluded domains, exact cold/warm cache evidence and one additional body miss on a strict-to-nonstrict proof edit; CLI retains proof evidence and LSP exposes only disabled intent actions
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Capacity|PitfallCache' -count=1
+        result: passed on 2026-10-15 after direct expression-scoped equality integration; capacity flow, while and expression regressions, cold/warm cache evidence, CLI/LSP behavior and exact-Capacity invalidity passed with race detection
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after integrating direct short-circuit capacity-offset proofs
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15 after integrating expression-scoped direct Capacity-offset equality proofs
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty' -count=1
+        result: passed on 2026-10-15 after adding 16 direct short-circuit capacity cases; all three depths, exact warm/cold reports, single-body equality-edit invalidation, CLI/LSP advice counts and exact-Capacity invalidity regression pass
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after integrating expression-local capacity equality witnesses
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15 after integrating expression-local capacity equality witnesses
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Capacity|PitfallCache' -count=1
+        result: passed on 2026-10-15 with short-circuit strict-Len and equality proofs, endpoint and mutation boundaries, CLI/LSP presentation and exact cache evidence
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty' -count=1
+        result: passed on 2026-10-15 with expression-local equality coverage at all three analysis depths, exact cold/warm cache reuse, single-body strict/equality guard edit invalidation, CLI suppression evidence and LSP advisory/action boundaries
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Capacity|PitfallCache' -count=1
+        result: passed on 2026-10-15; capacity flow, while/expression evidence and cache regressions
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15; complete Sema root suite
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty' -count=1
+        result: passed on 2026-10-15; 19 new expression cases at all depths cover eight evidence-backed suppressions, one late-check advisory and ten uncertain/near-miss cases; fresh-AST warm/cold equality and single-body guard-edit invalidation pass, as do CLI counts and LSP suggested actions
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'CapacityWhile|CapacityProof|PitfallCache' -count=1
+        result: passed on 2026-10-15; capacity while traversal, existing equality flow and shared cache regression tests
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Capacity|NonEmpty' -count=1
+        result: passed on 2026-10-15; final pitfall, capacity and non-empty regression suites
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema/... ./cmd/compiler -count=1
+        result: on 2026-10-15 the Sema root, compiler and other Sema subpackages passed; collectionshape failed three array-literal contract tests because nonempty owning-dynamic-array literals are rejected before those legacy expectations. Representative length/unique failures also reproduce with pitfall implementation files overlaid from HEAD, independently of this change.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'CapacityWhile' -count=1
+        result: passed on 2026-10-15; 23 real-source cases across all depths produce five advisories, nine evidence-backed suppressions and nine near misses; warm/cold cache equivalence, CLI report counts and LSP non-automatic suggested actions are covered
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -count=1
+        result: passed on 2026-10-15; complete LSP suite against the final capacity-proof implementation (302.200s)
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'CapacityProof|PitfallCache' -count=1
+        result: passed on 2026-10-15; final capacity-flow and cache regression tests
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -count=1
+        result: passed on 2026-10-15; complete compiler suite after the concurrent explicit-reborrow diagnostic test expectations were updated in the workspace
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|Analyse.*(Capacity|NonEmpty|Guard)|LSP.*(Capacity|NonEmpty)' -count=1
+        result: passed on 2026-10-15; complete matching pitfall regression suites
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema -count=1
+        result: passed on 2026-10-15; complete Sema suite
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'CapacityProof|PitfallCache' -count=1
+        result: passed on 2026-10-15; 21 capacity-flow cases cover 11 suppressions and 10 retained advisories across all depths, exact warm/cold evidence and single-body proof-edit invalidation, CLI counts, LSP diagnostics and non-automatic suggested actions
       - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-13
       - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall|NonEmptyProofs' -count=1
@@ -385,6 +496,10 @@ integrations:
         result: passed on 2026-10-03 with wrong variable and wrong collection guarded, mirrored guards, correctly protecting guards, guarded pairs used beside other accesses, covering conjunctions, enclosing if/while/half-open-loop guards, `<=` guards left to the ineffective-guard rule, nested control flow, and check-without-transfer cases for log-only and mirrored checks versus return, panic, direct and nested re-establishment, `ref mut` passing, different collections, and non-adjacent accesses
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-03 after adding the control-flow guard rules; `sec analyse` over sec/core, io, unicode, net/dns, and net/websocket reports no control-flow guard findings
+    partial:
+      - length-versus-capacity analysis has dominating equality flow, direct manual-index while traversals, expression-local strict-Len guards and short-circuit equality proofs for while and direct Capacity-offset accesses; local-bound snapshots, contract-backed equality proofs and additional normalized while domains remain unimplemented
+      - collection bound-source correlation supports direct half-open and inclusive compiler-known Len bounds, including explicit positive constant steps, with exact collection/binding identity and endpoint-sensitive length proofs; offset bounds and indexes, runtime or descending-step inclusive domains, bounds held in locals, while loops with manual indexes, and contract-backed or transitive length relations remain unimplemented
+      - skipped-first-element suppression has mutation-aware element-zero evidence and joins witnesses across preceding if/else branches using canonical continuing-path facts, plus canonical predecessor intent; explicit suffix-traversal contracts, inheriting intent into nested execution scopes, additional control-flow joins, further predecessor execution/effect precision and other canonical intent evidence remain unimplemented
 
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
@@ -1163,19 +1278,20 @@ integrations:
 
   - id: analysis.unsafe
     status: partial
-    revised: "2026-10-10"
+    revised: "2026-10-15"
     rules:
       - rules/memory/unsafe.md
+      - rules/platform/inline_assembly.md
     remaining:
       - build trust-provenance graph
       - propagate unsafe callable compatibility through interfaces/generics/dynamic dispatch and through unsafe function values once an unsafe function type exists (MD-059); named function values are covered, and interface requirements and impl methods have no unsafe form yet
       - integrate canonical effects beyond the verified @noPanic/@noAlloc/@noBlock contracts (MayIO, MayAccessVolatile and the other § 15(2) effects have no unsafe-specific facts yet)
       - "reject compiler-known false caller obligations even inside unsafe beyond the proven-null raw-pointer dereference slice: alignment, lifetime/dangling, range, alias and representation obligations, null facts carried through copies, fields and calls, and proven-null raw-to-safe conversion (raw_pointers.md § 18(5), unsafe.md § 21(3)-(5), § 22(4))"
-      - "known hole (verified 2026-10-10): Sema treats the whole body of an unsafe fn as an unsafe context, so unsafe operations inside it need no explicit unsafe marker, contrary to unsafe.md § 7(1)-(2) and § 4(7); the fix waits for MD-060, which decides how platform asm bodies and named asm outputs migrate"
     implemented:
       - "unsafe function values (2026-10-10, unsafe.md § 39(1)-(2), § 50(2)): FunctionType has no unsafe form (MD-059), so a named unsafe function or unsafe extern function used as a function value, whether inferred, typed by an expected function type, or passed as a callback argument, is mandatory S1141 unsafe.function-value-mismatch, also inside unsafe contexts; direct unsafe calls and safe wrapper functions used as values stay valid (§ 39(3))"
       - "proven null raw-pointer dereference (2026-10-10, raw_pointers.md § 7(6)-(8), § 34; unsafe.md § 8(6), § 21(2)): RawPtr Read, Write, VolatileRead and VolatileWrite through an immutable binding initialized with null, or through a stable binding (never assigned, mutably borrowed or captured) that a dominating `is null` test or the failed edge of `is not null` (else branch, code after an early exit, through !, true && and false ||) fixes as null, is mandatory S1142 unsafe.raw-pointer-null even inside unsafe; unproven, non-null, reassigned and mutable cases stay accepted"
       - "effects remain active through unsafe (2026-10-10, unsafe.md § 15-18): unsafe blocks and unsafe fn wrappers never suppress effect verification; @noPanic (S1092), @noAlloc (S1108) and @noBlock (S1116) stay violated through either form"
+      - "unsafe fn bodies obey unsafe.md §7(1–5) and §4(6–7) as written: caller obligations do not grant lexical unsafe permission, each body starts outside unsafe context and explicit operation/block markers remain required. MD-060 is resolved without an asm exception or output escaping: Linux syscall/process/io sources use explicit blocks, with named asm outputs returned inside their defining block. Sema and LSP reject unmarked raw-pointer operations, unsafe calls and asm; every CLI frontend/emission gate rejects them before output, while explicit named-output asm still emits LLVM. The obsolete LLVM test relying on implicit body permission is migrated to a source fixture and a focused backend regression."
     code:
       - internal/sema/unsafe_callable_values.go
       - internal/sema/raw_pointer_null_proof.go
@@ -1185,11 +1301,39 @@ integrations:
       - internal/sema/analyzer_inference.go
       - internal/sema/analyzer.go
       - internal/diagnostics/diagnostics.go
+      - internal/sema/analyzer_function_body.go
+      - sec/platform/linux/amd64/raw_syscall.sec
+      - sec/platform/linux/arm64/raw_syscall.sec
+      - sec/platform/linux/armv7/raw_syscall.sec
+      - sec/platform/linux/process.sec
+      - sec/stdlib/io/write.linux.amd64.sec
     tests:
       - internal/sema/unsafe_callable_values_test.go
       - internal/sema/raw_pointer_null_proof_test.go
       - internal/diagnostics/diagnostics_test.go
+      - internal/sema/unsafe_function_body_test.go
+      - cmd/compiler/unsafe_function_body_test.go
+      - cmd/lsp/unsafe_function_body_test.go
+      - internal/codegen/llvm/unsafe_function_body_test.go
+      - testdata/codegen/unsafe_named_asm_output.sec
+      - testdata/tooling/unsafe_function_asm_invalid.sec
+      - testdata/tooling/unsafe_function_asm_valid.sec
+      - testdata/tooling/unsafe_callable_body_invalid.sec
+      - testdata/tooling/unsafe_callable_body_valid.sec
+      - testdata/tooling/raw_pointer_unsafe_body_invalid.sec
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-15 across all four complete packages; Sema 14.430s, LLVM 0.038s, compiler 73.755s and LSP 284.768s; explicit unsafe contexts and named asm output codegen regressions are integrated
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after closing the implicit unsafe-body hole
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp -run 'TestUnsafe|TestGenerateUnsafeFunction|TestProvenNull|TestOnlyUnsafeExtern' -count=1
+        result: passed on 2026-10-15 after the named-output asm regression migration and 32/64-bit scalar-plan syscall body checks
+      - command: sec check --target linux-armv7 sec/platform/linux/armv7/raw_syscall.sec
+        result: broader platform-source selection check remains blocked on 2026-10-15 because raw_syscall.sec has an existing arch arm64 selector and no files match linux-armv7; isolated ARMv7 scalar-plan body validation passes
+      - command: sec check --target linux-arm64 sec/platform/linux/arm64/raw_syscall.sec
+        result: broader platform-source selection check remains blocked on 2026-10-15 by pre-existing S1038 for lowercase nominal _sysCall in sibling syscall_numbers.sec; isolated body validation passes and this is independent of the closed unsafe-body hole
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp -run 'TestUnsafe|TestGenerateUnsafeFunction|TestProvenNull|TestOnlyUnsafeExtern' -count=1
+        result: passed on 2026-10-15; unsafe fn grants no body permission, explicit blocks remain valid, unmarked asm is rejected in Sema/LSP and all six CLI frontend/emission commands, named asm output emits LLVM, and Linux syscall bodies pass Sema with 32-bit ARMv7 and 64-bit AMD64/ARM64 scalar plans
       - command: go test ./internal/sema -run 'TestUnsafe|TestProvenNull' -count=1
         result: passed on 2026-10-10 with S1142 for null-initialized, then-branch, early-exit, else-edge and negated-conjunction proofs and acceptance of unproven, non-null, disjunctive, reassigned-parameter and mutable cases; S1141 for typed, inferred, callback-argument, in-unsafe and unsafe-extern function values, valid direct unsafe calls and safe wrapper values, and @noPanic/@noAlloc/@noBlock violations through unsafe blocks and unsafe fn wrappers
       - command: go test ./... -count=1
@@ -1230,10 +1374,10 @@ integrations:
     implemented:
       - deterministic direct function/method returned-reference summaries for supported parameter, receiver, projection, multi-source and aggregate paths
       - supported direct-call instantiation of returned-reference summaries
+      - recursive and mutually recursive returned-reference summaries use synchronous detached callee inputs, so local baseless equations can refine from parameter/receiver/field and finite multi-source base cases without declaration-order dependence. Pending local return calls contribute bottom only during inference; bodyless/foreign callees remain opaque, unseeded cycles become explicit Unknown before consuming bodies, and finite iteration/budget exhaustion conservatively widens unresolved facts. Function/method recursion, swapped parameter alternatives, projected fields, analyzer reuse and mandatory local/unknown lifetime failures are verified through parser/Sema, CLI and LSP; summary inference and call-origin handling live in focused files rather than the analyzer monolith.
     remaining:
       - persist and validate versioned returned-reference/retention metadata for separate compilation
       - support imported modules, function values, indirect target sets, interfaces and generic specializations
-      - support recursive and mutually recursive summary fixed points
       - represent bodyless/opaque callable retention and returned-borrow relationships without source lifetime parameters
       - integrate closure callback, foreign retention, task/thread/deferred-work and ISR execution relationships
     required_tests:
@@ -1242,6 +1386,29 @@ integrations:
       - interface implementation cannot weaken declared reference relationship
       - unknown indirect retention is conservative
       - recursive summary convergence deterministic
+    updated: "2026-10-15"
+    code:
+      - internal/sema/analyzer_reference_summaries.go
+      - internal/sema/reference_summary_round.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/reference_recursive_summaries_test.go
+      - cmd/compiler/reference_recursive_summaries_test.go
+      - cmd/lsp/reference_recursive_summaries_test.go
+      - testdata/sema/reference_recursive_summaries.sec
+      - testdata/sema/reference_recursive_unseeded_invalid.sec
+      - testdata/sema/reference_recursive_local_invalid.sec
+    verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -count=1
+        result: passed on 2026-10-15 across the complete LSP package (285.858s) with the final recursive-reference positive and negative fixtures
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/semantic ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-15 after recursive reference summary integration
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic ./internal/codegen/llvm ./cmd/compiler -count=1
+        result: passed on 2026-10-15 across all four complete packages after recursive returned-reference inference integration and final positive/negative fixtures
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'RecursiveReference|InterproceduralReference|AnalysisPipeline|AnalysisSchedule' -count=1
+        result: passed on 2026-10-15 with recursive/mutual source fixtures, method and projected origins, conservative cycle/local failures, budget exhaustion, analyzer reuse and round isolation
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'RecursiveReference' -count=1
+        result: passed on 2026-10-15; direct/mutual function recursion and static/instance methods, parameter alternatives and field projections, three declaration orders, all depths, repeat/reuse, unseeded cycles, local alternative rejection, budget widening, round isolation and opaque-call exclusion; CLI and LSP agree on valid and invalid fixtures
 
   - id: analysis.arena
     area: arena-domain-epoch-dependency-capacity-effects
@@ -1859,37 +2026,7 @@ integrations:
     integrated: "2026-10-06"
     revised: "2026-10-06"
     audited: "2026-08-11"
-    summary: >-
-      Implements the canonical immutable StackBound result representation with
-      Exact, UpperBound, Unknown and Unbounded classifications, validated
-      nonnegative arbitrary-precision byte counts, defensive count access and
-      Unknown as the zero value. Separate semantic and machine per-callable
-      summary models retain own-frame, transitive maximum and supplied cause
-      evidence in independent callable/CompilationPlan namespaces with detached
-      deterministic snapshots. Direct and closed-target acyclic same-stack call
-      paths compose supplied verified frame facts through the canonical call
-      graph, preserving conservative unknown boundaries and upper-bound
-      precision. Immutable stack budgets identify physical domain, authoritative
-      measurement level and arbitrary-precision availability; explicit
-      comparisons preserve satisfied, exact-excess, upper-bound-unproven,
-      unknown and unbounded facts. A separate immutable RecursionDepthBound
-      model distinguishes exact, finite upper-bound, unknown and proven
-      unbounded depth facts without inferring depth or converting counts into
-      stack bytes. Detached partial stack evidence retains representative known
-      prefixes, independent frame contributors and deterministic paths to every
-      distinct uncertainty boundary without turning them into overall budget
-      proofs. Open callable composition consumes explicit verified contract
-      bounds and no-reentry guarantees under canonical contract/level/plan
-      identities, retaining Unknown for absent or incompatible facts and
-      preserving known targets. Explicit foreign, runtime and compiler-known
-      platform whole-call and runtime-effect contracts now compose at exact
-      site/level/plan identities, including panic paths and verified no-reentry
-      boundaries. Frame producers, recursive solving, contract producers/import,
-      budget policy integration, other diagnostics and tooling remain
-      unimplemented; explicit active-budget diagnostics distinguish proven
-      excess, unavailable budget proofs and proven unbounded demand through
-      registered S1121-S1123 identities. No default CLI stack pass or
-      byte-layout estimator is introduced.
+    summary: Implements the canonical immutable StackBound result representation with Exact, UpperBound, Unknown and Unbounded classifications, validated nonnegative arbitrary-precision byte counts, defensive count access and Unknown as the zero value. Separate semantic and machine per-callable summary models retain own-frame, transitive maximum and supplied cause evidence in independent callable/CompilationPlan namespaces with detached deterministic snapshots. Direct and closed-target acyclic same-stack call paths compose supplied verified frame facts through the canonical call graph, preserving conservative unknown boundaries and upper-bound precision. Immutable stack budgets identify physical domain, authoritative measurement level and arbitrary-precision availability; explicit comparisons preserve satisfied, exact-excess, upper-bound-unproven, unknown and unbounded facts. A separate immutable RecursionDepthBound model distinguishes exact, finite upper-bound, unknown and proven unbounded depth facts without inferring depth or converting counts into stack bytes. Detached partial stack evidence retains representative known prefixes, independent frame contributors and deterministic paths to every distinct uncertainty boundary without turning them into overall budget proofs. Open callable composition consumes explicit verified contract bounds and no-reentry guarantees under canonical contract/level/plan identities, retaining Unknown for absent or incompatible facts and preserving known targets. Explicit foreign, runtime and compiler-known platform whole-call and runtime-effect contracts now compose at exact site/level/plan identities, including panic paths and verified no-reentry boundaries. Frame producers, automatic recursion-depth proof production, contract producers/import, budget policy integration, other diagnostics and tooling remain unimplemented; explicit active-budget diagnostics distinguish proven excess, unavailable budget proofs and proven unbounded demand through registered S1121-S1123 identities. No default CLI stack pass or byte-layout estimator is introduced. Versioned stack-summary archives now preserve semantic and machine own-frame/maximum bounds, proof classifications and cause/evidence paths under independent level/plan identities. Import requires independently observed signature, specialization, compiler model and dependency fingerprints plus machine ABI; incompatible entries remain misses and malformed artifacts clear prior imports atomically. Artifact storage and lifecycle are explicit driver APIs, not automatic CLI module-metadata loading. Recursive SCC composition now consumes authoritative whole-component active-frame depth proofs with complete canonical invocation coverage, exact graph snapshot/level/plan binding and conservative mismatch fallback. Weighted bounded-walk composition accounts for different cycle costs and outgoing contributions with arbitrary-precision binary exponentiation, deterministic upper bounds and explicit resource-limit Unknown results; automatic initial-input and ranking/progress proof inference remains pending.
     rules:
       - rules/analysis/stack_analysis.md
       - rules/analysis/call_graph.md
@@ -1922,6 +2059,9 @@ integrations:
       - internal/sema/stack_summary.go
       - internal/sema/stackbound/bound.go
       - internal/sema/stack_model.go
+      - internal/sema/stack_persistence.go
+      - internal/sema/stack_recursion_proof.go
+      - internal/sema/stack_recursive_composition.go
     tests:
       - internal/sema/stack_external_contracts_test.go
       - testdata/sema/stack_external_contracts_valid.sec
@@ -1941,6 +2081,9 @@ integrations:
       - testdata/sema/stack_composition_unreachable_invalid.sec
       - internal/sema/stack_summary_test.go
       - internal/sema/stackbound/bound_test.go
+      - internal/sema/stack_persistence_test.go
+      - internal/sema/stack_recursive_composition_test.go
+      - testdata/sema/stack_recursive_composition_valid.sec
     implemented:
       - StackExternalContractStore retains explicit producer-verified foreign/runtime/platform whole-call guarantees bound to canonical invocation, caller, resolved target and source, and runtime-path guarantees bound to canonical caller/effect/source; both levels require an exact CompilationPlan and usable finite bounds with verified NoReentry
       - semantic and machine boundary-composition APIs consume external guarantees without requiring foreign body frames or inferring trust from callable names; whole-call bounds cover only their matching foreign/opaque panic-effect marker, while independent runtime effects require separate guarantees and cannot stand in for opaque callee bodies
@@ -1973,7 +2116,31 @@ integrations:
       - canonical StackBoundKind and opaque immutable StackBound distinguish Exact(bytes), UpperBound(bytes), Unknown and Unbounded without conflating uncertainty with zero or with proven unbounded demand
       - finite constructors validate nonnegative byte counts and preserve arbitrary precision without host-integer overflow; immutable decimal storage detaches input integers and Bytes returns fresh integers only for finite bounds
       - zero-value and explicit Unknown agree, exact zero remains distinct from unknown and an upper bound of zero retains its classification; stable comparable value identity and display preserve proof quality
+      - Versioned size/record-bounded stack-summary archives preserve semantic and CompilationPlan-specific machine own-frame and transitive maximum facts, Exact/UpperBound/Unknown/Unbounded classification, arbitrary-precision counts, maximum causes and nested partial evidence; deterministic ordering and detached store snapshots survive file serialization
+      - Explicit MarshalStackSummaries and LoadStackSummaries APIs require independent signature, specialization, compiler semantic model and semantic dependency fingerprints, with exact plan/level and mandatory machine ABI identity; stale or missing records remain localized cache misses, schema/integrity/malformed-bound/duplicate-scope/evidence errors reject the entire artifact, and every load clears earlier imported proofs before atomic publication. Driver storage/import lifecycle and metadata trust production remain separate integration responsibilities
+      - Deterministic recursive SCC stack composition consumes the canonical same-stack components and actual internal edges, accounting for every live frame, different cycle costs, outgoing calls/runtime contributions and nested ordinary callers; bounded weighted walks use arbitrary-precision max-plus binary exponentiation rather than recursion unrolling, and all finite recursive results remain UpperBound even for ExactDepth
+      - Immutable producer-verified whole-component depth proofs are bound to the exact graph snapshot, measurement level and CompilationPlan, require complete internal invocation coverage and a positive finite live-component-frame count, and are invalidated by graph mutation; absent, stale, conflicting, wrong-level/plan or incomplete proofs, opaque boundaries, missing frame facts and exhausted arithmetic budgets preserve Unknown and independently known evidence. Mathematical ranking/progress and initial-input proof generation/validation remains a producer responsibility, not inferred from coverage alone
     verification:
+      - command: yamlstatus check; yamlstatus fmt -check governance/analysis.yaml; git diff --check
+        result: passed on 2026-10-15 with 0 problems in 47 fragments, canonical analysis formatting, synchronized stack rulebook status and clean whitespace
+      - command: go vet ./internal/sema ./internal/sema/stackbound
+        result: passed on 2026-10-15 after recursive stack composition
+      - command: go test ./cmd/compiler ./cmd/lsp -run TestStack -count=1
+        result: passed on 2026-10-15 with existing CLI and LSP stack diagnostic adapters; automatic stack-pass/root/driver policy remains separately pending
+      - command: go test -race ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-15 with direct/mutual/indirect SCCs, complete transition coverage, exact snapshot/level/plan binding, deterministic registration order, depth beyond uint64, zero frames, opaque/missing-frame Unknown and arithmetic-budget fallback with known evidence
+      - command: go test ./internal/sema ./internal/sema/stackbound -count=1
+        result: passed on 2026-10-15 with complete Sema/stackbound suites after recursive SCC composition, including multi-cycle weighted paths, different frame costs, outgoing contributions, indirect recursion and ordinary callers
+      - command: yamlstatus check; yamlstatus fmt -check governance/analysis.yaml; git diff --check
+        result: passed on 2026-10-15 with 0 problems across 47 fragments, canonical analysis formatting and clean whitespace
+      - command: go vet ./internal/sema ./internal/sema/stackbound
+        result: passed on 2026-10-15
+      - command: go test ./cmd/compiler ./cmd/lsp -run TestStack -count=1
+        result: passed on 2026-10-15 with existing CLI and LSP stack diagnostic adapters
+      - command: go test -race ./internal/sema -run TestStack -count=1
+        result: passed on 2026-10-15 with all stack regressions including persisted summary validation
+      - command: go test ./internal/sema ./internal/sema/stackbound -count=1
+        result: passed on 2026-10-15 with complete Sema and stackbound suites, including file round trips, independent semantic/machine namespaces, arbitrary-precision bounds, detached nested evidence, compatibility misses, malformed/corrupt archives, bounded import and composition equivalence
       - command: go test ./internal/sema/stackbound ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-08 after moving the pure StackBound, RecursionDepthBound and StackBudget values into internal/sema/stackbound (no parent import) with unchanged Sema names kept as aliases in stack_model.go; TestStackBudgetMachineAuthority moved to stack_summary_test.go because it composes Sema summaries
       - command: go test ./internal/sema -count=1
@@ -2082,7 +2249,6 @@ integrations:
       - consume canonical call-graph SCCs for direct, mutual, indirect, callback, and reentrant recursion rather than constructing a parallel call graph
       - support simple finite recursion-depth proofs from canonical constant, range, constrained-type, root-contract, and call-argument transformation facts
       - ensure a recursion progress proof applies to every relevant recursive transition before using it for a finite SCC stack bound
-      - add deterministic recursive SCC stack composition that accounts for different frame costs across different cycles
       - produce/import trusted open callable stack and no-reentry guarantees and attach canonical contract identities to ordinary opaque calls; declaration/import syntax, verification obligations and trust provenance require a normative decision (MD-045)
       - model callable, foreign, runtime, and platform reentry so permitted callback paths can participate in recursive SCCs
       - produce/import verified foreign, runtime and compiler-known platform stack/no-reentry contracts and bind them to canonical invocation or runtime-effect identities; metadata schema, verification obligations and trust provenance remain pending under MD-045
@@ -2091,7 +2257,6 @@ integrations:
       - integrate project/platform budget producers and build policy with the canonical budget model; project manifest syntax, domain binding and profile precedence need a normative decision (MD-044), and callable summaries must not be relabeled as physical-domain proofs before root/nesting composition is implemented
       - revalidate hard machine-stack budgets after target ABI, backend frame layout, spills, saved registers, and outgoing call areas are known
       - add deterministic maximum-cause paths, recursive SCC explanations, depth-source reporting, and major frame-contributor reporting
-      - add versioned persisted semantic and CompilationPlan-specific machine stack summaries for separate compilation
       - add dependency-driven invalidation for body, callee summary, target-set, SCC, layout, lifetime/storage, cleanup, specialization, foreign-contract, CompilationPlan, ABI, and schema changes
       - add symbolic generic stack summaries where sound and instantiate them when size, constant, specialization, and plan inputs become known
       - integrate Interactive, Standard, and Deep analysis budgets with Pending or partial tooling state that is never presented as a verified finite bound
@@ -2100,6 +2265,7 @@ integrations:
       - expose reusable verified stack proofs to build validation, ISR analysis, resource reporting, embedded/platform tooling, and other compiler consumers
       - add required frame, live-range, call-path, recursion, indirect-call, foreign/runtime, storage-accounting, CompilationPlan, budget, separate-compilation, incremental/LSP, performance, and determinism regression tests
       - update implementation-status verification commands when the first conforming vertical slice is integrated
+    updated: "2026-10-15"
 
   - id: sema.isr-analysis
     area: frontend-analysis-and-lowering
@@ -2190,13 +2356,9 @@ integrations:
 
   - id: sema.data-race-analysis
     area: frontend-analysis-and-lowering
-    status: planned
+    status: partial
     audited: "2026-08-11"
-    summary: >-
-      Adds canonical Sec data-race analysis over the concurrency memory model,
-      including symbolic memory-access summaries, Place overlap, execution
-      contexts, synchronization, happens-before reasoning, bounded race
-      candidate pairing, diagnostics, and incremental LSP refinement.
+    summary: Storage-overlap classification is implemented as a reusable consumer of canonical Place facts. Snapshot-qualified immutable locations distinguish Disjoint, Overlap and MayOverlap, retaining uncertainty for missing alias proof and union payloads. Memory-access event production, concurrency and ordering proofs, race detection, diagnostics, driver integration and incremental tooling remain unimplemented.
     rules:
       - rules/analysis/data_races.md
       - rules/concurrency/concurrency_memory_model.md
@@ -2222,7 +2384,6 @@ integrations:
     remaining:
       - add canonical semantic memory-access events carrying Place/provenance, access kind, execution context, atomicity, and source location
       - consume canonical Place/provenance rather than coarse variable identity so fields, constant indices, dynamic indices, slices, and disjoint backing ranges retain precision
-      - add storage-overlap classification that distinguishes Disjoint, Overlap, and MayOverlap without treating lost alias precision as a proven race
       - add finite execution-context abstractions for threads, tasks, repeated spawn sites, foreign callbacks, ISR execution, platform execution, and unknown contexts
       - represent whether one creation-site context class may have multiple overlapping runtime instances so a task body can race with another instance of itself
       - consume canonical program-order, publication, synchronization, completion/join, atomic, platform, and foreign happens-before facts from the concurrency memory model
@@ -2272,6 +2433,25 @@ integrations:
       - add deterministic grouping and representative-cause selection independent of declaration order, worklist order, cache order, or parallel compiler scheduling
       - add required proven-race, race-free, Unknown, failure-to-prove, synchronization, publication/join, Place/provenance, ownership, callable, FFI, ISR, incremental-LSP, performance, and false-positive regression tests
       - update implementation-status verification commands when the first conforming vertical slice is integrated
+    integrated: "2026-10-15"
+    updated: "2026-10-15"
+    implemented:
+      - StorageOverlap and ClassifyStorageOverlap distinguish Disjoint, established Overlap and MayOverlap without deriving a race from alias uncertainty; the zero value is MayOverlap, independent snapshots cannot prove relationships from reused root IDs, and source spellings never prove identity
+      - The shared Place relationship service preserves root, field, exact arbitrary-precision index, statically disjoint range and containment proofs; finite alternative origins retain only unanimous classifications, while missing or ambiguous provenance, unresolved reference/dereference holders, getters, unknown projections, incomplete ranges and unnormalized nested origins remain MayOverlap; union payload names never prove physical disjointness
+    code:
+      - internal/sema/storage_overlap.go
+    tests:
+      - internal/sema/storage_overlap_test.go
+      - testdata/sema/storage_overlap_valid.sec
+    verification:
+      - command: yamlstatus check; yamlstatus fmt -check governance/analysis.yaml; git diff --check
+        result: passed on 2026-10-15 with 0 problems across 47 fragments, canonical analysis formatting and clean whitespace
+      - command: go vet ./internal/sema
+        result: passed on 2026-10-15
+      - command: go test -race ./internal/sema -run 'TestStorageOverlap|TestPlaceRelationship|TestSynchronizationResource' -count=1
+        result: passed on 2026-10-15 with snapshot isolation, same and disjoint storage, containment, arbitrary-precision indexes, slice boundaries, union and alias uncertainty, conservative joins, symmetry, registration-order independence and detached input ownership
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-15 with the complete Sema suite, including canonical source reference plans at Interactive, Standard and Deep depths and Analyzer reuse
 
   - id: sema.deadlock-analysis
     area: frontend-analysis-and-lowering

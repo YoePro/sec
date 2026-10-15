@@ -565,57 +565,6 @@ fn main() int {
 	}
 }
 
-func TestGenerateUnsafeFunctionWithNamedAsmOutput(t *testing.T) {
-	input := `
-module main
-
-unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
-	asm {
-		"syscall"
-
-		inputs:
-			rax(number)
-			rdi(arg1)
-			rsi(arg2)
-			rdx(arg3)
-
-		outputs:
-			rax(result)
-
-		clobbers:
-			rcx
-			r11
-			memory
-	}
-
-	return result
-}
-
-fn main() int {
-	return 0
-}
-`
-
-	program := parseAndAnalyze(t, input)
-	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
-	if err != nil {
-		t.Fatalf("Generate returned error: %v", err)
-	}
-
-	expectedParts := []string{
-		`define i64 @_rawSyscall3(i64 %number, i64 %arg1, i64 %arg2, i64 %arg3)`,
-		`call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"`,
-		`ret i64`,
-		`ret i64`,
-	}
-
-	for _, part := range expectedParts {
-		if !strings.Contains(got, part) {
-			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
-		}
-	}
-}
-
 func TestGeneratePrintlnWithStringPtrAndLen(t *testing.T) {
 	input := `
 module main

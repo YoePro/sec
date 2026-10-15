@@ -68,6 +68,9 @@ func Format(module *Module) string {
 	return out.String()
 }
 func formatType(t Type) string {
+	if t.Kind == TypeRawPointer {
+		return fmt.Sprintf("rawptr<!%d>", t.Element)
+	}
 	if t.Kind == TypeNamed {
 		return fmt.Sprintf("named %q base !%d", t.Identity, t.Base)
 	}

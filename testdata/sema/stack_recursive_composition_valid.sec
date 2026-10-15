@@ -1,0 +1,52 @@
+module recursive_stack
+
+fn A(stop: bool) void {
+    if stop { return }
+    B(true)
+}
+fn B(stop: bool) void {
+    if stop { return }
+    C(true)
+}
+fn C(stop: bool) void {
+    if stop { return }
+    A(true)
+}
+fn Entry() void { A(false) }
+
+fn MultiA(choose: bool, stop: bool) void {
+    if stop { return }
+    if choose { MultiB(true) } else { MultiC(true) }
+}
+fn MultiB(stop: bool) void {
+    if stop { return }
+    MultiA(false, true)
+}
+fn MultiC(stop: bool) void {
+    if stop { return }
+    MultiC(true)
+    MultiA(false, true)
+    Tail()
+}
+fn Tail() void {}
+
+fn Self(stop: bool) void {
+    if stop { return }
+    Self(true)
+}
+fn Indirect(stop: bool) void {
+    if stop { return }
+    let again := Indirect
+    again(true)
+}
+fn Callback(stop: bool, operation: fn(bool) void) void {
+    if stop { return }
+    Callback(true, operation)
+    operation(true)
+}
+extern "C" fn Foreign() void
+fn ForeignCycle(stop: bool) void {
+    if stop { return }
+    ForeignCycle(true)
+    Foreign()
+}

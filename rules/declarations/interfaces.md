@@ -67,6 +67,12 @@ belongs to `free` and the destruction model. A method may still consume an
 ordinary `->` parameter, or mutate/consume an owned member when its receiver
 contract supplies sufficient mutable/exclusive authority.
 
+An interface declares no `free` and is never the target of an `impl` that
+supplies one: it has no completed instance with independently owned fields. A
+concrete type with custom `free` may implement any interface; conformance and
+custom destruction are separate mechanisms (MD-025.4, 2026-10-15,
+`impl.md` § 19).
+
 ### 3.4 Static member
 
 ```sec

@@ -1841,6 +1841,11 @@ func (ur *UnitReferenceExpression) String() string {
 }
 
 type BitExtractionExpression struct {
+	// ArgumentsOpen is the real call parenthesis, retained for source-aware
+	// signature help without reconstructing the callee grammar.
+	// Rules: rules/tooling/lsp.md — "Signature help", "Invalid regions".
+	ArgumentsOpen lexer.Token
+
 	Token lexer.Token
 	Width Expression
 	Value Expression
@@ -1874,6 +1879,11 @@ func (be *BitExtractionExpression) String() string {
 }
 
 type ConversionExpression struct {
+	// ArgumentsOpen is the real call parenthesis, retained for source-aware
+	// signature help without reconstructing the callee grammar.
+	// Rules: rules/tooling/lsp.md — "Signature help", "Invalid regions".
+	ArgumentsOpen lexer.Token
+
 	Token lexer.Token
 	Type  *TypeReference
 	Value Expression
@@ -2010,6 +2020,11 @@ func (ce *CallExpression) String() string {
 }
 
 type RuntimeCallExpression struct {
+	// ArgumentsOpen is the real call parenthesis, retained for source-aware
+	// signature help without reconstructing the callee grammar.
+	// Rules: rules/tooling/lsp.md — "Signature help", "Invalid regions".
+	ArgumentsOpen lexer.Token
+
 	Token     lexer.Token
 	Name      string
 	Arguments []Expression

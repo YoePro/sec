@@ -62,7 +62,7 @@ func (p *Parser) parseForeignQualifiedName() foreignQualifiedName {
 				"a c:: qualification contains no whitespace inside or around ::")
 			valid = false
 		}
-		if segments == 0 && (p.peekToken.Type == lexer.FN || p.peekToken.Lexeme == "flex" || p.peekToken.Lexeme == "callback") {
+		if segments == 0 && (p.peekToken.Type == lexer.FN || p.peekToken.Lexeme == contextualFlex || p.peekToken.Lexeme == contextualCallback) {
 			p.nextToken()
 			p.addDiagnostic(compilerdiagnostics.ParserUnsupportedForeignForm, p.curToken, nil, nil,
 				"c::%s is a distinct foreign form that is not supported yet", p.curToken.Lexeme)

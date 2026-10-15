@@ -21,11 +21,20 @@ func TestArenaInvalidationCLIDiagnostics(t *testing.T) {
 			}
 			_, output, code := runCLIForDiagnostics(t, append(args, "--diagnostic-format=json")...)
 			doc := decodeOccurrenceDocument(t, output)
-			if code != 3 || doc.Summary.Errors != 6 || len(doc.Occurrences) != 6 {
+			// `ref values` over an Arena reference holder is a legal explicit
+			// reborrow and adds Information A2005 occurrences (MD-061).
+			occurrences := doc.Occurrences[:0]
+			for _, value := range doc.Occurrences {
+				if value.ID != nil && *value.ID == diagnostics.ExplicitReborrow {
+					continue
+				}
+				occurrences = append(occurrences, value)
+			}
+			if code != 3 || doc.Summary.Errors != 6 || len(occurrences) != 6 {
 				t.Fatal(code, output)
 			}
 			count := map[string]int{}
-			for _, value := range doc.Occurrences {
+			for _, value := range occurrences {
 				if value.ID == nil {
 					t.Fatal(value)
 				}

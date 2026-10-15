@@ -162,7 +162,7 @@ func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) b
 			continue
 		}
 		place, _ := a.rootPlace(name)
-		a.addBorrowAuthorityConflict(place, token, record, "cannot read %s while its backing is exclusively borrowed by arena %s", name, record.Holder)
+		a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowOwnerReadConflict, "cannot read %s while its backing is exclusively borrowed by arena %s", name, record.Holder)
 		return true
 	}
 	return false
@@ -381,7 +381,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.New requires mutable arena %s", receiver.Value)
+			a.addErrorAtTokenWithMetadata(receiver.Token, diagnostics.BorrowMutableAuthority, "Arena mutation requires a mutable owned binding or ref mut Arena. A shared reference does not grant mutable authority.", "Arena.New requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		elementType, resolved := a.resolveType(expr.GenericArguments[0])
@@ -404,7 +404,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.Alloc requires mutable arena %s", receiver.Value)
+			a.addErrorAtTokenWithMetadata(receiver.Token, diagnostics.BorrowMutableAuthority, "Arena mutation requires a mutable owned binding or ref mut Arena. A shared reference does not grant mutable authority.", "Arena.Alloc requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		countType, _ := a.inferExpressionWithExpected(expr.Arguments[0], a.types["uint"])
@@ -446,7 +446,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.Reset requires mutable arena %s", receiver.Value)
+			a.addErrorAtTokenWithMetadata(receiver.Token, diagnostics.BorrowMutableAuthority, "Arena mutation requires a mutable owned binding or ref mut Arena. A shared reference does not grant mutable authority.", "Arena.Reset requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if a.checkArenaInvalidationDependencies(member.Property.Value, domain, owner, member.Property.Token) {
@@ -468,12 +468,12 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if throughReference {
-			a.addErrorAtTokenWithMetadata(receiver.Token, "", "Release ends the Arena and consumes its owner; call it where the Arena is owned, or use Reset through the reference.",
+			a.addErrorAtTokenWithMetadata(receiver.Token, diagnostics.BorrowOwnershipEndConflict, "Release ends the Arena and consumes its owner; call it where the Arena is owned, or use Reset through the reference.",
 				"Arena.Release cannot consume arena %s through a borrowed reference", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(receiver.Token, "Arena.Release requires mutable arena %s", receiver.Value)
+			a.addErrorAtTokenWithMetadata(receiver.Token, diagnostics.BorrowMutableAuthority, "Arena mutation requires a mutable owned binding or ref mut Arena. A shared reference does not grant mutable authority.", "Arena.Release requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if a.checkArenaInvalidationDependencies(member.Property.Value, domain, owner, member.Property.Token) {
@@ -531,7 +531,7 @@ func (a *Analyzer) rejectBorrowedArenaMove(name string, token lexer.Token) bool 
 	if !borrowed {
 		return false
 	}
-	a.addErrorAtTokenWithMetadataAndPrevious(token, record.Token, "", borrowedArenaHelp,
+	a.addErrorAtTokenWithMetadataAndPrevious(token, record.Token, diagnostics.BorrowOwnershipEndConflict, borrowedArenaHelp,
 		"cannot move arena %s out of its binding while it controls borrowed backing %s", name, record.Root)
 	return true
 }
@@ -553,14 +553,14 @@ func (a *Analyzer) rejectBorrowedArenaReturn(value ast.Expression) bool {
 			return false
 		}
 		if record, borrowed := a.arenaBorrowedBacking(value.Value); borrowed {
-			a.addErrorAtTokenWithMetadataAndPrevious(value.Token, record.Token, "", borrowedArenaHelp,
+			a.addErrorAtTokenWithMetadataAndPrevious(value.Token, record.Token, diagnostics.BorrowEscape, borrowedArenaHelp,
 				"cannot return arena %s: its backing %s is borrowed here and must outlive the Arena", value.Value, record.Root)
 			return true
 		}
 	case *ast.CallExpression:
 		member, ok := value.Callee.(*ast.MemberExpression)
 		if ok && member.Property != nil && member.Property.Value == "FromBuffer" && a.expressionNamesType(member.Object) {
-			a.addErrorAtTokenWithMetadata(value.Token, "", borrowedArenaHelp,
+			a.addErrorAtTokenWithMetadata(value.Token, diagnostics.BorrowEscape, borrowedArenaHelp,
 				"cannot return Arena.FromBuffer(...): its borrowed backing must outlive the Arena")
 			return true
 		}

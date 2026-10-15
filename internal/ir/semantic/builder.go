@@ -242,6 +242,9 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 	if t.Kind == sema.ReferenceType {
 		return b.internReferenceType(t)
 	}
+	if t.Kind == sema.RawPtrType {
+		return b.internRawPointerType(t)
+	}
 	if t.Kind == sema.ResultType && len(t.TypeArgs) == 2 {
 		if t.Name != "Result" && (t.Named || t.Declared) {
 			return 0, &UnsupportedFeatureError{Feature: "nominal Result wrapper " + t.Name, Package: b.maxPackage}
@@ -3415,6 +3418,9 @@ func (fb *functionBuilder) emit(op Operation) {
 	fb.current.Operations = append(fb.current.Operations, op)
 }
 func (fb *functionBuilder) newValue(typ TypeID, own OwnershipClass, loc Location) Value {
+	if isRawPointerType(fb.owner.module.Types, typ) {
+		own = OwnershipRawPointer
+	}
 	v := Value{ID: fb.nextValue, Type: typ, Ownership: own, Location: loc}
 	fb.nextValue++
 	return v

@@ -1,0 +1,13 @@
+module rawpointerinvalid
+
+fn Rejected(opaque: RawPtr[void], ints: RawPtr[int]) void {
+    unsafe {
+        discard opaque.Read()
+        opaque.Write(1)
+        discard opaque.VolatileRead()
+        opaque.VolatileWrite(1)
+        discard opaque.Offset(1)
+        discard opaque.Difference(opaque)
+        discard ints.AddBytes(1)
+    }
+}

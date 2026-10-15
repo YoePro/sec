@@ -1519,6 +1519,13 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 	if place, placed := a.resolvePlace(expr.Value); placed {
 		a.recordReferencePlan(expr, place, expr.Mutable, false, expr.Token)
 	}
+	// MD-061: `ref r`/`ref mut r` over a reference holder is an explicit
+	// reborrow of the holder's referent: ref T (or ref mut T), never a
+	// reference to the holder (ref ref T).
+	if valueType.Kind == ReferenceType && valueType.Element != nil {
+		valueType = *valueType.Element
+		a.reportExplicitReborrow(expr, originName, valueType)
+	}
 	return Type{
 		Name:                        referenceTypeName(valueType, expr.Mutable),
 		Kind:                        ReferenceType,

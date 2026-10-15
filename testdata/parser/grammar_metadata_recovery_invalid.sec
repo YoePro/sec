@@ -1,0 +1,26 @@
+module grammarmetadata
+
+impl Example {
+    bad = 1
+    init() {}
+    bad = 2
+    event Changed using storage
+    bad = 3
+    @noPanic fn Read() int { return 1 }
+}
+
+impl <s> {
+    bad = 4
+    scale: 1
+}
+
+fn Statements() void {
+    ?
+    assert true
+    ?
+    panic "failed"
+    ?
+    ref value
+}
+
+fn After() void {}

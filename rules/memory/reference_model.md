@@ -322,6 +322,8 @@ relocation correctness.
 
 § 12(6) Physical representation is profile-selected.
 
+§ 12(7) `ref r` on a holder `r` of a safe reference reborrows the referent and yields `ref T` (or `ref mut T` from a `ref mut` holder); it does not create a reference to the holder (MD-061, 2026-10-15, `rules/memory/borrowing.md` § 11.4).
+
 ---
 
 ## § 13 `ref mut T`

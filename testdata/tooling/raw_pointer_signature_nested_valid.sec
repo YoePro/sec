@@ -1,0 +1,27 @@
+module rawnested
+
+type Box struct { value: byte }
+impl Box {
+    init(value: byte) { self.value = value }
+}
+
+fn Echo(value: byte) byte { return value }
+fn Count(data: uint[2], text: string) int { return 0 }
+
+fn Nested(pointer: RawPtr[byte], other: RawPtr[byte]) void {
+    unsafe {
+        pointer.Write(other.Read())
+        pointer.Write(Echo(1u))
+        pointer.Offset(Count([1u, 2u], "comma, close)"))
+        /* 😀 */ pointer.Write(1u)
+        pointer.Write((1u))
+        pointer.Write(/* , ) */ 1u)
+        pointer.Write((new Box(1u)).value)
+    }
+}
+
+type Reader struct { value: byte }
+impl Reader {
+    fn Read() byte { return self.value }
+}
+fn Lookalike(reader: Reader) void { discard reader.Read() }

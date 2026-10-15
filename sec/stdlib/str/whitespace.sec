@@ -26,20 +26,269 @@ module str
 
 // TODO: Implement stdlib/str/whitespace.sec
 
+/**
+ * Collapses consecutive Unicode whitespace into single spaces.
+ *
+ * Description:
+ * Replaces each internal sequence of Unicode White_Space
+ * characters with one ASCII space (U+0020).
+ *
+ * Leading and trailing whitespace is removed.
+ * Line breaks are treated as whitespace and are not preserved.
+ *
+ * Non-whitespace Unicode scalar values are preserved
+ * without normalization.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to process.
+ *
+ * Returns:
+ * A newly materialized string containing collapsed whitespace.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ */
 fn CollapseWhitespace(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.Len)
+    let mut pendingSpace := false
+    let mut hasContent := false
+
+    for character in value {
+        if _IsWhitespaceRune(character) {
+            if hasContent {
+                pendingSpace = true
+            }
+            continue
+        }
+
+        if pendingSpace {
+            try builder.Append(32r)
+            pendingSpace = false
+        }
+
+        try builder.Append(character)
+        hasContent = true
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Normalizes horizontal Unicode whitespace to ASCII spaces.
+ *
+ * Description:
+ * Replaces each horizontal Unicode White_Space character
+ * with one ASCII space (U+0020).
+ *
+ * Preserves LF, CR, CRLF, NEL, LS, and PS line separators.
+ * Vertical tab and form feed are treated as whitespace
+ * and replaced with ASCII spaces.
+ *
+ * Does not collapse consecutive whitespace characters
+ * or trim the beginning or end of the string.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to normalize.
+ *
+ * Returns:
+ * A newly materialized string containing normalized
+ * whitespace.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ */
 fn NormalizeWhitespace(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.Len)
+
+    for character in value {
+        if character in [10r, 13r, 133r, 8232r, 8233r] {
+            try builder.Append(character)
+        } else if _IsWhitespaceRune(character) {
+            try builder.Append(32r)
+        } else {
+            try builder.Append(character)
+        }
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Adds an indentation prefix to each line of a string.
+ *
+ * Description:
+ * Prepends prefix to each line, including empty lines.
+ * Recognizes LF, CR, CRLF, NEL, LS, and PS as line breaks.
+ *
+ * Original line separators and Unicode content are preserved.
+ * A trailing line separator does not create an additional
+ * indented empty line.
+ *
+ * Parameters:
+ * - value: The UTF-8 text to indent.
+ * - prefix: The text to prepend to each line.
+ *
+ * Returns:
+ * A newly materialized string containing the indented text.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ */
 fn Indent(value: string, prefix: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.Len)
+    let mut startOfLine := true
+    let mut previousWasCR := false
+
+    for character in value {
+        // CRLF is one line separator, not two.
+        if startOfLine && !(previousWasCR && character == 10r) {
+            try builder.Append(prefix)
+        }
+
+        try builder.Append(character)
+
+        if character == 13r {
+            startOfLine = true
+            previousWasCR = true
+        } else if character == 10r || character == 133r || character == 8232r || character == 8233r {
+            startOfLine = true
+            previousWasCR = false
+        } else {
+            startOfLine = false
+            previousWasCR = false
+        }
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Removes the common indentation from multiline text.
+ *
+ * Description:
+ * Finds the longest identical prefix of ASCII spaces
+ * and tabs shared by all content-bearing lines.
+ *
+ * Removes that prefix from every line that starts
+ * with it.
+ *
+ * Empty and indentation-only lines do not participate
+ * in determining the common indentation.
+ *
+ * Lines containing insufficient or different indentation
+ * are preserved when the common prefix does not match.
+ *
+ * Original line separators are preserved, including
+ * LF, CR, CRLF, NEL, LS, and PS.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 text to dedent.
+ *
+ * Returns:
+ * The text with common indentation removed.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * Allocates a result when indentation is removed.
+ * Does not require a temporary array of lines.
+ */
 fn Dedent(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut common: Option[string] := None()
+    let mut position: uint := 0
+    let mut lineStart: uint := 0
+
+    // First pass: determine the common indentation.
+    for character in value {
+        if character in [10r, 13r, 133r, 8232r, 8233r] {
+            let line := try value.Slice(lineStart, position) {
+                Err(_) => {
+                    panic "Dedent: invalid line bounds"
+                }
+            }
+
+            common = _UpdateDedentPrefix(common, line)
+
+            position += character.Utf8Length
+            lineStart = position
+        } else {
+            position += character.Utf8Length
+        }
+    }
+
+    // Process the final line when no separator follows it.
+    if lineStart < value.Len {
+        let line := try value.Slice(lineStart, value.Len) {
+            Err(_) => {
+                panic "Dedent: invalid final line bounds"
+            }
+        }
+
+        common = _UpdateDedentPrefix(common, line)
+    }
+
+    let indentation := match common {
+        None => {
+            return Ok(value)
+        }
+        Some(prefix) => prefix
+    }
+
+    if indentation.Len == 0 {
+        return Ok(value)
+    }
+
+    // Second pass: construct the dedented text.
+    let mut builder := try new Builder(value.Len)
+
+    position = 0
+    lineStart = 0
+
+    for character in value {
+        if character in [10r, 13r, 133r, 8232r, 8233r] {
+            let line := try value.Slice(lineStart, position) {
+                Err(_) => {
+                    panic "Dedent: invalid output line bounds"
+                }
+            }
+
+            try _AppendDedentedLine(builder, line, indentation)
+
+            // Preserve the original line separator.
+            try builder.Append(character)
+
+            position += character.Utf8Length
+            lineStart = position
+        } else {
+            position += character.Utf8Length
+        }
+    }
+
+    if lineStart < value.Len {
+        let line := try value.Slice(lineStart, value.Len) {
+            Err(_) => {
+                panic "Dedent: invalid output suffix bounds"
+            }
+        }
+
+        try _AppendDedentedLine(builder, line, indentation)
+    }
+
+    return builder.Finish()
 }
 
 fn PadLeft(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
@@ -64,4 +313,140 @@ fn Center(value: string, targetRuneCount: uint, padding: rune) Result[string, Co
 
 fn Center(value: string, targetRuneCount: uint) Result[string, CollectionError] {
     return Err(CollectionError.AllocationFailed)
+}
+
+/**
+ * Determines whether a rune has the Unicode White_Space property.
+ *
+ * Description:
+ * Implements the White_Space property from Unicode 18.0.0.
+ * Does not classify zero-width format characters as whitespace.
+ *
+ * Parameters:
+ * - character: The Unicode scalar value to classify.
+ *
+ * Returns:
+ * True if the rune has the White_Space property.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _IsWhitespaceRune(character: rune) bool {
+    return character in 9r..13r ||
+        character == 32r ||
+        character == 133r ||
+        character == 160r ||
+        character == 5760r ||
+        character in 8192r..8202r ||
+        character in 8232r..8233r ||
+        character == 8239r ||
+        character == 8287r ||
+        character == 12288r
+}
+
+/**
+ * Appends a line after removing the common indentation.
+ *
+ * Description:
+ * Removes the exact indentation prefix when present.
+ * Otherwise preserves the entire line unchanged.
+ *
+ * Parameters:
+ * - builder: Destination for the resulting text.
+ * - line: The line without its line separator.
+ * - indentation: The common indentation to remove.
+ *
+ * Errors:
+ * - CollectionError: Appending the line failed.
+ *
+ * Allocation:
+ * May grow the destination builder.
+ */
+fn _AppendDedentedLine(builder: ref mut Builder, line: string, indentation: string) Result[void, CollectionError] {
+    if line.StartsWith(indentation) {
+        let suffix := try line.Slice(indentation.Len, line.Len) {
+            Err(_) => {
+                panic "Dedent: invalid line suffix bounds"
+            }
+        }
+
+        try builder.Append(suffix)
+    } else {
+        try builder.Append(line)
+    }
+
+    return Ok()
+}
+
+/**
+ * Updates the common indentation prefix using one line.
+ *
+ * Description:
+ * Considers ASCII spaces and tabs as indentation.
+ * Ignores empty and whitespace-only indentation lines.
+ *
+ * The common prefix must match exactly, including
+ * the distinction between spaces and tabs.
+ *
+ * Parameters:
+ * - current: Previously established common indentation.
+ * - line: The line to examine, without its line separator.
+ *
+ * Returns:
+ * The updated common indentation, or None when no
+ * content-bearing line has been encountered.
+ *
+ * Allocation:
+ * Uses non-allocating string slices.
+ */
+fn _UpdateDedentPrefix(current: Option[string], line: string) Option[string] {
+    let mut length: uint := 0
+
+    while length < line.Len {
+        let character := line.ByteAt(length)
+
+        if character != 32 && character != 9 {
+            break
+        }
+
+        length += 1
+    }
+
+    // Ignore empty or indentation-only lines.
+    if length == line.Len {
+        return current
+    }
+
+    let indentation := try line.Slice(0, length) {
+        Err(_) => {
+            panic "Dedent: invalid indentation bounds"
+        }
+    }
+
+    match current {
+        None => {
+            return Some(indentation)
+        }
+        Some(previous) => {
+            let mut matched: uint := 0
+
+            while matched < previous.Len &&
+            matched < indentation.Len {
+                if previous.ByteAt(matched) !=
+                    indentation.ByteAt(matched) {
+                    break
+                }
+
+                matched += 1
+            }
+
+            let shared := try previous.Slice(0, matched) {
+                Err(_) => {
+                    panic "Dedent: invalid common prefix bounds"
+                }
+            }
+
+            return Some(shared)
+        }
+    }
 }

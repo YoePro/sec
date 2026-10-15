@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-26
-- **Last updated:** 2026-08-28
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-15
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/ownership.md`
 - **Replaces:** pre-v2 content at `rules/memory/ownership.md` and the legacy ownership rulebook
@@ -1065,6 +1065,20 @@ cleanup after dismantling the value.
 
 A future rulebook may define an explicit opt-in contract for partial destruction
 of custom-destructor types. Sec 0.1 does not.
+
+Discarding an owned field or nested owned sub-Place of such a value is
+forbidden wherever the corresponding partial move is, whatever the field's
+destruction class (MD-025.2, 2026-10-15, `rules/corrections/applied/md025-custom-free-correction-20261015.md` § 3):
+
+```sec
+discard pair.First        // error: partial destruction
+let first :<- pair.First  // error: partial move
+discard pair              // valid whole-value discard when discardability permits
+```
+
+Field reads, borrows and in-place field mutation that keep the complete value
+valid remain allowed, and a legal discard of an already unavailable whole Place
+stays a no-op (`destruction.md` § 12.2).
 
 ---
 

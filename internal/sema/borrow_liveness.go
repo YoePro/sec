@@ -1,0 +1,204 @@
+package sema
+
+import (
+	"reflect"
+
+	"sec/internal/ast"
+	"sec/internal/lexer"
+)
+
+// Non-lexical borrow liveness for plain reference holders (MD-061 § 4).
+//
+// A borrow lives until its holder's last required use on every path, not
+// until the end of the enclosing block. After each statement the analyzer
+// ends the borrows of a local `ref T` / `ref mut T` holder that can no longer
+// be used. The rule is conservative: a holder stays live when it is named in
+// any later statement of the current or an enclosing block, anywhere in an
+// enclosing loop it was declared outside of (the backedge), inside any defer
+// body or lambda of the function, or when another live local carries the same
+// reference origin without its own borrow record (a derived reference the
+// analysis cannot see). Views, structs and other aggregates holding
+// references keep lexical borrows.
+//
+// Rules:
+//   - rules/memory/borrowing.md — § 8.1 "Compiler-derived liveness"
+//   - rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md — § 4
+
+type statementFrame struct {
+	block *ast.BlockStatement
+	index int
+	depth int
+}
+
+var (
+	lexerTokenType     = reflect.TypeOf(lexer.Token{})
+	identifierNodeType = reflect.TypeOf(&ast.Identifier{})
+	deferNodeType      = reflect.TypeOf(&ast.DeferStatement{})
+	lambdaNodeType     = reflect.TypeOf(&ast.LambdaExpression{})
+)
+
+// identifierUse is the set of identifier names an AST subtree mentions, and
+// the names it mentions inside a defer body or lambda.
+type identifierUse struct {
+	names    map[string]bool
+	deferred map[string]bool
+}
+
+func (a *Analyzer) identifierUseOf(node any) identifierUse {
+	if node == nil {
+		return identifierUse{}
+	}
+	if a.identifierUses == nil {
+		a.identifierUses = map[any]identifierUse{}
+	}
+	if use, ok := a.identifierUses[node]; ok {
+		return use
+	}
+	use := identifierUse{names: map[string]bool{}, deferred: map[string]bool{}}
+	visited := map[uintptr]bool{}
+	var walk func(value reflect.Value, deferred bool)
+	walk = func(value reflect.Value, deferred bool) {
+		switch value.Kind() {
+		case reflect.Interface:
+			if !value.IsNil() {
+				walk(value.Elem(), deferred)
+			}
+		case reflect.Pointer:
+			if value.IsNil() {
+				return
+			}
+			if visited[value.Pointer()] {
+				return
+			}
+			visited[value.Pointer()] = true
+			switch value.Type() {
+			case identifierNodeType:
+				name := value.Interface().(*ast.Identifier).Value
+				use.names[name] = true
+				if deferred {
+					use.deferred[name] = true
+				}
+				return
+			case deferNodeType, lambdaNodeType:
+				deferred = true
+			}
+			walk(value.Elem(), deferred)
+		case reflect.Struct:
+			if value.Type() == lexerTokenType {
+				return
+			}
+			for index := 0; index < value.NumField(); index++ {
+				if value.Type().Field(index).IsExported() {
+					walk(value.Field(index), deferred)
+				}
+			}
+		case reflect.Slice, reflect.Array:
+			for index := 0; index < value.Len(); index++ {
+				walk(value.Index(index), deferred)
+			}
+		case reflect.Map:
+			for _, key := range value.MapKeys() {
+				walk(value.MapIndex(key), deferred)
+			}
+		}
+	}
+	walk(reflect.ValueOf(node), false)
+	a.identifierUses[node] = use
+	return use
+}
+
+// holderUsedLater reports whether name may still be used from the statement
+// the innermost frame points at (inclusive) onward.
+func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
+	if len(a.statementFrames) == 0 {
+		return true
+	}
+	if a.identifierUseOf(a.statementFrames[0].block).deferred[name] {
+		return true
+	}
+	innermost := len(a.statementFrames) - 1
+	for level := innermost; level >= 0; level-- {
+		frame := a.statementFrames[level]
+		if frame.index >= len(frame.block.Statements) {
+			continue
+		}
+		from := frame.index + 1
+		if level == innermost {
+			from = frame.index
+		} else {
+			// frame.block.Statements[frame.index] encloses the deeper frames.
+			// Only statement-level branching constructs separate the paths of
+			// their blocks; a block nested inside an expression is followed by
+			// the rest of that statement, which therefore counts in full. A
+			// loop declared around the holder repeats all of itself.
+			switch enclosing := frame.block.Statements[frame.index].(type) {
+			case *ast.IfStatement, *ast.MatchStatement:
+			case *ast.WhileStatement, *ast.ForStatement:
+				if declaredDepth <= frame.depth && a.identifierUseOf(enclosing).names[name] {
+					return true
+				}
+			default:
+				if a.identifierUseOf(enclosing).names[name] {
+					return true
+				}
+			}
+		}
+		for _, later := range frame.block.Statements[from:] {
+			if a.identifierUseOf(later).names[name] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// releaseDeadReferenceHolders ends the borrows of plain reference holders
+// that have no further required use.
+func (a *Analyzer) releaseDeadReferenceHolders() {
+	if a.summaryPass || len(a.borrows) == 0 {
+		return
+	}
+	holders := map[string]bool{}
+	for _, records := range a.borrows {
+		for _, record := range records {
+			if record.Holder != "" && !record.LoopCarried {
+				holders[record.Holder] = true
+			}
+		}
+	}
+	for holder := range holders {
+		symbol, ok := a.symbols[holder]
+		if !ok || symbol.Type.Kind != ReferenceType || !symbol.Local || symbol.ImplicitMember {
+			continue
+		}
+		if a.holderUsedLater(holder, symbol.ScopeDepth) || a.originSharedWithUntrackedHolder(holder, symbol) {
+			continue
+		}
+		a.endBorrowsHeldBy(holder)
+	}
+}
+
+// originSharedWithUntrackedHolder reports another live local that carries the
+// same reference origin as holder but has no borrow record of its own, so a
+// derived reference would lose its protection if holder's borrow ended.
+func (a *Analyzer) originSharedWithUntrackedHolder(holder string, symbol Symbol) bool {
+	origin := symbol.Type.ReferenceOriginName
+	if origin == "" {
+		return true
+	}
+	recorded := map[string]bool{}
+	for _, records := range a.borrows {
+		for _, record := range records {
+			recorded[record.Holder] = true
+		}
+	}
+	for name, other := range a.symbols {
+		if name == holder || !other.Local || !typeCarriesReferenceOrigin(other.Type) || recorded[name] {
+			continue
+		}
+		if other.Type.ReferenceOriginName == origin && a.holderUsedLater(name, other.ScopeDepth) {
+			return true
+		}
+	}
+	return false
+}

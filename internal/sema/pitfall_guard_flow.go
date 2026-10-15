@@ -152,6 +152,9 @@ func (b *pitfallBuilder) guardedAccesses(block *ast.BlockStatement, guards, witn
 		}
 		guards = b.survivingIndexGuards(guards, statement)
 		guards = append(guards, b.continuationIndexGuards(statement)...)
+		if assertion, ok := statement.(*ast.AssertStatement); ok {
+			guards = append(guards, b.conditionIndexGuards(assertion.Condition)...)
+		}
 		witnesses = b.survivingIndexGuards(witnesses, statement)
 		if !b.analyzer.statementCanFallThrough(statement) {
 			break
@@ -272,10 +275,16 @@ func (b *pitfallBuilder) withLoopIndexGuards(statement ast.Statement, guards []p
 // Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Guards participate in pitfall reasoning".
 func (b *pitfallBuilder) walkIndependentGuardBody(body *ast.BlockStatement) {
 	outer := b.activeIndexGuards
+	outerCapacity := b.activeCapacityEqualities
+	outerWhiles := b.activeCapacityWhiles
+	b.activeCapacityWhiles = nil
+	b.activeCapacityEqualities = nil
 	outerNonEmpty, outerPreceding := b.activeNonEmptyProofs, b.activePreceding
 	b.activeIndexGuards = nil
 	b.activeNonEmptyProofs, b.activePreceding = nil, nil
 	b.walkBlock(body)
 	b.activeIndexGuards = outer
+	b.activeCapacityEqualities = outerCapacity
+	b.activeCapacityWhiles = outerWhiles
 	b.activeNonEmptyProofs, b.activePreceding = outerNonEmpty, outerPreceding
 }

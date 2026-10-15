@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-09-30
+- **Last updated:** 2026-10-15
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
@@ -729,7 +729,9 @@ warning
 error
 ```
 
-§ 18(4) Rule-specific policy may identify the diagnostic by stable ID or symbolic name.
+§ 18(4) Rule-specific policy may identify the diagnostic by stable ID or symbolic name. When both name the same definition, the stable-ID entry applies.
+
+§ 18(4a) Every configurable `Information` diagnostic may be promoted to `Warning` or `Error` by this policy; this is a general rule, not a per-diagnostic exception. A promoted diagnostic keeps its stable ID, symbolic name, message and help; promoted to `Error` it takes part in the selected policy like any error and fails the analysis. Policy never disables, demotes or relabels a mandatory diagnostic (MD-061, 2026-10-15, `rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md` § 5).
 
 Example:
 
@@ -996,6 +998,8 @@ S3201  control-flow.assignment-in-condition
 § 24(3) Existing registry entries outside this list, including lexer, parser, semantic, advisory and retired IDs, remain authoritative and stable.
 
 § 24(4) In particular, revision 2.0 does not renumber existing `L1xxx`, `P2xxx`, `S1xxx`, `S3001` or `A2001` definitions.
+
+§ 24(4a) `A2005` / `ownership.explicit-reborrow` (family `ownership`, default `Information`, configurable) explains a legal explicit reborrow through a reference holder (`rules/memory/borrowing.md` § 11.4(6)).
 
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 

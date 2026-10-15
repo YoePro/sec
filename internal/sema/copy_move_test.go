@@ -731,6 +731,7 @@ fn Test() void {
     let mut value := 1
     let first := ref value
     let second := ref mut value
+    discard first
 }
 `
 
@@ -748,6 +749,7 @@ fn Test() void {
     let mut value := 1
     let first := ref mut value
     let second := ref value
+    discard first
 }
 `
 
@@ -765,6 +767,7 @@ fn Test() void {
     let mut value := 1
     let first := ref mut value
     let copy := value
+    discard first
 }
 `
 
@@ -782,6 +785,7 @@ fn Test() void {
     let mut value := 1
     let first := ref value
     value = 2
+    discard first
 }
 `
 
@@ -882,6 +886,7 @@ fn Test() void {
 	let alias := ref mut pair
 	let first := ref mut alias.left
 	let second := ref mut alias.left
+    discard first
 }
 `
 
@@ -950,6 +955,7 @@ fn Test() void {
 	let alias := ref mut pair.inner
 	let first := ref mut alias.left
 	let second := ref mut alias.left
+    discard first
 }
 `
 
@@ -969,6 +975,7 @@ fn Test() void {
 	let first := ref mut alias[0]
 	let second := ref mut alias[1]
 	let duplicate := ref mut alias[0]
+    discard first
 }
 `
 
@@ -1029,6 +1036,7 @@ fn Test() void {
 	let moved :<- alias
 	let first := ref mut moved.left
 	let duplicate := ref mut moved.left
+    discard first
 }
 `
 
@@ -1051,6 +1059,7 @@ fn Test() void {
 	let alias := ref mut pair
 	let moved :<- alias
 	pair.left = 2
+    discard moved
 }
 `
 
@@ -1068,6 +1077,7 @@ fn Test(firstIndex: int, secondIndex: int) void {
 	let mut values := [1, 2]
 	let first := ref mut values[firstIndex]
 	let second := ref mut values[secondIndex]
+    discard first
 }
 `
 
@@ -1090,6 +1100,7 @@ fn Test() void {
 	let mut pair := Pair { left: 1, right: 2 }
 	let left := ref pair.left
 	let whole := ref mut pair
+    discard left
 }
 `
 
@@ -2324,6 +2335,7 @@ fn Test() void {
 	let mut values := [1, 2, 3, 4]
 	let left := ref mut values[0..<3]
 	let right := ref mut values[2..<4]
+    discard left
 }
 `
 
@@ -2342,6 +2354,7 @@ fn Test() void {
 	let middle := ref mut values[1..<3]
 	let outside := ref mut values[0]
 	let inside := ref mut values[2]
+    discard middle
 }
 `
 
@@ -2362,6 +2375,7 @@ fn Test() void {
 	let second := ref mut view[1]
 	let outside := ref mut values[0]
 	let duplicate := ref mut view[0]
+    discard first
 }
 `
 
@@ -2410,6 +2424,7 @@ fn Test(end: int) void {
 	let mut values := [1, 2, 3, 4]
 	let dynamic := ref mut values[0..<end]
 	let fixed := ref mut values[2..<4]
+    discard dynamic
 }
 `
 
@@ -2454,6 +2469,7 @@ fn Test() void {
 			let value := payload.left
 			choice = Choice.None
 			discard value
+			discard payload
 		}
 		None => {}
 	}
@@ -2616,6 +2632,7 @@ fn Test() void {
 		Some(ref mut value) => {}
 		None => {}
 	}
+    discard view
 }
 `
 
@@ -2777,6 +2794,7 @@ fn Test(condition: bool) void {
 		continue
 	}
 	target = 2
+    discard view
 }
 `
 
@@ -2798,6 +2816,7 @@ fn Test(condition: bool) void {
 		view = ref mut second
 	}
 	second = 3
+    discard view
 }
 `
 

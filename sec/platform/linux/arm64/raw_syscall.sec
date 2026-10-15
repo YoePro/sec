@@ -1,6 +1,8 @@
 #target(os: "linux", arch: "arm64")
 module arm64
 
+// Unsafe bodies remain explicit: rules/memory/unsafe.md §7(1–3).
+
 /*
 syscall number    x8
 argument 1        x0
@@ -17,138 +19,152 @@ result            x0
 * PARAM: "number" uint
 */
 unsafe fn RawSyscall(number: uint) int {
-    asm {
-        "svc #0"
-        inputs:
-        x8(number)
+    unsafe {
+        asm {
+            "svc #0"
+            inputs:
+            x8(number)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+        return result
     }
-    return result
 }
 
 unsafe fn RawSyscall(number: uint, arg1: uint) int {
-    asm {
-        "svc #0"
+    unsafe {
+        asm {
+            "svc #0"
 
-        inputs:
-        x8(number)
-        x0(arg1)
+            inputs:
+            x8(number)
+            x0(arg1)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+
+        return result
     }
-
-    return result
 }
 
 unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint) int {
-    asm {
-        "svc #0"
+    unsafe {
+        asm {
+            "svc #0"
 
-        inputs:
-        x8(number)
-        x0(arg1)
-        x1(arg2)
+            inputs:
+            x8(number)
+            x0(arg1)
+            x1(arg2)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+
+        return result
     }
-
-    return result
 }
 
 // Call with 3 arguments
 unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
-    asm {
-        "svc #0"
+    unsafe {
+        asm {
+            "svc #0"
 
-        inputs:
-        x8(number)
-        x0(arg1)
-        x1(arg2)
-        x2(arg3)
+            inputs:
+            x8(number)
+            x0(arg1)
+            x1(arg2)
+            x2(arg3)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+
+        return result
     }
-
-    return result
 }
 
 unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int {
-    asm {
-        "svc #0"
+    unsafe {
+        asm {
+            "svc #0"
 
-        inputs:
-        x8(number)
-        x0(arg1)
-        x1(arg2)
-        x2(arg3)
-        x3(arg4)
+            inputs:
+            x8(number)
+            x0(arg1)
+            x1(arg2)
+            x2(arg3)
+            x3(arg4)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+
+        return result
     }
-
-    return result
 }
 
 unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int {
-    asm {
-        "svc #0"
+    unsafe {
+        asm {
+            "svc #0"
 
-        inputs:
-        x8(number)
-        x0(arg1)
-        x1(arg2)
-        x2(arg3)
-        x3(arg4)
-        x4(arg5)
+            inputs:
+            x8(number)
+            x0(arg1)
+            x1(arg2)
+            x2(arg3)
+            x3(arg4)
+            x4(arg5)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+        return result
     }
-    return result
 }
 
 unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
-    asm {
-        "svc #0"
+    unsafe {
+        asm {
+            "svc #0"
 
-        inputs:
-        x8(number)
-        x0(arg1)
-        x1(arg2)
-        x2(arg3)
-        x3(arg4)
-        x4(arg5)
-        x5(arg6)
+            inputs:
+            x8(number)
+            x0(arg1)
+            x1(arg2)
+            x2(arg3)
+            x3(arg4)
+            x4(arg5)
+            x5(arg6)
 
-        outputs:
-        x0(result)
+            outputs:
+            x0(result)
 
-        clobbers:
-        memory
+            clobbers:
+            memory
+        }
+        return result
     }
-    return result
 }

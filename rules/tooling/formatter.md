@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-10-12 (MD-032 switch labels, MD-055 import group headings, MD-033 import sorting, MD-036/MD-054 [format] table)
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-15 (configured continuation indentation for return values and if conditions)
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
 - **Replaces:** Earlier legacy revision at the same canonical path
@@ -232,6 +232,39 @@ language_corrections = false
 
 § 6(3) Continuation indentation is structural and must remain visually subordinate to the construct it continues.
 
+When a returned expression starts on the same line as `return`, its subsequent
+continuation lines use one additional configured `indentation_width` relative
+to the `return` statement. Four spaces is the default, not a fixed width.
+The first operand remains beside `return`; existing operator placement and
+line breaks are preserved. For example, with the default configuration:
+
+```sec
+    return character in 9r..13r ||
+        character == 32r ||
+        character == 133r
+```
+
+Nested delimited expressions retain their relative structural indentation.
+A delimiter opened on the `return` line retains its ordinary interior and
+closing-delimiter layout; its existing indentation is not increased again.
+Comments follow the expression they continue, while multiline literal contents
+remain byte-for-byte unchanged. A following statement is not a continuation.
+
+The same configured continuation step applies to multiline `if` and `else if`
+conditions that start beside their keyword. Continuations are relative to the
+header line's structural indentation, including a header beginning `} else if`.
+The condition's continuation indentation does not increase the body or a
+subsequent statement's indentation. For example:
+
+```sec
+    } else if character == 10r
+        || character == 133r
+        || character == 8232r
+        || character == 8233r {
+        HandleWhitespace()
+    }
+```
+
 § 6(4) A colon in a declaration binds to the identifier on its left:
 
 ```sec
@@ -434,7 +467,7 @@ let ready :=
    && !isStopping
 ```
 
-§ 9(15) The leading-operator layout applies to ordinary arithmetic, logical, comparison, bitwise, and string-concatenation expressions when those expressions are broken across lines.
+§ 9(15) The leading-operator layout applies to ordinary arithmetic, logical, comparison, bitwise, and string-concatenation expressions when those expressions are broken across lines. Inline-start returned expressions and `if`/`else if` conditions follow the continuation layout in § 6(3) instead, preserving operator placement.
 
 ---
 

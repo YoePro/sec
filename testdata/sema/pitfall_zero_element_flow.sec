@@ -1,0 +1,173 @@
+module zeroelementflow
+
+fn Change(values: ref mut list[int]) bool {
+    values.Clear()
+    return true
+}
+
+fn CasePlain(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseRead(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    discard values.Len
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseElementWrite(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    values[0] = 7
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    values.Clear()
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseCallee(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    discard Change(values)
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseConditionalMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    if flag { values.Clear() }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseFresh(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    values.Clear()
+    discard values[0]
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseOtherMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0]
+    other.Clear()
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseConditionalZero(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseAnd(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard flag && values[0] > 0
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseOr(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard flag || values[0] > 0
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseLeft(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0] > 0 && flag
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseNegatedLeft(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard !(values[0] > 0) && flag
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseOther(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard other[0]
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseDeferred(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    defer { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseClosure(values: ref list[int], other: ref mut list[int], flag: bool) void {
+    let action := capture(values) fn() int { return values[0] }
+    discard action
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseSameExpressionMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    discard values[0] > 0 && Change(values)
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseReplacement(values: list[int], other: list[int], flag: bool) void {
+    discard values[0]
+    values <- other
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseReplacementFresh(values: list[int], other: list[int], flag: bool) void {
+    discard values[0]
+    values <- other
+    discard values[0]
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchBoth(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { discard values[0] } else { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchMissing(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { discard values[0] } else { discard other[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchExitTrue(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { return } else { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchExitFalse(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { discard values[0] } else { return }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchNested(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag {
+        if other.Len > 0u { discard values[0] } else { discard values[0] }
+    } else { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { discard values[0]
+        values.Clear() } else { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchFresh(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { values.Clear()
+        discard values[0] } else { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchExitingMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { values.Clear()
+        return } else { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchLaterMutation(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { discard values[0] } else { discard values[0] }
+    values.Clear()
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchConstantTrue(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if true { discard values[0] }
+    for i in 1u..<values.Len { discard values[i] }
+}
+
+fn CaseBranchDeferred(values: ref mut list[int], other: ref mut list[int], flag: bool) void {
+    if flag { defer { discard values[0] } } else { defer { discard values[0] } }
+    for i in 1u..<values.Len { discard values[i] }
+}

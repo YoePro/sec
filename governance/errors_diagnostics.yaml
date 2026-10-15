@@ -268,6 +268,26 @@ integrations:
           span and repair help (use the r suffix or declare rune). It is
           separate from S1120, which keeps the Unicode-scalar domain of r
           literals (TestCharRuneLiteralSemantics).
+      - id: diagnostics.a2005-explicit-reborrow
+        description: >-
+          MD-061 (2026-10-15): a legal explicit reborrow `ref r` / `ref mut r`
+          through a reference holder emits configurable Information A2005
+          ownership.explicit-reborrow explaining that the expression refers to
+          the referent, without suggesting to borrow the owner instead; an
+          illegal elevation is the mandatory S1165 borrow-authority error.
+          Status detail is owned by frontend.borrowing
+          (TestExplicitReborrowTypesAndInformation).
+      - id: diagnostics.rule-policy-project-level
+        description: >-
+          Project-level rule-specific policy (2026-10-15, diagnostics.md
+          §§ 18(4), 18(4a)): `[diagnostics.rules]` in sec.toml maps a stable ID
+          or symbolic name (ID first) to off/info/warning/error; Sema applies it
+          when an optional diagnostic is recorded, so the CLI and the LSP
+          disable or promote configurable diagnostics identically and a
+          promotion to error keeps the ID and fails the analysis; mandatory
+          diagnostics are unaffected (TestRulePolicyResolvesConfigurableDiagnostics).
+          Target, target-variant, command-line, category and preset levels
+          remain under diagnostics.policy-engine.
       - id: diagnostics.s1153-invalid-duration-conversion
         description: >-
           MD-015 (2026-10-13): a time-quantity-to-duration conversion that is
@@ -463,8 +483,11 @@ integrations:
         description: >-
           Custom free uses S1084/destruction.invalid-custom-free for duplicate
           or interface free declarations, S1085/ownership.custom-free-partial-move
-          with the free declaration as related location, S1086/destruction.defer-inside-free,
-          and S1087/destruction.free-consumes-self, each with help; status detail
+          with the free declaration as related location (since MD-025, 2026-10-15,
+          also for discard of an owned field and for a provable double release of
+          a self field inside free), S1086/destruction.defer-inside-free,
+          and S1087/destruction.free-consumes-self, each with help; S1007 names a
+          custom free as the cause of MoveOnly copy rejections; status detail
           is owned by frontend.destruction.
       - id: diagnostics.ownership-availability
         description: >-
@@ -572,8 +595,9 @@ integrations:
           selection and English fallback rendering are not complete.
       - id: diagnostics.policy-engine
         description: >-
-          Complete rule/category/preset policy with project, target,
-          target-variant and CLI precedence is not implemented.
+          Complete rule/category/preset policy with target, target-variant
+          and CLI precedence is not implemented; project-level rule-specific
+          policy is (diagnostics.rule-policy-project-level, 2026-10-15).
       - id: diagnostics.complete-dead-analysis
         description: >-
           S3002-S3005 and the full proof-aware unreachable/dead-store/pure-result

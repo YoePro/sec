@@ -1,0 +1,7 @@
+module rawstatement
+fn Use(pointer: RawPtr[byte]) void {
+    unsafe {
+        pointer.Write(
+        return
+    }
+}

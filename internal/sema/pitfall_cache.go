@@ -234,7 +234,7 @@ func (b *pitfallBuilder) bodyFingerprint(body *ast.BlockStatement, revision Pitf
 		Float        Type
 		Rules        []PitfallRuleDefinition
 		Dependencies []PitfallDependency
-	}{"pitfall-body-cache-v2", body, b.analyzer.pitfallCacheRun.Scope, b.analyzer.analysisDepth, b.analyzer.analysisBudget, b.analyzer.targetUintWidthBits, b.analyzer.types["float"], pitfallRuleRegistry, revision.Dependencies}
+	}{"pitfall-body-cache-v11", body, b.analyzer.pitfallCacheRun.Scope, b.analyzer.analysisDepth, b.analyzer.analysisBudget, b.analyzer.targetUintWidthBits, b.analyzer.types["float"], pitfallRuleRegistry, revision.Dependencies}
 	encoded, err := json.Marshal(input)
 	if err != nil {
 		return [32]byte{}, false

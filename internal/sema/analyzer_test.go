@@ -10649,44 +10649,13 @@ fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestUnsafeFunctionAllowsAsmAndNamedOutput(t *testing.T) {
-	input := `
-module platform_linux_amd64
-
-enum ErrorNumber int error { Native = 1 }
-
-fn _decodeSyscallResult(result: int) Result[uint, ErrorNumber] {
-	if result < 0 {
-		return Err(ErrorNumber.Native)
+func TestUnsafeFunctionRequiresExplicitBlockForAsmAndNamedOutput(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/tooling/unsafe_function_asm_valid.sec")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	return Ok(uint(result))
-}
-
-unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
-	asm {
-		"syscall"
-
-		inputs:
-			rax(number)
-			rdi(arg1)
-			rsi(arg2)
-			rdx(arg3)
-
-		outputs:
-			rax(result)
-
-		clobbers:
-			rcx
-			r11
-			memory
-	}
-
-	return result
-}
-`
-
-	errors := analyzeSourceRaw(t, input)
+	errors := analyzeSourceRaw(t, string(input))
 	assertSemaErrors(t, errors, nil)
 }
 
@@ -10909,6 +10878,7 @@ fn Invalid() void {
 	let handle := Handle{ view: ref mut value }
 	let borrow := ref handle
 	Consume(<-handle)
+    discard borrow
 }
 `
 
@@ -10931,6 +10901,7 @@ fn Invalid(condition: bool) void {
 		view = ref value
 	}
 	value = 2
+    discard view
 }
 `
 
@@ -10953,6 +10924,7 @@ fn Invalid(condition: bool) void {
 		view = ref mut value
 	}
 	let copy := value
+    discard view
 }
 `
 

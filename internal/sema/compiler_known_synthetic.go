@@ -87,14 +87,6 @@ var compilerKnownSyntheticCatalog = map[string]compilerKnownSyntheticInfo{
 	"CKM-NUMERIC-BITS":  {Signature: "static property Bits: uint", Documentation: "Width of the numeric representation in bits.", Rule: ruleCompilerKnownMembers + " — Fundamental numeric associated properties", Receiver: "numeric type (type-qualified)", Target: "int, uint, and plain float follow the target pointer width"},
 	"CKM-DECIMAL-SCALE": {Signature: "static property Scale: uint", Documentation: "Number of fractional decimal digits of the decimal type.", Rule: ruleCompilerKnownMembers + " — Decimal types", Receiver: "decimal type (type-qualified)", Target: noTargetRestriction},
 
-	"CKM-RAWPTR-READ":           {Signature: "unsafe fn Read() T", Documentation: "Reads the pointee.", Rule: ruleRawPointers, Receiver: "RawPtr[T]", Target: noTargetRestriction},
-	"CKM-RAWPTR-WRITE":          {Signature: "unsafe fn Write(value: T) void", Documentation: "Writes value to the pointee.", Rule: ruleRawPointers, Receiver: "RawPtr[T]", Target: noTargetRestriction},
-	"CKM-RAWPTR-VOLATILE-READ":  {Signature: "unsafe fn VolatileRead() T", Documentation: "Observable physical-storage read that the optimizer may not remove, merge, or reorder.", Rule: "rules/platform/volatile.md", Receiver: "RawPtr[T] to a validated physical region", Target: "requires a target region with validated volatile access"},
-	"CKM-RAWPTR-VOLATILE-WRITE": {Signature: "unsafe fn VolatileWrite(value: T) void", Documentation: "Observable physical-storage write that the optimizer may not remove, merge, or reorder.", Rule: "rules/platform/volatile.md", Receiver: "RawPtr[T] to a validated physical region", Target: "requires a target region with validated volatile access"},
-	"CKM-RAWPTR-OFFSET":         {Signature: "fn Offset(count: int) RawPtr[T]", Documentation: "Pointer moved by count elements.", Rule: ruleRawPointers, Receiver: "typed RawPtr[T]", Target: noTargetRestriction},
-	"CKM-RAWPTR-ADDBYTES":       {Signature: "fn AddBytes(count: int) RawPtr[byte]", Documentation: "Pointer moved by count bytes.", Rule: ruleRawPointers, Receiver: "RawPtr[byte]", Target: noTargetRestriction},
-	"CKM-RAWPTR-DIFFERENCE":     {Signature: "fn Difference(other: RawPtr[T]) int", Documentation: "Distance in elements between two pointers into the same allocation.", Rule: ruleRawPointers, Receiver: "typed RawPtr[T]", Target: noTargetRestriction},
-
 	"CKM-ARENA-NEW":          {Signature: "fn New[T]() Result[ref mut T, AllocationError]", Documentation: "Allocates one default-initialized T in the arena.", Rule: ruleArena, Receiver: "mutable Arena", Target: noTargetRestriction},
 	"CKM-ARENA-ALLOC":        {Signature: "fn Alloc[T](count: uint) Result[ref mut T[], AllocationError]", Documentation: "Allocates count default-initialized elements in the arena.", Rule: ruleArena, Receiver: "mutable Arena", Target: noTargetRestriction},
 	"CKM-ARENA-RESET":        {Signature: "fn Reset() void", Documentation: "Releases every allocation of the current generation for reuse; earlier references become invalid.", Rule: ruleArena, Receiver: "mutable Arena", Target: noTargetRestriction},
@@ -207,6 +199,12 @@ func CompilerKnownSyntheticDefinition(member CompilerKnownMember) string {
 	}
 	if member.StructuralMutation {
 		text.WriteString("// Structural: changes the receiver's element count or storage\n")
+	}
+	if len(member.CallerObligations) > 0 {
+		text.WriteString("// Caller obligations (unsafe does not prove these):\n")
+		for _, obligation := range member.CallerObligations {
+			fmt.Fprintf(&text, "// - %s\n", obligation)
+		}
 	}
 	if member.Documentation != "" {
 		text.WriteString("//\n")

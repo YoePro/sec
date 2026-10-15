@@ -65,6 +65,9 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if !a.validateExplicitDiscardType(valueType, expressionToken(stmt.Value)) {
 		return
 	}
+	if place, resolved := a.resolvePlace(stmt.Value); resolved && a.rejectCustomFreeFieldDiscard(place, expressionToken(stmt.Value)) {
+		return
+	}
 	// A directly owned struct field is an independently tracked Place. Discard
 	// consumes that field even when its type is copyable.
 	//

@@ -200,7 +200,9 @@ impl Volt {
 - `impl <Volt>` targets only the unit and holds its metadata and unit
   functions; it must be in the module that declares the unit. `impl Volt`
   targets only the ordinary type. Resolution never depends on declaration
-  order, fallback lookup or a preference for types over units.
+  order, fallback lookup or a preference for types over units. A unit
+  impl cannot declare `free`: units express measurement semantics, not a
+  destructible instance (MD-025.4, 2026-10-15).
 - A unit conversion is called `<Volt>(value)`; a unit function is called
   `<Volt>.Name(...)`; unit metadata is read `<Volt>.Symbol`. The ordinary type
   forms `Volt(value)` and `Volt.SizeOf` keep their meaning, and neither form
@@ -784,7 +786,9 @@ ordinary unit diagnostics.
 
 A quantity with the dimension of time stays a unit-bearing quantity; it
 becomes a `duration` only through the conversion of
-`rules/types/temporal.md` § 5. The time units `s`, `ms`, `us` and `ns` are
+`rules/types/temporal.md` § 5. Only the literal itself is materialized in an
+expected-`duration` position; once bound, the quantity keeps its unit type
+and needs a written `duration(...)` (MD-015, 2026-10-15). The time units `s`, `ms`, `us` and `ns` are
 core units (`rules/types/temporal.md` § 5.2).
 
 ---

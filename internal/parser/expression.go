@@ -189,11 +189,11 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 				left = p.parseIsExpression(left)
 				continue
 			}
-			if p.peekToken.Lexeme != "x" && !p.contextualNotInAhead() {
+			if p.peekToken.Lexeme != contextualX && !p.contextualNotInAhead() {
 				return left
 			}
 			p.nextToken()
-			if p.curToken.Lexeme == "not" {
+			if p.curToken.Lexeme == contextualNot {
 				left = p.parseNotInExpression(left)
 			} else {
 				left = p.parseInfixExpression(left)
@@ -572,12 +572,12 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 		p.addCanonicalMatchPatternError(start)
 		return nil
 	}
-	if start.Lexeme == "empty" {
+	if start.Lexeme == contextualEmpty {
 		if p.peekToken.Type == lexer.DOT || p.peekToken.Type == lexer.LPAREN || p.peekToken.Type == lexer.LBRACE {
 			p.addError("the compiler-known empty match pattern cannot be qualified or bind a payload at %d:%d", start.Line, start.Column)
 			return nil
 		}
-		return &ast.MatchPattern{Token: start, Kind: ast.MatchPatternEmpty, Name: "empty"}
+		return &ast.MatchPattern{Token: start, Kind: ast.MatchPatternEmpty, Name: contextualEmpty}
 	}
 
 	parts := []string{start.Lexeme}
@@ -673,32 +673,6 @@ func (p *Parser) parseMatchPatternBinding() *ast.MatchPatternBinding {
 	return binding
 }
 
-// skipRejectedMatchPayload keeps the invalid arm as one recovery episode. The
-// outer payload '(' was already consumed, so the first unmatched ')' is its
-// boundary; nested parentheses are balanced while scanning toward it.
-//
-// Rule: rules/compiler/parser_recovery.md, match-arm synchronization.
-func (p *Parser) skipRejectedMatchPayload() {
-	depth := 0
-	if p.curToken.Type == lexer.LPAREN {
-		depth = 1
-	}
-	for p.peekToken.Type != lexer.EOF {
-		switch p.peekToken.Type {
-		case lexer.LPAREN:
-			depth++
-		case lexer.RPAREN:
-			p.nextToken()
-			if depth == 0 {
-				return
-			}
-			depth--
-			continue
-		}
-		p.nextToken()
-	}
-}
-
 func (p *Parser) parseMatchFieldPatterns() []*ast.MatchFieldPattern {
 	fields := []*ast.MatchFieldPattern{}
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
@@ -762,7 +736,7 @@ func (p *Parser) skipMatchArm(start lexer.Token) RecoveryEvent {
 //   - rules/concurrency/tasks.md — spawn expressions
 //   - rules/foundations/lexical_structure.md — §8 contextual reserved words
 func (p *Parser) parseSpawnExpression() ast.Expression {
-	expr := &ast.SpawnExpression{Token: p.curToken, Kind: "task"}
+	expr := &ast.SpawnExpression{Token: p.curToken, Kind: contextualTask}
 	if p.peekToken.Type == lexer.IDENT && isSpawnKindModifier(p.peekToken.Lexeme) {
 		p.nextToken()
 		expr.KindToken = p.curToken
@@ -783,7 +757,7 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 
 func isSpawnKindModifier(value string) bool {
 	switch value {
-	case "task", "thread", "process":
+	case contextualTask, contextualThread, contextualProcess:
 		return true
 	default:
 		return false
@@ -994,7 +968,7 @@ func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
 	errorCount := len(p.errors)
 	warningCount := len(p.warnings)
 
-	if identifier, ok := left.(*ast.Identifier); ok && identifier.Value == "bit" {
+	if identifier, ok := left.(*ast.Identifier); ok && identifier.Value == contextualBit {
 		if extraction := p.parseBitExtractionExpression(identifier); extraction != nil {
 			return extraction
 		}
@@ -1164,6 +1138,9 @@ func (p *Parser) parseSliceExpressionAfterRange(left ast.Expression, token lexer
 	return expr
 }
 
+// parseRuntimeCallExpression preserves the intrinsic call and its real argument opener.
+// Rules: rules/foundations/grammar.md — "Runtime or compiler call expression";
+// rules/tooling/lsp.md — "Signature help".
 func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 	expr := &ast.RuntimeCallExpression{Token: p.curToken}
 
@@ -1185,6 +1162,7 @@ func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 		return nil
 	}
 
+	expr.ArgumentsOpen = p.curToken
 	args, ok := p.parseCallArguments()
 	if !ok {
 		return nil
@@ -1500,7 +1478,7 @@ func (p *Parser) skipTryHandler(start lexer.Token) RecoveryEvent {
 // brace. Delimiter depth prevents a malformed nested call or literal from
 // being mistaken for a sibling arm.
 func (p *Parser) skipPatternEntry(start lexer.Token) RecoveryEvent {
-	end := start
+	skipStart, end := p.curToken, p.curToken
 	skipped := 1
 	delimiters := newDelimiterStack()
 	for p.curToken.Type != lexer.EOF {
@@ -1519,7 +1497,7 @@ func (p *Parser) skipPatternEntry(start lexer.Token) RecoveryEvent {
 		skipped++
 		delimiters.consume(p.curToken.Type)
 	}
-	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+	return p.recordSkippedRecovery(skipStart, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expression {
@@ -2035,6 +2013,10 @@ func isMissingOperandBoundary(tokenType lexer.TokenType) bool {
 	}
 }
 
+// parseUnitConversionExpression retains unit conversion syntax and its argument opener
+// independently of any parentheses inside the unit expression.
+// Rules: rules/foundations/grammar.md — "Unit conversion expression";
+// rules/tooling/lsp.md — "Signature help".
 func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expression {
 	ident, ok := left.(*ast.Identifier)
 	if !ok {
@@ -2058,6 +2040,7 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 	}
 
 	p.nextToken()
+	argumentsOpen := p.curToken
 	args, ok := p.parseCallArguments()
 	if !ok {
 		return nil
@@ -2068,7 +2051,7 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 	}
 
 	conversion := &ast.ConversionExpression{
-		Token: ident.Token,
+		Token: ident.Token, ArgumentsOpen: argumentsOpen,
 		Type: &ast.TypeReference{
 			Token:          ident.Token,
 			Name:           ident.Value,
@@ -2181,46 +2164,12 @@ func (p *Parser) parseRangeOrExpression() ast.Expression {
 	return rangeExpr
 }
 
-func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
-	switch t {
-	case lexer.IDENT,
-		lexer.SELF,
-		lexer.INT,
-		lexer.FLOAT,
-		lexer.STRING,
-		lexer.RAW_STRING,
-		lexer.CHAR,
-		lexer.INTERPSTRING,
-		lexer.TRUE,
-		lexer.FALSE,
-		lexer.NULL,
-		lexer.PLUS,
-		lexer.MINUS,
-		lexer.NOT,
-		lexer.BIT_NOT,
-		lexer.TRY,
-		lexer.NEW,
-		lexer.MATCH,
-		lexer.SPAWN,
-		lexer.AWAIT,
-		lexer.FN,
-		lexer.CAPTURE,
-		lexer.AT,
-		lexer.LBRACKET,
-		lexer.REF,
-		lexer.LPAREN:
-		return true
-	default:
-		return false
-	}
-}
-
 func (p *Parser) peekPrecedence() precedence {
 	if p.contextualMatrixMultiplyAhead() {
-		return contextualOperatorPrecedence("x")
+		return contextualOperatorPrecedence(contextualX)
 	}
 	if p.contextualIsAhead() {
-		return contextualOperatorPrecedence("is")
+		return contextualOperatorPrecedence(contextualIs)
 	}
 	if p.contextualNotInAhead() {
 		return contextualOperatorPrecedence("not in")
@@ -2239,7 +2188,7 @@ func (p *Parser) peekPrecedence() precedence {
 //   - rules/foundations/operators.md — canonical precedence and membership expressions
 //   - rules/foundations/lexical_structure.md — §10.1 "Contextual compound operator `not in`"
 func (p *Parser) contextualNotInAhead() bool {
-	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "not" {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != contextualNot {
 		return false
 	}
 	state := p.l.Snapshot()
@@ -2256,7 +2205,7 @@ func (p *Parser) contextualNotInAhead() bool {
 //   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.1–7.5
 //   - rules/foundations/operators.md — "Canonical precedence"
 func (p *Parser) contextualIsAhead() bool {
-	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "is" {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != contextualIs {
 		return false
 	}
 	state := p.l.Snapshot()
@@ -2267,7 +2216,7 @@ func (p *Parser) contextualIsAhead() bool {
 }
 
 func (p *Parser) contextualMatrixMultiplyAhead() bool {
-	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "x" {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != contextualX {
 		return false
 	}
 	state := p.l.Snapshot()
@@ -2277,10 +2226,10 @@ func (p *Parser) contextualMatrixMultiplyAhead() bool {
 }
 
 func (p *Parser) curPrecedence() precedence {
-	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "x" {
-		return contextualOperatorPrecedence("x")
+	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == contextualX {
+		return contextualOperatorPrecedence(contextualX)
 	}
-	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "not" && p.peekToken.Type == lexer.IN {
+	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == contextualNot && p.peekToken.Type == lexer.IN {
 		return contextualOperatorPrecedence("not in")
 	}
 	if precedence, ok := operators.TokenPrecedence(p.curToken.Type); ok {
@@ -2378,6 +2327,7 @@ func (p *Parser) parseBitExtractionExpression(identifier *ast.Identifier) ast.Ex
 		return nil
 	}
 	p.nextToken()
+	argumentsOpen := p.curToken
 	if p.peekToken.Type == lexer.RPAREN {
 		return nil
 	}
@@ -2387,7 +2337,7 @@ func (p *Parser) parseBitExtractionExpression(identifier *ast.Identifier) ast.Ex
 		return nil
 	}
 	p.nextToken()
-	extraction := &ast.BitExtractionExpression{Token: identifier.Token, Width: width, Value: value}
+	extraction := &ast.BitExtractionExpression{Token: identifier.Token, Width: width, Value: value, ArgumentsOpen: argumentsOpen}
 	if annotation, ok := p.parseAdjacentUnitAnnotation(); ok {
 		extraction.UnitToken, extraction.Unit, extraction.UnitExpression, extraction.EndToken = annotation.open, annotation.unit, annotation.expression, annotation.close
 	}

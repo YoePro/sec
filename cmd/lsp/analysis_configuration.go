@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	platformtarget "sec/internal/platform/target"
 	"sec/internal/sema"
 )
@@ -34,6 +35,27 @@ func newLSPAnalyzerForInputs(uri string, program *ast.Program, overlay sourceOve
 // Rules: rules/compiler/compiler_analysis.md — §§60(1–5),62(1–3);
 // rules/tooling/lsp.md — "Configuration", "Snapshots".
 func newLSPAnalyzerForInputsAtDepth(uri string, program *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) *sema.Analyzer {
+	analyzer := newTargetLSPAnalyzer(uri, program, overlay, depth)
+	analyzer.SetDiagnosticRules(lspDiagnosticRules(pathFromURI(uri)))
+	return analyzer
+}
+
+// lspDiagnosticRules reads the governing project's `[diagnostics.rules]`
+// policy, the same policy the compiler CLI applies, so configurable
+// diagnostics are disabled or promoted identically in the editor
+// (rules/tooling/diagnostics.md § 18; rules/tooling/lsp.md "Configuration").
+func lspDiagnosticRules(sourcePath string) diagnostics.RulePolicy {
+	if sourcePath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml"))
+	if err != nil {
+		return nil
+	}
+	return diagnostics.ParseRulePolicy(string(data))
+}
+
+func newTargetLSPAnalyzer(uri string, program *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) *sema.Analyzer {
 	programs := []*ast.Program{program}
 	sourcePath := pathFromURI(uri)
 	// Source selection and semantic target selection must use the same active

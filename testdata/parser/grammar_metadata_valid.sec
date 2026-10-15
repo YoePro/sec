@@ -1,0 +1,51 @@
+module grammarmetadata
+
+fn Expressions() void {
+    let identifier := value
+    let receiver := self
+    let integer := 1
+    let floating := 1.5
+    let text := "text"
+    let raw := `raw`
+    let character := 'a'
+    let interpolation := $"{value}"
+    let yes := true
+    let no := false
+    let sentinel := null
+    let positive := +value
+    let negative := -value
+    let negated := !value
+    let complement := ~value
+    let moved := <- value
+    let tried := try Value()
+    let created := new Value()
+    let spawned := spawn task Value()
+    let awaited := await value
+    let matched := match value { _ => 1 }
+    let lambda := fn() int { return 1 }
+    let captured := capture(value) fn() int { return value }
+    let intrinsic := @sizeOf(int)
+    let array := [1, 2]
+    let borrowed := ref value
+    let grouped := (value)
+    let qualifiedUnit := <s>.Scale
+}
+
+fn Assignments() void {
+    value = 1
+    value <- other
+    value += 1
+    value -= 1
+    value *= 1
+    value /= 1
+    value %= 1
+    value &= 1
+    value |= 1
+    value ^= 1
+    value <<= 1
+    value >>= 1
+}
+
+let global := 1
+unsafe fn Unsafe() void {}
+@noPanic fn Attributed() void {}

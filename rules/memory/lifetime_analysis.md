@@ -286,6 +286,8 @@ Consume(<-value)
 
 **§ 9.3(2)** Lifetime analysis must consume the canonical Place-overlap result from `borrowing.md`; it must not replace proven disjointness with root-only conservatism when the borrow analyzer already proved narrower Places.
 
+**§ 9.3(3)** A borrow's lifetime ends at its last required use on each path, extended by deferred, captured, returned, retained or loop-carried uses, not at the end of the lexical block (`borrowing.md` § 8.1(7), MD-061, 2026-10-15).
+
 ---
 
 ## § 10 Temporaries and expression lifetimes

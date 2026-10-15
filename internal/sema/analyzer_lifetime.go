@@ -139,8 +139,9 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 		expressionToken(value),
 		diagnostics.ImplicitMoveDisallowed,
 		help,
-		"cannot copy move-only value %s; use explicit move syntax %s",
+		"cannot copy move-only value %s%s; use explicit move syntax %s",
 		place.String(),
+		customFreeMoveOnlyCause(place.Type),
 		moveSyntax,
 	)
 	return false
@@ -207,7 +208,7 @@ func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token 
 //   - rules/memory/ownership.md — §5 "Availability model"
 func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lexer.Token) bool {
 	if place.AmbiguousProvenance {
-		a.addErrorAtToken(token, "cannot borrow through reference with unknown control-flow provenance")
+		a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowProvenanceUnknown, "The compiler cannot prove which storage this reference borrows on the current control-flow paths. Restructure the branches so the referent is known before creating another borrow.", "cannot borrow through reference with unknown control-flow provenance")
 		return true
 	}
 	if !place.Addressable {
@@ -218,10 +219,16 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 		return true
 	}
 	if mutable && !place.Mutable {
+		if holder, held := a.symbols[place.Root]; held && len(place.Projections) == 0 && holder.Type.Kind == ReferenceType && !holder.Type.ReferenceMutable {
+			// MD-061: `ref mut r` over a shared reference holder would
+			// elevate authority, which a reborrow never does.
+			a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowMutableAuthority, "A reborrow keeps or narrows the holder's authority: reborrow a shared reference with `ref "+place.Root+"`, or obtain a mutable reference from the owner.", "cannot reborrow shared reference %s as ref mut: a shared reference never grants mutation authority", place.Root)
+			return true
+		}
 		if len(place.Projections) == 0 {
-			a.addErrorAtToken(token, "cannot create mutable reference to immutable variable %s", place.Root)
+			a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowMutableAuthority, "A mutable borrow requires mutable authority over its referent. Use a shared borrow for read-only access, or make the owning binding mutable when mutation is intended.", "cannot create mutable reference to immutable variable %s", place.Root)
 		} else {
-			a.addErrorAtToken(token, "cannot create mutable reference to immutable place %s", place.String())
+			a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowMutableAuthority, "A mutable borrow requires mutable authority over the complete access path. Use a shared borrow or obtain a mutable reference from the owner; an immutable reference does not grant mutation authority.", "cannot create mutable reference to immutable place %s", place.String())
 		}
 		return true
 	}
@@ -244,17 +251,17 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 			}
 			if mutable {
 				if record.LoopCarried {
-					a.addBorrowAuthorityConflict(place, token, record, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
+					a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutableConflict, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
 					return true
 				}
-				a.addBorrowAuthorityConflict(place, token, record, "cannot create mutable reference to %s while it is already borrowed", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutableConflict, "cannot create mutable reference to %s while it is already borrowed", place.String())
 				return true
 			}
 			if record.LoopCarried {
-				a.addBorrowAuthorityConflict(place, token, record, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowSharedConflict, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
 				return true
 			}
-			a.addBorrowAuthorityConflict(place, token, record, "cannot create shared reference to %s while it is mutably borrowed", place.String())
+			a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowSharedConflict, "cannot create shared reference to %s while it is mutably borrowed", place.String())
 			return true
 		}
 	}
@@ -415,7 +422,7 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 				if reservation.Kind != mutableBorrow || !borrowRecordMayOverlap(place, reservation) {
 					continue
 				}
-				a.addBorrowAuthorityConflict(place, expressionToken(arg), reservation,
+				a.addBorrowAuthorityConflict(place, expressionToken(arg), reservation, diagnostics.BorrowOwnerReadConflict,
 					"argument %d reads %s while mutable borrow prepared for argument %d remains active",
 					sourceIndex+1, place.String(), callReservationArgumentIndex(reservation),
 				)
@@ -438,7 +445,11 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 			if !borrowRecordMayOverlap(place, reservation) || !mutable && reservation.Kind == sharedBorrow {
 				continue
 			}
-			a.addBorrowAuthorityConflict(place, expressionToken(arg), reservation,
+			conflictID := diagnostics.BorrowSharedConflict
+			if mutable {
+				conflictID = diagnostics.BorrowMutableConflict
+			}
+			a.addBorrowAuthorityConflict(place, expressionToken(arg), reservation, conflictID,
 				"argument %d overlaps %s borrow prepared for argument %d",
 				sourceIndex+1, reservation.Kind, callReservationArgumentIndex(reservation),
 			)

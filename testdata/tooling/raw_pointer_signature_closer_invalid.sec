@@ -1,0 +1,6 @@
+module rawcloser
+fn Use(pointer: RawPtr[byte]) void {
+    unsafe {
+        pointer.Write(
+    }
+}

@@ -688,7 +688,7 @@ fn Read(value: Point) int { return value.Value() }`,
 			name: "custom free lifecycle",
 			source: `module main
 type Resource struct { Handle: int }
-impl Resource { free { discard self.Handle } }`,
+impl Resource { free { let handle := self.Handle } }`,
 			stage: buildStage, wantDetail: "custom free lifecycle destruction",
 		},
 		{

@@ -143,7 +143,7 @@ func (a *Analyzer) reportMissingPayloadMove(source ast.Expression, place Place) 
 	case CopyConditional:
 		message = fmt.Sprintf("cannot copy value %s because generic copyability has not been proven; use explicit move syntax <-", place.String())
 	default:
-		message = fmt.Sprintf("cannot copy move-only value %s; use explicit move syntax <-", place.String())
+		message = fmt.Sprintf("cannot copy move-only value %s%s; use explicit move syntax <-", place.String(), customFreeMoveOnlyCause(place.Type))
 	}
 	token := expressionToken(source)
 	endLine, endColumn := token.EndPosition()

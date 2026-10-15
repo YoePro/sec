@@ -45,14 +45,16 @@ type Element struct {
 // closers remain source element indexes. EOF is kept separately because it is
 // a zero-width lexical anchor. Recovery holds parser missing-token and
 // skipped-token nodes once ApplyRecovery attaches them; they reference
-// elements but never add source bytes.
+// elements but never add source bytes. ExpressionContinuations connect
+// parser-owned expression continuation lines with their grammatical keyword.
 type Document struct {
-	Elements         []Element
-	Groups           []DelimiterGroup
-	UnmatchedClosers []int
-	EOF              lexer.Token
-	Diagnostics      []lexer.Diagnostic
-	Recovery         []RecoveryNode
+	Elements                []Element
+	Groups                  []DelimiterGroup
+	UnmatchedClosers        []int
+	EOF                     lexer.Token
+	Diagnostics             []lexer.Diagnostic
+	Recovery                []RecoveryNode
+	ExpressionContinuations []ExpressionContinuation
 }
 
 // Text reconstitutes the exact source, including comments, invalid bytes,

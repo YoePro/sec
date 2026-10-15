@@ -1,0 +1,5 @@
+module capacityinvalid
+
+fn AtCapacity(values: ref list[int]) void {
+    discard values.Len == values.Capacity && values[values.Capacity] > 0
+}

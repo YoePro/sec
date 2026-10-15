@@ -259,3 +259,49 @@ func (fb *functionBuilder) lowerReferencePass(expr ast.Expression, use sema.Reso
 	fb.recordReference(value.ID, derived)
 	return builtValue{id: value.ID, typ: referenceType}, nil
 }
+
+// lowerExplicitReborrow lowers `ref r` / `ref mut r` over a reference holder
+// (MD-061) from Sema's reborrow plan: the holder's reference SSA value is
+// reborrowed with ref.reborrow-shared or ref.reborrow-mut, deriving a new
+// borrow from the holder's borrow and keeping its referent, provenance and
+// validity policy. The result is ref T or ref mut T, never a reference to
+// the holder; shared-to-mutable elevation was already rejected by Sema.
+//
+// Rules:
+//   - rules/memory/borrowing.md — § 11.4 "Explicit reborrow"
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — reborrow operations
+func (fb *functionBuilder) lowerExplicitReborrow(reference *ast.RefExpression, holder *ast.Identifier, plan sema.ResolvedReferencePlan) (builtValue, error) {
+	source, metadata, err := fb.referenceHolder(holder)
+	if err != nil {
+		return builtValue{}, err
+	}
+	sourceType, ok := fb.owner.module.Types.Lookup(source.typ)
+	if !ok || sourceType.Kind != TypeReference {
+		return builtValue{}, fmt.Errorf("reborrowed holder %s is not a reference value", holder.Value)
+	}
+	if reference.Mutable && !sourceType.Mutable {
+		return builtValue{}, fmt.Errorf("explicit reborrow elevates a shared reference")
+	}
+	derived := referenceMetadataOf(plan.Facts)
+	derived.SourceBorrow = metadata.Borrow
+	if len(derived.OriginStorages) == 0 {
+		// The reborrow keeps the holder's storage dependency (MD-061 § 3(2)).
+		derived.OriginStorages = append([]uint32(nil), metadata.OriginStorages...)
+	}
+	if derived.Validity != metadata.Validity {
+		return builtValue{}, fb.unsupported("explicit reborrow whose validity policy differs from its reference", reference.Token)
+	}
+	if derived.Borrow == derived.SourceBorrow {
+		return builtValue{}, fb.unsupported("explicit reborrow without a distinct resolved borrow identity", reference.Token)
+	}
+	kind, ownership := OpReferenceReborrowShared, OwnershipSharedReference
+	if reference.Mutable {
+		kind, ownership = OpReferenceReborrowMutable, OwnershipMutableReference
+	}
+	loc := location(reference.Token)
+	referenceType := fb.owner.module.Types.Intern(Type{Kind: TypeReference, Element: sourceType.Element, Mutable: reference.Mutable})
+	value := fb.newValue(referenceType, ownership, loc)
+	fb.emit(Operation{Kind: kind, Operands: []ValueID{source.id}, Results: []Value{value}, Reference: derived, Location: loc})
+	fb.recordReference(value.ID, derived)
+	return builtValue{id: value.ID, typ: referenceType}, nil
+}

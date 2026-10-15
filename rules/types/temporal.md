@@ -245,9 +245,10 @@ Specialized affine and logarithmic conversions belong to MD-048.
 
 ### 5.5 Explicit and contextual forms
 
-**§ 5.5(1)** The explicit conversion `duration(q)`, initialization of a
-declared `duration`, and a call argument for a `duration` parameter are valid
-when the conversion is proved exact and in range:
+**§ 5.5(1)** The explicit conversion `duration(q)`, and the contextual
+materialization of a quantity *literal* at an initialization of a declared
+`duration`, an assignment, or a call or initializer argument for a `duration`
+parameter, are valid when the conversion is exact and in range:
 
 ```sec
 let explicitValue := duration(5<s>)
@@ -259,15 +260,37 @@ fn Wait(d: duration) void {
 Wait(500<ms>)
 ```
 
-**§ 5.5(2)** A contextual conversion (declaration or argument) is accepted
-only when the compiler proves it for the actual value: a compile-time constant
-quantity, or every value of a statically known bounded integer domain whose
-scale is a whole number of nanoseconds (for example `int16<ms>`).
+**§ 5.5(2)** Only a quantity literal, optionally signed (`5<s>`, `-5<s>`),
+is materialized contextually. An expression already typed as a non-`duration`
+unit-bearing quantity — a declared or inferred binding, a parameter, a call
+result — never acquires `duration` merely because a `duration` is expected,
+even when constant propagation or range analysis proves its value
+representable; the compiler does not trace a binding back to its literal
+initializer. Such a value needs a written conversion. A typed `duration`
+value passes as itself (MD-015, 2026-10-15, `rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md` § 2; this supersedes
+the earlier permission for range-proven runtime quantities).
 
-**§ 5.5(3)** A value whose exactness or range cannot be proved is never
-silently converted at a `duration` boundary. The program uses the explicit
-conversion, which is then a checked conversion handled by the ordinary
-`try`/`Result` rules:
+```sec
+let typed: int<s> := 5
+Wait(typed)                      // error: typed quantity is not duration
+
+let inferred := 5<s>
+Wait(inferred)                   // error: already a decimal<s> quantity
+
+let converted := duration(5<s>)
+Wait(converted)                  // valid
+Wait(duration(typed))            // valid: written conversion
+```
+
+The diagnostic explains that a typed quantity is not converted implicitly
+(it is not a dimension mismatch) and names the written conversion; it never
+advises a hidden conversion or an invented overload.
+
+**§ 5.5(3)** The written conversion of a typed value may still use static
+proof (a constant binding, a bounded integer domain such as `int16<ms>`) to
+need no runtime check. A value whose exactness or range cannot be proved is
+converted with a checked conversion handled by the ordinary `try`/`Result`
+rules:
 
 ```sec
 fn CheckedTimeout(source: decimal<ms>) Result[duration, ConversionError] {
@@ -322,7 +345,7 @@ conversion error, and no rounding mode is ever chosen implicitly.
 **§ 5.7(1)** A statically provable invalid conversion — inexact without a
 rounding mode, an invalid unit relationship, or a result outside the range —
 is a compile-time error (S1153 `temporal.invalid-duration-conversion`), as is
-an unprovable contextual conversion.
+the contextual use of an already typed quantity (§ 5.5(2)).
 
 **§ 5.7(2)** A dynamic explicit conversion that can fail is a checked
 conversion: it requires `try` (S1139) and fails with the core

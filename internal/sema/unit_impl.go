@@ -28,6 +28,12 @@ func (a *Analyzer) registerUnitImplStatement(stmt *ast.ImplStatement) {
 	for _, member := range stmt.Members {
 		switch member := member.(type) {
 		case *ast.UnitMetadataDeclaration, *ast.InvalidStatement, *ast.InvalidMember:
+		case *ast.FreeDeclaration:
+			// MD-025.4: a unit describes measurement semantics, not an
+			// independently destructible instance.
+			a.addErrorAtTokenWithMetadata(member.Token, "",
+				"Units express measurement semantics and have no instance to destroy; declare free on the nominal type that owns the resource.",
+				"free is not permitted on a unit: impl <%s> cannot declare free", unit)
 		case *ast.FunctionDeclaration:
 			if member == nil || member.Name == nil {
 				continue

@@ -122,6 +122,9 @@ func verifyTypes(table *TypeTable) error {
 		if err := verifyPlaceReferenceTypes(table, id, t); err != nil {
 			return err
 		}
+		if err := verifyRawPointerType(table, id, t); err != nil {
+			return err
+		}
 		switch t.Kind {
 		case TypeArithmeticFailureReason:
 			if t.Base != 0 || t.Success != 0 || t.Error != 0 {
@@ -368,6 +371,15 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 		return fmt.Errorf("invalid return type !%d", fn.ReturnType)
 	}
 	if fn.Extern {
+		values := map[ValueID]Value{}
+		for _, p := range fn.Parameters {
+			if err := addValue(module.Types, values, p.Value); err != nil {
+				return err
+			}
+			if isRawPointerType(module.Types, p.Value.Type) && p.Reference != nil {
+				return fmt.Errorf("raw-pointer parameter %s carries safe-reference facts", p.Name)
+			}
+		}
 		if len(fn.Blocks) != 0 {
 			return fmt.Errorf("extern has body")
 		}
@@ -393,6 +405,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	defs := map[ValueID]BlockID{}
 	paramDefs := map[ValueID]bool{}
 	for _, p := range fn.Parameters {
+		if isRawPointerType(module.Types, p.Value.Type) && p.Reference != nil {
+			return fmt.Errorf("raw-pointer parameter %s carries safe-reference facts", p.Name)
+		}
 		if err := addValue(module.Types, values, p.Value); err != nil {
 			return err
 		}
@@ -577,6 +592,9 @@ func operationOperands(op Operation) []ValueID {
 }
 
 func addValue(types *TypeTable, values map[ValueID]Value, v Value) error {
+	if isRawPointerType(types, v.Type) != (v.Ownership == OwnershipRawPointer) {
+		return fmt.Errorf("value %%%d raw-pointer type and ownership classification disagree", v.ID)
+	}
 	if _, exists := values[v.ID]; exists {
 		return fmt.Errorf("duplicate value %%%d", v.ID)
 	}
@@ -593,6 +611,11 @@ func addValue(types *TypeTable, values map[ValueID]Value, v Value) error {
 }
 
 func verifyOperation(module *Module, fn *Function, op Operation, values map[ValueID]Value, storages map[StorageID]Storage, functions map[FunctionID]*Function, blocks map[BlockID]*Block) error {
+	for _, result := range op.Results {
+		if isRawPointerType(module.Types, result.Type) && op.Reference != nil {
+			return fmt.Errorf("raw-pointer result %%%d carries safe-reference facts", result.ID)
+		}
+	}
 	resultType := func() TypeID {
 		if len(op.Results) == 1 {
 			return op.Results[0].Type
@@ -1159,7 +1182,7 @@ func package14TrivialValue(module *Module, id TypeID) bool {
 		return package14TrivialValue(module, typ.Base)
 	}
 	switch typ.Kind {
-	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum:
+	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum, TypeRawPointer:
 		return true
 	case TypeArray:
 		return package14TrivialValue(module, typ.Element)

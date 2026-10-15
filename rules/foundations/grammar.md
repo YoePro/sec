@@ -2850,6 +2850,8 @@ RefExpression
     ::= "ref" [ "mut" ] PlaceExpression
 ```
 
+When the `PlaceExpression` is a holder of a safe reference, `ref r` / `ref mut r` is an explicit reborrow of the referent with result `ref T` / `ref mut T`, never a reference to the holder; `ref mut` over a shared holder is an error (MD-061, 2026-10-15, `rules/memory/borrowing.md` § 11.4).
+
 ---
 
 # Move expression
@@ -3528,7 +3530,11 @@ separation.
 
 `?` is reserved and has no Sec 0.1 meaning.
 
-`free` is valid only as the `FreeDeclaration` impl member.
+`free` is valid only as the `FreeDeclaration` impl member: a lifecycle
+declaration inside a valid `impl`, not an expression, an ordinary `fn` or a
+statement at arbitrary locations. Its block may use bare `return` but not
+`return expression`; eligible targets and semantics are owned by `impl.md`
+§ 19 and `destruction.md` § 15 (MD-025, 2026-10-15).
 
 `panic` and `assert` are statement keywords whose forms are defined above and by
 `rules/errors/panic.md`; neither is callable.

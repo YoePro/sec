@@ -1,0 +1,13 @@
+module recursivereferences
+
+fn Spin(value: ref int) ref int {
+    return Spin(value)
+}
+
+fn CycleA(value: ref int) ref int {
+    return CycleB(value)
+}
+
+fn CycleB(value: ref int) ref int {
+    return CycleA(value)
+}

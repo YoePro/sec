@@ -1,0 +1,33 @@
+module specializedrecovery
+
+test "parameters"(value: int) {}
+test "header" -> ignored {}
+
+fn Chained() void {
+    value = 1 = Call([2, 3])
+    return
+}
+
+fn Pattern(value: Option[int]) void {
+    if value is Some(inner(value)) {
+        return
+    }
+}
+
+fn Arms(value: Result[int, Error]) int {
+    return match value {
+        Err(inner(value)) => 1
+        _ => 2
+    }
+}
+
+@when(1 2)
+fn Attributed() void {}
+
+fn After() void {}
+
+fn Header() void {
+    if value = Call(Pair { Left: 1 }) {
+        return
+    }
+}

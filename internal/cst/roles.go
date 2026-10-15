@@ -210,6 +210,8 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 	if d == nil || program == nil {
 		return
 	}
+	d.ExpressionContinuations = nil
+	continuationLayouts := map[concreteTokenKey]bool{}
 	indexes := make(map[concreteTokenKey]int, len(d.Elements))
 	for index, element := range d.Elements {
 		if element.Kind == Token {
@@ -731,6 +733,21 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		}
 	}
 	visitProgramNodes(program, func(node any) {
+		var anchor lexer.Token
+		var expression ast.Expression
+		switch statement := node.(type) {
+		case *ast.ReturnStatement:
+			anchor, expression = statement.Token, statement.Value
+		case *ast.IfStatement:
+			anchor, expression = statement.Token, statement.Condition
+		}
+		if expression != nil {
+			key := keyForToken(anchor)
+			if !continuationLayouts[key] {
+				d.applyExpressionContinuations(anchor, expression, indexes)
+				continuationLayouts[key] = true
+			}
+		}
 		d.applyHeaderSpacingRoles(node, indexes, mark)
 		d.applyOwnershipSpacingRoles(node, indexes, mark)
 		markSpacingRoles(node)

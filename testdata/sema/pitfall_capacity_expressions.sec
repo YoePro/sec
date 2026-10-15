@@ -1,0 +1,323 @@
+module capacityexpressions
+
+type Counter struct {
+    value: uint,
+}
+
+fn Change(values: ref mut list[int]) bool {
+    values.Clear()
+    return true
+}
+
+fn ChangeIndex(index: ref mut Counter) bool {
+    index.value += 1u
+    return true
+}
+
+fn CaseAnd(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i < values.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseOr(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i >= values.Len || values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseReverse(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len > i && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseNegated(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard !(i >= values.Len) && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseNestedOuter(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i < values.Len && (flag || values[i] > 0)
+        i += 1u
+    }
+}
+
+fn CaseNestedLeft(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard (i < values.Len && flag) && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseOrChain(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard (i >= values.Len || flag) || values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseInclusive(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i <= values.Capacity {
+        discard i < values.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseLateCheck(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values[i] > 0 && i < values.Len
+        i += 1u
+    }
+}
+
+fn CaseBoundaryAnd(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i <= values.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseBoundaryOr(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i > values.Len || values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseWrongCollection(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i < other.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseWrongIndex(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard j < values.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseMutateCollection(values: ref mut list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i < values.Len && (Change(values) && values[i] > 0)
+        i += 1u
+    }
+}
+
+fn CaseMutateIndex(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut index := Counter { value: 0u }
+    while index.value < values.Capacity {
+        discard index.value < values.Len && (ChangeIndex(index) && values[index.value] > 0)
+        index.value += 1u
+    }
+}
+
+fn CaseUnknownFlag(values: ref list[int], other: ref list[int], flag: bool, j: uint) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard flag && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseUnrelatedExpr(values: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard i < values.Len && flag
+        discard flag && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseClosure(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        let action := capture(values, i) fn() bool { return i < values.Len && values[i] > 0 }
+        discard action
+        break
+    }
+}
+
+fn CaseDeferred(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        defer { discard i < values.Len && values[i] > 0 }
+        break
+    }
+}
+
+fn CaseEqualAnd(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len == values.Capacity && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualOr(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len != values.Capacity || values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualReverse(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Capacity == values.Len && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualNegated(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard !(values.Len != values.Capacity) && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualNestedOuter(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len == values.Capacity && (flag || values[i] > 0)
+        i += 1u
+    }
+}
+
+fn CaseEqualNestedLeft(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard (values.Len == values.Capacity && flag) && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualOrChain(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard (values.Len != values.Capacity || flag) || values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualInclusive(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i <= values.Capacity {
+        discard values.Len == values.Capacity && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualWrongCollection(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard other.Len == other.Capacity && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualCrossCollection(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len == other.Capacity && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualWrongBranch(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len == values.Capacity || values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualMutation(values: ref mut list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len == values.Capacity && (Change(values) && values[i] > 0)
+        i += 1u
+    }
+}
+
+fn CaseEqualLateCheck(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values[i] > 0 && values.Len == values.Capacity
+        i += 1u
+    }
+}
+
+fn CaseEqualUnrelated(values: ref list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard values.Len == values.Capacity && flag
+        discard flag && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualExpired(values: ref mut list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard (values.Len == values.Capacity && Change(values)) && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualReestablished(values: ref mut list[int], other: ref list[int], flag: bool) void {
+    let mut i := 0u
+    while i < values.Capacity {
+        discard (Change(values) && values.Len == values.Capacity) && values[i] > 0
+        i += 1u
+    }
+}
+
+fn CaseEqualMutateIndex(values: ref list[int]) void {
+    let mut index := Counter { value: 0u }
+    while index.value < values.Capacity {
+        discard values.Len == values.Capacity && (ChangeIndex(index) && values[index.value] > 0)
+        index.value += 1u
+    }
+}
+
+fn CaseEqualClosure(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        let action := capture(values, i) fn() bool { return values.Len == values.Capacity && values[i] > 0 }
+        discard action
+        break
+    }
+}
+
+fn CaseEqualDeferred(values: ref list[int]) void {
+    let i := 0u
+    while i < values.Capacity {
+        defer { discard values.Len == values.Capacity && values[i] > 0 }
+        break
+    }
+}

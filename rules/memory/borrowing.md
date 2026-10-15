@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-08-28
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-15
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/borrowing.md`
 - **Replaces:** `rules/memory/borrowing.txt`
@@ -215,6 +215,10 @@ proves ownership availability only. It does not prove that no conflicting borrow
 
 **§ 8.1(6)** The compiler may retain internal bookkeeping longer than the semantic live range only when doing so does not reject otherwise valid Sec source or alter observable semantics.
 
+**§ 8.1(7)** The semantic lifetime of a borrow is the set of program points needed to preserve every reachable future use and retention dependency — reference holders, derived reborrows, aggregate storage, closures, `defer`, returned references and relevant opaque-call contracts. It ends at the last *required* use on each path, not necessarily at the last textual occurrence of its holder; a deferred or escaping use extends it, loop backedges count, and an unknown foreign retention contract is never treated as call-bounded without proof (MD-061, 2026-10-15, `rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md` § 4).
+
+**§ 8.1(8)** Borrow conflicts remain mandatory compile-time errors. Ergonomics never weakens exclusivity; unnecessary conflicts are avoided only through last-use, disjoint-Place, finite-origin and reborrow rules. A conservative implementation may keep a borrow live longer than this section requires only where § 8.1(6) permits; such retention is tracked as an implementation limitation in governance.
+
 ### § 8.2 Holder termination
 
 **§ 8.2(1)** Reassigning or destroying a reference holder ends the authority held solely by that holder after all derived dependencies have ended.
@@ -288,6 +292,38 @@ proves ownership availability only. It does not prove that no conflicting borrow
 **§ 11.3(2)** Therefore a caller's mutable reference may remain usable after the call when the call-bounded reborrow has ended and no other rule invalidated it.
 
 **§ 11.3(3)** Passing an existing safe reference to an ordinary by-value parameter follows reference-value copy/move classification instead and is not automatically a reborrow unless the parameter contract is borrowed.
+
+### § 11.4 Explicit reborrow
+
+Decided by MD-061 (2026-10-15, `rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md` § 3).
+
+**§ 11.4(1)** When `r` holds a safe reference, `ref r` and `ref mut r` refer to the holder's *referent*, not to the storage of the holder. They are explicit reborrows; no additional reference layer is created.
+
+| Source holder | Expression | Result | Validity |
+|---|---|---|---|
+| `r: ref T` | `ref r` | `ref T` | shared reborrow |
+| `r: ref mut T` | `ref r` | `ref T` | shared reborrow |
+| `r: ref mut T` | `ref mut r` | `ref mut T` | exclusive reborrow, subject to exclusivity |
+| `r: ref T` | `ref mut r` | — | compile-time error: authority cannot be elevated |
+
+**§ 11.4(2)** An explicit reborrow keeps the referent's canonical Place and provenance, storage dependency and generation/epoch validity conditions. It does not move the owned value, create an owner, extend storage lifetime or mint mutation authority.
+
+```sec
+let mut value := 42
+let r := ref mut value
+let view := ref r        // ref int of value, not ref (ref mut int)
+
+Inspect(view)
+Modify(r)                // permitted after view's last required use
+```
+
+**§ 11.4(3)** A mutable child reborrow restricts conflicting use through its mutable parent; a shared child restricts conflicting mutation but coexists with compatible shared access. The parent is usable again after the child's last required use (§ 8.1) unless another live dependency prevents it. Overlapping mutable rights are never active at once, and overlap uses the canonical Place, path-sensitive provenance and alias rules (§ 12): proven disjoint fields are not conflated.
+
+**§ 11.4(4)** No nested `ref ref T` or `ref ref mut T` is synthesized by `ref` on a held reference. This does not introduce a reference-to-reference type syntax or change aggregates that happen to contain references.
+
+**§ 11.4(5)** The typed expression, its resolved reference plan and Semantic IR agree on one resolution: the reborrow is decided once in Sema, and Semantic IR consumes the resolved reborrow plan without reinterpreting the expression.
+
+**§ 11.4(6)** A legal explicit reborrow carries the Information diagnostic `A2005` (`ownership.explicit-reborrow`), which explains that the expression refers to the referent and not to the holder. It never claims that borrowing the owner directly is always appropriate — while the holder has exclusive authority the owner may be unavailable. Like every configurable Information diagnostic it may be promoted to Warning or Error by diagnostic policy (`rules/tooling/diagnostics.md` § 18). An illegal reborrow is an ordinary mandatory error naming the failed authority rule, the overlapping Places, the borrow origin and the use that keeps the conflicting borrow live.
 
 ---
 

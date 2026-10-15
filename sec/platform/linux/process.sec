@@ -1,10 +1,14 @@
 #target(os: "linux", arch: "any")
 module linux
 
+// Unsafe bodies remain explicit: rules/memory/unsafe.md §7(1–3).
+
 import "platform/linux/amd64"
 
 unsafe fn Exit(code: int) never {
-    amd64.RawSyscall(uint(amd64.SysCall.sysExit), uint(code))
+    unsafe {
+        amd64.RawSyscall(uint(amd64.SysCall.sysExit), uint(code))
+    }
 }
 
 // unsafe fn Exit(code: int) never

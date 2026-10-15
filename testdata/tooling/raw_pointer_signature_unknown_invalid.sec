@@ -1,0 +1,7 @@
+module rawunknown
+fn Use(pointer: RawPtr[byte]) void {
+    unsafe {
+        pointer.Write(Fake(1u))
+        pointer.Offset(@unknown(1))
+    }
+}

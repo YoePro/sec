@@ -1,0 +1,37 @@
+module recursivereferences
+
+fn Self(value: ref int, flag: bool) ref int {
+    if flag { return value }
+    return Self(value, true)
+}
+
+fn Alpha(value: ref int, flag: bool) ref int {
+    if flag { return value }
+    return Beta(value)
+}
+
+fn Beta(value: ref int) ref int {
+    return Alpha(value, true)
+}
+
+fn Swap(left: ref int, right: ref int, flag: bool) ref int {
+    if flag { return left }
+    return Swap(right, left, true)
+}
+
+type Pair struct { first: int, second: int }
+
+fn Field(value: ref Pair, flag: bool) ref int {
+    if flag { return ref value.first }
+    return Field(value, true)
+}
+
+fn Invalid() ref int {
+    let local := 7
+    return Self(ref local, true)
+}
+
+fn InvalidAlternative(value: ref int) ref int {
+    let local := 9
+    return Swap(value, ref local, false)
+}

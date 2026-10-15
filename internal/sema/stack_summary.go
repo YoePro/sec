@@ -50,8 +50,9 @@ type stackSummaryKey struct {
 
 // StackSummaryStore keeps producer-supplied semantic and machine facts in
 // independent namespaces, preserving plan variants and defensive snapshots.
-// It does not infer frames, validate budgets or persist separate-compilation
-// summaries. The zero value is an empty usable store.
+// It does not infer frames or validate budgets. Versioned separate-compilation
+// transport is explicit through MarshalStackSummaries/LoadStackSummaries.
+// The zero value is an empty usable store.
 // Rules: rules/analysis/stack_analysis.md — "Stack analysis levels",
 // "CompilationPlan dependence", and "Per-function stack summaries";
 // rules/compiler/compiler_analysis.md — immutable analysis results.

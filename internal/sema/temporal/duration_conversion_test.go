@@ -164,7 +164,7 @@ fn Use(count: int16<ms>, dynamic: decimal<ms>) void {
     let floor := duration(-0.5<ns>, RoundingMode.Floor)
     let upper := duration(9223372036854775807<ns>)
     let lower := duration(-9223372036854775808<ns>)
-    let bounded: duration := count
+    let bounded := duration(count)
     let checked := try duration(dynamic) {
         Err(_) => return
     }
@@ -220,8 +220,8 @@ fn Bad(dynamic: decimal<ms>, wide: int64<s>) void {
 		"9223372036854775808 nanoseconds is outside the signed 64-bit duration range",
 		"-9223372036854775809 nanoseconds is outside the signed 64-bit duration range",
 		"decimal<m> does not have the dimension of time",
-		"cannot initialize duration with decimal<ms>: the compiler cannot prove",
-		"argument 1 to Wait must be duration, got int64<s>: the compiler cannot prove",
+		"cannot initialize duration with decimal<ms>: an already typed quantity is not converted to duration implicitly",
+		"argument 1 to Wait must be duration, got int64<s>: an already typed quantity is not converted to duration implicitly",
 		"converting decimal<ms> to duration may fail with ConversionError.PrecisionLoss and requires try",
 	}
 	if len(errors) != len(want) {
@@ -278,6 +278,64 @@ func TestDurationRoundingModes(t *testing.T) {
 		plan, ok := analyzer.DurationConversionPlanOf(letValue(t, program, "Use", name))
 		if !ok || plan.Nanoseconds.String() != expectation[1] {
 			t.Errorf("%s (%s, %s): got %+v, want %s", name, expectation[0], plan.Rounding, plan.Nanoseconds, expectation[1])
+		}
+	}
+}
+
+// MD-015 (2026-10-15): only a quantity *literal* materializes as duration in
+// an expected-duration position. A binding already typed as a unit-bearing
+// quantity — declared or inferred — is never converted implicitly, even when
+// its value is provable; it needs a written duration(...). A duration value
+// passes as itself.
+//
+// Rules:
+//   - rules/types/temporal.md — § 5.5
+func TestTypedQuantitiesNeedAWrittenDurationConversion(t *testing.T) {
+	_, _, errors := analyzeDuration(t, `
+fn Wait(d: duration) void {
+}
+
+fn Use() void {
+    Wait(5<s>)
+    Wait(500<ms>)
+    Wait(-5<s>)
+
+    let typed: int64<s> := 5
+    Wait(typed)
+
+    let inferred := 5<s>
+    Wait(inferred)
+
+    let converted := duration(5<s>)
+    Wait(converted)
+
+    let explicit := duration(typed)
+    Wait(explicit)
+
+    let declared: duration := inferred
+}
+`)
+	want := map[string]bool{
+		"argument 1 to Wait must be duration, got int64<s>: an already typed quantity":   false,
+		"argument 1 to Wait must be duration, got decimal<s>: an already typed quantity": false,
+		"cannot initialize duration with decimal<s>: an already typed quantity":          false,
+	}
+	if len(errors) != len(want) {
+		t.Fatalf("want %d errors, got %+v", len(want), errors)
+	}
+	for _, err := range errors {
+		for fragment := range want {
+			if strings.Contains(err.Message, fragment) {
+				want[fragment] = true
+				if err.ID != "S1153" || !strings.Contains(err.Message, "Write duration(") {
+					t.Errorf("%q lacks S1153 or the written-conversion advice: %+v", fragment, err)
+				}
+			}
+		}
+	}
+	for fragment, found := range want {
+		if !found {
+			t.Errorf("missing %q in %+v", fragment, errors)
 		}
 	}
 }

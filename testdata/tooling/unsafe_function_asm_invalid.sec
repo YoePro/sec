@@ -1,0 +1,7 @@
+module main
+
+unsafe fn UnmarkedAsm() void {
+    asm {
+        "nop"
+    }
+}

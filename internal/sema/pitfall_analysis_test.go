@@ -365,6 +365,9 @@ fn Visit(values: ref int[]) void {
 	}
 }
 
+// Distinct collection identities prevent mandatory inclusive-length invalidity;
+// the cross-collection loop instead receives optional bound-source advice.
+// Rules: rules/analysis/pitfall_analysis.md — "Bound source differs from indexed collection", "Diagnostic ownership and coalescing".
 func TestPitfallAnalysisUsesSemanticCollectionAndBindingIdentity(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
 
@@ -380,8 +383,8 @@ fn Visit(left: ref int[], right: ref int[]) void {
 	if len(errors) != 0 {
 		t.Fatalf("analysis errors: %v", errors)
 	}
-	if findings := analyzer.PitfallAnalysis().Findings(); len(findings) != 0 {
-		t.Fatalf("unrelated collection or half-open range produced findings: %+v", findings)
+	if findings := analyzer.PitfallAnalysis().Findings(); len(findings) != 1 || findings[0].Rule != PitfallWrongBoundSource || findings[0].Classification != PitfallLikelyMistake {
+		t.Fatalf("distinct collection should receive only optional bound-source advice: %+v", findings)
 	}
 }
 

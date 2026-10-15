@@ -1,0 +1,20 @@
+module main
+
+unsafe fn Leaf() void {
+}
+
+unsafe fn Marked(pointer: RawPtr[byte]) byte {
+    unsafe {
+        pointer.Write(1u)
+        Leaf()
+    }
+    unsafe {
+        return pointer.Read()
+    }
+}
+
+fn Wrapper(pointer: RawPtr[byte]) byte {
+    unsafe {
+        return Marked(pointer)
+    }
+}

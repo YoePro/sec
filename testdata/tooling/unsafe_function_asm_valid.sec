@@ -1,0 +1,35 @@
+module platform_linux_amd64
+
+enum ErrorNumber int error { Native = 1 }
+
+fn _decodeSyscallResult(result: int) Result[uint, ErrorNumber] {
+	if result < 0 {
+		return Err(ErrorNumber.Native)
+	}
+
+	return Ok(uint(result))
+}
+
+unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+	unsafe {
+		asm {
+			"syscall"
+
+			inputs:
+				rax(number)
+				rdi(arg1)
+				rsi(arg2)
+				rdx(arg3)
+
+			outputs:
+				rax(result)
+
+			clobbers:
+				rcx
+				r11
+				memory
+		}
+
+		return result
+	}
+}

@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-12"
+updated: "2026-10-15"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -165,38 +165,6 @@ decisions:
       the binding environment's form, ownership, per-target contents, and
       selection mechanism.
     classification: blocking
-    status: open
-  - id: MD-025
-    area: custom-free-semantics
-    rulebooks:
-      - rules/memory/destruction.md
-      - rules/memory/ownership.md
-      - rules/memory/copy_move.md
-      - rules/declarations/impl.md
-      - rules/foundations/grammar.md
-    description: >-
-      Custom `free` is now parsed and analyzed per impl.md § 19 and
-      destruction.md §§ 10.3 and 15, but six points are not decided by the
-      rulebooks. (1) Copy classification: copy_move.md § 3 never states whether
-      a type with custom free may be implicitly copied; an implicit copy would
-      run free twice for one resource. The implementation leaves the
-      classification derived from the fields (an int-only type with free stays
-      copyable). (2) `discard value.Field` on a custom-free type ends a field
-      and leaves the value partially available, but ownership.md § 19 and
-      destruction.md § 10.3 forbid only partial moves; discard of a field is
-      currently still accepted. (3) grammar.md "free operation syntax" still
-      says the parser creates an invalid statement, contradicting impl.md § 19
-      and grammar.md FreeDeclaration; the implementation follows impl.md.
-      (4) Which impl targets may declare free: interfaces are rejected, every
-      other impl target (enums, named scalars, unions, registers, generic
-      templates) is accepted. (5) destruction.md § 15.4(4) requires rejecting a
-      statically provable manual release of an owned field but defines no
-      proof criterion. (6) Bare `return` inside free is accepted as in any
-      void body; a return value is rejected. Decisions needed: copyability of
-      custom-free types, field discard on custom-free types, the grammar.md
-      status text, legal free targets, the § 15.4(4) criterion, and whether
-      bare return is allowed in free.
-    classification: constraining
     status: open
   - id: MD-026
     area: stdlib-io-root
@@ -612,50 +580,6 @@ decisions:
       callable constraint has a matching spelling (§ 40, § 41). Until then
       sema rejects every unsafe function used as a function value with S1141
       unsafe.function-value-mismatch, also inside unsafe contexts.
-    classification: localized
-    status: open
-
-  - id: MD-060
-    area: unsafe-function-body-context
-    rulebooks:
-      - rules/memory/unsafe.md
-      - rules/platform/inline_assembly.md
-    description: >-
-      unsafe.md § 7(1)-(2) and § 4(7) say the body of an unsafe fn is not
-      implicitly an unsafe context and each unsafe operation stays explicitly
-      marked, but sema treats the whole unsafe fn body as unsafe context
-      (internal/sema/analyzer.go, function body setup). Removing that would
-      reject sec/platform/linux/amd64/raw_syscall.sec, which writes asm
-      directly in unsafe fn bodies and reads the named asm output result
-      after the asm statement, plus the io write/syscall wrappers and the
-      tests TestUnsafeFunctionAllowsAsmAndNamedOutput and
-      TestGenerateUnsafeFunctionWithNamedAsmOutput. Decide whether the
-      rulebook rule is applied as written (and then how a named asm output
-      becomes visible outside an explicit unsafe block, for example through
-      unsafe block-expression results per § 4(5), and who migrates the
-      platform sources) or whether asm/unsafe fn bodies get an explicit
-      exception. Until then the implicit unsafe body is kept unchanged.
-    classification: localized
-    status: open
-
-  - id: MD-061
-    area: explicit-reborrow-source-form
-    rulebooks:
-      - rules/memory/borrowing.md
-      - rules/memory/reference_model.md
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-    description: >-
-      borrowing.md § 2.5 and § 9(5) define reborrowing and § 11.3 names one
-      source form (passing an existing ref mut T to a ref mut T parameter),
-      but no rulebook says what `ref r` / `ref mut r` means when r already
-      holds a reference. Sema is inconsistent today: the type checker gives
-      `ref r` the type ref ref T (and rejects `p == ref p` as comparing
-      ref T with ref ref T), while ResolvedReferencePlanOf marks the same
-      expression as a reborrow of r's referent. Decide whether `ref r` on a
-      reference holder is a reborrow producing ref T (shared from ref or
-      ref mut, mutable only from ref mut), a reference to the holder, or is
-      rejected. Until then the Semantic IR builder keeps explicit reborrow
-      expressions as a package-15 unsupported feature.
     classification: localized
     status: open
 

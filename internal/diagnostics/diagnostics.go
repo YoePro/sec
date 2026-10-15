@@ -289,6 +289,19 @@ const (
 	// ImportedModuleMismatch rejects conflicting module headers in one import.
 	// Rules: rules/projects/modules.md — §§3,9,21.
 	ImportedModuleMismatch = "S1158"
+	// Borrow conflict identities follow requested semantic actions, preserving
+	// origins and mentor explanations rather than classifying rendered prose.
+	// Rules: rules/memory/borrowing.md — §§7,8,9,12,15,21–23,32–33;
+	// rules/tooling/diagnostics.md — §§5–7,15,17.
+	BorrowSharedConflict       = "S1159"
+	BorrowMutableConflict      = "S1160"
+	BorrowOwnerReadConflict    = "S1161"
+	BorrowMutationConflict     = "S1162"
+	BorrowOwnershipEndConflict = "S1163"
+	BorrowLoopCarriedConflict  = "S1164"
+	BorrowMutableAuthority     = "S1165"
+	BorrowProvenanceUnknown    = "S1166"
+	BorrowEscape               = "S1167"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -308,6 +321,10 @@ const (
 	RedundantStateTestComparison = "A2002"
 	NegatedStateTest             = "A2003"
 	PitfallAdvisory              = "A2004"
+	// ExplicitReborrow explains a legal explicit reborrow `ref r`/`ref mut r`
+	// through a reference holder (MD-061). Information by default; projects may
+	// promote it (rules/tooling/diagnostics.md § 18).
+	ExplicitReborrow = "A2005"
 )
 
 var registry = map[string]Definition{
@@ -320,6 +337,15 @@ var registry = map[string]Definition{
 	FillElementNotCopyable:                {ID: FillElementNotCopyable, Name: "collections.fill-element-not-copyable", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	UnknownCallTarget:                     {ID: UnknownCallTarget, Name: "names.unknown-call-target", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ImportedModuleMismatch:                {ID: ImportedModuleMismatch, Name: "modules.inconsistent-source-module", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowSharedConflict:                  {ID: BorrowSharedConflict, Name: "borrowing.shared-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowMutableConflict:                 {ID: BorrowMutableConflict, Name: "borrowing.mutable-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowOwnerReadConflict:               {ID: BorrowOwnerReadConflict, Name: "borrowing.owner-read-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowMutationConflict:                {ID: BorrowMutationConflict, Name: "borrowing.mutation-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowOwnershipEndConflict:            {ID: BorrowOwnershipEndConflict, Name: "borrowing.ownership-end-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowLoopCarriedConflict:             {ID: BorrowLoopCarriedConflict, Name: "borrowing.loop-carried-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowMutableAuthority:                {ID: BorrowMutableAuthority, Name: "borrowing.mutable-authority", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowProvenanceUnknown:               {ID: BorrowProvenanceUnknown, Name: "borrowing.provenance-unknown", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowEscape:                          {ID: BorrowEscape, Name: "borrowing.escape", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	ProjectSourceLayout:                   {ID: ProjectSourceLayout, Name: "projects.invalid-source-layout", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	ProjectRootModuleMismatch:             {ID: ProjectRootModuleMismatch, Name: "projects.root-module-name-mismatch", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	DefaultCycle:                          {ID: DefaultCycle, Name: "types.default-cycle", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
@@ -335,6 +361,7 @@ var registry = map[string]Definition{
 	TryHandlerMissingRecoveryValue:        {ID: TryHandlerMissingRecoveryValue, Name: "errors.try-handler-missing-recovery-value", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
 	AmbiguousContextualArgument:           {ID: AmbiguousContextualArgument, Name: "types.ambiguous-contextual-argument", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	UnitPolymorphismReserved:              {ID: UnitPolymorphismReserved, Name: "units.unit-polymorphic-generics-reserved", Family: "units", DefaultSeverity: SeverityError, Mandatory: true},
+	ExplicitReborrow:                      {ID: ExplicitReborrow, Name: "ownership.explicit-reborrow", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
 	PitfallAdvisory:                       {ID: PitfallAdvisory, Name: "suspicious.pitfall", Family: "suspicious", DefaultSeverity: SeverityInformation, Mandatory: false},
 	IndexOutOfBounds:                      {ID: IndexOutOfBounds, Name: "bounds.index-out-of-bounds", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
 	EscapeLocalStorage:                    {ID: EscapeLocalStorage, Name: "escape.local-storage", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},

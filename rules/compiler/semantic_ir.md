@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-11 (SEC-MLIR-P15 Place/direct-reference amendment integrated)
+- Last updated: 2026-10-15 (MD-061 explicit reborrow and optimization safety, § 46(10)-(13))
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -1162,6 +1162,14 @@ EndBorrowDependency
 § 46(8) A shared-reference copy preserves non-owning referent identity and compatible validity facts. Moving `ref mut T` transfers the holder and its borrow obligation, not referent ownership.
 
 § 46(9) Resolved borrow end is represented explicitly or through equivalent canonical lifetime metadata. It is compile-time structure: no operation requires a runtime borrow counter, owner lock, or alias tag.
+
+§ 46(10) An explicit source reborrow `ref r` / `ref mut r` over a reference holder (`rules/memory/borrowing.md` § 11.4) lowers from Sema's resolved reborrow plan to `ReborrowShared` / `ReborrowMutable` of the holder's reference value: a new BorrowID derived from the holder's borrow, the same referent, provenance, storage dependency and validity policy, and result type `ref T` / `ref mut T`. The builder never reinterprets the expression (MD-061, 2026-10-15, `rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md` § 3(6)).
+
+§ 46(11) Source borrow legality and last-required-use boundaries are fixed at Sema/Semantic IR level before any machine-oriented optimization. No later pass redefines what `ref r`, `ref mut r` or a final use means: a legal program must not become invalid because a pass extends an internal holder's lifetime, and an illegal program must not become legal because dead-code elimination hides a violation. Semantic IR keeps, or carries equivalent canonical facts for, borrow and reborrow kind, referent Places, provenance, holder identity, parent/child authority, last-use boundaries, generation/epoch dependence, storage invalidation and retained or escaping uses, using the existing operations of § 46(2) rather than new duplicates.
+
+§ 46(12) Sec MLIR lowering and every later transformation either preserve each safety-relevant dependency in operations, effects, ordered tokens, verifier-visible metadata or equivalent constraints that downstream passes honor, or remove it only after proving that every dependent access, alias/lifetime assumption, runtime validity check, invalidation and cleanup stays correct without it. A pass that can do neither fails closed or declines the transformation; metadata an unmodified downstream optimizer may ignore does not satisfy this. No pass moves a referent access across a destructive or invalidating event, or a generation/epoch validation away from its dependent access, without proof, and no stronger `noalias`, dereferenceability, lifetime or non-null assumption is emitted than the Sec proof supports. A last-use fact need not be a runtime instruction; LLVM lifetime intrinsics, debug locations and lexical blocks are never the basis of borrow correctness. Address stability, pinning, relocation, `free()`/destructor/defer order, Arena reset/release, pool-slot reuse, retention, volatile/MMIO, FFI callbacks, atomics and synchronization keep their own rules across every boundary.
+
+§ 46(13) Verification rejects contradictory borrow/reborrow plans and missing or invalid required dependencies at the defined IR and lowering boundaries; it does not require a second source-level borrow checker in MLIR. A lowering or optimization that involves reference validity establishes the proof its target pipeline needs and reruns the applicable verifier afterwards; where a proof cannot be expressed at the next level the pass keeps the operation or check, or refuses the lowering. No source-validity guarantee depends on the optimization level (MD-061 § 6).
 
 ---
 

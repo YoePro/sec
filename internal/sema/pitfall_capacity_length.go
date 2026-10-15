@@ -20,49 +20,19 @@ func (b *pitfallBuilder) capacityReceiver(expression ast.Expression) (string, le
 	return identity, member.Property.Token, ok
 }
 
-// capacityEqualsLengthProof recognizes `X.Len == X.Capacity` in either
-// operand order, also as a conjunct of `&&`, and returns the collections it
-// proves.
-func (b *pitfallBuilder) capacityEqualsLengthProof(condition ast.Expression) map[string]lexer.Token {
-	infix, ok := condition.(*ast.InfixExpression)
-	if !ok || infix == nil {
-		return nil
-	}
-	if infix.Operator == "&&" {
-		proofs := map[string]lexer.Token{}
-		for _, side := range []ast.Expression{infix.Left, infix.Right} {
-			for collection, token := range b.capacityEqualsLengthProof(side) {
-				proofs[collection] = token
-			}
-		}
-		return proofs
-	}
-	if infix.Operator != "==" {
-		return nil
-	}
-	for _, pair := range [][2]ast.Expression{{infix.Left, infix.Right}, {infix.Right, infix.Left}} {
-		lengthCollection, _, lengthOK := b.lengthReceiver(pair[0])
-		capacityCollection, _, capacityOK := b.capacityReceiver(pair[1])
-		if lengthOK && capacityOK && lengthCollection == capacityCollection {
-			return map[string]lexer.Token{lengthCollection: infix.Token}
-		}
-	}
-	return nil
-}
-
 // inspectCapacityAsLength reports a range loop that ends at a collection's
 // compiler-known Capacity and indexes that same collection with its loop
 // binding: Capacity is the number of elements the collection can hold without
 // growing, not the live length, so the traversal reaches non-live positions
 // whenever Capacity exceeds Len. A proven `Len == Capacity` on the path — a
-// preceding `assert` in the same block or an enclosing `if` condition —
+// dominating assertion or an established continuing branch —
 // suppresses the finding, unless the loop body structurally mutates the
 // collection and so invalidates the proof.
 //
 // Rules:
 //   - rules/analysis/pitfall_analysis.md — "Length, capacity, and extent", "Capacity used as live length"
 //   - rules/collections/collections.md — 13.4 List properties
-func (b *pitfallBuilder) inspectCapacityAsLength(loop *ast.ForStatement, preceding []ast.Statement) {
+func (b *pitfallBuilder) inspectCapacityAsLength(loop *ast.ForStatement) {
 	rangeExpression, ok := loop.Iterable.(*ast.RangeExpression)
 	if !ok || rangeExpression == nil || loop.Body == nil || len(loop.Bindings) != 1 || loop.Bindings[0].Discard {
 		return
@@ -102,7 +72,7 @@ func (b *pitfallBuilder) inspectCapacityAsLength(loop *ast.ForStatement, precedi
 			Kind: PitfallSuggestedEdit, Title: "traverse the live elements with Len", Replacement: "Len", Source: capacityToken,
 		}},
 	}
-	if proof, proven := b.capacityEqualityOnPath(collection, preceding); proven {
+	if proof, proven := b.activeCapacityEqualities[collection]; proven {
 		if len(b.indexedStructuralMutations(loop.Body, collection, binding, false)) == 0 {
 			evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: "Len == Capacity is proven on this path and the loop does not change the collection's structure", Source: proof}
 			finding.State = PitfallStateSuppressed
@@ -111,32 +81,6 @@ func (b *pitfallBuilder) inspectCapacityAsLength(loop *ast.ForStatement, precedi
 		}
 	}
 	b.add(finding)
-}
-
-// capacityEqualityOnPath finds a `Len == Capacity` proof for collection: a
-// preceding assert of the same block, or else an enclosing if condition. Any
-// structural mutation of the collection between the proof and the loop,
-// including inside nested statements of this block, invalidates it.
-func (b *pitfallBuilder) capacityEqualityOnPath(collection string, preceding []ast.Statement) (lexer.Token, bool) {
-	for index := len(preceding) - 1; index >= 0; index-- {
-		statement := preceding[index]
-		if assertion, ok := statement.(*ast.AssertStatement); ok && assertion != nil {
-			if proof, proven := b.capacityEqualsLengthProof(assertion.Condition)[collection]; proven {
-				return proof, true
-			}
-		}
-		mutated := false
-		visitStatementExpressions(statement, func(expression ast.Expression) {
-			if len(b.mutationsInExpression(expression, collection, false)) > 0 {
-				mutated = true
-			}
-		})
-		if mutated {
-			return lexer.Token{}, false
-		}
-	}
-	proof, ok := b.activeCapacityEqualities[collection]
-	return proof, ok
 }
 
 // inspectDirectCapacityIndex reports a direct access `X[X.Capacity]` or
@@ -192,7 +136,7 @@ func (b *pitfallBuilder) inspectDirectCapacityIndex(index *ast.IndexExpression) 
 			{Strength: PitfallEvidenceProof, Fact: "the index counts back from Capacity, the number of elements the collection can hold without growing", Source: capacityToken},
 			{Strength: PitfallEvidenceStrong, Fact: "the position is live only when Capacity equals Len, which is not proven on this path", Source: index.Token},
 		}
-		if proof, proven := b.capacityEqualityOnPath(collection, b.activePreceding); proven {
+		if proof, proven := b.activeCapacityEqualities[collection]; proven {
 			evidence := PitfallEvidence{Strength: PitfallEvidenceSuppressing, Fact: "Len == Capacity is proven on this path", Source: proof}
 			finding.State = PitfallStateSuppressed
 			finding.EvidenceAgainst = []PitfallEvidence{evidence}

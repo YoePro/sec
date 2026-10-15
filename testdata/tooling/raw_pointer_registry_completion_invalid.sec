@@ -1,0 +1,27 @@
+module rawpointercompletion
+
+type Reading int
+
+fn Bytes(bytes: RawPtr[byte]) void {
+    bytes.
+}
+
+fn Integers(ints: RawPtr[int]) void {
+    ints.
+}
+
+fn Opaque(opaque: RawPtr[void]) void {
+    opaque.
+}
+
+fn Nominal(readings: RawPtr[Reading]) void {
+    readings.
+}
+
+fn Shared(shared: ref RawPtr[byte]) void {
+    shared.
+}
+
+fn Mutable(mutable: ref mut RawPtr[byte]) void {
+    mutable.
+}

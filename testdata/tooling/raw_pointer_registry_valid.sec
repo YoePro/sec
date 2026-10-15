@@ -1,0 +1,53 @@
+module rawpointerregistry
+
+type Reading int
+
+fn Bytes(bytes: RawPtr[byte], other: RawPtr[byte]) void {
+    unsafe {
+        let value := bytes.Read()
+        bytes.Write(value)
+        let observed := bytes.VolatileRead()
+        bytes.VolatileWrite(observed)
+        let offset := bytes.Offset(1)
+        let address := bytes.AddBytes(1)
+        let distance := bytes.Difference(other)
+    }
+}
+
+fn Integers(ints: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        let value := ints.Read()
+        ints.Write(value)
+        let observed := ints.VolatileRead()
+        ints.VolatileWrite(observed)
+        let offset := ints.Offset(1)
+        let distance := ints.Difference(other)
+    }
+}
+
+fn Nominal(readings: RawPtr[Reading], other: RawPtr[Reading]) void {
+    unsafe {
+        let value := readings.Read()
+        readings.Write(value)
+        let observed := readings.VolatileRead()
+        readings.VolatileWrite(observed)
+        let offset := readings.Offset(1)
+        let distance := readings.Difference(other)
+    }
+}
+
+fn Shared(shared: ref RawPtr[byte]) void {
+    unsafe {
+        let value := shared.Read()
+        let shifted := shared.Offset(1)
+        let address := shared.AddBytes(1)
+    }
+}
+
+fn Mutable(mutable: ref mut RawPtr[byte]) void {
+    unsafe {
+        mutable.Write(1u)
+        let shifted := mutable.Offset(1)
+        let address := mutable.AddBytes(1)
+    }
+}

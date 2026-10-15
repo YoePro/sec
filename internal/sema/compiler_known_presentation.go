@@ -44,6 +44,12 @@ func instantiateCompilerKnownPresentation(member CompilerKnownMember, receiver T
 	}
 	member.Signature = bind(member.Signature)
 	member.Receiver = bind(member.Receiver)
+	if len(member.CallerObligations) > 0 {
+		member.CallerObligations = append([]string(nil), member.CallerObligations...)
+		for index := range member.CallerObligations {
+			member.CallerObligations[index] = bind(member.CallerObligations[index])
+		}
+	}
 	member.BoundReceiver = typeDisplayName(receiver)
 	return member
 }

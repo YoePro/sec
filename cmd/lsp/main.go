@@ -1936,51 +1936,6 @@ func contextualOperatorHoverContents(operator string, resolved sema.ResolvedOper
 	return contents
 }
 
-func signatureHelpForSource(uri string, text string, pos position, overlays ...sourceOverlay) (signatureHelp, bool) {
-	program := parseProgramForLSP(uri, text)
-	if program == nil {
-		return signatureHelp{}, false
-	}
-	offset := lineCharToOffset(text, pos.Line, pos.Character)
-	if offset < 0 {
-		return signatureHelp{}, false
-	}
-	path := pathFromURI(uri)
-	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
-	defer release()
-	construction, openOffset, closeOffset, found := constructionAtOffset(program, path, text, offset)
-	if !found || offset <= openOffset || offset > closeOffset {
-		return signatureHelp{}, false
-	}
-	resolved, ok := analyzer.ResolvedConstructionOf(construction)
-	if !ok {
-		return signatureHelp{}, false
-	}
-	parameters := resolved.Initializer.Parameters
-	labels := make([]string, 0, len(parameters))
-	information := make([]parameterInformation, 0, len(parameters))
-	for _, parameter := range parameters {
-		label := initializerParameterLabel(parameter)
-		labels = append(labels, label)
-		information = append(information, parameterInformation{Label: label})
-	}
-	activeParameter := activeConstructionParameter(text, openOffset, offset)
-	if len(parameters) == 0 {
-		activeParameter = 0
-	} else if activeParameter >= len(parameters) {
-		activeParameter = len(parameters) - 1
-	}
-	documentation := initializerConstructionDetails(resolved)
-	return signatureHelp{
-		Signatures: []signatureInformation{{
-			Label:         "init(" + strings.Join(labels, ", ") + ")",
-			Documentation: markupContent{Kind: "markdown", Value: documentation},
-			Parameters:    information,
-		}},
-		ActiveParameter: activeParameter,
-	}, true
-}
-
 func initializerForToken(analyzer *sema.Analyzer, token lexer.Token) (sema.Function, bool) {
 	if analyzer == nil {
 		return sema.Function{}, false
@@ -2184,57 +2139,6 @@ func activeConstructionParameter(text string, openOffset int, cursorOffset int) 
 		}
 	}
 	return active
-}
-
-func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMember) hoverResult {
-	kind := string(member.Kind)
-	if member.Unsafe {
-		kind = "unsafe " + kind
-	}
-	result := lspTypeName(member.Result)
-	if member.Result.Kind == sema.InvalidType || member.Result.Kind == "" {
-		result = "context-dependent"
-	}
-	effects := ""
-	if len(member.Effects) > 0 {
-		names := make([]string, 0, len(member.Effects))
-		for _, effect := range member.Effects {
-			names = append(names, string(effect))
-		}
-		effects = "\n\nEffects: `" + strings.Join(names, "`, `") + "`."
-	}
-	declaration := fmt.Sprintf("%s %s: %s", kind, member.Name, result)
-	resolved := ""
-	if member.Signature != "" {
-		declaration = member.Signature
-		// The registry signature is generic; show the receiver-resolved
-		// result at this use as well.
-		if result != "context-dependent" {
-			resolved = "\n\nResult here: `" + result + "`."
-		}
-	}
-	if member.Rule != "" {
-		resolved += "\n\nRule: " + member.Rule + "."
-	}
-	documentation := ""
-	if member.Documentation != "" {
-		documentation = "\n\n" + member.Documentation
-	}
-	// rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
-	// § 24(4): hover identifies the member's semantic-authority category.
-	category := ""
-	switch member.Category {
-	case sema.CompilerProvidedFallbackMember:
-		category = "\n\nCompiler-provided fallback: an exact user-defined replacement on a user-owned type takes precedence."
-	case sema.AuthoritativeCompilerSemanticProperty:
-		category = "\n\nAuthoritative compiler property: user code cannot replace it."
-	case sema.CompilerKnownOperation:
-		category = "\n\nCompiler-known operation."
-	case sema.PrivilegedCoreMember:
-		category = "\n\nPrivileged core member."
-	}
-	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s%s%s", declaration, member.ID, resolved, category, effects, documentation)
-	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 
 func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.Token) (string, bool) {

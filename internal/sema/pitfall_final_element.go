@@ -103,16 +103,7 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 
 	outerProofs := b.activeNonEmptyProofs
 	outerCapacityEqualities := b.activeCapacityEqualities
-	if proofs := b.capacityEqualsLengthProof(statement.Condition); len(proofs) > 0 {
-		merged := map[string]lexer.Token{}
-		for collection, token := range outerCapacityEqualities {
-			merged[collection] = token
-		}
-		for collection, token := range proofs {
-			merged[collection] = token
-		}
-		b.activeCapacityEqualities = merged
-	}
+	b.activeCapacityEqualities = mergeCapacityEqualities(outerCapacityEqualities, b.capacityBranchProof(statement.Condition, true))
 	b.activeNonEmptyProofs = mergePitfallNonEmptyProofs(outerProofs, b.nonEmptyBranchProof(statement.Condition, true))
 	outerLengthConditions := b.activeLengthConditions
 	b.activeLengthConditions = append(append([]ast.Expression(nil), outerLengthConditions...), statement.Condition)
@@ -120,12 +111,13 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 		b.withIndexGuards(guards, func() { b.walkBlock(statement.Consequence) })
 	}
 	b.activeLengthConditions = outerLengthConditions
-	b.activeCapacityEqualities = outerCapacityEqualities
+	b.activeCapacityEqualities = mergeCapacityEqualities(outerCapacityEqualities, b.capacityBranchProof(statement.Condition, false))
 	b.activeNonEmptyProofs = mergePitfallNonEmptyProofs(outerProofs, b.nonEmptyBranchProof(statement.Condition, false))
 	if falseReachable {
 		b.withIndexGuards(b.falseIndexGuards(statement.Condition), func() { b.walkBlock(statement.Alternative) })
 	}
 	b.activeNonEmptyProofs = outerProofs
+	b.activeCapacityEqualities = outerCapacityEqualities
 }
 
 // nonEmptyBranchProof normalizes direct comparisons between compiler-known Len

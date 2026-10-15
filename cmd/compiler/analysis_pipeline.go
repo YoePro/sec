@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -75,6 +76,7 @@ func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarge
 		exitCLI(1)
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
+	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
 	errors := analyzer.Analyze(program)
 	printSemaWarnings(analyzer)
 	for _, warning := range analyzer.Warnings() {
@@ -96,4 +98,19 @@ func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarge
 		printDiagnosticSummary(summary)
 	}
 	return analyzer
+}
+
+// projectDiagnosticRules reads the `[diagnostics.rules]` policy of the
+// project governing the first source, so a configurable diagnostic such as
+// A2005 can be disabled or promoted (rules/tooling/diagnostics.md § 18).
+// Without a manifest the registered defaults apply.
+func projectDiagnosticRules(sourceFiles []string) diagnostics.RulePolicy {
+	if len(sourceFiles) == 0 {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(findProjectRoot(sourceFiles[0]), ".sec", "sec.toml"))
+	if err != nil {
+		return nil
+	}
+	return diagnostics.ParseRulePolicy(string(data))
 }

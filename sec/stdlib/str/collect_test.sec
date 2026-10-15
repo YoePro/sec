@@ -1,346 +1,411 @@
 module str
 
 /*
- * Sec Standard Library - str - String and rune/byte materialization tests
+ * Sec Standard Library - str - Collect transformation tests
  *
- * File:        stdlib/str/collect_test.sec
+ * File:        stdlib/str/collection_test.sec
  * Module:      str
  * Revision:    1
- * Updated:     2026-10-11
+ * Updated:     2026-10-15
  *
  * Purpose:
- * Tests owning rune and byte arrays, UTF-8 encoding and decoding,
- * both FromRunes overloads, and lossless string/rune round trips.
+ * Tests Collect and CollectIndexed in transform.sec, including
+ * expansion, deletion, UTF-8 preservation, rune indexing, and
+ * exact propagation of CollectionError from transformation callbacks.
+ *
+ * Contract:
+ * Both callbacks return Result[string, CollectionError].
+ * Both public functions return Result[string, CollectionError].
  *
  * Rulebook:
  * stdlib/str/stdlib_str.md
  */
 
-// Concrete pull iterator for exercising the generic FromRunes overload.
-// It yields A, å, €, and 🦊, stopping at the requested number of runes.
-type CollectTestRuneIterator struct {
-    position: uint,
-    limit:    uint,
-}
+// Test callbacks for Collect(rune -> Result[string, CollectionError]).
 
-impl CollectTestRuneIterator implements Iterator[rune] {
-    fn Next() Option[rune] {
-        if self.position >= self.limit {
-            return None()
-        }
-
-        let index := self.position
-        self.position += 1
-
-        if index == 0 {
-            return Some(65r)
-        }
-        if index == 1 {
-            return Some(229r)
-        }
-        if index == 2 {
-            return Some(8364r)
-        }
-        return Some(129418r)
+fn _CollectionTestExpand(character: rune) Result[string, CollectionError] {
+    switch character {
+        case 97r:
+            return Ok("[A]")
+        case 98r:
+            return Ok("")
+        case 99r:
+            return Ok("CC")
+        default:
+            return Ok("-")
     }
 }
 
-// ToRuneArray: one element per Unicode scalar value, not per byte.
+fn _CollectionTestKeepA(character: rune) Result[string, CollectionError] {
+    if character == 97r {
+        return Ok("a")
+    }
 
-test "ToRuneArray returns an empty array for an empty string" {
-    let runes := try ToRuneArray("")
-    testing.ExpectEqual(0, runes.Len)
+    return Ok("")
 }
 
-test "ToRuneArray decodes ASCII" {
-    let runes := try ToRuneArray("ABC")
-    testing.ExpectEqual(3, runes.Len)
-    testing.ExpectEqual(65r, runes[0])
-    testing.ExpectEqual(66r, runes[1])
-    testing.ExpectEqual(67r, runes[2])
-}
-
-test "ToRuneArray decodes Swedish letters" {
-    let runes := try ToRuneArray("åäö")
-    testing.ExpectEqual(3, runes.Len)
-    testing.ExpectEqual(229r, runes[0])
-    testing.ExpectEqual(228r, runes[1])
-    testing.ExpectEqual(246r, runes[2])
-}
-
-test "ToRuneArray decodes a three-byte rune" {
-    let runes := try ToRuneArray("€")
-    testing.ExpectEqual(1, runes.Len)
-    testing.ExpectEqual(8364r, runes[0])
-}
-
-test "ToRuneArray decodes a four-byte rune" {
-    let runes := try ToRuneArray("🦊")
-    testing.ExpectEqual(1, runes.Len)
-    testing.ExpectEqual(129418r, runes[0])
-}
-
-test "ToRuneArray decodes a mixed-width string" {
-    let runes := try ToRuneArray("Aå€🦊")
-    testing.ExpectEqual(4, runes.Len)
-    testing.ExpectEqual(65r, runes[0])
-    testing.ExpectEqual(229r, runes[1])
-    testing.ExpectEqual(8364r, runes[2])
-    testing.ExpectEqual(129418r, runes[3])
-}
-
-test "ToRuneArray preserves decomposed accents" {
-    let runes := try ToRuneArray("é")
-    testing.ExpectEqual(2, runes.Len)
-    testing.ExpectEqual(101r, runes[0])
-    testing.ExpectEqual(769r, runes[1])
-}
-
-test "ToRuneArray distinguishes composed and decomposed accents" {
-    let composed := try ToRuneArray("é")
-    let decomposed := try ToRuneArray("é")
-    testing.ExpectEqual(1, composed.Len)
-    testing.ExpectEqual(233r, composed[0])
-    testing.ExpectEqual(2, decomposed.Len)
-    testing.ExpectEqual(101r, decomposed[0])
-    testing.ExpectEqual(769r, decomposed[1])
-}
-
-test "ToRuneArray preserves repeated runes" {
-    let runes := try ToRuneArray("🦊🦊")
-    testing.ExpectEqual(2, runes.Len)
-    testing.ExpectEqual(129418r, runes[0])
-    testing.ExpectEqual(129418r, runes[1])
-}
-
-// ToByteArray: preserve exact UTF-8 bytes without decoding or normalization.
-
-test "ToByteArray returns an empty array for an empty string" {
-    let bytes := try ToByteArray("")
-    testing.ExpectEqual(0, bytes.Len)
-}
-
-test "ToByteArray copies ASCII bytes" {
-    let bytes := try ToByteArray("ABC")
-    testing.ExpectEqual(3, bytes.Len)
-    testing.ExpectEqual(65, bytes[0])
-    testing.ExpectEqual(66, bytes[1])
-    testing.ExpectEqual(67, bytes[2])
-}
-
-test "ToByteArray copies a two-byte rune" {
-    let bytes := try ToByteArray("å")
-    testing.ExpectEqual(2, bytes.Len)
-    testing.ExpectEqual(195, bytes[0])
-    testing.ExpectEqual(165, bytes[1])
-}
-
-test "ToByteArray copies a three-byte rune" {
-    let bytes := try ToByteArray("€")
-    testing.ExpectEqual(3, bytes.Len)
-    testing.ExpectEqual(226, bytes[0])
-    testing.ExpectEqual(130, bytes[1])
-    testing.ExpectEqual(172, bytes[2])
-}
-
-test "ToByteArray copies a four-byte rune" {
-    let bytes := try ToByteArray("🦊")
-    testing.ExpectEqual(4, bytes.Len)
-    testing.ExpectEqual(240, bytes[0])
-    testing.ExpectEqual(159, bytes[1])
-    testing.ExpectEqual(166, bytes[2])
-    testing.ExpectEqual(138, bytes[3])
-}
-
-test "ToByteArray preserves mixed-width UTF-8 bytes" {
-    let bytes := try ToByteArray("Aå€🦊")
-    testing.ExpectEqual(10, bytes.Len)
-    testing.ExpectEqual(65, bytes[0])
-    testing.ExpectEqual(195, bytes[1])
-    testing.ExpectEqual(165, bytes[2])
-    testing.ExpectEqual(226, bytes[3])
-    testing.ExpectEqual(130, bytes[4])
-    testing.ExpectEqual(172, bytes[5])
-    testing.ExpectEqual(240, bytes[6])
-    testing.ExpectEqual(159, bytes[7])
-    testing.ExpectEqual(166, bytes[8])
-    testing.ExpectEqual(138, bytes[9])
-}
-
-test "ToByteArray preserves decomposed UTF-8" {
-    let bytes := try ToByteArray("é")
-    testing.ExpectEqual(3, bytes.Len)
-    testing.ExpectEqual(101, bytes[0])
-    testing.ExpectEqual(204, bytes[1])
-    testing.ExpectEqual(129, bytes[2])
-}
-
-test "ToByteArray length equals the source byte length" {
-    let value := "å€🦊ABC"
-    let bytes := try ToByteArray(value)
-    testing.ExpectEqual(value.SizeOf, bytes.Len)
-}
-
-test "ToByteArray agrees with the source at every byte offset" {
-    let value := "Aå€🦊é"
-    let bytes := try ToByteArray(value)
-    let mut index: uint := 0
-
-    while index < value.SizeOf {
-        testing.ExpectEqual(value.ByteAt(index), bytes[index])
-        index += 1
+fn _CollectionTestUnicode(character: rune) Result[string, CollectionError] {
+    switch character {
+        case 97r:
+            return Ok("å")
+        case 98r:
+            return Ok("€")
+        case 99r:
+            return Ok("🦊")
+        default:
+            return Ok("?")
     }
 }
 
-// FromRunes(ref rune[]): borrow the array and encode every rune in order.
+fn _CollectionTestKeepUnicode(character: rune) Result[string, CollectionError] {
+    switch character {
+        case 229r:
+            return Ok("å")
+        case 8364r:
+            return Ok("€")
+        case 129418r:
+            return Ok("🦊")
+        default:
+            return Ok("")
+    }
+}
 
-test "FromRunes array handles an empty array" {
-    let mut values: rune[]
-    let result := try FromRunes(values)
+fn _CollectionTestCombining(character: rune) Result[string, CollectionError] {
+    if character == 101r {
+        return Ok("e")
+    }
+
+    if character == 769r {
+        return Ok("\u{0301}")
+    }
+
+    return Ok("")
+}
+
+fn _CollectionTestNul(character: rune) Result[string, CollectionError] {
+    if character == 0r {
+        return Ok("\0")
+    }
+
+    return Ok("X")
+}
+
+fn _CollectionTestAlwaysFail(character: rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn _CollectionTestFailOnB(character: rune) Result[string, CollectionError] {
+    if character == 98r {
+        return Err(CollectionError.SizeOverflow)
+    }
+
+    return Ok("x")
+}
+
+fn _CollectionTestFailOnUnicode(character: rune) Result[string, CollectionError] {
+    if character == 129418r {
+        return Err(CollectionError.SizeOverflow)
+    }
+
+    return Ok("x")
+}
+
+// Test callbacks for CollectIndexed((uint, rune) -> Result[string, CollectionError]).
+
+fn _CollectionTestIndexedPositions(index: uint, character: rune) Result[string, CollectionError] {
+    switch index {
+        case 0:
+            return Ok("[0]")
+        case 1:
+            return Ok("[1]")
+        case 2:
+            return Ok("[2]")
+        default:
+            return Ok("[n]")
+    }
+}
+
+fn _CollectionTestIndexedEven(index: uint, character: rune) Result[string, CollectionError] {
+    if index % 2 == 0 {
+        return Ok("X")
+    }
+
+    return Ok("")
+}
+
+fn _CollectionTestIndexedValue(index: uint, character: rune) Result[string, CollectionError] {
+    if index == 0 && character == 97r {
+        return Ok("A")
+    }
+
+    if index == 1 && character == 229r {
+        return Ok("åå")
+    }
+
+    if index == 2 && character == 129418r {
+        return Ok("🦊")
+    }
+
+    return Ok("?")
+}
+
+fn _CollectionTestIndexedExpand(index: uint, character: rune) Result[string, CollectionError] {
+    switch index {
+        case 0:
+            return Ok("[A]")
+        case 1:
+            return Ok("")
+        case 2:
+            return Ok("CC")
+        default:
+            return Ok("-")
+    }
+}
+
+fn _CollectionTestIndexedAlwaysFail(index: uint, character: rune) Result[string, CollectionError] {
+    return Err(CollectionError.AllocationFailed)
+}
+
+fn _CollectionTestIndexedFailAtOne(index: uint, character: rune) Result[string, CollectionError] {
+    if index == 1 {
+        return Err(CollectionError.SizeOverflow)
+    }
+
+    return Ok("x")
+}
+
+fn _CollectionTestIndexedFailOnUnicode(index: uint, character: rune) Result[string, CollectionError] {
+    if index == 1 && character == 129418r {
+        return Err(CollectionError.SizeOverflow)
+    }
+
+    return Ok("x")
+}
+
+// Collect: zero, one, or several output runes per input rune.
+
+test "Collect accepts empty input" {
+    let result := try Collect("", _CollectionTestExpand)
     testing.ExpectEqual("", result)
 }
 
-test "FromRunes array encodes ASCII" {
-    let mut values: rune[]
-    try values.Append(65r)
-    try values.Append(66r)
-    try values.Append(67r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("ABC", result)
-}
-
-test "FromRunes array encodes two-byte runes" {
-    let mut values: rune[]
-    try values.Append(229r)
-    try values.Append(228r)
-    try values.Append(246r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("åäö", result)
-}
-
-test "FromRunes array encodes a three-byte rune" {
-    let mut values: rune[]
-    try values.Append(8364r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("€", result)
-}
-
-test "FromRunes array encodes a four-byte rune" {
-    let mut values: rune[]
-    try values.Append(129418r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("🦊", result)
-}
-
-test "FromRunes array encodes mixed-width runes" {
-    let mut values: rune[]
-    try values.Append(65r)
-    try values.Append(229r)
-    try values.Append(8364r)
-    try values.Append(129418r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("Aå€🦊", result)
-}
-
-test "FromRunes array preserves decomposed accents" {
-    let mut values: rune[]
-    try values.Append(101r)
-    try values.Append(769r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("é", result)
-}
-
-test "FromRunes array does not consume the source" {
-    let mut values: rune[]
-    try values.Append(65r)
-    try values.Append(229r)
-    let result := try FromRunes(values)
-    testing.ExpectEqual("Aå", result)
-    testing.ExpectEqual(2, values.Len)
-    testing.ExpectEqual(65r, values[0])
-    testing.ExpectEqual(229r, values[1])
-}
-
-test "FromRunes array result does not alias source storage" {
-    let mut values: rune[]
-    try values.Append(65r)
-    try values.Append(66r)
-    let result := try FromRunes(values)
-    values[0] = 88r
-    testing.ExpectEqual("AB", result)
-    testing.ExpectEqual(88r, values[0])
-}
-
-// FromRunes[I: Iterator[rune]]: a concrete iterator satisfies the generic contract.
-
-test "FromRunes iterator handles an empty sequence" {
-    let result := try FromRunes(CollectTestRuneIterator {
-        position: 0,
-        limit: 0,
-    })
+test "Collect does not invoke callback for empty input" {
+    let result := try Collect("", _CollectionTestAlwaysFail)
     testing.ExpectEqual("", result)
 }
 
-test "FromRunes iterator handles a single rune" {
-    let result := try FromRunes(CollectTestRuneIterator {
-        position: 0,
-        limit: 1,
-    })
-    testing.ExpectEqual("A", result)
+test "Collect expands a single rune" {
+    let result := try Collect("a", _CollectionTestExpand)
+    testing.ExpectEqual("[A]", result)
 }
 
-test "FromRunes iterator encodes multiple rune widths" {
-    let result := try FromRunes(CollectTestRuneIterator {
-        position: 0,
-        limit: 4,
-    })
-    testing.ExpectEqual("Aå€🦊", result)
-}
-
-test "FromRunes iterator respects its end position" {
-    let result := try FromRunes(CollectTestRuneIterator {
-        position: 1,
-        limit: 3,
-    })
-    testing.ExpectEqual("å€", result)
-}
-
-// Round trips: materialization must preserve valid Unicode scalar sequences.
-
-test "Rune array round trip preserves ASCII" {
-    let runes := try ToRuneArray("Hello")
-    let result := try FromRunes(runes)
-    testing.ExpectEqual("Hello", result)
-}
-
-test "Rune array round trip preserves Swedish text" {
-    let runes := try ToRuneArray("Räksmörgås")
-    let result := try FromRunes(runes)
-    testing.ExpectEqual("Räksmörgås", result)
-}
-
-test "Rune array round trip preserves mixed-width Unicode" {
-    let runes := try ToRuneArray("Aå€🦊")
-    let result := try FromRunes(runes)
-    testing.ExpectEqual("Aå€🦊", result)
-}
-
-test "Rune array round trip preserves decomposed Unicode" {
-    let runes := try ToRuneArray("é")
-    let result := try FromRunes(runes)
-    testing.ExpectEqual("é", result)
-}
-
-test "Rune array round trip preserves an empty string" {
-    let runes := try ToRuneArray("")
-    let result := try FromRunes(runes)
+test "Collect deletes a single rune" {
+    let result := try Collect("b", _CollectionTestExpand)
     testing.ExpectEqual("", result)
 }
 
-test "Rune and byte collections report different lengths" {
-    let value := "Aå€🦊"
-    let runes := try ToRuneArray(value)
-    let bytes := try ToByteArray(value)
-    testing.ExpectEqual(4, runes.Len)
-    testing.ExpectEqual(10, bytes.Len)
+test "Collect expands multiple runes" {
+    let result := try Collect("cc", _CollectionTestExpand)
+    testing.ExpectEqual("CCCC", result)
+}
+
+test "Collect mixes expansion deletion and preservation" {
+    let result := try Collect("abc", _CollectionTestExpand)
+    testing.ExpectEqual("[A]CC", result)
+}
+
+test "Collect preserves input order after transformation" {
+    let result := try Collect("caba", _CollectionTestExpand)
+    testing.ExpectEqual("CC[A][A]", result)
+}
+
+test "Collect repeats transformations for repeated runes" {
+    let result := try Collect("aaa", _CollectionTestExpand)
+    testing.ExpectEqual("[A][A][A]", result)
+}
+
+test "Collect handles a fallback transformation" {
+    let result := try Collect("ad", _CollectionTestExpand)
+    testing.ExpectEqual("[A]-", result)
+}
+
+test "Collect filters out all unmatched runes" {
+    let result := try Collect("xyz", _CollectionTestKeepA)
+    testing.ExpectEqual("", result)
+}
+
+test "Collect filters while keeping source order" {
+    let result := try Collect("baacaba", _CollectionTestKeepA)
+    testing.ExpectEqual("aaaa", result)
+}
+
+test "Collect produces Unicode output of different byte widths" {
+    let result := try Collect("abc", _CollectionTestUnicode)
+    testing.ExpectEqual("å€🦊", result)
+}
+
+test "Collect preserves multibyte input runes" {
+    let result := try Collect("å€🦊", _CollectionTestKeepUnicode)
+    testing.ExpectEqual("å€🦊", result)
+}
+
+test "Collect deletes other runes between Unicode runes" {
+    let result := try Collect("åx€y🦊", _CollectionTestKeepUnicode)
+    testing.ExpectEqual("å€🦊", result)
+}
+
+test "Collect preserves decomposed Unicode without normalization" {
+    let result := try Collect("e\u{0301}", _CollectionTestCombining)
+    testing.ExpectEqual("e\u{0301}", result)
+}
+
+test "Collect can emit NUL inside a string" {
+    let result := try Collect("a\0b", _CollectionTestNul)
+    testing.ExpectEqual("X\0X", result)
+}
+
+test "Collect propagates an immediate allocation error from callback" {
+    try Collect("abc", _CollectionTestAlwaysFail) {
+        Err(CollectionError.AllocationFailed) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected CollectionError.AllocationFailed")
+}
+
+test "Collect propagates SizeOverflow without rewriting it" {
+    try Collect("abc", _CollectionTestFailOnB) {
+        Err(CollectionError.SizeOverflow) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected CollectionError.SizeOverflow")
+}
+
+test "Collect propagates an error after multibyte input" {
+    try Collect("å🦊B", _CollectionTestFailOnUnicode) {
+        Err(CollectionError.SizeOverflow) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected CollectionError.SizeOverflow")
+}
+
+// CollectIndexed: rune positions are zero-based and count scalar values.
+
+test "CollectIndexed accepts empty input" {
+    let result := try CollectIndexed("", _CollectionTestIndexedPositions)
+    testing.ExpectEqual("", result)
+}
+
+test "CollectIndexed does not invoke callback for empty input" {
+    let result := try CollectIndexed("", _CollectionTestIndexedAlwaysFail)
+    testing.ExpectEqual("", result)
+}
+
+test "CollectIndexed receives index zero for a single rune" {
+    let result := try CollectIndexed("a", _CollectionTestIndexedPositions)
+    testing.ExpectEqual("[0]", result)
+}
+
+test "CollectIndexed receives consecutive rune indexes" {
+    let result := try CollectIndexed("abc", _CollectionTestIndexedPositions)
+    testing.ExpectEqual("[0][1][2]", result)
+}
+
+test "CollectIndexed indexes runes rather than UTF-8 bytes" {
+    let result := try CollectIndexed("å🦊€", _CollectionTestIndexedPositions)
+    testing.ExpectEqual("[0][1][2]", result)
+}
+
+test "CollectIndexed index starts at zero for Unicode input" {
+    let result := try CollectIndexed("🦊", _CollectionTestIndexedPositions)
+    testing.ExpectEqual("[0]", result)
+}
+
+test "CollectIndexed indexes decomposed Unicode by rune" {
+    let result := try CollectIndexed("e\u{0301}", _CollectionTestIndexedPositions)
+    testing.ExpectEqual("[0][1]", result)
+}
+
+test "CollectIndexed indexes after a deleted rune" {
+    let result := try CollectIndexed("abcd", _CollectionTestIndexedEven)
+    testing.ExpectEqual("XX", result)
+}
+
+test "CollectIndexed retains even indexed Unicode runes" {
+    let result := try CollectIndexed("å🦊€b", _CollectionTestIndexedEven)
+    testing.ExpectEqual("XX", result)
+}
+
+test "CollectIndexed handles a single rejected position" {
+    let result := try CollectIndexed("a", _CollectionTestIndexedEven)
+    testing.ExpectEqual("X", result)
+}
+
+test "CollectIndexed combines rune values and indexes" {
+    let result := try CollectIndexed("aå🦊", _CollectionTestIndexedValue)
+    testing.ExpectEqual("Aåå🦊", result)
+}
+
+test "CollectIndexed uses fallback for unmatched rune and index" {
+    let result := try CollectIndexed("abc", _CollectionTestIndexedValue)
+    testing.ExpectEqual("A??", result)
+}
+
+test "CollectIndexed supports expansion and deletion" {
+    let result := try CollectIndexed("abc", _CollectionTestIndexedExpand)
+    testing.ExpectEqual("[A]CC", result)
+}
+
+test "CollectIndexed supports expansion beyond three input positions" {
+    let result := try CollectIndexed("abcd", _CollectionTestIndexedExpand)
+    testing.ExpectEqual("[A]CC-", result)
+}
+
+test "CollectIndexed propagates immediate allocation error" {
+    try CollectIndexed("abc", _CollectionTestIndexedAlwaysFail) {
+        Err(CollectionError.AllocationFailed) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected CollectionError.AllocationFailed")
+}
+
+test "CollectIndexed propagates SizeOverflow unchanged" {
+    try CollectIndexed("abc", _CollectionTestIndexedFailAtOne) {
+        Err(CollectionError.SizeOverflow) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected CollectionError.SizeOverflow")
+}
+
+test "CollectIndexed propagates error at a Unicode rune index" {
+    try CollectIndexed("å🦊€", _CollectionTestIndexedFailOnUnicode) {
+        Err(CollectionError.SizeOverflow) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected CollectionError.SizeOverflow")
+}
+
+// Consistency between positional and non-positional collection.
+
+test "Collect and CollectIndexed agree on matching callbacks" {
+    let basic := try Collect("abc", _CollectionTestExpand)
+    let indexed := try CollectIndexed("abc", _CollectionTestIndexedExpand)
+    testing.ExpectEqual(basic, indexed)
+}
+
+test "Collect and CollectIndexed both accept an empty string" {
+    let basic := try Collect("", _CollectionTestExpand)
+    let indexed := try CollectIndexed("", _CollectionTestIndexedExpand)
+    testing.ExpectEqual(basic, indexed)
 }

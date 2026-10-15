@@ -1,0 +1,16 @@
+module storage_overlap
+
+type Pair struct {
+    left: int,
+    right: int,
+}
+
+fn Observe() void {
+    let pair := Pair { left: 1, right: 2 }
+    let first := ref pair.left
+    let alias := ref pair.left
+    let second := ref pair.right
+    discard first
+    discard alias
+    discard second
+}

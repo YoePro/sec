@@ -48,17 +48,17 @@ type attributeSpec struct {
 //   - rules/foundations/attributes.md — "Initial compiler-known attribute set", "Positional and named arguments",
 //     "Allowed targets for verified effects", "@address", "@noCopy allowed targets", "@link_name"
 var compilerKnownAttributes = map[string]attributeSpec{
-	"target":        {targets: attributeOnAnyTopLevel, targetText: "a top-level declaration", shape: attributeNamedArguments, named: []string{"os", "arch", "cpu", "device", "board"}, summary: "Selects the declaration for the compilation plans whose target matches every selector."},
-	"when":          {targets: attributeOnAnyTopLevel, targetText: "a top-level declaration", shape: attributeOnePositional, summary: "Selects the declaration when a compile-time configuration condition holds."},
-	"address":       {targets: attributeOnLet, targetText: "a let declaration", shape: attributeOnePositional, summary: "Binds a module-scope register declaration to an absolute address."},
-	"interrupt":     {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNamedArguments, named: []string{"vector"}, required: []string{"vector"}, summary: "Binds the function as the handler of one interrupt vector; implies @isr."},
-	"isr":           {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares and verifies an interrupt service routine without binding a vector; implies @noPanic, @noAlloc, and @noBlock."},
-	"interruptSafe": {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares that the function may be called from ISR code; implies @noPanic, @noAlloc, and @noBlock."},
-	"noCopy":        {targets: attributeOnNominalType, targetText: "a nominal type declaration", shape: attributeNoArguments, summary: "Makes the nominal type non-copyable: values move or are borrowed, never implicitly copied."},
-	"noAlloc":       {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path allocates; a trusted foreign contract on an extern declaration."},
-	"noPanic":       {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path panics; a trusted foreign contract on an extern declaration."},
-	"noBlock":       {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path waits or parks the current execution; a trusted foreign contract on an extern declaration."},
-	"link_name":     {targets: attributeOnExtern, targetText: "an extern declaration", shape: attributeOneStringLiteral, summary: "Sets the foreign link symbol of an extern declaration without changing its Sec name, ABI, or effects."},
+	contextualTarget: {targets: attributeOnAnyTopLevel, targetText: "a top-level declaration", shape: attributeNamedArguments, named: []string{"os", "arch", "cpu", "device", "board"}, summary: "Selects the declaration for the compilation plans whose target matches every selector."},
+	"when":           {targets: attributeOnAnyTopLevel, targetText: "a top-level declaration", shape: attributeOnePositional, summary: "Selects the declaration when a compile-time configuration condition holds."},
+	"address":        {targets: attributeOnLet, targetText: "a let declaration", shape: attributeOnePositional, summary: "Binds a module-scope register declaration to an absolute address."},
+	"interrupt":      {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNamedArguments, named: []string{"vector"}, required: []string{"vector"}, summary: "Binds the function as the handler of one interrupt vector; implies @isr."},
+	"isr":            {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares and verifies an interrupt service routine without binding a vector; implies @noPanic, @noAlloc, and @noBlock."},
+	"interruptSafe":  {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares that the function may be called from ISR code; implies @noPanic, @noAlloc, and @noBlock."},
+	"noCopy":         {targets: attributeOnNominalType, targetText: "a nominal type declaration", shape: attributeNoArguments, summary: "Makes the nominal type non-copyable: values move or are borrowed, never implicitly copied."},
+	"noAlloc":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path allocates; a trusted foreign contract on an extern declaration."},
+	"noPanic":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path panics; a trusted foreign contract on an extern declaration."},
+	"noBlock":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path waits or parks the current execution; a trusted foreign contract on an extern declaration."},
+	"link_name":      {targets: attributeOnExtern, targetText: "an extern declaration", shape: attributeOneStringLiteral, summary: "Sets the foreign link symbol of an extern declaration without changing its Sec name, ABI, or effects."},
 }
 
 // compilerKnownAttributeName distinguishes the closed Sec 0.1 attribute set
@@ -211,24 +211,6 @@ func (p *Parser) parseAttributeArguments() ([]*ast.AttributeArgument, bool) {
 	return arguments, true
 }
 
-// recoverAttributeArguments skips to the `)` that closes the current argument
-// list so the following declaration still parses.
-func (p *Parser) recoverAttributeArguments() {
-	depth := 1
-	for p.peekToken.Type != lexer.EOF {
-		switch p.peekToken.Type {
-		case lexer.LPAREN:
-			depth++
-		case lexer.RPAREN:
-			depth--
-		}
-		p.nextToken()
-		if depth == 0 {
-			return
-		}
-	}
-}
-
 // validateAttributeArguments enforces the attribute's argument form and
 // reports a repeated argument name with both locations.
 //
@@ -299,7 +281,7 @@ func (p *Parser) attachAttributes(statement ast.Statement, attributes []*ast.Att
 		}
 		accepted = append(accepted, attribute)
 	}
-	if target := findAttribute(accepted, "target"); target != nil {
+	if target := findAttribute(accepted, contextualTarget); target != nil {
 		p.checkTargetAgainstFile(target)
 	}
 	switch statement := statement.(type) {
@@ -499,7 +481,7 @@ func (info AttributeInfo) AllowedOn(target AttributeTarget) bool {
 }
 
 // attributeOrder is the rulebook order of the initial attribute set.
-var attributeOrder = []string{"target", "when", "address", "interrupt", "isr", "interruptSafe", "noCopy", "noAlloc", "noPanic", "noBlock", "link_name"}
+var attributeOrder = []string{contextualTarget, "when", "address", "interrupt", "isr", "interruptSafe", "noCopy", "noAlloc", "noPanic", "noBlock", "link_name"}
 
 // CompilerKnownAttributes lists the closed attribute set in rulebook order.
 //

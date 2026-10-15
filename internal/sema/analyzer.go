@@ -236,6 +236,8 @@ type Analyzer struct {
 	hasCurrentFunctionSummary bool
 	currentTest               *ast.TestDeclaration
 	summaryPass               bool
+	referenceSummaryRound     map[sourceTokenKey]Function
+	referenceSummaryPending   map[*ast.CallExpression]bool
 	// resolvedPlaces, resolvedReferencePlans, resolvedReferenceUses and
 	// referenceLifetimeEnds are the P15 read-only Place/reference facts, and
 	// referencePolicy the CompilationPlan reference policy (reference_plans.go).
@@ -278,6 +280,15 @@ type Analyzer struct {
 	// currentStatementToken locates the statement being analyzed, the source
 	// of resolved borrow ends.
 	currentStatementToken lexer.Token
+	// statementFrames is the stack of blocks and statement positions being
+	// analyzed, and identifierUses caches the names each AST subtree
+	// mentions; both drive non-lexical borrow liveness (borrow_liveness.go).
+	statementFrames []statementFrame
+	identifierUses  map[any]identifierUse
+	// diagnosticRules is the project's rule-specific diagnostic policy
+	// (rules/tooling/diagnostics.md § 18), applied when an optional
+	// diagnostic is recorded.
+	diagnosticRules diagnostics.RulePolicy
 	// placeIdentities allocates the canonical P15 storage, invalidation,
 	// epoch, address-space, borrow and lifetime identities (place_identities.go).
 	placeIdentities placeIdentityAllocator
@@ -2513,13 +2524,18 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	}()
 
 	unreachable := false
-	for _, stmt := range block.Statements {
+	a.statementFrames = append(a.statementFrames, statementFrame{block: block, depth: a.scopeDepth})
+	frame := len(a.statementFrames) - 1
+	defer func() { a.statementFrames = a.statementFrames[:frame] }()
+	for index, stmt := range block.Statements {
 		if unreachable {
 			a.addErrorAtTokenWithMetadata(statementToken(stmt), diagnostics.UnreachableStatement,
 				"A preceding statement ends this block on every path. Remove this statement or change the control flow.",
 				"unreachable statement")
 			break
 		}
+		a.statementFrames[frame].index = index
+		a.releaseDeadReferenceHolders()
 		a.analyzeStatement(stmt)
 		if a.statementTerminatesBlock(stmt) {
 			unreachable = true
@@ -3997,134 +4013,6 @@ func (a *Analyzer) analyzeFunctionBodyNamed(fn *ast.FunctionDeclaration, name st
 	a.analyzeFunctionBodyInScope(fn, name)
 }
 
-func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name string) {
-	function, ok := a.lookupFunctionByToken(name, fn.Name.Token)
-	if !ok || function.ReturnType.Kind == InvalidType {
-		return
-	}
-	if a.summaryPass && !typeContainsReference(function.ReturnType, map[string]bool{}) && !hasArenaReferenceParameter(function) {
-		return
-	}
-	if function.Extern {
-		a.validateExternFunction(function, fn)
-		if fn.Body == nil {
-			return
-		}
-		a.addErrorAtToken(fn.Token, "extern function declarations may not have a Sec body")
-		return
-	}
-
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousFunctionName := a.currentFunctionName
-	previousCallable := a.currentCallable
-	previousFunctionReturn := a.currentFunctionReturn
-	previousFunctionToken := a.currentFunctionToken
-	previousFunctionMetadata := a.currentFunctionMetadata
-	previousFunctionSummary := a.currentFunctionSummary
-	previousHasFunctionSummary := a.hasCurrentFunctionSummary
-	previousInFunctionBody := a.inFunctionBody
-	previousUnsafe := a.inUnsafe
-	previousScopeDepth := a.scopeDepth
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = map[string]lexer.Token{}
-	a.moveReasons = map[string]string{}
-	a.closedResources = map[string]lexer.Token{}
-	a.borrows = map[string][]borrowRecord{}
-	a.localRefContainers = map[string]localReferenceOrigin{}
-	a.arenaGenerations = map[string]int{}
-	a.scopeDepth = 0
-	a.currentFunctionName = fn.Name.Value
-	previousStableBindings := a.currentStableBindings
-	defer func() { a.currentStableBindings = previousStableBindings }()
-	a.currentStableBindings = stableBindingsOf(fn)
-	previousLoopWritten := a.loopWrittenNames
-	defer func() { a.loopWrittenNames = previousLoopWritten }()
-	a.loopWrittenNames = loopAssignedNames(fn)
-	a.currentCallable = a.callGraph.addCallable(function)
-	a.currentFunctionReturn = function.ReturnType
-	a.currentFunctionToken = function.Token
-	a.currentFunctionMetadata = function
-	a.currentFunctionSummary = localReferenceOrigin{}
-	a.hasCurrentFunctionSummary = false
-	previousArenaParameterResets := a.currentArenaParameterResets
-	a.currentArenaParameterResets = map[int]bool{}
-	defer func() { a.currentArenaParameterResets = previousArenaParameterResets }()
-	a.inFunctionBody = true
-	if fn.Unsafe {
-		a.inUnsafe = true
-	}
-	defer func() {
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
-		a.borrows = previousBorrows
-		a.closedResources = previousClosedResources
-		a.localRefContainers = previousLocalRefContainers
-		a.arenaGenerations = previousArenaGenerations
-		a.currentFunctionName = previousFunctionName
-		a.currentCallable = previousCallable
-		a.currentFunctionReturn = previousFunctionReturn
-		a.currentFunctionToken = previousFunctionToken
-		a.currentFunctionMetadata = previousFunctionMetadata
-		a.currentFunctionSummary = previousFunctionSummary
-		a.hasCurrentFunctionSummary = previousHasFunctionSummary
-		a.inFunctionBody = previousInFunctionBody
-		a.inUnsafe = previousUnsafe
-		a.scopeDepth = previousScopeDepth
-	}()
-
-	for _, param := range function.Parameters {
-		// An owned by-value parameter is the callee's mutable working binding.
-		// Reference parameters retain their referent authority in the type, but
-		// the reference binding itself is not implicitly rebindable.
-		bindingType := param.Type
-		mutableBinding := !param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType
-		if param.Variadic {
-			// rules/declarations/functions.md sections 29-31: the callee sees
-			// one ephemeral, structurally read-only pack, never a mutable array.
-			bindingType = NewVariadicPackType(param.Type)
-			mutableBinding = false
-		}
-		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginAutomatic, Local: true, Parameter: true, ScopeDepth: 0}
-		a.symbols[param.Name] = symbol
-		a.seedParameterReferenceOrigin(function, param)
-		symbol = a.symbols[param.Name]
-		completionSymbol := symbol
-		completionSymbol.Local = true
-		a.completionSymbols[param.Name] = completionSymbol
-		delete(a.constInts, param.Name)
-		a.assigned[param.Name] = true
-		a.recordDefinition(param.Token)
-		a.recordBinding(param.Token, BindingParameter, param.Name, symbol.Type, mutableBinding)
-		a.recordReferenceParameterFacts(param)
-	}
-	// rules/declarations/static.md, receiver semantics; correction15.md keeps the
-	// owning type on static methods but does not synthesize self or members.
-	if !function.Static {
-		a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
-		a.recordReceiverFacts(function)
-	}
-
-	a.analyzeBlockStatements(fn.Body)
-	a.setFunctionReferenceSummary(function)
-
-	if !function.Initializer && !a.blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType && function.ReturnType.Kind != NeverType {
-		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
-	}
-}
-
 // rejectExplicitImplSelfParameter reports the legacy explicit receiver
 // parameter with its registered migration diagnostic: impl methods receive
 // self implicitly, and receiver capability is written on the method.
@@ -5095,6 +4983,14 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		a.analyzeFallibleSetterReturn(functionName, returnType, stmt)
 		return
 	}
+	if a.currentFunctionMetadata.CustomFree && functionName != "lambda" && stmt.Value != nil {
+		// MD-025.6 (destruction.md § 15.7): free has no result; a bare
+		// return is an early exit that still runs field cleanup.
+		a.addErrorAtTokenWithMetadata(expressionToken(stmt.Value), "",
+			"Use bare `return` to leave free early; the remaining field destruction still runs.",
+			"'return' in 'free' cannot return a value")
+		return
+	}
 	if stmt.Value == nil {
 		if returnType.Kind != VoidType {
 			if functionName == "lambda" {
@@ -5296,44 +5192,6 @@ func (a *Analyzer) isExplicitUnitConversionReturn(target, source Type) bool {
 		return false
 	}
 	return isLinearRatioSemantics(target.UnitSemantics) && isLinearRatioSemantics(source.UnitSemantics)
-}
-
-func (a *Analyzer) recordFunctionReturnOrigin(returnType Type, expr ast.Expression) {
-	if expr == nil {
-		return
-	}
-	if !typeContainsReference(returnType, map[string]bool{}) {
-		raw, symbolic := a.ownedReturnEscapeOrigins(expr)
-		a.recordReturnEscapeFact(returnType, expr, raw, symbolic)
-		return
-	}
-	candidate := localReferenceOrigin{}
-	if typeCarriesReferenceOrigin(returnType) {
-		origin, ok := a.directReferenceOrigin(expr)
-		if !ok {
-			candidate.Unknown = true
-			candidate.Ambiguous = true
-		} else {
-			candidate = origin
-		}
-	} else {
-		candidate.Contained = a.containedReferenceOrigins(expr)
-		if len(candidate.Contained) == 0 {
-			candidate.Unknown = true
-			candidate.Ambiguous = true
-		} else {
-			recomputeContainedOriginSummary(&candidate)
-		}
-	}
-	rawCandidate := cloneLocalReferenceOrigin(candidate)
-	candidate = a.symbolizeFunctionReturnOrigin(candidate)
-	a.recordReturnEscapeFact(returnType, expr, rawCandidate, candidate)
-	if !a.hasCurrentFunctionSummary {
-		a.currentFunctionSummary = candidate
-		a.hasCurrentFunctionSummary = true
-		return
-	}
-	a.currentFunctionSummary = mergeLocalReferenceOrigins([]localReferenceOrigin{a.currentFunctionSummary, candidate}, false)
 }
 
 func typeContainsReference(typ Type, visiting map[string]bool) bool {
@@ -11660,21 +11518,6 @@ func numericCarrierConversionResult(target, source Type) (Type, bool) {
 	return result, true
 }
 
-func (a *Analyzer) setCallReferenceOrigin(expr *ast.CallExpression, function Function, args []ast.Expression, isMethodCall bool) {
-	delete(a.expressionReferenceOrigins, expr)
-	if !function.HasReturnOrigin {
-		return
-	}
-	var receiver ast.Expression
-	if isMethodCall {
-		if member, ok := expr.Callee.(*ast.MemberExpression); ok {
-			receiver = member.Object
-		}
-	}
-	origin := a.instantiateFunctionReturnOrigin(function.ReturnOrigin, args, receiver)
-	a.expressionReferenceOrigins[expr] = origin
-}
-
 func (a *Analyzer) instantiateFunctionReturnOrigin(summary localReferenceOrigin, args []ast.Expression, receiver ast.Expression) localReferenceOrigin {
 	summary = cloneLocalReferenceOrigin(summary)
 	places := localOriginPlaces(summary)
@@ -14844,7 +14687,29 @@ func (a *Analyzer) appendWarning(warning Error) {
 	if warning.Severity == "" {
 		warning.Severity = diagnostics.SeverityWarning
 	}
+	if warning.ID != "" && len(a.diagnosticRules) > 0 {
+		severity, enabled := a.diagnosticRules.Effective(warning.ID)
+		if !enabled {
+			return
+		}
+		if severity == diagnostics.SeverityError {
+			// A promoted diagnostic keeps its identity and explanation and
+			// makes the analysis fail like any error (diagnostics.md § 18).
+			warning.Severity = diagnostics.SeverityError
+			a.appendError(warning)
+			return
+		}
+		if severity != "" {
+			warning.Severity = severity
+		}
+	}
 	a.warnings = append(a.warnings, warning)
+}
+
+// SetDiagnosticRules installs the project's rule-specific diagnostic policy
+// before Analyze. Mandatory diagnostics are never affected.
+func (a *Analyzer) SetDiagnosticRules(rules diagnostics.RulePolicy) {
+	a.diagnosticRules = rules
 }
 
 func (a *Analyzer) warnUnitStatus(token lexer.Token, unitName string) {

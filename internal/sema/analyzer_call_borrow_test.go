@@ -74,6 +74,7 @@ fn Check() void {
 	let mut value := 1
 	let shared := ref value
 	Mutate(value)
+	discard shared
 }
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot create mutable reference to value while it is already borrowed") {

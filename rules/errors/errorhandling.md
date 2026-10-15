@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-21
-- **Last updated:** 2026-10-12 (MD-028 protected try subtree)
+- **Last updated:** 2026-10-15 (no-unnecessary-errors design principle cross-reference)
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/errorhandling.md`
@@ -44,6 +44,13 @@ The design goals are:
 - diagnostics explain error and ownership mistakes in ordinary programmer language.
 
 `try` is not an exception mechanism and does not catch panic.
+
+When an API decides whether a condition is an error, it follows
+`rules/foundations/language_philosophy.md` §§ 10.1–10.5 *No unnecessary errors*: an
+error represents a meaningful failure to fulfill the operation's contract, not
+a harmless boundary condition or a no-op, and an actual failure is never
+reported as success. This design principle does not change the semantics of
+`Result`, `Option`, `try`, `panic` or compiler safety diagnostics.
 
 ---
 

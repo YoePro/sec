@@ -1,0 +1,5 @@
+module rawcontext
+
+fn Required(pointer: RawPtr[byte]) void {
+    pointer.Write(1u)
+}

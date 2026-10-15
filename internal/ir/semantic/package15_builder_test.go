@@ -29,15 +29,6 @@ fn Add(left: int, right: int) int {
 	}
 
 	for name, test := range map[string]struct{ source, want string }{
-		"reborrow pending reference lowering": {`module main
-
-fn Use() int {
-    let mut value := 1
-    let first := ref mut value
-    let again := ref first
-    return 0
-}
-`, "reborrow of reference shared-direct of local storage"},
 		"returned reference": {`module main
 
 type Pair struct {

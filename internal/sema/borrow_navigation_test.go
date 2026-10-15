@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -53,7 +54,7 @@ func TestBorrowConflictNavigation(t *testing.T) {
 func TestBorrowConflictUnknownHolder(t *testing.T) {
 	a := NewAnalyzer()
 	record := borrowRecord{Holder: "$temporary", Token: lexer.Token{File: "borrow.sec", Line: 2, Column: 3}, LoopCarried: true}
-	a.addBorrowAuthorityConflict(Place{Root: "value"}, lexer.Token{File: "use.sec", Line: 4, Column: 5}, record, "conflict")
+	a.addBorrowAuthorityConflict(Place{Root: "value"}, lexer.Token{File: "use.sec", Line: 4, Column: 5}, record, diagnostics.BorrowOwnerReadConflict, "conflict")
 	links := a.errors[0].RelatedLocations()
 	if len(links) != 1 || links[0].File != "borrow.sec" || !strings.Contains(links[0].Label, "previous loop iteration") {
 		t.Fatal(links)

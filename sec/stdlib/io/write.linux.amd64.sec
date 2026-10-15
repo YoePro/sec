@@ -1,16 +1,22 @@
 #target(os: "linux", arch: "amd64")
 module io
 
+// Unsafe bodies remain explicit: rules/memory/unsafe.md §7(1–3).
+
 import (
     "platform/linux"
     "platform/linux/amd64"
 )
 unsafe fn _sysWrite(fd: int, ptr: RawPtr[byte], len: uint) int {
-    return amd64.RawSyscall(uint(amd64.SysCall.Write), uint(fd), uint(ptr), uint(len))
+    unsafe {
+        return amd64.RawSyscall(uint(amd64.SysCall.Write), uint(fd), uint(ptr), uint(len))
+    }
 }
 
 unsafe fn Write(fd: int, ptr: RawPtr[byte], len: uint) int {
-    return _sysWrite(fd, ptr, len)
+    unsafe {
+        return _sysWrite(fd, ptr, len)
+    }
 }
 
 fn WriteString(value: string) void {

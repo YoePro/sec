@@ -3329,7 +3329,14 @@ func TestParseContextualNotInMembership(t *testing.T) {
 	checkParserErrors(t, p)
 
 	fn := program.Statements[1].(*ast.FunctionDeclaration)
-	condition := fn.Body.Statements[4].(*ast.IfStatement).Condition
+	var condition ast.Expression
+	for _, statement := range fn.Body.Statements {
+		if branch, ok := statement.(*ast.IfStatement); ok {
+			if membership, ok := branch.Condition.(*ast.InfixExpression); ok && membership.Operator == "not in" {
+				condition = branch.Condition
+			}
+		}
+	}
 	membership, ok := condition.(*ast.InfixExpression)
 	if !ok {
 		t.Fatalf("condition is not InfixExpression. got=%T", condition)

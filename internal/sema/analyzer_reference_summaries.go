@@ -15,17 +15,26 @@ func (a *Analyzer) inferFunctionReferenceSummaries(program *ast.Program) analysi
 		return analysisStepResult{Converged: true}
 	}
 	a.summaryPass = true
-	defer func() { a.summaryPass = false }()
+	defer func() {
+		a.summaryPass = false
+		a.referenceSummaryRound = nil
+		a.referenceSummaryPending = nil
+	}()
 	iterationLimit := functionCount + 1
 	if configured := a.analysisBudget.MaxSummaryIterations; configured > 0 && configured < iterationLimit {
 		iterationLimit = configured
 	}
-	return runAnalysisFixedPoint(iterationLimit, func() bool {
+	result := runAnalysisFixedPoint(iterationLimit, func() bool {
 		before := copyFunctionReferenceSummaries(a.functions)
+		a.referenceSummaryRound = a.referenceSummaryRoundInputs(program, before)
+		a.referenceSummaryPending = map[*ast.CallExpression]bool{}
 		a.analyzeFunctionBodies(program)
 		a.analyzeImplBodies(program)
 		return !functionReferenceSummariesEqual(before, a.functions)
 	}, a.widenFunctionReferenceSummaries)
+
+	a.finishPendingReferenceSummaries()
+	return result
 }
 
 // widenFunctionReferenceSummaries preserves soundness when an interactive

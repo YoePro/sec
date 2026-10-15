@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-08-28
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-15
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/copy_move.md`
 - **Replaces:** pre-v2 `rules/memory/copy_move.md` and legacy `rules/memory/copy_move.txt`
@@ -108,6 +108,18 @@ ExplicitlyNonCopyable
 **§ 3.5(4)** Sec 0.1 defines no general `@noMove` attribute and no `@affine` source annotation.
 
 **§ 3.5(5)** Address stability, pinning, fixed storage, non-relocation, thread transferability, and copyability are separate properties. A value may be movable between owners while its physical storage is required to remain stable.
+
+**§ 3.5(6)** A nominal type whose complete merged implementation defines custom `free` is automatically **MoveOnly**, whatever its fields' own classifications, with the same copy-restriction effect as `@noCopy`; omitting `@noCopy` never makes it copyable. Without this rule an implicit copy would run `free` twice for one resource (MD-025.1, 2026-10-15, `rules/corrections/applied/md025-custom-free-correction-20261015.md` § 2).
+
+```sec
+let first := OpenHandle()     // Handle defines free
+let second := first           // error: Handle is MoveOnly
+let moved :<- first           // valid: explicit transfer
+```
+
+**§ 3.5(7)** Custom `free` does not imply `@mustUse`, an `@affine` annotation or a Sec 0.2 linear obligation: an owned value that stays available is destroyed automatically at its lifetime end. The classification propagates through owning aggregates, fixed arrays, owning variant payloads, `Option`/`Result` and generic instantiations by §§ 4.1–4.3; a borrowed `ref T` keeps the reference-copy rules. It is computed after all valid `impl` and `impl extends` fragments are merged and does not depend on source order. A copy-shaped initialization is never reinterpreted as a move to make a program compile.
+
+**§ 3.5(8)** A type may offer an ordinary, explicitly named duplication operation where its domain permits; that grants no implicit copyability. Sec 0.1 has no `@permitCopy` or other copy exception for custom-`free` types.
 
 ---
 

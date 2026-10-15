@@ -2,6 +2,7 @@ package sema
 
 import (
 	"errors"
+	"math/big"
 	"sort"
 
 	"sec/internal/lexer"
@@ -29,16 +30,19 @@ func ComposeSemanticStackSummariesWithContracts(graph *CallGraph, frames *StackS
 }
 
 // StackBoundaryContracts collects independently verified producer facts.
-// Rules: rules/analysis/stack_analysis.md — "Open callable contracts" and "Foreign, runtime, and platform calls".
+// Rules: rules/analysis/stack_analysis.md — "Open callable contracts",
+// "Foreign, runtime, and platform calls", "Recursive SCC stack contribution".
 type StackBoundaryContracts struct {
-	Callable *StackCallableContractStore
-	External *StackExternalContractStore
+	Callable  *StackCallableContractStore
+	External  *StackExternalContractStore
+	Recursion []*StackRecursionDepthProof
 }
 
-// ComposeSemanticStackSummariesWithBoundaryContracts consumes callable and
-// external guarantees at their exact plan key, without defining their imports.
+// ComposeSemanticStackSummariesWithBoundaryContracts consumes callable/external
+// guarantees and verified SCC depth proofs at their exact plan key.
 // Rules: rules/analysis/stack_analysis.md — "Foreign, runtime, and platform calls",
-// "CompilationPlan dependence", and "Reentry through callable and foreign boundaries".
+// "CompilationPlan dependence", "Recursive SCC stack contribution",
+// and "Reentry through callable and foreign boundaries".
 func ComposeSemanticStackSummariesWithBoundaryContracts(graph *CallGraph, frames *StackSummaryStore, plan string, contracts StackBoundaryContracts) []SemanticStackSummary {
 	own := map[CallableID]StackBound{}
 	for _, summary := range frames.SemanticSummaries() {
@@ -46,7 +50,7 @@ func ComposeSemanticStackSummariesWithBoundaryContracts(graph *CallGraph, frames
 			own[summary.Callable] = summary.OwnFrame
 		}
 	}
-	composed := composeKnownStack(graph, own, contracts.Callable, contracts.External, StackMeasurementSemantic, plan)
+	composed := composeKnownStack(graph, own, contracts.Callable, contracts.External, StackMeasurementSemantic, plan, contracts.Recursion)
 	var result StackSummaryStore
 	for id, maximum := range composed {
 		_ = result.RecordSemantic(SemanticStackSummary{Callable: id, CompilationPlanID: plan,
@@ -75,9 +79,11 @@ func ComposeMachineStackSummariesWithContracts(graph *CallGraph, frames *StackSu
 }
 
 // ComposeMachineStackSummariesWithBoundaryContracts consumes machine guarantees
-// independently of semantic estimates, for one mandatory CompilationPlan.
+// and recursive depth proofs independently of semantic estimates, for one
+// mandatory CompilationPlan.
 // Rules: rules/analysis/stack_analysis.md — "Machine stack requirement",
-// "Foreign, runtime, and platform calls", and "Machine-level revalidation".
+// "Foreign, runtime, and platform calls", "Recursive SCC stack contribution",
+// and "Machine-level revalidation".
 func ComposeMachineStackSummariesWithBoundaryContracts(graph *CallGraph, frames *StackSummaryStore, plan string, contracts StackBoundaryContracts) ([]MachineStackSummary, error) {
 	if plan == "" {
 		return nil, errors.New("machine stack composition requires a CompilationPlan identity")
@@ -88,7 +94,7 @@ func ComposeMachineStackSummariesWithBoundaryContracts(graph *CallGraph, frames 
 			own[summary.Callable] = summary.OwnFrame
 		}
 	}
-	composed := composeKnownStack(graph, own, contracts.Callable, contracts.External, StackMeasurementMachine, plan)
+	composed := composeKnownStack(graph, own, contracts.Callable, contracts.External, StackMeasurementMachine, plan, contracts.Recursion)
 	var result StackSummaryStore
 	for id, maximum := range composed {
 		_ = result.RecordMachine(MachineStackSummary{Callable: id, CompilationPlanID: plan,
@@ -103,10 +109,11 @@ type stackCompositionValue struct {
 	evidence StackEvidence
 }
 
-// composeKnownStack evaluates direct and closed-target acyclic dependencies bottom-up, reusing
-// canonical same-stack SCCs rather than rediscovering recursion. Verified open
-// callable and external contracts may contribute finite bounds; recursive,
-// unsupported reentry and new-execution boundaries stay Unknown in this slice.
+// composeKnownStack evaluates direct and closed-target dependencies bottom-up,
+// reusing canonical same-stack SCCs rather than rediscovering recursion.
+// Whole-component verified depth proofs permit bounded recursive composition;
+// otherwise recursion, unsupported reentry and new execution remain Unknown.
+// Verified open callable and external contracts may contribute finite bounds.
 // Finite non-leaf results are upper bounds: a per-function maximum own frame
 // need not coincide with the path that has the largest callee contribution.
 // Rules: rules/analysis/stack_analysis.md — "Acyclic call graphs", "Recursion and SCCs",
@@ -114,9 +121,11 @@ type stackCompositionValue struct {
 // "Closed indirect-call target sets",
 // "Open callable contracts", "Reentry through callable and foreign boundaries",
 // "Foreign, runtime, and platform calls", "Error and panic paths", and "Physical stack domains".
+// Recursive proof use follows "Recursive SCC stack contribution" and
+// "Recursive progress must cover relevant transitions".
 // Legacy opaque invocations are represented by canonical unknown-callee effect
 // sites rather than outgoing edges; they must not be mistaken for leaf bodies.
-func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contracts *StackCallableContractStore, external *StackExternalContractStore, level StackMeasurementLevel, plan string) map[CallableID]stackCompositionValue {
+func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contracts *StackCallableContractStore, external *StackExternalContractStore, level StackMeasurementLevel, plan string, proofs []*StackRecursionDepthProof) map[CallableID]stackCompositionValue {
 	results := map[CallableID]stackCompositionValue{}
 	if graph == nil {
 		return results
@@ -143,10 +152,39 @@ func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contract
 		}
 	}
 	var visit func(CallableID) stackCompositionValue
+	var evaluate func(CallableID, func(CallableID) stackCompositionValue, bool) stackCompositionValue
+	recursionStamp := ""
+	if len(proofs) != 0 {
+		recursionStamp = stackRecursionGraphStamp(graph)
+	}
 	visit = func(id CallableID) stackCompositionValue {
 		if result, ok := results[id]; ok {
 			return result
 		}
+		if recursive[id] {
+			if proof := matchingStackRecursionProof(graph, recursionStamp, components[id], level, plan, proofs); proof != nil {
+				localVisit := func(target CallableID) stackCompositionValue {
+					if proof.members[target] {
+						zero, _ := NewExactStackBound(new(big.Int))
+						return stackCompositionValue{bound: zero}
+					}
+					return visit(target)
+				}
+				bases := map[CallableID]stackCompositionValue{}
+				for _, member := range components[id] {
+					bases[member] = evaluate(member, localVisit, true)
+				}
+				for member, result := range composeRecursiveStackComponent(graph, proof, own, bases) {
+					results[member] = result
+				}
+				return results[id]
+			}
+		}
+		result := evaluate(id, visit, false)
+		results[id] = result
+		return result
+	}
+	evaluate = func(id CallableID, targetVisit func(CallableID) stackCompositionValue, allowRecursive bool) stackCompositionValue {
 		node, exists := graph.Node(id)
 		result := stackCompositionValue{bound: own[id], cause: []StackCauseStep{{Callable: id, Source: node.Declaration, Detail: "own frame"}}}
 		frame := StackFrameContribution{Callable: id, Source: node.Declaration, Frame: own[id]}
@@ -158,8 +196,7 @@ func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contract
 			result.cause[0].Detail = "own-frame facts unavailable"
 			result.evidence = mergeStackEvidence(result.evidence, stackBoundaryEvidence([]StackFrameContribution{frame}, result.cause[0]))
 		}
-		finish := func() stackCompositionValue { results[id] = result; return result }
-		if !exists || node.Extern || recursive[id] {
+		if !exists || node.Extern || recursive[id] && !allowRecursive {
 			result.bound = UnknownStackBound()
 			result.cause[0].Detail = "callable body or finite recursion depth unavailable"
 			result.evidence = mergeStackEvidence(result.evidence, stackBoundaryEvidence([]StackFrameContribution{frame}, result.cause[0]))
@@ -169,7 +206,7 @@ func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contract
 					result.evidence = mergeStackEvidence(result.evidence, StackEvidence{Contributors: []StackFrameContribution{{Callable: member, Source: memberNode.Declaration, Frame: own[member]}}})
 				}
 			}
-			return finish()
+			return result
 		}
 		effects := cloneEffectSites(graph.effects[id])
 		sort.Slice(effects, func(i, j int) bool {
@@ -218,9 +255,9 @@ func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contract
 			callee, externalBound := externalStackCallContribution(graph, site, external, level, plan)
 			if !externalBound {
 				if !site.TargetSet.IsClosed {
-					callee = openStackCallContribution(graph, site, visit, contracts, level, plan)
+					callee = openStackCallContribution(graph, site, targetVisit, contracts, level, plan)
 				} else {
-					callee = closedStackCallContribution(graph, site, visit)
+					callee = closedStackCallContribution(graph, site, targetVisit)
 				}
 			}
 			result.evidence = mergeStackEvidence(result.evidence, prependStackEvidence(frame, callee.evidence))
@@ -231,7 +268,7 @@ func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contract
 				result.evidence.KnownPrefix = append([]StackFrameContribution{frame}, callee.evidence.KnownPrefix...)
 			}
 		}
-		return finish()
+		return result
 	}
 	for _, node := range graph.Nodes() {
 		visit(node.ID)

@@ -201,7 +201,7 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 	},
 	{
 		ID: PitfallSkippedFirstElement, Family: PitfallBoundsAndRanges,
-		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "control-flow"},
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "control-flow", "expression-types", "operation-contracts", "operator-semantics"},
 		MinimumDepth:  AnalysisStandard, DefaultConfidence: PitfallConfidenceHigh,
 	},
 	{
@@ -241,7 +241,7 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 	},
 	{
 		ID: PitfallCapacityAsLength, Family: PitfallBoundsAndRanges,
-		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts", "expression-types", "operator-semantics"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
 	},
 	{
@@ -251,7 +251,7 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 	},
 	{
 		ID: PitfallWrongBoundSource, Family: PitfallCollectionRelations,
-		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts", "expression-types", "operator-semantics"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
 	},
 	{
@@ -349,6 +349,7 @@ type pitfallBuilder struct {
 	activeNonEmptyProofs     map[string]lexer.Token
 	activeIndexGuards        []pitfallIndexGuard
 	activeCapacityEqualities map[string]lexer.Token
+	activeCapacityWhiles     []capacityWhileContext
 	activeLengthConditions   []ast.Expression // enclosing true if conditions, for Len relations
 	activePreceding          []ast.Statement  // statements before the walked one in its block
 }
@@ -484,13 +485,7 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 		}
 		b.withLoopIndexGuards(statement, guards, func() { b.walkBlock(statement.Body) })
 	case *ast.WhileStatement:
-		b.walkExpression(statement.Condition)
-		if b.boundsOnly {
-			if flow, ok := b.analyzer.ResolvedWhileFlowOf(statement); ok && flow.ConditionKnown && !flow.ConditionValue {
-				return
-			}
-		}
-		b.withLoopIndexGuards(statement, b.conditionIndexGuards(statement.Condition), func() { b.walkBlock(statement.Body) })
+		b.walkWhileStatement(statement)
 	case *ast.DeferStatement:
 		b.walkIndependentGuardBody(statement.Body)
 	case *ast.UnsafeStatement:
@@ -530,6 +525,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 		if !b.boundsOnly {
 			b.inspectFinalElementAccess(index)
 			b.inspectDirectCapacityIndex(index)
+			b.inspectWhileCapacityIndex(index)
 		}
 	}
 	if !b.boundsOnly {
@@ -557,13 +553,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	case *ast.PrefixExpression:
 		b.walkExpression(expression.Right)
 	case *ast.InfixExpression:
-		b.walkExpression(expression.Left)
-		if b.boundsOnly {
-			if value, known := b.analyzer.constantBooleanValue(expression.Left); known && (expression.Operator == "&&" && !value || expression.Operator == "||" && value) {
-				return
-			}
-		}
-		b.walkExpression(expression.Right)
+		b.walkCapacityInfix(expression)
 	case *ast.RangeExpression:
 		b.walkExpression(expression.Start)
 		b.walkExpression(expression.End)

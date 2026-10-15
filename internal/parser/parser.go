@@ -288,7 +288,7 @@ func parsedStatementPresent(stmt ast.Statement) bool {
 func (p *Parser) isTargetDirectiveStart() bool {
 	return p.curToken.Type == lexer.HASH &&
 		p.peekToken.Type == lexer.IDENT &&
-		p.peekToken.Lexeme == "target"
+		p.peekToken.Lexeme == contextualTarget
 }
 
 // parseStatement dispatches a source statement and retains already diagnosed
@@ -456,16 +456,16 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.isCheckedUnreachableStatement() {
 			return p.parseUnreachableStatement()
 		}
-		if p.curToken.Lexeme == "test" && p.recoveryContext == RecoveryContextTopLevel {
+		if p.curToken.Lexeme == contextualTest && p.recoveryContext == RecoveryContextTopLevel {
 			return p.parseTestDeclaration()
 		}
-		if p.curToken.Lexeme == "test" && p.peekToken.Type == lexer.STRING {
+		if p.curToken.Lexeme == contextualTest && p.peekToken.Type == lexer.STRING {
 			return p.parseNestedTestDeclaration()
 		}
-		if p.curToken.Lexeme == "do" && p.peekToken.Type == lexer.LBRACE {
+		if p.curToken.Lexeme == contextualDo && p.peekToken.Type == lexer.LBRACE {
 			return p.parseUnsupportedDoWhileStatement()
 		}
-		if p.curToken.Lexeme == "detach" {
+		if p.curToken.Lexeme == contextualDetach {
 			return p.parseDetachStatement()
 		}
 		if p.peekToken.Type == lexer.COLON {
@@ -790,52 +790,6 @@ func (p *Parser) parseTestDeclaration() *ast.TestDeclaration {
 	}
 	declaration.Body = p.parseStatementBlock("test body")
 	return declaration
-}
-
-// skipTestParameterList consumes the balanced source-visible parameter list
-// forbidden on a test declaration and leaves the following header/body token
-// available to the owning parser.
-//
-// Rules:
-//   - rules/tooling/testing.md — §5.5 "No parameters"
-//   - rules/compiler/parser_recovery.md — "Recovery goals"
-func (p *Parser) skipTestParameterList() {
-	delimiters := newDelimiterStack(lexer.RPAREN)
-	for !delimiters.empty() && p.peekToken.Type != lexer.EOF {
-		if !delimiters.canConsume(p.peekToken.Type) {
-			return
-		}
-		p.nextToken()
-		delimiters.consume(p.curToken.Type)
-	}
-}
-
-// recoverTestBodyStart skips an invalid test header up to its owned body while
-// refusing to consume a later top-level declaration on a following line.
-//
-// Rules:
-//   - rules/tooling/testing.md — §§5.4–5.6 test declaration shape
-//   - rules/compiler/parser_recovery.md — "Declaration-header recovery"
-func (p *Parser) recoverTestBodyStart() bool {
-	startLine := p.curToken.Line
-	delimiters := newDelimiterStack()
-	for p.peekToken.Type != lexer.EOF {
-		if delimiters.empty() {
-			if p.peekToken.Type == lexer.LBRACE {
-				return true
-			}
-			if p.peekToken.Line > startLine && (isDeclarationStart(p.peekToken.Type) ||
-				p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "test") {
-				return false
-			}
-		}
-		if !delimiters.canConsume(p.peekToken.Type) {
-			return false
-		}
-		p.nextToken()
-		delimiters.consume(p.curToken.Type)
-	}
-	return false
 }
 
 // parseNestedTestDeclaration rejects a declaration-shaped test inside an
@@ -1208,7 +1162,7 @@ func (p *Parser) parseUnreachableStatement() ast.Statement {
 //   - rules/errors/panic.md — § 16(1) "Checked unreachable"
 //   - rules/foundations/lexical_structure.md — § 7.1 "General language keywords"
 func (p *Parser) isCheckedUnreachableStatement() bool {
-	if p.curToken.Type != lexer.IDENT || p.curToken.Lexeme != "unreachable" {
+	if p.curToken.Type != lexer.IDENT || p.curToken.Lexeme != contextualUnreachable {
 		return false
 	}
 	if p.peekToken.Line > p.curToken.Line {
@@ -1258,7 +1212,7 @@ func (p *Parser) parseCompilerDirective() ast.Statement {
 	hashToken := p.curToken
 	p.nextToken()
 	switch p.curToken.Lexeme {
-	case "target":
+	case contextualTarget:
 		return p.parseTargetDirective(hashToken)
 	default:
 		p.addError("unknown compiler directive #%s at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
@@ -1390,7 +1344,7 @@ func (p *Parser) parseIfStatement() ast.Statement {
 func (p *Parser) parseIsExpression(subject ast.Expression) ast.Expression {
 	isToken := p.curToken
 	negated := false
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "not" {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualNot {
 		p.nextToken()
 		negated = true
 	}
@@ -1405,12 +1359,12 @@ func (p *Parser) parseIsExpression(subject ast.Expression) ast.Expression {
 		return subject
 	}
 	switch p.peekToken.Lexeme {
-	case "available":
+	case contextualAvailable:
 		p.nextToken()
 		return &ast.AvailabilityExpression{Token: isToken, Place: subject, Negated: negated}
-	case "None":
+	case contextualNone:
 		return p.finishOptionAbsenceIfCondition(subject, isToken, negated)
-	case "Some":
+	case contextualSome:
 		p.nextToken()
 		someToken := p.curToken
 		if p.peekToken.Type != lexer.LPAREN {
@@ -1433,7 +1387,7 @@ func (p *Parser) parseIsExpression(subject ast.Expression) ast.Expression {
 			p.reportNegatedOptionBinding(test)
 		}
 		return test
-	case "empty":
+	case contextualEmpty:
 		p.nextToken()
 		return &ast.StateTestExpression{Token: isToken, Subject: subject, Empty: true, Negated: negated}
 	default:
@@ -1518,22 +1472,6 @@ func (p *Parser) reportConditionPatternBinding(token lexer.Token, context string
 		"pattern binding is not allowed in %s condition; use match at %d:%d", context, token.Line, token.Column)
 }
 
-// skipConditionPatternPayload consumes the balanced payload list that starts at
-// the current token so the condition can resynchronize at the body brace.
-func (p *Parser) skipConditionPatternPayload() {
-	delimiters := newDelimiterStack()
-	for p.curToken.Type != lexer.EOF {
-		if !delimiters.canConsume(p.curToken.Type) {
-			return
-		}
-		delimiters.consume(p.curToken.Type)
-		if delimiters.empty() {
-			return
-		}
-		p.nextToken()
-	}
-}
-
 // finishOptionAbsenceIfCondition constructs the existing bool-valued Option
 // match after the contextual `is` token has already been consumed.
 //
@@ -1561,7 +1499,7 @@ func (p *Parser) finishOptionAbsenceIfCondition(subject ast.Expression, isToken 
 				Token: noneToken,
 				Pattern: &ast.MatchPattern{
 					Token: noneToken, Kind: ast.MatchPatternVariant,
-					Name: "None", NameToken: noneToken,
+					Name: contextualNone, NameToken: noneToken,
 				},
 				Body: &ast.BooleanLiteral{Token: trueToken, Value: noneResult},
 			},
@@ -1640,7 +1578,7 @@ func (p *Parser) parseForStatement() ast.Statement {
 	}
 
 	p.nextToken()
-	if p.curToken.Type == lexer.MOVE_ASSIGN || p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "move" && p.isExpressionStart(p.peekToken.Type) && p.peekToken.Type != lexer.LBRACE {
+	if p.curToken.Type == lexer.MOVE_ASSIGN || p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == contextualMove && p.isExpressionStart(p.peekToken.Type) && p.peekToken.Type != lexer.LBRACE {
 		p.rejectConsumingForHeader(p.curToken)
 		p.nextToken()
 	}
@@ -1653,7 +1591,7 @@ func (p *Parser) parseForStatement() ast.Statement {
 		return stmt
 	}
 
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "step" {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualStep {
 		p.nextToken()
 		stmt.StepToken = p.curToken
 		if p.peekToken.Type == lexer.LBRACE || p.peekToken.Type == lexer.EOF {
@@ -2318,19 +2256,19 @@ func (p *Parser) parseAsmBlock() *ast.AsmBlock {
 		}
 
 		switch p.curToken.Lexeme {
-		case "inputs":
+		case contextualInputs:
 			inputs, ok := p.parseAsmInputs()
 			if !ok {
 				return nil
 			}
 			block.Inputs = inputs
-		case "outputs":
+		case contextualOutputs:
 			outputs, ok := p.parseAsmOutputs()
 			if !ok {
 				return nil
 			}
 			block.Outputs = outputs
-		case "clobbers":
+		case contextualClobbers:
 			clobbers, ok := p.parseAsmClobbers()
 			if !ok {
 				return nil
@@ -2830,7 +2768,7 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		return stmt
 	}
 
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "register" {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualRegister {
 		p.nextToken()
 		stmt.RegisterType = p.parseRegisterType()
 		if p.peekToken.Type == lexer.IMPLEMENTS {
@@ -2844,7 +2782,7 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		stmt.Union = true
 		// rules/errors/errorhandling.md section 3.2 places the concrete-error
 		// marker after the union kind: `type Name union error { ... }`.
-		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "error" {
+		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualError {
 			p.nextToken()
 			stmt.ErrorType = true
 			stmt.ErrorToken = p.curToken
@@ -2913,7 +2851,7 @@ func (p *Parser) reversedTypeDeclarationKind() bool {
 	if p.peekToken.Type == lexer.STRUCT || p.peekToken.Type == lexer.UNION {
 		return true
 	}
-	return p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "register"
+	return p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualRegister
 }
 
 func (p *Parser) parseUnitDeclStatement() ast.Statement {
@@ -3072,7 +3010,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			stmt.Properties = append(stmt.Properties, property)
 			p.attachDocumentation(documentation, property)
 		case lexer.IDENT:
-			if p.curToken.Lexeme != "event" {
+			if p.curToken.Lexeme != contextualEvent {
 				if p.peekToken.Type == lexer.COLON {
 					p.addError("interfaces cannot require stored field %q; use a property or method at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 					line := p.curToken.Line
@@ -3273,7 +3211,7 @@ func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 			}
 			property.RequiresGet = true
 		case lexer.IDENT:
-			if p.curToken.Lexeme != "set" {
+			if p.curToken.Lexeme != contextualSet {
 				p.addError("unexpected token %q in interface property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
 				return nil
 			}
@@ -3345,23 +3283,6 @@ func (p *Parser) recoverInterfacePropertyBodyStart() bool {
 	}
 	record()
 	return false
-}
-
-// isInterfaceMemberStart reports tokens that can reliably begin an interface
-// member during later-line recovery, including contextual event requirements.
-//
-// Rules:
-//   - rules/foundations/grammar.md — "Interface declaration", InterfaceMember production
-//   - rules/compiler/parser_recovery.md — "Interface recovery"
-func (p *Parser) isInterfaceMemberStart(token lexer.Token) bool {
-	switch token.Type {
-	case lexer.FN, lexer.MUT, lexer.CONSUME_ARROW, lexer.STATIC, lexer.PROPERTY:
-		return true
-	case lexer.IDENT:
-		return token.Lexeme == "event"
-	default:
-		return false
-	}
 }
 
 func (p *Parser) parseInterfacePropertySetter(property *ast.InterfaceProperty, fallible bool) bool {
@@ -3452,7 +3373,7 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 		}
 		return true
 	}
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "error" {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualError {
 		p.nextToken()
 		enum.ErrorType = true
 		enum.ErrorToken = p.curToken
@@ -3462,7 +3383,7 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 		enum.UnderlyingType = p.invalidTypeReference(p.peekToken, "")
 		return p.recoverEnumBodyStart()
 	}
-	if p.curToken.Lexeme != "bit" {
+	if p.curToken.Lexeme != contextualBit {
 		enum.UnderlyingType = p.parseTypeReference()
 		p.parseOptionalEnumErrorMarker(enum)
 		return true
@@ -3503,7 +3424,7 @@ func (p *Parser) recoverEnumBodyStart() bool {
 			if p.peekToken.Type == lexer.LBRACE {
 				return true
 			}
-			if p.peekToken.Type == lexer.RBRACE || (p.peekToken.Line > startLine && (isDeclarationStart(p.peekToken.Type) || p.isImplMemberStart(p.peekToken.Type))) {
+			if p.peekToken.Type == lexer.RBRACE || (p.peekToken.Line > startLine && (isDeclarationStart(p.peekToken.Type) || p.isImplMemberStart(p.peekToken))) {
 				return false
 			}
 		}
@@ -3520,7 +3441,7 @@ func (p *Parser) recoverEnumBodyStart() bool {
 // marker from rules/declarations/enums.md. `error` is a marker here, not an
 // integer representation type.
 func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
-	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "error" {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != contextualError {
 		return
 	}
 	p.nextToken()
@@ -3843,14 +3764,14 @@ func (p *Parser) isMissingFunctionReturnTypeBoundary() bool {
 	if p.recoveryContext != RecoveryContextMember {
 		return false
 	}
-	if p.isImplMemberStart(p.peekToken.Type) {
+	if p.isImplMemberStart(p.peekToken) {
 		return true
 	}
 	switch p.peekToken.Type {
 	case lexer.MUT, lexer.CONSUME_ARROW:
 		return true
 	case lexer.IDENT:
-		return p.peekToken.Lexeme == "event"
+		return p.peekToken.Lexeme == contextualEvent
 	default:
 		return false
 	}
@@ -4299,29 +4220,6 @@ func (p *Parser) rejectChainedAssignment() {
 	p.skipRestOfStatementLine()
 }
 
-// skipRestOfStatementLine consumes the remaining tokens of the current line,
-// keeping delimiters balanced and leaving a closing brace that ends the
-// enclosing block for its owner.
-func (p *Parser) skipRestOfStatementLine() {
-	line := p.curToken.Line
-	depth := 0
-	for p.peekToken.Type != lexer.EOF {
-		if depth == 0 && (p.peekToken.Line != line || p.peekToken.Type == lexer.RBRACE) {
-			break
-		}
-		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
-			depth++
-		case lexer.RPAREN, lexer.RBRACKET, lexer.RBRACE:
-			if depth > 0 {
-				depth--
-			}
-		}
-	}
-	p.endRecoveryEpisode()
-}
-
 func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
 	switch t {
 	case lexer.MODULE,
@@ -4362,7 +4260,7 @@ func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
 //   - rules/errors/panic.md — § 16(1) "Checked unreachable"
 func (p *Parser) isReturnTerminatorToken(token lexer.Token) bool {
 	return p.isReturnTerminator(token.Type) ||
-		(token.Type == lexer.IDENT && token.Lexeme == "unreachable")
+		(token.Type == lexer.IDENT && token.Lexeme == contextualUnreachable)
 }
 
 func (p *Parser) parseStructStatement() ast.Statement {
@@ -4457,7 +4355,7 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		if !p.expectPeek(lexer.IDENT) {
 			return fields
 		}
-		if p.curToken.Lexeme == "bit" {
+		if p.curToken.Lexeme == contextualBit {
 			field.Width = 1
 			if p.peekToken.Type == lexer.LBRACKET {
 				p.nextToken()
@@ -4523,7 +4421,7 @@ func isRegisterFieldAccessPrefix(token lexer.Token) bool {
 	if token.Type != lexer.IDENT {
 		return false
 	}
-	return token.Lexeme == "read" || token.Lexeme == "write" || token.Lexeme == "clear"
+	return token.Lexeme == contextualRead || token.Lexeme == contextualWrite || token.Lexeme == contextualClear
 }
 
 // parseRegisterFieldAccessModifier parses the closed hyphenated modifier set
@@ -5046,14 +4944,14 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			p.appendImplMember(stmt, documentation, fn)
 		case lexer.IDENT:
-			if p.curToken.Lexeme == "init" && p.peekToken.Type == lexer.LPAREN {
+			if p.curToken.Lexeme == contextualInit && p.peekToken.Type == lexer.LPAREN {
 				initializer := p.parseInitDeclaration()
 				if initializer != nil {
 					p.appendImplMember(stmt, documentation, initializer)
 				}
 				continue
 			}
-			if p.curToken.Lexeme == "event" {
+			if p.curToken.Lexeme == contextualEvent {
 				event := p.parseEventDeclaration()
 				if event == nil {
 					continue
@@ -5206,19 +5104,6 @@ func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
 	return initializer
 }
 
-func (p *Parser) isUnitMetadataName(name string) bool {
-	switch normalizeUnitMetadataName(name) {
-	case "dimension", "scale", "system", "longname", "symbol", "baseunit", "status", "kind", "transform", "offset", "origin", "logbase", "logfactor", "reference":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeUnitMetadataName(name string) string {
-	return strings.ReplaceAll(strings.ToLower(name), "_", "")
-}
-
 func (p *Parser) parseUnitMetadataDeclaration() *ast.UnitMetadataDeclaration {
 	metadata := &ast.UnitMetadataDeclaration{
 		Token: p.curToken,
@@ -5257,7 +5142,7 @@ func (p *Parser) skipInvalidImplMemberFrom(start lexer.Token) RecoveryEvent {
 		if delimiters.empty() && p.peekToken.Type == lexer.RBRACE {
 			break
 		}
-		if delimiters.empty() && p.peekToken.Line > startLine && p.isImplMemberStart(p.peekToken.Type) {
+		if delimiters.empty() && p.peekToken.Line > startLine && p.isImplMemberStart(p.peekToken) {
 			break
 		}
 		if !delimiters.canConsume(p.peekToken.Type) {
@@ -5279,15 +5164,6 @@ func (p *Parser) skipCurrentBlockRecovery(start lexer.Token) RecoveryEvent {
 	return p.skipBalancedBlockFrom(start, false)
 }
 
-func (p *Parser) isImplMemberStart(t lexer.TokenType) bool {
-	switch t {
-	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.FREE, lexer.PROPERTY, lexer.STRUCT, lexer.LET, lexer.STATIC:
-		return true
-	default:
-		return false
-	}
-}
-
 func (p *Parser) parseEventDeclaration() *ast.EventDeclaration {
 	event := &ast.EventDeclaration{Token: p.curToken}
 	if p.peekToken.Type != lexer.IDENT {
@@ -5298,7 +5174,7 @@ func (p *Parser) parseEventDeclaration() *ast.EventDeclaration {
 	}
 	p.nextToken()
 	event.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
-	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "using" {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != contextualUsing {
 		p.nextToken()
 		p.addError("event %s must specify storage with using at %d:%d", event.Name.Value, p.curToken.Line, p.curToken.Column)
 		p.skipInvalidImplMember()
@@ -5402,7 +5278,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				return nil
 			}
 		case lexer.IDENT:
-			if p.curToken.Lexeme != "set" {
+			if p.curToken.Lexeme != contextualSet {
 				p.addError("unexpected token %q in property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
 				p.skipPropertyRemainder()
 				return nil
@@ -6359,22 +6235,6 @@ func (p *Parser) parseCurrentContract() ast.Contract {
 	return nil
 }
 
-func (p *Parser) isContractStart(token lexer.Token) bool {
-	if token.Type == lexer.RANGE_KW || token.Type == lexer.IN {
-		return true
-	}
-	if token.Type != lexer.IDENT {
-		return false
-	}
-	// `regex` is a reserved contract spelling like the other contract words
-	// and follows ordinary whitespace and continuation rules; it has no
-	// same-line requirement (MD-009).
-	//
-	// Rules:
-	//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 10.1–10.14
-	return lexer.IsContractWord(token.Lexeme)
-}
-
 // parseRegexContract parses `regex Pattern`, retaining the pattern as an
 // ordinary constant expression. Whether it is a compile-time string is a Sema
 // decision; the parser does not interpret the regular-expression syntax.
@@ -6650,20 +6510,12 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func (p *Parser) expectPeekContextualSet() bool {
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "set" {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualSet {
 		p.nextToken()
 		return true
 	}
 	p.addError("expected 'set', got %q at %d:%d", p.peekToken.Lexeme, p.peekToken.Line, p.peekToken.Column)
 	return false
-}
-
-func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.MUT || tokenType == lexer.CONSUME_ARROW || tokenType == lexer.REF
-}
-
-func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT
 }
 
 func (p *Parser) nextToken() {
@@ -6853,7 +6705,7 @@ func (p *Parser) skipStatement() RecoveryEvent {
 
 	boundary := false
 	for p.peekToken.Type != lexer.EOF {
-		if p.recoveryContext == RecoveryContextTopLevel && p.peekToken.Line > start.Line && isDeclarationStart(p.peekToken.Type) {
+		if p.recoveryContext == RecoveryContextTopLevel && p.peekToken.Line > start.Line && isOuterDeclarationRecoveryStart(p.peekToken.Type, !delimiters.empty()) {
 			p.nextToken()
 			boundary = true
 			break
@@ -7054,70 +6906,8 @@ func (p *Parser) markInvalidTypeReference(ref *ast.TypeReference) *ast.TypeRefer
 	return ref
 }
 
-func (p *Parser) skipUntilBlockStart() {
-	for !p.isAtEnd() && p.curToken.Type != lexer.LBRACE {
-		p.nextToken()
-	}
-}
-
 func (p *Parser) isAtEnd() bool {
 	return p.curToken.Type == lexer.EOF
-}
-
-func (p *Parser) isStatementStart(t lexer.TokenType) bool {
-	switch t {
-	case lexer.MODULE,
-		lexer.HASH,
-		lexer.IMPORT,
-		lexer.TYPE,
-		lexer.UNIT,
-		lexer.ENUM,
-		lexer.STRUCT,
-		lexer.INTERFACE,
-		lexer.IMPL,
-		lexer.PROPERTY,
-		lexer.EXTERN,
-		lexer.FN,
-		lexer.FREE,
-		lexer.LET,
-		lexer.STATIC,
-		lexer.RETURN,
-		lexer.IF,
-		lexer.FOR,
-		lexer.WHILE,
-		lexer.MATCH,
-		lexer.SWITCH,
-		lexer.SELECT,
-		lexer.TRY,
-		lexer.SPAWN,
-		lexer.AWAIT,
-		lexer.BREAK,
-		lexer.CANCEL,
-		lexer.CONTINUE,
-		lexer.FALLTHROUGH,
-		lexer.UNSAFE,
-		lexer.ASM,
-		lexer.DEFER,
-		lexer.DISCARD,
-		lexer.ELSE,
-		lexer.AT,
-		lexer.SELF,
-		lexer.COMMENT:
-		return true
-	default:
-		return false
-	}
-}
-
-func isDeclarationStart(t lexer.TokenType) bool {
-	switch t {
-	case lexer.MODULE, lexer.IMPORT, lexer.TYPE, lexer.UNIT, lexer.ENUM,
-		lexer.STRUCT, lexer.INTERFACE, lexer.IMPL, lexer.EXTERN, lexer.FN,
-		lexer.PROPERTY, lexer.STATIC:
-		return true
-	default:
-		return false
-	}
 }
 
 func (p *Parser) isAtTypeDeclEnd() bool {
@@ -7323,20 +7113,7 @@ func (p *Parser) expectPeekAssignmentOperator() bool {
 	p.addDiagnostic(
 		compilerdiagnostics.ParserMissingToken,
 		unexpected,
-		[]lexer.TokenType{
-			lexer.ASSIGN,
-			lexer.MOVE_ASSIGN,
-			lexer.PLUS_ASSIGN,
-			lexer.MINUS_ASSIGN,
-			lexer.ASTERISK_ASSIGN,
-			lexer.SLASH_ASSIGN,
-			lexer.PERCENT_ASSIGN,
-			lexer.BIT_AND_ASSIGN,
-			lexer.BIT_OR_ASSIGN,
-			lexer.BIT_XOR_ASSIGN,
-			lexer.SHIFT_LEFT_ASSIGN,
-			lexer.SHIFT_RIGHT_ASSIGN,
-		},
+		assignmentOperators(),
 		&unexpected,
 		"expected next token to be assignment operator, got %q at %d:%d",
 		unexpected.Type,
@@ -7345,26 +7122,6 @@ func (p *Parser) expectPeekAssignmentOperator() bool {
 	)
 
 	return false
-}
-
-func (p *Parser) isAssignmentOperator(t lexer.TokenType) bool {
-	switch t {
-	case lexer.ASSIGN,
-		lexer.MOVE_ASSIGN,
-		lexer.PLUS_ASSIGN,
-		lexer.MINUS_ASSIGN,
-		lexer.ASTERISK_ASSIGN,
-		lexer.SLASH_ASSIGN,
-		lexer.PERCENT_ASSIGN,
-		lexer.BIT_AND_ASSIGN,
-		lexer.BIT_OR_ASSIGN,
-		lexer.BIT_XOR_ASSIGN,
-		lexer.SHIFT_LEFT_ASSIGN,
-		lexer.SHIFT_RIGHT_ASSIGN:
-		return true
-	default:
-		return false
-	}
 }
 
 // parseLetStatement parses a variable declaration.
@@ -7451,6 +7208,9 @@ func (p *Parser) consumeAttributeArguments() RecoveryEvent {
 	start, end, skipped := p.curToken, p.curToken, 1
 	delimiters := newDelimiterStack(lexer.RPAREN)
 	for !delimiters.empty() && p.peekToken.Type != lexer.EOF {
+		if delimiters.depth() == 1 && p.peekToken.Line > p.curToken.Line && isDeclarationStart(p.peekToken.Type) {
+			break
+		}
 		if !delimiters.canConsume(p.peekToken.Type) {
 			break
 		}
@@ -7836,7 +7596,7 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 //   - rules/memory/ownership.md — §10 "Explicit move syntax"
 func (p *Parser) rejectLegacyWordMoveInitializer(stmt *ast.LetStatement) bool {
 	identifier, ok := stmt.Value.(*ast.Identifier)
-	if !ok || identifier.Value != "move" || p.peekToken.Line != identifier.Token.Line || !p.isExpressionStart(p.peekToken.Type) {
+	if !ok || identifier.Value != contextualMove || p.peekToken.Line != identifier.Token.Line || !p.isExpressionStart(p.peekToken.Type) {
 		return false
 	}
 

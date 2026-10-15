@@ -1,0 +1,171 @@
+module inclusivebound
+
+fn Change(values: ref mut list[int]) bool {
+    values.Clear()
+    return true
+}
+
+fn CaseUnknown(left: ref list[int], right: ref mut list[int]) void {
+
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseEqual(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len == left.Len
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseNonStrict(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len >= left.Len
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseStrict(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseReverse(left: ref list[int], right: ref mut list[int]) void {
+    assert left.Len < right.Len
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseExit(left: ref list[int], right: ref mut list[int]) void {
+    if right.Len <= left.Len { return }
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseEnclosing(left: ref list[int], right: ref mut list[int]) void {
+
+    if right.Len > left.Len {
+        for i in 0u..left.Len {
+        discard right[i]
+    }
+    }
+}
+
+fn CaseWrongRelation(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len < left.Len
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseMutation(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    right.Clear()
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseCallee(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    discard Change(right)
+    for i in 0u..left.Len {
+        discard right[i]
+    }
+}
+
+fn CaseBodyMutation(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    for i in 0u..left.Len {
+        right.Clear()
+        discard right[i]
+    }
+}
+
+fn CaseBodyCallee(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    for i in 0u..left.Len {
+        discard Change(right)
+        discard right[i]
+    }
+}
+
+fn CaseStaleCondition(left: ref list[int], right: ref mut list[int]) void {
+
+    if right.Len > left.Len && Change(right) {
+        for i in 0u..left.Len {
+        discard right[i]
+    }
+    }
+}
+
+fn CaseSame(left: ref list[int], right: ref mut list[int]) void {
+
+    for i in 0u..left.Len {
+        if i < left.Len { discard left[i] }
+    }
+}
+
+fn CaseParallel(left: ref list[int], right: ref mut list[int]) void {
+
+    for i in 0u..left.Len {
+        if i < left.Len { discard left[i] + right[i] }
+    }
+}
+
+fn CaseUnusedBound(left: ref list[int], right: ref mut list[int]) void {
+
+    for i in 0u..left.Len {
+        discard right[i]
+        discard left.Len
+    }
+}
+
+fn CaseOffset(left: ref list[int], right: ref list[int]) void {
+    for i in 0u..left.Len { discard right[i + 1u] }
+}
+
+fn CaseStep(left: ref list[int], right: ref list[int]) void {
+    for i in 0u..left.Len step 2u { discard right[i] }
+}
+
+fn CaseStepStrict(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    for i in 0u..left.Len step 2u { discard right[i] }
+}
+
+fn CaseStepEqual(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len == left.Len
+    for i in 0u..left.Len step 2u { discard right[i] }
+}
+
+fn CaseStepNonStrict(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len >= left.Len
+    for i in 0u..left.Len step 2u { discard right[i] }
+}
+
+fn CaseStepMutation(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    right.Clear()
+    for i in 0u..left.Len step 2u { discard right[i] }
+}
+
+fn CaseStepRuntime(left: ref list[int], right: ref mut list[int], delta: uint) void {
+    assert right.Len > left.Len
+    for i in 0u..left.Len step delta { discard right[i] }
+}
+
+fn CaseStepFolded(left: ref list[int], right: ref mut list[int]) void {
+    assert right.Len > left.Len
+    for i in 0u..left.Len step 1u + 2u { discard right[i] }
+}
+
+fn CaseStepExit(left: ref list[int], right: ref mut list[int]) void {
+    if right.Len <= left.Len { return }
+    for i in 0u..left.Len step 2u { discard right[i] }
+}

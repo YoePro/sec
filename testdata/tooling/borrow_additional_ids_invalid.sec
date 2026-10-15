@@ -1,0 +1,34 @@
+module main
+type Pair struct { Left: int }
+
+fn ImmutableOwner() void {
+    let value := 1
+    let holder := ref mut value
+}
+
+fn ImmutablePath(value: ref Pair) void {
+    let holder := ref mut value.Left
+}
+
+fn EscapingArena() Arena {
+    let mut bytes: byte[2] := [0u, 0u]
+    let arena := Arena.FromBuffer(bytes)
+    return arena
+}
+
+fn EscapingDirectArena(buffer: ref mut byte[]) Arena {
+    return Arena.FromBuffer(buffer)
+}
+
+fn EscapingLocal() ref int {
+    let value := 1
+    return ref value
+}
+
+fn SharedArenaMutation(arena: ref Arena) void {
+    arena.Reset()
+}
+
+fn BorrowedArenaRelease(arena: ref mut Arena) void {
+    arena.Release()
+}

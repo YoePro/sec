@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-02
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-15
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/language_philosophy.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
@@ -277,6 +277,56 @@ reject when the required guarantee cannot otherwise be established
 
 § 10(7) Compiler-generated semantic surprises are not.
 
+### § 10.1 No unnecessary errors
+
+Approved by the language owner, 2026-10-15 (`rules/corrections/applied/sec-no-unnecessary-errors-20261015.md`).
+
+§ 10.1(1) Sec must not impose error-handling work on callers for conditions that an operation can handle correctly, safely and deterministically within its documented contract. This complements § 4 *Explicit intent, implicit bookkeeping* and the explicit, statically typed `Result[T, E]` model; it introduces no exceptions, no new error mechanism and no automatic success fallback.
+
+§ 10.1(2) **An error represents a meaningful failure to fulfill an operation's contract, not merely an unusual input or a harmless boundary condition.**
+
+§ 10.1(3) If an operation can satisfy its contract without performing work, it should normally complete successfully rather than report an error solely because no work was needed.
+
+§ 10.1(4) An API must not add an error variant, a `Result` return type or mandatory caller-side error handling solely to distinguish a harmless no-op from ordinary success when the distinction has no contractual value.
+
+§ 10.1(5) What counts as success and failure is part of the API contract. The compiler must not guess that an error may be suppressed because a condition appears harmless in one calling context.
+
+§ 10.1(6) Harmless boundary behavior is predictable: an immediate return, a no-op or another explicitly specified successful outcome. It never conceals a failed postcondition.
+
+### § 10.2 Errors that remain necessary
+
+§ 10.2(1) Errors remain necessary when the caller must know that an operation failed to provide a required result, acquire a resource, preserve data, satisfy a contract or meet another meaningful guarantee. This principle does not waive the rules for memory and ownership safety, lifetime and generation validity, overflow, lossy conversions, unsafe boundaries, ABI validation or any other mandated check (§ 7).
+
+§ 10.2(2) An implementation must not silently convert an actual failure into success, discard owned resources, bypass required diagnostics or weaken existing safety guarantees to reduce the number of errors.
+
+§ 10.2(3) A non-error outcome that callers need to distinguish may be expressed through an ordinary return value, `bool`, `Option[T]`, a result enum or another explicit type. The right shape depends on the operation's contract; this paragraph prescribes none.
+
+### § 10.3 Designing an error surface
+
+§ 10.3(1) Before introducing a new recoverable error, the owning API rulebook should answer:
+
+```text
+Which documented promise failed?
+Does the caller need to recover, retry or change control flow because of it?
+Can the operation achieve its promised outcome safely without doing work?
+Would treating the condition as success hide information that matters?
+Would an ordinary return value represent the outcome more accurately?
+```
+
+Where the answers show that the operation completes its contract and the distinction is immaterial, ordinary success is preferred. A narrower error surface is desirable only when it stays semantically honest; fewer errors never justify ambiguity or hidden failure.
+
+### § 10.4 Examples
+
+§ 10.4(1) Non-normative examples:
+
+- Reserving capacity that is already sufficient may succeed without allocating. Whether a reservation API returns `void` or `Result[void, E]` for *other* failures is defined by that API.
+- An operation that removes an absent item may treat absence as a successful no-op if its contract only promises that the item is absent afterward; an operation that promises to return the removed item must expose the distinction.
+- Zero and negative `duration` values are valid values. Whether a particular wait or scheduling API treats a non-positive value as an immediate successful return, a distinct outcome or a rejected argument belongs to that API's own rulebook; this principle decides no API behavior.
+- A failed memory allocation is not a no-op when the caller requested new storage; it remains an actual failure.
+
+### § 10.5 Adoption in API contracts
+
+§ 10.5(1) The principle is not retrofitted into an existing API by inference. Each affected API contract is reviewed on its own, and a resulting behavioral change is recorded in its owning rulebook and tests. For each new recoverable error variant, a revision verifies that callers genuinely need to distinguish it, tests successful boundary or no-op behavior where the contract permits it, shows by negative tests that actual contract violations and safety failures stay visible, and keeps documentation, generated LSP comments and diagnostics distinguishing a successful no-op from an actual failure.
 ---
 
 ## § 11. Cost awareness
@@ -476,6 +526,9 @@ Does the feature make correct code easier to write and understand?
 
 Does it introduce semantic bureaucracy?
 
+Does it make callers handle errors for conditions the operation could
+complete safely within its contract?
+
 Does it require specialist terminology without corresponding value?
 
 Is important behavior visible and predictable?
@@ -528,3 +581,5 @@ another language uses it?
 § 23(11) Later deliberate normative revisions may supersede earlier provisional designs, but stable public contracts should not be changed casually.
 
 § 23(12) Specific owning rulebooks remain authoritative for concrete language semantics. This philosophy rulebook guides design; it does not invent missing rules.
+
+§ 23(13) An error represents a meaningful failure to fulfill a contract, not a harmless boundary condition; callers are not made to handle errors that carry no contractual value, and actual failures are never hidden (§§ 10.1–10.5).

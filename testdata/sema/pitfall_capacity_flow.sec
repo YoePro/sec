@@ -1,0 +1,202 @@
+module capacityflow
+
+fn Change(values: ref mut list[int]) bool {
+    values.Clear()
+    return true
+}
+
+fn CaseOuterAssert(values: ref list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    if flag {
+        discard values[values.Capacity - 1]
+    }
+}
+
+fn CaseOuterLoop(values: ref list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    if flag {
+        for i in 0u..<values.Capacity {
+            discard values[i]
+        }
+    }
+}
+
+fn CaseExitGuard(values: ref list[int], flag: bool) void {
+    if values.Len != values.Capacity { return }
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseElseExit(values: ref list[int], flag: bool) void {
+    if values.Capacity == values.Len {} else { return }
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseFalseBranch(values: ref list[int]) void {
+    if values.Len != values.Capacity {} else {
+        discard values[values.Capacity - 1]
+    }
+}
+
+fn CaseNegated(values: ref list[int]) void {
+    if !(values.Capacity != values.Len) {
+        discard values[values.Capacity - 1]
+    }
+}
+
+fn CaseFalseDisjunction(values: ref list[int], flag: bool) void {
+    if values.Len != values.Capacity || flag { return }
+    discard values[values.Capacity - 1]
+}
+
+fn CaseElementWrite(values: ref mut list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    if flag {
+        values[0u] = 4
+        discard values[values.Capacity - 1]
+    }
+}
+
+fn CaseMutation(values: ref mut list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    values.Clear()
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseCallee(values: ref mut list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    discard Change(values)
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseConditionMutation(values: ref mut list[int]) void {
+    if values.Len == values.Capacity && Change(values) {
+        discard values[values.Capacity - 1]
+    }
+}
+
+fn CaseConditionReestablished(values: ref mut list[int]) void {
+    if Change(values) && values.Len == values.Capacity {
+        discard values[values.Capacity - 1]
+    }
+}
+
+fn CaseExitConditionReestablished(values: ref mut list[int]) void {
+    if Change(values) || values.Len != values.Capacity { return }
+    discard values[values.Capacity - 1]
+}
+
+fn CaseSibling(values: ref list[int], flag: bool) void {
+    if flag { assert values.Len == values.Capacity }
+    discard values[values.Capacity - 1]
+}
+
+fn CaseOther(values: ref list[int], other: ref list[int], flag: bool) void {
+    assert other.Len == other.Capacity
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseDeferred(values: ref list[int]) void {
+    assert values.Len == values.Capacity
+    defer { discard values[values.Capacity - 1] }
+}
+
+fn CaseClosure(values: ref list[int]) void {
+    assert values.Len == values.Capacity
+    let action := capture(values) fn() void { discard values[values.Capacity - 1] }
+    discard action
+}
+
+fn CaseBackedge(values: ref mut list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    while flag {
+        discard values[values.Capacity - 1]
+        values.Clear()
+    }
+}
+
+fn CaseReestablished(values: ref mut list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    values.Clear()
+    assert values.Len == values.Capacity
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseConditionalMutation(values: ref mut list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    if flag { values.Clear() }
+    discard values[values.Capacity - 1]
+}
+
+fn CaseReplacement(values: list[int], other: list[int], flag: bool) void {
+    assert values.Len == values.Capacity
+    values <- other
+    if flag { discard values[values.Capacity - 1] }
+}
+
+fn CaseDirectAnd(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectOr(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len != values.Capacity || values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectReverse(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Capacity == values.Len && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectNegation(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard !(values.Len != values.Capacity) && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectNested(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity && (flag || values[values.Capacity - 1] > 0)
+}
+
+fn CaseDirectChain(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard (values.Len != values.Capacity || flag) || values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectReestablished(values: ref mut list[int], other: ref list[int], flag: bool) void {
+    discard (Change(values) && values.Len == values.Capacity) && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectWrongBranch(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity || values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectWrongCollection(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard other.Len == other.Capacity && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectCrossCollection(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == other.Capacity && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectLateCheck(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values[values.Capacity - 1] > 0 && values.Len == values.Capacity
+}
+
+fn CaseDirectMutation(values: ref mut list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity && (Change(values) && values[values.Capacity - 1] > 0)
+}
+
+fn CaseDirectExpired(values: ref mut list[int], other: ref list[int], flag: bool) void {
+    discard (values.Len == values.Capacity && Change(values)) && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectSibling(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity && flag
+    discard flag && values[values.Capacity - 1] > 0
+}
+
+fn CaseDirectClosure(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity && flag
+    let action := capture(values) fn() bool { return values[values.Capacity - 1] > 0 }
+    discard action
+}
+
+fn CaseDirectDeferred(values: ref list[int], other: ref list[int], flag: bool) void {
+    discard values.Len == values.Capacity && flag
+    defer { discard values[values.Capacity - 1] > 0 }
+}

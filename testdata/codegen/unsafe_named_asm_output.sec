@@ -1,0 +1,29 @@
+module main
+
+unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+	unsafe {
+		asm {
+			"syscall"
+
+			inputs:
+				rax(number)
+				rdi(arg1)
+				rsi(arg2)
+				rdx(arg3)
+
+			outputs:
+				rax(result)
+
+			clobbers:
+				rcx
+				r11
+				memory
+		}
+
+		return result
+	}
+}
+
+fn main() int {
+	return 0
+}

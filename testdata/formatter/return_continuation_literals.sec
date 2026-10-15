@@ -1,0 +1,6 @@
+fn Text() string {
+    return `first
+  literal indentation
+last` +
+    "tail"
+}

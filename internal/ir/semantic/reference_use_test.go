@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -144,20 +143,43 @@ func TestPackage15DynamicReferenceUseValidatesOnce(t *testing.T) {
 	}
 }
 
-// An explicit `ref r` over a reference holder has no decided meaning
-// (MD-061) and stays a package-15 boundary.
-func TestPackage15ExplicitReborrowAwaitsDecision(t *testing.T) {
+// `ref r` / `ref mut r` over a reference holder lower from Sema's reborrow
+// plan as ref.reborrow-shared / ref.reborrow-mut of the holder's reference
+// SSA value: a new borrow derived from the holder's borrow, the same referent
+// and storage dependency, and type ref T or ref mut T, never a reference to
+// the holder (MD-061). The verifier accepts the module.
+//
+// Rules:
+//   - rules/memory/borrowing.md — § 11.4 "Explicit reborrow"
+func TestPackage15LowersExplicitReborrows(t *testing.T) {
 	module, err := analyzedModule(t, `module main
+
+fn Read(v: ref int) int {
+    return 0
+}
 
 fn Use() int {
     let mut value := 1
     let first := ref mut value
     let again := ref first
-    return 0
+    let n := Read(again)
+    let child := ref mut first
+    return n
 }
 `, 15)
-	var unsupported *UnsupportedFeatureError
-	if module != nil || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "reborrow of reference") {
-		t.Fatalf("module=%t err=%v, want the reborrow boundary", module != nil, err)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify: %v\n%s", err, Format(module))
+	}
+	text := Format(module)
+	for _, want := range []string{"ref.reborrow-shared %2 {borrow=#3 lifetime=#3 from=#2", "ref.reborrow-mut %2 {borrow=#5 lifetime=#5 from=#2", "origins=[#1]"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("module lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Count(text, "origins=[#1]") < 3 {
+		t.Errorf("reborrows must keep the holder's storage dependency:\n%s", text)
 	}
 }

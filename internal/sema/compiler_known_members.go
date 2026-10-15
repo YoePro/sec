@@ -30,9 +30,15 @@ type CompilerKnownMember struct {
 	Kind          CompilerKnownMemberKind
 	Result        Type
 	Signature     string
-	Documentation string
-	Unsafe        bool
-	Effects       []EffectKind
+	// Parameters and CallerObligations are compiler-owned presentation facts,
+	// not proof that a particular call satisfies the operation's contract.
+	// Rules: rules/memory/raw_pointers.md — §§5.2,11–15,35;
+	// rules/tooling/lsp.md — "Signature help".
+	Parameters        []FunctionParameter
+	CallerObligations []string
+	Documentation     string
+	Unsafe            bool
+	Effects           []EffectKind
 	// AllocationBehavior is an explicit operation contract, independent from
 	// volatile/panic effects. Empty means no allocation-freedom proof.
 	// Rules: rules/memory/allocation.md — §§20(5),24(3),(6).
@@ -363,8 +369,11 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			CompilerKnownMember{ID: "CKM-STRING-TORUNEARRAY", Name: "ToRuneArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("rune"))},
 		)
 	}
-	if typ.Kind == RawPtrType {
-		members = append(members, compilerKnownRawPointerMembers(typ)...)
+	// Borrowed pointer values expose the same pointee-specialized operations.
+	// Rules: rules/foundations/grammar.md — "Member access";
+	// rules/memory/raw_pointers.md — §35(6), shared Sema/tooling registry.
+	if sequence.Kind == RawPtrType {
+		members = append(members, compilerKnownRawPointerMembers(sequence)...)
 	}
 	if typ.Name == "Arena" {
 		members = append(members,

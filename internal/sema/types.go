@@ -984,7 +984,7 @@ func newBuiltinTypes() map[string]Type {
 			EnumConsts:  builtinEnumConsts([]string{"UndeclaredValue", "OutOfRange"}),
 			EnumDefault: "UndeclaredValue",
 		},
-		"ContractError": {Name: "ContractError", Kind: StructType},
+		"ContractError":   {Name: "ContractError", Kind: StructType},
 		"CollectionError": builtinCollectionErrorType(),
 		"Option": {
 			Name:              "Option",
@@ -1590,6 +1590,13 @@ func requiresOwnershipTransfer(typ Type) bool {
 func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification {
 	if typ.ExplicitlyNonCopyable {
 		return CopyNonCopyable
+	}
+	// MD-025.1 (copy_move.md § 3): a nominal type whose implementation
+	// defines custom free is MoveOnly regardless of its fields; an implicit
+	// copy would run free twice for one resource. Containing aggregates
+	// inherit this through the ordinary derivation below.
+	if typ.CustomFree {
+		return CopyMoveOnly
 	}
 	switch typ.Kind {
 	case InvalidType, VoidType, NeverType:

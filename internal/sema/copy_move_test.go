@@ -362,7 +362,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"Mutex[int] value first cannot be copied because Mutex[int] is compiler-known non-copyable; use explicit move syntax :<- at 6:19",
+		"Mutex[int] value first cannot be copied because Mutex[int] explicitly forbids implicit copy through @noCopy; use explicit move syntax :<- at 6:19",
 	})
 	if errors[0].ID != diagnostics.ImplicitMoveDisallowed {
 		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.ImplicitMoveDisallowed)
@@ -528,7 +528,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"Locked value first cannot be copied because field lock has non-copyable type Mutex[int]; use explicit move syntax :<- at 10:19",
+		"Locked value first cannot be copied because field lock has type Mutex[int], which explicitly forbids implicit copy through @noCopy; use explicit move syntax :<- at 10:19",
 	})
 }
 
@@ -588,7 +588,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"Resource value first cannot be copied because field lock has non-copyable type Mutex[int]; use explicit move syntax :<- at 26:19",
+		"Resource value first cannot be copied because field lock has type Mutex[int], which explicitly forbids implicit copy through @noCopy; use explicit move syntax :<- at 26:19",
 	})
 }
 
@@ -848,6 +848,7 @@ fn Test() void {
 	let mut pair := Pair { left: 1, right: 2 }
 	let left := ref pair.left
 	pair.left = 3
+	discard left
 }
 `
 

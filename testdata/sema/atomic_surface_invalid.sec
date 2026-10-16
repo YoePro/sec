@@ -1,0 +1,24 @@
+module main
+
+type Composite struct { value: uint64 }
+enum Text string { Label = "label" }
+
+fn Floats(value: Atomic[float64]) void {}
+fn Decimals(value: Atomic[decimal]) void {}
+fn Structs(value: Atomic[Composite]) void {}
+fn Strings(value: Atomic[string]) void {}
+fn StringEnums(value: Atomic[Text]) void {}
+
+fn OldNames(value: ref Atomic[int]) void {
+    discard value.load()
+    value.store(1)
+    discard value.swap(1)
+    discard value.compareExchange(1, 2)
+    discard value.fetchAdd(1)
+    discard value.fetchSub(1)
+    discard value.fetchAnd(1)
+    discard value.fetchOr(1)
+    discard value.fetchXor(1)
+}
+
+fn InvalidBool(value: ref Atomic[bool]) void { discard value.FetchAnd(true) }

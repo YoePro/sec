@@ -10,7 +10,7 @@ import "testing"
 //   - rules/platform/abi.md — § 19 "C scalar representation"
 //   - rules/platform/ffi.md — §5 "Fundamental C ABI scalar family"
 func TestCABIModelsResolveEveryFundamental(t *testing.T) {
-	models := []CABIModel{CModelSysVX8664, CModelAAPCS64, CModelDarwinX8664, CModelDarwinARM64, CModelWindowsX64, CModelWindowsARM64, CModelAAPCSLinuxHF, CModelAAPCSBareMetal, CModelRISCVILP32, CModelRISCVLP64D, CModelAAPCSFreeBSDHF}
+	models := []CABIModel{CModelSysVX8664, CModelAAPCS64, CModelDarwinX8664, CModelDarwinARM64, CModelWindowsX64, CModelWindowsARM64, CModelAAPCSLinuxHF, CModelAAPCSBareMetal, CModelRISCVILP32, CModelRISCVLP64D, CModelAAPCSFreeBSDHF, CModelWasm32, CModelWasm64}
 	for _, model := range models {
 		if err := model.Validate(); err != nil {
 			t.Fatalf("%s: %v", model.Name, err)

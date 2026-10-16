@@ -839,8 +839,26 @@ func placesMayOverlap(left, right Place) bool {
 
 func (a *Analyzer) inferPlaceBase(expr ast.Expression) (Type, expressionValue) {
 	a.suppressPlaceRootRead++
-	defer func() { a.suppressPlaceRootRead-- }()
+	previous := a.placeBaseExpr
+	a.placeBaseExpr = expr
+	defer func() {
+		a.suppressPlaceRootRead--
+		a.placeBaseExpr = previous
+	}()
 	return a.inferExpression(expr)
+}
+
+// isPlaceBase reports whether expr is being inferred as the direct base of a
+// longer Place path (`outer.inner` in `outer.inner.count`). Its owner-read
+// borrow check is left to the full path, so borrowing or reading one field
+// does not conflict with a mutable borrow of a disjoint sibling. Index
+// expressions and call arguments inside the base are not the base and are
+// still checked as reads.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §§ 4(1–3), 6(1–7), 22
+func (a *Analyzer) isPlaceBase(expr ast.Expression) bool {
+	return expr != nil && a.placeBaseExpr == expr
 }
 
 func (a *Analyzer) unavailablePlace(place Place) (lexer.Token, string, bool, bool) {

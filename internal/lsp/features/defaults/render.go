@@ -10,7 +10,7 @@ import (
 // sourceDefault emits complete allocation-free construction syntax from Sema's
 // resolution. Bounded arrays never leak preview ellipses into source edits.
 // Rules: rules/types/default_values.md — "Compile-time resolution", "LSP",
-// "List defaults", "Empty struct literal".
+// "List defaults", "Empty struct literal", "Owning dynamic arrays".
 func sourceDefault(typ sema.Type) (string, bool) {
 	resolution := sema.DefaultValueOf(typ)
 	switch resolution.Kind {
@@ -26,6 +26,8 @@ func sourceDefault(typ sema.Type) (string, bool) {
 			value = typ.Name + "(" + value + ")"
 		}
 		return value, true
+	case sema.EmptyDynamicArrayDefault:
+		return "[]", true
 	case sema.ArrayDefault:
 		length := len(resolution.Elements)
 		if resolution.ArrayLengthDecimal != "" {

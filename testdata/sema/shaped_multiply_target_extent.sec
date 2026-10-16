@@ -1,0 +1,4 @@
+module main
+fn Product(left: matrix[int, 65536, 1], right: matrix[int, 1, 65536]) void {
+    let product := left x right
+}

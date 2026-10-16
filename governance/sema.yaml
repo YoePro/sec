@@ -127,6 +127,7 @@ integrations:
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
       - rules/mlir/packages/sec-mlir-dialect_package20.md
+      - rules/mlir/packages/sec-mlir-dialect_package21.md
       - rules/compiler/linking.md
     code:
       - internal/lexer/lexer.go
@@ -223,7 +224,7 @@ integrations:
     remaining:
       - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior
       - "P20 floating operators: complete NaN comparison and truncation-remainder facts in Semantic IR, schema-16 Sec MLIR verification and Arith lowering after the corrected P18/P19 predecessor chain; the current emitter and dialect support schema 10"
-      - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules
+      - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules (planned as SEC-MLIR-P21, `lowering.sec-mlir-package21`; operator scale, error type and decimal128 members await MD-066..MD-068)
       - lower fixed-array and slice membership as exact-once left-to-right short-circuit search without allocation
       - lower range membership over char, rune, float, decimal, and nominal ordered values (Semantic IR covers built-in integers)
       - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every maintained backend

@@ -1,0 +1,18 @@
+module main
+
+type Helper struct { value: int }
+impl Helper {
+    fn Set(key: int, value: int) int { return key + value }
+}
+
+fn Declare(source: map[int, int]) map[int, int] {
+    let declared := source
+    return declared
+}
+
+fn Ordinary() int {
+    let helper := Helper {}
+    return helper.Set(1, 2)
+}
+
+fn main() void {}

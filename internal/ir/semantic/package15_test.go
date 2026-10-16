@@ -78,10 +78,10 @@ func package15Module() *Module {
 		{Kind: OpReferenceReborrowShared, Operands: []ValueID{3}, Results: []Value{v(7, t.refInt, OwnershipSharedReference)}, Reference: p15Proven(2, 1)},
 		{Kind: OpReferenceCopyShared, Operands: []ValueID{7}, Results: []Value{v(8, t.refInt, OwnershipSharedReference)}, Reference: p15Proven(2, 2)},
 		{Kind: OpReferenceCompare, Operator: "eq", Operands: []ValueID{7, 8}, Results: []Value{v(9, t.boolType, imm)}},
-		{Kind: OpReferenceEndBorrow, Operands: []ValueID{8}},
-		{Kind: OpReferenceEndBorrow, Operands: []ValueID{7}},
+		{Kind: OpReferenceEndBorrow, Operands: []ValueID{8}, Reference: p15Proven(2, 2)},
+		{Kind: OpReferenceEndBorrow, Operands: []ValueID{7}, Reference: p15Proven(2, 1)},
 		{Kind: OpReferenceMove, Operands: []ValueID{3}, Results: []Value{v(10, t.refMutInt, OwnershipMutableReference)}, Reference: p15Proven(1, 1)},
-		{Kind: OpReferenceEndBorrow, Operands: []ValueID{10}},
+		{Kind: OpReferenceEndBorrow, Operands: []ValueID{10}, Reference: p15Proven(1, 1)},
 		{Kind: OpReturn, Operands: []ValueID{6}},
 	}}}
 
@@ -144,7 +144,7 @@ func package15Module() *Module {
 		{Kind: OpReferenceBorrowShared, Operands: []ValueID{4}, Results: []Value{v(5, t.refInt, OwnershipSharedReference)}, Reference: p15Proven(1, 0)},
 		{Kind: OpReferenceDerefPlace, Operands: []ValueID{5}, Results: []Value{v(6, t.placeIntRO, tmp)}, Reference: p15Proven(1, 0)},
 		{Kind: OpPlaceRead, Operands: []ValueID{6}, Results: []Value{v(7, t.intType, imm)}},
-		{Kind: OpReferenceEndBorrow, Operands: []ValueID{5}},
+		{Kind: OpReferenceEndBorrow, Operands: []ValueID{5}, Reference: p15Proven(1, 0)},
 		{Kind: OpReturn, Operands: []ValueID{7}},
 	}}}
 

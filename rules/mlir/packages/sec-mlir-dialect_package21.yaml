@@ -1,0 +1,175 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P21
+  name: Exact Decimal Semantic Operations
+  created: '2026-10-16'
+  revision: '1.0'
+  sec_version: '0.1'
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_review_date: '2026-10-16'
+  repository_sha: not verified in accessible public view; required from implementing checkout
+  predecessor: SEC-MLIR-P20
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  dialect_schema_target: 17
+  dialect_schema_dependency: 16
+  canonical_dialect_currently_observed: 11
+  lowering_target: 17
+  status: implementation package; normative D1-D3 pending
+file_destinations:
+- source: sec-mlir-dialect_package21.md
+  destination: rules/mlir/packages/sec-mlir-dialect_package21.md
+- source: sec_decimal_numeric_sync_package21.md
+  destination: rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md
+- source: sec_semantic_ir_decimal_package21.md
+  destination: rules/mlir/semantic-ir/sec_semantic_ir_decimal_package21.md
+- source: sec_mlir_dialect_package21.md
+  destination: rules/mlir/dialect-versions/sec_mlir_dialect_v17.md
+- source: sec_mlir_lowering_package21.md
+  destination: rules/mlir/lowering-versions/sec_mlir_lowering_v17.md
+- source: sec_p20_october_compatibility_package21.md
+  destination: rules/mlir/normative-sync/sec_p20_october_compatibility_package21.md
+normative_sources:
+- rules/types/types.md
+- rules/foundations/operators.md
+- rules/memory/layout.md
+- rules/library/core-library.md
+- rules/compiler/compiler_known_members.md
+- rules/compiler/semantic_ir.md
+- rules/errors/errorhandling.md
+- rules/errors/runtime_checks.md
+- rules/types/units.md
+- sec/core/rounding.sec
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+locked_facts:
+  active_types:
+  - decimal
+  - decimal128
+  - int128
+  - int256
+  - uint128
+  - uint256
+  representations:
+    decimal:
+    - i64
+    - i32
+    decimal128:
+    - i128
+    - i32
+  source_literals: unsuffixed fractions default decimal; m selects decimal family; exact lexeme
+  operators: checked exact decimal; no binary floating intermediate; remainder truncation
+  rounding_mode:
+  - NearestEven
+  - NearestAwayFromZero
+  - TowardZero
+  - AwayFromZero
+  - Ceil
+  - Floor
+  implicit_rounding: false
+  core_decimal_scale_type: uint8
+  precision_error:
+  - PrecisionLoss
+  - ScaleOverflow
+  - PrecisionExhausted
+  numeric_conversion_error_p20:
+  - OutOfRange
+  - PrecisionLoss
+  - NotFinite
+normative_decision_gates:
+- id: SEC-MLIR-P21-D1
+  area: arithmetic result scale/canonicalization and public scale domain
+  status: proposal; approval required
+  blocks:
+  - operator scale-sensitive lowering
+  - RoundTo/Rescale policy
+  - public scale validation
+- id: SEC-MLIR-P21-D2
+  area: single exact decimal arithmetic operator error type/priority
+  status: proposal; approval required
+  recommended: DecimalArithmeticError error enum
+  blocks:
+  - operator error CFG/try implementation
+- id: SEC-MLIR-P21-D3
+  area: complete decimal128 public core member surface
+  status: proposal; approval required
+  blocks:
+  - decimal128 method registry and public declaration generation
+observed_implementation_bugs:
+- id: SEC-MLIR-P21-B1
+  severity: high
+  description: internal/sema/constants.go decimalLiteralValue limits coefficient to int64, loses
+    decimal128 range.
+- id: SEC-MLIR-P21-B2
+  severity: medium
+  description: internal/sema/compiler_known_members.go registers Decimal Scale as int; rulebook requires
+    uint8.
+- id: SEC-MLIR-P21-B3
+  severity: medium
+  description: sec/core/decimal.sec ToString() string stub conflicts with Result[string,StringError]
+    contract.
+- id: SEC-MLIR-P21-B4
+  severity: high
+  description: P20 assumes plain float is always binary64; Oct 3 MD-014 makes plain float target-sized.
+- id: SEC-MLIR-P21-B5
+  severity: medium
+  description: sec/core/error.sec does not show P20 NumericConversionError declaration in reviewed
+    main source.
+semantic_ir_ops:
+- DecimalConstOp
+- DecimalUnaryOp
+- DecimalBinaryCheckedOp
+- DecimalCompareOp
+- DecimalScaleOp
+- DecimalCoreOp
+- DecimalRoundToCheckedOp
+- DecimalRescaleCheckedOp
+- DecimalConvertExactOp
+- DecimalConvertCheckedOp
+- DecimalErrorFromReasonOp
+dialect_delta:
+- sec.decimal.constant
+- sec.decimal.unary
+- sec.decimal.binary_checked
+- sec.decimal.cmp
+- sec.decimal.scale
+- sec.decimal.core
+- sec.decimal.round_to_checked
+- sec.decimal.rescale_checked
+- sec.decimal.convert_exact
+- sec.decimal.convert_checked
+- sec.decimal.error_from_reason
+passes:
+- --sec-verify-decimal-values
+- --sec-verify-decimal-guards
+- --sec-verify-decimal-conversions
+- --sec-lower-decimal-core
+prohibited:
+- binary float decimal arithmetic
+- silent loss of precision
+- invented public decimal128 API
+- unapproved scale policy
+- unapproved error type
+- host int64 range as decimal128 limit
+- hidden allocation
+- mandatory runtime
+- LLVM semantic guessing
+tests:
+- exact literal parsing
+- i64 and i128 coefficient bounds
+- scale public uint8
+- checked arithmetic
+- terminating/nonterminating quotient
+- truncation remainder
+- all rounding modes
+- exact conversions across active integer widths
+- 32-bit/64-bit float conversion
+- guard verifier negatives
+- go test ./...
+- check-sec-mlir
+- legacy regression
+governance:
+  write_fragment: only under existing governance conventions and without duplicate IDs
+  do_not_claim_implemented: true
+future_package: determine after updated October backlog review

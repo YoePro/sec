@@ -1,0 +1,19 @@
+module main
+type Item struct { Value: int }
+type Position int
+fn Outcomes(values: ref mut list[Item], mapping: ref mut map[string, Item], items: ref mut set[int], array: Item[]) void {
+    let negative: Position := -1
+    let fromArray: Option[Item] := array.RemoveAt(negative)
+    let fromList: Option[Item] := values.RemoveAt(-1)
+    let removed: bool := values.Remove(Item { Value: 1 })
+    let contains: bool := values.Contains(Item { Value: 1 })
+    let index: Option[uint] := values.IndexOf(Item { Value: 1 })
+    let fromMap: Option[Item] := mapping.Remove("missing")
+    let hasKey: bool := mapping.ContainsKey("missing")
+    let fromSet: bool := items.Remove(1)
+    let hasValue: bool := items.Contains(1)
+    let added: Result[bool, CollectionError] := items.Add(1)
+    let inserted: Result[bool, CollectionError] := values.Insert(-1, Item { Value: 1 })
+}
+@noPanic
+fn Negative(values: ref mut list[int]) Option[int] { return values.RemoveAt(int.Min) }

@@ -14,6 +14,10 @@ func semanticSnapshotType(typ Type) Type {
 
 func semanticSnapshotTypeSeen(typ Type, seen map[string]bool) Type {
 	result := escapeSnapshotType(typ)
+	// Bounded collection arguments are part of structural type identity, not
+	// declaration bodies. Preserve them for map component and source facts.
+	// Rules: rules/collections/collections.md — §§13.1,14.1,15.1.
+	result.ConstArgs = append([]int64(nil), typ.ConstArgs...)
 	result.ReferenceOriginAlternatives = append([]ReferenceOriginAlternative(nil), typ.ReferenceOriginAlternatives...)
 	// rules/memory/destruction.md §§3.3(2), 15: post-Sema policy must
 	// retain an explicit lifecycle contract even at a recursive type edge.

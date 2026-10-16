@@ -4214,6 +4214,9 @@ func diagnosticBelongsToSource(err sema.Error, sourceFile string) bool {
 	return err.File == "" || sourceFile == "" || normalizedSourcePath(err.File) == normalizedSourcePath(sourceFile)
 }
 
+// resolveCoreSources loads core declarations and their parser-owned documentation
+// together, preserving canonical source navigation and hover.
+// Rules: rules/library/core-library.md; rules/concurrency/atomics.md — §§4–5,43.
 func resolveCoreSources(program *ast.Program, sourceFile string, overlays ...sourceOverlay) {
 	if program == nil {
 		return
@@ -4239,6 +4242,7 @@ func resolveCoreSources(program *ast.Program, sourceFile string, overlays ...sou
 			continue
 		}
 		coreStatements = append(coreStatements, imported.Statements...)
+		program.Documentation = append(program.Documentation, imported.Documentation...)
 		if program.SourceProvenance == nil {
 			program.SourceProvenance = map[string]ast.SourceProvenance{}
 		}

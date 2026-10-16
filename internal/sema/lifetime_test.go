@@ -598,6 +598,7 @@ fn Invalid() void {
     let mut value := 10
     let view := Identity(ref value)
     value = 20
+    discard view
 }
 `
 

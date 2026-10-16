@@ -3212,6 +3212,8 @@ mut fn() int
 
 Parameter names do not appear in function type references.
 
+`FunctionType` deliberately has no `unsafe` prefix: Sec 0.1 has no general unsafe function type, and no spelling, ordering rule, formatter form or implicit coercion exists for one, including through generic type parameters. `unsafe` marks function declarations and unsafe blocks only; a foreign C function pointer is the separate type `c::fn(...)` (`rules/memory/unsafe.md` § 39(6); MD-059, 2026-10-16).
+
 ---
 
 # Unit annotation

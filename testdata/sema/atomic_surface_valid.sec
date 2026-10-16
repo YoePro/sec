@@ -1,0 +1,47 @@
+module main
+
+type Count uint128
+enum Worker uint8 { Idle, Running }
+
+fn Integers(value: ref Atomic[int128]) int128 {
+    value.Store(int128(1))
+    discard value.Swap(int128(2))
+    discard value.FetchAdd(int128(1))
+    discard value.FetchSub(int128(1))
+    discard value.FetchAnd(int128(1))
+    discard value.FetchOr(int128(1))
+    discard value.FetchXor(int128(1))
+    discard value.CompareExchange(int128(1), int128(2))
+    return value.Load()
+}
+
+fn Named(value: ref Atomic[Count]) Count {
+    value.Store(Count(1))
+    return value.Load()
+}
+
+fn Enums(value: ref Atomic[Worker]) Worker {
+    value.Store(Worker.Running)
+    return value.Load()
+}
+
+fn Pointers(value: ref Atomic[RawPtr[int]]) RawPtr[int] { return value.Load() }
+fn Booleans(value: ref Atomic[bool]) bool {
+    value.Store(true)
+    return value.Load()
+}
+
+fn Inferred() int {
+    let value := Atomic(0)
+    return value.Load()
+}
+
+fn Orders() MemoryOrder {
+    discard MemoryOrder.Relaxed
+    discard MemoryOrder.Acquire
+    discard MemoryOrder.Release
+    discard MemoryOrder.AcqRel
+    return MemoryOrder.SeqCst
+}
+
+fn Wide(a: ref Atomic[int256], b: ref Atomic[uint256], c: ref Atomic[int], d: ref Atomic[uint]) void {}

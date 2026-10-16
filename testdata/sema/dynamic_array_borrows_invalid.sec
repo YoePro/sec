@@ -1,0 +1,74 @@
+module main
+
+type Store struct {
+    values: int[],
+    other: int[]
+}
+
+fn SharedElement(values: int[]) Result[void, CollectionError] {
+    let held := ref values[0]
+    try values.Append(1)
+    discard held
+    return Ok()
+}
+
+fn MutableElement(values: int[]) void {
+    let held := ref mut values[0]
+    values.Clear()
+    discard held
+}
+
+fn SharedSlice(values: int[]) void {
+    let held := ref values[..]
+    discard values.RemoveAt(0)
+    discard held
+}
+
+fn MutableSlice(values: int[]) Result[void, CollectionError] {
+    let held := ref mut values[..]
+    try values.Append(1)
+    discard held
+    return Ok()
+}
+
+fn Field(store: ref mut Store) void {
+    let held := ref store.values[0]
+    store.values.Clear()
+    discard held
+}
+
+fn Alias(store: ref mut Store) void {
+    let alias := ref mut store.values
+    let held := ref alias[0]
+    store.values.Clear()
+    discard held
+}
+
+fn Deferred(values: int[]) void {
+    let held := ref values[0]
+    defer { discard held }
+    values.Clear()
+}
+
+fn Range(values: int[]) Result[void, CollectionError] {
+    let held := ref values[..]
+    try values.Append(1..3)
+    discard held
+    return Ok()
+}
+
+fn AliasReceiver(store: ref mut Store) void {
+    let alias := ref mut store
+    let held := ref alias.values[0]
+    alias.values.Clear()
+    discard held
+}
+
+fn Branch(store: ref mut Store, flag: bool) void {
+    let mut held := ref store.values[0]
+    if flag {
+        held = ref store.other[0]
+    }
+    store.values.Clear()
+    discard held
+}

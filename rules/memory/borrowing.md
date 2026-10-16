@@ -149,6 +149,12 @@ let view := ref mut value
 
 **§ 5.2(4)** A specialized rulebook may define a compiler-materialized call-lifetime or operation-lifetime Place only when that behavior is explicit in that rulebook and preserves all borrowing guarantees.
 
+**§ 5.2(5)** A property is not an addressable stored field merely because it is written with member syntax. A getter that produces a value does not grant a reference to its backing implementation state; the same holds for every other computed, non-Place expression. `ref counter.Total` of a computed property is rejected with `S1168` / `borrowing.non-addressable-place` (`rules/tooling/diagnostics.md` § 24(4b)).
+
+**§ 5.2(6)** Copying such a value into an independently stored local and borrowing that local is valid under the ordinary rules, but the reference then denotes the local copy, not the property or any stored member its getter reads.
+
+**§ 5.2(7)** A property whose declared result is itself `ref T` or `ref mut T` is governed by that returned reference's own provenance, authority and lifetime contract; the property expression does not thereby become an addressable stored Place (MD-064, 2026-10-16, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` § 2).
+
 ### § 5.3 Source validity
 
 **§ 5.3(1)** Borrow creation requires the target Place to contain a valid initialized value on the current control-flow path.
@@ -216,6 +222,12 @@ proves ownership availability only. It does not prove that no conflicting borrow
 **§ 8.1(6)** The compiler may retain internal bookkeeping longer than the semantic live range only when doing so does not reject otherwise valid Sec source or alter observable semantics.
 
 **§ 8.1(7)** The semantic lifetime of a borrow is the set of program points needed to preserve every reachable future use and retention dependency — reference holders, derived reborrows, aggregate storage, closures, `defer`, returned references and relevant opaque-call contracts. It ends at the last *required* use on each path, not necessarily at the last textual occurrence of its holder; a deferred or escaping use extends it, loop backedges count, and an unknown foreign retention contract is never treated as call-bounded without proof (MD-061, 2026-10-15, `rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md` § 4).
+
+**§ 8.1(7a)** A reference returned by a call inherits the possible referent origins, provenance constraints and lifetime dependencies of the callee's returned-origin summary, instantiated at the actual call and generic specialization over the caller's arguments and their sub-Places, including finite alternatives; it is never treated as originless merely because its source Place is not a direct call-site expression. A name inside the callee is not the caller's origin identity. Origin identifies *which* Places may be referred to, not *how long* a borrow is live. When the instantiated origin is unknown, incomplete or incompatible, the analysis stays conservative and assumes no early last use (`rules/memory/lifetime_analysis.md` § 14.7; MD-069).
+
+**§ 8.1(7b)** A distinct live local carrying the same borrow origin and authority dependency without its own represented borrow record still counts as a surviving dependent holder. The *origin root itself* — for example the `ref mut` parameter `outer` through which `ref mut outer.Count` is created — is not counted as an additional child-borrow holder merely because it shares the origin. The root stays bound by its own borrowing, validity and exclusivity rules, so it cannot bypass a child borrow that is genuinely still live; when the child has no remaining use or dependent holder, the root's suspended compatible access becomes usable again. That recovers existing authority; it neither creates a borrow right nor consumes a resource. Equality of origin alone does not prove that holders are aliases with identical liveness or permission (MD-069, 2026-10-16, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` §§ 5–7).
+
+**§ 8.1(7c)** Ending a borrow does not destroy, move, discard or reclaim the referent and discharges no future linear obligation. Lowering and optimization neither manufacture overlapping mutable authority nor prolong a source-level borrow because bookkeeping markers remain in a larger physical scope; where Semantic IR places `ref.end-borrow` markers is MD-065 (MD-069 correction § 8).
 
 **§ 8.1(8)** Borrow conflicts remain mandatory compile-time errors. Ergonomics never weakens exclusivity; unnecessary conflicts are avoided only through last-use, disjoint-Place, finite-origin and reborrow rules. A conservative implementation may keep a borrow live longer than this section requires only where § 8.1(6) permits; such retention is tracked as an implementation limitation in governance.
 

@@ -1,0 +1,34 @@
+module main
+
+unit tick physical
+impl <tick> {
+    Kind: time
+    Dimension: [time^1]
+    Scale: 1 / 1000
+}
+
+fn Basic(value: ref Mutex[int]) MutexGuard[int] { return value.Lock() }
+fn Probe(value: ref Mutex[int]) Option[MutexGuard[int]] { return value.TryLock() }
+fn Timed(value: ref Mutex[int], timeout: duration) Option[MutexGuard[int]] { return value.Lock(timeout) }
+fn Literal(value: ref Mutex[int]) Option[MutexGuard[int]] { return value.Lock(250<tick>) }
+fn Explicit(value: ref Mutex[int], timeout: decimal<tick>) Option[MutexGuard[int]] {
+    let durationValue := try duration(timeout) { Err(_) => { return None } }
+    return value.Lock(durationValue)
+}
+fn Contextual(value: ref Mutex[int], context: ref Context) Result[MutexGuard[int], ContextError] { return value.Lock(context) }
+fn MutableContext(value: ref Mutex[int], context: ref mut Context) Result[MutexGuard[int], ContextError] { return value.Lock(context) }
+fn BorrowOwned(value: ref Mutex[int], context: Context) Result[MutexGuard[int], ContextError] {
+    let result := value.Lock(context)
+    let view := ref context
+    discard view
+    discard context
+    return result
+}
+
+fn Handle(value: ref Mutex[int], context: ref Context) Option[MutexGuard[int]] {
+    let guard := try value.Lock(context) {
+        Err(ContextError.Cancelled) => { return None }
+        Err(ContextError.DeadlineExceeded) => { return None }
+    }
+    return Some(<-guard)
+}

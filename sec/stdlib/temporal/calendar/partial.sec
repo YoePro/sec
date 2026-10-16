@@ -1,0 +1,42 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/calendar/partial.sec
+ * Module: calendar
+ * Purpose: Partial components without invented missing values.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+// Partial calendar coordinates. None denotes a truly absent component.
+// A partial date is NOT necessarily approximate or historically uncertain.
+type PartialDate struct {
+    // Known year or None when the original expression omitted a year.
+    Year: Option[int],
+    // Known calendar-month identity or None when it was not specified.
+    Month: Option[CalendarMonth],
+    // Known day-of-month or None when the expression did not specify one.
+    Day: Option[int],
+}
+
+/**
+ * Checks whether present components can coexist in the chosen calendar.
+ * Description:
+ *   Does NOT insert missing components or resolve uncertainty. Missing
+ *   year means e.g. 29 February may remain conditionally possible.
+ * Parameters:
+ *   - value: Exact known/missing component representation.
+ *   - system: Calendar system for constraints.
+ * Returns: Ok(void) for a possible partial date, not a unique full date.
+ * Errors: CalendarError.NotImplemented, InvalidMonth, InvalidDay, OutOfRange.
+ * Ownership: Pure, no allocation.
+ */
+fn ValidatePartial(value: PartialDate, system: CalendarSystem) Result[void, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}

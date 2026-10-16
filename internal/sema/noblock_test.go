@@ -79,8 +79,8 @@ fn Callback(action: fn() void) void {
 
 @noBlock
 fn Locks(state: Mutex[int]) void {
-	discard state.tryLock()
-	discard state.lock()
+	discard state.TryLock()
+	discard state.Lock()
 }
 `
 
@@ -114,7 +114,7 @@ func TestNoBlockGuaranteeIsVerifiedTransitively(t *testing.T) {
 		"Indirect": "reachable blocking operation Sender.Send via Indirect -> Helper",
 		"Foreign":  "reachable foreign call with unknown blocking behavior via Foreign",
 		"Callback": "reachable call with unknown blocking behavior via Callback",
-		"Locks":    "reachable blocking operation Mutex.lock via Locks",
+		"Locks":    "reachable blocking operation Mutex.Lock via Locks",
 	} {
 		if !strings.Contains(violations[name], want) {
 			t.Errorf("%s violation = %q, want %q", name, violations[name], want)

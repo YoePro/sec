@@ -1,0 +1,11 @@
+module main
+
+fn OwnerEquality(left: int[], right: int[]) bool { return left == right }
+fn NestedOwnerEquality(left: int[][2], right: int[][2]) bool { return left == right }
+fn FixedToOwner(source: int[2]) int[] { return source }
+fn OwnerToFixed(source: int[]) int[2] { return source }
+fn ReuseMoved(source: int[]) void {
+    let destination :<- source
+    discard destination
+    discard source.Len
+}

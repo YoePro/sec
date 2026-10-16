@@ -50,10 +50,15 @@ func (a *Analyzer) recordCollectionGrowth(call *ast.CallExpression) {
 
 // inferCompilerKnownMemberCall publishes allocation effects only after the
 // compiler-owned member call has passed its argument and receiver checks.
-// Rules: rules/memory/allocation.md — §§3(1),24(1)-(6).
+// Rules: rules/memory/allocation.md — §§3(1),24(1)-(6);
+// rules/collections/collections.md — §§6.5,19.
 func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	typ, value, handled := a.inferValidatedCompilerKnownMemberCall(expr)
 	if handled && typ.Kind != InvalidType {
+		if a.checkDynamicArrayMutationBorrow(expr) {
+			delete(a.resolvedRangeAppends, expr)
+			return Type{Kind: InvalidType}, value, true
+		}
 		a.recordCollectionGrowth(expr)
 	}
 	return typ, value, handled

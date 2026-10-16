@@ -459,6 +459,12 @@ fn First(value: ref Pair) ref Item {
 
 **§ 14.6(2)** The caller's granting authority remains restricted for the returned mutable reference's live range.
 
+### § 14.7 Call-site instantiation of returned origins
+
+**§ 14.7(1)** At each call, the callee's returned-origin summary is instantiated over the actual arguments, their sub-Places and the generic specialization; the call result holder carries the instantiated origins, provenance constraints and lifetime dependencies, and is analyzed through its last use like any other holder (`rules/memory/borrowing.md` § 8.1(7a)–(7b)).
+
+**§ 14.7(2)** Finite alternative origins are preserved as a set; a single origin is never fabricated for a multi-origin result. An unknown, incomplete or incompatible summary keeps the result conservatively live and does not permit an early last use (MD-069, 2026-10-16, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` § 5).
+
 ### § 14.7 No invented lifetime syntax
 
 **§ 14.7(1)** Unambiguous returned-reference relations must be inferred and exported in compiler/module metadata without source lifetime names.

@@ -143,4 +143,31 @@ def Sec_DistinctType : Sec_Type<"Distinct", "distinct"> {
   let genVerifyDecl = 1;
 }
 
+// Schema 11 (SEC-MLIR-P15): compiler-internal Places and high-level direct
+// safe references. Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+// sections 2-5; rules/mlir/packages/sec-mlir-dialect_package15.md.
+def Sec_PlaceType : Sec_Type<"Place", "place"> {
+  let summary = "Sec compiler-internal Place with read-only or read/write authority";
+  let parameters = (ins
+    "::mlir::Type":$elementType,
+    "::mlir::StringAttr":$authority
+  );
+  let assemblyFormat = "`<` $elementType `,` $authority `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_RefType : Sec_Type<"Ref", "ref"> {
+  let summary = "Sec high-level safe shared reference";
+  let parameters = (ins "::mlir::Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_RefMutType : Sec_Type<"RefMut", "ref_mut"> {
+  let summary = "Sec high-level safe exclusive mutable reference";
+  let parameters = (ins "::mlir::Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
 #endif // SEC_DIALECT_SEC_TYPES_TD

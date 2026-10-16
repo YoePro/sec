@@ -1,0 +1,14 @@
+module main
+
+fn UseAfter() int {
+    let value := 1
+    discard value
+    discard value
+    return value
+}
+
+fn Dead() void {
+    let value := 1
+    discard value
+    if false { discard value }
+}

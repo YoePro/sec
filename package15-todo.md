@@ -438,13 +438,34 @@ equally named roots of different declarations stay distinct alternatives
   track address-taken storage so P5 trivial-core lowering cannot erase it before
   the P15 representation boundary is discharged.
 
-  Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Remaining: static and addressed (fixed-address/MMIO) roots, which stay package-15 unsupported because Semantic IR has no static or addressed storage representation yet.
+  Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Static roots (2026-10-16, with P15-42a): `ref` / `ref mut` of a module static or function-local static lowers to `place.static-root @N` with the static's authority, marks the static address-taken and carries Sema's static-storage facts (`TestPackage15LowersStaticPlaceRoots`). Remaining: addressed (fixed-address/MMIO) roots, blocked by MD-077 (no Semantic IR register types or operations are specified; Semantic IR rejects every register access).
 - [ ] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
   static (module-level), thread-local and addressed (fixed-address binding,
   register/MMIO) storage in Semantic IR, which today has only local-automatic
   storage, then lower static and addressed Place roots through it with their
   initialization, mutability, address-stability and memory-space facts.
   Governance: `semantic-ir.core-v2` and `lowering.sec-mlir-package15`.
+
+  Partial 2026-10-16: static storage is represented (semantic_ir.md § 28). Sema publishes `ResolvedStaticOf` and `ResolvedStaticDeclarations` for module-level bindings and function-local `static let`.
+
+  The Semantic IR module has `statics { @N "module::name" … init=… }`:
+  - each static has its own type, mutability, enclosing function and address-taken flag;
+  - each has an exact compile-time initializer, with no startup function (§ 28(5));
+  - operations are `static.load`, `static.store` (mutable statics only) and `place.static-root`.
+
+  A returned reference to a module static is recorded as a `static@N` origin in the return summary and verified by tracing.
+
+  This also fixes a miscompilation that predates P15 and affected every package level: a function-local `static let mut` was lowered as automatic local storage and re-initialized on every call. The legacy direct `emit-llvm` and `emit-mlir` routes had the same defect (an `alloca`); they now reject function-local statics. The Sec MLIR emitter rejects statics, since no schema represents them yet (`TestStaticStorageLowersToModuleStatics`, `TestPackage15LowersStaticPlaceRoots`, `TestVerifierChecksStaticStorage`, `TestResolvedStaticOfDistinguishesStaticStorage`, `TestStaticStorageEmitRoutes`, `TestLegacyRoutesRejectFunctionLocalStatics`).
+
+  Current limits, each a package boundary:
+  - statics of integer-family or bool type with a literal (or default) initializer only;
+  - no compound assignment to statics;
+  - no statics of another module.
+
+  Remaining:
+  - addressed storage (fixed-address register/MMIO bindings) and its Place roots;
+  - thread-local storage: Sec 0.1 has no thread-local static syntax, only `ThreadLocal[T]` owning a TLS key (static.md § 4);
+  - aggregate and compile-time-evaluated (non-literal) static initializers.
 - [x] P15-43 — Lower direct field/subfield borrows via Place projections;
   demonstrate that P13 struct values are neither loaded nor copied solely to
   create a reference. Keep properties out of field-Place lowering.
@@ -457,13 +478,13 @@ equally named roots of different declarations stay distinct alternatives
   the false edge; a proven borrow emits no redundant branch.
 
   Completed 2026-10-11: borrow paths may now mix stored fields and fixed-array elements. Each element step consumes the `ResolvedArrayIndexPlanOf` plan of its index expression (checked against the resolved Place projection and required to be a fixed array). The root Place is formed first, then the index is evaluated exactly once. A proven-safe plan emits `place.array-element` directly with `bounds=proven-safe`, its P14 proof kind and the constant index, without a predicate or branch. A runtime-checked ordinary plan emits one `place.array-index-in-bounds`, branches on it, reaches `fail.bounds operation="fixed-array-index"` on the false edge, and only on the true edge forms `place.array-element` (`runtime-check`, `guarded`, `guard=` the predicate) and the reference. The element Place carries the projection's DynamicIndexID, and authority follows the root. Neither the array nor the element is loaded or copied (`array.extract`/`storage.load` absent). By-value parameters are now accepted as immutable SSA roots (`TestPackage15LowersFixedArrayElementBorrows`).
-- [ ] P15-45 — Lower union/Result payload reference bindings only from the
+- [x] P15-45 — Lower union/Result payload reference bindings only from the
   compiler-resolved matching-variant Place. Keep branch-local BorrowID/lifetime
   scope, retain guard dominance, and reject match-result, outer-assignment,
   return, and lambda capture escapes when Sema says the payload origin is
   scoped.
 
-  Partial 2026-10-13: Sema publishes a `ResolvedReferencePlan` for every `ref`/`ref mut` union, Option and Result payload binding, keyed by the bound identifier (the stable pattern node; `MatchPattern.Expression()` builds fresh wrappers). Semantic IR lowers union and Option single-payload borrows whose subject is a whole local binding or by-value parameter: the subject's own root Place (value root, or address-taken storage root for a mutable binding), one `place.union-payload` with `guard=` naming the arm's `union.is-variant` predicate, then `ref.borrow-shared`/`ref.borrow-mut` with the plan's facts unchanged. No `union.unwrap-payload` or copy is emitted; a `ref mut` payload writes through `place.write`. The binding is arm-scoped and Sema's existing match-scoped origin rules reject the escapes. The verifier checks the proof instead of trusting `VariantProven`: the guard must test the same variant of the Place root's own union value, and the payload Place must be confined to the guard's true edge (paths through a loop back to the test are not counted) (`TestPackage15LowersUnionPayloadReferenceBindings`, `TestPackage15PayloadReferenceBoundaries`, `TestPackage15VerifierRejectsUnprovenPayloadPlaces`). Remaining: Result `Ok`/`Err` payload Places (Result is not a Semantic IR union), struct-like payloads (P13 synthetic payload identity) and subjects reached through fields, elements or references; all are package-15 unsupported with precise reasons.
+  Partial 2026-10-13: Sema publishes a `ResolvedReferencePlan` for every `ref`/`ref mut` union, Option and Result payload binding, keyed by the bound identifier (the stable pattern node; `MatchPattern.Expression()` builds fresh wrappers). Semantic IR lowers union and Option single-payload borrows whose subject is a whole local binding or by-value parameter: the subject's own root Place (value root, or address-taken storage root for a mutable binding), one `place.union-payload` with `guard=` naming the arm's `union.is-variant` predicate, then `ref.borrow-shared`/`ref.borrow-mut` with the plan's facts unchanged. No `union.unwrap-payload` or copy is emitted; a `ref mut` payload writes through `place.write`. The binding is arm-scoped and Sema's existing match-scoped origin rules reject the escapes. The verifier checks the proof instead of trusting `VariantProven`: the guard must test the same variant of the Place root's own union value, and the payload Place must be confined to the guard's true edge (paths through a loop back to the test are not counted) (`TestPackage15LowersUnionPayloadReferenceBindings`, `TestPackage15PayloadReferenceBoundaries`, `TestPackage15VerifierRejectsUnprovenPayloadPlaces`). Subjects reached through stored fields (2026-10-16): a subject such as `match holder.figure` or `match outer.holder.figure` borrows its payload from the root Place projected through the same stored fields (`place.field`), and inside a method `match self.figure` or the implicit `match figure` projects from `ref.deref-place` of the receiver. The verifier now compares canonical Place chains — the root (SSA value, storage, or dereference of one reference value) plus the stored-field path — between the payload Place and the tested union value, following `struct.extract-field`, `storage.load` and `place.read` on the value side (`TestPackage15LowersFieldSubjectPayloadBorrows`, `TestPackage15LowersReceiverFieldPayloadBorrows`, `TestPackage15VerifierRejectsPayloadPlaceOfOtherField`). Completed 2026-10-16: Result `Ok`/`Err` payloads borrow through `place.union-payload` over the Result Place with `result.is-err` as the guard (Ok proven on its false edge, Err on its true edge); struct-like payloads borrow as their canonical Package 13 synthetic payload struct; a subject reached through an array element or a non-receiver reference holder forms its Place once, is read from it for the match (`place.read`) and the payload is projected from that same Place, so the index or dereference is evaluated exactly once (`TestPackage15LowersRemainingPayloadBorrowShapes`, `TestPackage15VerifierChecksResultPayloadEdges`). Sema now infers a mutable receiver from member writes inside match arms, `ref mut` borrows of receiver members and `ref mut` payload bindings of receiver-rooted subjects (`TestReceiverMutabilityCountsMatchArmsAndMutableBorrows`). Deferred to P17 by the package boundary: a borrowed payload of a non-copy-trivial subject reached through an element or reference, whose subject read would be a non-trivial read.
 - [x] P15-46 — Lower dereference/read/write/reborrow/equality through one
   validity policy. Proven uses retain proof metadata and no runtime check;
   dynamic uses validate the same reference SSA, branch once, terminate the
@@ -476,7 +497,7 @@ equally named roots of different declarations stay distinct alternatives
   allowed returned input/subfield references, and preserved return-origin
   summaries. Do not choose a physical ABI or silently copy `ref mut`.
 
-  Partial 2026-10-12: Sema records callee-side facts for every ref/ref mut parameter (`ReferenceParameterFactsOf`; caller-owned-borrow proof, or dynamic-epoch for Arena-backed referents). Semantic IR parameters carry them (`Parameter.Reference`, printed and verifier-required), and the verifier now tracks dynamic-epoch parameters so their dereferences need guards (the P15-46 note). Reads and writes through a reference parameter use the P15-46 policy. At a call site an owned Place passed to a ref or ref mut parameter lowers Sema's implicit borrow as a Place borrow, an explicit `ref` argument its borrow, an existing shared reference is passed with `ref.copy-shared` (same borrow), and an existing ref mut is passed with `ref.reborrow-mut`, never copied. The new argument actions `shared-reference` and `mutable-reference` are verifier-checked against the parameter type (`TestPackage15LowersReferenceParametersAndPassing`, `TestPackage15DynamicReferenceUseValidatesOnce`). Instance-method receivers (2026-10-12): Sema publishes `ReceiverReferenceFactsOf` per instance method, `ResolvedImplicitReceiverOf` for `self` and implicit stored-field identifiers (reads and assignment targets), and an implicit borrow or pass use for the receiver expression of each instance-method call. From package 15 Semantic IR builds non-generic instance methods with a borrowed receiver, with an explicit first parameter `self` of type ref/ref mut Target carrying those facts. Field reads and writes through `self.f` or an implicit `f` dereference it and project `place.field`. A call passes the receiver: an implicit borrow of an owned Place, a pass of a reference holder, or the caller's own `self` (copied when shared), including bare method calls inside a method (`TestPackage15LowersInstanceMethodReceivers`, `TestPackage15ReceiverBoundaries`, `TestPackage15ImplicitFieldWriteUsesMutableReceiver`). Remaining: returned input/subfield references and return-origin summaries (`return pair` is still `reference return lowering`); `self` used as a value; reborrowing a mutable `self` for a nested call (no Sema borrow identity yet); consuming receivers; generic implementations; and receivers that are temporaries without a Place (for example `Start().Next()`), which keep try-chain-intermediate-lowering blocked.
+  Partial 2026-10-12: Sema records callee-side facts for every ref/ref mut parameter (`ReferenceParameterFactsOf`; caller-owned-borrow proof, or dynamic-epoch for Arena-backed referents). Semantic IR parameters carry them (`Parameter.Reference`, printed and verifier-required), and the verifier now tracks dynamic-epoch parameters so their dereferences need guards (the P15-46 note). Reads and writes through a reference parameter use the P15-46 policy. At a call site an owned Place passed to a ref or ref mut parameter lowers Sema's implicit borrow as a Place borrow, an explicit `ref` argument its borrow, an existing shared reference is passed with `ref.copy-shared` (same borrow), and an existing ref mut is passed with `ref.reborrow-mut`, never copied. The new argument actions `shared-reference` and `mutable-reference` are verifier-checked against the parameter type (`TestPackage15LowersReferenceParametersAndPassing`, `TestPackage15DynamicReferenceUseValidatesOnce`). Instance-method receivers (2026-10-12): Sema publishes `ReceiverReferenceFactsOf` per instance method, `ResolvedImplicitReceiverOf` for `self` and implicit stored-field identifiers (reads and assignment targets), and an implicit borrow or pass use for the receiver expression of each instance-method call. From package 15 Semantic IR builds non-generic instance methods with a borrowed receiver, with an explicit first parameter `self` of type ref/ref mut Target carrying those facts. Field reads and writes through `self.f` or an implicit `f` dereference it and project `place.field`. A call passes the receiver: an implicit borrow of an owned Place, a pass of a reference holder, or the caller's own `self` (copied when shared), including bare method calls inside a method (`TestPackage15LowersInstanceMethodReceivers`, `TestPackage15ReceiverBoundaries`, `TestPackage15ImplicitFieldWriteUsesMutableReceiver`). Returned references (2026-10-16): Sema publishes `ReturnReferenceSummaryOf` (positional origins `$param:N`/`$receiver` with canonical projections) and `ResolvedCallReferenceOf` (caller-side facts instantiated from the callee summary over the actual arguments). A function returning a direct reference carries `ReturnOrigins` metadata (printed `returns-from=[param#0.field#0]`, `receiver.field#0`, `[1]`/`[*]` for elements). A returned reference may be the parameter's own reference, a sub-Place reborrow of it (`return ref pair.left`; `ref self.left` in a method reborrows the receiver), a local holder of one, or a call result. The verifier traces every returned reference through copies, moves, reborrows, dereferences, field and element Places and calls (via the callee's summary), and requires each traced origin to be listed. A call returning a reference carries the instantiated facts on its result (`TestPackage15LowersReturnedReferences`, `TestPackage15VerifierChecksReturnedReferenceOrigins`). Static and addressed origins stay unsupported until P15-42a. Receiver reborrows (2026-10-16): Sema publishes `ResolvedReceiverReborrowOf(call)` for a call on the enclosing method's own mutable receiver. `Bump()` and `self.Bump()` inside a mutating method lower to `ref.reborrow-mut` of the receiver with a fresh BorrowID/LifetimeID per call, or `ref.reborrow-shared` when the callee only reads. The receiver is never copied. `self` or a receiver field passed to a ref/ref mut parameter (`Read(self)`, `ReadInner(inner)`, `Write(self)`), and explicit `ref self` / `ref mut self`, derive the borrow from the dereferenced receiver with Sema's implicit-borrow facts (`TestPackage15ReborrowsReceiversForNestedCallsAndArguments`). The temporary-borrow rejection ("cannot borrow temporary expression") now carries S1168. Remaining: consuming receivers; generic implementations; and receivers that are temporaries without a Place (for example `Start().Next()`), which keep try-chain-intermediate-lowering blocked and await MD-076 (Sema accepts call-lifetime temporaries without an explicit rule).
 - [x] P15-48 — Integrate effects and `@noPanic`: proven use adds no invalid-
   reference panic; a reachable dynamic failure adds the exact panic reason;
   validation itself adds neither allocation nor blocking; borrow creation/end
@@ -493,24 +514,37 @@ equally named roots of different declarations stay distinct alternatives
 
 ## F. Implement Sec MLIR schema 11 and its three verifiers
 
-- [ ] P15-50 — Bump compiler-generated modules to schema 11 only after schema
+- [x] P15-50 — Bump compiler-generated modules to schema 11 only after schema
   9 and schema 10 remain accepted compatibility inputs and schema 12 remains
   rejected. Update ODS/C++ registration, parser/printer, version gates, and
   generated-module tests.
-- [ ] P15-51 — Implement `!sec.place<T,"ro">`, `!sec.place<T,"rw">`,
+
+  Completed 2026-10-16. `sec-mlir-opt` accepts schema 11 and rejects 12 (`invalid-schema12-module-metadata.mlir`, formerly the schema-11 rejection test); schemas 1–10 remain accepted regression inputs. A module that declares a schema below 11 but uses a Place or reference type is rejected. The Go emitter declares schema 11 (`dialectSchemaVersion`), and the generated-module tests in `emitter_test.go` and the `cmd/compiler` emit tests expect 11. The full lit suite (93 tests) and the emitter-dependent Go suites pass with `SEC_MLIR_BIN` set.
+- [x] P15-51 — Implement `!sec.place<T,"ro">`, `!sec.place<T,"rw">`,
   `!sec.ref<T>`, and `!sec.ref_mut<T>` with exact type parsing, printing, type
   constraints, authority rules, and no physical address/epoch fields.
-- [ ] P15-52 — Implement schema-11 root/projection/read/write operations:
+
+  Completed 2026-10-16: the ODS types `Sec_PlaceType` (element type plus authority `"ro"`/`"rw"`), `Sec_RefType` and `Sec_RefMutType` (element type only) carry no physical address, generation or epoch parameter. Their verifiers require a non-void ordinary referent that is not storage, a Place or a reference, and an exact authority string (`schema11-place-reference-types.mlir` round-trip, `invalid-schema11-place-reference-types.mlir`).
+- [x] P15-52 — Implement schema-11 root/projection/read/write operations:
   `sec.place.value`, `sec.place.storage`, `sec.place.field`,
   `sec.place.array_index_in_bounds`, `sec.place.array_element`,
   `sec.place.union_payload`, `sec.place.deref`, `sec.place.read`, and
   `sec.place.write`. Require deterministic root/storage/address-space,
   field/variant, P14-compatible bounds, authority, action, and proof attrs.
-- [ ] P15-53 — Implement schema-11 reference operations:
+- [x] P15-53 — Implement schema-11 reference operations:
   `sec.ref.borrow_shared`, `sec.ref.borrow_mut`, `sec.ref.copy_shared`,
   `sec.ref.move`, `sec.ref.reborrow_shared`, `sec.ref.reborrow_mut`,
   `sec.ref.is_valid`, `sec.ref.compare`, `sec.ref.end_borrow`, and terminating
   `sec.fail.reference_generation` with its canonical panic ID.
+
+  Completed 2026-10-16 (P15-52 and P15-53): ODS operations `sec.place.value`, `.storage`, `.field`, `.array_index_in_bounds`, `.array_element`, `.union_payload`, `.deref`, `.read`, `.write`, `sec.ref.borrow_shared`, `.borrow_mut`, `.copy_shared`, `.move`, `.reborrow_shared`, `.reborrow_mut`, `.is_valid`, `.compare`, `.end_borrow` and the terminator `sec.fail.reference_generation`.
+  - Root metadata: `place_root_id`, `storage_identity`, `address_space` (ordinary/mmio).
+  - Reference metadata: `borrow_id`, `lifetime_id`, `validity_policy` (proven/dynamic-epoch), `validity_proof`, `invalidation_domain`, `epoch_dependency`, `address_stability`, `provenance`, and `source_borrow` for derivations. Address stability replaces the v11 snapshot's `relocation_class`, following package15.md § 28 as revised 2026-10-03.
+  - Per-op verifiers check exact element types, authority (no widening, `ro`/`rw` per deref, rw for writes and mutable borrows, no shared-to-mutable reborrow, `ref_mut` never copied), array bounds metadata, union/Result payload types including the synthetic payload struct of a fields variant, copy-trivial reads, policy-consistent reference facts, derived borrow identities, eq/ne comparison and the canonical failure reason.
+  - Schema-10 modules cannot use any of them.
+  - Guard dominance, escapes and borrow semantics are left to P15-54..P15-56.
+  - lit tests: `schema11-place-reference-ops.mlir`, `schema11-place-projections.mlir`, `invalid-schema11-place-reference-ops.mlir` (16 cases); the full suite (96 tests) passes.
+
 - [ ] P15-54 — Register `--sec-verify-places`. Verify roots, wrapper and
   projection types, authority non-escalation, field identity/type, P14 array
   proof or guard, union active variant, deref authority, property exclusion,
@@ -543,41 +577,71 @@ equally named roots of different declarations stay distinct alternatives
   referents under `!sec.place`, `!sec.ref`, and `!sec.ref_mut` on 32- and
   64-bit plans, while checked-integer signless normalization does not recurse
   through those wrappers or lower P15 operations.
-- [ ] P15-61 — P13: test shared and mutable struct-field references, two
+- [x] P15-61 — P13: test shared and mutable struct-field references, two
   disjoint mutable field borrows, whole-struct versus mutable-field conflict,
   nested subfield reborrow, property rejection, and `int128`/`uint256` field
   referents without an aggregate copy.
-- [ ] P15-62 — P14: test shared/mutable constant element references, distinct
+
+  Completed 2026-10-16. The tests found and fixed four defects:
+  - Sema rejected two disjoint mutable field borrows (`ref mut inner.count` and then `ref mut inner.limit`) as a read of `inner`, because the base `inner` of the longer path was checked as a whole-value read. Now only the direct base of a Place path skips the owner-read check (`isPlaceBase`); the full path is still checked, and index expressions and arguments inside the base still count as reads.
+  - Borrow liveness counted a member name (`inner.count`) or a struct-literal field name as a use of a holder with the same name, which kept such borrows live too long.
+  - A nested sub-field reborrow through a reference holder (`ref mut outer.inner.count` with `outer: ref mut Outer`) was unsupported in Semantic IR. It now dereferences the holder once, projects the fields and derives the reborrow from that sub-Place (§ 78: a reborrow input may be a derived subplace). The verifier accepts a Place source only when it comes from `ref.deref-place` of the reference named by `SourceBorrow`, and requires a read/write sub-Place for `ref.reborrow-mut`.
+  - Sema gave that sub-Place reborrow `local`/`lexical-borrow` facts without a root identity, because a reference parameter's origin Place lacked its root kind and identity. It now has the same `parameter`/`caller-owned-borrow` facts as the parameter.
+
+  Property borrows now carry a diagnostic ID: S1168 `borrowing.non-addressable-place`, with help text (confirmed by MD-064, 2026-10-16). Whole-value read/write through a reference has no source spelling yet (MD-063), so these tests use struct referents. Tests: `TestPackage15FieldAndElementBorrowIntegration`, `TestPackage15VerifierChecksSubplaceReborrows`, `TestDisjointFieldAndElementBorrowsAreAccepted`, `TestOverlappingFieldAndElementBorrowsAreRejected`.
+- [x] P15-62 — P14: test shared/mutable constant element references, distinct
   versus equal index conflict, conservative dynamic-index overlap, exactly-once
   dynamic bounds validation, proven no-branch element borrowing, `int128` /
   `uint256` index proof metadata, and zero-length rejection.
-- [ ] P15-63 — P11/P12: test union single-payload and Result `Ok`/`Err`
+
+  Completed 2026-10-16. Two distinct constant mutable element borrows coexist without a bounds branch. An equal constant index and two dynamic indexes conflict (S1159). `int128` and `uint256` dynamic indexes are each checked exactly once, through one `place.array-index-in-bounds` that guards a runtime-check element Place. For zero-length arrays (P14 § 86): a constant index is rejected (S1134), and a dynamic index is never proven safe, so it always gets a runtime bounds check that ends in `fail.bounds`. No borrow copies or loads its array (`TestPackage15FieldAndElementBorrowIntegration`, `TestOverlappingFieldAndElementBorrowsAreRejected`, `TestDisjointFieldAndElementBorrowsAreAccepted`).
+- [x] P15-63 — P11/P12: test union single-payload and Result `Ok`/`Err`
   ref/ref-mut bindings where source rules permit, active-variant guards,
   borrowed guards, branch-end lifetime markers, and all scoped escape
   rejections. Do not weaken union guard verification or introduce a copy path.
-- [ ] P15-64 — Prove calls and returns: ref/ref-mut parameters, implicit borrow
+
+  Completed 2026-10-16: union, Option and Result `Ok`/`Err` `ref`/`ref mut` bindings, their active-variant guards and the no-copy property are covered by the P15-45 tests. Branch-end lifetime markers are new: Semantic IR now ends every arm-scoped payload borrow with `ref.end-borrow`, which carries the borrow's own BorrowID and LifetimeID (§§ 49, 50, 82). The marker is placed on every edge that leaves the arm: before a return, on the fall-through to the match merge, on a `break`/`continue` out of the arm, and on the false edge of a guard that reads the borrowed payload, which gets its own edge block because the next pattern test is shared. The binding cannot outlive its arm, so the arm exit bounds Sema's resolved liveness; whether that conservative placement conforms is MD-065. The verifier now requires those facts on `ref.end-borrow`, checks them against the ended reference, and stops following a path at the reference's redefinition, so an arm inside a loop verifies (`TestPackage15PayloadBorrowsEndOnEveryArmExit`, `TestPackage15VerifierChecksPayloadBorrowEnds`). Escape rejections: return of `Ok`/`Err` payloads (directly or in an aggregate), storing a `ref mut` payload into an outer Place, a match expression producing the reference (which previously had no diagnostic ID and is now S1130) and a returned capturing lambda are each rejected with one identified diagnostic. A match whose arms all return no longer produces a follow-on "must return" error when one arm reports an error (`TestBranchScopedPayloadReferenceEscapesAreRejected`). Other borrows (`let r := ref x`, call-site borrows) do not emit end markers yet; that belongs with P15-49's borrow-end coverage.
+- [x] P15-64 — Prove calls and returns: ref/ref-mut parameters, implicit borrow
   of owned Places, shared direct-call copy, mutable move/reborrow according to
   resolved mode, returned input/subfield references, local return rejection,
   and deterministic instantiated origin summaries.
+
+  Completed 2026-10-16. Parameters, implicit borrows, shared copy and mutable reborrow passing are covered by the P15-47 tests (`TestPackage15LowersReferenceParametersAndPassing`). Returned input and subfield references, receiver-field returns, element paths, call-result returns and caller-side instantiated facts are covered, and two builds print identically (`TestPackage15LowersReturnedReferences`). Local return rejection holds in two places: Sema reports S1128 for local-origin returns (`TestEscapeDiagnostics`), and the verifier rejects a returned reference that does not trace to a listed parameter origin (`TestPackage15VerifierChecksReturnedReferenceOrigins`). The liveness of a holder of a call-returned reference now ends at its last use, because its origin comes from the callee summary (`TestCallReturnedReferenceHolderEndsAtLastUse`; confirmed by MD-069, 2026-10-16).
 - [ ] P15-65 — Add end-to-end source → target-aware Sema → verified Semantic IR
   → schema-11 → `sec-mlir-opt` tests on 32- and 64-bit CompilationPlans using
   an absolute tool path. Include P13/P14/P12 integration, proven and dynamic
   validity, failure CFG, wrapper preservation, and all three verifier passes.
-- [ ] P15-66 — Assert successful P15 modules contain no physical offset/stride,
+- [x] P15-66 — Assert successful P15 modules contain no physical offset/stride,
   GEP, pointer arithmetic, MemRef/LLVM reference form, raw-pointer collapse,
   address-plus-epoch aggregate, side-table/capability choice, hidden ABI args,
   runtime borrow counter, global generation manager, hidden allocation,
   `undef`, or poison.
-- [ ] P15-67 — Add explicit no-partial-module rejection tests for stable/weak
+
+  Completed 2026-10-16 at the Semantic IR level (the schema-11 MLIR part follows with P15-57/P15-58). All eight successful P15 fixtures (payloads, borrow ends, field/element borrows, parameters, reference uses, returned references) build and verify. Their operations come from the closed semantic set, no reference collapses into a raw pointer type, every reference value is classified shared or mutable reference, and no function has a synthesized parameter. The printed module contains none of the forbidden physical words. A reflective check confirms that `ReferenceMetadata` and `PlaceMetadata` have no offset, stride, pointer, address (other than address space and stability), counter, table, capability or ABI field (`TestPackage15ModulesHaveNoPhysicalVocabulary`).
+- [x] P15-67 — Add explicit no-partial-module rejection tests for stable/weak
   handle syntax and resolution, slice values and array-to-slice borrow,
   RawPtr conversions, physical pinning/epoch/collection invalidation lowering,
   concurrent invalidation, move-only/semantic-copy reference reads, non-trivial
   write/destruction, physical reference ABI/layout, and LLVM lowering.
-- [ ] P15-68 — Add determinism tests rebuilding Place/reference facts and
+
+  Completed 2026-10-16. The following are each rejected as a whole package-15 boundary with no module: slice borrows, slice reference parameters, references into dynamic arrays (collection invalidation), foreign reference parameters (physical reference ABI), move-only referents with custom free (non-trivial read, write and destruction) and static roots (`TestPackage15RejectsOutOfScopeReferencesWithoutPartialModule`). Every emit route (`emit-ir`, `emit-sec-mlir`, `emit-llvm`, `emit-mlir`) rejects a valid reference program, prints nothing and leaves an existing output file unchanged (`TestReferenceProgramsAreRejectedByEveryEmitRoute`).
+
+  Not testable from source: stable/weak handles and pinning have no Sec 0.1 source form by decision (reference_model.md §§ 3(3), 10(9), 26(5); storage.md § 24(4)). RawPtr↔reference conversion has no spelling yet (MD-070). Concurrent invalidation has no direct-reference source construct in P15. Sec 0.1 has no semantic-copy type: `CopySemantic` is never produced, and `string` is copy-trivial per copy_move.md § 4.5, so reads of it through references are correctly accepted.
+
+  Known hole (verified 2026-10-16): the legacy `emit-llvm` route rejects reference programs with misleading messages ("emit-llvm only supports members on string for now", "does not support expression *ast.RefExpression yet") instead of naming reference lowering.
+- [x] P15-68 — Add determinism tests rebuilding Place/reference facts and
   source modules with fresh maps and permuted source metadata. Assert stable
   root/borrow/lifetime IDs under the documented deterministic allocator,
   origin ordering, big-int printing, diagnostics, and independent 32/64 output
   without mutating shared Semantic IR.
+
+  Completed 2026-10-16. For every P15 fixture:
+  - A rebuild from a fresh parse and analyzer prints identically, including root, borrow and lifetime IDs and origin order.
+  - Two builds from one analyzer are identical, and the second build does not mutate the first module.
+  - Renaming the source file changes only the locations.
+  - The 64-bit (x86_64) and 32-bit (armv7) target plans build separately verified modules whose Place/reference operations, identities and facts are the same (`TestPackage15PlaceReferenceFactsAreDeterministic`).
+
+  Big-integer printing (wide constant indexes above uint64) is covered by the deterministic printer test in `package15_test.go`, and diagnostic determinism by `TestEscapeDiagnostics` and the borrow diagnostic tests.
 
 ## H. Final acceptance, governance, and report
 

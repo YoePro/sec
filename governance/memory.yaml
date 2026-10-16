@@ -1291,6 +1291,7 @@ integrations:
   - id: frontend.layout
     status: partial
     remaining:
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
       - build one shared canonical layout-resolution service
       - complete int/uint target-width consistency
       - complete enum/union/descriptor/reference resolved representations
@@ -1300,6 +1301,7 @@ integrations:
   - id: semantic-ir.layout
     status: planned
     remaining:
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
       - introduce canonical ResolvedLayout/ResolvedFieldLayout or equivalent
       - retain size/alignment/offset/stride/padding/union/representation-validity facts
       - attach target-resolved layout before layout-sensitive lowering
@@ -1308,6 +1310,7 @@ integrations:
   - id: lowering.layout
     status: partial
     remaining:
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
       - make maintained MLIR/LLVM paths consume Sec-resolved layout
       - remove legacy hardcoded enum/int/decimal layout differences
       - support validated unaligned/packed lowering
@@ -1316,6 +1319,7 @@ integrations:
   - id: platform.layout
     status: partial
     remaining:
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
       - complete FFI layout compatibility
       - complete register access-unit/alignment validation
       - complete target-specific memory/address-space representation integration
@@ -1324,6 +1328,7 @@ integrations:
   - id: tooling.layout
     status: planned
     remaining:
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
       - expose canonical SizeOf/AlignOf/StrideOf/FieldOffset from shared layout facts
       - show target dependence and stability
       - provide recursive/explicit-layout mentor diagnostics

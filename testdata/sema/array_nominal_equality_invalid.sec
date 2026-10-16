@@ -1,0 +1,8 @@
+module main
+
+type RowA int[2]
+type RowB int[2]
+
+fn Distinct(left: RowA, right: RowB) bool { return left == right }
+fn Structural(left: RowA, right: int[2]) bool { return left != right }
+fn Nested(left: RowA[1], right: RowB[1]) bool { return left == right }

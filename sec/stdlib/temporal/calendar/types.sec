@@ -1,0 +1,61 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/calendar/types.sec
+ * Module: calendar
+ * Purpose: Named calendar systems and calendar-coordinate values.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+// Identifies the calendar algorithm used for converting a serial day.
+// The supported set is intentionally preliminary and may grow.
+enum CalendarSystem {
+    // Proleptic Gregorian calendar, independent of historical adoption.
+    Gregorian,
+    // Proleptic Julian calendar, independent of historical adoption.
+    Julian,
+    // Algorithmic Hebrew lunisolar calendar; exact era rules require a child revision.
+    Hebrew,
+    // Tabular Islamic calendar; never denotes observational or Umm al-Qura rules.
+    IslamicTabular,
+}
+
+// Identifies a month in calendars that may contain intercalary months.
+type CalendarMonth struct {
+    // Ordinal month identifier in the selected calendar's own system.
+    Number: int,
+    // True when this is a calendar-specific inserted/leap month.
+    IsLeap: bool,
+}
+
+// Holds full calendar coordinates WITHOUT asserting their validity.
+// Call ValidateFields or ToDate before relying on the fields as a date.
+type CalendarFields struct {
+    // Calendar-specific year number, not assumed to use the Gregorian era.
+    Year: int,
+    // Calendar-specific month identity, including possible leap-month status.
+    Month: CalendarMonth,
+    // Day number within the represented calendar month.
+    Day: int,
+}
+
+// Calendar operation failures; NotImplemented is temporary scaffolding.
+enum CalendarError error {
+    // The operation has no implementation yet; NOT a successful calendar result.
+    NotImplemented,
+    // The month identifier is invalid in the selected calendar/year.
+    InvalidMonth,
+    // The day number is invalid in the selected calendar/month.
+    InvalidDay,
+    // A requested year or serial day exceeds supported representational limits.
+    OutOfRange,
+    // The selected algorithm or variant is not available on this target.
+    UnsupportedSystem,
+}

@@ -115,8 +115,9 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	if target.Kind == DecimalType && isNumericLiteral(expr) {
-		_, ok := decimalLiteralValue(expr)
-		return ok
+		// The exact literal must fit the target's coefficient width.
+		value, ok := decimalLiteralValue(expr)
+		return ok && value.fitsCoefficientBits(decimalCoefficientBits(target))
 	}
 
 	if target.Kind == FloatType && value.Kind == DecimalType && isNumericLiteral(expr) {

@@ -302,6 +302,14 @@ const (
 	BorrowMutableAuthority     = "S1165"
 	BorrowProvenanceUnknown    = "S1166"
 	BorrowEscape               = "S1167"
+	// BorrowNonAddressable rejects a borrow of a value with no storage of its
+	// own, such as a property or a call result.
+	// Rules: rules/memory/borrowing.md — §5.3; rules/mlir/packages/sec-mlir-dialect_package15.md — § 43.
+	BorrowNonAddressable = "S1168"
+	// BorrowExplicitRefRequired rejects an owned value used where a direct
+	// reference is required outside a call argument.
+	// Rules: rules/memory/borrowing.md — §§ 5.1, 15.2; rules/memory/references.md — § 5.
+	BorrowExplicitRefRequired = "S1169"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -325,9 +333,13 @@ const (
 	// through a reference holder (MD-061). Information by default; projects may
 	// promote it (rules/tooling/diagnostics.md § 18).
 	ExplicitReborrow = "A2005"
+	// RedundantDiscard describes a legal no-op on a definitely unavailable Place.
+	// Rules: rules/control-flow/discard.md — §§5,37–38.
+	RedundantDiscard = "A2006"
 )
 
 var registry = map[string]Definition{
+	RedundantDiscard:                      {ID: RedundantDiscard, Name: "ownership.redundant-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
 	DurationConversionInvalid:             {ID: DurationConversionInvalid, Name: "temporal.invalid-duration-conversion", Family: "temporal", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
@@ -337,6 +349,8 @@ var registry = map[string]Definition{
 	FillElementNotCopyable:                {ID: FillElementNotCopyable, Name: "collections.fill-element-not-copyable", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	UnknownCallTarget:                     {ID: UnknownCallTarget, Name: "names.unknown-call-target", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ImportedModuleMismatch:                {ID: ImportedModuleMismatch, Name: "modules.inconsistent-source-module", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	BorrowNonAddressable:                  {ID: BorrowNonAddressable, Name: "borrowing.non-addressable-place", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowSharedConflict:                  {ID: BorrowSharedConflict, Name: "borrowing.shared-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowMutableConflict:                 {ID: BorrowMutableConflict, Name: "borrowing.mutable-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowOwnerReadConflict:               {ID: BorrowOwnerReadConflict, Name: "borrowing.owner-read-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},

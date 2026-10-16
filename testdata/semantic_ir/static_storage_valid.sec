@@ -1,0 +1,13 @@
+module main
+
+let limit: int := 7
+
+fn Next() int {
+    static let mut calls: int := 0
+    calls = calls + 1
+    return calls + limit
+}
+
+fn main() int {
+    return Next()
+}

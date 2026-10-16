@@ -44,6 +44,16 @@ func (g *CallGraph) AllocationCause(id CallableID) AllocationCausePath {
 		result.Unknown = true
 		path = summary.UnknownAllocationPath
 	}
+	return g.allocationCauseForPath(path, result.Unknown, nil)
+}
+
+// allocationCauseForPath renders canonical synchronous evidence for either an
+// allocation effect or incomplete operation/cleanup coverage. Coverage is not
+// a definite allocation and never substitutes worker execution for a call.
+// Rules: rules/memory/allocation.md — §§24(6),28(4),29(4);
+// rules/analysis/isr_analysis.md — §§9,10.1–10.2,25.2–25.3.
+func (g *CallGraph) allocationCauseForPath(path []CallableID, unknown bool, coverage *AllocationEvidence) AllocationCausePath {
+	result := AllocationCausePath{Unknown: unknown}
 	result.Path = append([]CallableID(nil), path...)
 	if len(path) == 0 {
 		return result
@@ -82,6 +92,10 @@ func (g *CallGraph) AllocationCause(id CallableID) AllocationCausePath {
 	}
 	last, _ := g.Node(path[len(path)-1])
 	add(AllocationCauseStep{Kind: "callee", Source: last.Declaration, Caller: last.ID, Message: "allocation effect originates in " + last.Name})
+	if coverage != nil {
+		add(AllocationCauseStep{Kind: "operation", Source: coverage.Source, Caller: last.ID, Message: coverage.Reason})
+		return result
+	}
 	site, found := introducingAllocationSite(g.ArenaSummary(last.ID).DirectEffects, result.Unknown)
 	if found {
 		kind := "allocation operation"

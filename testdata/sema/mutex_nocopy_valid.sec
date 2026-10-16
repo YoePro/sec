@@ -1,0 +1,20 @@
+module main
+
+fn MoveMutex() void {
+    let first := Mutex(1)
+    let second :<- first
+    discard second
+}
+
+fn MoveGuard(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    let second :<- first
+    discard second
+}
+
+fn SharedViews(value: ref Mutex[int], guard: ref MutexGuard[int]) void {
+    let otherValue := value
+    let otherGuard := guard
+    discard otherValue
+    discard otherGuard
+}

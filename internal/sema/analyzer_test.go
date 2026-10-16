@@ -989,18 +989,21 @@ let h := 0x8m
 
 func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 	tests := []struct {
-		input string
-		want  DecimalValue
+		input       string
+		coefficient string
+		scale       uint8
 	}{
-		{input: "3.14", want: DecimalValue{Int64: 314, Scale: 2}},
-		{input: ".1", want: DecimalValue{Int64: 1, Scale: 1}},
-		{input: "-0.5", want: DecimalValue{Int64: -5, Scale: 1}},
-		{input: "100", want: DecimalValue{Int64: 100, Scale: 0}},
-		{input: "1.25e-3", want: DecimalValue{Int64: 125, Scale: 5}},
-		{input: "1.5e2", want: DecimalValue{Int64: 150, Scale: 0}},
-		{input: ".5E+4", want: DecimalValue{Int64: 5000, Scale: 0}},
-		{input: "1_234.5_678", want: DecimalValue{Int64: 12345678, Scale: 4}},
-		{input: "1.25e1_0", want: DecimalValue{Int64: 12500000000, Scale: 0}},
+		{"3.14", "314", 2},
+		{".1", "1", 1},
+		{"-0.5", "-5", 1},
+		{"100", "100", 0},
+		{"1.25e-3", "125", 5},
+		{"1.5e2", "150", 0},
+		{".5E+4", "5000", 0},
+		{"1_234.5_678", "12345678", 4},
+		{"1.25e1_0", "12500000000", 0},
+		// Beyond int64: exact for decimal128 (P21 sync § 8).
+		{"123456789012345678901234567890.5", "1234567890123456789012345678905", 1},
 	}
 
 	for _, tt := range tests {
@@ -1010,8 +1013,37 @@ func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected decimal literal value for %q", tt.input)
 			}
-			if got != tt.want {
-				t.Fatalf("wrong decimal value. got=%+v want=%+v", got, tt.want)
+			if got.Coefficient.String() != tt.coefficient || got.Scale != tt.scale {
+				t.Fatalf("wrong decimal value. got=%s scale %d want=%s scale %d", got.Coefficient, got.Scale, tt.coefficient, tt.scale)
+			}
+		})
+	}
+}
+
+// Decimal literals fit their target's coefficient width exactly (decimal
+// i64, decimal128 i128), and range checks compare decimal values exactly
+// instead of comparing raw coefficients of different scales.
+//
+// Rules:
+//   - rules/memory/layout.md — decimal and decimal128 components
+//   - rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md — § 8
+func TestDecimalLiteralsAreExactAndWidthChecked(t *testing.T) {
+	for name, test := range map[string]struct {
+		body  string
+		valid bool
+	}{
+		"decimal fits":             {"let x: decimal := 9223372036854775807", true},
+		"decimal overflows":        {"let x: decimal := 9223372036854775808", false},
+		"decimal128 wide":          {"let x: decimal128 := 123456789012345678901234567890.5", true},
+		"decimal128 overflows":     {"let x: decimal128 := 170141183460469231731687303715884105728", false},
+		"ascending fraction":       {"for x in 1.5..2.0 step 0.1 { discard x }", true},
+		"ascending mixed scale":    {"for x in 9.95..10.0 step 0.01 { discard x }", true},
+		"descending positive step": {"for x in 2.0..1.5 step 0.1 { discard x }", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			errors := analyzeSourceRaw(t, "module main\nfn Use() void {\n    "+test.body+"\n}\n")
+			if test.valid != (len(errors) == 0) {
+				t.Fatalf("valid=%t, errors=%v", test.valid, errors)
 			}
 		})
 	}
@@ -10563,7 +10595,7 @@ type State struct {
 }
 
 fn Use(mutex: Mutex[State], rx: Receiver[int]) void {
-	let guard := mutex.lock()
+	let guard := mutex.Lock()
 	select {
 		value := rx.Receive() => {
 			discard value
@@ -10592,7 +10624,7 @@ fn Consume(guard: MutexGuard[State]) void {
 }
 
 fn Use(mutex: Mutex[State], rx: Receiver[int]) void {
-	let guard := mutex.lock()
+	let guard := mutex.Lock()
 	Consume(<-guard)
 	select {
 		value := rx.Receive() => {

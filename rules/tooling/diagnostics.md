@@ -1001,6 +1001,10 @@ S3201  control-flow.assignment-in-condition
 
 § 24(4a) `A2005` / `ownership.explicit-reborrow` (family `ownership`, default `Information`, configurable) explains a legal explicit reborrow through a reference holder (`rules/memory/borrowing.md` § 11.4(6)).
 
+§ 24(4b) `S1168` / `borrowing.non-addressable-place` (family `borrowing`, mandatory `Error`) rejects an explicit or implicit `ref`/`ref mut` of a computed expression that is not an independently addressable Place, such as a computed property or a temporary (`rules/memory/borrowing.md` § 5.2(5)–(7)). Its help explains that only stored Places may be borrowed; that storing the value in a local and borrowing that local yields a reference to the local copy, not to the property's underlying storage; and that an accessible stored field or a property explicitly returning a reference with a valid lifetime contract are the alternatives. It never suggests borrowing an inaccessible backing field. As a mandatory borrow-safety error it cannot be suppressed or demoted (§ 4); `sec diagnostics S1168`, JSON output and LSP publish this one identity, with the range on the attempted borrow target (MD-064, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` §§ 2–3).
+
+§ 24(4c) A branch-scoped match/union payload reference that would escape its permitted scope — returned, stored outside its arm, produced by a match expression or captured beyond it — is reported with the existing `S1130` / `escape.match-payload`, explaining the branch/payload lifetime that prevents the escape. No separate identity exists for it; it is distinct from `S1168`, since a payload is addressable inside its arm (MD-064, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` § 4).
+
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 
 ---

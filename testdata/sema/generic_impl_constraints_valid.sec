@@ -1,0 +1,44 @@
+module main
+
+interface First {
+    fn FirstValue() int
+}
+
+interface Second {
+    fn SecondValue() int
+}
+
+type Both struct {}
+impl Both implements First, Second {
+    fn FirstValue() int { return 1 }
+    fn SecondValue() int { return 2 }
+}
+
+type Box[T: First & Second] struct { value: T }
+
+impl Box[T] {
+    fn Keep(other: Box[T]) Box[T] { return other }
+    fn Read(other: T) int { return other.FirstValue() }
+}
+
+impl extends Box[T] {
+    fn KeepMore(other: Box[T]) Box[T] { return other }
+    fn ReadMore(other: T) int { return other.SecondValue() }
+}
+
+fn Use(value: Box[Both]) Box[Both] { return value }
+
+interface Keyed[V] { fn Key() V }
+type IntKey struct {}
+impl IntKey implements Keyed[int] {
+    fn Key() int { return 3 }
+}
+
+type Holder[K: Keyed[V], V] struct { key: K, value: V }
+impl Holder[K, V] {
+    fn Keep(other: Holder[K, V]) Holder[K, V] { return other }
+}
+impl extends Holder[K, V] {
+    fn KeepMore(other: Holder[K, V]) Holder[K, V] { return other }
+}
+fn UseHolder(value: Holder[IntKey, int]) Holder[IntKey, int] { return value }

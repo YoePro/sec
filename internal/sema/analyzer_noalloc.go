@@ -96,6 +96,15 @@ func (a *Analyzer) validateFunctionNoAllocGuarantee(fn *ast.FunctionDeclaration,
 	if len(a.errors) > before {
 		cause := a.callGraph.AllocationCause(callableID(function))
 		a.errors[len(a.errors)-1].AllocationCause = &cause
+		for _, requirement := range []Guarantee{GuaranteeISR, GuaranteeInterruptSafe} {
+			if _, exists := EffectiveGuaranteeOf(fn.Attributes, requirement); exists {
+				a.errors[len(a.errors)-1].ProofState = diagnostics.ProofInvalid
+				if unknown {
+					a.errors[len(a.errors)-1].ProofState = diagnostics.ProofUnproven
+				}
+				break
+			}
+		}
 		if found {
 			a.errors[len(a.errors)-1].RelatedLabel = "allocation effect introduced here"
 		}

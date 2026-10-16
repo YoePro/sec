@@ -20,8 +20,10 @@ type BuildOptions struct {
 // Build consumes resolved semantics for the requested module, requiring its
 // canonical iterator plans before constructing any representation. Unsupported
 // implementation capabilities remain distinct from absent semantic proof.
+// Allocation selection must survive the representation boundary unchanged.
 // Rules: rules/compiler/compiler_pipeline.md — §§32–34;
 // rules/compiler/semantic_ir.md — §§64(2–5), 65.
+// rules/memory/allocation.md — §§25(1)–(5),26(1)–(3).
 func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) (*Module, error) {
 	if program == nil || analyzer == nil {
 		return nil, fmt.Errorf("program and completed analyzer are required")
@@ -38,6 +40,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	if err := analyzer.ValidateIteratorLoweringReadiness(program, identity); err != nil {
 		return nil, err
 	}
+	if err := analyzer.ValidateAllocationLoweringReadiness(program, identity); err != nil {
+		return nil, err
+	}
 	if free, ok := firstCustomFreeDeclaration(program); ok {
 		// rules/memory/destruction.md §§15.5, 30–31: custom free must run
 		// exactly once before field destruction. Semantic IR has no
@@ -51,6 +56,26 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	}
 	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles)}
 	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}, definedStructs: map[TypeID]bool{}}
+	b.statics.moduleLets = map[*ast.LetStatement]bool{}
+	var moduleLets []*ast.LetStatement
+	declaringModule := ""
+	for _, statement := range program.Statements {
+		if declaration, ok := statement.(*ast.ModuleStatement); ok {
+			declaringModule = declaration.Path
+		} else if let, ok := statement.(*ast.LetStatement); ok && declaringModule == identity && let.Name != nil {
+			b.statics.moduleLets[let] = true
+			moduleLets = append(moduleLets, let)
+		}
+	}
+	// Module-level bindings have static storage duration (static.md § 3);
+	// they are declared in source order with their compile-time initializers.
+	for _, let := range moduleLets {
+		if static, ok := analyzer.ResolvedStaticOf(let.Name); ok {
+			if _, err := b.registerStatic(static); err != nil {
+				return nil, err
+			}
+		}
+	}
 	currentModule := ""
 	for _, statement := range program.Statements {
 		if declaration, ok := statement.(*ast.ModuleStatement); ok {
@@ -99,6 +124,7 @@ type builder struct {
 	definedEnums   map[TypeID]bool
 	definedUnions  map[TypeID]bool
 	definedStructs map[TypeID]bool
+	statics        staticRegistry
 }
 type functionBuilder struct {
 	// variantGuard is the union.is-variant predicate of the match arm being
@@ -189,6 +215,13 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 				fb.bindings[fact.ID] = binding{value: value.ID, typ: typeID}
 			}
 		}
+	}
+	if b.maxPackage >= referenceLoweringPackage && resolved.ReturnType.Kind == sema.ReferenceType && !resolved.Extern {
+		origins, err := fb.returnOrigins(resolved, decl)
+		if err != nil {
+			return err
+		}
+		fn.ReturnOrigins = origins
 	}
 	if resolved.Extern {
 		return nil
@@ -669,6 +702,14 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 }
 
 func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
+	if stmt.Name != nil {
+		// A function-local `static let` is one storage location for every
+		// call, initialized once at compile time (static.md § 4); it is a
+		// module static, never automatic local storage.
+		if _, isStatic, err := fb.staticOfIdentifier(stmt.Name); isStatic {
+			return err
+		}
+	}
 	if stmt.Value == nil {
 		return fb.unsupported("mutable local declaration without initializer", stmt.Token)
 	}
@@ -763,6 +804,17 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 	id, ok := stmt.Target.(*ast.Identifier)
 	if !ok {
 		return fb.unsupported("non-local assignment", stmt.Token)
+	}
+	if static, isStatic, err := fb.staticOfIdentifier(id); isStatic {
+		if err != nil {
+			return err
+		}
+		value, err := fb.buildExpr(stmt.Value, static.Type)
+		if err != nil {
+			return err
+		}
+		fb.emit(Operation{Kind: OpStaticStore, Static: static.ID, Operands: []ValueID{value.id}, Location: location(stmt.Token)})
+		return nil
 	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(id)
 	if !ok {
@@ -1166,6 +1218,12 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 	if _, ok := stmt.Value.(*ast.TryExpression); ok {
 		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
 	}
+	if _, isStatic, err := fb.staticOfIdentifier(id); isStatic {
+		if err != nil {
+			return err
+		}
+		return fb.unsupported("compound assignment to static storage", stmt.Token)
+	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(id)
 	if !ok {
 		return fmt.Errorf("missing resolved assignment binding")
@@ -1552,6 +1610,12 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, Location: loc}, typeID), nil
 	case *ast.Identifier:
+		if static, isStatic, err := fb.staticOfIdentifier(e); isStatic {
+			if err != nil {
+				return builtValue{}, err
+			}
+			return fb.result(Operation{Kind: OpStaticLoad, Static: static.ID, Location: loc}, static.Type), nil
+		}
 		fact, ok := fb.owner.analyzer.ResolvedBindingOf(e)
 		if !ok {
 			if fb.owner.maxPackage >= 11 {
@@ -2140,9 +2204,15 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 	default:
 		return builtValue{}, fb.unsupported("match subject kind "+string(plan.SubjectKind), expr.Token)
 	}
-	subject, err := fb.buildExpr(expr.Subject, 0)
+	subject, subjectPlace, placed, err := fb.buildBorrowedMatchSubject(expr, plan)
 	if err != nil {
 		return builtValue{}, err
+	}
+	if !placed {
+		subject, err = fb.buildExpr(expr.Subject, 0)
+		if err != nil {
+			return builtValue{}, err
+		}
 	}
 	if subject.typ == 0 || valueContext && resultType == 0 {
 		return builtValue{}, fb.unsupported("untyped match", expr.Token)
@@ -2202,7 +2272,7 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		var payload builtValue
 		var hasPayload bool
 		if armPlan.BindingAction == sema.MatchBindingBorrowShared || armPlan.BindingAction == sema.MatchBindingBorrowMutable {
-			payload, hasPayload, err = fb.lowerPayloadBorrow(expr.Subject, subject, arm, armPlan, fb.variantGuard)
+			payload, hasPayload, err = fb.lowerPayloadBorrow(expr.Subject, subject, subjectPlace, arm, armPlan, fb.variantGuard)
 		} else {
 			payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
 		}
@@ -2213,6 +2283,7 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if err != nil {
 			return builtValue{}, err
 		}
+		armBlocksFrom := len(fb.fn.Blocks)
 		if armPlan.Guarded {
 			guard, err := fb.buildExpr(arm.Guard, boolType)
 			if err != nil {
@@ -2233,6 +2304,16 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 			return builtValue{}, err
 		}
 		fb.markMatchArmTerminators(append([]*Block{bodyBlock}, fb.fn.Blocks[newBodyBlocksFrom:]...), armPlan, matchID)
+		if hasPayload && (armPlan.BindingAction == sema.MatchBindingBorrowShared || armPlan.BindingAction == sema.MatchBindingBorrowMutable) {
+			armBlocks := append([]*Block{bodyBlock}, fb.fn.Blocks[armBlocksFrom:]...)
+			if armPlan.Guarded {
+				armBlocks = append(armBlocks, matchedBlock)
+			}
+			if err := fb.endPayloadBorrow(payload, armBlocks, location(arm.Token)); err != nil {
+				restore()
+				return builtValue{}, err
+			}
+		}
 		restore()
 		record.Arms = append(record.Arms, MatchArmRecord{
 			SourceIndex: armPlan.SourceIndex, PatternKind: string(armPlan.PatternKind), PatternBlock: patternBlock.ID,
@@ -2338,6 +2419,7 @@ func (fb *functionBuilder) emitMatchPattern(subject builtValue, plan sema.Resolv
 			MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
 			MatchPatternKind: string(arm.PatternKind), Location: location(token),
 		}, boolType)
+		fb.variantGuard = condition.id
 	default:
 		return fb.unsupported("match subject kind "+string(plan.SubjectKind), token)
 	}
@@ -3404,6 +3486,26 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if resolved.Function.ReturnType.Kind == sema.VoidType {
 		fb.emit(op)
 		return builtValue{typ: ret}, nil
+	}
+	if resolved.Function.ReturnType.Kind == sema.ReferenceType {
+		// The returned reference carries the caller-side facts Sema
+		// instantiated from the callee's returned-origin summary
+		// (package15.md §§ 61-62).
+		facts, ok := fb.owner.analyzer.ResolvedCallReferenceOf(call)
+		if !ok || !facts.Checkable() {
+			return builtValue{}, fb.unsupported("call returning a reference without an instantiated origin", call.Token)
+		}
+		ownership := OwnershipSharedReference
+		if resolved.Function.ReturnType.ReferenceMutable {
+			ownership = OwnershipMutableReference
+		}
+		metadata := referenceMetadataOf(facts)
+		value := fb.newValue(ret, ownership, op.Location)
+		op.Results = []Value{value}
+		op.Reference = metadata
+		fb.emit(op)
+		fb.recordReference(value.ID, metadata)
+		return builtValue{id: value.ID, typ: ret}, nil
 	}
 	return fb.result(op, ret), nil
 }

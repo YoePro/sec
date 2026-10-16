@@ -369,7 +369,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if place, ok := a.resolvePlace(expr); ok {
-			if a.checkPlaceAvailableForRead(place, expr.Property.Token) || a.checkBorrowedReadPlace(place, expr.Property.Token) {
+			if a.checkPlaceAvailableForRead(place, expr.Property.Token) || !a.isPlaceBase(expr) && a.checkBorrowedReadPlace(place, expr.Property.Token) {
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
 			a.recordDeferPlace(place, expr.Property.Token)
@@ -381,7 +381,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		typ, value := a.inferIndexExpression(expr)
 		if typ.Kind != InvalidType {
 			if place, ok := a.resolvePlace(expr); ok {
-				if a.checkBorrowedReadPlace(place, expr.Token) {
+				if !a.isPlaceBase(expr) && a.checkBorrowedReadPlace(place, expr.Token) {
 					return Type{Kind: InvalidType}, value
 				}
 				a.recordDeferPlace(place, expr.Token)
@@ -530,6 +530,10 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	return a.typeWithExpectedDimension(expr, typ, value, expected)
 }
 
+// inferSpawnExpression validates the child callable/result and execution-bound
+// guard dependencies before committing ownership across the execution boundary.
+// Rules: rules/concurrency/spawn.md — "Result type", "Ownership transfer", "Captures and callable values";
+// rules/concurrency/mutex.md — §§39–40; rules/memory/transferability.md — §§15,17–18.
 func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expressionValue) {
 	if expr.Body != nil {
 		a.addErrorAtToken(expr.Token, "spawn block syntax is deprecated; spawn requires a callable expression")
@@ -548,16 +552,24 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	execution, graphSpawn := spawnExecutionRelation(expr.Kind)
+	previousMoved, previousReasons := copyMoved(a.moved), copyMoveReasons(a.moveReasons)
+	previousBorrows := copyBorrows(a.borrows)
 	spawnedType, _ := a.inferSpawnValue(expr.Value, execution, graphSpawn)
 	if spawnedType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	returnType := spawnedType
-	if spawnedType.Kind == FunctionType {
-		if spawnedType.FunctionReturnType == nil {
+	if _, lambda := expr.Value.(*ast.LambdaExpression); lambda {
+		// A lambda is the child callable; a call returning a function instead
+		// has that function value as its child result (spawn.md, "Result type").
+		if spawnedType.Kind != FunctionType || spawnedType.FunctionReturnType == nil {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		returnType = *spawnedType.FunctionReturnType
+	}
+	if a.checkMutexGuardSpawn(expr, returnType) {
+		a.moved, a.moveReasons, a.borrows = previousMoved, previousReasons, previousBorrows
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	switch expr.Kind {
 	case "", "task":
@@ -725,6 +737,12 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		a.addErrorAtToken(expr.Token, "Instant has no source struct constructor; its representation is runtime-private")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	// Rules: rules/concurrency/mutex.md — §§4–8,18(1),(6): opaque
+	// synchronization/acquisition state is never an ordinary source struct.
+	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || typ.Name == "Context") {
+		a.addErrorAtToken(expr.Token, "%s has no source struct constructor; its representation is runtime-private", typ.Name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	if typ.Kind != StructType {
 		a.addErrorAtToken(expr.Token, "%s is not a struct type", typ.Name)
@@ -804,6 +822,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		// fields provide the expected union type, allowing canonical contextual
 		// constructors such as None or None() for Option[T].
 		valueType, _ := a.inferOwningConstructionValue(field.Value, fieldType)
+		if a.rejectImplicitBorrow(fieldType, valueType, field.Value) {
+			planValid = false
+			continue
+		}
 		if valueType.Kind != InvalidType && !a.canInitialize(fieldType, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
 			planValid = false
@@ -2258,6 +2280,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if member, isMember := expr.Callee.(*ast.MemberExpression); isMember && isMethodCall {
 			a.recordReceiverReferencePlan(best[0].Function, member.Object)
 		}
+		a.recordReceiverReborrow(expr, best[0].Function)
 		if !a.applyCalleeArenaParameterResets(best[0].Function, sourceArgs, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -2304,6 +2327,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
 		a.markMovedCallArguments(best[0].Function, sourceArgs, preparedSpreadValues, isMethodCall)
+		if isMethodCall && best[0].Function.ReceiverMutable {
+			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
+				a.invalidateMutexAcquisitionsForWrite(member.Object)
+			}
+		}
 		if isMethodCall && best[0].Function.ReceiverConsuming {
 			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
 				a.consumeMethodReceiver(member.Object)
@@ -2465,247 +2493,6 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 		return Type{Kind: InvalidType}, result, true
 	}
 	return a.refinedCompilerKnownType(known.Result), result, true
-}
-
-// inferValidatedCompilerKnownMemberCall resolves compiler-owned receiver and
-// argument contracts before publishing a result.
-// Rules: rules/compiler/compiler_known_members.md — "Lookup order";
-// rules/collections/collections.md — §§6.7,13.10,13.12,14.8,15.5.
-func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	memberExpr, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok || memberExpr == nil || memberExpr.Property == nil {
-		return Type{}, expressionValue{}, false
-	}
-	if _, unit := memberExpr.Object.(*ast.UnitReferenceExpression); unit {
-		// `<U>.Name(...)` calls a unit function, never a compiler-known member.
-		return Type{}, expressionValue{}, false
-	}
-
-	if typ, isCollection := a.collectionTypeReceiver(expr, memberExpr); isCollection {
-		return a.inferCollectionWithCapacity(expr, memberExpr, typ)
-	}
-	if path, static := typePathFromExpression(memberExpr.Object); static {
-		typ, exists := a.types[a.resolveTypeName(path)]
-		if exists {
-			member, memberExists := compilerKnownMember(typ, memberExpr.Property.Value, true)
-			if !memberExists || (member.Kind != CompilerKnownMethod && member.Kind != CompilerKnownAssociatedFunction) {
-				return Type{}, expressionValue{}, false
-			}
-			a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
-			switch member.Name {
-			case "FromByteArray", "FromRuneArray":
-				return a.inferCompilerKnownStringConstructor(expr, member)
-			case "FromBuffer", "WithCapacity", "Growable":
-				return a.inferArenaConstructorCall(expr, member)
-			}
-			return Type{}, expressionValue{}, false
-		}
-		if root := compilerKnownReceiverRoot(memberExpr.Object); root != nil {
-			if _, isValue := a.symbols[root.Value]; !isValue {
-				return Type{}, expressionValue{}, false
-			}
-		}
-	}
-
-	receiverType, _ := a.inferExpression(memberExpr.Object)
-	if receiverType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	lookupType := dereferenceType(receiverType)
-	member, exists := compilerKnownMember(receiverType, memberExpr.Property.Value, false)
-	if !exists || member.Kind != CompilerKnownMethod {
-		return Type{}, expressionValue{}, false
-	}
-	// Interface requirements use ordinary overload/conformance validation.
-	// Publish identity only after successful resolution in recordResolvedCall.
-	// Rules: rules/declarations/interfaces.md — §§6,9.1.
-	for _, requirement := range lookupType.InterfaceMethods {
-		if requirement.CompilerKnownID == member.ID {
-			return Type{}, expressionValue{}, false
-		}
-	}
-	// A trusted core impl on a compiler-known primitive participates in the
-	// same overload set as methods on declared nominal types. In particular,
-	// byte.ToString(ByteStringFormat) must be considered before the universal
-	// zero-argument/numeric-string fallback even though byte is not Named.
-	//
-	// Rules:
-	//   - rules/compiler/compiler_known_members.md — "Lookup order"
-	//   - rules/compiler/compiler_known_members.md — "User-defined ToString()"
-	if len(a.functions[lookupType.Name+"."+member.Name]) > 0 && (lookupType.Named || member.Name == "ToString") {
-		if member.Name != "ToString" {
-			return Type{}, expressionValue{}, false
-		}
-		if _, replaced := a.exactUserToStringReplacement(lookupType); replaced {
-			return Type{}, expressionValue{}, false
-		}
-		if len(expr.Arguments) > 0 {
-			return Type{}, expressionValue{}, false
-		}
-	}
-	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
-	if member.StructuralMutation && a.structurallyMutatesIteratedCollection(memberExpr.Object, member.Name, memberExpr.Property.Token) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if lookupType.Kind == RawPtrType || lookupType.Name == "Arena" {
-		return Type{}, expressionValue{}, false
-	}
-	switch member.Name {
-	case "Ok", "Err":
-		return a.inferConsumingResultProjection(expr, memberExpr, receiverType, lookupType, member)
-	case "Borrow", "BorrowMut", "Replace":
-		if lookupType.Name == "ThreadLocal" {
-			return a.inferThreadLocalCall(expr, lookupType, member)
-		}
-		return Type{}, expressionValue{}, false
-	case "ToString":
-		maxArguments := 0
-		if isNumericType(lookupType) {
-			maxArguments = 1
-		}
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".ToString", 0, maxArguments) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) == 1 {
-			formatType, _ := a.inferExpressionWithExpected(expr.Arguments[0], a.types["string"])
-			if formatType.Kind != StringType {
-				a.addErrorAtToken(expressionToken(expr.Arguments[0]), "ToString format must be string, got %s", typeDisplayName(formatType))
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-			}
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort", "RequestCancel", "Observe", "Start":
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 0, 0) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "Append", "Fill":
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		elementType, hasElement := compilerKnownCollectionElement(lookupType)
-		if !hasElement {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if segment, isRange := expr.Arguments[0].(*ast.RangeExpression); isRange {
-			// rules/collections/collections.md § 6.7: Append on an owning
-			// dynamic array accepts a range segment and appends its values
-			// in order, all or nothing.
-			if member.ID != "CKM-DYNAMIC-ARRAY-APPEND" {
-				a.addErrorAtTokenWithMetadata(segment.Token, diagnostics.ArrayRangeSegmentInvalid,
-					"Only Append on an owning dynamic array T[] accepts a range; append the values one at a time.",
-					"%s.%s does not accept a range", typeDisplayName(lookupType), member.Name)
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-			}
-			entry, ok := a.resolveRangeSegment(segment, elementType)
-			if !ok {
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-			}
-			a.resolvedRangeAppends[expr] = entry
-			return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-		}
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], elementType)
-		if !a.canInitialize(elementType, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s value must be %s, got %s", member.Name, typeDisplayName(elementType), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if member.Name == "Fill" && a.rejectNonCopyableFillElement(elementType, memberExpr.Property.Token, "Fill") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "Reserve":
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".Reserve", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.compilerKnownUintArgument(expr.Arguments[0], "Reserve additional") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "RemoveAt":
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".RemoveAt", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.compilerKnownCountArgument(expr.Arguments[0], "RemoveAt") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "Insert":
-		if !a.checkCompilerKnownCallArity(expr, "list.Insert", 2, 2) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.compilerKnownCountArgument(expr.Arguments[0], "Insert") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		elementType, ok := compilerKnownCollectionElement(lookupType)
-		if !ok {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[1], elementType)
-		if !a.canInitialize(elementType, valueType, expr.Arguments[1]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[1]), "Insert value must be %s, got %s", typeDisplayName(elementType), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "Remove", "Contains", "IndexOf", "Add":
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		argumentType, ok := compilerKnownCollectionElement(lookupType)
-		if lookupType.Name == "map" && len(lookupType.TypeArgs) == 2 {
-			argumentType, ok = lookupType.TypeArgs[0], true
-		}
-		if !ok {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], argumentType)
-		if !a.canInitialize(argumentType, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s argument must be %s, got %s", member.Name, typeDisplayName(argumentType), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "ContainsKey":
-		if !a.checkCompilerKnownCallArity(expr, "map.ContainsKey", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(lookupType.TypeArgs) != 2 {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		keyType := lookupType.TypeArgs[0]
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], keyType)
-		if !a.canInitialize(keyType, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "ContainsKey argument must be %s, got %s", typeDisplayName(keyType), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "SortBy":
-		if !a.checkCompilerKnownCallArity(expr, "list.SortBy", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		compareType, _ := a.inferExpression(expr.Arguments[0])
-		if compareType.Kind != FunctionType {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SortBy requires a comparison function, got %s", typeDisplayName(compareType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	case "Union", "Intersection", "Difference", "SymmetricDifference":
-		if !a.checkCompilerKnownCallArity(expr, "set."+member.Name, 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		otherType, _ := a.inferExpressionWithExpected(expr.Arguments[0], lookupType)
-		if !sameConcreteType(lookupType, otherType) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s argument must be %s, got %s", member.Name, typeDisplayName(lookupType), typeDisplayName(otherType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		elementType, ok := compilerKnownCollectionElement(lookupType)
-		classification := CopyClassificationOf(elementType)
-		if !ok || classification != CopyTrivial && classification != CopySemantic {
-			a.addErrorAtToken(memberExpr.Property.Token, "%s requires a copyable set element type", member.Name)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
-	default:
-		return Type{}, expressionValue{}, false
-	}
 }
 
 func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression, member CompilerKnownMember) (Type, expressionValue, bool) {
@@ -2937,6 +2724,12 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "type %s is not supported by Atomic", typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
+	if name == "Atomic" || name == "Mutex" {
+		// Rules: rules/concurrency/atomics.md — §§4,7,11 and
+		// rules/concurrency/mutex.md — §§4–5,18: construction retains the
+		// compiler-owned nominal synchronization/storage identity.
+		return a.intrinsicGenericType(name, valueType), expressionValue{Display: expr.String()}, true
+	}
 	return Type{Name: name, Kind: StructType, TypeArgs: []Type{valueType}}, expressionValue{Display: expr.String()}, true
 }
 
@@ -3046,7 +2839,10 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordBlockingOperation("Sender.Send", member.Property.Token)
-		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
+		messageArgType := a.inferChannelMessage(expr.Arguments[0], messageType)
+		if a.checkMutexGuardEscape(expr.Arguments[0], messageArgType, member.Property.Token, "channel send", EscapeDestinationAggregate) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if messageArgType.Kind != InvalidType && !a.canInitialize(messageType, messageArgType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.Send message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -3065,7 +2861,10 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordBlockingOperation("Sender.SendRevocable", member.Property.Token)
-		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
+		messageArgType := a.inferChannelMessage(expr.Arguments[0], messageType)
+		if a.checkMutexGuardEscape(expr.Arguments[0], messageArgType, member.Property.Token, "channel send", EscapeDestinationAggregate) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if messageArgType.Kind != InvalidType && !a.canInitialize(messageType, messageArgType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.SendRevocable message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -3083,7 +2882,10 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 		if !a.checkCompilerKnownCallArity(expr, "Sender.TrySend", 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
+		messageArgType := a.inferChannelMessage(expr.Arguments[0], messageType)
+		if a.checkMutexGuardEscape(expr.Arguments[0], messageArgType, member.Property.Token, "channel send", EscapeDestinationAggregate) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if messageArgType.Kind != InvalidType && !a.canInitialize(messageType, messageArgType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.TrySend message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -3137,59 +2939,6 @@ func (a *Analyzer) inferReceiverCall(expr *ast.CallExpression, member *ast.Membe
 		}
 		a.markMoveSource(member.Object)
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
-	default:
-		return Type{}, expressionValue{}, false
-	}
-}
-
-func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok || member.Property == nil {
-		return Type{}, expressionValue{}, false
-	}
-	receiverType, ok := a.compilerKnownReceiverType(member.Object)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-	if !isAtomicType(receiverType) {
-		return Type{}, expressionValue{}, false
-	}
-	element := receiverType.TypeArgs[0]
-	switch member.Property.Value {
-	case "load":
-		if !a.checkAtomicCallArity(expr, "Atomic.load", 0, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return element, expressionValue{Display: expr.String()}, true
-	case "store":
-		if !a.checkAtomicCallArity(expr, "Atomic.store", 1, 2) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
-	case "swap":
-		if !a.checkAtomicCallArity(expr, "Atomic.swap", 1, 2) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		return element, expressionValue{Display: expr.String()}, true
-	case "fetchAdd", "fetchSub", "fetchAnd", "fetchOr", "fetchXor":
-		if !a.checkAtomicCallArity(expr, "Atomic."+member.Property.Value, 1, 2) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !atomicFetchOperationSupported(member.Property.Value, element) {
-			a.addErrorAtToken(member.Property.Token, "%s is not supported for Atomic[%s]", member.Property.Value, typeDisplayName(element))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		return element, expressionValue{Display: expr.String()}, true
-	case "compareExchange":
-		if !a.checkAtomicCallArity(expr, "Atomic.compareExchange", 2, 4) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		a.checkAtomicValueArgument(expr, element, 1)
-		return Type{Name: "CompareExchangeResult", Kind: StructType, TypeArgs: []Type{element}}, expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
 	}
@@ -4119,63 +3868,6 @@ func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, val
 		return Type{Kind: InvalidType}, false
 	}
 	return target, true
-}
-
-func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
-	invalid := func(format string, args ...any) (Type, expressionValue) {
-		a.addErrorAtToken(expr.Token, format, args...)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	if leftType.Name != "matrix" || len(leftType.TypeArgs) != 1 || len(leftType.ConstArgs) != 2 {
-		return invalid("left operand of x must be matrix, got %s", typeDisplayName(leftType))
-	}
-	if (rightType.Name != "matrix" && rightType.Name != "vector") || len(rightType.TypeArgs) != 1 {
-		return invalid("right operand of x must be matrix or vector, got %s", typeDisplayName(rightType))
-	}
-	// rules/collections/shaped-types.md; correction27.md: x derives its
-	// element and accumulator types from ordinary scalar multiplication and
-	// addition. Equal operand element types are not a language requirement.
-	scalarProduct := *expr
-	scalarProduct.Operator = "*"
-	productType, _ := a.inferScalarOperatorType(&scalarProduct, leftType.TypeArgs[0], rightType.TypeArgs[0])
-	if productType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	scalarSum := *expr
-	scalarSum.Operator = "+"
-	accumulatorType, _ := a.inferScalarOperatorType(&scalarSum, productType, productType)
-	if accumulatorType.Kind == InvalidType || !sameConcreteType(productType, accumulatorType) {
-		return invalid("matrix multiplication product type %s is not stable under accumulation", typeDisplayName(productType))
-	}
-
-	inner := leftType.ConstArgs[1]
-	switch rightType.Name {
-	case "matrix":
-		if len(rightType.ConstArgs) != 2 {
-			return invalid("right operand of x must have two matrix dimensions, got %s", typeDisplayName(rightType))
-		}
-		if inner != rightType.ConstArgs[0] {
-			return invalid("matrix multiplication inner dimensions differ: %d and %d", inner, rightType.ConstArgs[0])
-		}
-		result := leftType
-		result.TypeArgs = []Type{productType}
-		result.ConstArgs = []int64{leftType.ConstArgs[0], rightType.ConstArgs[1]}
-		return result, expressionValue{Display: expr.String()}
-	case "vector":
-		if len(rightType.ConstArgs) != 1 {
-			return invalid("right operand of x must have one vector dimension, got %s", typeDisplayName(rightType))
-		}
-		if inner != rightType.ConstArgs[0] {
-			return invalid("matrix-vector multiplication inner dimensions differ: %d and %d", inner, rightType.ConstArgs[0])
-		}
-		result := rightType
-		result.TypeArgs = []Type{productType}
-		result.ConstArgs = []int64{leftType.ConstArgs[0]}
-		return result, expressionValue{Display: expr.String()}
-	default:
-		return invalid("right operand of x must be matrix or vector, got %s", typeDisplayName(rightType))
-	}
 }
 
 func (a *Analyzer) inferScalarOperatorType(expr *ast.InfixExpression, left, right Type) (Type, expressionValue) {

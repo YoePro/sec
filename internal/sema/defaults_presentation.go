@@ -26,10 +26,7 @@ func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, b
 		return "", NoDefault, false
 	}
 	if arrayShapeOf(typ) == ArrayShapeDynamic {
-		if !collectionDefaultSatisfiesContracts(typ, new(big.Int)) {
-			return "", NoDefault, false
-		}
-		return "[]", ArrayDefault, true
+		return DefaultValueDisplay(typ)
 	}
 	length, ok := exactFixedArrayLength(typ)
 	if !ok {
@@ -103,6 +100,8 @@ func defaultResolutionDisplay(typ Type, resolution DefaultResolution) string {
 			parts = append(parts, field.Name+": "+defaultResolutionDisplay(fieldType, field.Value))
 		}
 		return typ.Name + " { " + strings.Join(parts, ", ") + " }"
+	case EmptyDynamicArrayDefault:
+		return "[]"
 	case ArrayDefault:
 		if len(resolution.Elements) == 0 && resolution.ArrayElementDefault != nil {
 			return "[" + defaultResolutionDisplay(*typ.Element, *resolution.ArrayElementDefault) + ", ...]"

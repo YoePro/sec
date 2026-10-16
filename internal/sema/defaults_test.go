@@ -61,10 +61,10 @@ func TestDefaultValueOfPrimitiveAndConstrainedTypes(t *testing.T) {
 		t.Fatalf("zero-length array default = %#v", resolved)
 	}
 	dynamic := NewDynamicArrayType(Type{Name: "int", Kind: IntType})
-	if resolved := DefaultValueOf(dynamic); resolved.Kind != ArrayDefault || len(resolved.Elements) != 0 {
+	if resolved := DefaultValueOf(dynamic); resolved.Kind != EmptyDynamicArrayDefault || len(resolved.Elements) != 0 {
 		t.Fatalf("dynamic array default = %#v", resolved)
 	}
-	if display, kind, ok := DefaultValuePreview(dynamic, 8); !ok || kind != ArrayDefault || display != "[]" {
+	if display, kind, ok := DefaultValuePreview(dynamic, 8); !ok || kind != EmptyDynamicArrayDefault || display != "[]" {
 		t.Fatalf("dynamic array default preview = %q, %q, %v", display, kind, ok)
 	}
 	combinedMultiples := Type{Name: "CombinedMultiples", Kind: IntType, Named: true, MinInteger: intBound(-100), MaxInteger: intBound(100), Contracts: []Contract{

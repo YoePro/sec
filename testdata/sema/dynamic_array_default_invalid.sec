@@ -1,0 +1,9 @@
+module main
+
+fn Immutable() void {
+    let values: int[]
+}
+
+fn Slice() void {
+    let mut values: ref int[]
+}

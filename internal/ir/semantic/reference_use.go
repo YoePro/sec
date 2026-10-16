@@ -96,30 +96,105 @@ func referencePath(expr ast.Expression) (*ast.Identifier, []ast.Expression) {
 // derefUsePlace validates the holder's reference once, dereferences it to a
 // Place with the reference's authority and projects the steps below it.
 func (fb *functionBuilder) derefUsePlace(expr ast.Expression, use sema.ResolvedReferenceUse) (builtValue, bool, error) {
+	place, mutable, _, err := fb.derefHolderPlace(expr, use.Facts.Validity, use.Place, "whole-referent "+string(use.Kind)+" through a reference holder")
+	return place, mutable, err
+}
+
+// derefHolderPlace dereferences the reference holder at the root of expr once
+// (validating a dynamic-epoch reference) and projects the stored fields and
+// fixed-array elements of expr below it, returning the Place, its authority
+// and the holder's reference facts.
+func (fb *functionBuilder) derefHolderPlace(expr ast.Expression, validity sema.ReferenceValidityPolicy, resolved sema.Place, wholeReferent string) (builtValue, bool, *ReferenceMetadata, error) {
 	holder, steps := referencePath(expr)
 	if holder == nil || len(steps) == 0 {
-		return builtValue{}, false, fb.unsupported("whole-referent "+string(use.Kind)+" through a reference holder", expressionToken(expr))
+		return builtValue{}, false, nil, fb.unsupported(wholeReferent, expressionToken(expr))
 	}
 	reference, metadata, err := fb.referenceHolder(holder)
 	if err != nil {
-		return builtValue{}, false, err
+		return builtValue{}, false, nil, err
 	}
-	if ReferenceValidity(use.Facts.Validity) != metadata.Validity {
-		return builtValue{}, false, fb.unsupported("reference use whose validity policy differs from its reference", expressionToken(expr))
+	if ReferenceValidity(validity) != metadata.Validity {
+		return builtValue{}, false, nil, fb.unsupported("reference use whose validity policy differs from its reference", expressionToken(expr))
 	}
 	refType, ok := fb.owner.module.Types.Lookup(reference.typ)
 	if !ok || refType.Kind != TypeReference {
-		return builtValue{}, false, fmt.Errorf("reference holder %s is not a reference value", holder.Value)
+		return builtValue{}, false, nil, fmt.Errorf("reference holder %s is not a reference value", holder.Value)
 	}
 	loc := location(holder.Token)
 	guard, err := fb.validateReference(reference, metadata, loc)
 	if err != nil {
-		return builtValue{}, false, err
+		return builtValue{}, false, nil, err
 	}
 	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
 	place := fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{reference.id}, Reference: metadata, ReferenceGuard: guard, Location: loc}, placeType)
-	place, err = fb.projectPlace(steps, use.Place.Projections, place, refType.Mutable, placeMetadataOf(use.Place))
-	return place, refType.Mutable, err
+	place, err = fb.projectPlace(steps, resolved.Projections, place, refType.Mutable, placeMetadataOf(resolved))
+	return place, refType.Mutable, metadata, err
+}
+
+// lowerSubplaceReborrow lowers `ref r.f[i]` / `ref mut r.f[i]` through a
+// reference holder: the holder is dereferenced once, the stored fields and
+// elements are projected, and ref.reborrow-shared / ref.reborrow-mut derives
+// the new borrow from that sub-Place (sec-mlir-dialect_package15.md §§ 46-48,
+// 78: a reborrow input may be a derived subplace). Authority never grows: a
+// mutable reborrow needs a ref mut holder.
+func (fb *functionBuilder) lowerSubplaceReborrow(reference *ast.RefExpression, plan sema.ResolvedReferencePlan) (builtValue, error) {
+	place, mutable, metadata, err := fb.derefHolderPlace(reference.Value, plan.Facts.Validity, plan.Place, "whole-referent reborrow through a reference holder")
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.emitSubplaceReborrow(reference, plan, place, mutable, metadata)
+}
+
+// lowerReceiverFieldReborrow lowers `ref self.f` / `ref mut f` inside an
+// instance method: the receiver is a reference parameter, so the borrow is a
+// reborrow of a sub-Place of its dereference.
+func (fb *functionBuilder) lowerReceiverFieldReborrow(reference *ast.RefExpression, plan sema.ResolvedReferencePlan, plans []sema.ResolvedStructMemberPlan, steps []ast.Expression) (builtValue, error) {
+	if len(steps) == 0 {
+		// The whole receiver: reborrow the receiver reference itself.
+		place, mutable, err := fb.receiverRootPlace(location(reference.Token))
+		if err != nil {
+			return builtValue{}, err
+		}
+		return fb.emitSubplaceReborrow(reference, plan, place, mutable, fb.references[fb.receiver.id])
+	}
+	place, mutable, err := fb.receiverPlace(plans, steps)
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.emitSubplaceReborrow(reference, plan, place, mutable, fb.references[fb.receiver.id])
+}
+
+// emitSubplaceReborrow derives a new borrow from a sub-Place of the
+// dereference of the reference whose facts are source.
+func (fb *functionBuilder) emitSubplaceReborrow(reference *ast.RefExpression, plan sema.ResolvedReferencePlan, place builtValue, mutable bool, metadata *ReferenceMetadata) (builtValue, error) {
+	if metadata == nil {
+		return builtValue{}, fmt.Errorf("reborrowed reference has no recorded facts")
+	}
+	if reference.Mutable && !mutable {
+		return builtValue{}, fmt.Errorf("sub-Place reborrow elevates a shared reference")
+	}
+	placeType, ok := fb.owner.module.Types.Lookup(place.typ)
+	if !ok || placeType.Kind != TypePlace {
+		return builtValue{}, fmt.Errorf("reborrowed sub-Place is not a Place")
+	}
+	derived := referenceMetadataOf(plan.Facts)
+	derived.SourceBorrow = metadata.Borrow
+	if len(derived.OriginStorages) == 0 {
+		derived.OriginStorages = append([]uint32(nil), metadata.OriginStorages...)
+	}
+	if derived.Borrow == derived.SourceBorrow {
+		return builtValue{}, fb.unsupported("sub-Place reborrow without a distinct resolved borrow identity", reference.Token)
+	}
+	kind, ownership := OpReferenceReborrowShared, OwnershipSharedReference
+	if reference.Mutable {
+		kind, ownership = OpReferenceReborrowMutable, OwnershipMutableReference
+	}
+	loc := location(reference.Token)
+	referenceType := fb.owner.module.Types.Intern(Type{Kind: TypeReference, Element: placeType.Element, Mutable: reference.Mutable})
+	value := fb.newValue(referenceType, ownership, loc)
+	fb.emit(Operation{Kind: kind, Operands: []ValueID{place.id}, Results: []Value{value}, Reference: derived, Location: loc})
+	fb.recordReference(value.ID, derived)
+	return builtValue{id: value.ID, typ: referenceType}, nil
 }
 
 // lowerReferenceUse lowers a read or an equality use; any other use kind is
@@ -140,6 +215,23 @@ func (fb *functionBuilder) lowerReferenceUse(expr ast.Expression, use sema.Resol
 		return fb.lowerReferenceEquality(expr, use)
 	case sema.ReferenceUsePass:
 		return fb.lowerReferencePass(expr, use)
+	case sema.ReferenceUseReturn:
+		// Returning a holder hands over its own reference SSA value: a
+		// shared reference is copyable and a ref mut is moved out by the
+		// return, never copied (package15.md §§ 60-61). The origin is
+		// checked against the function's return-origin summary.
+		holder, named := expr.(*ast.Identifier)
+		if !named {
+			return builtValue{}, errNotReference
+		}
+		source, _, err := fb.referenceHolder(holder)
+		if err != nil {
+			return builtValue{}, err
+		}
+		if sourceType, ok := fb.owner.module.Types.Lookup(source.typ); !ok || sourceType.Kind != TypeReference || use.Facts.MutableAuthority && !sourceType.Mutable {
+			return builtValue{}, fmt.Errorf("returned holder %s does not have the returned authority", holder.Value)
+		}
+		return source, nil
 	}
 	return builtValue{}, errNotReference
 }

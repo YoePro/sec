@@ -48,12 +48,29 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 		if !plan.Facts.Checkable() {
 			return builtValue{}, fb.unsupported("uncheckable safe reference (neither proven nor dynamically checkable)", token)
 		}
+		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit {
+			if plans, steps, rooted, ok := fb.receiverFieldPath(reference.Value); rooted && (ok || fb.isReceiverSelf(reference.Value)) {
+				return fb.lowerReceiverFieldReborrow(reference, plan, plans, steps)
+			}
+		}
+		if _, explicit := expr.(*ast.RefExpression); !explicit && plan.Implicit {
+			// `Read(self)` / `Read(self.inner)` inside a method: the implicit
+			// call-site borrow of a receiver-rooted Place is a reborrow of
+			// the receiver reference (package15.md §§ 47-48, 59).
+			if plans, steps, rooted, ok := fb.receiverFieldPath(expr); rooted && (ok || fb.isReceiverSelf(expr)) {
+				implicit := &ast.RefExpression{Token: token, Mutable: plan.Facts.MutableAuthority, Value: expr}
+				return fb.lowerReceiverFieldReborrow(implicit, plan, plans, steps)
+			}
+		}
 		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
 			return fb.lowerPlaceBorrow(reference, plan)
 		}
 		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit && plan.Reborrow {
 			if holder, named := reference.Value.(*ast.Identifier); named {
 				return fb.lowerExplicitReborrow(reference, holder, plan)
+			}
+			if below, ok := placeBelowDereference(plan.Place); ok && onlyFieldProjections(below) {
+				return fb.lowerSubplaceReborrow(reference, plan)
 			}
 		}
 		if _, explicit := expr.(*ast.RefExpression); !explicit && plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
@@ -76,6 +93,13 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 		}
 		return builtValue{}, fb.unsupported("reference "+string(use.Kind)+" lowering", token)
 	}
+	if call, isCall := expr.(*ast.CallExpression); isCall {
+		if _, instantiated := analyzer.ResolvedCallReferenceOf(call); instantiated {
+			// A call returning a reference lowers as an ordinary call whose
+			// result carries the instantiated caller-side facts.
+			return builtValue{}, errNotReference
+		}
+	}
 	if resolved, ok := analyzer.ResolvedTypeOf(expr); ok && resolved.Kind == sema.ReferenceType {
 		// Naming an immutable reference holder yields its SSA reference value.
 		if identifier, named := expr.(*ast.Identifier); named {
@@ -88,6 +112,24 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 		return builtValue{}, fb.unsupported("reference value without a resolved reference plan or use", token)
 	}
 	return builtValue{}, errNotReference
+}
+
+// placeBelowDereference is the part of a reborrowed Place below its single
+// dereference of the holder; a Place that dereferences more than once (a
+// reference stored in a field) is reported as not lowerable here.
+func placeBelowDereference(place sema.Place) (sema.Place, bool) {
+	below := place
+	below.Projections = nil
+	derefs := 0
+	for _, projection := range place.Projections {
+		if projection.Canonical() == sema.CanonicalProjectionDereference {
+			derefs++
+			below.Projections = nil
+			continue
+		}
+		below.Projections = append(below.Projections, projection)
+	}
+	return below, derefs <= 1
 }
 
 // onlyFieldProjections reports a Place reached from its root through stored
@@ -287,7 +329,7 @@ func (fb *functionBuilder) lowerRootPlace(reference *ast.RefExpression, plan sem
 		// A by-value parameter is an immutable SSA root like a local; reference
 		// parameters never reach this point (P15-47).
 	case sema.ReferenceProvenanceStatic:
-		return builtValue{}, fb.unsupported("static Place root (Semantic IR has no static storage representation)", reference.Token)
+		return fb.lowerStaticRootPlace(reference, plan, rootExpr)
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("%s Place root", plan.Facts.Provenance), reference.Token)
 	}

@@ -104,6 +104,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			if stmt.Address != nil {
 				a.analyzeAddressedLetStatement(stmt, declaredType)
 			}
+			a.recordStaticBinding(stmt, a.symbols[stmt.Name.Value])
 		}
 	}
 

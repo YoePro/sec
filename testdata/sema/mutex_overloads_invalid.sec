@@ -1,0 +1,36 @@
+module main
+
+unit tick physical
+impl <tick> {
+    Kind: time
+    Dimension: [time^1]
+    Scale: 1 / 1000
+}
+unit distance physical
+impl <distance> {
+    Kind: length
+    Dimension: [length^1]
+    Scale: 1
+}
+type Other struct {}
+
+fn Invalid(value: ref Mutex[int], timeout: duration, context: ref Context, quantity: decimal<tick>, other: ref Other) void {
+    discard value.Lock(1)
+    discard value.Lock(true)
+    discard value.Lock(other)
+    discard value.Lock(quantity)
+    discard value.Lock(1<distance>)
+    discard value.Lock(0.0000001<tick>)
+    discard value.Lock(timeout, context)
+    discard value.Lock[int]()
+    discard value.TryLock(timeout)
+}
+
+@noBlock
+fn Blocks(value: ref Mutex[int], timeout: duration) void { discard value.Lock(timeout) }
+
+fn BorrowConflict(value: ref Mutex[int], context: Context) void {
+    let active := ref mut context
+    discard value.Lock(context)
+    discard active
+}

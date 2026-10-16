@@ -1,0 +1,38 @@
+module main
+
+type Store struct {
+    values: int[],
+    other: int[]
+}
+
+fn Ended(values: int[]) Result[void, CollectionError] {
+    let held := ref values[0]
+    discard held
+    try values.Append(1)
+    values.Clear()
+    discard values.RemoveAt(0)
+    return Ok()
+}
+
+fn Sibling(store: ref mut Store) Result[void, CollectionError] {
+    let held := ref store.values[0]
+    try store.other.Append(1)
+    store.other.Clear()
+    discard store.other.RemoveAt(0)
+    discard held
+    return Ok()
+}
+
+fn ElementWrite(values: int[]) void {
+    let held := ref values[0]
+    values[1] = 2
+    discard held
+}
+
+fn GrantingReference(store: ref mut Store) void {
+    let alias := ref mut store
+    alias.values.Clear()
+    discard alias
+}
+
+fn main() void {}

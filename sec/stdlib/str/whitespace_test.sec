@@ -1,0 +1,484 @@
+module str
+
+/*
+ * Sec Standard Library - str - Whitespace and padding tests
+ *
+ * File:        stdlib/str/whitespace_test.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-16
+ *
+ * Purpose:
+ * Tests whitespace collapsing and normalization, line indentation,
+ * common-prefix dedentation, and rune-counted left/right/center padding.
+ * Covers Unicode White_Space, line separator preservation, UTF-8,
+ * mixed space/tab indentation, blank lines, and default overloads.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ *
+ * Note:
+ * These are behavioral tests. They do not imply that runtime execution
+ * has already been verified.
+ */
+
+// CollapseWhitespace: trim and combine all Unicode White_Space runs.
+
+test "CollapseWhitespace preserves empty input" {
+    let result := try CollapseWhitespace("")
+    testing.ExpectEqual("", result)
+}
+
+test "CollapseWhitespace preserves ordinary text" {
+    let result := try CollapseWhitespace("Hello Sec")
+    testing.ExpectEqual("Hello Sec", result)
+}
+
+test "CollapseWhitespace removes leading and trailing spaces" {
+    let result := try CollapseWhitespace("   Hello   ")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "CollapseWhitespace combines internal spaces" {
+    let result := try CollapseWhitespace("A    B   C")
+    testing.ExpectEqual("A B C", result)
+}
+
+test "CollapseWhitespace combines tabs and line separators" {
+    let result := try CollapseWhitespace("A\t\r\n\tB\n\nC")
+    testing.ExpectEqual("A B C", result)
+}
+
+test "CollapseWhitespace removes whitespace-only input" {
+    let result := try CollapseWhitespace(" \t\r\n \u{00A0}\u{3000}")
+    testing.ExpectEqual("", result)
+}
+
+test "CollapseWhitespace recognizes all Unicode White_Space code points" {
+    // Unicode White_Space: U+0009..U+000D, U+0020, U+0085, U+00A0,
+    // U+1680, U+2000..U+200A, U+2028, U+2029, U+202F, U+205F, U+3000.
+    let value := "A\u{0009}\u{000A}\u{000B}\u{000C}\u{000D}\u{0020}\u{0085}\u{00A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}B"
+    let result := try CollapseWhitespace(value)
+    testing.ExpectEqual("A B", result)
+}
+
+test "CollapseWhitespace does not treat zero-width space as whitespace" {
+    let result := try CollapseWhitespace("A\u{200B}B")
+    testing.ExpectEqual("A\u{200B}B", result)
+}
+
+test "CollapseWhitespace preserves composed and decomposed Unicode" {
+    let result := try CollapseWhitespace("  å  e\u{0301}   🦊  ")
+    testing.ExpectEqual("å e\u{0301} 🦊", result)
+}
+
+test "CollapseWhitespace collapses CRLF into one separating space" {
+    let result := try CollapseWhitespace("First\r\nSecond")
+    testing.ExpectEqual("First Second", result)
+}
+
+// NormalizeWhitespace: replace horizontal whitespace without collapsing.
+
+test "NormalizeWhitespace preserves empty input" {
+    let result := try NormalizeWhitespace("")
+    testing.ExpectEqual("", result)
+}
+
+test "NormalizeWhitespace preserves ordinary text" {
+    let result := try NormalizeWhitespace("Hello Sec")
+    testing.ExpectEqual("Hello Sec", result)
+}
+
+test "NormalizeWhitespace replaces tabs individually" {
+    let result := try NormalizeWhitespace("A\t\tB")
+    testing.ExpectEqual("A  B", result)
+}
+
+test "NormalizeWhitespace does not collapse spaces" {
+    let result := try NormalizeWhitespace("  A   B  ")
+    testing.ExpectEqual("  A   B  ", result)
+}
+
+test "NormalizeWhitespace replaces non-breaking and em spaces" {
+    let result := try NormalizeWhitespace("A\u{00A0}\u{2003}B")
+    testing.ExpectEqual("A  B", result)
+}
+
+test "NormalizeWhitespace replaces ideographic and narrow no-break spaces" {
+    let result := try NormalizeWhitespace("A\u{3000}\u{202F}B")
+    testing.ExpectEqual("A  B", result)
+}
+
+test "NormalizeWhitespace preserves LF CR and CRLF exactly" {
+    let result := try NormalizeWhitespace("A\nB\rC\r\nD")
+    testing.ExpectEqual("A\nB\rC\r\nD", result)
+}
+
+test "NormalizeWhitespace preserves NEL LS and PS exactly" {
+    let result := try NormalizeWhitespace("A\u{0085}B\u{2028}C\u{2029}D")
+    testing.ExpectEqual("A\u{0085}B\u{2028}C\u{2029}D", result)
+}
+
+test "NormalizeWhitespace replaces vertical tab and form feed" {
+    let result := try NormalizeWhitespace("A\u{000B}\u{000C}B")
+    testing.ExpectEqual("A  B", result)
+}
+
+test "NormalizeWhitespace does not trim leading or trailing whitespace" {
+    let result := try NormalizeWhitespace("\tA\t")
+    testing.ExpectEqual(" A ", result)
+}
+
+test "NormalizeWhitespace preserves zero-width space and combining marks" {
+    let result := try NormalizeWhitespace("e\u{0301}\u{200B}🦊")
+    testing.ExpectEqual("e\u{0301}\u{200B}🦊", result)
+}
+
+// Indent: prefix each actual line and preserve its line separator.
+
+test "Indent preserves empty input" {
+    let result := try Indent("", "--")
+    testing.ExpectEqual("", result)
+}
+
+test "Indent prefixes a single line" {
+    let result := try Indent("Hello", "  ")
+    testing.ExpectEqual("  Hello", result)
+}
+
+test "Indent prefixes every LF-separated line" {
+    let result := try Indent("A\nB\nC", ">")
+    testing.ExpectEqual(">A\n>B\n>C", result)
+}
+
+test "Indent prefixes an internal empty line" {
+    let result := try Indent("A\n\nB", "> ")
+    testing.ExpectEqual("> A\n> \n> B", result)
+}
+
+test "Indent preserves trailing LF without appending a new prefix" {
+    let result := try Indent("A\n", "--")
+    testing.ExpectEqual("--A\n", result)
+}
+
+test "Indent treats CRLF as one line separator" {
+    let result := try Indent("A\r\nB", "--")
+    testing.ExpectEqual("--A\r\n--B", result)
+}
+
+test "Indent handles an empty CRLF line" {
+    let result := try Indent("A\r\n\r\nB", ">")
+    testing.ExpectEqual(">A\r\n>\r\n>B", result)
+}
+
+test "Indent preserves standalone CR as line separator" {
+    let result := try Indent("A\rB", "--")
+    testing.ExpectEqual("--A\r--B", result)
+}
+
+test "Indent recognizes NEL LS and PS" {
+    let result := try Indent("A\u{0085}B\u{2028}C\u{2029}D", ">")
+    testing.ExpectEqual(">A\u{0085}>B\u{2028}>C\u{2029}>D", result)
+}
+
+test "Indent prefixes a leading empty line" {
+    let result := try Indent("\nA", ">")
+    testing.ExpectEqual(">\n>A", result)
+}
+
+test "Indent with empty prefix preserves the string" {
+    let result := try Indent("A\r\n\n🦊", "")
+    testing.ExpectEqual("A\r\n\n🦊", result)
+}
+
+test "Indent supports a Unicode prefix" {
+    let result := try Indent("å\n🦊", "→ ")
+    testing.ExpectEqual("→ å\n→ 🦊", result)
+}
+
+// Dedent: remove the exact shared ASCII space/tab prefix, not display columns.
+
+test "Dedent preserves empty input" {
+    let result := try Dedent("")
+    testing.ExpectEqual("", result)
+}
+
+test "Dedent removes single-line indentation" {
+    let result := try Dedent("   Hello")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "Dedent removes equal indentation from multiple lines" {
+    let result := try Dedent("    First\n    Second")
+    testing.ExpectEqual("First\nSecond", result)
+}
+
+test "Dedent preserves indentation beyond the shared prefix" {
+    let result := try Dedent("    First\n      Second\n    Third")
+    testing.ExpectEqual("First\n  Second\nThird", result)
+}
+
+test "Dedent preserves text with no common indentation" {
+    let result := try Dedent("First\n  Second")
+    testing.ExpectEqual("First\n  Second", result)
+}
+
+test "Dedent removes a common tab prefix" {
+    let result := try Dedent("\tA\n\tB")
+    testing.ExpectEqual("A\nB", result)
+}
+
+test "Dedent removes an exact mixed tab and space prefix" {
+    let result := try Dedent("\t  A\n\t  B")
+    testing.ExpectEqual("A\nB", result)
+}
+
+test "Dedent does not equate tabs with spaces" {
+    let result := try Dedent("  A\n\tB")
+    testing.ExpectEqual("  A\n\tB", result)
+}
+
+test "Dedent retains only the exact common part of mixed prefixes" {
+    let result := try Dedent("  A\n \tB")
+    testing.ExpectEqual(" A\n\tB", result)
+}
+
+test "Dedent ignores a blank line when finding the prefix" {
+    let result := try Dedent("    A\n\n    B")
+    testing.ExpectEqual("A\n\nB", result)
+}
+
+test "Dedent clears a shorter whitespace-only line" {
+    let result := try Dedent("    A\n  \n    B")
+    testing.ExpectEqual("A\n\nB", result)
+}
+
+test "Dedent clears a longer whitespace-only line" {
+    let result := try Dedent("  A\n     \n  B")
+    testing.ExpectEqual("A\n\nB", result)
+}
+
+test "Dedent clears a tab-only line" {
+    let result := try Dedent("  A\n\t\t\n  B")
+    testing.ExpectEqual("A\n\nB", result)
+}
+
+test "Dedent preserves CRLF separators" {
+    let result := try Dedent("  A\r\n  B")
+    testing.ExpectEqual("A\r\nB", result)
+}
+
+test "Dedent preserves mixed LF CR and CRLF separators" {
+    let result := try Dedent("  A\n  B\r  C\r\n  D")
+    testing.ExpectEqual("A\nB\rC\r\nD", result)
+}
+
+test "Dedent preserves Unicode line separators" {
+    let result := try Dedent("  A\u{0085}  B\u{2028}  C\u{2029}  D")
+    testing.ExpectEqual("A\u{0085}B\u{2028}C\u{2029}D", result)
+}
+
+test "Dedent preserves trailing newline" {
+    let result := try Dedent("  A\n  B\n")
+    testing.ExpectEqual("A\nB\n", result)
+}
+
+test "Dedent preserves Unicode content" {
+    let result := try Dedent("  å\n  e\u{0301}\n  🦊")
+    testing.ExpectEqual("å\ne\u{0301}\n🦊", result)
+}
+
+// Regression expectations for whitespace-only lines without common indentation.
+// These detect early returns that skip _AppendDedentedLine entirely.
+
+test "Dedent clears blank lines when content has no common indent" {
+    let result := try Dedent("A\n \t\nB")
+    testing.ExpectEqual("A\n\nB", result)
+}
+
+test "Dedent clears input containing only indentation and newlines" {
+    let result := try Dedent("  \n\t\n")
+    testing.ExpectEqual("\n\n", result)
+}
+
+// PadLeft with explicit padding rune.
+
+test "PadLeft with rune pads ASCII text" {
+    let result := try PadLeft("42", 5, 48r)
+    testing.ExpectEqual("00042", result)
+}
+
+test "PadLeft with rune leaves a long enough string unchanged" {
+    let result := try PadLeft("Hello", 3, 46r)
+    testing.ExpectEqual("Hello", result)
+}
+
+test "PadLeft with rune preserves equal-length input" {
+    let result := try PadLeft("ABC", 3, 46r)
+    testing.ExpectEqual("ABC", result)
+}
+
+test "PadLeft with rune pads empty input" {
+    let result := try PadLeft("", 3, 120r)
+    testing.ExpectEqual("xxx", result)
+}
+
+test "PadLeft with rune supports multibyte text" {
+    let result := try PadLeft("å🦊", 4, 46r)
+    testing.ExpectEqual("..å🦊", result)
+}
+
+test "PadLeft with rune supports multibyte padding" {
+    let result := try PadLeft("A", 3, 129418r)
+    testing.ExpectEqual("🦊🦊A", result)
+}
+
+test "PadLeft counts combining marks as separate runes" {
+    let result := try PadLeft("e\u{0301}", 3, 46r)
+    testing.ExpectEqual(".e\u{0301}", result)
+}
+
+test "PadLeft with rune does not pad a zero target" {
+    let result := try PadLeft("A", 0, 46r)
+    testing.ExpectEqual("A", result)
+}
+
+// PadLeft with implicit ASCII space padding.
+
+test "PadLeft default overload uses spaces" {
+    let result := try PadLeft("Hi", 5)
+    testing.ExpectEqual("   Hi", result)
+}
+
+test "PadLeft default overload preserves empty target" {
+    let result := try PadLeft("", 0)
+    testing.ExpectEqual("", result)
+}
+
+// PadRight with explicit padding rune.
+
+test "PadRight with rune pads ASCII text" {
+    let result := try PadRight("42", 5, 48r)
+    testing.ExpectEqual("42000", result)
+}
+
+test "PadRight with rune leaves long enough text unchanged" {
+    let result := try PadRight("Hello", 3, 46r)
+    testing.ExpectEqual("Hello", result)
+}
+
+test "PadRight with rune preserves equal-length input" {
+    let result := try PadRight("ABC", 3, 46r)
+    testing.ExpectEqual("ABC", result)
+}
+
+test "PadRight with rune pads empty input" {
+    let result := try PadRight("", 3, 120r)
+    testing.ExpectEqual("xxx", result)
+}
+
+test "PadRight with rune supports multibyte text" {
+    let result := try PadRight("å🦊", 4, 46r)
+    testing.ExpectEqual("å🦊..", result)
+}
+
+test "PadRight with rune supports multibyte padding" {
+    let result := try PadRight("A", 3, 129418r)
+    testing.ExpectEqual("A🦊🦊", result)
+}
+
+test "PadRight counts combining marks as separate runes" {
+    let result := try PadRight("e\u{0301}", 3, 46r)
+    testing.ExpectEqual("e\u{0301}.", result)
+}
+
+test "PadRight with rune does not pad a zero target" {
+    let result := try PadRight("A", 0, 46r)
+    testing.ExpectEqual("A", result)
+}
+
+// PadRight with implicit ASCII space padding.
+
+test "PadRight default overload uses spaces" {
+    let result := try PadRight("Hi", 5)
+    testing.ExpectEqual("Hi   ", result)
+}
+
+test "PadRight default overload preserves empty target" {
+    let result := try PadRight("", 0)
+    testing.ExpectEqual("", result)
+}
+
+// Center with explicit padding rune: extra padding goes on the right.
+
+test "Center with rune uses equal padding on both sides" {
+    let result := try Center("Hello", 11, 46r)
+    testing.ExpectEqual("...Hello...", result)
+}
+
+test "Center with rune places odd extra padding on the right" {
+    let result := try Center("Hello", 10, 46r)
+    testing.ExpectEqual("..Hello...", result)
+}
+
+test "Center with rune pads a one-rune string" {
+    let result := try Center("A", 4, 46r)
+    testing.ExpectEqual(".A..", result)
+}
+
+test "Center with rune pads empty input evenly" {
+    let result := try Center("", 4, 46r)
+    testing.ExpectEqual("....", result)
+}
+
+test "Center with rune pads empty input with right bias" {
+    let result := try Center("", 3, 46r)
+    testing.ExpectEqual("...", result)
+}
+
+test "Center with rune leaves a long enough string unchanged" {
+    let result := try Center("Hello", 3, 46r)
+    testing.ExpectEqual("Hello", result)
+}
+
+test "Center with rune preserves equal-length input" {
+    let result := try Center("ABC", 3, 46r)
+    testing.ExpectEqual("ABC", result)
+}
+
+test "Center with rune counts multibyte runes" {
+    let result := try Center("å🦊", 5, 46r)
+    testing.ExpectEqual(".å🦊..", result)
+}
+
+test "Center with rune supports multibyte padding" {
+    let result := try Center("A", 4, 129418r)
+    testing.ExpectEqual("🦊A🦊🦊", result)
+}
+
+test "Center with rune counts combining marks separately" {
+    let result := try Center("e\u{0301}", 5, 46r)
+    testing.ExpectEqual(".e\u{0301}..", result)
+}
+
+test "Center with rune does not pad a zero target" {
+    let result := try Center("A", 0, 46r)
+    testing.ExpectEqual("A", result)
+}
+
+// Center with implicit ASCII space padding.
+
+test "Center default overload uses spaces" {
+    let result := try Center("Hi", 5)
+    testing.ExpectEqual(" Hi  ", result)
+}
+
+test "Center default overload preserves equal-length input" {
+    let result := try Center("Hi", 2)
+    testing.ExpectEqual("Hi", result)
+}
+
+test "Center default overload handles empty input" {
+    let result := try Center("", 3)
+    testing.ExpectEqual("   ", result)
+}

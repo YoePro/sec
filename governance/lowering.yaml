@@ -40,10 +40,11 @@ integrations:
       - dedicated verifier exists
       - deterministic printer exists
       - Package 13 struct operations and current match/errorhandling operations are implemented
+      - "static storage (2026-10-16, semantic_ir.md § 28, static.md §§ 2-4): Module.Statics with stable @N identities, qualified names, type, mutability, enclosing function, address-taken flag and exact compile-time initializer (integer-family or bool literal, or the zero default) and no startup function; static.load, static.store (mutable only) and place.static-root, verified against the static; module-level bindings and function-local `static let` (formerly miscompiled as automatic locals) both lower to it (TestStaticStorageLowersToModuleStatics, TestVerifierChecksStaticStorage)"
       - "static methods (2026-10-12, impl.md §§ 11, 13; semantic_ir.md §§ 60-61): every `static fn` of a non-generic impl block in the requested module lowers as an ordinary function under its qualified Target.Name identity (Sema ResolvedMethodForDeclaration), and a resolved static-method call is a direct call to it, including calls between methods; Sec MLIR emits them as qualified functions; instance method calls report the explicit `instance method call` boundary and static methods of generic implementations stay unsupported (TestStaticMethodsLowerAsDirectCalls, TestMethodLoweringBoundaries, TestStaticMethodsEmitAsQualifiedFunctions)"
     remaining:
       - "instance methods (since 2026-10-12, package 15): shared and mutable receivers lower as an explicit ref/ref mut `self` parameter with field reads/writes and receiver passing (sec-mlir-package15 P15-47); remaining are consuming receivers (by-value move), `self` used as a value, reborrowing a mutable `self` for nested calls, temporary receivers without a Place (needed by try-chain-intermediate-lowering), and generic implementations through specialization identities"
-      - add static (module-level), thread-local and addressed (fixed-address binding, register/MMIO) storage classes to Semantic IR storage, which today represents only local-automatic storage, with initialization, mutability, address-stability and memory-space facts and verifier rules (identified 2026-10-11 by SEC-MLIR-P15 P15-42)
+      - add thread-local and addressed (fixed-address binding, register/MMIO) storage classes to Semantic IR storage, with initialization, mutability, address-stability and memory-space facts and verifier rules (identified 2026-10-11 by SEC-MLIR-P15 P15-42; static storage done 2026-10-16), and extend static initializers beyond scalar literals
       - add/normalize canonical Place identity and state records
       - add explicit ArenaDomain/state/epoch operations
       - add reference/storage invalidation operations
@@ -403,7 +404,7 @@ integrations:
       - Package 11/12 integration admits copy-trivial fixed arrays as union payloads and match values while retaining ordinary union-variant patterns, copy-trivial transfer, compact fallback construction, and the existing matching-variant projection guard
       - schema-10 sec.array.default, sec.array.len, sec.array.index_in_bounds, sec.array.extract, sec.array.replace, and terminating sec.fail.bounds operations with exact local type, signedness, bounds-metadata, action, and result-identity verifiers
       - sec-verify-array-index-guards enforces same-array/index SSA identity, immediate single-use predicate branching, dedicated true-edge dominance, and closed proven-safe provenance for schema-10 extraction and replacement
-      - generated high-level modules use schema 10 while schemas 1 through 9 remain accepted regression inputs and schema 11 remains rejected
+      - generated high-level modules used schema 10 while schemas 1 through 9 remained accepted regression inputs; since P15-50 (2026-10-16) they declare schema 11, schemas 1 through 10 stay accepted and schema 12 is rejected
       - Go schema-10 emission preserves exact nested array types, compact ordered construction segments and actions, defaults, length, source-typed bounds predicates, proof metadata, guarded extraction/replacement, bounds failure, locations, and high-level storage
       - schema-10 emission independently rejects nested fixed-array lengths that overflow the selected 32-bit or 64-bit target uint without host-width conversion
       - the complete Package 14 section-100/101 dialect matrix covers canonical and invalid array types, compact construction, every array operation, guard dominance and SSA identity, proven provenance, and schema-9 compatibility
@@ -692,6 +693,16 @@ integrations:
       - "reference parameters and passing (P15-47 partial, 2026-10-12): Sema publishes callee-side ReferenceParameterFactsOf for every ref/ref mut parameter; Semantic IR parameters carry them (verifier-required, dynamic-epoch parameters tracked for guards); call sites pass Sema's implicit Place borrows, explicit borrows, ref.copy-shared of an existing shared reference and ref.reborrow-mut of an existing ref mut, with verifier-checked shared-reference / mutable-reference argument actions; returned references, return-origin summaries and instance-method receivers remain"
       - "reference uses through one validity policy (P15-46 partial, 2026-10-12): reads (ref.deref-place, resolved field/element steps, copy-trivial place.read), writes (destination Place before source, place.write through ref mut, trivially replaceable referents) and equality (ref.compare) consume the exact reference SSA and the facts it was created with; proven references emit no check, dynamic-epoch references are validated once with ref.is-valid whose false edge ends in fail.reference-generation and whose true edge carries the guarded operation; explicit reborrow awaits MD-061"
       - "explicit reborrow lowering (MD-061, 2026-10-15, semantic_ir.md § 46(10)): `ref r` / `ref mut r` over a reference holder lower from the resolved reborrow plan to ref.reborrow-shared / ref.reborrow-mut of the holder's reference SSA value with a new BorrowID derived from the holder's borrow, the holder's storage origins and validity policy, and type ref T / ref mut T; the verifier accepts them (TestPackage15LowersExplicitReborrows). This completes the P15-46 remainder"
+      - "schema-11 operations (P15-52/P15-53 completed, 2026-10-16): sec.place.value/storage/field/array_index_in_bounds/array_element/union_payload/deref/read/write, sec.ref.borrow_shared/borrow_mut/copy_shared/move/reborrow_shared/reborrow_mut/is_valid/compare/end_borrow and sec.fail.reference_generation with root and reference metadata (address_stability replaces relocation_class per package15.md § 28 revised) and local type/authority/metadata verifiers; lit schema11-place-reference-ops.mlir, schema11-place-projections.mlir, invalid-schema11-place-reference-ops.mlir"
+      - "schema 11 foundation (P15-50/P15-51 completed, 2026-10-16): sec-mlir-opt accepts schema 11 and rejects 12 while schemas 1-10 stay accepted; ODS types !sec.place<T, \"ro\"|\"rw\">, !sec.ref<T> and !sec.ref_mut<T> with referent and authority verifiers and no physical fields; modules below schema 11 cannot use them; the Go emitter declares schema 11 (lit schema11-place-reference-types.mlir, invalid-schema11-place-reference-types.mlir, invalid-schema12-module-metadata.mlir); the schema-11 operations and the three verifier passes are P15-52..P15-56"
+      - "receiver reborrows (P15-47 part, 2026-10-16): nested calls on a mutable receiver reborrow it per call with Sema's ResolvedReceiverReborrowOf identity (ref.reborrow-mut, or ref.reborrow-shared for reading callees), and `self`/receiver fields passed to ref/ref mut parameters or borrowed explicitly derive from the dereferenced receiver; a mutable receiver is never copied (TestPackage15ReborrowsReceiversForNestedCallsAndArguments); temporary receivers await MD-076 and addressed register roots MD-077"
+      - "static storage and static Place roots (P15-42/P15-42a partial, 2026-10-16): module statics with exact compile-time initializers and no startup function (semantic_ir.md § 28), static.load/static.store/place.static-root, address-taken marking, static@N returned-reference origins; fixes the pre-existing miscompilation of function-local `static let mut` as automatic storage at every package level; Sec MLIR emission and the legacy emit-llvm/emit-mlir routes reject statics instead of dropping or re-initializing them (TestStaticStorageLowersToModuleStatics, TestPackage15LowersStaticPlaceRoots, TestVerifierChecksStaticStorage, TestStaticStorageEmitRoutes, TestLegacyRoutesRejectFunctionLocalStatics); remaining: addressed/MMIO roots, aggregate and non-literal static initializers"
+      - "P15-66/P15-67/P15-68 completed (2026-10-16): successful P15 modules use only the closed semantic operation set with no physical vocabulary, raw-pointer collapse or hidden parameters, and the reference/Place fact records have no physical fields (TestPackage15ModulesHaveNoPhysicalVocabulary); out-of-scope reference features are rejected as whole package-15 boundaries and every emit route rejects reference programs without output (TestPackage15RejectsOutOfScopeReferencesWithoutPartialModule, TestReferenceProgramsAreRejectedByEveryEmitRoute); Place/reference facts are deterministic across rebuilds, shared analyzers, renamed sources and 32/64-bit plans (TestPackage15PlaceReferenceFactsAreDeterministic). Stable/weak handles and pinning have no Sec 0.1 source form; RawPtr-reference conversion spelling is MD-070"
+      - "returned references (P15-47 part, P15-64 completed, 2026-10-16): functions returning a direct reference carry positional ReturnOrigins metadata from Sema's ReturnReferenceSummaryOf (parameter/receiver plus P13 field IDs and element steps, printed returns-from=[...]); returns of parameter references, sub-Place reborrows (including `ref self.f` through the receiver), local holders and call results lower and are verified by tracing every returned reference through copies, moves, reborrows, dereferences, field/element Places and callee summaries; call results carry caller-side facts from ResolvedCallReferenceOf (TestPackage15LowersReturnedReferences, TestPackage15VerifierChecksReturnedReferenceOrigins); static/addressed origins remain unsupported (P15-42a)"
+      - "P15-61/P15-62 completed (2026-10-16): field and element borrow integration tests; nested sub-field reborrow through a reference holder lowers as ref.deref-place + field/element projections + ref.reborrow-shared/mut over the derived sub-Place (dialect § 78), verified to derive from the dereference of the reference its SourceBorrow names with no authority increase; zero-length element borrows are never proven safe (TestPackage15FieldAndElementBorrowIntegration, TestPackage15VerifierChecksSubplaceReborrows)"
+      - "P15-63 completed (2026-10-16): arm-scoped payload borrows end with ref.end-borrow carrying the borrow's own BorrowID and LifetimeID on every arm exit (return, fall-through to the match merge, break/continue out of the arm, and the guard's false edge on its own edge block; placement at the arm exit rather than Sema's exact liveness end awaits confirmation as MD-065); the verifier requires those facts on ref.end-borrow, matches them against the ended reference, and stops at a redefinition so arms inside loops verify (TestPackage15PayloadBorrowsEndOnEveryArmExit, TestPackage15VerifierChecksPayloadBorrowEnds). Sema rejects every payload-reference escape with an identified diagnostic and no follow-on error: return of Ok/Err payloads (directly or in an aggregate), storing a ref mut payload outside the arm, a match expression producing the reference (now S1130) and a returned capturing lambda; a match whose arms all return keeps terminating the function when an arm reports an error (TestBranchScopedPayloadReferenceEscapesAreRejected)"
+      - "P15-45 completed (2026-10-16): Result Ok/Err payload Places guarded by result.is-err (Ok on the false edge, Err on the true edge, checked by the verifier), struct-like payloads as the Package 13 synthetic payload struct (variantPayloadType shared by builder and verifier), and subjects through array elements or non-receiver reference holders built Place-first (one index or dereference evaluation; the subject is place.read from the Place the payload is projected from) (TestPackage15LowersRemainingPayloadBorrowShapes, TestPackage15VerifierChecksResultPayloadEdges). Non-copy-trivial subjects reached through elements or references stay unsupported as P17 non-trivial reads"
+      - "field and receiver match subjects for payload borrows (P15-45, 2026-10-16): `match holder.figure`, nested stored-field paths, `match self.figure` and the implicit `match figure` borrow the payload from the subject's root Place (value root, address-taken storage root, or receiver ref.deref-place) projected through the same stored fields; the verifier compares canonical Place chains (root plus field path) of the payload Place and of the guard's tested value through struct.extract-field, storage.load and place.read (TestPackage15LowersFieldSubjectPayloadBorrows, TestPackage15LowersReceiverFieldPayloadBorrows, TestPackage15VerifierRejectsPayloadPlaceOfOtherField)"
       - "union payload reference bindings (P15-45 partial, 2026-10-13): Sema publishes the ResolvedReferencePlan of a ref/ref mut match payload binding, keyed by its stable bound identifier; Semantic IR forms the match subject's own Place root, one place.union-payload naming the arm's union.is-variant predicate (guard=) as its active-variant proof, and the borrow with the plan's facts unchanged, never unwrapping or copying the union or payload; ref mut needs read/write storage and writes through place.write. The verifier no longer trusts the variant-proven flag alone: the guard must be a union.is-variant of the same variant over the Place root's own union value (value root operand or load of the storage root's storage), and the payload Place must be confined to its true edge, counting only paths that avoid the test so matches inside loops verify (TestPackage15LowersUnionPayloadReferenceBindings, TestPackage15PayloadReferenceBoundaries, TestPackage15VerifierRejectsUnprovenPayloadPlaces)"
     remaining:
       - lower source reference behavior solely from resolved plans
@@ -700,7 +711,6 @@ integrations:
       - prove predecessor integration, architecture boundaries, determinism, and unsupported-feature rejection
       - complete the section-155 acceptance matrix, isolated final gates, governance promotion, and section-156 report
       - "MD-061 § 6 optimization matrix: Semantic IR → Sec MLIR → MLIR/LLVM differential and negative-IR tests (last-use then parent mutation, overlapping/disjoint reborrows, escapes, epoch checks, relocation, cleanup, MMIO/atomics/FFI, false noalias/lifetime); explicit reborrows are lowered in Semantic IR but schema-11 emission (P15-50..58) does not exist yet"
-      - "P15-45 remainder: borrowed Result Ok/Err payloads (Result is not a Semantic IR union, so place.union-payload cannot name its variant), struct-like payload Places (P13 synthetic payload identity) and subjects reached through fields, elements or references (reborrow) are package-15 unsupported with precise reasons"
       - lower static and addressed (fixed-address/MMIO) Place roots, the P15-42 remainder; blocked on the semantic-ir.core-v2 static/addressed storage classes, so these roots are package-15 unsupported today
     deferred:
       - slice values and fixed-array-to-slice borrowing to P16
@@ -1325,6 +1335,52 @@ integrations:
       - command: validate implementation-status.yaml
         result: passed
 
+  - id: lowering.sec-mlir-package21
+    package: SEC-MLIR-P21
+    name: Exact Decimal Semantic Operations
+    area: semantic-ir-sec-mlir-and-lowering
+    status: planned
+    integrated: "2026-10-16"
+    revised: "2026-10-16"
+    summary: >-
+      Package documents installed 2026-10-16; no P21 compiler feature is
+      implemented. Exact decimal/decimal128 constants, operator plans, checked
+      arithmetic with a (candidate, failed, reason) failure CFG, comparison,
+      core methods, conversions with RoundingMode, schema-17 dialect and
+      lowering-v17 passes. Operator scale (D1), the decimal operator error
+      type (D2) and the decimal128 member surface (D3) are open decisions
+      MD-066, MD-067 and MD-068; work that needs them must stay rejected as
+      normative-decision-blocked. Schema 17 depends on schema 16 (P20); the
+      compiler emits schema 11 (since P15-50, 2026-10-16) and the canonical dialect/lowering books are at
+      version 11.
+    predecessors:
+      - SEC-MLIR-P20 (schema 16, not implemented)
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package21.md
+      - rules/mlir/packages/sec-mlir-dialect_package21.yaml
+      - rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md
+      - rules/mlir/normative-sync/sec_p20_october_compatibility_package21.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_decimal_package21.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v17.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v17.md
+      - rules/types/types.md
+      - rules/foundations/operators.md
+      - rules/memory/layout.md
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+      - rules/compiler/semantic_ir.md
+      - rules/errors/errorhandling.md
+      - rules/types/units.md
+    known_holes:
+      - "fixed 2026-10-16 (was a known hole): CKM-DECIMAL-SCALE is now the value property Scale: uint8 of decimal (core-library.md § 10.1) with the core spelling scale accepted as a legacy name (MD-082), no longer a type-qualified static property returning int, and decimal128 has no such member until MD-068 (TestDecimalScaleIsAUint8ValueProperty)"
+      - "fixed 2026-10-16 (was a known hole): decimal literal facts (internal/sema DecimalValue) carry an exact arbitrary-precision coefficient, so decimal128 literals beyond int64 are represented exactly (P21 sync § 8); a literal initializes decimal only if its coefficient fits i64 and decimal128 only if it fits i128 (layout.md components); decimal range checks compare exact values, which also fixes a wrong descending-range error for ranges such as 9.95..10.0 whose raw coefficients compared 995 > 100 (TestDecimalLiteralValueUsesLexeme, TestDecimalLiteralsAreExactAndWidthChecked)"
+      - "corrected by P22 (rules/mlir/normative-sync/sec_p20_p21_conversion_compatibility_package22.md): P20/P21 conversions must not introduce NumericConversionError; MD-012 already settled the canonical `ConversionError` (OutOfRange, InvalidScalar, PrecisionLoss, ScaleOverflow, NonFinite, Contract(ContractError)) declared in sec/core/error.sec (verified 2026-10-16); P21's NumericConversionError references map to ConversionError"
+      - "P21 compatibility audit § 2: P20 assumes binary64 `float`, superseded by MD-014 (target-sized float: f32 on 32-bit, f64 on 64-bit); P20 plans and tests must follow MD-014 before P21 conversions"
+    notes:
+      - "verified 2026-10-16: the package's claim that sec/core/decimal.sec declares `ToString() string` is stale; it already returns Result[string, StringError] (body is a TODO stub)"
+    remaining:
+      - "stage 1: baseline corrections (scale type, wide literal coefficients, ConversionError mapping per P22 compatibility note, P20 MD-014 float width)"
+      - "stages 2-9: exact constants, resolved operator plans, checked arithmetic and failure CFG, comparison/core methods, conversion/rounding, schema-17 dialect/verifiers, lowering/verifiers, regression and target matrix — operator scale, error and decimal128 member work gated on MD-066..MD-068"
   - id: lowering.sec-mlir-checked-integer-arith
     area: mlir-dialect-conversion
     status: implemented
@@ -1398,6 +1454,13 @@ integrations:
       fingerprints, and separate-compilation compatibility without duplicating
       FFI legality or source ownership semantics.
     rules:
+      - rules/mlir/packages/sec-mlir-dialect_package25.md
+      - rules/mlir/packages/sec-mlir-dialect_package25.yaml
+      - rules/mlir/packages/sec-mlir-dialect_package25_decision-index.md
+      - rules/mlir/normative-sync/sec_callable_abi_sync_package25.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_callable_abi_package25.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v21.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v21.md
       - rules/platform/abi.md
       - rules/platform/platform_model.md
       - rules/platform/ffi.md
@@ -1411,6 +1474,7 @@ integrations:
       - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
     remaining:
+      - "SEC-MLIR-P25 (callable ABI classification and foreign representation boundary, schema/lowering v21) installed 2026-10-16, not implemented: one immutable ABIModel per CompilationPlan, CallABIPlan, Semantic IR callable/foreign ABI intent and v21 sec.abi.* dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package25.md, sec_callable_abi_sync_package25.md, sec_semantic_ir_callable_abi_package25.md, sec_mlir_dialect_v21.md, sec_mlir_lowering_v21.md); depends on P24 resolved layouts; no new P25 decision; gated by MD-019, MD-021, MD-045 and MD-052; applied MD-020, MD-023 and MD-024 are to be implemented, not reopened"
       - add canonical ABIIdentity and ABIModel selection to CompilationPlan and make downstream consumers use that resolved model instead of inferring ABI behavior from OS, architecture, target triple, host, or backend defaults
       - resolve Sec, C, and system calling-convention families independently and allow system to reuse C only where the active CompilationPlan explicitly declares physical equivalence
       - define canonical target-neutral ABIArgInfo and ABIValuePart representations for direct, indirect, ignored, split, alignment-sensitive, extension, and transport-attribute classification
@@ -1492,6 +1556,8 @@ integrations:
       - real sec-mlir-opt/MLIR verification is used for represented package paths
       - target-plan scalar/layout support exists for 32-bit and 64-bit plans
       - legacy direct LLVM paths remain for represented compatibility subsets
+    known_holes:
+      - "known hole (verified 2026-10-16): the legacy direct emit-llvm and emit-mlir routes have no static storage; module-level bindings fail as unknown identifiers and function-local statics are rejected (previously miscompiled as stack slots); only Semantic IR represents statics"
     remaining:
       - make Sec MLIR the canonical complete lowering path for all maintained language features
       - retire or clearly isolate legacy direct LLVM semantic duplication

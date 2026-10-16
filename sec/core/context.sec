@@ -1,0 +1,22 @@
+module core
+
+/**
+ * Owns one cancellation-context identity. Runtime state is private.
+ * May be moved or borrowed as ref Context; copying is forbidden.
+ * Rules: rules/concurrency/mutex.md sections 4 and 8.
+ */
+@noCopy
+type Context
+
+/**
+ * Describes operation-local context cancellation or deadline expiration.
+ * Distinct from terminal cancellation of the current task or thread.
+ * Rules: rules/concurrency/mutex.md sections 7 and 24.
+ */
+enum ContextError error {
+    /** The supplied Context was explicitly cancelled before operation commit. */
+    Cancelled
+
+    /** The effective Context deadline expired before operation commit. */
+    DeadlineExceeded
+}

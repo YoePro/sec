@@ -1,0 +1,86 @@
+module historical
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/calendar/historical/historical.sec
+ * Module: historical
+ * Purpose: Jurisdiction-specific historical civil label resolution.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/calendar/historical/std-temporal-calendar-historical.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+import "temporal/calendar"
+
+// Identifies a pinned historical rule profile; it does not load or own data.
+type HistoricalProfile struct {
+    // Profile ID such as a registered Swedish civil adoption profile.
+    Identifier: string,
+    // Exact version of the adopted historical-rule dataset.
+    Revision: string,
+}
+
+// Result of interpreting a local historical date label.
+// Multiple includes all distinct absolute-day candidates; never silently picks one.
+type HistoricalResolution union {
+    // Exactly one matching absolute day exists.
+    Unique(date),
+    // More than one matching absolute day exists under the selected profile.
+    Multiple(date[]),
+    // The named civil date did not occur under the selected rules.
+    Nonexistent,
+    // Available historical evidence does not justify one determined result.
+    Indeterminate,
+}
+
+// Failures to retrieve or apply a historical rule profile.
+enum HistoricalError error {
+    // No implementation exists for the requested operation yet.
+    NotImplemented,
+    // The identifier has no registered rules.
+    UnknownProfile,
+    // The requested pinned dataset is unavailable.
+    DatasetUnavailable,
+    // The dataset does not establish rules for the supplied period.
+    OutsideCoverage,
+    // The civil-label fields are malformed for the profile's general syntax.
+    InvalidLabel,
+}
+
+/**
+ * Resolves a historical civil date label to zero, one or several days.
+ * Description:
+ *   Unlike a proleptic-calendar conversion, respects skipped/repeated
+ *   historical civil labels (e.g. Swedish 1753 reform).
+ * Parameters:
+ *   - fields: Civil year/month/day as historically recorded.
+ *   - profile: Borrowed pinned jurisdiction-specific rule profile.
+ * Returns: Explicit uniqueness, repetition, absence or indeterminate outcome.
+ * Errors: HistoricalError.NotImplemented, UnknownProfile,
+ *         DatasetUnavailable, OutsideCoverage, InvalidLabel.
+ * Ownership: No profile ownership transfer; Multiple may allocate.
+ */
+fn ResolveCivilDate(fields: calendar.CalendarFields, profile: ref HistoricalProfile) Result[HistoricalResolution, HistoricalError] {
+    return Err(HistoricalError.NotImplemented)
+}
+
+/**
+ * Gets the label of the next physical day under a historical civil profile.
+ * Description:
+ *   For Swedish 1753-02-17 this is 1753-03-01. Input is an absolute
+ *   day so repeated/skipped civil labels remain representable.
+ * Parameters:
+ *   - value: Known absolute day immediately before the requested next day.
+ *   - profile: Borrowed, pinned jurisdiction profile.
+ * Returns: Civil label in the profile's calendar for the following day.
+ * Errors: HistoricalError.NotImplemented, UnknownProfile,
+ *         DatasetUnavailable, OutsideCoverage.
+ * Ownership: Pure once the named profile data are provided.
+ */
+fn NextCivilDate(value: date, profile: ref HistoricalProfile) Result[calendar.CalendarFields, HistoricalError] {
+    return Err(HistoricalError.NotImplemented)
+}

@@ -1,0 +1,5 @@
+module main
+
+fn Invalid() ChannelCapability {
+    return ChannelCapability.Priority
+}

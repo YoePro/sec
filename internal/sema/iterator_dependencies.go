@@ -59,6 +59,7 @@ type ForIterationDependencies struct {
 	BackingUnknown           bool
 	Borrows                  []IterationBorrowDependency
 	BodyValid                bool
+	MapEntries               *MapIterationEntries
 }
 
 type activeIterationDependency struct {
@@ -84,6 +85,9 @@ func (a *Analyzer) beginIterationDependencies(stmt *ast.ForStatement, valid bool
 		fact.Source, fact.SourcePlace = ForIteratorReusableStorage, place
 	}
 	category, _, _ := a.forIterationSource(stmt)
+	if category == forCategoryMap {
+		fact.MapEntries = a.mapIterationEntries(stmt, fact.SourceType)
+	}
 	structural := category == forCategorySequential || category == forCategorySet || category == forCategoryMap
 	add := func(place Place, path string, structure bool) {
 		if place.Root == "" {
@@ -248,6 +252,7 @@ func (a *Analyzer) ForIterationDependenciesOf(stmt *ast.ForStatement) (ForIterat
 		return ForIterationDependencies{}, false
 	}
 	fact, ok := a.iterationDependencies[stmt]
+	fact.MapEntries = cloneMapIterationEntries(fact.MapEntries)
 	fact.SourceType = semanticSnapshotType(fact.SourceType)
 	fact.SourcePlace = iterationSnapshotPlace(fact.SourcePlace)
 	fact.Storage = append([]IterationStorageDependency(nil), fact.Storage...)

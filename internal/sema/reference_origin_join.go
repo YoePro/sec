@@ -349,6 +349,15 @@ func (a *Analyzer) seedParameterReferenceOrigin(function Function, param Functio
 		Type:        placeType,
 		Mutable:     param.Type.ReferenceMutable || param.MutableRef,
 		Addressable: true,
+		RootKind:    PlaceRootParameter,
+	}
+	// The origin is the caller-owned storage the parameter refers to; keep
+	// the parameter's root and storage identity so sub-Places reached through
+	// it carry the same facts as the parameter itself (P15-61).
+	if root, ok := a.rootPlace(param.Name); ok {
+		place.RootID = root.RootID
+		place.StorageIdentity = root.StorageIdentity
+		place.AddressSpace = root.AddressSpace
 	}
 	a.localRefContainers[param.Name] = localOriginWithPlaces(localReferenceOrigin{
 		Name:    param.Name,

@@ -189,7 +189,7 @@ func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token 
 		case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression, *ast.SliceExpression:
 			return false
 		default:
-			a.addErrorAtToken(token, "cannot borrow temporary expression; a reusable place is required")
+			a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowNonAddressable, "This expression computes a value but has no independently addressable storage to borrow; only stored Places may be borrowed, subject to their authority and lifetime rules. If a copy is appropriate, store the result in a local variable and borrow that local: the reference then points to the local copy, not to the original property's underlying storage. Otherwise borrow an accessible stored field, or use a property that explicitly returns a reference with a valid lifetime contract.", "cannot borrow temporary expression; a reusable place is required")
 			return true
 		}
 	}
@@ -212,7 +212,7 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 		return true
 	}
 	if !place.Addressable {
-		a.addErrorAtToken(token, "cannot borrow non-addressable place %s", place.String())
+		a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowNonAddressable, "This expression computes a value but has no independently addressable storage to borrow; only stored Places may be borrowed, subject to their authority and lifetime rules. If a copy is appropriate, store the result in a local variable and borrow that local: the reference then points to the local copy, not to the original property's underlying storage. Otherwise borrow an accessible stored field, or use a property that explicitly returns a reference with a valid lifetime contract.", "cannot borrow non-addressable place %s", place.String())
 		return true
 	}
 	if a.checkPlaceAvailableForBorrow(place, token) {
@@ -547,6 +547,7 @@ func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
 //   - rules/memory/copy_move.md — §§8.2–8.3
 //   - rules/declarations/functions.md — §§9 and 13
 //   - rules/declarations/spread.md — consuming destinations
+//   - rules/concurrency/mutex.md — §§42–43,46 (mutable calls weaken resource identity proofs)
 func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, isMethodCall bool) {
 	for sourceIndex, arg := range sourceArgs {
 		param, parameterOK := functionParameterForArgument(function, sourceIndex)
@@ -554,6 +555,9 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 			return
 		}
 		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
+		if param.MutableRef || (param.Type.Kind == ReferenceType && param.Type.ReferenceMutable) {
+			a.invalidateMutexAcquisitionsForWrite(arg)
+		}
 		if param.Ref || param.MutableRef || param.Type.Kind == ReferenceType {
 			continue
 		}

@@ -1,0 +1,106 @@
+module main
+
+fn Same(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    let second := value.Lock()
+    discard second
+    discard first
+}
+
+fn Probe(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    discard value.TryLock()
+    discard first
+}
+
+fn Timed(value: ref Mutex[int], timeout: duration) void {
+    let first := value.Lock()
+    discard value.Lock(timeout)
+    discard first
+}
+
+fn Moved(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    let owner :<- first
+    let second := value.Lock()
+    discard second
+    discard owner
+}
+
+fn Alias(value: ref Mutex[int]) void {
+    let alias := value
+    let first := value.Lock()
+    let second := alias.Lock()
+    discard second
+    discard first
+}
+
+fn Optional(value: ref Mutex[int]) void {
+    let acquired := value.TryLock()
+    match acquired {
+        Some(guard) => {
+            let second := value.Lock()
+            discard second
+            discard guard
+        }
+        None => {}
+    }
+}
+
+type Pair struct {
+    First: Mutex[int],
+    Second: Mutex[int],
+}
+
+fn Stored() void {
+    let state := Pair { First: Mutex(1), Second: Mutex(2) }
+    let alias := ref state.First
+    let first := state.First.Lock()
+    let second := alias.Lock()
+    discard second
+    discard first
+}
+
+fn Contextual(value: ref Mutex[int], context: ref Context) Result[void, ContextError] {
+    let first := try value.Lock(context)
+    let second := value.Lock()
+    discard second
+    discard first
+    return Ok()
+}
+
+fn IfSome(value: ref Mutex[int]) void {
+    let acquired := value.TryLock()
+    if acquired is Some(guard) {
+        let second := value.Lock()
+        discard second
+        discard guard
+    }
+}
+
+fn WithinBranch(value: ref Mutex[int], condition: bool) void {
+    let first := value.Lock()
+    if condition {
+        let second := value.Lock()
+        discard second
+    }
+    discard first
+}
+
+fn ContextHandler(value: ref Mutex[int], context: ref Context) Result[void, ContextError] {
+    let first := try value.Lock(context) {
+        Err(error) => { return Err(error) }
+    }
+    let second := value.Lock()
+    discard second
+    discard first
+    return Ok()
+}
+
+fn ReassignedHeld(value: ref Mutex[int], other: ref Mutex[int]) void {
+    let mut guard := value.Lock()
+    guard = other.Lock()
+    let next := other.Lock()
+    discard next
+    discard guard
+}

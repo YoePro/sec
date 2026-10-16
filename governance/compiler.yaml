@@ -40,6 +40,8 @@ integrations:
     area: target-variant-platform-compilation-plan
     status: planned
     repository_baseline: 998d8d1
+    implemented:
+      - "WebAssembly target registration (2026-10-16): planned freestanding targets unknown-wasm32 (wasm32-unknown-unknown, ILP32) and unknown-wasm64 (wasm64-unknown-unknown, LP64) with the WebAssembly BasicCABI data models (signed char, binary128 long double); parse and check only, emission/link/run rejected (TestWebAssemblyTargetsArePlannedFreestanding); naming, environment and profile await MD-075"
     remaining:
       - implement canonical Target and Variant identities instead of treating os-arch as Target identity
       - resolve one immutable verified CompilationPlan per selected Target x Variant

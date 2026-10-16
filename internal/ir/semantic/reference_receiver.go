@@ -95,6 +95,32 @@ func (fb *functionBuilder) receiverFieldPath(expr ast.Expression) ([]sema.Resolv
 
 // receiverPlace dereferences the receiver once under its validity policy and
 // projects the stored-field path.
+// isReceiverSelf reports a bare `self` naming the enclosing method's receiver.
+func (fb *functionBuilder) isReceiverSelf(expr ast.Expression) bool {
+	identifier, ok := expr.(*ast.Identifier)
+	if !ok || fb.receiver.typ == 0 {
+		return false
+	}
+	use, isReceiver := fb.owner.analyzer.ResolvedImplicitReceiverOf(identifier)
+	return isReceiver && use.Self
+}
+
+// receiverRootPlace dereferences the receiver reference once (validating a
+// dynamic-epoch receiver) and returns the receiver's whole Place.
+func (fb *functionBuilder) receiverRootPlace(loc Location) (builtValue, bool, error) {
+	if fb.receiver.typ == 0 {
+		return builtValue{}, false, fmt.Errorf("self outside an instance method")
+	}
+	metadata := fb.references[fb.receiver.id]
+	refType, _ := fb.owner.module.Types.Lookup(fb.receiver.typ)
+	guard, err := fb.validateReference(fb.receiver, metadata, loc)
+	if err != nil {
+		return builtValue{}, false, err
+	}
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
+	return fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{fb.receiver.id}, Reference: metadata, ReferenceGuard: guard, Location: loc}, placeType), refType.Mutable, nil
+}
+
 func (fb *functionBuilder) receiverPlace(plans []sema.ResolvedStructMemberPlan, steps []ast.Expression) (builtValue, bool, error) {
 	metadata := fb.references[fb.receiver.id]
 	refType, _ := fb.owner.module.Types.Lookup(fb.receiver.typ)
@@ -121,6 +147,11 @@ func (fb *functionBuilder) receiverPlace(plans []sema.ResolvedStructMemberPlan, 
 func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, error) {
 	plans, steps, rooted, ok := fb.receiverFieldPath(expr)
 	if !rooted {
+		return builtValue{}, errNotReference
+	}
+	if _, borrowed := fb.owner.analyzer.ResolvedReferencePlanOf(expr); borrowed {
+		// An implicit call-site borrow of the receiver or a receiver field
+		// is lowered from its reference plan, not read as a value.
 		return builtValue{}, errNotReference
 	}
 	if !ok {
@@ -187,12 +218,12 @@ func (fb *functionBuilder) buildReceiverArgument(call *ast.CallExpression, calle
 	member, ok := call.Callee.(*ast.MemberExpression)
 	if !ok {
 		// A bare method name inside a method calls it on the implicit self.
-		value, err := fb.passReceiver(callee.ReceiverMutable, location(call.Token))
+		value, err := fb.passReceiver(call, callee.ReceiverMutable, location(call.Token))
 		return value, action, err
 	}
 	if identifier, isIdentifier := member.Object.(*ast.Identifier); isIdentifier {
 		if use, isReceiver := fb.owner.analyzer.ResolvedImplicitReceiverOf(identifier); isReceiver && use.Self {
-			value, err := fb.passReceiver(callee.ReceiverMutable, location(identifier.Token))
+			value, err := fb.passReceiver(call, callee.ReceiverMutable, location(identifier.Token))
 			return value, action, err
 		}
 	}
@@ -209,7 +240,7 @@ func (fb *functionBuilder) buildReceiverArgument(call *ast.CallExpression, calle
 // passReceiver passes the enclosing method's own receiver to another
 // instance method: copied when shared, reborrowed when the callee needs a
 // mutable receiver or the caller's receiver is mutable.
-func (fb *functionBuilder) passReceiver(mutable bool, loc Location) (builtValue, error) {
+func (fb *functionBuilder) passReceiver(call *ast.CallExpression, mutable bool, loc Location) (builtValue, error) {
 	if fb.receiver.typ == 0 {
 		return builtValue{}, fmt.Errorf("self outside an instance method")
 	}
@@ -226,5 +257,28 @@ func (fb *functionBuilder) passReceiver(mutable bool, loc Location) (builtValue,
 		fb.recordReference(value.ID, &copied)
 		return builtValue{id: value.ID, typ: fb.receiver.typ}, nil
 	}
-	return builtValue{}, &UnsupportedFeatureError{Feature: "reborrow of a mutable receiver for a nested method call", Package: fb.owner.maxPackage, Location: loc}
+	// A mutable receiver is never copied: it is reborrowed for the call with
+	// the fresh identity Sema resolved, mutable or shared as the callee needs
+	// (package15.md §§ 47-48, 60).
+	facts, ok := fb.owner.analyzer.ResolvedReceiverReborrowOf(call)
+	if !ok || !facts.Checkable() {
+		return builtValue{}, &UnsupportedFeatureError{Feature: "reborrow of a mutable receiver without resolved reborrow facts", Package: fb.owner.maxPackage, Location: loc}
+	}
+	derived := referenceMetadataOf(facts)
+	derived.SourceBorrow = metadata.Borrow
+	if len(derived.OriginStorages) == 0 {
+		derived.OriginStorages = append([]uint32(nil), metadata.OriginStorages...)
+	}
+	if derived.Borrow == derived.SourceBorrow || derived.Validity != metadata.Validity {
+		return builtValue{}, &UnsupportedFeatureError{Feature: "receiver reborrow without a distinct borrow identity or with a different validity policy", Package: fb.owner.maxPackage, Location: loc}
+	}
+	kind, ownership := OpReferenceReborrowShared, OwnershipSharedReference
+	if mutable {
+		kind, ownership = OpReferenceReborrowMutable, OwnershipMutableReference
+	}
+	referenceType := fb.owner.module.Types.Intern(Type{Kind: TypeReference, Element: sourceType.Element, Mutable: mutable})
+	value := fb.newValue(referenceType, ownership, loc)
+	fb.emit(Operation{Kind: kind, Operands: []ValueID{fb.receiver.id}, Results: []Value{value}, Reference: derived, Location: loc})
+	fb.recordReference(value.ID, derived)
+	return builtValue{id: value.ID, typ: referenceType}, nil
 }

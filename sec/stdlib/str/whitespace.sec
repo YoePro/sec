@@ -291,28 +291,272 @@ fn Dedent(value: string) Result[string, CollectionError] {
     return builder.Finish()
 }
 
-fn PadLeft(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Pads a string on the left to a minimum rune length.
+ *
+ * Description:
+ * Prepends copies of the padding rune until the resulting
+ * string contains at least targetLength Unicode scalar values.
+ *
+ * The target length counts runes, not UTF-8 bytes or
+ * terminal display columns.
+ *
+ * If the input already contains at least targetLength runes,
+ * it is returned unchanged.
+ *
+ * The original text is preserved without normalization.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to pad.
+ * - targetLength: Minimum number of runes in the result.
+ * - padding: Unicode scalar value used for padding.
+ *
+ * Returns:
+ * A string padded to the requested minimum rune length.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate when padding is required.
+ */
+fn PadLeft(value: string, targetLength: uint, padding: rune) Result[string, CollectionError] {
+    let mut runeCount: uint := 0
+
+    for character in value {
+        runeCount += 1
+    }
+
+    if runeCount >= targetLength {
+        return Ok(value)
+    }
+
+    let mut builder := try new Builder(value.Len)
+
+    try builder.AppendRepeat(padding, targetLength - runeCount) {
+        Err(_) => {
+            panic "PadLeft: padding count invariant violated"
+        }
+    }
+
+    try builder.Append(value)
+
+    return builder.Finish()
 }
 
+/**
+ * Pads a string on the left with ASCII spaces.
+ *
+ * Description:
+ * Prepends U+0020 spaces until the string contains at least
+ * targetRuneCount Unicode scalar values.
+ *
+ * If the string is already long enough, it is returned
+ * unchanged.
+ *
+ * Length is measured in runes, not UTF-8 bytes or
+ * terminal display columns.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to pad.
+ * - targetRuneCount: Minimum number of runes in the result.
+ *
+ * Returns:
+ * The string padded with spaces on the left.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate when padding is required.
+ */
 fn PadLeft(value: string, targetRuneCount: uint) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return PadLeft(value, targetRuneCount, 32r)
 }
 
-fn PadRight(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+/**
+ * Pads a string on the right to a minimum rune length.
+ *
+ * Description:
+ * Appends copies of the padding rune until the resulting
+ * string contains at least targetLength Unicode scalar values.
+ *
+ * The target length counts runes, not UTF-8 bytes or
+ * terminal display columns.
+ *
+ * If the input already contains at least targetLength runes,
+ * it is returned unchanged.
+ *
+ * The original text is preserved without normalization.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to pad.
+ * - targetLength: Minimum number of runes in the result.
+ * - padding: Unicode scalar value used for padding.
+ *
+ * Returns:
+ * A string padded to the requested minimum rune length.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate when padding is required.
+ */
+fn PadRight(value: string, targetLength: uint, padding: rune) Result[string, CollectionError] {
+    let mut runeCount: uint := 0
+
+    for character in value {
+        runeCount += 1
+    }
+
+    if runeCount >= targetLength {
+        return Ok(value)
+    }
+
+    let paddingCount := try targetLength - runeCount {
+        Err(_) => {
+            panic "PadRight: padding count invariant violated"
+        }
+    }
+
+    let mut builder := try new Builder(value.Len)
+
+    try builder.Append(value)
+    try builder.AppendRepeat(padding, paddingCount)
+
+    return builder.Finish()
 }
 
+/**
+ * Pads a string on the right with ASCII spaces.
+ *
+ * Description:
+ * Appends U+0020 spaces until the string contains at least
+ * targetRuneCount Unicode scalar values.
+ *
+ * If the string is already long enough, it is returned
+ * unchanged.
+ *
+ * Length is measured in runes, not UTF-8 bytes or
+ * terminal display columns.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to pad.
+ * - targetRuneCount: Minimum number of runes in the result.
+ *
+ * Returns:
+ * The string padded with spaces on the right.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate when padding is required.
+ */
 fn PadRight(value: string, targetRuneCount: uint) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return PadRight(value, targetRuneCount, 32r)
 }
 
+/**
+ * Centers a string by padding both sides with a rune.
+ *
+ * Description:
+ * Adds padding runes to both sides until the resulting string
+ * contains at least targetRuneCount Unicode scalar values.
+ *
+ * Padding is distributed as evenly as possible.
+ * When an odd number of padding runes is required, the
+ * additional rune is placed on the right.
+ *
+ * If the input already contains at least targetRuneCount
+ * runes, it is returned unchanged.
+ *
+ * Length is measured in runes, not UTF-8 bytes or
+ * terminal display columns.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to center.
+ * - targetRuneCount: Minimum number of runes in the result.
+ * - padding: Unicode scalar value used for padding.
+ *
+ * Returns:
+ * The centered string with padding on both sides.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate when padding is required.
+ */
 fn Center(value: string, targetRuneCount: uint, padding: rune) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut runeCount: uint := 0
+
+    for character in value {
+        runeCount += 1
+    }
+
+    if runeCount >= targetRuneCount {
+        return Ok(value)
+    }
+
+    let paddingCount := try targetRuneCount - runeCount {
+        Err(_) => {
+            panic "Center: padding count invariant violated"
+        }
+    }
+
+    let leftCount := try paddingCount / 2 {
+        Err(_) => {
+            panic "Center: padding division invariant violated"
+        }
+    }
+
+    let rightCount := try paddingCount - leftCount {
+        Err(_) => {
+            panic "Center: right padding invariant violated"
+        }
+    }
+
+    let mut builder := try new Builder(value.Len)
+
+    try builder.AppendRepeat(padding, leftCount)
+    try builder.Append(value)
+    try builder.AppendRepeat(padding, rightCount)
+
+    return builder.Finish()
 }
 
+/**
+ * Centers a string using ASCII spaces.
+ *
+ * Description:
+ * Pads both sides of the string with U+0020 spaces until
+ * it contains at least targetRuneCount Unicode scalar values.
+ *
+ * When an odd number of spaces is required, the extra
+ * space is placed on the right.
+ *
+ * If the string is already long enough, it is returned
+ * unchanged.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to center.
+ * - targetRuneCount: Minimum number of runes in the result.
+ *
+ * Returns:
+ * The centered string padded with spaces.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate when padding is required.
+ */
 fn Center(value: string, targetRuneCount: uint) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return Center(value, targetRuneCount, 32r)
 }
 
 /**
@@ -348,21 +592,45 @@ fn _IsWhitespaceRune(character: rune) bool {
  * Appends a line after removing the common indentation.
  *
  * Description:
- * Removes the exact indentation prefix when present.
- * Otherwise preserves the entire line unchanged.
+ * Removes the exact common indentation prefix from a line.
+ *
+ * Lines containing only ASCII spaces and tabs are
+ * converted to empty lines, regardless of indentation
+ * length.
+ *
+ * Content-bearing lines that do not start with the
+ * common indentation are preserved unchanged.
+ *
+ * Line separators are handled by the caller.
  *
  * Parameters:
  * - builder: Destination for the resulting text.
  * - line: The line without its line separator.
  * - indentation: The common indentation to remove.
  *
+ * Returns:
+ * Success after appending the processed line.
+ *
  * Errors:
- * - CollectionError: Appending the line failed.
+ * - CollectionError: Allocation or capacity failure.
  *
  * Allocation:
  * May grow the destination builder.
  */
 fn _AppendDedentedLine(builder: ref mut Builder, line: string, indentation: string) Result[void, CollectionError] {
+    let mut indentationOnly := true
+
+    for character in line {
+        if character != 32r && character != 9r {
+            indentationOnly = false
+            break
+        }
+    }
+
+    if indentationOnly {
+        return Ok()
+    }
+
     if line.StartsWith(indentation) {
         let suffix := try line.Slice(indentation.Len, line.Len) {
             Err(_) => {

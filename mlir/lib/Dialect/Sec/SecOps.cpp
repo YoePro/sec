@@ -891,3 +891,355 @@ LogicalResult UnreachableOp::verify() {
     return emitOpError("requires a non-empty reason");
   return success();
 }
+
+// ---------------------------------------------------------------------------
+// Schema 11 (SEC-MLIR-P15) Place and direct-reference operations. Each op
+// checks its local type, authority and metadata contract; guard dominance,
+// borrow semantics and Place escapes are checked by the dedicated passes.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 6-29;
+// rules/mlir/packages/sec-mlir-dialect_package15.md sections 63-82.
+
+namespace {
+FailureOr<PlaceType> requirePlace(Operation *operation, Type type,
+                                  StringRef role) {
+  auto place = dyn_cast<PlaceType>(type);
+  if (!place)
+    return operation->emitOpError() << role << " must have !sec.place type";
+  return place;
+}
+
+bool isReadWrite(PlaceType place) {
+  return place.getAuthority().getValue() == "rw";
+}
+
+LogicalResult verifyPlaceRootMetadata(Operation *operation,
+                                      uint32_t rootID, uint32_t storageID,
+                                      StringRef addressSpace) {
+  if (rootID == 0)
+    return operation->emitOpError("place_root_id must be non-zero");
+  if (addressSpace != "ordinary" && addressSpace != "mmio")
+    return operation->emitOpError("address_space must be ordinary or mmio");
+  (void)storageID;
+  return success();
+}
+
+// Reference facts are complete and policy-consistent: a proven reference
+// names its closed proof and has no epoch dependency; a dynamic-epoch
+// reference names its invalidation domain and epoch dependency.
+template <typename OpT>
+LogicalResult verifyReferenceMetadata(OpT op) {
+  if (op.getBorrowId() == 0 || op.getLifetimeId() == 0)
+    return op.emitOpError("borrow_id and lifetime_id must be non-zero");
+  if (op.getAddressStability().empty() || op.getProvenance().empty())
+    return op.emitOpError("address_stability and provenance must be non-empty");
+  StringRef policy = op.getValidityPolicy();
+  if (policy == "proven") {
+    if (!op.getValidityProof() || op.getValidityProof()->empty())
+      return op.emitOpError("a proven reference requires validity_proof");
+    if (op.getEpochDependency())
+      return op.emitOpError("a proven reference has no epoch_dependency");
+    return success();
+  }
+  if (policy == "dynamic-epoch") {
+    if (!op.getInvalidationDomain() || *op.getInvalidationDomain() == 0 ||
+        !op.getEpochDependency() || *op.getEpochDependency() == 0)
+      return op.emitOpError(
+          "a dynamic-epoch reference requires invalidation_domain and epoch_dependency");
+    return success();
+  }
+  return op.emitOpError("validity_policy must be proven or dynamic-epoch");
+}
+
+// A derived reference names a source borrow distinct from its own borrow.
+template <typename OpT>
+LogicalResult verifyDerivedBorrow(OpT op) {
+  if (!op.getSourceBorrow() || *op.getSourceBorrow() == 0 ||
+      *op.getSourceBorrow() == op.getBorrowId())
+    return op.emitOpError(
+        "a reborrow derives a new borrow_id from a distinct non-zero source_borrow");
+  return success();
+}
+
+FailureOr<Type> referentOf(Type type, bool *mutableReference) {
+  if (auto shared = dyn_cast<RefType>(type)) {
+    *mutableReference = false;
+    return shared.getElementType();
+  }
+  if (auto exclusive = dyn_cast<RefMutType>(type)) {
+    *mutableReference = true;
+    return exclusive.getElementType();
+  }
+  return failure();
+}
+} // namespace
+
+LogicalResult PlaceValueOp::verify() {
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(place))
+    return failure();
+  if (isReadWrite(*place))
+    return emitOpError("a value Place root is read-only");
+  if (place->getElementType() != getValue().getType())
+    return emitOpError("Place element type must match the rooted value type");
+  return verifyPlaceRootMetadata(*this, getPlaceRootId(), getStorageIdentity(),
+                                 getAddressSpace());
+}
+
+LogicalResult PlaceStorageOp::verify() {
+  auto storage = dyn_cast<StorageType>(getStorage().getType());
+  if (!storage)
+    return emitOpError("operand must have !sec.storage type");
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(place))
+    return failure();
+  if (place->getElementType() != storage.getElementType())
+    return emitOpError("Place element type must match the storage element type");
+  return verifyPlaceRootMetadata(*this, getPlaceRootId(), getStorageIdentity(),
+                                 getAddressSpace());
+}
+
+LogicalResult PlaceFieldOp::verify() {
+  auto base = requirePlace(*this, getBase().getType(), "base");
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(base) || failed(place))
+    return failure();
+  auto structType = dyn_cast<StructType>(base->getElementType());
+  if (!structType)
+    return emitOpError("base Place must denote a !sec.struct");
+  auto field = lookupStructField(structType, getFieldAttr(), *this);
+  if (failed(field))
+    return failure();
+  if (place->getElementType() != field->getType())
+    return emitOpError("result Place must denote the selected field type");
+  if (isReadWrite(*place) && !isReadWrite(*base))
+    return emitOpError("a field Place cannot exceed its base authority");
+  return success();
+}
+
+LogicalResult PlaceArrayIndexInBoundsOp::verify() {
+  auto base = requirePlace(*this, getBase().getType(), "base");
+  if (failed(base))
+    return failure();
+  if (!isa<ArrayType>(base->getElementType()))
+    return emitOpError("base Place must denote a fixed !sec.array");
+  if (!isBuiltinIntegerSemanticType(getIndex().getType()))
+    return emitOpError("index must have a builtin Sec integer semantic type");
+  if (getIndexSigned() != isSignedIntegerSemanticType(getIndex().getType()))
+    return emitOpError("index_signed must match the index semantic type");
+  return success();
+}
+
+LogicalResult PlaceArrayElementOp::verify() {
+  auto base = requirePlace(*this, getBase().getType(), "base");
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(base) || failed(place))
+    return failure();
+  auto array = dyn_cast<ArrayType>(base->getElementType());
+  if (!array)
+    return emitOpError("base Place must denote a fixed !sec.array");
+  if (!isBuiltinIntegerSemanticType(getIndex().getType()))
+    return emitOpError("index must have a builtin Sec integer semantic type");
+  if (place->getElementType() != array.getElementType())
+    return emitOpError("result Place must denote the array element type");
+  if (place->getAuthority() != base->getAuthority())
+    return emitOpError("an element Place keeps its base authority");
+  return verifyArrayBoundsMetadata(*this, getBoundsKind(), getBoundsProof());
+}
+
+LogicalResult PlaceUnionPayloadOp::verify() {
+  auto base = requirePlace(*this, getBase().getType(), "base");
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(base) || failed(place))
+    return failure();
+  if (place->getAuthority() != base->getAuthority())
+    return emitOpError("a payload Place keeps its base authority");
+  Type payload;
+  if (auto result = dyn_cast<ResultType>(base->getElementType())) {
+    int64_t variant = getVariantAttr().getInt();
+    if (variant != 0 && variant != 1)
+      return emitOpError("a Result payload variant is 0 (Ok) or 1 (Err)");
+    payload = variant == 0 ? result.getSuccessType() : result.getErrorType();
+  } else {
+    auto variant =
+        lookupUnionVariant(base->getElementType(), getVariantAttr(), *this);
+    if (failed(variant))
+      return failure();
+    StringRef kind = variant->getKind().getValue();
+    if (kind == "single") {
+      payload = variant->getPayload();
+    } else if (kind == "fields") {
+      // A struct-like payload is addressed as its canonical synthetic
+      // payload struct: the same fields in declaration order.
+      auto structType = dyn_cast<StructType>(place->getElementType());
+      ArrayAttr fields = variant->getFields();
+      if (!structType || structType.getFields().size() != fields.size())
+        return emitOpError(
+            "a fields payload Place must denote its synthetic payload struct");
+      for (auto [index, attribute] : llvm::enumerate(fields)) {
+        auto unionField = cast<UnionFieldAttr>(attribute);
+        auto structField = cast<StructFieldAttr>(structType.getFields()[index]);
+        if (unionField.getName() != structField.getName() ||
+            unionField.getType() != structField.getType())
+          return emitOpError(
+              "a fields payload Place must denote its synthetic payload struct");
+      }
+      return success();
+    } else {
+      return emitOpError("the selected variant has no payload");
+    }
+  }
+  if (place->getElementType() != payload)
+    return emitOpError("result Place must denote the variant payload type");
+  return success();
+}
+
+LogicalResult PlaceDerefOp::verify() {
+  bool mutableReference = false;
+  auto referent = referentOf(getReference().getType(), &mutableReference);
+  if (failed(referent))
+    return emitOpError("operand must be !sec.ref or !sec.ref_mut");
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(place))
+    return failure();
+  if (place->getElementType() != *referent)
+    return emitOpError("result Place must denote the referent type");
+  if (isReadWrite(*place) != mutableReference)
+    return emitOpError(
+        "!sec.ref dereferences to a ro Place and !sec.ref_mut to a rw Place");
+  return success();
+}
+
+LogicalResult PlaceReadOp::verify() {
+  auto place = requirePlace(*this, getPlace().getType(), "operand");
+  if (failed(place))
+    return failure();
+  if (getResult().getType() != place->getElementType())
+    return emitOpError("result type must match the Place element type");
+  if (getAction() != "copy-trivial")
+    return emitOpError("schema-11 Place reads are copy-trivial");
+  return success();
+}
+
+LogicalResult PlaceWriteOp::verify() {
+  auto place = requirePlace(*this, getPlace().getType(), "operand");
+  if (failed(place))
+    return failure();
+  if (!isReadWrite(*place))
+    return emitOpError("a write requires a rw Place");
+  if (getValue().getType() != place->getElementType())
+    return emitOpError("value type must match the Place element type");
+  return success();
+}
+
+LogicalResult RefBorrowSharedOp::verify() {
+  auto place = requirePlace(*this, getPlace().getType(), "operand");
+  if (failed(place))
+    return failure();
+  auto reference = dyn_cast<RefType>(getReference().getType());
+  if (!reference || reference.getElementType() != place->getElementType())
+    return emitOpError("result must be !sec.ref of the Place element type");
+  return verifyReferenceMetadata(*this);
+}
+
+LogicalResult RefBorrowMutOp::verify() {
+  auto place = requirePlace(*this, getPlace().getType(), "operand");
+  if (failed(place))
+    return failure();
+  if (!isReadWrite(*place))
+    return emitOpError("a mutable borrow requires a rw Place");
+  auto reference = dyn_cast<RefMutType>(getReference().getType());
+  if (!reference || reference.getElementType() != place->getElementType())
+    return emitOpError("result must be !sec.ref_mut of the Place element type");
+  return verifyReferenceMetadata(*this);
+}
+
+LogicalResult RefCopySharedOp::verify() {
+  if (!isa<RefType>(getSource().getType()) ||
+      getSource().getType() != getReference().getType())
+    return emitOpError("copies a !sec.ref to the same !sec.ref type; !sec.ref_mut is never copied");
+  return verifyReferenceMetadata(*this);
+}
+
+LogicalResult RefMoveOp::verify() {
+  if (!isa<RefMutType>(getSource().getType()) ||
+      getSource().getType() != getReference().getType())
+    return emitOpError("moves a !sec.ref_mut to the same !sec.ref_mut type");
+  return verifyReferenceMetadata(*this);
+}
+
+LogicalResult RefReborrowSharedOp::verify() {
+  auto reference = dyn_cast<RefType>(getReference().getType());
+  if (!reference)
+    return emitOpError("result must be !sec.ref");
+  Type source = getSource().getType();
+  bool mutableSource = false;
+  if (auto referent = referentOf(source, &mutableSource); succeeded(referent)) {
+    if (*referent != reference.getElementType())
+      return emitOpError("a reborrow of a reference keeps its referent type");
+  } else if (auto place = dyn_cast<PlaceType>(source)) {
+    if (place.getElementType() != reference.getElementType())
+      return emitOpError("a sub-Place reborrow denotes the Place element type");
+  } else {
+    return emitOpError("source must be a reference or a dereferenced sub-Place");
+  }
+  if (failed(verifyDerivedBorrow(*this)))
+    return failure();
+  return verifyReferenceMetadata(*this);
+}
+
+LogicalResult RefReborrowMutOp::verify() {
+  auto reference = dyn_cast<RefMutType>(getReference().getType());
+  if (!reference)
+    return emitOpError("result must be !sec.ref_mut");
+  Type source = getSource().getType();
+  bool mutableSource = false;
+  if (auto referent = referentOf(source, &mutableSource); succeeded(referent)) {
+    if (!mutableSource)
+      return emitOpError("no shared-to-mutable reborrow");
+    if (*referent != reference.getElementType())
+      return emitOpError("a reborrow of a reference keeps its referent type");
+  } else if (auto place = dyn_cast<PlaceType>(source)) {
+    if (!isReadWrite(place))
+      return emitOpError("a mutable sub-Place reborrow requires a rw Place");
+    if (place.getElementType() != reference.getElementType())
+      return emitOpError("a sub-Place reborrow denotes the Place element type");
+  } else {
+    return emitOpError("source must be a reference or a dereferenced sub-Place");
+  }
+  if (failed(verifyDerivedBorrow(*this)))
+    return failure();
+  return verifyReferenceMetadata(*this);
+}
+
+LogicalResult RefIsValidOp::verify() {
+  bool mutableReference = false;
+  if (failed(referentOf(getReference().getType(), &mutableReference)))
+    return emitOpError("operand must be !sec.ref or !sec.ref_mut");
+  return success();
+}
+
+LogicalResult RefCompareOp::verify() {
+  if (getPredicate() != "eq" && getPredicate() != "ne")
+    return emitOpError("predicate must be eq or ne");
+  bool leftMutable = false, rightMutable = false;
+  auto left = referentOf(getLhs().getType(), &leftMutable);
+  auto right = referentOf(getRhs().getType(), &rightMutable);
+  if (failed(left) || failed(right) || *left != *right)
+    return emitOpError("compares direct references to the same referent type");
+  return success();
+}
+
+LogicalResult RefEndBorrowOp::verify() {
+  bool mutableReference = false;
+  if (failed(referentOf(getReference().getType(), &mutableReference)))
+    return emitOpError("operand must be !sec.ref or !sec.ref_mut");
+  if (getBorrowId() == 0 || getLifetimeId() == 0)
+    return emitOpError("borrow_id and lifetime_id must be non-zero");
+  return success();
+}
+
+LogicalResult FailReferenceGenerationOp::verify() {
+  if (getReason() != "panic.invalid-reference-generation")
+    return emitOpError("reason must be panic.invalid-reference-generation");
+  return success();
+}

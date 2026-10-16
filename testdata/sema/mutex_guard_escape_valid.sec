@@ -1,0 +1,53 @@
+module main
+
+fn Forward(-> guard: MutexGuard[int]) MutexGuard[int] { return guard }
+fn Acquire(value: ref Mutex[int]) MutexGuard[int] { return value.Lock() }
+fn Local(value: ref Mutex[int]) void {
+    let guard := Acquire(value)
+    let forwarded := Forward(<-guard)
+    discard forwarded
+}
+
+fn Closure(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let callback := capture(<-guard) fn() void { discard guard }
+    callback()
+}
+
+fn Nothing() void {}
+fn Parent(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let work := spawn Nothing()
+    discard guard
+    await work
+}
+
+fn BorrowMutex(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    discard guard
+}
+fn TransferMutex(value: ref Mutex[int]) void {
+    let work := spawn BorrowMutex(value)
+    await work
+}
+
+fn TakeSender(sender: Sender[MutexGuard[int]]) void { discard sender }
+fn TransportHandle(sender: Sender[MutexGuard[int]]) void {
+    let work := spawn TakeSender(<-sender)
+    await work
+}
+
+type Phantom[T] struct { Count: int, }
+fn TakePhantom(value: Phantom[MutexGuard[int]]) void { discard value }
+fn PhantomTransfer() void {
+    let value := Phantom[MutexGuard[int]] { Count: 1 }
+    let work := spawn TakePhantom(value)
+    await work
+}
+
+fn Invoke(callback: fn() void) void { callback() }
+fn KnownCallable() void {
+    let callback := Nothing
+    let work := spawn Invoke(callback)
+    await work
+}

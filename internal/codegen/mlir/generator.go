@@ -632,6 +632,12 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 	if stmt.Name == nil {
 		return fmt.Errorf("emit-mlir let missing name")
 	}
+	// A function-local static keeps one storage location across calls
+	// (rules/declarations/static.md § 4); a stack slot would re-initialize it
+	// on every call, so reject it instead of miscompiling.
+	if stmt.Static {
+		return fmt.Errorf("emit-mlir does not support function-local static storage yet")
+	}
 	if stmt.Address != nil || stmt.AddressToken.Lexeme != "" {
 		return fmt.Errorf("emit-mlir does not support addressed let declarations yet")
 	}

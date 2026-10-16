@@ -2686,10 +2686,11 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	p.rejectAdditionalTypeDeclarationNames(stmt.Name.Value)
 
-	// rules/concurrency/mutex.md §13(1), cancellation.md §43(4):
-	// only the canonical opaque Instant declaration omits its base type.
+	// rules/concurrency/mutex.md §§5–6,8,13(1), cancellation.md §43(4):
+	// the canonical opaque runtime identities omit their base type.
 	// Source provenance and declaration ownership are checked by Sema.
-	if stmt.Name.Value == "Instant" && len(stmt.GenericParameters) == 0 &&
+	if ((stmt.Name.Value == "Instant" && len(stmt.GenericParameters) == 0) ||
+		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context") &&
 		(p.peekToken.Type == lexer.EOF || p.peekToken.Line > p.curToken.Line) {
 		return stmt
 	}
@@ -4662,7 +4663,8 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 			// rules/compiler/parser_recovery.md, "Invalid field type": after the
 			// field and colon commit this grammar alternative, retain an invalid
 			// type node instead of abandoning the field or its later siblings.
-			if !isTypeStart(p.peekToken.Type) {
+			// `unsafe` goes on to parseTypeReference for its MD-059 diagnostic.
+			if !isTypeStart(p.peekToken.Type) && p.peekToken.Type != lexer.UNSAFE {
 				unexpected := p.peekToken
 				p.addDiagnostic(
 					compilerdiagnostics.ParserInvalidTypeReference,
@@ -5488,6 +5490,20 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		return ref
 	}
 
+	if p.curToken.Type == lexer.UNSAFE && p.peekToken.Type != lexer.FN {
+		unexpected := p.curToken
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidTypeReference, unexpected, nil, &unexpected,
+			"expected a type, got `unsafe`: `unsafe` marks declarations and blocks, not types")
+		return p.invalidTypeReference(unexpected, "")
+	}
+	if p.curToken.Type == lexer.UNSAFE && p.peekToken.Type == lexer.FN {
+		// MD-059: Sec 0.1 deliberately has no unsafe function type; unsafe
+		// is a property of declarations, and foreign callables use c::fn.
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidTypeReference, p.curToken, nil, nil,
+			"Sec 0.1 has no unsafe function type: `unsafe` belongs to function declarations, not to fn(...) types; call an unsafe function directly inside `unsafe { }` or wrap it in a safe function that discharges its obligations")
+		p.nextToken()
+		return p.markInvalidTypeReference(p.parseFunctionTypeReference())
+	}
 	if p.curToken.Type == lexer.FN {
 		return p.parseFunctionTypeReference()
 	}
@@ -6489,7 +6505,9 @@ func (p *Parser) expectPeek(t lexer.TokenType) bool {
 }
 
 func (p *Parser) expectPeekTypeStart() bool {
-	if isTypeStart(p.peekToken.Type) {
+	// `unsafe` in a type position is diagnosed by parseTypeReference: Sec 0.1
+	// has no unsafe function type (MD-059).
+	if isTypeStart(p.peekToken.Type) || p.peekToken.Type == lexer.UNSAFE {
 		p.nextToken()
 		return true
 	}
@@ -6957,6 +6975,10 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 		return nil
 	}
 
+	if invalid := p.rejectIndexedDeclarationMutation(target, stmt.Token, true); invalid != nil {
+		return invalid
+	}
+
 	if !p.isAssignmentOperator(p.peekToken.Type) {
 		tryExpr := &ast.TryExpression{Token: stmt.Token, Expression: target}
 		if p.peekToken.Type == lexer.LBRACE {
@@ -7005,6 +7027,10 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 	}
 	if p.isPostfixMutationAlias(p.peekToken.Type) && p.peekToken.Line == p.curToken.Line {
 		return p.parsePostfixMutationAlias(token, expr)
+	}
+
+	if invalid := p.rejectIndexedDeclarationMutation(expr, token, false); invalid != nil {
+		return invalid
 	}
 
 	if !p.isAssignmentOperator(p.peekToken.Type) {
@@ -7494,7 +7520,8 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		p.nextToken()
 		colon := p.curToken
 
-		if p.peekToken.Type == lexer.EOF || (p.isStatementStart(p.peekToken.Type) && !isTypeStart(p.peekToken.Type)) {
+		unsafeType := p.peekToken.Type == lexer.UNSAFE // diagnosed by parseTypeReference (MD-059)
+		if p.peekToken.Type == lexer.EOF || (p.isStatementStart(p.peekToken.Type) && !isTypeStart(p.peekToken.Type) && !unsafeType) {
 			p.addError(
 				"let statement missing type after ':' at %d:%d",
 				colon.Line,

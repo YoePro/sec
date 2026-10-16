@@ -150,4 +150,5 @@ func (a *Analyzer) setCallReferenceOrigin(expr *ast.CallExpression, function Fun
 	}
 	origin := a.instantiateFunctionReturnOrigin(function.ReturnOrigin, args, receiver)
 	a.expressionReferenceOrigins[expr] = origin
+	a.recordCallReferenceFacts(expr, function, origin)
 }

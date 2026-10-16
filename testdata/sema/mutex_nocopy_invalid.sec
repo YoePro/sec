@@ -1,0 +1,27 @@
+module main
+
+fn CopyMutex() void {
+    let first := Mutex(1)
+    let second := first
+}
+
+fn CopyGuard(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    let second := first
+}
+
+fn ReuseMutex() void {
+    let first := Mutex(1)
+    let second :<- first
+    discard first.Lock()
+    discard second
+}
+
+fn FakeStorage() void {
+    let first := Mutex[int] {}
+    let second := MutexGuard[int] {}
+}
+
+fn Hidden(value: ref Mutex[int]) void {
+    discard value.Value
+}

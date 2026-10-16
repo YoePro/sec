@@ -1,0 +1,20 @@
+module core
+
+/**
+ * Owns one protected T and one synchronization identity.
+ * Cannot be copied; an owned value may move when address-stability rules permit.
+ * Runtime synchronization storage is private.
+ * Rules: rules/concurrency/mutex.md sections 4–5 and 46.
+ */
+@noCopy
+type Mutex[T]
+
+/**
+ * Owns exactly one exclusive mutex acquisition.
+ * Cannot be copied; moves must stay within the same execution entity.
+ * The final owner releases the acquisition on deterministic destruction.
+ * Runtime acquisition state is private.
+ * Rules: rules/concurrency/mutex.md sections 6 and 28.
+ */
+@noCopy
+type MutexGuard[T]

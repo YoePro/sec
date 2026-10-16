@@ -114,3 +114,85 @@ func (a *Analyzer) recordReceiverReferencePlan(callee Function, receiver ast.Exp
 	}
 	a.recordReferencePlan(receiver, place, callee.ReceiverMutable, true, expressionToken(receiver))
 }
+
+// recordReceiverReborrow publishes, for an instance-method call on the
+// enclosing method's own mutable receiver (`Bump()` or `self.Bump()` inside a
+// mutating method), the facts of the reborrow that passes it: a fresh
+// BorrowID/LifetimeID at the call, derived from the receiver, with the
+// callee's receiver authority (shared or mutable). A shared caller receiver is
+// copied, not reborrowed, and needs no new identity.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 47, 48, 60
+//   - rules/declarations/impl.md — § 8 "self"
+func (a *Analyzer) recordReceiverReborrow(call *ast.CallExpression, callee Function) {
+	if a.summaryPass || !functionUsesReceiver(callee) || callee.ReceiverConsuming || !functionUsesReceiver(a.currentFunctionMetadata) || !a.currentFunctionMetadata.ReceiverMutable {
+		return
+	}
+	switch callee := call.Callee.(type) {
+	case *ast.Identifier:
+	case *ast.MemberExpression:
+		receiver, ok := callee.Object.(*ast.Identifier)
+		if !ok {
+			return
+		}
+		if use, isReceiver := a.implicitReceiverUses[receiver]; !isReceiver || !use.Self {
+			return
+		}
+	default:
+		return
+	}
+	place, ok := a.resolvePlace(&ast.Identifier{Token: call.Token, Value: "self"})
+	if !ok {
+		return
+	}
+	place.RootKind = PlaceRootReceiver
+	if a.receiverReborrows == nil {
+		a.receiverReborrows = map[*ast.CallExpression]ReferenceFacts{}
+	}
+	a.receiverReborrows[call] = a.referenceFactsForPlace(place, callee.ReceiverMutable, call.Token)
+}
+
+// ResolvedReceiverReborrowOf returns the facts of the reborrow that passes
+// the enclosing method's own mutable receiver to an instance-method call.
+func (a *Analyzer) ResolvedReceiverReborrowOf(call *ast.CallExpression) (ReferenceFacts, bool) {
+	if a == nil {
+		return ReferenceFacts{}, false
+	}
+	facts, ok := a.receiverReborrows[call]
+	return cloneReferenceFacts(facts), ok
+}
+
+// statementMutablyBorrowsReceiver reports a `ref mut` borrow rooted at the
+// receiver (self or an unshadowed implicit member) anywhere in stmt, or a
+// `ref mut` payload binding of a match whose subject is rooted at the
+// receiver. Nested statements are found by the reflective identifier walk's
+// node visitor, so no expression form is missed.
+func statementMutablyBorrowsReceiver(stmt ast.Statement, memberNames map[string]bool, shadowed map[string]bool) bool {
+	receiverRooted := func(expr ast.Expression) bool {
+		root, ok := expressionRootIdentifier(expr)
+		return ok && (root == "self" || memberNames[root] && !shadowed[root])
+	}
+	found := false
+	ast.Visit(stmt, func(node any) bool {
+		if found {
+			return false
+		}
+		switch node := node.(type) {
+		case *ast.RefExpression:
+			if node.Mutable && receiverRooted(node.Value) {
+				found = true
+			}
+		case *ast.MatchExpression:
+			if receiverRooted(node.Subject) {
+				for _, arm := range node.Arms {
+					if arm != nil && arm.Pattern != nil && arm.Pattern.Binding != nil && arm.Pattern.Binding.Mode == ast.MatchBindingMutableRef {
+						found = true
+					}
+				}
+			}
+		}
+		return !found
+	})
+	return found
+}

@@ -127,7 +127,7 @@
   {
     "name": "DefaultOwning",
     "value": "[]",
-    "source": "array"
+    "source": "empty-dynamic-array"
   },
   {
     "name": "DefaultLarge",

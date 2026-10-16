@@ -54,6 +54,13 @@ func TestISRAllocationGuarantees(t *testing.T) {
 				if e.Line != expected.root || e.PreviousLine != expected.cause || e.File != file || e.PreviousFile != file || e.AllocationCause == nil || !strings.Contains(e.Help, "unsafe does not waive") || strings.Contains(e.Help, "remove @noAlloc") {
 					t.Fatalf("%s/%s: %+v", depth, name, e)
 				}
+				proof := diagnostics.ProofInvalid
+				if expected.unknown {
+					proof = diagnostics.ProofUnproven
+				}
+				if e.ProofState != proof {
+					t.Fatalf("%s: proof %s, want %s", name, e.ProofState, proof)
+				}
 				g := a.CallGraph()
 				summary := g.ArenaSummary(callGraphNodeIDByName(t, g, name))
 				if summary.MayAllocate == expected.unknown || summary.AllocationUnknown != expected.unknown {

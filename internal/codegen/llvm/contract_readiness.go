@@ -18,8 +18,10 @@ import (
 // Character literals retain their exact Sema-resolved char/rune representation.
 // Complete string-length conjunctions support native bodyless checked conversions;
 // other contract families are rejected before their invariants can be erased.
+// Allocation primitives require a representation preserving the selected domain.
 // Rules: rules/types/contracts.md — Mutation and Conversion failure layers;
 // rules/compiler/compiler_pipeline.md — lowering prerequisites;
+// rules/memory/allocation.md — §§25(5),26(1)–(3);
 // rules/types/types.md — "int and uint", "Character literal", "Context shaping";
 // correction5.md — canonical scalar facts;
 // rules/corrections/applied/md043-char-rune-literal-correction-20261008.md — §§2–3.
@@ -89,6 +91,9 @@ func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple stri
 	}
 	g.stringFacts = facts
 	g.characterTypes = characters
+	if err := analyzer.ValidateAllocationLoweringReadiness(program, ""); err != nil {
+		return "", err
+	}
 	return g.Generate(&output)
 }
 

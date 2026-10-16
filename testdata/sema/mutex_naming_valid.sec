@@ -1,0 +1,11 @@
+module main
+
+fn LockValue(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    discard guard
+}
+
+@noBlock
+fn Probe(value: ref Mutex[int]) void {
+    discard value.TryLock()
+}

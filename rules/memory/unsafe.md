@@ -734,6 +734,10 @@ layout/alignment/extent
 
 § 39(5) Effect and trust summaries remain attached to the callable value/target set.
 
+§ 39(6) Sec 0.1 has no general first-class unsafe function type: native `FunctionType` has no `unsafe` form, every native function value is a safe callable, and `let operation: unsafe fn() void` is invalid. § 39(4) therefore has no Sec 0.1 source instance. An `unsafe fn` *declaration* and its explicitly authorized direct calls inside an unsafe context remain valid (MD-059, 2026-10-16, `rules/corrections/applied/md059-ffi-unsafe-callables-correction-20261016.md` § 2).
+
+§ 39(7) An unsafe Sec function is never converted — implicitly, by a plain type assertion or by entering `unsafe` — into a safe `fn(...)`, `mut fn(...)` or `-> fn(...)` value; such a use is `S1141` / `unsafe.function-value-mismatch`. A safe wrapper that genuinely discharges every caller obligation (§ 39(3)) is the way to obtain a safe callable; placing an unsafe call inside `unsafe` is not evidence that the obligations were satisfied, and a wrapper that only forwards an unchecked raw pointer is not sound merely because its declaration omits `unsafe` (MD-059 §§ 2(4), 5(1)–(2), 8(1)).
+
 ---
 
 ## § 40 Interfaces
@@ -748,6 +752,8 @@ layout/alignment/extent
 
 § 40(5) Unknown dynamic target safety is conservative.
 
+§ 40(6) Named unsafe methods and unsafe interface requirements remain valid where the declaration rules permit them; an unsafe interface requirement is not itself a first-class unsafe function-value type (MD-059 § 3).
+
 ---
 
 ## § 41 Generics
@@ -759,6 +765,8 @@ layout/alignment/extent
 § 41(3) Specialization may prove an operation safe and remove an unnecessary unsafe boundary only when canonical semantics permit it.
 
 § 41(4) Trust provenance from unsafe generic dependencies remains available for analysis/tooling.
+
+§ 41(5) Generic code preserves the safety contracts of the named functions and methods it invokes through established constraints; generic substitution never infers or synthesizes an unsafe callable type (MD-059 § 3(3)).
 
 ---
 

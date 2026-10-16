@@ -1,0 +1,4 @@
+module main
+extern "Sec" fn Native(value: int32) int32
+fn Forward(value: int32) int32 { return Native(value) }
+fn main() void { let value := Forward(1) }

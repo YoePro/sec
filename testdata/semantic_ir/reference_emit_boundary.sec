@@ -1,0 +1,14 @@
+module main
+
+type Cell struct {
+    v: int,
+}
+
+fn Read(cell: ref Cell) int {
+    return cell.v
+}
+
+fn main() int {
+    let cell := Cell { v: 1 }
+    return Read(ref cell)
+}

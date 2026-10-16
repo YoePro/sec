@@ -14,7 +14,7 @@ type BlockEffectKind string
 
 const (
 	// BlockEffectOperation is a represented waiting operation: await,
-	// Sender.Send/SendRevocable, Receiver.Receive, Mutex.lock, or select
+	// Sender.Send/SendRevocable, Receiver.Receive, Mutex.Lock, or select
 	// without default.
 	BlockEffectOperation BlockEffectKind = "may-block"
 	// BlockEffectForeign is a call to an extern function without a trusted

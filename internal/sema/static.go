@@ -131,9 +131,18 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 		}
 		switch candidate := candidate.(type) {
 		case *ast.RuntimeCallExpression, *ast.NewExpression, *ast.TryExpression,
-			*ast.SpawnExpression, *ast.AwaitExpression, *ast.LambdaExpression,
-			*ast.RefExpression:
+			*ast.SpawnExpression, *ast.AwaitExpression, *ast.LambdaExpression:
 			invalid = true
+		case *ast.RefExpression:
+			// A reference to static storage is a legal static reference in a
+			// materialized static (compile_time_evaluation.md § 36(2);
+			// static.md § 5); a borrow of anything else needs runtime state.
+			// Implementation choice awaiting confirmation: MD-081.
+			root, rooted := borrowRootName(candidate.Value)
+			symbol, exists := a.symbols[root]
+			if !rooted || !exists || symbol.Local || symbol.Storage != StorageOriginStatic {
+				invalid = true
+			}
 		case *ast.CallExpression:
 			callee, ok := typePathFromExpression(candidate.Callee)
 			if !ok && candidate.Function != nil {

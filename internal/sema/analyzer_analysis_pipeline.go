@@ -40,6 +40,7 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 		{id: "no-alloc", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 60,
 			run: once(func() {
 				a.validateNoAllocGuarantees(program)
+				a.validateInterruptAllocationCoverage(program)
 				a.validateNoAllocTargetRoots(program)
 			})},
 		{id: "no-block", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 70,

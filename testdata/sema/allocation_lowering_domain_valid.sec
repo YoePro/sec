@@ -1,0 +1,4 @@
+module main
+fn Allocate(arena: ref mut Arena) void {
+    discard arena.Alloc[byte](4u)
+}

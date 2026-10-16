@@ -172,7 +172,7 @@ integrations:
   - id: tooling.destruction
     area: diagnostics-lsp-formatter-traceability-destruction
     status: partial
-    revised: "2026-10-12"
+    revised: "2026-10-16"
     evidence:
       code:
         - internal/sema/ownership_use_diagnostics.go
@@ -207,6 +207,7 @@ integrations:
       - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
+      - rules/control-flow/discard.md
     implemented:
       - Current frontend already emits selected move/resource/defer diagnostics with related source locations.
       - Formatter/LSP already preserve several ownership/move constructs and expose initial ownership facts.
@@ -214,10 +215,10 @@ integrations:
       - Custom-free partial-move diagnostics name the free declaration, explain that cleanup requires complete self with every owned field available, and suggest moving the complete value or redesigning ownership. S1085 and its links/help are shared by all compiler frontend gates and LSP.
       - CST formatting preserves discard, defer, free and explicit moves in declarations, assignments, consuming parameters, calls, payloads, captures and returns. Consuming parameter and capture markers attach to their binding; both vertical styles retain redundant discard, comments and literals without inserting or removing cleanup operations. CLI and LSP use the same formatter.
       - Destruction/use-after-move diagnostics expose named navigation links to move, discard, consuming call, Result projection, release or represented return origins and the source ownership declaration. Loop/conditional/mixed-path witnesses retain uncertainty rather than claiming one operation occurred on every path; unavailable source locations produce no fabricated links.
+      - Optional redundant-discard advice A2006 (ownership.redundant-discard) is information by default and follows the shared project off/info/warning/error policy (2026-10-16). After mandatory semantic analysis succeeds, proven no-op discards of already unavailable direct bindings or stored fields retain source links to the earlier ownership-ending action. Conditional availability, reinitialization, backedge probes, dead paths, deferred bodies and computed/ambiguous projections do not establish this advice. Promotion happens after mandatory analysis, never changes ownership transitions and supplies no automatic edit; invalid semantic snapshots withhold the advisory. All-depth/reanalysis, real CLI project policy, unsaved LSP severity/reload and mandatory use-after diagnostics are verified.
     remaining:
       - mentor diagnostics must explain which value is affected, where ownership/destruction responsibility originated, what earlier move/discard/replacement changed it, and how to fix the source safely
       - diagnose conditional cleanup requiring forbidden runtime bookkeeping and suggest static restructuring or explicit discard convergence
-      - optionally surface the configured low-priority redundancy advisory for a statically redundant discard without changing semantic validity
       - surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful
       - update stale rulebook paths from destruction.md to destruction.md opportunistically without creating fake normative corrections
       - support compiler source comments/traceability references to stable destruction § clauses
@@ -229,6 +230,12 @@ integrations:
       - LSP hover can show non-trivial destruction and cleanup owner without implying null/Option semantics
       - formatter round-trips free, defer, discard, and ownership move syntax without semantic change
     verification:
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestRedundantDiscard|TestOwnershipNavigation|Test.*Discard|Test.*Destruction' -count=1
+        result: "passed on 2026-10-16: all-depth/reanalysis policy matrix, information default, project CLI and unsaved LSP policy reload, earlier ownership navigation, mandatory safety independent of optional policy, invalid-snapshot suppression and existing destruction/discard regressions"
+      - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-16 after configurable redundant-discard advice and invalid-snapshot suppression; full main Sema, diagnostic registry, maintained IR and CLI suites
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-12; all three complete suites passed with named terminal ownership-action navigation, source-owner links and conservative loop/conditional/mixed-path witnesses
       - command: go vet ./...
@@ -243,6 +250,18 @@ integrations:
         result: passed on 2026-10-12; targeted Sema, formatter, CLI and LSP tests cover custom-free mentorship, all six compiler frontend gates and cleanup/move formatting; CST had no tests matching this filter and its full suite was verified separately
       - command: go test ./internal/sema ./internal/formatter ./internal/cst -count=1
         result: passed on 2026-10-12; custom-free diagnostics retain S1085 and identify the complete-self invariant and free declaration; cleanup/move syntax is preserved in both vertical styles with attached consuming parameter and capture markers; remaining 9 to 7 for this ID
+    code:
+      - internal/sema/discard_advisory.go
+      - internal/sema/analyzer_discard.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/discard_advisory_test.go
+      - cmd/compiler/discard_advisory_test.go
+      - cmd/lsp/discard_advisory_test.go
+      - testdata/tooling/redundant_discard_valid.sec
+      - testdata/tooling/redundant_discard_invalid.sec
+      - cmd/lsp/main_test.go
 
   - id: tooling.lifetime-analysis
     area: diagnostics-lsp-analysis-tooling

@@ -19,7 +19,7 @@ func TestCompilerKnownFundamentalMembers(t *testing.T) {
 	input := `
 module main
 
-fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
+fn Test(text: string, runes: rune[2], ptr: RawPtr[int], amount: decimal) void {
 	let canonicalLength: uint := text.Len
 	let migrationLength: uint := text.len
 	let valueSize: uint := text.SizeOf
@@ -27,7 +27,7 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
 	let minimum: int32 := int32.Min
 	let maximum: int32 := int32.Max
 	let bits: uint := int32.Bits
-	let decimalScale: int := decimal.Scale
+	let decimalScale: uint8 := amount.Scale
 	let formatted: Result[string, StringError] := true.ToString()
 	let bytes: byte[] := text.ToByteArray()
 	let chars: char[] := text.ToCharArray()

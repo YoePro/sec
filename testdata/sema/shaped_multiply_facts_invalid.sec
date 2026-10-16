@@ -1,0 +1,10 @@
+module main
+fn BadInner(left: matrix[int, 4, 3], right: matrix[int, 2, 5]) void {
+    let product := left x right
+}
+fn BadScalar(left: matrix[int, 4, 3], right: vector[float32, 3]) void {
+    let product := left x right
+}
+fn Overflow(left: matrix[int, 4294967296, 1], right: matrix[int, 1, 4294967296]) void {
+    let product := left x right
+}

@@ -24,12 +24,14 @@ type storageDomainDependency struct {
 // stored value is recorded as an escape to that storage domain; the store is
 // valid only when every referent is itself static storage, because the
 // destination outlives every invocation. Owned values that carry no
-// reference are ordinary value transfers and are not checked here.
+// reference are ordinary value transfers except execution-bound guards, which
+// cannot be retained in shared storage even when they own no references.
 //
 // Rules:
 //   - rules/analysis/escape_analysis.md — "Static and thread-local destinations", "StaticStorage / ThreadLocalStorage", "Canonical sinks" (StaticStore, ThreadLocalStore), "Diagnostic categories"
 //   - rules/memory/lifetime_analysis.md — § 19 "Static, global, and thread-local storage"
 //   - rules/memory/references.md — § 7 "Lifetime relationship"
+//   - rules/concurrency/mutex.md — §39(5)
 func (a *Analyzer) checkStorageDomainStore(target ast.Expression, targetType Type, value ast.Expression, valueType Type) bool {
 	root, ok := borrowRootName(target)
 	if !ok {
@@ -39,12 +41,15 @@ func (a *Analyzer) checkStorageDomainStore(target ast.Expression, targetType Typ
 	if !ok || (symbol.Storage != StorageOriginStatic && symbol.Storage != StorageOriginThreadLocal) {
 		return false
 	}
-	if !typeContainsReference(targetType, map[string]bool{}) {
-		return false
-	}
 	destination, id, domain := EscapeDestinationStaticStorage, diagnostics.StaticStoreOfShortLivedReference, "static"
 	if symbol.Storage == StorageOriginThreadLocal {
 		destination, id, domain = EscapeDestinationThreadLocalStorage, diagnostics.ThreadLocalStoreOfShortLivedReference, "thread-local"
+	}
+	if a.checkMutexGuardEscape(value, valueType, expressionToken(target), domain+" storage", destination) {
+		return true
+	}
+	if !typeContainsReference(targetType, map[string]bool{}) {
+		return false
 	}
 	dependencies := a.storageDomainDependencies(explicitMoveSource(value), valueType, targetType)
 	a.recordStorageDomainEscapeFacts(dependencies, value, valueType, destination)

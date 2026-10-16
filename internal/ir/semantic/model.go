@@ -262,6 +262,9 @@ type Module struct {
 	Enums       []EnumDefinition
 	Unions      []UnionDefinition
 	Structs     []StructDefinition
+	// Statics are the module's static-duration storage locations
+	// (semantic_ir.md § 28), in identity order.
+	Statics []Static
 }
 
 type Function struct {
@@ -282,7 +285,47 @@ type Function struct {
 	// so later stages need not re-derive it; NoPanicSource names its origin.
 	NoPanic       bool
 	NoPanicSource string
+	// ReturnOrigins is the returned-reference origin summary of a function
+	// whose result is a direct reference: the finite set of external roots
+	// and projection paths the result may refer to (package15.md § 62).
+	ReturnOrigins []ReturnOrigin
 	Location      Location
+}
+
+// ReturnOriginKind names the external root of a returned reference.
+type ReturnOriginKind string
+
+const (
+	ReturnOriginParameter ReturnOriginKind = "parameter"
+	ReturnOriginReceiver  ReturnOriginKind = "receiver"
+	ReturnOriginStatic    ReturnOriginKind = "static"
+)
+
+// ReturnOriginStepKind is one projection below a returned reference's root.
+type ReturnOriginStepKind string
+
+const (
+	ReturnOriginField   ReturnOriginStepKind = "field"
+	ReturnOriginElement ReturnOriginStepKind = "element"
+)
+
+// ReturnOriginStep is a stored-field projection (by P13 field identity) or a
+// fixed-array element projection (constant Index, or nil for a dynamic one).
+type ReturnOriginStep struct {
+	Kind  ReturnOriginStepKind
+	Field StructFieldID
+	Index *big.Int
+}
+
+// ReturnOrigin is one possible origin of a returned reference: a parameter
+// by position or the receiver, and the projection path below its referent.
+// Source names are never the identity.
+type ReturnOrigin struct {
+	Kind      ReturnOriginKind
+	Parameter int
+	// Static is the module static of a static origin.
+	Static StaticID
+	Path   []ReturnOriginStep
 }
 
 type MatchID uint32
@@ -631,6 +674,7 @@ type Operation struct {
 	Decimal             *DecimalConstant
 	FloatLexeme         string
 	Storage             StorageID
+	Static              StaticID
 	Callee              FunctionID
 	ArgumentActions     []ArgumentAction
 	Successors          []BranchTarget

@@ -246,6 +246,13 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	if compilerKnownPointerReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true})
 	}
+	// core-library.md § 10.1 declares the decimal value property
+	// `scale: uint8`; the canonical member spelling is PascalCase with the
+	// core spelling kept as a legacy name, as for Ptr/ptr and Len/len.
+	// decimal128 members wait for MD-068 (P21-D3).
+	if typ.Kind == DecimalType && typ.Name != "decimal128" && typ.Underlying != "decimal128" {
+		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", LegacyNames: []string{"scale"}, Kind: CompilerKnownProperty, Result: builtinType("uint8")})
+	}
 	if compilerKnownValueSizeReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-VALUE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: uintType})
 	}
@@ -305,11 +312,12 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		)
 	}
 	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
+	members = append(members, compilerKnownAtomicMembers(sequence)...)
+	members = append(members, compilerKnownMutexMembers(sequence)...)
 	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(*sequence.Element), StructuralMutation: true},
 		)
 	}
 	if compilerKnownMutableSlice(typ) {
@@ -329,15 +337,9 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		}
 	}
 	if sequence.Name == "list" && len(sequence.TypeArgs) == 1 {
-		element := sequence.TypeArgs[0]
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinType("CollectionError")), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-LIST-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(element), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-LIST-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType, StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-LIST-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
-			CompilerKnownMember{ID: "CKM-LIST-INDEXOF", Name: "IndexOf", Kind: CompilerKnownMethod, Result: compilerKnownOption(uintType)},
 			CompilerKnownMember{ID: "CKM-LIST-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinType("void")},
 			CompilerKnownMember{ID: "CKM-LIST-SORT", Name: "Sort", Kind: CompilerKnownMethod, Result: builtinType("void")},
 			CompilerKnownMember{ID: "CKM-LIST-SORTBY", Name: "SortBy", Kind: CompilerKnownMethod, Result: builtinType("void")},
@@ -345,16 +347,11 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	}
 	if sequence.Name == "map" && len(sequence.TypeArgs) == 2 {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-MAP-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: compilerKnownOption(sequence.TypeArgs[1]), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-MAP-CONTAINSKEY", Name: "ContainsKey", Kind: CompilerKnownMethod, Result: boolType},
 			CompilerKnownMember{ID: "CKM-MAP-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
 		)
 	}
 	if sequence.Name == "set" && len(sequence.TypeArgs) == 1 {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-SET-ADD", Name: "Add", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinType("CollectionError")), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-SET-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType, StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-SET-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
 			CompilerKnownMember{ID: "CKM-SET-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-SET-UNION", Name: "Union", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinType("CollectionError"))},
 			CompilerKnownMember{ID: "CKM-SET-INTERSECTION", Name: "Intersection", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinType("CollectionError"))},
@@ -383,6 +380,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			CompilerKnownMember{ID: "CKM-ARENA-RELEASE", Name: "Release", Kind: CompilerKnownMethod, Result: builtinType("void")},
 		)
 	}
+	members = append(members, compilerKnownCollectionOutcomeMembers(sequence)...)
 	members = append(members, compilerKnownCancellationMembers(sequence)...)
 	members = append(members, compilerKnownThreadMembers(sequence)...)
 	return members
@@ -523,9 +521,6 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		for _, name := range []string{"Min", "Max", "Epsilon", "Infinity", "NegativeInfinity", "NaN"} {
 			members = append(members, CompilerKnownMember{ID: "CKM-FLOAT-" + strings.ToUpper(name), Name: name, Kind: CompilerKnownProperty, Result: typ})
 		}
-	}
-	if typ.Kind == DecimalType {
-		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", Kind: CompilerKnownProperty, Result: builtinType("int")})
 	}
 	if typ.Kind == StringType {
 		// Materializing a string can fail to allocate, and FromByteArray also

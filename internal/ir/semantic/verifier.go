@@ -34,6 +34,9 @@ func Verify(module *Module) error {
 	if err := verifyStructDefinitions(module); err != nil {
 		return err
 	}
+	if _, err := verifyStatics(module); err != nil {
+		return err
+	}
 	functions := map[FunctionID]*Function{}
 	for _, fn := range module.Functions {
 		if fn == nil {
@@ -539,7 +542,7 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyPlaceReferenceFunction(module, fn, blocks, values); err != nil {
 		return err
 	}
-	return nil
+	return verifyReturnOrigins(module, fn)
 }
 
 func verifyMatchRecords(types *TypeTable, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
@@ -695,6 +698,17 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 		if (op.Kind == OpDirectCall && callee.Extern) || (op.Kind == OpForeignCall && !callee.Extern) {
 			return fmt.Errorf("call kind disagrees with extern status")
+		}
+		if len(op.Results) == 1 {
+			// A returned direct reference carries the caller-side facts
+			// instantiated from the callee's origin summary (package15.md § 62).
+			if _, isReference := referenceType(module.Types, op.Results[0].Type); isReference {
+				if err := verifyReferenceMetadata(op); err != nil {
+					return err
+				}
+			} else if op.Reference != nil {
+				return fmt.Errorf("call without a reference result carries reference facts")
+			}
 		}
 		if len(op.Operands) != len(callee.Parameters) || len(op.ArgumentActions) != len(op.Operands) {
 			return fmt.Errorf("call argument arity mismatch")
@@ -982,6 +996,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		OpReferenceReborrowMutable, OpReferenceIsValid, OpReferenceGenerationFailure, OpReferenceEndBorrow,
 		OpReferenceCompare:
 		if err := verifyPlaceReferenceOperation(module, op, values, storages); err != nil {
+			return err
+		}
+	case OpStaticLoad, OpStaticStore, OpPlaceStaticRoot:
+		if err := verifyStaticOperation(module, op, values); err != nil {
 			return err
 		}
 	default:
@@ -1526,6 +1544,7 @@ func verifyUnionPayloadPlaces(fn *Function, blocks map[BlockID]*Block, values ma
 		block      BlockID
 		trueBlock  BlockID
 		falseBlock BlockID
+		isErr      bool
 	}
 	tests := map[ValueID]test{}
 	definitions := map[ValueID]Operation{}
@@ -1538,12 +1557,17 @@ func verifyUnionPayloadPlaces(fn *Function, blocks map[BlockID]*Block, values ma
 			for _, successor := range op.Successors {
 				graph[block.ID] = append(graph[block.ID], successor.Block)
 			}
-			if op.Kind != OpUnionIsVariant || len(op.Results) != 1 || len(op.Operands) != 1 || index+1 >= len(block.Operations) {
+			if (op.Kind != OpUnionIsVariant && op.Kind != OpResultIsErr) || len(op.Results) != 1 || len(op.Operands) != 1 || index+1 >= len(block.Operations) {
 				continue
 			}
 			branch := block.Operations[index+1]
 			if branch.Kind == OpCondBranch && len(branch.Successors) == 2 && len(branch.Operands) == 1 && branch.Operands[0] == op.Results[0].ID {
-				tests[op.Results[0].ID] = test{container: op.Operands[0], variant: op.UnionVariant, block: block.ID, trueBlock: branch.Successors[0].Block, falseBlock: branch.Successors[1].Block}
+				variant := op.UnionVariant
+				if op.Kind == OpResultIsErr {
+					// result.is-err proves Err (variant 1) on its true edge.
+					variant = 1
+				}
+				tests[op.Results[0].ID] = test{container: op.Operands[0], variant: variant, block: block.ID, trueBlock: branch.Successors[0].Block, falseBlock: branch.Successors[1].Block, isErr: op.Kind == OpResultIsErr}
 			}
 		}
 	}
@@ -1553,22 +1577,24 @@ func verifyUnionPayloadPlaces(fn *Function, blocks map[BlockID]*Block, values ma
 				continue
 			}
 			guard, ok := tests[op.VariantGuard]
+			if ok && guard.isErr && op.UnionVariant == 0 {
+				// The Ok payload is proven on the false edge of result.is-err.
+				guard.variant = 0
+				guard.trueBlock, guard.falseBlock = guard.falseBlock, guard.trueBlock
+			}
 			if !ok || guard.variant != op.UnionVariant {
 				return fmt.Errorf("place.union-payload in ^%d does not name a matching union.is-variant guard", block.ID)
 			}
 			if len(op.Operands) != 1 {
 				return fmt.Errorf("invalid place.union-payload")
 			}
-			root, rooted := definitions[op.Operands[0]]
-			sameUnion := false
-			switch {
-			case rooted && root.Kind == OpPlaceValueRoot && len(root.Operands) == 1:
-				sameUnion = root.Operands[0] == guard.container
-			case rooted && root.Kind == OpPlaceStorageRoot:
-				load, loaded := definitions[guard.container]
-				sameUnion = loaded && load.Kind == OpStorageLoad && load.Storage == root.Storage
-			}
-			if !sameUnion {
+			// The payload Place and the tested union value must denote the
+			// same storage: the same root (an SSA value, a storage, or the
+			// dereference of one reference value) reached through the same
+			// stored fields.
+			read, readOK := definitions[guard.container]
+			readFromPayloadBase := readOK && read.Kind == OpPlaceRead && len(read.Operands) == 1 && read.Operands[0] == op.Operands[0]
+			if !readFromPayloadBase && !samePlaceChain(placeChainOf(op.Operands[0], definitions), valueChainOf(guard.container, definitions)) {
 				return fmt.Errorf("place.union-payload in ^%d is not a payload of the union its guard tested", block.ID)
 			}
 			// A loop may lead the false edge back to the test itself, which
@@ -1579,6 +1605,98 @@ func verifyUnionPayloadPlaces(fn *Function, blocks map[BlockID]*Block, values ma
 		}
 	}
 	return nil
+}
+
+// placeChain is a canonical Place path: a root kind and key plus the stored
+// field path from the root.
+type placeChain struct {
+	kind   string
+	key    uint64
+	fields []StructFieldID
+	ok     bool
+}
+
+func placeChainOf(id ValueID, definitions map[ValueID]Operation) placeChain {
+	var reversed []StructFieldID
+	for {
+		op, ok := definitions[id]
+		if !ok {
+			return placeChain{}
+		}
+		switch op.Kind {
+		case OpPlaceField:
+			if len(op.Operands) != 1 {
+				return placeChain{}
+			}
+			reversed = append(reversed, op.StructField)
+			id = op.Operands[0]
+			continue
+		case OpPlaceValueRoot:
+			if len(op.Operands) != 1 {
+				return placeChain{}
+			}
+			return placeChain{kind: "value", key: uint64(op.Operands[0]), fields: reverseFields(reversed), ok: true}
+		case OpPlaceStorageRoot:
+			return placeChain{kind: "storage", key: uint64(op.Storage), fields: reverseFields(reversed), ok: true}
+		case OpReferenceDerefPlace:
+			if len(op.Operands) != 1 {
+				return placeChain{}
+			}
+			return placeChain{kind: "deref", key: uint64(op.Operands[0]), fields: reverseFields(reversed), ok: true}
+		}
+		return placeChain{}
+	}
+}
+
+// valueChainOf follows a value back through struct.extract-field to the root
+// it was read from: an SSA value, a storage load, or a place.read of a Place.
+func valueChainOf(id ValueID, definitions map[ValueID]Operation) placeChain {
+	var reversed []StructFieldID
+	for {
+		op, ok := definitions[id]
+		if !ok {
+			return placeChain{kind: "value", key: uint64(id), fields: reverseFields(reversed), ok: true}
+		}
+		switch op.Kind {
+		case OpStructExtractField:
+			if len(op.Operands) != 1 {
+				return placeChain{}
+			}
+			reversed = append(reversed, op.StructField)
+			id = op.Operands[0]
+			continue
+		case OpStorageLoad:
+			return placeChain{kind: "storage", key: uint64(op.Storage), fields: reverseFields(reversed), ok: true}
+		case OpPlaceRead:
+			if len(op.Operands) != 1 {
+				return placeChain{}
+			}
+			base := placeChainOf(op.Operands[0], definitions)
+			base.fields = append(base.fields, reverseFields(reversed)...)
+			return base
+		}
+		return placeChain{kind: "value", key: uint64(id), fields: reverseFields(reversed), ok: true}
+	}
+}
+
+func reverseFields(fields []StructFieldID) []StructFieldID {
+	out := make([]StructFieldID, len(fields))
+	for index, field := range fields {
+		out[len(fields)-1-index] = field
+	}
+	return out
+}
+
+func samePlaceChain(left, right placeChain) bool {
+	if !left.ok || !right.ok || left.kind != right.kind || left.key != right.key || len(left.fields) != len(right.fields) {
+		return false
+	}
+	for index := range left.fields {
+		if left.fields[index] != right.fields[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // verifyArrayIndexGuards enforces the explicit P14 guard provenance contract.

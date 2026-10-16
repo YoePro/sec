@@ -1,0 +1,55 @@
+module main
+
+fn ClosureLeaf() void { let work := fn() void {} }
+fn Forward() void { ClosureLeaf() }
+fn RecursiveA() void { RecursiveB() }
+fn RecursiveB() void {
+    ClosureLeaf()
+    RecursiveA()
+}
+
+type Cleanup struct { value: int }
+impl Cleanup { free {} }
+fn CleanupLeaf() void { let owned := Cleanup { value: 0 } }
+
+fn AllocatingWorker() void { let arena := Arena.WithCapacity(64u) }
+@noAlloc
+@noPanic
+@noBlock
+extern "Sec" fn Trusted() void
+
+@isr
+fn DirectClosure() void { let work := fn() void {} }
+@interrupt(vector: 3)
+fn BoundRoot() void { Forward() }
+@interruptSafe
+fn RecursiveRoot() void { RecursiveA() }
+@interruptSafe
+fn DeferredRoot() void { defer { Forward() } }
+@interruptSafe
+fn CleanupRoot() void { CleanupLeaf() }
+@isr
+@noAlloc
+unsafe fn UnsafeRoot() void { unsafe { Forward() } }
+@interruptSafe
+fn SpawnRoot() void {
+    let worker := spawn AllocatingWorker()
+    detach worker
+}
+@interruptSafe
+fn MixedRoot() void {
+    Forward()
+    AllocatingWorker()
+}
+
+type Service struct { value: int }
+impl Service {
+    @interruptSafe
+    fn Check() void { Forward() }
+}
+
+@isr
+fn Pure() void {}
+@interruptSafe
+fn TrustedControl() void { Trusted() }
+fn Ordinary() void { ClosureLeaf() }

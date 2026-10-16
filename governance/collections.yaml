@@ -96,6 +96,7 @@ integrations:
     code:
       - internal/sema/analyzer.go
       - internal/sema/types.go
+      - internal/sema/shaped_algebra.go
     tests:
       - internal/sema/analyzer_test.go
     implemented:
@@ -116,6 +117,9 @@ integrations:
       - reuse that fact for Len, SizeOf, dense strides, storage eligibility, Semantic IR, and lowering
     bug_reference:
       - correction27.md
+    verification:
+      - command: go test ./internal/sema -run 'TestShapedMultiply|TestStaticShapedExtent' -count=1
+        result: Passed on 2026-10-16 after extracting canonical static extent validation into shaped_algebra.go and using it for derived x result shapes; broader Len/SizeOf/stride/layout/lowering reuse remains open.
 
   - id: frontend.shaped-contextual-x
     area: frontend-shaped-algebra
@@ -124,7 +128,7 @@ integrations:
     repository_baseline: c515862
     rulebook_generation: v2
     document_revision: "2.0"
-    summary: Parser and Sema implement static contextual matrix x algebra. The result element is derived through ordinary scalar multiplication and must support stable ordinary scalar accumulation; operand element types need not be identical merely because the shaped operands differ. Runtime-shaped x and resolved Semantic IR facts remain.
+    summary: Parser and Sema implement static contextual matrix x algebra and publish detached canonical operator facts for Semantic IR/lowering consumers. Scalar product and compatible accumulation determine the result element; derived shape counts are checked against target uint. Runtime-shaped x with ShapeError and executable shaped IR/lowering remain separate work.
     rules:
       - rules/collections/shaped-types.md
       - rules/foundations/operators.md
@@ -132,8 +136,18 @@ integrations:
     code:
       - internal/parser/expression.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/shaped_algebra.go
+      - internal/sema/shaped_algebra_facts.go
     tests:
       - internal/sema/analyzer_test.go
+      - internal/sema/shaped_algebra_facts_test.go
+      - internal/ir/semantic/shaped_algebra_facts_test.go
+      - cmd/compiler/shaped_algebra_test.go
+      - cmd/lsp/shaped_algebra_test.go
+      - testdata/sema/shaped_multiply_facts_valid.sec
+      - testdata/sema/shaped_multiply_facts_invalid.sec
+      - testdata/sema/shaped_multiply_target_extent.sec
     implemented:
       - contextual identifier x recognized as infix operator only when followed by an expression
       - x uses PRODUCT precedence
@@ -146,18 +160,25 @@ integrations:
       - result element type derived from ordinary scalar multiplication
       - product-term accumulation validated through ordinary scalar addition semantics
       - focused Sema tests exercise the active subset
+      - "Canonical static x plans (2026-10-16): ResolvedShapedMultiplyOf publishes the matrix/matrix or matrix/vector kind, operand/result shape and exact retained counts, scalar product/accumulator type surfaces, contraction extents, proven shape check and source location. Queries return detached numeric/unit/shape facts without inference, diagnostics or identity allocation; invalid algebra and overflowing derived result shapes publish no plan. Result counts are recomputed through the canonical target-uint validator instead of inheriting an operand count. Main inference and static extent validation are extracted from the oversized analyzer files. Sema all-depth/reanalysis and 32/64 checks, external Semantic IR query consumption, CLI and unsaved LSP diagnostics are verified; runtime-shaped x and executable shaped IR/lowering are not implemented by these facts."
     partial:
       - runtime shaped x and ShapeError behavior remain absent
-      - no explicit resolved shaped-algebra fact is published to Semantic IR
     remaining:
       - implement runtime-shaped x with ShapeError and try where required
-      - publish canonical resolved x facts for Semantic IR/lowering
     bug_reference:
       - correction27.md
     governance_reconciliation:
       - "Move contextual x from a wholly-remaining description to an explicit partial implementation: parser, precedence, static matrix/matrix and matrix/vector Sema, shape checks, and tests already exist."
       - Record the active same-element restriction/result-type shortcut as incorrect relative to shaped-types v2.
       - Keep runtime ShapeError, complete scalar algebra, Semantic IR, and lowering work as remaining.
+    revised: "2026-10-16"
+    verification:
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: "Passed on 2026-10-16: full main Sema, Semantic IR and compiler suites after static shaped multiplication facts and canonical derived-result validation."
+      - command: go vet ./internal/sema ./internal/ir/... ./cmd/compiler ./cmd/lsp
+        result: Passed on 2026-10-16.
+      - command: go test ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -race -run 'TestShapedMultiply|TestContextualMatrixMultiply|TestStaticShapedExtent' -count=1
+        result: "Passed on 2026-10-16: static matrix/matrix and matrix/vector plans, exact result counts, zero extents, 32/64 derived-result overflow, detached read-only queries, all depths, analyzer reuse, external Semantic IR consumption and actual CLI/unsaved LSP diagnostics."
 
   - id: frontend.shaped-types
     area: frontend-and-lowering
@@ -232,7 +253,7 @@ integrations:
     status: partial
     integrated: "2026-08-07"
     audited: "2026-08-18"
-    revised: "2026-10-14"
+    revised: "2026-10-16"
     summary: >-
       Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
       against the unified collections rulebook. Parser/type recognition and
@@ -242,6 +263,7 @@ integrations:
       - rules/collections/collections.md
       - rules/types/types.md
       - rules/corrections/applied/md027-md033-md036-md054-contextual-literals-formatter-configuration-correction-20261012.md
+      - rules/corrections/applied/correction26-20260823.md
     code:
       - internal/ast
       - internal/parser
@@ -253,6 +275,7 @@ integrations:
       - internal/lsp
       - internal/sema/analyzer_inference.go
       - internal/diagnostics/diagnostics.go
+      - internal/sema/type_equality.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -269,6 +292,12 @@ integrations:
       - cmd/compiler/dynamic_array_literal_test.go
       - cmd/lsp/dynamic_array_literal_test.go
       - testdata/sema/dynamic_array_literal_invalid.sec
+      - internal/sema/array_identity_test.go
+      - cmd/compiler/array_identity_test.go
+      - cmd/lsp/array_identity_test.go
+      - testdata/sema/array_identity_valid.sec
+      - testdata/sema/array_identity_invalid.sec
+      - testdata/sema/array_nominal_equality_invalid.sec
     implemented:
       - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
       - Sema recognition and arity validation for compiler-known collection families
@@ -283,9 +312,9 @@ integrations:
       - sec/core/rune.sec IsLowerLetter builds its table as an inferred fixed rune array of range segments (2026-10-05)
       - "MD-058 capacity surface (2026-10-12, collections.md §§ 3.1, 13.12, 14.3, 14.8, 15.2, 15.5, 16; rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md): the compiler-known registry gives every list, map and set a read-only Capacity (CKM-LIST/MAP/SET-CAPACITY), and dynamic forms (no ConstArgs bound) Reserve(additional: uint) Result[void, CollectionError] (structural mutation) and the associated factory WithCapacity(capacity: uint) Result[Collection, CollectionError]; list[T].WithCapacity (parsed as an indexed owner) and map[K, V]/set[T].WithCapacity (type arguments on the call) resolve their receiver type; bounded forms, T[], slices and fixed arrays reject Reserve and WithCapacity, T[] keeps no Capacity, and no Capacity() method exists; synthetic LSP declarations document every new member (TestCollectionCapacityReservationSurface, TestCollectionCapacityReservationRejections)"
       - Nonempty literals targeting owning T[] are rejected with mandatory S1155 (collections.dynamic-array-literal-invalid), a source location and guidance to use an empty mutable owner plus Append or fixed T[N]. Range segments retain S1119. Contextual [] remains valid under the later MD-027 correction, including declarations, assignments, returns, fields and calls. Rejected literals publish no literal plan; CLI stops before lowering and preserves existing output; LSP carries the same diagnostic. Older fixtures use fixed backing, typed owner inputs or empty defaults according to their original test purpose.
+      - Owning-array frontend identity is verified across copyability, destruction, equality, initialization and transfer (2026-10-16, correction26). T[] remains MoveOnly and non-trivially destructible independently of element copyability, including named owners and containing fixed arrays/structs; fixed arrays retain element-derived traits. Fixed/owning families cannot initialize each other or gain owner content equality, explicit moves preserve the owner type and consume the source, and explicit shared/mutable slices remain valid. Fixed-array equality now requires the complete canonical type identity instead of checking only shape and recursively comparing elements, rejecting distinct nominal wrappers and nested nominal mismatches with S1019. Equality resolution is extracted into type_equality.go. All-depth/reanalysis, CLI output-preservation and unsaved LSP checks pass; executable dynamic owner layout and operations remain in the separate P18/lowering work.
     remaining:
       - "MD-058 runtime behaviour: lower Reserve and WithCapacity with the guaranteed Capacity >= Len + n, the no-op path, transactional failure including map/set rehash, allocation-context use and CollectionError classification; verify borrow conflicts, relocation invalidation and fault-injected rollback (collections.md §§ 13.12, 14.8, 15.5); Semantic IR and both legacy backends have no list/map/set operations today"
-      - preserve owning dynamic-array identity across copyability, destruction, equality, initialization, and ownership transfer instead of inheriting fixed-array traits through ArrayType
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
       - full borrow and lifetime validation for slice creation, reborrowing, and returned sub-slices
@@ -293,6 +322,12 @@ integrations:
       - explicit array, slice, and list operations in Semantic IR and lowering through MLIR and LLVM
       - focused valid, invalid, recovery, analysis, and backend test coverage
     verification:
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-16 after canonical fixed-array nominal equality and frontend owning-array identity verification
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestArrayOwnerIdentity|TestOwningDynamicArrayAndArenaTraits|TestDynamicArray' -count=1
+        result: "passed on 2026-10-16: element-independent dynamic-owner traits and aggregate propagation, exact nominal fixed-array equality including nested/module identities, cross-family initialization rejection, source-consuming moves and explicit views at every depth/reanalysis; CLI preserves output and unsaved LSP carries the same errors"
       - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'DynamicArrayLiteral|ArenaFromBuffer|ContextualArguments|ArrayLiteralRange' -count=1
         result: passed on 2026-10-14; focused frontend, CLI and LSP regressions
       - command: go test ./cmd/lsp -run TestAnalyzeDynamicArrayLiteralDiagnostic -count=1
@@ -370,6 +405,8 @@ integrations:
     rules:
       - rules/collections/collections.md
       - rules/mlir/packages/sec-mlir-dialect_package18.md
+      - rules/types/default_values.md
+      - rules/memory/borrowing.md
     depends_on:
       - SEC-MLIR-P18
       - allocation-context semantics from P19 where required
@@ -381,19 +418,50 @@ integrations:
       - Clear resolves as infallible void mutation
       - RemoveAt validates an integer index and returns Option[T]
       - "Append accepts a range segment (2026-10-05, collections.md § 6.7): `try values.Append(0r..127r)` resolves the segment with the § 5.6a rules for the element type, records a ResolvedRangeAppend fact, and returns Result[void, CollectionError]; list[T].Append and Fill reject a range with S1119"
+      - "Omitted mutable T[] initialization resolves to the distinct EmptyDynamicArrayDefault fact: an initialized allocation-free empty owner with zero length and internal capacity, no backing storage and no live elements; element defaults are never required. Recursive aggregate defaults, presentation and LSP source edits consume the same fact; immutable owners and safe slices still require initialization."
+      - Structural dynamic-array methods consume the canonical member mutation contract and Place/liveness borrow model before publishing successful calls or growth effects (2026-10-16). Append, Clear and RemoveAt reject overlapping live element/slice loans, including field paths, parameter-derived aliases, branch-merged origins and defer-retained uses; granting-reference access, ended loans and disjoint fields/elements remain valid. Rejected range Append publishes neither its range plan nor a growth request. Canonical reference-holder provenance now preserves parameter-derived referents across intermediate alias last uses. Existing iteration and mutable-borrow read checks remain authoritative; this is static rejection, with no runtime borrow checker or claim of executable owner lowering.
     remaining:
+      - "SEC-MLIR-P18 owning dynamic-array Semantic IR/schema-14 representation: implementation plan in package18-todo.md (created 2026-10-16, P18-01..P18-47); nothing implemented yet; Semantic IR still rejects `T[]`; gated on P15-P17 and on MD-074 (len representability), MD-034, MD-072 and MD-050"
       - lower range-segment Append as one all-or-nothing growth on the P18 substrate
-      - resolve omitted mutable T[] initialization as an allocation-free empty owning value with zero length, zero internal capacity, no backing storage, and no live elements
       - implement transactional Append on the P18 growth substrate
       - make Clear reverse-destroy live elements while retaining backing
       - make RemoveAt return Option[T], compact the suffix, and preserve the initialized prefix
-      - enforce active-borrow and storage-invalidation rules on mutating methods
     tests:
       - internal/sema/compiler_known_members_test.go
       - internal/sema/range_segments_test.go
+      - internal/sema/dynamic_array_default_test.go
+      - internal/lsp/features/defaults/dynamic_array_test.go
+      - cmd/compiler/dynamic_array_default_test.go
+      - testdata/sema/dynamic_array_default_valid.sec
+      - testdata/sema/dynamic_array_default_invalid.sec
+      - internal/sema/dynamic_array_borrows_test.go
+      - cmd/compiler/dynamic_array_borrows_test.go
+      - cmd/lsp/dynamic_array_borrows_test.go
+      - testdata/sema/dynamic_array_borrows_valid.sec
+      - testdata/sema/dynamic_array_borrows_invalid.sec
     verification:
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-16 after structural-mutation borrow enforcement and parameter-derived alias provenance correction; full main Sema, maintained IR and CLI suites
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestDynamicArrayMutationBorrows|TestStructuralMutationDuringIteration|TestNonStructuralMutationDuringIteration|TestBorrowEndsAtLastRequiredUse' -count=1
+        result: "passed on 2026-10-16: ten live-loan rejections, all analysis depths and reanalysis, parameter aliases and merged origins, no growth/range plan on rejected calls, ended/disjoint/granting-reference acceptance, CLI output preservation and unsaved LSP origin navigation"
+      - command: go test ./internal/sema ./internal/ir/... ./internal/lsp/features/defaults ./cmd/compiler -count=1
+        result: passed on 2026-10-16, including valid and invalid empty-owner CLI fixtures; fixed-array defaults and maintained IR tests remain passing
+      - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/features/defaults -race -run TestEmptyDynamicArrayDefault -count=1
+        result: "passed on 2026-10-16: distinct empty-owner default, recursive aggregate synthesis, all analysis depths, reanalysis, no allocation-context request and LSP source rendering"
       - command: go test ./internal/sema -run TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry -v
         result: passed
+    revised: "2026-10-16"
+    code:
+      - internal/sema/defaults.go
+      - internal/sema/types.go
+      - internal/sema/defaults_presentation.go
+      - internal/lsp/features/defaults/render.go
+      - internal/sema/dynamic_array_borrows.go
+      - internal/sema/analyzer_borrow_access.go
+      - internal/sema/reference_holder_origins.go
+      - internal/sema/collection_allocation.go
 
   - id: frontend.compiler-known-fill
     area: frontend-and-lowering
@@ -446,15 +514,56 @@ integrations:
 
   - id: frontend.map-indexed-upsert
     area: frontend
-    status: planned
+    status: partial
     integrated: "2026-08-11"
     rules:
       - rules/collections/collections.md
+      - rules/foundations/grammar.md
+      - rules/compiler/parser_recovery.md
+      - rules/control-flow/flowcontrol_for.md
+      - rules/compiler/compiler_analysis.md
     remaining:
       - make existing map entries produce indexed Places and missing lookup use checked key-access failure
       - make indexed assignment an upsert, including bodyless try for fallible upsert
-      - support key-value iteration with unspecified order
-      - do not add map Set or repurpose declaration assignment as mutation
+    implemented:
+      - Map mutation has no Set method and never reinterprets declaration operators as indexed assignment (2026-10-16). Dynamic/bounded map values and reference receivers reject Set with S1157 and explicit indexed-upsert guidance; the shared compiler/LSP registry exposes no Set. Indexed := and :<- produce P2013 and one reported InvalidStatement, including bodyless and locally handled try, while preserving following bindings and declarations. Canonical = and <- remain assignment syntax, ordinary let initialization and user-defined Set methods remain valid. Parser recovery, all-depth Sema, CLI output preservation and unsaved LSP diagnostics are verified; this does not implement indexed lookup/upsert execution or its missing-key failure family.
+      - Frontend key-value map iteration is verified for dynamic/bounded owners and shared/mutable references (2026-10-16, collections.md sections 14.2 and 14.6). Existing canonical binding validation enforces exactly key/value positions, independent copy requirements, copy-free discard, shared keys and mutable values only with authority; invalid headers publish no entry facts and structural mutation invalidates body validation. ForIterationDependencies now retains detached MapIterationEntries with component types, modes, discard decisions, locations and explicitly unspecified order; compiler and LSP consume the same facts without protocol Next discovery. Hover presents both components and order. Shared type snapshots preserve constant capacity arguments, including bounded component types. All-depth/reanalysis, nominal and noncopyable components, invalid modes, CLI and LSP checks pass. Executable map representation and entry-loop lowering remain in lowering.semantic-ir-v2; the IR boundary still rejects maps without partial output.
+    revised: "2026-10-16"
+    summary: Canonical map key-value iteration facts, binding rules and mutation spelling are enforced by Sema and shared with tooling. Indexed Place lookup and fallible upsert remain below; executable map operations remain in lowering.semantic-ir-v2.
+    code:
+      - internal/sema/compiler_known_calls.go
+      - internal/parser/indexed_declaration_recovery.go
+      - internal/parser/parser.go
+      - internal/sema/map_iteration.go
+      - internal/sema/iterator_dependencies.go
+      - internal/sema/semantic_snapshot.go
+      - cmd/lsp/iterator_hover.go
+    tests:
+      - internal/sema/map_assignment_surface_test.go
+      - internal/parser/indexed_declaration_recovery_test.go
+      - cmd/compiler/map_assignment_surface_test.go
+      - cmd/lsp/map_assignment_surface_test.go
+      - testdata/sema/map_set_invalid.sec
+      - testdata/sema/map_assignment_surface_valid.sec
+      - testdata/parser/indexed_declaration_invalid.sec
+      - testdata/parser/map_assignment_forms_valid.sec
+      - internal/sema/map_iteration_test.go
+      - internal/ir/semantic/map_iteration_facts_test.go
+      - cmd/compiler/map_iteration_test.go
+      - cmd/lsp/map_iteration_test.go
+      - testdata/sema/map_iteration_valid.sec
+      - testdata/sema/map_iteration_invalid.sec
+    verification:
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-16 after map entry facts and constant generic argument snapshot preservation
+      - command: go test ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -race -run TestMapEntryIteration -count=1
+        result: "passed on 2026-10-16: seven valid map entry forms and eight invalid header/body cases; all depths and analyzer reuse, detached component/constant arguments, shared Sema/IR/LSP facts, unspecified-order hover and CLI output preservation; executable maps still fail at their representation boundary"
+      - command: go test ./internal/parser ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: "passed on 2026-10-16: full parser, main Sema, maintained Semantic IR and CLI suites after focused syntax recovery and compiler-known call extraction"
+      - command: go vet ./internal/parser ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/parser ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestMapAssignment' -count=1
+        result: "passed on 2026-10-16: focused P2013 recovery with following syntax retained, dynamic/bounded/reference map Set rejection and guidance, ordinary declarations and user Set acceptance, concrete registry checks, structured CLI output preservation and unsaved LSP diagnostics"
 
   - id: frontend.collection-errors
     area: frontend-and-core
@@ -465,23 +574,36 @@ integrations:
       - rules/library/core-library.md
       - rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md
     remaining:
-      - use bool or Option for normal absence and rejection where specified
       - map lower-level AllocationError at collection API boundaries
       - retain IndexError, RangeError, and key-access errors for checked access
     implemented:
       - The canonical compiler-known CollectionError definition is centralized in builtinCollectionErrorType with exactly AllocationFailed, CapacityExceeded and SizeOverflow, its existing uint enum representation and Error eligibility (2026-10-14). Fresh builtin registrations own their case metadata. Unknown cases and implicit AllocationError-to-CollectionError returns are rejected. Semantic IR preserves core::CollectionError, its three case identities and typed constant producers; real Sec MLIR verification preserves the same family on 32-bit and 64-bit scalar plans through current scalar/trivial passes. Native enum representation conversion and allocation-failure mapping are not implied by this normalization.
-    revised: "2026-10-14"
-    summary: Canonical public collection failure identity and case inventory are normalized and verified through Sema, Semantic IR and Sec MLIR. Absence/rejection APIs, allocation-failure mapping and checked-access integration remain separate work.
+      - "Normal absence/rejection frontend contracts completed and centralized (2026-10-16): collection_outcomes.go owns dynamic-array/list RemoveAt -> Option[T], list Remove/Contains and map ContainsKey/set Remove/Contains -> bool, list IndexOf -> Option[uint], map Remove -> Option[V], and list Insert/set Add -> Result[bool, CollectionError]. Negative signed and compatible named RemoveAt indexes remain valid normal-outcome inputs; invalid Insert positions and duplicate Add are documented as Ok(false), with structural/resource errors kept separate. Sema, hover and synthetic definitions share receiver-specialized contracts for dynamic/bounded families. All-depth positive/negative typing, nominal payload identity and CLI/LSP presentation are verified. This closes the frontend result-contract point; executable removal/insertion/search implementations and ownership/growth mechanics remain in the corresponding collection/P18 work."
+    revised: "2026-10-16"
+    summary: Canonical CollectionError identity and normal absence/rejection frontend result contracts are centralized. Sema and LSP share bool, Option and Result[bool, CollectionError] contracts; runtime collection algorithms, allocation-failure mapping and checked-access integration remain separate work.
     code:
       - internal/sema/collection_errors.go
       - internal/sema/types.go
+      - internal/sema/collection_outcomes.go
+      - internal/sema/compiler_known_members.go
     tests:
       - internal/sema/collection_errors_test.go
       - internal/ir/semantic/collection_errors_test.go
       - internal/lowering/secmlir/collection_errors_test.go
       - testdata/sema/collection_errors_invalid.sec
       - testdata/semantic_ir/collection_errors/valid.sec
+      - internal/sema/collection_outcomes_test.go
+      - cmd/compiler/collection_outcomes_test.go
+      - cmd/lsp/collection_outcomes_test.go
+      - testdata/sema/collection_outcomes_valid.sec
+      - testdata/sema/collection_outcomes_invalid.sec
     verification:
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: Passed on 2026-10-16.
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: "Passed on 2026-10-16: full main Sema, Semantic IR and compiler suites after extracting normal collection outcome contracts."
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestCollectionNormalOutcomes|TestCollectionOutcome|TestCompilerKnownReceiverInstantiated|TestCompilerKnownMemberHoverShowsRegistrySignature' -count=1
+        result: "Passed on 2026-10-16: canonical bool/Option/resource-Result distinctions, negative and named indexes, nominal payloads, all depths, bounded/dynamic registry contracts, CLI rejection before output and actual hover/synthetic-definition agreement."
       - command: go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
         result: passed on 2026-10-14
       - command: go test ./internal/ir/semantic -run CollectionError -count=1

@@ -18,17 +18,14 @@ integrations:
       - CompareExchange failure orders are Relaxed/Acquire/SeqCst only.
       - Failure ordering is not required to be weaker than success ordering.
       - SeqCst is the default for ordinary atomic object operations.
-      - 'atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed.'
+      - "atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed."
     remaining:
-      - Implement/source-register the canonical core MemoryOrder enum.
       - Implement/source-register the canonical generic CompareExchangeResult[T] enum.
       - Ensure Atomic[T] compiler-known identity exposes the exact public API through compiler and LSP.
-      - Synchronize parser/Sema member lookup to CamelCase public atomic names.
       - Implement exact per-T method applicability.
       - Implement exact MemoryOrder operation matrix.
       - Implement CompareExchange success/failure typing and observed-value transfer.
       - Implement fence parsing/name resolution/Sema/IR/lowering.
-      - Separate semantic Atomic[T] eligibility from CompilationPlan capability.
       - Add target diagnostics for unsupported concrete operation/order combinations.
       - Synchronize documentation, formatter fixtures, hover, completion and navigation.
     required_tests:
@@ -56,6 +53,40 @@ integrations:
         expectation: atomic.Fence requires explicit Acquire/Release/AcqRel/SeqCst and rejects Relaxed.
     corrections_applied:
       - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
+    implemented:
+      - canonical MemoryOrder is a real core enum with exactly Relaxed, Acquire, Release, AcqRel and SeqCst; standalone semantic registration and the trusted source declaration share its reserved nominal identity, and LSP presents the closed declaration, variant documentation and source navigation
+      - atomic member lookup uses Load, Store, Swap, CompareExchange, FetchAdd, FetchSub, FetchAnd, FetchOr and FetchXor; lowercase alternatives are rejected, and the shared compiler member catalog supplies the canonical names to hover and completion
+      - "Atomic element eligibility is target-independent: bool, signed and unsigned integer carriers including target-sized and wide integers, RawPtr, integer-backed enums and compatible named carriers pass semantic checking on 32-bit and 64-bit plans; floats, decimals, strings, string-backed enums and composites remain invalid; this does not claim native, lock-free or emulated operation support"
+    revised: "2026-10-16"
+    code:
+      - sec/core/atomic.sec
+      - internal/sema/atomic_types.go
+      - internal/sema/atomic_calls.go
+      - internal/sema/atomic_members.go
+      - internal/sema/types.go
+      - internal/sema/type_declarations.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/compiler_known_members.go
+      - cmd/lsp/enum_hover.go
+      - cmd/lsp/hover.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/atomic_surface_test.go
+      - internal/sema/concurrency_test.go
+      - cmd/compiler/atomic_surface_test.go
+      - cmd/lsp/atomic_surface_test.go
+      - testdata/sema/atomic_surface_valid.sec
+      - testdata/sema/atomic_surface_invalid.sec
+    verification:
+      - command: go test ./cmd/lsp ./internal/formatter -run 'TestLSPPresentsEveryDefaultForm|TestFormatPreserves.*Default' -count=1
+        result: passed on 2026-10-16 after synchronizing the owning-array default provenance fixture
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler ./cmd/lsp -count=1
+        result: "2026-10-16: Sema, Semantic IR and compiler suites passed; the full LSP suite reported only TestLSPPresentsEveryDefaultForm because the pre-existing DefaultOwning fixture still said array instead of empty-dynamic-array. The shared fixture was synchronized and its LSP and formatter consumers then passed the focused rerun recorded below."
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAtomic|TestStaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-16; canonical core MemoryOrder identity and source navigation, closed variant hover/completion, CamelCase calls and completion with lowercase rejection, and target-independent scalar eligibility on 32-bit and 64-bit plans
 
   - id: frontend.atomics-v2
     area: parser-sema-atomic-surface
@@ -71,14 +102,31 @@ integrations:
 
   - id: tooling.atomics-v2
     area: lsp-format-docs-atomic-surface
-    status: planned
+    status: partial
     rules:
       - rules/concurrency/atomics.md
     remaining:
       - Hover shows exact core enum/type/member shapes and comments.
-      - Completion uses canonical CamelCase members.
       - Navigation reaches canonical core declarations where source navigation applies.
       - Tooling distinguishes semantic invalidity from CompilationPlan capability failure.
+    implemented:
+      - Completion uses canonical CamelCase members.
+    revised: "2026-10-16"
+    code:
+      - internal/sema/atomic_members.go
+      - internal/sema/compiler_known_members.go
+    tests:
+      - cmd/lsp/atomic_surface_test.go
+      - internal/sema/atomic_surface_test.go
+    verification:
+      - command: go test ./cmd/lsp ./internal/formatter -run 'TestLSPPresentsEveryDefaultForm|TestFormatPreserves.*Default' -count=1
+        result: passed on 2026-10-16 after synchronizing the owning-array default provenance fixture
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler ./cmd/lsp -count=1
+        result: "2026-10-16: Sema, Semantic IR and compiler suites passed; the full LSP suite reported only TestLSPPresentsEveryDefaultForm because the pre-existing DefaultOwning fixture still said array instead of empty-dynamic-array. The shared fixture was synchronized and its LSP and formatter consumers then passed the focused rerun recorded below."
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAtomic|TestStaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-16; canonical core MemoryOrder identity and source navigation, closed variant hover/completion, CamelCase calls and completion with lowercase rejection, and target-independent scalar eligibility on 32-bit and 64-bit plans
 
   - id: semantic-ir.atomics-v2
     area: semantic-ir-atomic-facts

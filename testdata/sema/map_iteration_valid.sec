@@ -1,0 +1,51 @@
+module main
+
+type EntryKey struct { id: int }
+
+type Payload struct { value: int }
+
+@noCopy
+type Resource struct { value: int }
+
+fn Plain(values: map[EntryKey, Payload]) void {
+    for key, value in values {
+        let typedKey: EntryKey := key
+        let typedValue: Payload := value
+    }
+}
+
+fn Bounded(values: ref mut map[EntryKey, Payload, 8]) void {
+    for ref key, ref mut value in values {
+        let typedKey: ref EntryKey := key
+        value.value += 1
+    }
+}
+
+fn DiscardKey(values: map[Resource, int]) void {
+    for _, value in values { let typedValue: int := value }
+}
+
+fn DiscardValue(values: map[int, Resource]) void {
+    for key, _ in values { let typedKey: int := key }
+}
+
+fn Borrow(values: ref map[int, Resource]) void {
+    for ref key, ref value in values {
+        let typedKey: ref int := key
+        let typedValue: ref Resource := value
+    }
+}
+
+fn DiscardBoth(values: map[Resource, Resource]) void {
+    for _, _ in values {}
+}
+
+fn BoundedComponent(values: ref map[int, list[int, 4]]) void {
+    for key, ref value in values {}
+}
+
+fn Sequential(values: int[2]) void {
+    for index, value in values {}
+}
+
+fn main() void {}

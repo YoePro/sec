@@ -1,0 +1,8 @@
+module main
+
+fn Capability() ChannelCapability {
+    discard ChannelCapability.Revocation
+    discard ChannelCapability.Expiration
+    discard ChannelCapability.ISRSafeSend
+    return ChannelCapability.Statistics
+}

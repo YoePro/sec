@@ -1,0 +1,110 @@
+module main
+
+fn Released(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    discard first
+    let second := value.Lock()
+    discard second
+}
+
+fn Consume(-> guard: MutexGuard[int]) void {
+    discard guard
+}
+
+fn Consumed(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    Consume(<-first)
+    let second := value.Lock()
+    discard second
+}
+
+fn Scoped(value: ref Mutex[int], take: bool) void {
+    if take {
+        let first := value.Lock()
+        discard first
+    }
+    let second := value.Lock()
+    discard second
+}
+
+fn Different(left: ref Mutex[int], right: ref Mutex[int]) void {
+    let first := left.Lock()
+    let second := right.Lock()
+    discard second
+    discard first
+}
+
+fn OptionalReleased(value: ref Mutex[int]) void {
+    let acquired := value.TryLock()
+    match acquired {
+        Some(guard) => { discard guard }
+        None => {}
+    }
+    let next := value.Lock()
+    discard next
+}
+
+fn MovedReleased(value: ref Mutex[int]) void {
+    let first := value.Lock()
+    let owner :<- first
+    discard owner
+    let second := value.Lock()
+    discard second
+}
+
+type Pair struct {
+    First: Mutex[int],
+    Second: Mutex[int],
+}
+
+fn StoredDistinct() void {
+    let state := Pair { First: Mutex(1), Second: Mutex(2) }
+    let first := state.First.Lock()
+    let second := state.Second.Lock()
+    discard second
+    discard first
+}
+
+fn ScopeExit(value: ref Mutex[int], condition: bool) void {
+    if condition {
+        let guard := value.Lock()
+    }
+    let guard := value.Lock()
+    discard guard
+}
+
+fn Reassigned(value: ref Mutex[int], other: ref Mutex[int]) void {
+    let mut guard := value.Lock()
+    guard = other.Lock()
+    let next := value.Lock()
+    discard next
+    discard guard
+}
+
+fn BranchRelease(value: ref Mutex[int], condition: bool) void {
+    let guard := value.Lock()
+    if condition { discard guard }
+    else { discard guard }
+    let next := value.Lock()
+    discard next
+}
+
+fn Recovery(value: ref Mutex[int], other: ref Mutex[int], context: ref Context) void {
+    let first := try value.Lock(context) {
+        Err(_) => other.Lock()
+    }
+    discard first
+    let second := value.Lock()
+    discard second
+}
+
+fn FailedProbe(value: ref Mutex[int]) void {
+    let acquired := value.TryLock()
+    match acquired {
+        Some(guard) => { discard guard }
+        None => {
+            let guard := value.Lock()
+            discard guard
+        }
+    }
+}

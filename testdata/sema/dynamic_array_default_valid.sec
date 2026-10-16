@@ -1,0 +1,29 @@
+module main
+
+type NeedsReference struct {
+    value: ref int
+}
+
+type Container struct {
+    values: NeedsReference[]
+}
+
+@noAlloc
+fn Empty() NeedsReference[] {
+    let mut values: NeedsReference[]
+    return values
+}
+
+@noAlloc
+fn Nested() Container {
+    let mut box: Container
+    return box
+}
+
+@noAlloc
+fn NestedArray() NeedsReference[][2] {
+    let mut values: NeedsReference[][2]
+    return values
+}
+
+fn main() void {}

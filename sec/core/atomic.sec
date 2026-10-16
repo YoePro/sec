@@ -1,0 +1,23 @@
+module core
+
+/**
+ * Selects memory ordering for atomic operations.
+ * Rules: rules/concurrency/atomics.md sections 4–5 and 24–25.
+ * Ordinary atomic object operations default to SeqCst when order is omitted.
+ */
+enum MemoryOrder {
+    /** Atomicity only; adds no acquire or release ordering for ordinary memory. */
+    Relaxed
+
+    /** Acquire ordering for operations that read from the atomic object. */
+    Acquire
+
+    /** Release ordering for operations that publish through an atomic write. */
+    Release
+
+    /** Combined acquire and release ordering for read-modify-write operations. */
+    AcqRel
+
+    /** Sequential consistency, including participation in the global SeqCst order. */
+    SeqCst
+}

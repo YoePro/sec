@@ -1,0 +1,8 @@
+module main
+fn Wrong(values: ref mut list[int], mapping: ref mut map[string, int], items: ref mut set[int]) void {
+    let removed: Result[int, CollectionError] := values.RemoveAt(-1)
+    let contains: Result[bool, CollectionError] := values.Contains(1)
+    let fromMap: Result[int, CollectionError] := mapping.Remove("missing")
+    let added: bool := items.Add(1)
+    let inserted: bool := values.Insert(-1, 1)
+}

@@ -101,6 +101,7 @@ type Analyzer struct {
 	cABIModel                   layout.CABIModel
 	resolvedConstructions       map[*ast.NewExpression]ResolvedConstruction
 	resolvedOperators           map[ast.Expression]ResolvedOperator
+	resolvedShapedMultiplies    map[*ast.InfixExpression]ResolvedShapedMultiply
 	resolvedLogicalFlows        map[*ast.InfixExpression]ResolvedLogicalFlow
 	resolvedIfFlows             map[*ast.IfStatement]ResolvedIfFlow
 	resolvedWhileFlows          map[*ast.WhileStatement]ResolvedWhileFlow
@@ -137,6 +138,10 @@ type Analyzer struct {
 	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
 	resolvedTryAssignments     map[*ast.TryAssignmentStatement]ResolvedTryAssignment
 	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
+	resolvedCallReferences     map[*ast.CallExpression]ReferenceFacts
+	staticBindings             map[sourceTokenKey]ResolvedStatic
+	receiverReborrows          map[*ast.CallExpression]ReferenceFacts
+	matchTerminationPlans      map[*ast.MatchExpression]ResolvedMatchPlan
 	resolvedOptionIfBindings   map[*ast.IfStatement]ResolvedOptionIfBinding
 	resolvedAvailabilityTests  map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
 	resolvedStateTests         map[*ast.StateTestExpression]ResolvedStateTest
@@ -288,7 +293,8 @@ type Analyzer struct {
 	// diagnosticRules is the project's rule-specific diagnostic policy
 	// (rules/tooling/diagnostics.md § 18), applied when an optional
 	// diagnostic is recorded.
-	diagnosticRules diagnostics.RulePolicy
+	diagnosticRules   diagnostics.RulePolicy
+	redundantDiscards map[*ast.DiscardStatement]Error
 	// placeIdentities allocates the canonical P15 storage, invalidation,
 	// epoch, address-space, borrow and lifetime identities (place_identities.go).
 	placeIdentities placeIdentityAllocator
@@ -307,6 +313,7 @@ type Analyzer struct {
 	deferOuterSymbols           map[string]Symbol
 	deferCaptures               map[string]borrowRecord
 	suppressPlaceRootRead       int
+	placeBaseExpr               ast.Expression
 	loopBackedgePlaces          map[string]bool
 	cancellableDepth            int
 	// terminalReturnDepth carries the intrinsically transferring return
@@ -504,6 +511,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	}
 	a.errorKeys = map[string]bool{}
 	a.warnings = nil
+	a.redundantDiscards = map[*ast.DiscardStatement]Error{}
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
 	a.predeclaredStatic = map[sourceTokenKey]bool{}
@@ -540,6 +548,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.iterationDependencyProbe = false
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
+	a.resolvedShapedMultiplies = map[*ast.InfixExpression]ResolvedShapedMultiply{}
 	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}
 	a.resolvedIfFlows = map[*ast.IfStatement]ResolvedIfFlow{}
 	a.resolvedWhileFlows = map[*ast.WhileStatement]ResolvedWhileFlow{}
@@ -562,6 +571,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedTryAssignments = map[*ast.TryAssignmentStatement]ResolvedTryAssignment{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
+	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
+	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
+	a.receiverReborrows = map[*ast.CallExpression]ReferenceFacts{}
+	a.matchTerminationPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedOptionIfBindings = map[*ast.IfStatement]ResolvedOptionIfBinding{}
 	a.resolvedAvailabilityTests = map[*ast.AvailabilityExpression]ResolvedAvailabilityTest{}
 	a.resolvedStateTests = map[*ast.StateTestExpression]ResolvedStateTest{}
@@ -653,6 +666,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.switchCaseBody = nil
 	a.inDeferBlock = false
 	a.suppressPlaceRootRead = 0
+	a.placeBaseExpr = nil
 	a.loopBackedgePlaces = nil
 	a.cancellableDepth = 0
 	a.loopDepth = 0
@@ -687,6 +701,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
 	a.iteratorLoweringProgram = program
+	// Advisory promotion must not change mandatory ownership/effect analysis.
+	// Rules: rules/control-flow/discard.md — §§5,38.
+	a.emitRedundantDiscardAdvisories()
 
 	return cloneSemanticErrors(a.errors)
 }
@@ -1333,6 +1350,12 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.registerInstantDeclaration(stmt) {
 				return
 			}
+			if a.registerMutexDeclaration(stmt) {
+				return
+			}
+			if a.registerContextDeclaration(stmt) {
+				return
+			}
 
 			params := a.genericParameterNames(stmt.GenericParameters)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
@@ -1386,7 +1409,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1405,7 +1428,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -4238,7 +4261,36 @@ func (a *Analyzer) blockWritesTargetMember(block *ast.BlockStatement, target Typ
 }
 
 func (a *Analyzer) statementWritesTargetMember(stmt ast.Statement, target Type, memberNames map[string]bool, shadowed map[string]bool) bool {
+	// A `ref mut` borrow of a receiver member, or a `ref mut` payload
+	// binding over a receiver-rooted match subject, needs a mutable receiver
+	// as much as an assignment does (borrowing.md § 7).
+	if statementMutablyBorrowsReceiver(stmt, memberNames, shadowed) {
+		return true
+	}
 	switch stmt := stmt.(type) {
+	case *ast.MatchStatement:
+		if stmt.Match == nil {
+			return false
+		}
+		if a.expressionCallsMutableTargetMethod(stmt.Match.Subject, target) {
+			return true
+		}
+		for _, arm := range stmt.Match.Arms {
+			if arm == nil {
+				continue
+			}
+			armShadowed := shadowed
+			if arm.Pattern != nil && arm.Pattern.Binding != nil && arm.Pattern.Binding.Name != nil {
+				armShadowed = copyBoolMap(shadowed)
+				armShadowed[arm.Pattern.Binding.Name.Value] = true
+			}
+			if a.expressionCallsMutableTargetMethod(arm.Guard, target) || a.expressionCallsMutableTargetMethod(arm.Body, target) ||
+				arm.ReturnBody != nil && a.expressionCallsMutableTargetMethod(arm.ReturnBody.Value, target) ||
+				a.blockWritesTargetMember(arm.BlockBody, target, memberNames, armShadowed) {
+				return true
+			}
+		}
+		return false
 	case *ast.LetStatement:
 		return stmt.Ownership == ast.OwnershipMove && isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
 	case *ast.LetGroupStatement:
@@ -4601,6 +4653,9 @@ func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) boo
 	// consumes the canonical normalized coverage and arm-flow plan. Rebuilding
 	// coverage from pattern spellings loses enum aliases and union domains.
 	plan, ok := a.resolvedMatchPlans[stmt.Match]
+	if !ok {
+		plan, ok = a.matchTerminationPlans[stmt.Match]
+	}
 	if !ok || !plan.Exhaustive || len(plan.Arms) == 0 {
 		return false
 	}
@@ -5044,6 +5099,9 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		return
 	}
 
+	if a.rejectImplicitBorrow(returnType, valueType, stmt.Value) {
+		return
+	}
 	if !a.canInitialize(returnType, valueType, stmt.Value) && !a.isExplicitUnitConversionReturn(returnType, valueType) {
 		if functionName == "lambda" {
 			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return %s, got %s", typeDisplayName(returnType), typeDisplayName(valueType))
@@ -5309,26 +5367,6 @@ func containsCapturedLambdaExpression(expr ast.Expression) bool {
 		return containsCapturedLambdaExpression(expr.Value)
 	}
 	return false
-}
-
-func (a *Analyzer) markLocalRefContainerFromValue(holder string, value ast.Expression) {
-	if holder == "" {
-		return
-	}
-	symbol, ok := a.symbols[holder]
-	if !ok || !symbol.Local {
-		return
-	}
-	origin, hasOrigin := a.localReferenceOriginForExpression(value)
-	contained := a.containedReferenceOrigins(value)
-	if !hasOrigin && len(contained) == 0 {
-		return
-	}
-	origin.Contained = contained
-	if !hasOrigin {
-		recomputeContainedOriginSummary(&origin)
-	}
-	a.localRefContainers[holder] = origin
 }
 
 func cloneLocalReferenceOrigin(origin localReferenceOrigin) localReferenceOrigin {
@@ -7319,6 +7357,9 @@ func isPlainUnitNumericCarrier(typ Type, ref *ast.TypeReference) bool {
 }
 
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
+	if (stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		return // The opaque identity was validated during registration (§§5–6,8).
+	}
 	if stmt.Name.Value == "Instant" && a.isTrustedCoreBuiltinDeclaration("Instant", stmt.Name.Token) {
 		return // Opaque identity was validated and retained during registration.
 	}
@@ -7867,6 +7908,12 @@ func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Ident
 //   - rules/declarations/enums.md — "Member initializer syntax"
 //   - rules/declarations/enums.md — "Enum defaults"
 //   - rules/declarations/generics.md — "Generic enums"
+//
+// typeFromEnumDeclaration resolves the enum carrier, member constants and
+// default, preserving reserved compiler identity for trusted core declarations.
+// Rules: rules/declarations/enums.md — §§3–10;
+// rules/concurrency/atomics.md — §§4–5;
+// rules/concurrency/channels.md — §§4–5.
 func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
 	underlying := a.types["int"]
 	if enum.BitUnderlying {
@@ -7913,6 +7960,12 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		GenericParameters:     genericParameterNameValues(enum.GenericParameters),
 		GenericConstraints:    a.resolvedGenericParameterConstraints(enum.GenericParameters),
 		EnumConsts:            map[string]EnumValue{},
+	}
+	// Rules: rules/concurrency/atomics.md — §§4–5 and
+	// rules/concurrency/channels.md — §§4–5: source and compiler
+	// registration are one reserved core identity.
+	if a.isTrustedCoreBuiltinDeclaration(name, enum.Name.Token) {
+		typ.Intrinsic = true
 	}
 	if underlying.MinInteger != nil {
 		typ.MinInteger = new(big.Int).Set(underlying.MinInteger)
@@ -9030,10 +9083,14 @@ func (a *Analyzer) validateLetOwnership(stmt *ast.LetStatement) bool {
 	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil)
 }
 
+// applyLetOwnership retains arena and mutex-guard provenance before committing
+// the validated source transfer.
+// Rules: rules/memory/copy_move.md — §10; rules/concurrency/mutex.md — §§28,42–43.
 func (a *Analyzer) applyLetOwnership(stmt *ast.LetStatement) {
 	if stmt == nil {
 		return
 	}
+	a.bindMutexAcquisition(stmt.Name.Value, stmt.Value)
 	a.bindArenaDomainFromExpression(stmt.Name.Value, stmt.Value)
 	if stmt.Ownership == ast.OwnershipMove {
 		a.markExplicitMoveSource(stmt.Value)
@@ -9068,11 +9125,16 @@ func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) b
 	return false
 }
 
+// applyAssignmentOwnership replaces resource provenance and commits a validated
+// assignment transfer, preserving the acquisition of a moved guard.
+// Rules: rules/memory/copy_move.md — §12; rules/concurrency/mutex.md — §§28,42–43,46.
 func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
 	if stmt == nil {
 		return
 	}
+	a.invalidateMutexAcquisitionsForWrite(stmt.Target)
 	if target, ok := stmt.Target.(*ast.Identifier); ok {
+		a.bindMutexAcquisition(target.Value, stmt.Value)
 		a.bindArenaDomainFromExpression(target.Value, stmt.Value)
 	}
 	if stmt.Ownership == ast.OwnershipMove {
@@ -9645,6 +9707,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.recordResolvedCompoundAssignment(stmt, targetType, valueType)
 	}
 
+	if !registerWrite && a.rejectImplicitBorrow(targetType, assignmentType, stmt.Value) {
+		return
+	}
 	if !registerWrite && !a.canInitialize(targetType, assignmentType, stmt.Value) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return
@@ -9869,36 +9934,6 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type
 	return true
 }
 
-// validateShapedStaticType implements the static extent proof from
-// rules/collections/shaped-types.md (correction27.md). The product is computed
-// with arbitrary precision, checked against the target uint plan, and retained
-// on the resolved type for later semantic consumers.
-func (a *Analyzer) validateShapedStaticType(token lexer.Token, typ *Type, minConstArgs, maxConstArgs int) bool {
-	if !a.validateCompilerKnownTypeArity(token, *typ, 1, minConstArgs, maxConstArgs) {
-		return false
-	}
-	product := big.NewInt(1)
-	for _, extent := range typ.ConstArgs {
-		if extent == 0 {
-			product.SetInt64(0)
-			break
-		}
-		product.Mul(product, big.NewInt(extent))
-	}
-	uintType := a.types["uint"]
-	representation, _, representable := a.integerRepresentation(uintType)
-	maximum := representation.MaxInteger
-	if !representable || maximum == nil {
-		maximum = new(big.Int).SetUint64(^uint64(0))
-	}
-	if product.Cmp(maximum) > 0 {
-		a.addErrorAtToken(token, "%s static element count %s overflows target uint", typ.Name, product.String())
-		return false
-	}
-	typ.StaticElementCount = new(big.Int).Set(product)
-	return true
-}
-
 // validateVoidTypeArguments permits void only in canonical pointer, result and
 // execution-completion positions, including declared wrappers of those families.
 // Rules: rules/types/types.md — void; rules/concurrency/tasks.md — §§3(3), 12(9), 16(11); rules/concurrency/threads.md — completion handles.
@@ -9951,19 +9986,6 @@ func (a *Analyzer) validateCompilerKnownTypeArity(token lexer.Token, typ Type, t
 		return false
 	}
 	return true
-}
-
-func atomicElementTypeSupported(typ Type) bool {
-	switch typ.Kind {
-	case BoolType, RawPtrType:
-		return true
-	case IntType, UintType:
-		switch typ.Name {
-		case "byte", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64":
-			return true
-		}
-	}
-	return false
 }
 
 // resolveArrayLength implements Package 14 sections 10-12: source expressions
@@ -11813,10 +11835,6 @@ func eventHandlerType(payload Type) Type {
 	}
 }
 
-func (a *Analyzer) checkAtomicCallArity(expr *ast.CallExpression, name string, minArgs int, maxArgs int) bool {
-	return a.checkCompilerKnownCallArity(expr, name, minArgs, maxArgs)
-}
-
 func (a *Analyzer) checkCompilerKnownCallArity(expr *ast.CallExpression, name string, minArgs int, maxArgs int) bool {
 	if len(expr.GenericArguments) != 0 {
 		a.addErrorAtToken(expr.Token, "%s does not take type arguments", name)
@@ -11831,16 +11849,6 @@ func (a *Analyzer) checkCompilerKnownCallArity(expr *ast.CallExpression, name st
 		return false
 	}
 	return true
-}
-
-func (a *Analyzer) checkAtomicValueArgument(expr *ast.CallExpression, expected Type, index int) {
-	if index >= len(expr.Arguments) {
-		return
-	}
-	argType, _ := a.inferExpression(expr.Arguments[index])
-	if argType.Kind != InvalidType && !a.canInitialize(expected, argType, expr.Arguments[index]) {
-		a.addErrorAtToken(expressionToken(expr.Arguments[index]), "atomic argument %d must be %s, got %s", index+1, typeDisplayName(expected), typeDisplayName(argType))
-	}
 }
 
 func (a *Analyzer) compilerKnownReceiverType(expr ast.Expression) (Type, bool) {
@@ -13249,7 +13257,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			return Type{Kind: InvalidType}
 		}
 		if typeCarriesReferenceOrigin(resultType) && resultType.ReferenceOriginMatchScoped {
-			a.addErrorAtTokenWithPrevious(expr.Token, resultType.ReferenceOriginToken, "match expression cannot produce a branch-scoped union payload reference")
+			a.reportEscapeDiagnostic(expr.Token, resultType.ReferenceOriginToken, diagnostics.EscapeMatchPayload, "match expression cannot produce a branch-scoped union payload reference")
 			return Type{Kind: InvalidType}
 		}
 		plan.ResultType = resultType
@@ -13264,6 +13272,12 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	plan.Exhaustive = exhaustive
 	if recordPlan && plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
 		a.resolvedMatchPlans[expr] = plan
+	}
+	// An error inside an arm body withholds the published plan, but coverage
+	// and arm flow still decide termination; keeping them avoids a follow-on
+	// "must return" diagnostic for a match whose arms all return.
+	if recordPlan && plan.SubjectKind != "" && exhaustive && !patternError {
+		a.matchTerminationPlans[expr] = plan
 	}
 	return Type{Name: "void", Kind: VoidType}
 }
@@ -13650,6 +13664,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	}
 	if info.BindingName != "" {
 		if a.defineSymbol(info.BindingName, info.BindingType, false, arm.Token) {
+			a.bindMutexPayloadAcquisition(info.BindingName, info.PayloadPlace.Root)
 			if info.PayloadToken.Line > 0 && info.PayloadToken.Column > 0 {
 				a.bindDefinition(info.PayloadToken, arm.Token)
 			}
@@ -14356,38 +14371,6 @@ func sameUnderlyingNumericKind(value Type, bound Type) bool {
 	}
 }
 
-func canCompareEquality(left Type, right Type) bool {
-	if left.Kind == InvalidType || right.Kind == InvalidType {
-		return true
-	}
-	if !EqualityComparable(left) || !EqualityComparable(right) {
-		return false
-	}
-	if isNumericType(left) && isNumericType(right) {
-		if left.Named || right.Named || !left.Dimension.IsZero() || !right.Dimension.IsZero() {
-			return sameConcreteType(left, right)
-		}
-		return true
-	}
-	if left.Kind == ArrayType || right.Kind == ArrayType {
-		return sameComparableArrayType(left, right)
-	}
-	if left.Kind != right.Kind {
-		return false
-	}
-	return sameConcreteType(left, right)
-}
-
-func sameComparableArrayType(left Type, right Type) bool {
-	if left.Kind != ArrayType || right.Kind != ArrayType || !sameArrayShape(left, right) || left.Element == nil || right.Element == nil {
-		return false
-	}
-	if left.Element.Kind == ArrayType || right.Element.Kind == ArrayType {
-		return sameComparableArrayType(*left.Element, *right.Element)
-	}
-	return sameConcreteType(*left.Element, *right.Element)
-}
-
 func canCompareOrdered(left Type, right Type) bool {
 	if left.Kind == InvalidType || right.Kind == InvalidType {
 		return true
@@ -14770,6 +14753,9 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 }
 
 func (a *Analyzer) checkInitializerType(target Type, value Type, expr ast.Expression) bool {
+	if a.rejectImplicitBorrow(target, value, expr) {
+		return false
+	}
 	if a.canInitialize(target, value, expr) {
 		return true
 	}
@@ -14792,10 +14778,6 @@ func taskType(result Type) Type {
 
 func threadType(result Type) Type {
 	return Type{Name: "Thread", Kind: StructType, TypeArgs: []Type{result}}
-}
-
-func mutexGuardType(inner Type) Type {
-	return Type{Name: "MutexGuard", Kind: StructType, TypeArgs: []Type{inner}}
 }
 
 func (a *Analyzer) intrinsicGenericType(name string, args ...Type) Type {
@@ -14853,21 +14835,6 @@ func isMutexType(typ Type) bool {
 
 func isMutexGuardType(typ Type) bool {
 	return typ.Name == "MutexGuard" && len(typ.TypeArgs) == 1
-}
-
-func isAtomicType(typ Type) bool {
-	return typ.Name == "Atomic" && len(typ.TypeArgs) == 1
-}
-
-func atomicFetchOperationSupported(operation string, element Type) bool {
-	switch operation {
-	case "fetchAnd", "fetchOr", "fetchXor":
-		return element.Kind == BoolType || isIntegerType(element)
-	case "fetchAdd", "fetchSub":
-		return isIntegerType(element)
-	default:
-		return false
-	}
 }
 
 func implicitlyCopyable(typ Type) bool {

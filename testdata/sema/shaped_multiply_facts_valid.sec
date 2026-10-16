@@ -1,0 +1,13 @@
+module main
+fn MatrixProduct(left: matrix[float32, 4, 3], right: matrix[float32, 3, 2]) matrix[float32, 4, 2] {
+    return left x right
+}
+fn VectorProduct(left: matrix[int, 4, 3], right: vector[int, 3]) vector[int, 4] {
+    return left x right
+}
+fn EmptyResult(left: matrix[int, 0, 3], right: matrix[int, 3, 2]) matrix[int, 0, 2] {
+    return left x right
+}
+fn EmptyInner(left: matrix[int, 3, 0], right: matrix[int, 0, 4]) matrix[int, 3, 4] {
+    return left x right
+}

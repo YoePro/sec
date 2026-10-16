@@ -1,0 +1,6 @@
+module main
+
+fn Dynamic(values: map[int, int]) void { values.Set(1, 2) }
+fn Bounded(values: map[int, int, 8]) void { values.Set(1, 2) }
+fn Shared(values: ref map[int, int]) void { values.Set(1, 2) }
+fn Mutable(values: ref mut map[int, int]) void { values.Set(1, 2) }

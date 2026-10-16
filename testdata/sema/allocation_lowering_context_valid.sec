@@ -1,0 +1,4 @@
+module main
+fn Join(text: string) Result[string, StringError] {
+    return Ok(try "prefix " + text)
+}

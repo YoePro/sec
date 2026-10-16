@@ -110,6 +110,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
 		if len(definitions) == 1 {
+			if contents, found := enumVariantHoverContents(analyzer, program, definitions[0]); found {
+				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
+			}
 			if contents, found := memberHoverContentsForDefinition(analyzer, definitions[0]); found {
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}
@@ -142,6 +145,12 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		return hover, true
 	}
 	if typ, ok := analyzer.Types()[name]; ok {
+		if contents, opaque := mutexTypeHoverContents(typ, program); opaque {
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
+		}
+		if typ.Kind == sema.EnumType {
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: enumTypeHoverContents(typ, program)}, Range: nameRange}, true
+		}
 		hover := typedHover(nameRange, "type "+name+genericHeaderDisplay(typ.GenericParameters, typ.GenericConstraints), typ)
 		hover.Contents.Value += unitDerivationHoverSuffix(analyzer, typ)
 		return hover, true

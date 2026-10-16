@@ -9,6 +9,8 @@ import (
 )
 
 // DefaultValueOf resolves a compile-time, allocation-free semantic default.
+// Rules: rules/types/default_values.md — "Compile-time resolution",
+// "Owning dynamic arrays"; rules/collections/collections.md — §6.2.
 func DefaultValueOf(typ Type) DefaultResolution {
 	return defaultValueOf(typ, map[string]bool{})
 }
@@ -137,7 +139,7 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 			if !collectionDefaultSatisfiesContracts(typ, new(big.Int)) {
 				return DefaultResolution{Kind: NoDefault}
 			}
-			return DefaultResolution{Kind: ArrayDefault}
+			return DefaultResolution{Kind: EmptyDynamicArrayDefault}
 		}
 		length, ok := exactFixedArrayLength(typ)
 		if !ok {
@@ -604,6 +606,10 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 	}
 }
 
+// defaultExpression synthesizes syntax for the selected semantic default without
+// constructing elements for an empty dynamic owner.
+// Rules: rules/types/default_values.md — "Compile-time resolution",
+// "Owning dynamic arrays"; rules/collections/collections.md — §6.2.
 func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token) ast.Expression {
 	switch resolution.Kind {
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
@@ -657,6 +663,9 @@ func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token
 	case CollectionDefault:
 		// The storage site's expected list type types the synthesized literal.
 		return &ast.CollectionLiteral{Token: token, Open: token, Close: token}
+	case EmptyDynamicArrayDefault:
+		// collections.md §6.2: synthesize no elements or backing allocation.
+		return &ast.ArrayLiteral{Token: token}
 	case ArrayDefault:
 		literal := &ast.ArrayLiteral{Token: token}
 		if typ.Element != nil {

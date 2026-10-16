@@ -14,8 +14,8 @@ type Holder struct {
 }
 
 let shared: int := 7
-let mut slot: ref int := shared
-let mut holder: Holder := Holder { value: shared }
+let mut slot: ref int := ref shared
+let mut holder: Holder := Holder { value: ref shared }
 let mut count: int := 0
 
 `

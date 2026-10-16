@@ -1,0 +1,5 @@
+module main
+fn Grow(values: ref mut list[int]) Result[void, CollectionError] {
+    try values.Reserve(4u)
+    return Ok()
+}

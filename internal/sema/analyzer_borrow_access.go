@@ -47,6 +47,14 @@ func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
 // checkBorrowedMutationPlace rejects conflicting owner access using canonical Place overlap.
 // Rules: rules/memory/borrowing.md — §§4(1–3),6(1–7),22,32(7–8).
 func (a *Analyzer) checkBorrowedMutationPlace(place Place, token lexer.Token) bool {
+	return a.checkBorrowedMutationPlaceForAction(place, token, "assign to")
+}
+
+// checkBorrowedMutationPlaceForAction checks the same canonical live-borrow
+// authority for assignment and storage-invalidating collection operations.
+// Rules: rules/memory/borrowing.md — §§6,8.1,12,14.5;
+// rules/collections/collections.md — §§6.5,19.
+func (a *Analyzer) checkBorrowedMutationPlaceForAction(place Place, token lexer.Token, action string) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
 			if isDeferredUseKind(record.Kind) {
@@ -59,14 +67,14 @@ func (a *Analyzer) checkBorrowedMutationPlace(place Place, token lexer.Token) bo
 				continue
 			}
 			if record.LoopCarried {
-				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutationConflict, "cannot assign to %s because it may remain borrowed from a previous loop iteration", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutationConflict, "cannot %s %s because it may remain borrowed from a previous loop iteration", action, place.String())
 				return true
 			}
 			if record.Kind == mutableBorrow {
-				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutationConflict, "cannot assign to %s while it is mutably borrowed", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutationConflict, "cannot %s %s while it is mutably borrowed", action, place.String())
 				return true
 			}
-			a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutationConflict, "cannot assign to %s while it is shared borrowed", place.String())
+			a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowMutationConflict, "cannot %s %s while it is shared borrowed", action, place.String())
 			return true
 		}
 	}

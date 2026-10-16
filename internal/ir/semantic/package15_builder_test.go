@@ -29,17 +29,14 @@ fn Add(left: int, right: int) int {
 	}
 
 	for name, test := range map[string]struct{ source, want string }{
-		"returned reference": {`module main
+		"returned non-scalar static reference": {`module main
 
-type Pair struct {
-    left: int,
-    right: int,
-}
+let label: string := "fixed"
 
-fn Same(pair: ref Pair) ref Pair {
-    return pair
+fn Fixed() ref string {
+    return ref label
 }
-`, "reference return lowering"},
+`, "not a scalar literal constant"},
 	} {
 		module, err := analyzedModule(t, test.source, 15)
 		var unsupported *UnsupportedFeatureError
@@ -117,16 +114,16 @@ fn Use() int {
 
 	_, err = analyzedModule(t, `module main
 
-let shared: int := 7
+let label: string := "fixed"
 
 fn Use() int {
-    let fixed := ref shared
+    let fixed := ref label
     return 0
 }
 `, 15)
 	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) || unsupported.Package != 15 || !strings.Contains(unsupported.Feature, "static Place root") {
-		t.Fatalf("static root error = %v", err)
+	if !errors.As(err, &unsupported) || unsupported.Package != 15 || !strings.Contains(unsupported.Feature, "not a scalar literal constant") {
+		t.Fatalf("non-scalar static error = %v", err)
 	}
 }
 

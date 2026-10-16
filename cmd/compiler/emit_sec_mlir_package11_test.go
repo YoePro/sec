@@ -48,7 +48,7 @@ func TestPackage11SourceEmitsAndVerifiesEnumUnionValues(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		"sec.dialect_version = 10 : i32",
+		"sec.dialect_version = 11 : i32",
 		"!sec.enum<", "#sec.enum_case<", "sec.enum.constant",
 		"sec.enum.from_integer", "sec.enum.to_integer", "sec.enum.cmp",
 		"!sec.union<", "#sec.union_variant<", "#sec.union_field<",

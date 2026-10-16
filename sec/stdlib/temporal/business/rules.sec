@@ -1,0 +1,63 @@
+module business
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/business/rules.sec
+ * Module: business
+ * Purpose: Monthly civil-date rules and business-day conventions.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/business/std-temporal-business.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+// A monthly target date described relative to the chosen Gregorian month.
+type MonthlyDateRule union {
+    // Select day N of the month; invalid months must be an explicit error.
+    DayOfMonth(int),
+    // Move N calendar days before the month's final civil day.
+    DaysBeforeMonthEnd(int),
+    // Move N calendar days before the following month's first civil day.
+    DaysBeforeNextMonth(int),
+}
+
+// Adjustments for a target date that is not a business day.
+enum BusinessDayAdjustment {
+    // Keep the computed civil date without checking bank/working-day rules.
+    None,
+    // Use the next business day.
+    Following,
+    // Use the preceding business day.
+    Preceding,
+    // Use next business day unless that changes month; then use preceding.
+    ModifiedFollowing,
+    // Use preceding business day unless that changes month; then use following.
+    ModifiedPreceding,
+}
+
+// Refers to explicitly versioned working-day rules; does not own the dataset.
+type BusinessCalendar struct {
+    // Stable ruleset identifier including business jurisdiction where relevant.
+    Identifier: string,
+    // Immutable version or effective revision of the business-day data.
+    Revision: string,
+}
+
+// Failures in monthly rules and business-day adjustment.
+enum BusinessError error {
+    // Implementation is not available yet.
+    NotImplemented,
+    // Monthly rule selects a non-existing civil day.
+    InvalidDateRule,
+    // Ruleset ID is unknown.
+    UnknownCalendar,
+    // The requested ruleset revision is unavailable.
+    DatasetUnavailable,
+    // Data does not cover the requested date.
+    OutsideCoverage,
+    // Day or month exceeds representable bounds.
+    OutOfRange,
+}

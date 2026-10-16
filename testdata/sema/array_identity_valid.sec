@@ -1,0 +1,30 @@
+module main
+
+type Owned int[]
+type Fixed int[2]
+type Copyable struct { value: int }
+type Container struct { values: int[] }
+
+fn Move(source: Owned) Owned {
+    let destination :<- source
+    return destination
+}
+
+fn AnonymousMove(source: int[]) int[] {
+    let destination :<- source
+    return destination
+}
+
+fn FixedEquality(left: Fixed, right: Fixed) bool { return left == right }
+fn NestedEquality(left: Fixed[2], right: Fixed[2]) bool { return left != right }
+fn StructuralEquality(left: int[2], right: int[2]) bool { return left == right }
+
+fn Borrow() void {
+    let mut values: int[]
+    let shared := ref values[..]
+    discard shared
+    let exclusive := ref mut values[..]
+    discard exclusive
+}
+
+fn main() void {}

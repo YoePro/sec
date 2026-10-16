@@ -1,0 +1,6 @@
+module main
+
+fn OldNames(value: ref Mutex[int]) void {
+    discard value.lock()
+    discard value.tryLock()
+}

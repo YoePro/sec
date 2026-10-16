@@ -1,0 +1,93 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/calendar/conversion.sec
+ * Module: calendar
+ * Purpose: Stateless conversions between core date and calendar coordinates.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+/**
+ * Projects an absolute core date onto the selected calendar system.
+ *
+ * Description:
+ *   Does not use timezones, historical adoption profiles or locale.
+ * Parameters:
+ *   - value: Unzoned absolute core day.
+ *   - system: Explicit calendar system.
+ * Returns:
+ *   Calendar-specific year, month and day; no owning heap allocation required.
+ * Errors:
+ *   - CalendarError.NotImplemented: Scaffold only.
+ *   - CalendarError.OutOfRange: Calendar coordinates cannot be represented.
+ * Ownership: Pure value conversion, no I/O.
+ * Standards: Calendar-specific algorithms; see child rulebook.
+ */
+fn FromDate(value: date, system: CalendarSystem) Result[CalendarFields, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}
+
+/**
+ * Converts validated calendar coordinates into a core absolute day.
+ * Description: Never assumes historical local civil adoption or timezone.
+ * Parameters:
+ *   - fields: Calendar coordinate tuple.
+ *   - system: Explicit calendar system.
+ * Returns: Core absolute day matching the selected calendar system.
+ * Errors:
+ *   - CalendarError.NotImplemented: Scaffold only.
+ *   - CalendarError.InvalidMonth: Illegal calendar-month identity.
+ *   - CalendarError.InvalidDay: Illegal day within the month.
+ *   - CalendarError.OutOfRange: Result not representable by core date.
+ * Ownership: Pure value conversion; no I/O or string allocation.
+ */
+fn ToDate(fields: CalendarFields, system: CalendarSystem) Result[date, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}
+
+/**
+ * Validates a full coordinate tuple against the selected calendar.
+ * Parameters:
+ *   - fields: Calendar coordinate tuple.
+ *   - system: Explicit calendar system.
+ * Returns: Ok(void) only when all components are meaningful together.
+ * Errors: CalendarError.NotImplemented, InvalidMonth, InvalidDay, OutOfRange.
+ * Ownership: Pure operation.
+ */
+fn ValidateFields(fields: CalendarFields, system: CalendarSystem) Result[void, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}
+
+/**
+ * Returns the number of months in the chosen year.
+ * Parameters:
+ *   - year: Year in the selected calendar's numbering system.
+ *   - system: Calendar system.
+ * Returns: Count including inserted months, when present.
+ * Errors: CalendarError.NotImplemented, OutOfRange, UnsupportedSystem.
+ * Ownership: Pure operation.
+ */
+fn MonthsInYear(year: int, system: CalendarSystem) Result[int, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}
+
+/**
+ * Returns valid days in a specific calendar month of a given year.
+ * Parameters:
+ *   - year: Calendar-specific year.
+ *   - month: Month with explicit leap-month flag.
+ *   - system: Calendar system.
+ * Returns: Day count.
+ * Errors: CalendarError.NotImplemented, InvalidMonth, OutOfRange.
+ * Ownership: Pure operation.
+ */
+fn DaysInMonth(year: int, month: CalendarMonth, system: CalendarSystem) Result[int, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}

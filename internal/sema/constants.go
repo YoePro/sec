@@ -108,17 +108,14 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 			return DecimalValue{}, false
 		}
 
-		value.Int64 = -value.Int64
+		value.Coefficient = new(big.Int).Neg(value.Coefficient)
 		return value, true
 	default:
 		return DecimalValue{}, false
 	}
 
 	if integer, ok := ast.ParseIntegerFormNumericLiteralLexeme(expr.TokenLiteral()); ok {
-		if !integer.IsInt64() {
-			return DecimalValue{}, false
-		}
-		return DecimalValue{Int64: integer.Int64()}, true
+		return DecimalValue{Coefficient: integer}, true
 	}
 
 	if strings.HasPrefix(lexeme, "-") {
@@ -165,16 +162,16 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 		return DecimalValue{}, false
 	}
 
-	intValue, err := strconv.ParseInt(digits, 10, 64)
-	if err != nil {
+	coefficient, parsed := new(big.Int).SetString(digits, 10)
+	if !parsed {
 		return DecimalValue{}, false
 	}
 
 	if negative {
-		intValue = -intValue
+		coefficient.Neg(coefficient)
 	}
 
-	return DecimalValue{Int64: intValue, Scale: uint8(scale)}, true
+	return DecimalValue{Coefficient: coefficient, Scale: uint8(scale)}, true
 }
 
 func (a *Analyzer) assignmentIntegerValue(name string, stmt *ast.AssignmentStatement) (*big.Int, bool) {

@@ -155,12 +155,13 @@ func (a *Analyzer) constrainedGenericMethodCall(expr *ast.CallExpression) ([]Fun
 	return methods, receiver, len(methods) > 0
 }
 
-// validateGenericTypeConstraintArguments verifies every concrete type
-// substitution against the ordered constraints retained by a generic type
-// template. Explicit, valid interface conformance is required; structurally
-// matching members alone are insufficient.
+// validateGenericTypeConstraintArguments verifies every argument against the
+// ordered constraints retained by a generic type template. Forwarded parameters
+// use their declared guarantees, including those inherited by an impl; concrete
+// arguments require explicit, valid interface conformance, never member shape.
 //
 // Rules:
+//   - rules/declarations/generics.md — §8 "Generic impl blocks"
 //   - rules/declarations/generics.md — §12 "Multiple constraints"
 //   - rules/declarations/generics.md — §14 "Constraint satisfaction"
 //   - rules/declarations/generics.md — §25 "Concrete specialization"
@@ -182,7 +183,11 @@ func (a *Analyzer) validateGenericTypeConstraintArguments(token lexer.Token, tem
 			continue
 		}
 		required := substituteGenericType(constraint.Interface, substitution)
-		if a.hasValidExplicitInterfaceConformance(argument, required) {
+		// An impl reuses the owner's parameters (including their constraints),
+		// so a template signature such as Box[T] is checked from those
+		// guarantees. Concrete arguments still require explicit conformance.
+		// Rules: rules/declarations/generics.md — §§8,14–15,25.
+		if genericArgumentGuaranteesConstraint(argument, required) || a.hasValidExplicitInterfaceConformance(argument, required) {
 			continue
 		}
 		a.addErrorAtToken(token,

@@ -1,0 +1,2 @@
+module helper
+fn Create() void { let arena := Arena.WithCapacity(64u) }

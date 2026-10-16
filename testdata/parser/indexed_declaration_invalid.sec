@@ -1,0 +1,25 @@
+module main
+
+fn Plain(values: map[int, int]) void {
+    values[1] := 2
+    let followingValue := 3
+}
+
+fn Fallible(values: map[int, int]) void {
+    try values[1] := 2
+    let followingValue := 3
+}
+
+fn Move(values: map[int, int], value: int) void {
+    values[1] :<- value
+    let followingValue := 3
+}
+
+fn Handled(values: map[int, int]) void {
+    try values[1] := 2 {
+        Err(_) => {}
+    }
+    let followingValue := 3
+}
+
+fn Following() int { return 1 }

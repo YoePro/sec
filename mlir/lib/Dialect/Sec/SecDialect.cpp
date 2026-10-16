@@ -58,8 +58,37 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
         number != 5 && number != 6 && number != 7 && number != 8 &&
-        number != 9 && number != 10)
+        number != 9 && number != 10 && number != 11)
       return operation->emitError("unsupported Sec dialect schema version");
+    // Places and direct references exist from schema 11 (SEC-MLIR-P15).
+    if (number < 11) {
+      auto usesSchema11Type = [](Type type) {
+        return isa<PlaceType, RefType, RefMutType>(type);
+      };
+      WalkResult walk = module->walk([&](Operation *nested) {
+        if (isa<FailReferenceGenerationOp>(nested))
+          return WalkResult::interrupt();
+        for (Type type : nested->getResultTypes())
+          if (usesSchema11Type(type))
+            return WalkResult::interrupt();
+        for (Type type : nested->getOperandTypes())
+          if (usesSchema11Type(type))
+            return WalkResult::interrupt();
+        if (auto function = dyn_cast<func::FuncOp>(nested)) {
+          for (Type type : function.getFunctionType().getInputs())
+            if (usesSchema11Type(type))
+              return WalkResult::interrupt();
+          for (Type type : function.getFunctionType().getResults())
+            if (usesSchema11Type(type))
+              return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+      if (walk.wasInterrupted())
+        return operation->emitError()
+               << "Places, direct references and their operations require schema 11, module declares schema "
+               << number;
+    }
     if (number == 1)
       return success();
     auto semanticVersion =

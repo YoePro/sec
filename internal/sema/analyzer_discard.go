@@ -38,7 +38,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 		if a.rejectOrdinaryMethodWholeSelfConsumption(place, expressionToken(stmt.Value)) {
 			return
 		}
-		if _, _, partial, unavailable := a.unavailablePlace(place); unavailable && !partial {
+		if endedAt, movedKey, partial, unavailable := a.unavailablePlace(place); unavailable && !partial {
 			if !a.validateExplicitDiscardType(place.Type, expressionToken(stmt.Value)) {
 				return
 			}
@@ -54,6 +54,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 					a.bindDefinition(ident.Token, symbol.Token)
 				}
 			}
+			a.recordRedundantDiscard(stmt, place, movedKey, endedAt)
 			return
 		}
 	}

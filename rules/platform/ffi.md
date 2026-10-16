@@ -898,6 +898,12 @@ This is callback interoperation, not general Sec-to-C symbol export.
 
 No user-selected exported C symbol is created by `c::callback`.
 
+`c::fn(...)` is not a native Sec `fn(...)` value and does not become one by implicit conversion; `extern "C"`, `extern "system"` and other foreign calling conventions remain distinct, and `c::fn` does not imply that system-ABI indirect calls use the C ABI.
+
+`c::callback(UnsafeSecFunction)` is rejected. An unsafe Sec callable may be adapted only where an existing or separately specified FFI contract form represents and validates every caller obligation on every possible invocation — ABI, callback lifetime, thread attachment/affinity, argument validity, ownership, retained pointers, effects and failure handling. Sec 0.1 adds no source syntax or implicit acceptance for this; a safe adapter that genuinely discharges the obligations remains possible. The binding-language encoding of callback-specific trusted facts is an FFI integration detail tracked as an open decision (MD-059, 2026-10-16, `rules/corrections/applied/md059-ffi-unsafe-callables-correction-20261016.md` §§ 4, 6).
+
+A safe callback may call unsafe native or foreign operations internally only after all their caller obligations are established by the wrapper and/or a valid trusted foreign contract. Foreign contract facts — buffer lifetime and extent, allowed callback threads, exclusivity, retention, invocation sequencing — are trusted assumptions, not compiler proofs; they keep their provenance through binding, callback adaptation, Semantic IR, lowering and tooling, and a missing, conflicting or unrepresentable required fact fails closed (MD-059 § 5).
+
 When a C API provides an explicit userdata/context pointer, that pointer is the canonical state-transport mechanism for Sec 0.1 callbacks.
 
 A generated callback wrapper that enters on an unattached foreign physical
@@ -1237,6 +1243,8 @@ The compiler must preserve provenance showing that the fact came from a trusted 
 Unknown foreign effects are treated conservatively.
 
 `unsafe` does not erase or override effect analysis.
+
+An unsafe callback or trusted ABI boundary does not waive borrow checking, ownership, object lifetime, nullability, pointer extent and alignment, synchronization, target validation or effect constraints, and a trusted effect claim is not proof of unrelated pointer or lifetime conditions (MD-059 §§ 7, 9(4)).
 
 ## 43. Foreign symbol names
 

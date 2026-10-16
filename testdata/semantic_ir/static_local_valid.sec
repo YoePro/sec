@@ -1,0 +1,13 @@
+module main
+
+fn Next() int {
+    static let mut calls: int := 0
+    calls = calls + 1
+    return calls
+}
+
+fn main() int {
+    let a := Next()
+    let b := Next()
+    return b
+}

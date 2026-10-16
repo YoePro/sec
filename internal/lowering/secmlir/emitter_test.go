@@ -35,7 +35,7 @@ func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	}
 	text := string(first)
 	for _, expected := range []string{
-		"sec.dialect_version = 10 : i32",
+		"sec.dialect_version = 11 : i32",
 		"sec.semantic_ir_version = 1 : i32",
 		`sec.module_id = "main"`,
 		`sec.target_os = "linux"`,
@@ -189,7 +189,7 @@ func TestEmitSchema6CheckedIntegerGuard(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		`sec.dialect_version = 10 : i32`,
+		`sec.dialect_version = 11 : i32`,
 		`%v2, %v3, %v4 = "sec.int.binary_checked"(%v0, %v1) <{kind = "add"}> : (si128, si128) -> (si128, i1, !sec.arithmetic_failure_reason)`,
 		`cf.cond_br %v3, ^bb1(%v4 : !sec.arithmetic_failure_reason), ^bb2`,
 		`^bb1(%v5: !sec.arithmetic_failure_reason):`,
@@ -323,7 +323,7 @@ fn Read(position: Position, zero: int128) int128 {
 			}
 			text := string(output)
 			for _, expected := range []string{
-				`sec.dialect_version = 10 : i32`,
+				`sec.dialect_version = 11 : i32`,
 				`!sec.struct<identity = "main::Pair"`,
 				`!sec.struct<identity = "main::TargetPair"`,
 				`#sec.struct_field<ordinal = 0, name = "Count", type = !sec.int`,
@@ -396,7 +396,7 @@ func TestEmitPackage14ArraysEndToEnd(t *testing.T) {
 			}
 			text := string(output)
 			for _, expected := range []string{
-				`sec.dialect_version = 10 : i32`,
+				`sec.dialect_version = 11 : i32`,
 				`!sec.array<!sec.int, "0">`,
 				`!sec.array<!sec.int, "2">`,
 				`!sec.array<!sec.int, "3">`,
@@ -522,7 +522,7 @@ func TestEmitPackage14SourceIntegrationMatrix(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		`sec.dialect_version = 10 : i32`,
+		`sec.dialect_version = 11 : i32`,
 		`!sec.array<si32, "0">`,
 		`!sec.array<si32, "3">`,
 		`!sec.array<!sec.struct<identity = "main::Pair"`,
@@ -731,7 +731,7 @@ func TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans(t *testing.T) {
 			}
 			text := string(lowered)
 			for _, expected := range []string{
-				`sec.dialect_version = 10 : i32`,
+				`sec.dialect_version = 11 : i32`,
 				fmt.Sprintf("ui%d", width),
 				`!sec.array<si32, "3">`,
 				`!sec.array<!sec.array<si32, "2">, "2">`,

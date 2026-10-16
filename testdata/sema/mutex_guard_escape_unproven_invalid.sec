@@ -1,0 +1,24 @@
+module main
+
+fn UnknownCallable(callback: fn() void) void {
+    let work := spawn callback()
+}
+
+type Carrier struct { Callback: -> fn() void, }
+fn ConsumeCarrier(-> value: Carrier) void { discard value }
+fn OpaqueCarrier(-> value: Carrier) void {
+    let work := spawn ConsumeCarrier(<-value)
+    discard value
+}
+
+fn Take[T](-> value: T) void { discard value }
+fn UnknownGeneric[T](-> value: T) void {
+    let work := spawn Take[T](<-value)
+    discard value
+}
+
+fn Plain() void {}
+fn CreateCallback() fn() void { return Plain }
+fn UnknownChildResult() void {
+    let work := spawn CreateCallback()
+}

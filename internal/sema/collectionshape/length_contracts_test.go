@@ -144,7 +144,7 @@ func TestArrayDefaultsRespectLengthNotEmptyAndUniqueContracts(t *testing.T) {
 	empty := sema.NewDynamicArrayType(intType)
 	empty.Name, empty.Named = "Empty", true
 	empty.Contracts = []sema.Contract{sema.LengthContract{Name: "exactLen", Value: big.NewInt(0)}, sema.MarkerContract{Name: "unique"}}
-	if resolved := sema.DefaultValueOf(empty); resolved.Kind != sema.ArrayDefault {
+	if resolved := sema.DefaultValueOf(empty); resolved.Kind != sema.EmptyDynamicArrayDefault {
 		t.Fatalf("exact-empty unique default = %#v", resolved)
 	}
 

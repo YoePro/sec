@@ -270,7 +270,7 @@ type State struct {
 fn Work() int { return 1 }
 
 fn Invalid(mutex: Mutex[State]) void {
-	let guard := mutex.lock()
+	let guard := mutex.Lock()
 	let work := spawn Work()
 	let outcome := await work
 	discard outcome
@@ -296,7 +296,7 @@ fn Work() int { return 1 }
 fn Consume(guard: MutexGuard[State]) void {}
 
 fn Valid(mutex: Mutex[State]) void {
-	let guard := mutex.lock()
+	let guard := mutex.Lock()
 	Consume(<-guard)
 	let work := spawn Work()
 	let outcome := await work
@@ -406,11 +406,11 @@ static let AppState: Mutex[State] := Mutex(State {
 })
 
 fn Run() bool {
-    Ready.store(true)
-    Requests.fetchAdd(1u)
-    let mut state := AppState.lock()
+    Ready.Store(true)
+    Requests.FetchAdd(1u)
+    let mut state := AppState.Lock()
     state.running = true
-    return Ready.load()
+    return Ready.Load()
 }
 `
 

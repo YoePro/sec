@@ -182,6 +182,11 @@ var (
 	CModelRISCVILP32     = ilp32CModel("riscv-ilp32", CFloatBinary128, 128)
 	// RISC-V LP64D (psABI): unsigned char and IEEE binary128 long double.
 	CModelRISCVLP64D = lp64CModel("riscv-lp64d", false, CFloatBinary128, 128)
+	// WebAssembly BasicCABI (WebAssembly tool-conventions, as implemented by
+	// clang): signed char, IEEE binary128 long double; wasm32 is ILP32 and
+	// wasm64 is LP64.
+	CModelWasm32 = CABIModel{Name: "wasm32-basic-c-abi", CharSigned: true, ShortBits: 16, IntBits: 32, LongBits: 32, LongLongBits: 64, BoolBits: 8, LongDouble: CFloatBinary128, LongDoubleStorage: 128, PointerWidthBits: 32, DataModelSpelling: "ILP32"}
+	CModelWasm64 = CABIModel{Name: "wasm64-basic-c-abi", CharSigned: true, ShortBits: 16, IntBits: 32, LongBits: 64, LongLongBits: 64, BoolBits: 8, LongDouble: CFloatBinary128, LongDoubleStorage: 128, PointerWidthBits: 64, DataModelSpelling: "LP64"}
 	// FreeBSD armv7 uses the same hard-float EABI data model as Linux.
 	CModelAAPCSFreeBSDHF = ilp32CModel("aapcs-freebsd-gnueabihf", CFloatBinary64, 64)
 )

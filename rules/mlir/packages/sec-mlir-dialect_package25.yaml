@@ -1,0 +1,163 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P25
+  title: Callable ABI Classification and Foreign Representation Boundary
+  status: specification-not-implementation
+  created: '2026-10-16'
+  sec_version: '0.1'
+  repository: https://github.com/YoePro/sec
+  branch: main
+  review_date: '2026-10-16'
+  sha: unverified-current-main; implementer runs git rev-parse HEAD
+  semantic_ir_version: 1 (no bump)
+  dialect_schema_predecessor: 20
+  dialect_schema_target: 21
+  lowering_spec_target: 21
+  predecessor_state:
+    P1-P14: implemented (last user confirmation)
+    P15: in progress (last user confirmation)
+    P16-P17: corrected plans (last user confirmation)
+    P18-P24: actual implementation unverified; audit at execution
+normative_sources:
+- rules/platform/abi.md
+- rules/platform/ffi.md
+- rules/platform/platform_model.md
+- rules/memory/layout.md
+- rules/compiler/semantic_ir.md
+- rules/compiler/generics_lowering.md
+- rules/compiler/linking.md
+- rules/mlir/sec_mlir.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+- missing-decisions.yaml
+governance_policy:
+  reuse_existing_ids: true
+  do_not_duplicate: true
+  preflight_inventory_required: true
+existing_gates:
+  MD-019: explicit layout source syntax
+  MD-021: 'target c:: binding environment source/metadata'
+  MD-045: imported external callable/stack/reentry contracts
+  MD-052: privileged core body syntax (adjacent)
+applied_decisions_not_reopen:
+- MD-020
+- MD-023
+- MD-024
+new_decisions: []
+source_abi_families:
+- Sec
+- C
+- system
+abi_model:
+  per_concrete_compilation_plan: true
+  model_is_authority: true
+  classify_positions:
+  - parameter
+  - return
+  - foreign-vararg
+  passing_kinds:
+  - Direct
+  - Indirect
+  - Ignore
+  whole_call_resource_assignment: true
+  return_first: true
+  source_ownership_unchanged: true
+  canonical_layout_reused: true
+  cold_fallback: true
+foreign:
+  ordinary_extern_requires_unsafe_call_context: false
+  unsafe_extern_requires_unsafe_call_context: true
+  c_type_prefix: 'c::'
+  c_fn_pointer: c::fn
+  callback_adapter: c::callback
+  capturing_closure_as_callback: false
+  general_c_export: false
+  c_varargs_requires_unsafe_extern: true
+  no_unwind_across_boundary: true
+  native_string_direct_ffi: false
+  foreign_borrow_call_bounded: true
+semantic_ir:
+  retains_semantic_signature: true
+  abi_transport_later: true
+  preserve:
+  - calling convention intent
+  - foreign trust/unsafe contract
+  - source transfer actions
+  - layout refs
+  - concrete generic identity
+  - callback/vararg legality
+  - hidden internal allocation context
+dialect:
+  planned_schema: 21
+  ops:
+  - sec.abi.pack_arg
+  - sec.abi.unpack_arg
+  - sec.abi.prepare_indirect
+  - sec.abi.prepare_return
+  - sec.abi.pack_return
+  - sec.abi.unpack_return
+  - sec.abi.call
+  - sec.abi.func
+  - sec.abi.callback_bridge
+  - sec.abi.vararg_promote
+  typed_metadata:
+  - ABIModelRef
+  - CallABIPlanRef
+  - ABISignatureRef
+  - ABIFingerprint
+  verifiers:
+  - --sec-verify-call-abi-plans
+  - --sec-verify-abi-lowering
+  - --sec-verify-ffi-boundaries
+  - --sec-verify-abi-compatibility
+lowering:
+  planned_version: 21
+  passes:
+  - --sec-resolve-call-abi
+  - --sec-lower-call-abi
+  llvm_required: false
+  sret: true
+  hidden_arg_order_model_defined: true
+  cross_module_checks: true
+phase_gates:
+- preflight and inventory
+- classification
+- whole-call resource planning
+- ABI-lowered MLIR
+- foreign/C callback interoperability
+- fingerprints/debug/separate compilation
+tests:
+- scalar and wide type matrix
+- param vs return
+- multi-part and indirect aggregates
+- stack pressure
+- sret and hidden context
+- safe refs versus RawPtr
+- C/system ABI
+- C structs/unions/bitfields
+- C varargs
+- callbacks
+- ordinary vs unsafe extern
+- negative foreign legality
+- no unwind
+- ABI fingerprint/cache
+- deterministic cross-target cold versus warm
+deferred:
+- source explicit layout syntax until MD-019
+- target C binding producer until MD-021
+- external stack contract metadata until MD-045
+- general C export
+- C header preprocessing
+- LLVM IR ABI encoding
+- physical callback runtime attachment until platform support
+artifacts:
+  guide: sec-mlir-dialect_package25.md
+  manifest: sec-mlir-dialect_package25.yaml
+  sync: sec_callable_abi_sync_package25.md
+  semantic_ir: sec_semantic_ir_callable_abi_package25.md
+  dialect: sec_mlir_dialect_package25.md
+  lowering: sec_mlir_lowering_package25.md
+  decision_index: sec-mlir-dialect_package25_decision-index.md
+next_package:
+  suggested: 'P26: Validated Physical Reference and Descriptor Lowering'
+  subject_to_predecessor_audit: true

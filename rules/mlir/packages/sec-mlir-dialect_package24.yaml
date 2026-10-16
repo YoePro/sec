@@ -1,0 +1,161 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P24
+  title: Physical Value Representation and Layout Lowering
+  status: specification-not-implementation
+  created: '2026-10-16'
+  sec_version: '0.1'
+  repository: https://github.com/YoePro/sec
+  branch: main
+  review_date: '2026-10-16'
+  sha: unverified-current-main; implementer records git rev-parse HEAD
+  semantic_ir_version: 1 (no bump)
+  dialect_schema_predecessor: 19
+  dialect_schema_target: 20
+  lowering_spec_target: 20
+  prerequisite_states:
+    P1-P14: implemented (user-confirmed)
+    P15: implementation in progress (last user report)
+    P16-P17: corrected plans (last user report)
+    P18-P23: specifications; actual implementation unverified
+normative_sources:
+- rules/memory/layout.md
+- rules/memory/storage.md
+- rules/memory/reference_model.md
+- rules/memory/references.md
+- rules/compiler/compiler_pipeline.md
+- rules/compiler/semantic_ir.md
+- rules/mlir/sec_mlir.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+- rules/types/types.md
+- governance/memory.yaml
+governance_ids_to_update:
+- frontend.layout
+- semantic-ir.layout
+- lowering.layout
+- platform.layout
+- tooling.layout
+scope:
+  resolver:
+  - one immutable ResolvedLayout service
+  - plan-complete cache key and cold fallback
+  - exact checked layout arithmetic
+  - scalars and wide types
+  - struct declaration-order fields
+  - fixed array stride/count
+  - enum/union/Option/Result layouts
+  - representation validity
+  - concrete generic recursion
+  - selected descriptor layouts
+  semantic_ir:
+  - typed ResolvedLayoutRef
+  - target plan reference
+  - layout-sensitive projections
+  - obligation discharge facts
+  dialect:
+  - schema v20 typed layout attrs
+  - sec.layout.*
+  - sec.repr.*
+  - layout/representation/obligation verification
+  lowering:
+  - eligible pure intra-procedural materialization
+  - checked field/element offsets
+  - variant tag/payload
+  - only selected safe descriptor policies
+  - no ABI
+locked_rules:
+  native_layout_plan_specific: true
+  one_layout_service: true
+  float_platform_width: 32-bit target => binary32; 64-bit target => binary64 (MD-014)
+  decimal_rep: '{i64,i32}'
+  decimal128_rep: '{i128,i32}'
+  fixed_array_inline: true
+  dynamic_array_sized_descriptor: true
+  safe_reference_not_raw_pointer: true
+  padding_not_semantic: true
+  ABI_separate: true
+  zero_sized_valid: true
+  representation_validity_distinct: true
+previous_decisions:
+  MD-019: explicit layout source syntax open
+  MD-050: invalid UTF-8 string policy
+  P23-D1: public string offset units and boundaries (MD-071)
+  P23-D2: materialization signatures (MD-072)
+  P23-D3: char conversion policy (MD-073)
+  P21-D1-D3: mapped to MD-066, MD-067, MD-068
+  MD-012: ConversionError canonical
+  MD-014: platform-width plain float
+new_decisions: []
+semantic_ir:
+  operations:
+  - LayoutRequireOp
+  - LayoutResolveOp
+  - LayoutSizeOfOp
+  - LayoutAlignOfOp
+  - LayoutStrideOfOp
+  - LayoutFieldOffsetOp
+  - RepresentationMaterializeOp
+  - RepresentationProjectOp
+  - RepresentationLoadOp
+  - RepresentationStoreOp
+  - RepresentationValidityOp
+  - RepresentationDischargeOp
+dialect:
+  version: 20
+  type_or_attr:
+  - '#sec.layout<id,plan>'
+  - sec.layout_ref
+  - optional internal !sec.layout_value<T,id>
+  operations:
+  - sec.layout.size_of
+  - sec.layout.align_of
+  - sec.layout.stride_of
+  - sec.layout.field_offset
+  - sec.repr.materialize
+  - sec.repr.project_field
+  - sec.repr.project_element
+  - sec.repr.project_variant
+  - sec.repr.load_validated
+  - sec.repr.store_validated
+  - sec.repr.check_validity
+  - sec.repr.discharge
+  verifiers:
+  - --sec-verify-resolved-layouts
+  - --sec-verify-representation-lowering
+  - --sec-verify-layout-obligations
+lowering:
+  version: 20
+  passes:
+  - --sec-resolve-layouts
+  - --sec-lower-value-representations
+  no_call_abi: true
+  no_final_llvm: true
+  only_resolved_plan_policies: true
+acceptance_phases:
+- A preflight/inventory
+- B shared resolver/scalars
+- C aggregate/generic/validity
+- D selected descriptors
+- E schema v20
+- F representation-lowering/guards
+- G tooling/caches/governance/evidence
+deferred:
+- call ABI and foreign FFI classification
+- MD-019 source spelling
+- P23-D1-D3 and MD-050
+- missing selected descriptor policies
+- full LLVM dialect convergence
+- hardware MMIO/volatile physical access
+- physical allocator provider ABI
+next_package:
+  id: SEC-MLIR-P25
+  candidate: Callable ABI Classification and Foreign Representation Boundary
+files:
+- sec-mlir-dialect_package24.md
+- sec-mlir-dialect_package24.yaml
+- sec_layout_sync_package24.md
+- sec_semantic_ir_layout_package24.md
+- sec_mlir_dialect_package24.md
+- sec_mlir_lowering_package24.md
+- sec-mlir-dialect_package24_decision-index.md

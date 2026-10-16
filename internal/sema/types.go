@@ -765,8 +765,14 @@ const (
 	ExplicitTypeDefault DefaultKind = "explicit"
 	StructDefault       DefaultKind = "struct"
 	ArrayDefault        DefaultKind = "array"
-	EnumDefault         DefaultKind = "enum"
-	UnionDefault        DefaultKind = "union"
+	// EmptyDynamicArrayDefault is an initialized owning T[] with length and
+	// internal capacity zero, no backing storage, no live elements and no
+	// allocation. It never requests an element default or a null safe slice.
+	// Rules: rules/collections/collections.md — §6.2;
+	// rules/types/default_values.md — "Owning dynamic arrays".
+	EmptyDynamicArrayDefault DefaultKind = "empty-dynamic-array"
+	EnumDefault              DefaultKind = "enum"
+	UnionDefault             DefaultKind = "union"
 )
 
 type DefaultResolution struct {
@@ -826,12 +832,64 @@ type RegexContract struct {
 
 func (RegexContract) contractNode() {}
 
+// DecimalValue is the exact value of a decimal literal: Coefficient ×
+// 10^-Scale, with an arbitrary-precision coefficient so decimal128 literals
+// are represented exactly (P21 sync § 8). Whether it fits a target decimal
+// type is checked separately (decimal: i64 coefficient, decimal128: i128).
 type DecimalValue struct {
-	Int64 int64
-	Scale uint8
+	Coefficient *big.Int
+	Scale       uint8
+}
+
+// Sign returns -1, 0 or +1.
+func (value DecimalValue) Sign() int {
+	if value.Coefficient == nil {
+		return 0
+	}
+	return value.Coefficient.Sign()
+}
+
+// Cmp compares two decimal values exactly, independent of their scales.
+func (value DecimalValue) Cmp(other DecimalValue) int {
+	left, right := new(big.Int), new(big.Int)
+	if value.Coefficient != nil {
+		left.Set(value.Coefficient)
+	}
+	if other.Coefficient != nil {
+		right.Set(other.Coefficient)
+	}
+	if value.Scale < other.Scale {
+		left.Mul(left, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(other.Scale-value.Scale)), nil))
+	} else if other.Scale < value.Scale {
+		right.Mul(right, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(value.Scale-other.Scale)), nil))
+	}
+	return left.Cmp(right)
+}
+
+// fitsCoefficientBits reports whether the coefficient fits a signed
+// two's-complement integer of the given width.
+func (value DecimalValue) fitsCoefficientBits(bits uint) bool {
+	if value.Coefficient == nil {
+		return true
+	}
+	limit := new(big.Int).Lsh(big.NewInt(1), bits-1)
+	minimum := new(big.Int).Neg(limit)
+	return value.Coefficient.Cmp(minimum) >= 0 && value.Coefficient.Cmp(limit) < 0
+}
+
+// decimalCoefficientBits is the coefficient width of a decimal type
+// (rules/memory/layout.md: decimal {i64,i32}, decimal128 {i128,i32}).
+func decimalCoefficientBits(target Type) uint {
+	if target.Name == "decimal128" || target.Underlying == "decimal128" {
+		return 128
+	}
+	return 64
 }
 
 type Symbol struct {
+	// mutexAcquisition preserves proven held-resource provenance through local
+	// guard moves (rules/concurrency/mutex.md — §§28,42–43).
+	mutexAcquisition *mutexAcquisition
 	// FloatingConstant is an immutable finite value in this binding's unit coordinates.
 	FloatingConstant *big.Rat
 	// QuantityConstant is the exact value of an immutable unit-bearing
@@ -1070,8 +1128,12 @@ func newBuiltinTypes() map[string]Type {
 			EnumConsts: builtinEnumConsts([]string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"}),
 		},
 		"ThreadContextError":    {Name: "ThreadContextError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"NotAttached", "AlreadyAttached", "ResourceUnavailable", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"NotAttached", "AlreadyAttached", "ResourceUnavailable", "NativeFailure"})},
-		"Mutex":                 {Name: "Mutex", Kind: StructType, GenericParameters: []string{"T"}},
-		"MutexGuard":            {Name: "MutexGuard", Kind: StructType, GenericParameters: []string{"T"}},
+		"Mutex":                 builtinMutexType("Mutex"),
+		"MutexGuard":            builtinMutexType("MutexGuard"),
+		"Context":               builtinContextType(),
+		"ContextError":          builtinContextErrorType(),
+		"MemoryOrder":           builtinMemoryOrderType(),
+		"ChannelCapability":     builtinChannelCapabilityType(),
 		"Atomic":                {Name: "Atomic", Kind: StructType, GenericParameters: []string{"T"}},
 		"CompareExchangeResult": {Name: "CompareExchangeResult", Kind: StructType, GenericParameters: []string{"T"}},
 		"Event":                 {Name: "Event", Kind: StructType, GenericParameters: []string{"T"}},
@@ -1464,7 +1526,7 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 //   - rules/memory/arena.md — §46 "Implicit Arena destruction"
 //   - rules/concurrency/tasks.md — §7 "Lifecycle responsibility"
 //   - rules/concurrency/threads.md — owning Thread lifecycle
-//   - rules/concurrency/mutex.md — §§6 and 48 guard release and mutex destruction
+//   - rules/concurrency/mutex.md — §§6,8,48 guard release, Context and mutex destruction
 //   - rules/concurrency/channels.md — §§21, 31, 35, and 36 endpoint/ticket destruction
 //   - rules/concurrency/events.md — "Subscription"
 func compilerKnownRequiresDestruction(typ Type) bool {
@@ -1477,6 +1539,7 @@ func compilerKnownRequiresDestruction(typ Type) bool {
 		"Arena",
 		"Mutex",
 		"MutexGuard",
+		"Context",
 		"Subscription",
 		"Channel",
 		"Sender",
@@ -1588,6 +1651,12 @@ func requiresOwnershipTransfer(typ Type) bool {
 }
 
 func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification {
+	// Canonical @noCopy guards and standalone Contexts are movable owners,
+	// never implicitly copyable values.
+	// Rules: rules/concurrency/mutex.md — §§6(2–4),8(1–4),28.
+	if typ.Intrinsic && typ.Kind == StructType && (typ.Name == "MutexGuard" || typ.Name == "Context") {
+		return CopyMoveOnly
+	}
 	if typ.ExplicitlyNonCopyable {
 		return CopyNonCopyable
 	}

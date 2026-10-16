@@ -61,6 +61,7 @@ func Format(module *Module) string {
 		}
 		out.WriteString("  }\n")
 	}
+	formatStatics(&out, module.Statics)
 	for _, fn := range module.Functions {
 		formatFunction(&out, fn)
 	}
@@ -123,6 +124,9 @@ func formatFunction(out *strings.Builder, fn *Function) {
 	}
 	if fn.NoPanic {
 		fmt.Fprintf(out, " noPanic(%s)", fn.NoPanicSource)
+	}
+	if len(fn.ReturnOrigins) > 0 {
+		out.WriteString(formatReturnOrigins(fn.ReturnOrigins))
 	}
 	fmt.Fprintf(out, " %s {\n", formatLocation(fn.Location))
 	if len(fn.Storages) > 0 {
@@ -196,6 +200,10 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " $%d, %%%d", op.Storage, op.Operands[0])
 	case OpStorageLoad:
 		fmt.Fprintf(out, " $%d", op.Storage)
+	case OpStaticLoad:
+		fmt.Fprintf(out, " @%d", op.Static)
+	case OpStaticStore:
+		fmt.Fprintf(out, " @%d, %%%d", op.Static, op.Operands[0])
 	case OpReturn:
 		if len(op.Operands) > 0 {
 			fmt.Fprintf(out, " %%%d", op.Operands[0])
@@ -216,6 +224,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 			fmt.Fprintf(out, "%%%d[%s]", id, op.ArgumentActions[i])
 		}
 		out.WriteByte(')')
+		formatReferenceMetadata(out, op.Reference)
 	case OpBranch:
 		formatTarget(out, op.Successors[0])
 	case OpCondBranch:

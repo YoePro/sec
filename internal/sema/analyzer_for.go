@@ -523,18 +523,19 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.
 				}
 			}
 		}
-		if value, ok := decimalLiteralValue(step); ok && value.Int64 == 0 {
+		if value, ok := decimalLiteralValue(step); ok && value.Sign() == 0 {
 			a.addErrorAtToken(expressionToken(step), "for range step must not be zero")
 			return Type{Kind: InvalidType}, false
 		}
 		if startValue, startOK := decimalLiteralValue(expr.Start); startOK {
 			if endValue, endOK := decimalLiteralValue(expr.End); endOK {
 				if stepValue, stepOK := decimalLiteralValue(step); stepOK {
-					if startValue.Int64 < endValue.Int64 && stepValue.Int64 < 0 {
+					// Exact comparison: 1.5 < 2 although coefficient 15 > 2.
+					if startValue.Cmp(endValue) < 0 && stepValue.Sign() < 0 {
 						a.addErrorAtToken(expressionToken(step), "for ascending range step must be positive")
 						return Type{Kind: InvalidType}, false
 					}
-					if startValue.Int64 > endValue.Int64 && stepValue.Int64 > 0 {
+					if startValue.Cmp(endValue) > 0 && stepValue.Sign() > 0 {
 						a.addErrorAtToken(expressionToken(step), "for descending range step must be negative")
 						return Type{Kind: InvalidType}, false
 					}

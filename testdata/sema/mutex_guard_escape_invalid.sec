@@ -1,0 +1,113 @@
+module main
+
+fn Take(-> guard: MutexGuard[int]) void { discard guard }
+fn Borrow(guard: ref MutexGuard[int]) void { discard guard }
+
+fn Move(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let work := spawn Take(<-guard)
+    discard guard
+}
+
+fn BorrowAcross(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let work := spawn Borrow(ref guard)
+    discard guard
+}
+
+type Envelope struct { Guard: MutexGuard[int], }
+fn TakeEnvelope(-> value: Envelope) void { discard value }
+fn Aggregate(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let envelope := Envelope { Guard: <-guard }
+    let work := spawn TakeEnvelope(<-envelope)
+    discard envelope
+}
+
+fn Captured(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let work := spawn capture(<-guard) fn() void { discard guard }
+    discard guard
+}
+
+fn StoredClosure(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let callback := capture(<-guard) fn() void { discard guard }
+    let work := spawn callback()
+    callback()
+}
+
+fn Acquire(value: ref Mutex[int]) MutexGuard[int] { return value.Lock() }
+fn ChildResult(value: ref Mutex[int]) void {
+    let work := spawn Acquire(value)
+}
+
+fn TakeOption(-> value: Option[MutexGuard[int]]) void { discard value }
+fn Optional(value: ref Mutex[int]) void {
+    let option := value.TryLock()
+    let work := spawn TakeOption(<-option)
+    discard option
+}
+
+fn Thread(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let work := spawn thread Take(<-guard)
+    discard guard
+}
+
+static let mut Stored: Option[MutexGuard[int]] := None
+fn StaticStore(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    Stored = Some(<-guard)
+    discard guard
+}
+
+fn Send(value: ref Mutex[int], sender: Sender[MutexGuard[int]]) void {
+    let guard := value.Lock()
+    discard sender.Send(<-guard)
+    discard guard
+}
+
+fn TrySend(value: ref Mutex[int], sender: Sender[MutexGuard[int]]) void {
+    let guard := value.Lock()
+    discard sender.TrySend(<-guard)
+    discard guard
+}
+
+fn Revocable(value: ref Mutex[int], sender: Sender[MutexGuard[int]]) void {
+    let guard := value.Lock()
+    discard sender.SendRevocable(<-guard)
+    discard guard
+}
+
+fn NestedClosure(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let inner := capture(<-guard) fn() void { discard guard }
+    let outer := capture(<-inner) fn() void { inner() }
+    let work := spawn outer()
+    outer()
+}
+
+fn BorrowedCapture(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let view := ref guard
+    let work := spawn capture(view) fn() void { discard view }
+    discard view
+    discard guard
+}
+
+type Held MutexGuard[int]
+fn TakeHeld(-> guard: Held) void { discard guard }
+fn NamedGuard(-> guard: Held) void {
+    let work := spawn TakeHeld(<-guard)
+    discard guard
+}
+
+type CallbackBox struct { Callback: fn() void, }
+fn ConsumeCallbackBox(-> value: CallbackBox) void { discard value }
+fn FreshAggregateClosure(value: ref Mutex[int]) void {
+    let guard := value.Lock()
+    let callback := capture(<-guard) fn() void { discard guard }
+    let work := spawn ConsumeCallbackBox(CallbackBox { Callback: <-callback })
+    callback()
+}

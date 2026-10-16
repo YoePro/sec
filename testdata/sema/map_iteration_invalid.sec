@@ -1,0 +1,37 @@
+module main
+
+@noCopy
+type Resource struct { value: int }
+
+fn Single(values: map[int, int]) void {
+    for entry in values {}
+}
+
+fn Triple(values: map[int, int]) void {
+    for key, value, extra in values {}
+}
+
+fn MutableKey(values: ref mut map[int, int]) void {
+    for ref mut key, value in values {}
+}
+
+fn SharedValue(values: ref map[int, int]) void {
+    for key, ref mut value in values {}
+}
+
+fn ImmutableValue(source: map[int, int]) void {
+    let values := source
+    for key, ref mut value in values {}
+}
+
+fn CopyKey(values: map[Resource, int]) void {
+    for key, _ in values {}
+}
+
+fn CopyValue(values: map[int, Resource]) void {
+    for _, value in values {}
+}
+
+fn Structural(values: ref mut map[int, int]) void {
+    for key, value in values { values.Clear() }
+}

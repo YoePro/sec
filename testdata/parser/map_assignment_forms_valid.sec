@@ -1,0 +1,8 @@
+module main
+
+fn Forms(values: map[int, int], value: int) void {
+    values[1] = value
+    try values[1] = value
+    try values[1] <- value
+    let fresh := value
+}

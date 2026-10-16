@@ -405,6 +405,13 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package11.md
       - rules/mlir/packages/sec-mlir-dialect_package14.md
       - rules/corrections/applied/semantic-ir-units-correction-20260818.md
+      - rules/mlir/packages/sec-mlir-dialect_package23.md
+      - rules/mlir/packages/sec-mlir-dialect_package23.yaml
+      - rules/mlir/packages/sec-mlir-dialect_package23_decision-index.md
+      - rules/mlir/normative-sync/sec_string_core_sync_package23.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_string_package23.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v19.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v19.md
     code:
       - internal/ir/semantic/type_identity.go
       - internal/ir/semantic/named_scalar.go
@@ -510,6 +517,7 @@ integrations:
       - "explicit low-bit extraction (MD-046/MD-056, 2026-10-12, types.md \"Explicit low-bit extraction\", rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md): the parser reads the contextual form `bit[N](value)` as a BitExtractionExpression (rolling back to indexing when `bit[...]` has no call operand); Sema requires a compile-time N in 1..256 not above the source width (target-sized int/uint from the CompilationPlan, diagnosed when unavailable), accepts only primitive integers, byte and char, rejects named, constrained, unit-bearing and other sources, types the result as uint8/16/32/64/128/256 by N, folds constants as the non-negative x mod 2^N, publishes ResolvedBitExtractionOf and the proven interval 0..2^N-1; Semantic IR lowers it as int.bit-extract (verified width and carrier, no failure edge), Sec MLIR schema 10 rejects that operation explicitly, and the formatter prints bit[N](value) canonically (TestBitExtractionTypesAndRegisterWrites, TestBitExtractionConstantsUseNonNegativeModulo, TestBitExtractionRejections, TestParseBitExtractionExpression, TestBitExtractionLowersToIntBitExtract, TestFormatBitExtractionCanonically)"
       - "S1140 types.type-name-used-as-value (2026-10-10): a compiler-known lowercase type name such as list, map or set in value position is reported as a type instead of an undefined variable; since MD-058 (2026-10-12) `list[T].WithCapacity(...)` is a valid associated factory call and no longer an S1140 case"
     remaining:
+      - "SEC-MLIR-P23 (installed 2026-10-16, not implemented): string values, UTF-8 facts and core materialization through Semantic IR, schema-19 dialect and lowering-v19 (gates B-D depend on P15/P17-P19 and the planned schema 17/18 predecessors). Open decisions: MD-050 (invalid UTF-8), MD-071 public offset units and boundaries (P23-D1), MD-072 byte/rune array materialization signatures (P23-D2), MD-073 char conversion above 255 (P23-D3), MD-074 len(...) int representability"
       - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
       - "enforce the try requirement for bare Sec-only scalar conversions that may fail (types.md \"Explicit conversions\"); MD-056 is decided (2026-10-12): signed values passed in unsigned syscall/register words use explicit `bit[N](value)` extraction, so first migrate those passes in sec/platform/linux and sec/stdlib/io (and the remaining sites in sec/stdlib/str) to bit[N] or checked conversions, then enforce; measured 2026-10-12: enabling enforcement today adds 17 errors in sec/platform/linux, 20 in sec/stdlib/io, 6 in sec/stdlib/str and fails 5 Go tests; also classify floating and decimal conversions (PrecisionLoss, ScaleOverflow, NonFinite)"
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
@@ -912,6 +920,14 @@ integrations:
       - rules/foundations/grammar.md
       - rules/errors/errorhandling.md
       - rules/tooling/diagnostics.md
+      - rules/mlir/packages/sec-mlir-dialect_package22.md
+      - rules/mlir/packages/sec-mlir-dialect_package22.yaml
+      - rules/mlir/packages/sec-mlir-dialect_package22_decision-index.md
+      - rules/mlir/normative-sync/sec_named_contracts_sync_package22.md
+      - rules/mlir/normative-sync/sec_p20_p21_conversion_compatibility_package22.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_named_contracts_package22.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v18.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v18.md
     code:
       - internal/sema/unique_contracts.go
       - internal/sema/collectionshape/unique.go
@@ -1112,6 +1128,7 @@ integrations:
       - report runtime contract validation through ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex }) with the first violated contract in source order; `try Percent(value)` still uses the compiler-known ContractError as its error type (MD-012 decided 2026-10-08, rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md §§ 3–4)
       - preserve contract identity and validation requirements in Semantic IR
       - lower runtime validation and failure paths through the maintained Sec MLIR pipeline
+      - "SEC-MLIR-P22 (installed 2026-10-16, not implemented): resolved read-only named-contract plans in effective inherited/local order with origin IDs, intrinsic-first checked conversion, first-failure ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex }), Semantic IR contract validation, schema-18 dialect and lowering-v18 (gate B depends on the planned schema-17 predecessor P21 and on P15/P17). No new P22 decision; regex stays blocked by MD-010 and invalid UTF-8 paths by MD-050; P21-D1/D2/D3 are MD-066/MD-067/MD-068"
       - "MD-012 runtime channel: make runtime-dependent checked conversions into constrained named types fail with ConversionError, mapping intrinsic failures to their variants and the first violated contract in source order to Contract(ContractError.Violation { Kind, DeclarationIndex }) with zero-based declaration indices; distinguish missing relation, intrinsic failure and contract failure in diagnostics (rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md §§ 4–5)"
     governance_reconciliation:
       - "unique comparison semantics completion (2026-10-09): this closes the direct-element equality requirement, with 32/64-bit source tests at every analysis depth and callback execution tests including non-reflexive equality and signed zero. The existing runtime collection validation/lowering and shared CTE executor requirements remain open: unknown runtime expressions, spreads and unsupported construction receive no fabricated compile-time proof; map entry semantics are not inferred from key representation. type-contracts-v2 remaining reduced from 11 to 10 and types total from 40 to 39."

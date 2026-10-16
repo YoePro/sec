@@ -1,0 +1,53 @@
+module arithmetic
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/arithmetic/apply.sec
+ * Module: arithmetic
+ * Purpose: Explicit calendar-period arithmetic.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/arithmetic/std-temporal-arithmetic.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+import "temporal/calendar"
+
+/**
+ * Adds months in a specified calendar using an explicit missing-day policy.
+ * Description: Stateless; preserving end-of-month INTENT across repeated
+ *   recurrences is a separate recurrence-rule concern.
+ * Parameters:
+ *   - value: Absolute day used as the starting calendar date.
+ *   - months: Signed count of calendar month transitions.
+ *   - system: Explicit calendar algorithm, not historical civil profile.
+ *   - policy: Month-end resolution policy.
+ * Returns: Absolute day reached by applying the calendar operation.
+ * Errors: TemporalArithmeticError.NotImplemented, InvalidTarget, OutOfRange,
+ *         UnsupportedSystem.
+ * Ownership: No allocation or I/O.
+ */
+fn AddMonths(value: date, months: int, system: calendar.CalendarSystem, policy: MonthEndPolicy) Result[date, TemporalArithmeticError] {
+    return Err(TemporalArithmeticError.NotImplemented)
+}
+
+/**
+ * Applies a calendar-relative period using an explicitly chosen order.
+ * Description: Weeks/days are calendar steps, not duration nanoseconds.
+ * Parameters:
+ *   - value: Starting absolute day.
+ *   - period: Signed calendar components.
+ *   - system: Calendar algorithm.
+ *   - policy: Policy for invalid target dates after month/year changes.
+ *   - order: Order of evaluating the components.
+ * Returns: Resulting absolute day.
+ * Errors: TemporalArithmeticError.NotImplemented, InvalidTarget, OutOfRange,
+ *         UnsupportedSystem.
+ * Ownership: Pure, no I/O or allocation.
+ */
+fn AddPeriod(value: date, period: CalendarPeriod, system: calendar.CalendarSystem, policy: MonthEndPolicy, order: PeriodOrder) Result[date, TemporalArithmeticError] {
+    return Err(TemporalArithmeticError.NotImplemented)
+}

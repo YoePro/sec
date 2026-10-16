@@ -1,0 +1,177 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P23
+  title: String Values, UTF-8 and Core Materialization
+  created: '2026-10-16'
+  status: specification-not-implementation
+  repository: https://github.com/YoePro/sec
+  branch: main
+  review_date: '2026-10-16'
+  sha: unverified-current-main (Codex must record git rev-parse HEAD)
+  sec_version: '0.1'
+  semantic_ir_version: 1 (no bump)
+  dialect_schema_predecessor: 18
+  dialect_schema_target: 19
+  lowering_spec_target: 19
+  prerequisite_states:
+    P1-P14: implemented (user confirmed)
+    P15: implementation in progress (user confirmed)
+    P16-P17: corrected plans, not confirmed implemented
+    P18-P22: specifications; implementation status not confirmed
+normative_sources:
+- rules/types/types.md
+- rules/types/contracts.md
+- rules/library/core-library.md
+- rules/compiler/compiler_known_members.md
+- rules/compiler/semantic_ir.md
+- rules/compiler/compiler_pipeline.md
+- rules/memory/layout.md
+- rules/memory/copy_move.md
+- rules/memory/allocation.md
+- rules/memory/reference_model.md
+- rules/errors/errorhandling.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+- sec/core/string.sec
+- sec/core/error.sec
+- rules/corrections/applied/string-length-contracts-correction-20261009.md
+- rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md
+- rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md
+- governance/types.yaml
+- language-rulebook-status.md
+locked_decisions:
+  MD-004: one fallible runtime concat/interpolation materialization, AllocationError,
+    Sema-selected context
+  MD-058: string Len/rune count, value SizeOf/byte count
+  copy_move: string allocation-free, infallible, immutable copy
+  string_type: distinct from arrays and C strings
+  compiler_private_subrange: byte offsets; proof required
+existing_open_dependencies:
+- MD-050 (invalid UTF-8)
+- MD-010 (regex; not directly P23)
+- shared len(int) representability issue from P16/P18 (MD-074)
+new_open_decisions:
+- id: P23-D1
+  missing_decision: MD-071
+  file: missing-decisions.yaml
+  approved: false
+- id: P23-D2
+  missing_decision: MD-072
+  file: missing-decisions.yaml
+  approved: false
+- id: P23-D3
+  missing_decision: MD-073
+  file: missing-decisions.yaml
+  approved: false
+scope:
+  full_early:
+  - static literals
+  - source scalar and byte length
+  - string copy/lifetime facts
+  - pure comparisons
+  - private byte-range proof
+  - resolved member plans
+  - schema v19 parse/verify
+  - P22 length interoperability
+  requires_predecessors:
+  - runtime concat MD-004 via P17/P19
+  - dynamic owning byte/rune arrays P18
+  - borrowed subrange lifetime P15/P17
+  - full try control P10/P11
+  decision_gated:
+    MD-071:  # P23-D1
+    - public find and slice offset semantics
+    - byte-boundary errors
+    MD-072:  # P23-D2
+    - FromByteArray/FromRuneArray public signatures
+    - materializing array return and error signatures
+    MD-073:  # P23-D3
+    - ToCharArray on >255 scalars
+    MD-050:
+    - invalid UTF-8 string creation, iteration and decoding policy
+operations:
+  semantic_ir:
+  - StringLiteralOp
+  - StringRuneLengthOp
+  - StringByteLengthOp
+  - StringSignedRuneLengthOp
+  - StringCompareOp
+  - StringEqualsOp
+  - StringStartsWithOp
+  - StringEndsWithOp
+  - StringIndexOfOp
+  - StringSubrangeUncheckedOp
+  - StringConcatMaterializeOp
+  - StringToArrayOp
+  - SequenceToStringOp
+  - StringIdentityOp
+  - StringRuneIteratorStepOp
+  dialect:
+  - sec.string.literal
+  - sec.string.rune_len
+  - sec.string.byte_len
+  - sec.string.signed_rune_len
+  - sec.string.compare
+  - sec.string.equals
+  - sec.string.starts_with
+  - sec.string.ends_with
+  - sec.string.find
+  - sec.string.subrange_unchecked
+  - sec.string.concat_checked
+  - sec.string.to_array_checked
+  - sec.string.from_sequence_checked
+  - sec.string.identity
+  - sec.string.rune_next
+  planned_verifiers:
+  - --sec-verify-strings
+  - --sec-verify-string-materialization
+  planned_lowering:
+  - --sec-lower-string-core
+  - --sec-lower-string-materialization
+deferred:
+- UTF-8 invalid semantics (MD-050)
+- user-approved public offset unit (MD-071, P23-D1)
+- public constructor/ownership/error signatures (MD-072, P23-D2)
+- char conversion >255 (MD-073, P23-D3)
+- stdlib/str
+- full formatting
+- grapheme segmentation
+- locale case conversion
+- C string ABI
+- physical string descriptor
+- LLVM ABI
+- full for-loop iterator CFG pending prerequisites
+files:
+- name: sec-mlir-dialect_package23.md
+  kind: rulebook/index/guide
+- name: sec_string_core_sync_package23.md
+  kind: rulebook/index/guide
+- name: sec_semantic_ir_string_package23.md
+  kind: rulebook/index/guide
+- name: sec_mlir_dialect_package23.md
+  kind: rulebook/index/guide
+- name: sec_mlir_lowering_package23.md
+  kind: rulebook/index/guide
+# P23-D1..D3 were delivered as separate decision files and are recorded as
+# MD-071..MD-073 in missing-decisions.yaml instead (2026-10-16).
+- name: sec-mlir-dialect_package23_decision-index.md
+  kind: rulebook/index/guide
+acceptance_phases:
+- 'A: pure semantics, Sema audit, registry and IR verifier'
+- 'B: lifetimes and ownership after P15/P17'
+- 'C: runtime concat and arrays after P18/P19'
+- 'D: public gated semantics after user-approved decisions'
+- 'E: end-to-end test/governance evidence'
+checks:
+- verify current HEAD
+- verify actual P15-P22 state
+- YAML parse
+- non-placeholder public API
+- check stable member IDs
+- Go tests recorded only if run
+- MLIR tests recorded only if run
+- no forced physical descriptor
+next_package:
+  id: SEC-MLIR-P24
+  candidate: Physical Value Representation and Layout Lowering
+  prerequisites: actual implemented layouts/places/ownership/slices/strings; not assumed

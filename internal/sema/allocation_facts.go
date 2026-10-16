@@ -27,6 +27,8 @@ type AllocationEvidence struct {
 	Reason string
 }
 
+const allocationInvalidSourceReason = "semantic analysis is incomplete or invalid; allocation freedom is not proven"
+
 // AllocationCallableFact retains independent positive and unresolved evidence:
 // a known allocating path wins the classification even if another path is
 // unresolved. Free requires completed semantic analysis and coverage, not
@@ -103,8 +105,9 @@ func (g *CallGraph) allocationCallableFact(id CallableID, unknown map[CallableID
 // Bodyless foreign declarations need trusted @noAlloc; unfinished Sema,
 // unmodeled storage-producing operations and nontrivial cleanup cannot acquire
 // positive freedom solely because the represented graph has no allocation site.
-// This does not classify those operations as allocating or change @noAlloc
-// validation; their complete effect models remain owned by frontend allocation.
+// This does not classify those operations as allocating. ISR and noalloc-profile
+// policies consume coverage conservatively; complete operation effect models
+// remain owned by frontend allocation.
 // Rules: rules/memory/allocation.md — §§3(1),6(4),13,18,19,24(6);
 // rules/compiler/compiler_analysis.md — unknown versus proven facts.
 func (a *Analyzer) allocationCoverageUnknowns() map[CallableID][]AllocationEvidence {
@@ -166,7 +169,7 @@ func (a *Analyzer) allocationCoverageUnknownsForProgram(program *ast.Program) ma
 			}
 		}
 		if len(a.errors) > 0 {
-			add(node.Declaration, "semantic analysis is incomplete or invalid; allocation freedom is not proven")
+			add(node.Declaration, allocationInvalidSourceReason)
 		}
 		if node.Extern {
 			if fn, known := functions[node.ID]; !known || !fn.TrustedNoAlloc {

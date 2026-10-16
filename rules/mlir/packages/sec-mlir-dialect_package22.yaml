@@ -1,0 +1,142 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P22
+  title: Named-Type Contracts and Runtime Validation Lowering
+  created: '2026-10-16'
+  status: specification-not-implementation
+  repository: https://github.com/YoePro/sec
+  branch: main
+  review_date: '2026-10-16'
+  sha: unverified-by-web-read-implementer-must-record
+  sec_version: '0.1'
+  semantic_ir_version: 1 (no bump)
+  dialect_schema_target: 18
+  dialect_schema_predecessor: 17
+  lowering_spec_target: 18
+  prerequisite_states:
+    P1-P14: implemented (user confirmed)
+    P15: implementation in progress
+    P16-P17: corrected plans, not confirmed implemented
+    P18-P21: do not assume implemented
+  p21_decisions:
+  - P21-D1
+  - P21-D2
+  - P21-D3
+normative_sources:
+- rules/types/contracts.md
+- rules/types/types.md
+- rules/types/default_values.md
+- rules/compiler/compile_time_evaluation.md
+- rules/errors/runtime_checks.md
+- rules/errors/errorhandling.md
+- rules/foundations/operators.md
+- sec/core/error.sec
+- governance/types.yaml
+- rules/compiler/semantic_ir.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+source_facts:
+  contracts_attach_to: named-types-only
+  runtime_errors: core::ConversionError
+  contract_error: core::ConversionError.Contract(core::ContractError.Violation{Kind,DeclarationIndex})
+  ordinal: source order within declaring type
+  error_priority: intrinsic-target-domain-before-declared-contracts
+  contract_order: canonical effective inherited/local order, stop on first failure
+  regex: blocked-existing-MD-010
+  invalid_utf8: existing-MD-050 where relevant
+  string_len: Unicode scalar count
+  string_value_sizeof: UTF-8 payload bytes
+implementation_scope:
+  scalar:
+  - range
+  - in
+  - odd
+  - even
+  - multipleOf
+  - finite
+  string:
+  - minLen
+  - maxLen
+  - exactLen
+  - notEmpty
+  - minByteLen
+  - maxByteLen
+  - exactByteLen
+  collection:
+  - supported logical length
+  - unique with resolved direct-element equality
+  control:
+  - checked explicit constructor
+  - Result/try/local handler
+  - transactional checked assignment
+  ir:
+  - read-only Sema plans
+  - contract check predicate
+  - validated nominal construction
+  - core error union payload
+  target_mlir:
+  - sec.contract.check
+  - sec.contract.validated_named (only if needed)
+gates:
+  independent:
+  - source resolution and CTE plan
+  - intrinsic-first Result error
+  - scalar validation and governance audit
+  predecessor_dependent:
+  - P15-P17 Place/ownership replacement for assignment
+  - P16/P18 for slices/dynamic arrays
+  - v17 before v18 dialect activation
+  existing_policy_blockers:
+  - MD-010 regex
+  - MD-050 invalid UTF-8 where affected
+passes:
+- --sec-verify-named-contracts
+- --sec-lower-named-contract-predicates
+governance:
+  reuse_existing_entry: frontend.type-contracts-v2
+  file: governance/types.yaml
+  no_duplicate_ids: true
+decisions:
+  new: []
+  index: sec-mlir-dialect_package22_decision-index.md
+  numbering_for_future: Pxx-Dy one Markdown file per genuinely new choice
+  existing:
+  - MD-010
+  - MD-050
+  - MD-012
+  - P21-D1
+  - P21-D2
+  - P21-D3
+compatibility:
+  old_p20_numeric_conversion_error: superseded-by-MD-012-ConversionError
+  old_float_width: superseded-by-MD-014
+  p21_arithmetic_error: not-resolved-here
+files:
+- source: sec-mlir-dialect_package22.md
+  destination: rules/mlir/packages/sec-mlir-dialect_package22.md
+- source: sec-mlir-dialect_package22.yaml
+  destination: rules/mlir/packages/sec-mlir-dialect_package22.yaml
+- source: sec_named_contracts_sync_package22.md
+  destination: rules/mlir/normative-sync/sec_named_contracts_sync_package22.md
+- source: sec_semantic_ir_named_contracts_package22.md
+  destination: rules/mlir/semantic-ir/sec_semantic_ir_named_contracts_package22.md
+- source: sec_mlir_dialect_package22.md
+  destination: rules/mlir/dialect-versions/sec_mlir_dialect_v18.md
+- source: sec_mlir_lowering_package22.md
+  destination: rules/mlir/lowering-versions/sec_mlir_lowering_v18.md
+- source: sec_p20_p21_conversion_compatibility_package22.md
+  destination: rules/mlir/normative-sync/sec_p20_p21_conversion_compatibility_package22.md
+- source: sec-mlir-dialect_package22_decision-index.md
+  destination: rules/mlir/packages/sec-mlir-dialect_package22_decision-index.md
+acceptance:
+- record exact HEAD
+- check predecessor statuses
+- reuse core conversion error and named provenance
+- runtime scalar predicates
+- checked Result flow and nested contract error
+- string/collection readiness gates
+- transactional assignment only with ownership prerequisites
+- schema v18 after v17
+- verifier-negative tests
+- 32/64 and legacy differential tests
+- run actual suites and update existing governance IDs

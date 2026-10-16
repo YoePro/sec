@@ -19,7 +19,9 @@ func GenerateWithTriple(program *ast.Program, triple string) (string, error) {
 // GenerateAnalyzed checks Sema/target scalar agreement before legacy MLIR lowering;
 // callers cannot analyze native bounds for one target and emit another width.
 // Native float uses on 32-bit targets are explicitly unsupported by this backend.
-// Rules: rules/types/types.md — "int and uint"; rules/compiler/compiler_pipeline.md — §61(3).
+// Allocation primitives cannot acquire a guessed allocator during emission.
+// Rules: rules/types/types.md — "int and uint"; rules/compiler/compiler_pipeline.md — §61(3);
+// rules/memory/allocation.md — §§25(5),26(1)–(3).
 func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple string) (string, error) {
 	if analyzer == nil || program == nil {
 		return "", &semantic.UnsupportedFeatureError{Feature: "missing analyzed native integer facts"}
@@ -28,6 +30,9 @@ func GenerateAnalyzed(program *ast.Program, analyzer *sema.Analyzer, triple stri
 		return "", err
 	}
 	if err := readiness.CheckWideProgram(program, analyzer, "MLIR"); err != nil {
+		return "", err
+	}
+	if err := analyzer.ValidateAllocationLoweringReadiness(program, ""); err != nil {
 		return "", err
 	}
 	if err := readiness.RejectUnitQuantities(program, analyzer, "legacy MLIR"); err != nil {

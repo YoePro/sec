@@ -1,0 +1,20 @@
+module core
+
+/**
+ * Selects optional ordinary in-process channel features.
+ * Rules: rules/concurrency/channels.md sections 4–5.
+ * These four variants are the complete Sec 0.1 capability set.
+ */
+enum ChannelCapability {
+    /** Enables SendRevocable and MessageTicket revocation. */
+    Revocation
+
+    /** Enables message-lifetime Send and SendRevocable overloads. */
+    Expiration
+
+    /** Allows target-validated bounded non-blocking TrySend from ISR context. */
+    ISRSafeSend
+
+    /** Enables Statistics snapshots on live Sender and Receiver endpoints. */
+    Statistics
+}

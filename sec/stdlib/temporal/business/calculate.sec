@@ -1,0 +1,76 @@
+module business
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/business/calculate.sec
+ * Module: business
+ * Purpose: Invoice-date and business-day date computations.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/business/std-temporal-business.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+/**
+ * Computes a monthly civil target date without business-day adjustment.
+ * Description: Uses proleptic Gregorian month/year for this first API draft.
+ * Parameters:
+ *   - year: Gregorian year.
+ *   - month: Gregorian month number 1..12.
+ *   - rule: Explicit day-of-month or boundary-relative rule.
+ * Returns: Date in that month (or boundary-relative result where documented).
+ * Errors: BusinessError.NotImplemented, InvalidDateRule, OutOfRange.
+ * Ownership: Pure arithmetic, no external data or I/O.
+ */
+fn ResolveMonthlyDate(year: int, month: int, rule: MonthlyDateRule) Result[date, BusinessError] {
+    return Err(BusinessError.NotImplemented)
+}
+
+/**
+ * Checks a civil date against an explicit pinned working-day calendar.
+ * Parameters:
+ *   - value: Gregorian civil date.
+ *   - rules: Borrowed working-day ruleset reference.
+ * Returns: True only if the selected calendar classifies the date as working.
+ * Errors: BusinessError.NotImplemented, UnknownCalendar,
+ *         DatasetUnavailable, OutsideCoverage.
+ * Ownership: Borrows rules descriptor; no hidden current-date query.
+ */
+fn IsBusinessDay(value: date, rules: ref BusinessCalendar) Result[bool, BusinessError] {
+    return Err(BusinessError.NotImplemented)
+}
+
+/**
+ * Adjusts a civil date to a business day using explicit convention.
+ * Parameters:
+ *   - value: Unadjusted Gregorian civil date.
+ *   - rules: Borrowed, versioned working-day ruleset.
+ *   - policy: None, Following, Preceding or modified alternative.
+ * Returns: Explicitly adjusted civil date.
+ * Errors: BusinessError.NotImplemented, UnknownCalendar,
+ *         DatasetUnavailable, OutsideCoverage, OutOfRange.
+ * Ownership: No transfer of calendar ownership.
+ */
+fn AdjustBusinessDay(value: date, rules: ref BusinessCalendar, policy: BusinessDayAdjustment) Result[date, BusinessError] {
+    return Err(BusinessError.NotImplemented)
+}
+
+/**
+ * Resolves a monthly due date and then applies a business-day convention.
+ * Parameters:
+ *   - year: Target Gregorian year.
+ *   - month: Target Gregorian month 1..12.
+ *   - rule: Monthly date calculation, e.g. DayOfMonth(27).
+ *   - rules: Borrowed pinned working-day calendar.
+ *   - policy: Explicit adjustment convention.
+ * Returns: Adjusted due date; never silently picks Friday or Monday.
+ * Errors: BusinessError.NotImplemented, InvalidDateRule,
+ *         UnknownCalendar, DatasetUnavailable, OutsideCoverage, OutOfRange.
+ * Ownership: No transfer of ruleset ownership.
+ */
+fn DueDate(year: int, month: int, rule: MonthlyDateRule, rules: ref BusinessCalendar, policy: BusinessDayAdjustment) Result[date, BusinessError] {
+    return Err(BusinessError.NotImplemented)
+}

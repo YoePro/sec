@@ -120,7 +120,7 @@ func referenceType(types *TypeTable, id TypeID) (Type, bool) {
 
 func isPlaceReferenceOperation(kind OpKind) bool {
 	switch kind {
-	case OpPlaceValueRoot, OpPlaceStorageRoot, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement,
+	case OpPlaceValueRoot, OpPlaceStorageRoot, OpPlaceStaticRoot, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement,
 		OpPlaceUnionPayload, OpReferenceDerefPlace, OpPlaceRead, OpPlaceWrite, OpReferenceBorrowShared,
 		OpReferenceBorrowMutable, OpReferenceCopyShared, OpReferenceMove, OpReferenceReborrowShared,
 		OpReferenceReborrowMutable, OpReferenceIsValid, OpReferenceGenerationFailure, OpReferenceEndBorrow,
@@ -136,7 +136,10 @@ func isPlaceReferenceOperation(kind OpKind) bool {
 func placeConsumer(kind OpKind) bool {
 	switch kind {
 	case OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
-		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable:
+		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable,
+		// A reborrow may derive from a dereferenced sub-Place (§ 78);
+		// verifySubplaceReborrowSource checks where that Place comes from.
+		OpReferenceReborrowShared, OpReferenceReborrowMutable:
 		return true
 	}
 	return false
@@ -175,6 +178,8 @@ func formatPlaceReferenceOperation(out *strings.Builder, op Operation) {
 	switch op.Kind {
 	case OpPlaceStorageRoot:
 		fmt.Fprintf(out, " $%d", op.Storage)
+	case OpPlaceStaticRoot:
+		fmt.Fprintf(out, " @%d", op.Static)
 	case OpPlaceField:
 		fmt.Fprintf(out, " field=#%d", op.StructField)
 	case OpPlaceArrayElement:
@@ -379,8 +384,7 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 		if op.Place == nil || !op.Place.VariantProven {
 			return fmt.Errorf("place.union-payload requires the active-variant proof of the same union storage")
 		}
-		_, variant, found := unionVariant(module, base.Element, op.UnionVariant)
-		if !found || variant.Payload != place.Element {
+		if payload, found := variantPayloadType(module, base.Element, op.UnionVariant); !found || payload != place.Element {
 			return fmt.Errorf("place.union-payload projection does not match the variant payload")
 		}
 	case OpReferenceDerefPlace:
@@ -444,14 +448,30 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 			return fmt.Errorf("%s keeps the borrow of its source", op.Kind)
 		}
 	case OpReferenceReborrowShared, OpReferenceReborrowMutable:
-		source, sourceOK := referenceType(types, firstOperandType(op, values))
+		// The source is the existing reference, or a sub-Place derived from
+		// its dereference (§ 78); the function-level check ties such a Place
+		// to the reference named by SourceBorrow.
 		ref, ok := result()
 		mutable := op.Kind == OpReferenceReborrowMutable
-		if len(op.Operands) != 1 || !sourceOK || !ok || ref.Kind != TypeReference || ref.Element != source.Element || ref.Mutable != mutable {
+		if len(op.Operands) != 1 || !ok || ref.Kind != TypeReference || ref.Mutable != mutable {
 			return fmt.Errorf("invalid %s", op.Kind)
 		}
-		if mutable && !source.Mutable {
-			return fmt.Errorf("ref.reborrow-mut cannot derive ref mut from ref")
+		if source, isReference := referenceType(types, firstOperandType(op, values)); isReference {
+			if ref.Element != source.Element {
+				return fmt.Errorf("invalid %s", op.Kind)
+			}
+			if mutable && !source.Mutable {
+				return fmt.Errorf("ref.reborrow-mut cannot derive ref mut from ref")
+			}
+		} else if place, isPlace := placeType(types, firstOperandType(op, values)); isPlace {
+			if ref.Element != place.Element {
+				return fmt.Errorf("invalid %s", op.Kind)
+			}
+			if mutable && !place.Mutable {
+				return fmt.Errorf("ref.reborrow-mut cannot derive ref mut from a read-only Place")
+			}
+		} else {
+			return fmt.Errorf("invalid %s", op.Kind)
 		}
 		if err := verifyReferenceMetadata(op); err != nil {
 			return err
@@ -475,6 +495,7 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 		if _, ok := referenceType(types, firstOperandType(op, values)); len(op.Operands) != 1 || !ok || len(op.Results) != 0 {
 			return fmt.Errorf("invalid ref.end-borrow")
 		}
+		return verifyReferenceMetadata(op)
 	case OpReferenceCompare:
 		left, leftOK := referenceType(types, firstOperandType(op, values))
 		if len(op.Operands) != 2 || !leftOK || len(op.Results) != 1 || !typeHasKind(types, op.Results[0].Type, TypeBool) || (op.Operator != "eq" && op.Operator != "ne") {
@@ -514,9 +535,26 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 			dynamic[parameter.Value.ID] = true
 		}
 	}
+	definitions := map[ValueID]Operation{}
+	sources := map[ValueID]*ReferenceMetadata{}
+	for _, parameter := range fn.Parameters {
+		sources[parameter.Value.ID] = parameter.Reference
+	}
 	for _, b := range fn.Blocks {
 		for _, op := range b.Operations {
-			if !placeConsumer(op.Kind) {
+			for _, result := range op.Results {
+				definitions[result.ID] = op
+				sources[result.ID] = op.Reference
+			}
+		}
+	}
+	for _, b := range fn.Blocks {
+		for _, op := range b.Operations {
+			if (op.Kind == OpReferenceReborrowShared || op.Kind == OpReferenceReborrowMutable) && len(op.Operands) == 1 && isPlace(op.Operands[0]) {
+				if err := verifySubplaceReborrowSource(op, definitions, sources); err != nil {
+					return err
+				}
+			} else if !placeConsumer(op.Kind) {
 				for _, operand := range op.Operands {
 					if isPlace(operand) {
 						return fmt.Errorf("Place %%%d escapes through %s", operand, op.Kind)
@@ -561,6 +599,32 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	return verifyNoUseAfterEndBorrow(fn, blocks)
 }
 
+// verifySubplaceReborrowSource requires the Place a reborrow derives from to
+// be reached from ref.deref-place of the reference its SourceBorrow names,
+// through Place projections only; a Place over owned storage is a borrow,
+// not a reborrow.
+func verifySubplaceReborrowSource(op Operation, definitions map[ValueID]Operation, sources map[ValueID]*ReferenceMetadata) error {
+	id := op.Operands[0]
+	for {
+		definition, ok := definitions[id]
+		if !ok {
+			return fmt.Errorf("%s of Place %%%d is not derived from a dereferenced reference", op.Kind, op.Operands[0])
+		}
+		switch definition.Kind {
+		case OpPlaceField, OpPlaceArrayElement, OpPlaceUnionPayload:
+			id = definition.Operands[0]
+			continue
+		case OpReferenceDerefPlace:
+			source := sources[definition.Operands[0]]
+			if source == nil || op.Reference == nil || source.Borrow != op.Reference.SourceBorrow {
+				return fmt.Errorf("%s of Place %%%d does not derive from the reference its source borrow names", op.Kind, op.Operands[0])
+			}
+			return nil
+		}
+		return fmt.Errorf("%s of Place %%%d is not derived from a dereferenced reference", op.Kind, op.Operands[0])
+	}
+}
+
 // guardFailsToGenerationEndpoint requires a conditional branch on guard whose
 // false successor terminates with the invalid-reference-generation endpoint.
 func guardFailsToGenerationEndpoint(fn *Function, blocks map[BlockID]*Block, guard ValueID) bool {
@@ -580,14 +644,36 @@ func guardFailsToGenerationEndpoint(fn *Function, blocks map[BlockID]*Block, gua
 }
 
 // verifyNoUseAfterEndBorrow rejects any use of a reference reachable after
-// its ref.end-borrow, in the same block or along any CFG path.
+// its ref.end-borrow, in the same block or along any CFG path. A path that
+// reaches the reference's definition again (a loop re-entering the borrow)
+// starts a new borrow instance and is not followed further. The marker must
+// name the BorrowID and LifetimeID of the reference it ends.
 func verifyNoUseAfterEndBorrow(fn *Function, blocks map[BlockID]*Block) error {
+	definitions := map[ValueID]*ReferenceMetadata{}
+	for _, b := range fn.Blocks {
+		for _, op := range b.Operations {
+			for _, result := range op.Results {
+				definitions[result.ID] = op.Reference
+			}
+		}
+	}
 	for _, b := range fn.Blocks {
 		for index, op := range b.Operations {
 			if op.Kind != OpReferenceEndBorrow {
 				continue
 			}
 			ended := op.Operands[0]
+			if defined := definitions[ended]; defined != nil && op.Reference != nil && (defined.Borrow != op.Reference.Borrow || defined.Lifetime != op.Reference.Lifetime) {
+				return fmt.Errorf("ref.end-borrow of %%%d names borrow #%d lifetime #%d, not the reference's borrow #%d lifetime #%d", ended, op.Reference.Borrow, op.Reference.Lifetime, defined.Borrow, defined.Lifetime)
+			}
+			redefines := func(operation Operation) bool {
+				for _, result := range operation.Results {
+					if result.ID == ended {
+						return true
+					}
+				}
+				return false
+			}
 			uses := func(operation Operation) bool {
 				for _, operand := range operationOperands(operation) {
 					if operand == ended {
@@ -614,6 +700,9 @@ func verifyNoUseAfterEndBorrow(fn *Function, blocks map[BlockID]*Block) error {
 				}
 				visited[id] = true
 				for _, operation := range blocks[id].Operations {
+					if redefines(operation) {
+						break
+					}
 					if uses(operation) {
 						return fmt.Errorf("reference %%%d is used after its resolved borrow end", ended)
 					}
@@ -644,4 +733,31 @@ func cloneReferenceMetadata(ref *ReferenceMetadata) *ReferenceMetadata {
 	copy := *ref
 	copy.OriginStorages = append([]uint32(nil), ref.OriginStorages...)
 	return &copy
+}
+
+// variantPayloadType is the Place element of a variant payload: a single
+// payload, the canonical Package 13 synthetic payload struct of a struct-like
+// variant, or the Ok (0) / Err (1) payload of a Result (sec-mlir-dialect
+// package 15 §§ 44, 71, 121).
+func variantPayloadType(module *Module, container TypeID, index UnionVariantIndex) (TypeID, bool) {
+	if typ, ok := module.Types.Lookup(container); ok && typ.Kind == TypeResult {
+		switch index {
+		case 0:
+			return typ.Success, typ.Success != 0
+		case 1:
+			return typ.Error, typ.Error != 0
+		}
+		return 0, false
+	}
+	_, variant, found := unionVariant(module, container, index)
+	if !found {
+		return 0, false
+	}
+	switch variant.Kind {
+	case UnionVariantSingle:
+		return variant.Payload, variant.Payload != 0
+	case UnionVariantFields:
+		return variant.SyntheticPayloadStruct, variant.SyntheticPayloadStruct != 0
+	}
+	return 0, false
 }

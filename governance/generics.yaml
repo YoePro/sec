@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-02"
+    revised: "2026-10-16"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -58,6 +58,11 @@ integrations:
       - testdata/generics_valid.sec
       - testdata/generics_invalid.sec
       - internal/sema/generic_call_resolution_test.go
+      - internal/sema/generic_impl_constraints_test.go
+      - cmd/compiler/generic_impl_constraints_test.go
+      - cmd/lsp/generic_impl_constraints_test.go
+      - testdata/sema/generic_impl_constraints_valid.sec
+      - testdata/sema/generic_impl_constraints_invalid.sec
     implemented:
       - generic parameter parsing on type, function, and interface declarations
       - generic type-argument parsing, nested generic references, and attached explicit generic calls
@@ -94,6 +99,7 @@ integrations:
       - "expected-type generic calls (2026-10-10): a generic call selected through its expected type (return values, typed let initializers) now gets the same unsafe, ownership, implicit-borrow, resolved-call and call-graph treatment as the main call path; previously such calls skipped borrow and move validation and were missing from the call graph, so their effects were invisible to @noPanic/@noAlloc/@noBlock"
       - "generic argument inference through implicit call-site borrows (2026-10-10): a ref or ref mut T parameter infers T from an owned argument's type (borrowing.md §15.2); borrow authority is still checked on the instantiated call"
       - "forwarded constraints and overload fallback (2026-10-10): a template parameter passed as a generic argument satisfies a constraint that its own declaration guarantees (Concat[I: Iterator[string]] calling Join[I: Iterator[string]]), and a call selected through its expected type no longer reports a generic candidate's constraint failure while non-generic overloads remain for the main call path; both surfaced in sec/stdlib/str/join.sec"
+      - generic primary and extended impl scopes retain the owning type declaration’s ordered interface constraints and recheck every conjunct when those parameters are reused as generic type arguments; concrete substitutions still require valid explicit conformance, and parameterized interface arguments remain distinct
     remaining:
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
       - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
@@ -101,7 +107,6 @@ integrations:
       - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
       - complete generic interface inheritance validation across modules and canonical cross-module specialization identity beyond the implemented local concrete requirement substitution
       - extend explicit-conformance checks to generic impl scopes and future method-level generics; concrete struct, named-type, union, enum, and interface substitutions are now checked
-      - retain and recheck ordered constraint sets on generic impl templates in the same way now implemented for generic functions and concrete generic type declarations
       - extend constraint-guaranteed generic-body operations beyond implemented instance method calls to interface properties, events, static requirements, operators, ownership capabilities, defaultability, and copyability
       - complete generic primary and impl extends member composition for every substituted member category
       - specialize static storage independently for every concrete generic instantiation
@@ -118,6 +123,12 @@ integrations:
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
       - const or value generics without a separate normative rulebook and syntax
     verification:
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-16 after generic impl constraint forwarding fix
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-16
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestGenericImplConstraint|TestGenericImplParametersKeepTargetConstraints|GenericTypeConstraints|OrderedMultipleGenericConstraints' -count=1
+        result: passed on 2026-10-16; primary and extended impls reuse ordered owner guarantees, concrete and incomplete forwarded arguments remain rejected, generic-interface arguments remain distinct, and CLI/LSP share the semantic result
       - command: go test ./... -count=1
         result: passed on 2026-10-10 after expected-type generic call validation and implicit-borrow generic inference
       - command: go test ./internal/parser ./internal/sema -run 'Generic|Generics' -count=1

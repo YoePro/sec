@@ -12,7 +12,7 @@ import (
 	"sec/internal/layout"
 )
 
-const dialectSchemaVersion = 10
+const dialectSchemaVersion = 11
 
 type emitter struct {
 	module    *semantic.Module
@@ -46,6 +46,11 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 	}
 	if err := e.validatePackage14ArrayBoundaries(); err != nil {
 		return nil, err
+	}
+	// Static storage (semantic_ir.md § 28) has no Sec MLIR representation
+	// before the schema that defines it; it must not be dropped.
+	if len(module.Statics) > 0 {
+		return nil, &UnsupportedLoweringError{Feature: "static storage"}
 	}
 	if err := validateTryHandlerSchema(module); err != nil {
 		return nil, err

@@ -86,12 +86,14 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 }
 
 // isCoreBuiltinDeclaration identifies compiler-owned names with trusted core declarations.
-// Rules: rules/library/core-library.md; rules/concurrency/mutex.md §13;
+// Rules: rules/library/core-library.md; rules/concurrency/mutex.md §§5–8,13;
 // rules/types/contracts.md "Public conversion and contract errors" (ContractError, MD-012).
+// rules/concurrency/atomics.md — §§4–5 (MemoryOrder).
+// rules/concurrency/channels.md — §§4–5 (ChannelCapability).
 func isCoreBuiltinDeclaration(name string) bool {
 	switch name {
 	case "IndexError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
-		"date", "time", "datetime", "duration", "Instant":
+		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError":
 		return true
 	default:
 		return false

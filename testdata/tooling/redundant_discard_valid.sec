@@ -1,0 +1,43 @@
+module main
+
+type Pair struct { left: int, right: int }
+
+fn Twice() void {
+    let value := 1
+    discard value
+    discard value
+}
+
+fn Moved() void {
+    let value := 1
+    let destination :<- value
+    discard value
+    discard destination
+}
+
+fn Field() void {
+    let pair := Pair { left: 1, right: 2 }
+    discard pair.left
+    discard pair.left
+    discard pair.right
+}
+
+fn Conditional(flag: bool) void {
+    let value := 1
+    if flag { discard value }
+    discard value
+}
+
+fn Reinitialized() void {
+    let mut value := 1
+    discard value
+    value = 2
+    discard value
+}
+
+fn Loop() void {
+    let value := 1
+    for i in 0..<3 { discard value }
+}
+
+fn main() void {}

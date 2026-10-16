@@ -49,6 +49,36 @@ StorageType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+// Places and references are typed views of an ordinary referent: the
+// referent is never void, storage, a Place or a reference itself, and Place
+// authority is exactly "ro" or "rw" (sec_mlir_dialect_v11.md sections 2-5).
+static LogicalResult verifyReferentType(function_ref<InFlightDiagnostic()> emitError,
+                                        StringRef kind, Type elementType) {
+  if (!elementType || isa<NoneType>(elementType))
+    return emitError() << kind << " referent type must be non-void";
+  if (isa<StorageType, PlaceType, RefType, RefMutType>(elementType))
+    return emitError() << kind
+                       << " referent must be an ordinary value type, not storage, a Place or a reference";
+  return success();
+}
+
+LogicalResult PlaceType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                Type elementType, StringAttr authority) {
+  if (!authority || (authority.getValue() != "ro" && authority.getValue() != "rw"))
+    return emitError() << "sec.place authority must be \"ro\" or \"rw\"";
+  return verifyReferentType(emitError, "sec.place", elementType);
+}
+
+LogicalResult RefType::verify(function_ref<InFlightDiagnostic()> emitError,
+                              Type elementType) {
+  return verifyReferentType(emitError, "sec.ref", elementType);
+}
+
+LogicalResult RefMutType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 Type elementType) {
+  return verifyReferentType(emitError, "sec.ref_mut", elementType);
+}
+
 LogicalResult CoreErrorType::verify(
     function_ref<InFlightDiagnostic()> emitError, StringAttr identity) {
   if (!identity || identity.getValue().empty())

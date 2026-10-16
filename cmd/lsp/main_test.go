@@ -63,7 +63,9 @@ fn IsLetter(ch: rune) bool {
 
 // rules/tooling/lsp.md requires the LSP to consume shared frontend facts.
 // Repeated discard is therefore accepted here by Sema's canonical Place
-// analysis rather than by an LSP-specific diagnostic exception.
+// analysis rather than by an LSP-specific diagnostic exception. The optional
+// information-level advice does not make the source invalid.
+// Rules: rules/control-flow/discard.md — §§5,38; rules/tooling/lsp.md — "Diagnostics".
 func TestAnalyzeAcceptsRepeatedDiscardOfUnavailablePlace(t *testing.T) {
 	source := `module main
 
@@ -75,8 +77,8 @@ fn Test() void {
 `
 
 	reported := analyze("file:///tmp/sec-lsp-repeated-discard/main.sec", source)
-	if len(reported) != 0 {
-		t.Fatalf("analyze returned diagnostics for repeated discard: %+v", reported)
+	if len(reported) != 1 || reported[0].Code != "A2006" || reported[0].Severity != 3 {
+		t.Fatalf("repeated discard must have only optional information: %+v", reported)
 	}
 }
 

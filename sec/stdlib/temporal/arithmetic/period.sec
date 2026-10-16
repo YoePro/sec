@@ -1,0 +1,57 @@
+module arithmetic
+
+/*
+ * Sec Standard Library — temporal API scaffold
+ * Canonical path: stdlib/temporal/arithmetic/period.sec
+ * Module: arithmetic
+ * Purpose: Calendar-relative period values and explicit month policies.
+ * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.1
+ * Updated: 2026-10-16
+ * Governing rulebook: stdlib/temporal/arithmetic/std-temporal-arithmetic.md
+ * Standards / dependencies: Sec std-temporal.md
+ * NOTE: Stub results are explicit NotImplemented failures. No successful
+ *       behavior is claimed by this file.
+ */
+
+// Calendar-relative components are NOT Sec durations and are not fixed seconds.
+type CalendarPeriod struct {
+    // Calendar years; may have different day counts.
+    Years: int,
+    // Calendar months; includes any leap-month semantics of the calendar.
+    Months: int,
+    // Calendar week steps, not a fixed elapsed duration at local times.
+    Weeks: int,
+    // Calendar day steps, not an elapsed duration.
+    Days: int,
+}
+
+// Policy for a target day missing from the target month.
+enum MonthEndPolicy {
+    // Reject the date transformation instead of modifying the target.
+    Reject,
+    // Use the last valid date in the target month.
+    Clamp,
+    // Advance excess day numbers into the following month.
+    RollForward,
+}
+
+// Explicit evaluation order for mixed calendar-period components.
+enum PeriodOrder {
+    // Apply years, then months, then weeks, then days.
+    YearsMonthsWeeksDays,
+    // Apply days, then weeks, then months, then years.
+    DaysWeeksMonthsYears,
+}
+
+// Failures in calendar-relative computations.
+enum TemporalArithmeticError error {
+    // No implementation exists yet.
+    NotImplemented,
+    // A target calendar date is not valid under the requested policy.
+    InvalidTarget,
+    // A result cannot be represented as a core date.
+    OutOfRange,
+    // An operation cannot be performed in the selected calendar variant.
+    UnsupportedSystem,
+}

@@ -35,6 +35,8 @@ var (
 	identifierNodeType = reflect.TypeOf(&ast.Identifier{})
 	deferNodeType      = reflect.TypeOf(&ast.DeferStatement{})
 	lambdaNodeType     = reflect.TypeOf(&ast.LambdaExpression{})
+	memberNodeType     = reflect.TypeOf(&ast.MemberExpression{})
+	fieldInitNodeType  = reflect.TypeOf(&ast.StructLiteralField{})
 )
 
 // identifierUse is the set of identifier names an AST subtree mentions, and
@@ -79,6 +81,22 @@ func (a *Analyzer) identifierUseOf(node any) identifierUse {
 					use.deferred[name] = true
 				}
 				return
+			case memberNodeType:
+				// A member name (`inner.count`) is not a use of a local
+				// named `count`; only the object is.
+				member := value.Interface().(*ast.MemberExpression)
+				walk(reflect.ValueOf(member.Object), deferred)
+				for _, argument := range member.OwnerGenericArguments {
+					walk(reflect.ValueOf(argument), deferred)
+				}
+				return
+			case fieldInitNodeType:
+				// Likewise a struct literal field name, unless it is the
+				// shorthand that also names the value.
+				if field := value.Interface().(*ast.StructLiteralField); field.Value != nil {
+					walk(reflect.ValueOf(field.Value), deferred)
+					return
+				}
 			case deferNodeType, lambdaNodeType:
 				deferred = true
 			}
@@ -180,10 +198,13 @@ func (a *Analyzer) releaseDeadReferenceHolders() {
 
 // originSharedWithUntrackedHolder reports another live local that carries the
 // same reference origin as holder but has no borrow record of its own, so a
-// derived reference would lose its protection if holder's borrow ended.
+// derived reference would lose its protection if holder's borrow ended. The
+// origin is the holder type's origin name or, for a reference returned from
+// a call, the roots of its resolved origin Places (the callee's return-origin
+// summary); a holder whose origin is unknown stays live.
 func (a *Analyzer) originSharedWithUntrackedHolder(holder string, symbol Symbol) bool {
-	origin := symbol.Type.ReferenceOriginName
-	if origin == "" {
+	origins := a.holderOriginRoots(holder, symbol)
+	if len(origins) == 0 {
 		return true
 	}
 	recorded := map[string]bool{}
@@ -193,12 +214,44 @@ func (a *Analyzer) originSharedWithUntrackedHolder(holder string, symbol Symbol)
 		}
 	}
 	for name, other := range a.symbols {
-		if name == holder || !other.Local || !typeCarriesReferenceOrigin(other.Type) || recorded[name] {
+		// The origin root itself (a reference parameter the holder borrows
+		// through) is the source of the borrow, not a derived copy of it.
+		if name == holder || origins[name] || !other.Local || !typeCarriesReferenceOrigin(other.Type) || recorded[name] {
 			continue
 		}
-		if other.Type.ReferenceOriginName == origin && a.holderUsedLater(name, other.ScopeDepth) {
+		shared := false
+		for root := range a.holderOriginRoots(name, other) {
+			shared = shared || origins[root]
+		}
+		if shared && a.holderUsedLater(name, other.ScopeDepth) {
 			return true
 		}
 	}
 	return false
+}
+
+// holderOriginRoots names the storage roots a reference holder may refer to.
+func (a *Analyzer) holderOriginRoots(holder string, symbol Symbol) map[string]bool {
+	roots := map[string]bool{}
+	if symbol.Type.ReferenceOriginName != "" {
+		roots[symbol.Type.ReferenceOriginName] = true
+		return roots
+	}
+	origin, ok := a.localRefContainers[holder]
+	if !ok || origin.Unknown || origin.Ambiguous {
+		return nil
+	}
+	for _, place := range localOriginPlaces(origin) {
+		if place.Root == "" || place.AmbiguousProvenance {
+			return nil
+		}
+		roots[place.Root] = true
+		for _, alternative := range place.AlternativeOrigins {
+			if alternative.Root == "" {
+				return nil
+			}
+			roots[alternative.Root] = true
+		}
+	}
+	return roots
 }

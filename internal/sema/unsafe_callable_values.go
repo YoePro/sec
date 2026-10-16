@@ -19,7 +19,7 @@ import (
 //
 // Rules:
 //   - rules/memory/unsafe.md — §39(1), §39(2), §39(3), §39(4), §50(2) "unsafe.function-value-mismatch"
-//   - missing-decisions.yaml — MD-059 (no unsafe function type)
+//   - rules/corrections/applied/md059-ffi-unsafe-callables-correction-20261016.md — §§ 2, 8 (MD-059: Sec 0.1 has no unsafe function type)
 func (a *Analyzer) rejectUnsafeFunctionValue(ident *ast.Identifier, function Function) bool {
 	if !function.Unsafe {
 		return false
@@ -29,7 +29,7 @@ func (a *Analyzer) rejectUnsafeFunctionValue(ident *ast.Identifier, function Fun
 		kind = "extern function"
 	}
 	a.addErrorAtTokenWithMetadata(ident.Token, diagnostics.UnsafeFunctionValueMismatch,
-		"Call it directly inside unsafe, or pass a safe wrapper function that establishes its caller obligations.",
+		"An unsafe declaration carries caller obligations that a native fn(...) type cannot express: every Sec 0.1 function type is a safe callable, and entering unsafe does not change that. Call the function directly inside `unsafe { }`, or pass a safe wrapper function that actually establishes its obligations. A foreign C function pointer is the separate type c::fn(...), not a native function value.",
 		"unsafe %s %s cannot be used as a function value; function types are safe callables", kind, ident.Value)
 	return true
 }

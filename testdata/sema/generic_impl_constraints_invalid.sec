@@ -1,0 +1,50 @@
+module main
+
+interface First { fn FirstValue() int }
+interface Second { fn SecondValue() int }
+
+type OnlyFirst struct {}
+impl OnlyFirst implements First {
+    fn FirstValue() int { return 1 }
+}
+
+type OnlySecond struct {}
+impl OnlySecond implements Second {
+    fn SecondValue() int { return 2 }
+}
+
+type StructuralOnlyType struct {}
+impl StructuralOnlyType {
+    fn FirstValue() int { return 1 }
+    fn SecondValue() int { return 2 }
+}
+
+type Box[T: First & Second] struct { value: T }
+impl Box[T] {}
+
+fn MissingSecond(value: Box[OnlyFirst]) void {}
+fn MissingFirst(value: Box[OnlySecond]) void {}
+fn StructuralOnly(value: Box[StructuralOnlyType]) void {}
+
+type Weak[T: First] struct { value: T }
+impl Weak[T] {
+    fn Bad(other: Box[T]) void {}
+}
+impl extends Weak[T] {
+    fn AlsoBad(other: Box[T]) void {}
+}
+
+interface Keyed[V] { fn Key() V }
+type IntKey struct {}
+impl IntKey implements Keyed[int] {
+    fn Key() int { return 3 }
+}
+type Holder[K: Keyed[V], V] struct { key: K, value: V }
+impl Holder[K, V] {}
+
+fn WrongConcrete(value: Holder[IntKey, string]) void {}
+
+type WrongTemplate[K: Keyed[string]] struct { key: K }
+impl WrongTemplate[K] {
+    fn Bad(other: Holder[K, int]) void {}
+}

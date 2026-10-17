@@ -103,6 +103,8 @@ func TestPitfallAnalysisRequiresNonEmptyProofForFinalElement(t *testing.T) {
 		{name: "non exiting IsEmpty check", guard: "if values.IsEmpty { let empty := true }", access: "values[values.Len - 1]", wantState: PitfallStateFinding, wantResult: true},
 		{name: "different indexed collection", access: "other[values.Len - 1]"},
 		{name: "different offset", access: "values[values.Len - 2]"},
+		{name: "len missing proof", access: "values[len(values) - 1]", wantState: PitfallStateFinding, wantResult: true},
+		{name: "len exiting empty guard", guard: "if values.Len == 0 { return 0 }", access: "values[len(values) - 1]", wantState: PitfallStateSuppressed, wantResult: true},
 	}
 
 	for _, test := range tests {

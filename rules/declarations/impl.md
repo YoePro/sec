@@ -834,6 +834,12 @@ ineligible target is a semantic error.
 Detailed destruction, cleanup ordering, partial-move restrictions, and
 deallocation rules are defined by `destruction.md`.
 
+`@noPanic` may precede `free` and a body-bearing `init` (MD-030,
+`rules/foundations/attributes.md`, "Callable-body attachment (MD-030)"). The
+proof covers the whole body, including generated field cleanup of `free`; an
+early `return` never skips cleanup or the obligation. `@noPanic` on the `impl`
+itself is not a shortcut for its members.
+
 ---
 
 ## 20. Constructor/destructor balance

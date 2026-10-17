@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"sec/internal/codegen/llvm"
 	"sec/internal/codegen/targetplan"
 	"sec/internal/ir/semantic"
 	"sec/internal/lexer"
@@ -17,8 +16,8 @@ import (
 	"sec/internal/testsupport"
 )
 
-// TestDefaultBackendConformance follows the same source defaults through both
-// maintained output paths, pinning supported values and explicit capability
+// TestDefaultBackendConformance follows the source defaults through the
+// single compilation track, pinning supported values and explicit capability
 // boundaries. It never treats semantic acceptance as proof of runtime support.
 // Rules: rules/types/default_values.md — Backend tests, Backend lowering, A.8;
 // rules/mlir/packages/sec-mlir-dialect_package13.md — §26;
@@ -58,20 +57,6 @@ func TestDefaultBackendConformance(t *testing.T) {
 						}
 					}
 				}
-				t.Run("llvm", func(t *testing.T) {
-					output, err := llvm.GenerateAnalyzed(parsed.Program, analyzer, triple)
-					if fixture != "scalars" && fixture != "decimal" {
-						want := map[string]string{"aggregates": "unresolved type representation", "contracts": "contract", "owning": "unresolved type representation", "list": "list", "floating": "float", "string": "string"}[fixture]
-						if err == nil || output != "" || !strings.Contains(err.Error(), want) {
-							t.Fatalf("unsupported default emitted output: %v\n%s", err, output)
-						}
-						return
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-					verifyLLVM(t, output, triple, fixture, plan.PointerWidthBits == 64)
-				})
 				t.Run("sec-mlir", func(t *testing.T) {
 					module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{RequestedModule: "main"})
 					if fixture == "owning" || fixture == "list" || fixture == "contracts" || fixture == "string" {
@@ -116,47 +101,6 @@ func TestDefaultBackendConformance(t *testing.T) {
 				})
 			})
 		}
-	}
-}
-
-// verifyLLVM compiles both target widths and executes observable scalar defaults
-// on the host. A C caller checks values after loading their synthesized storage.
-// Rules: rules/types/default_values.md — Backend tests and Mutable declarations.
-func verifyLLVM(t *testing.T, output, triple, fixture string, execute bool) {
-	t.Helper()
-	clang, err := exec.LookPath("clang")
-	if err != nil {
-		t.Skip("clang unavailable")
-	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "defaults.ll")
-	if err := os.WriteFile(path, []byte(strings.ReplaceAll(output, "@main(", "@SecEntry(")), 0600); err != nil {
-		t.Fatal(err)
-	}
-	object := filepath.Join(dir, "defaults.o")
-	diagnostics, err := exec.Command(clang, "-x", "ir", path, "-target", triple, "-c", "-o", object).CombinedOutput()
-	if err != nil {
-		t.Fatalf("%v\n%s\n%s", err, diagnostics, output)
-	}
-	if !execute {
-		return
-	}
-	harness, err := os.ReadFile("../../../testdata/defaults/backends/" + fixture + ".c")
-	if err != nil {
-		t.Fatal(err)
-	}
-	caller := filepath.Join(dir, "caller.c")
-	if err := os.WriteFile(caller, harness, 0600); err != nil {
-		t.Fatal(err)
-	}
-	binary := filepath.Join(dir, "defaults")
-	diagnostics, err = exec.Command(clang, caller, object, "-o", binary).CombinedOutput()
-	if err != nil {
-		t.Fatalf("%v\n%s", err, diagnostics)
-	}
-	diagnostics, err = exec.Command(binary).CombinedOutput()
-	if err != nil {
-		t.Fatalf("incorrect default during execution: %v\n%s", err, diagnostics)
 	}
 }
 

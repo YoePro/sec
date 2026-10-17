@@ -1,0 +1,10 @@
+module main
+
+fn UnknownIPC() IPCError { return IPCError.Unsupported }
+fn UnknownMemory() SharedMemoryError { return SharedMemoryError.OwnerDied }
+fn UnknownSync() IPCSyncError { return IPCSyncError.ProtocolFailure }
+fn UnknownShared() IPCSharedError { return IPCSharedError.PeerClosed }
+fn ClosedAtomic() IPCAtomicError { return IPCAtomicError.Closed }
+fn WrongFamily() IPCError { return IPCSharedError.Closed }
+fn WrongError() Result[int, IPCError] { return Err(IPCSyncError.Closed) }
+fn Generic(value: IPCError[int]) void {}

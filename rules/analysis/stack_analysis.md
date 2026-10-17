@@ -1723,9 +1723,8 @@ Unchanged semantic summaries may be reused when only presentation policy changes
 
 `sec analyse` includes stack analysis in the default all-analysis behavior.
 
-The tooling must also permit stack analysis to be selected explicitly.
-
-This rulebook does not define the final command-line spelling.
+The tooling must also permit stack analysis to be selected explicitly:
+`sec analyse stack` (`rules/tooling/cli.md` § 5.2, MD-017).
 
 Deep stack analysis should be able to report:
 

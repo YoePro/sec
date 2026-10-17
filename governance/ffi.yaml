@@ -33,9 +33,6 @@ integrations:
       - internal/sema/ffi.go
       - internal/sema/types.go
       - internal/diagnostics/diagnostics.go
-      - internal/codegen/llvm/functions.go
-      - internal/codegen/llvm/types.go
-      - internal/codegen/mlir/generator.go
       - internal/ir/semantic/model.go
       - internal/ir/semantic/builder.go
       - internal/parser/foreign_types.go
@@ -58,8 +55,6 @@ integrations:
       - internal/sema/ffi_generic_extern_test.go
       - internal/diagnostics/diagnostics_test.go
       - cmd/lsp/ffi_generic_extern_test.go
-      - internal/codegen/llvm/generator_test.go
-      - internal/codegen/mlir/generator_test.go
       - testdata/ir/test_ffi_link_name.sec
       - internal/parser/foreign_types_test.go
       - internal/sema/foreign_c_types_test.go
@@ -83,7 +78,6 @@ integrations:
       - direct Sec string and other obviously non-ABI-compatible signature types rejected
       - explicit @link_name parsing, AST and semantic retention, linked backend symbol selection, and duplicate-symbol validation
       - foreign call kind, ABI, symbol, and unsafe declaration provenance retained through existing Semantic IR
-      - fixed-width scalar and RawPtr lowering through maintained LLVM and legacy MLIR paths
       - Sema rejects unresolved generic extern declarations before callable registration with mandatory S1041, preserves later concrete extern declarations, and reports the generic parameter source location
       - "the parser recognizes C::name and c::namespace::name in type and conversion position from two adjacent colon tokens (MD-020), keeps the whole qualification as one name token with retained separators, reports malformed qualifications as P2021 parser.malformed-foreign-qualification, and reports the not-yet-implemented C::fn, C::flex, and C::callback forms as P2022 parser.unsupported-foreign-form; fields or locals named c or C keep their meaning. MD-020 (decided 2026-10-08) replaces this spelling: see remaining"
       - "every registered target carries a validated C ABI model in its CompilationPlan (LP64 SysV/Darwin/BSD, LLP64 Windows, ILP32 AAPCS and RISC-V): integer widths, plain char signedness, bool storage, and long double format (x87 extended, binary128, or binary64), checked for coherence with the target pointer width"

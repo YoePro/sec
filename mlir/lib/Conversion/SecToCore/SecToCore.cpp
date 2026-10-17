@@ -51,6 +51,15 @@ bool isLowerableStorageType(Type type) {
   return storage && isLowerableElementType(storage.getElementType());
 }
 
+// P5 trivial-core lowering never converts reference-dependent storage to
+// MemRef (sec_mlir_lowering_v11.md sections 3 and 18,
+// sec-mlir-dialect_package15.md section 67).
+bool isTriviallyLowerableStorage(Value storage) {
+  return isLowerableStorageType(storage.getType()) &&
+         !sec::isReferenceDependentStorage(storage);
+}
+
+
 struct ParsedInteger {
   APInt magnitude;
   bool negative;
@@ -367,8 +376,9 @@ public:
     auto replacement = CallOp::create(rewriter, op.getLoc(), resultTypes,
                                       op.getCalleeAttr(),
                                       adaptor.getArguments());
-    if (Attribute actions = op->getAttr("sec.argument_actions"))
-      replacement->setAttr("sec.argument_actions", actions);
+    // Argument actions and reference facts (sec.reference) survive.
+    for (NamedAttribute attribute : op->getDiscardableAttrs())
+      replacement->setAttr(attribute.getName(), attribute.getValue());
     rewriter.replaceOp(op, replacement.getResults());
     return success();
   }
@@ -473,22 +483,29 @@ public:
                            func::FuncDialect, cf::ControlFlowDialect,
                            memref::MemRefDialect>();
     target.addLegalDialect<sec::SecDialect>();
-    target.addIllegalOp<sec::ConstBoolOp, sec::CallDirectOp>();
+    target.addIllegalOp<sec::ConstBoolOp>();
+    // A call passing or returning a direct reference keeps its argument
+    // actions and reference facts until reference ABI lowering
+    // (sec-mlir-dialect_package15.md section 87; MD-087).
+    target.addDynamicallyLegalOp<sec::CallDirectOp>(
+        [](sec::CallDirectOp op) {
+          return sec::hasPlaceOrReferenceType(op);
+        });
     target.addDynamicallyLegalOp<sec::StorageDeclareOp>(
         [](sec::StorageDeclareOp op) {
-          return !isLowerableStorageType(op.getStorage().getType());
+          return !isTriviallyLowerableStorage(op.getStorage());
         });
     target.addDynamicallyLegalOp<sec::StorageInitOp>(
         [](sec::StorageInitOp op) {
-          return !isLowerableStorageType(op.getStorage().getType());
+          return !isTriviallyLowerableStorage(op.getStorage());
         });
     target.addDynamicallyLegalOp<sec::StorageLoadOp>(
         [](sec::StorageLoadOp op) {
-          return !isLowerableStorageType(op.getStorage().getType());
+          return !isTriviallyLowerableStorage(op.getStorage());
         });
     target.addDynamicallyLegalOp<sec::StorageStoreOp>(
         [](sec::StorageStoreOp op) {
-          return !isLowerableStorageType(op.getStorage().getType());
+          return !isTriviallyLowerableStorage(op.getStorage());
         });
 
     RewritePatternSet patterns(context);
@@ -689,6 +706,36 @@ public:
               context, type.getIdentity(), ArrayAttr::get(context, arguments),
               ArrayAttr::get(context, fields));
         });
+    // SEC-MLIR Package 15 section 32 and lowering v11 section 19: scalar
+    // resolution recurses through referent types and keeps the Place and
+    // reference wrappers, their authority and their metadata.
+    typeConverter.addConversion(
+        [&](sec::PlaceType type) -> std::optional<Type> {
+          Type element = typeConverter.convertType(type.getElementType());
+          if (!element)
+            return std::nullopt;
+          if (element == type.getElementType())
+            return type;
+          return sec::PlaceType::get(context, element, type.getAuthority());
+        });
+    typeConverter.addConversion(
+        [&](sec::RefType type) -> std::optional<Type> {
+          Type element = typeConverter.convertType(type.getElementType());
+          if (!element)
+            return std::nullopt;
+          if (element == type.getElementType())
+            return type;
+          return sec::RefType::get(context, element);
+        });
+    typeConverter.addConversion(
+        [&](sec::RefMutType type) -> std::optional<Type> {
+          Type element = typeConverter.convertType(type.getElementType());
+          if (!element)
+            return std::nullopt;
+          if (element == type.getElementType())
+            return type;
+          return sec::RefMutType::get(context, element);
+        });
     typeConverter.addConversion(
         [&](sec::StorageType type) -> std::optional<Type> {
           Type element = type.getElementType();
@@ -728,14 +775,45 @@ public:
         [&](sec::ConstFloatOp op) {
           return typeConverter.isLegal(op.getOperation());
         });
+    // Bool storage normally becomes memref<i8>; reference-dependent bool
+    // storage keeps its high-level !sec.storage<i1> (P15-59), so its value is
+    // exempt from the storage type conversion.
+    auto keepsHighLevelStorage = [](Value value) {
+      auto storage = dyn_cast<sec::StorageType>(value.getType());
+      auto integer =
+          storage ? dyn_cast<IntegerType>(storage.getElementType()) : nullptr;
+      return integer && integer.isSignless() && integer.getWidth() == 1 &&
+             sec::isReferenceDependentStorage(value);
+    };
+    auto legalExceptReferenceStorage = [&](Operation *op) {
+      for (Value operand : op->getOperands())
+        if (!keepsHighLevelStorage(operand) &&
+            !typeConverter.isLegal(operand.getType()))
+          return false;
+      for (Value result : op->getResults())
+        if (!keepsHighLevelStorage(result) &&
+            !typeConverter.isLegal(result.getType()))
+          return false;
+      return true;
+    };
     target.addDynamicallyLegalOp<sec::StorageDeclareOp, sec::StorageInitOp,
                                  sec::StorageLoadOp, sec::StorageStoreOp,
-                                 sec::CallDirectOp, sec::CallForeignOp>(
+                                 sec::PlaceStorageOp>(legalExceptReferenceStorage);
+    target.addDynamicallyLegalOp<sec::CallDirectOp, sec::CallForeignOp>(
+        [&](Operation *op) { return typeConverter.isLegal(op); });
+    target.addDynamicallyLegalOp<
+        sec::PlaceValueOp, sec::PlaceFieldOp, sec::PlaceArrayIndexInBoundsOp,
+        sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp, sec::PlaceDerefOp,
+        sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
+        sec::RefBorrowMutOp, sec::RefCopySharedOp, sec::RefMoveOp,
+        sec::RefReborrowSharedOp, sec::RefReborrowMutOp, sec::RefIsValidOp,
+        sec::RefCompareOp, sec::RefEndBorrowOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addDynamicallyLegalOp<
         sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
         sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
-        sec::IntShiftCheckedOp, sec::IntCmpOp, sec::EnumConstantOp,
+        sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
+        sec::EnumConstantOp,
         sec::EnumFromIntegerOp, sec::EnumToIntegerOp, sec::EnumCmpOp,
         sec::UnionConstructOp, sec::UnionIsVariantOp,
         sec::UnionUnwrapPayloadOp, sec::UnionUnwrapFieldOp,
@@ -764,6 +842,7 @@ public:
              sec::IntBitwiseOp::getOperationName(),
              sec::IntShiftCheckedOp::getOperationName(),
              sec::IntCmpOp::getOperationName(),
+             sec::NumericConvertExactOp::getOperationName(),
              sec::EnumConstantOp::getOperationName(),
              sec::EnumFromIntegerOp::getOperationName(),
              sec::EnumToIntegerOp::getOperationName(),
@@ -790,7 +869,27 @@ public:
              sec::ResultErrOp::getOperationName(),
              sec::ResultIsErrOp::getOperationName(),
              sec::ResultUnwrapOkOp::getOperationName(),
-             sec::ResultUnwrapErrOp::getOperationName()})
+             sec::ResultUnwrapErrOp::getOperationName(),
+             // SEC-MLIR Package 15 section 32: Place and reference operations
+             // take part in scalar resolution unchanged apart from types.
+             sec::PlaceValueOp::getOperationName(),
+             sec::PlaceStorageOp::getOperationName(),
+             sec::PlaceFieldOp::getOperationName(),
+             sec::PlaceArrayIndexInBoundsOp::getOperationName(),
+             sec::PlaceArrayElementOp::getOperationName(),
+             sec::PlaceUnionPayloadOp::getOperationName(),
+             sec::PlaceDerefOp::getOperationName(),
+             sec::PlaceReadOp::getOperationName(),
+             sec::PlaceWriteOp::getOperationName(),
+             sec::RefBorrowSharedOp::getOperationName(),
+             sec::RefBorrowMutOp::getOperationName(),
+             sec::RefCopySharedOp::getOperationName(),
+             sec::RefMoveOp::getOperationName(),
+             sec::RefReborrowSharedOp::getOperationName(),
+             sec::RefReborrowMutOp::getOperationName(),
+             sec::RefIsValidOp::getOperationName(),
+             sec::RefCompareOp::getOperationName(),
+             sec::RefEndBorrowOp::getOperationName()})
       patterns.add<ScalarSemanticIntegerLowering>(typeConverter, context,
                                                   operationName);
     populateCallOpTypeConversionPattern(patterns, typeConverter);

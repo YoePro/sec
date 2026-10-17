@@ -137,6 +137,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.recordFloatingBindingConstant(stmt.Name.Value, stmt.Value)
 			a.recordQuantityBindingConstant(stmt.Name.Value, stmt.Value)
 			a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
+			a.recordAtomicOrderBinding(stmt.Name.Value, stmt.Value)
 			a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
 		}
 		return
@@ -193,6 +194,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.recordFloatingBindingConstant(stmt.Name.Value, stmt.Value)
 		a.recordQuantityBindingConstant(stmt.Name.Value, stmt.Value)
 		a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
+		a.recordAtomicOrderBinding(stmt.Name.Value, stmt.Value)
 		a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
 	}
 }

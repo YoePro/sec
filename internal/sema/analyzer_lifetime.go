@@ -359,7 +359,7 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 func (a *Analyzer) inferCallArgumentExpression(arg ast.Expression) (Type, expressionValue) {
 	move, explicit := explicitMoveArgument(arg)
 	if !explicit {
-		if expected, ok := a.expectedExpressionTypes[arg]; ok && (a.isBareNoneArgument(arg) || isEmptyArrayLiteral(arg)) {
+		if expected, ok := a.expectedExpressionTypes[arg]; ok && (a.isContextualOptionArgument(arg) || isEmptyArrayLiteral(arg)) {
 			return a.inferExpressionWithExpected(arg, expected)
 		}
 		return a.inferExpression(arg)

@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/sema"
 )
@@ -25,67 +27,165 @@ const (
 
 // analyseCommand is the parsed `sec analyse` invocation. Every available
 // analysis runs by default; `--all` is the explicit spelling of that default.
-// Individual analysis selection is not offered until its CLI spelling is
-// decided (missing-decisions.yaml MD-017).
-type analyseCommand struct {
-	inputs []string
-	target CompilerTarget
-}
-
-// parseAnalyseCommandArgs accepts `sec analyse [--all] [--target <os-arch>]
-// <inputs>...`.
 //
 // Rules:
-//   - rules/analysis/parameter_usage_analysis.md — `sec analyse` and `sec analyse --all`
-//   - rules/analysis/pitfall_analysis.md — sec analyse runs all available analyses by default
+//   - rules/tooling/cli.md — § 5 (`sec analyse`)
+//   - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md — §§ 2–7
+type analyseCommand struct {
+	inputs       []string
+	target       CompilerTarget
+	all          bool
+	family       string
+	function     string
+	depth        sema.AnalysisDepth
+	presentation analysePresentation
+}
+
+// parseAnalyseCommandArgs accepts
+// `sec analyse [--all | <analysis>] [-f|--function <callable>]
+// [-d|--depth interactive|standard|deep] [--info|--verbose|--json]
+// [--target <os-arch>] [<inputs>...]`. Without inputs the current directory
+// is analysed. An unknown analysis name or option never falls back to
+// `--all`.
 func parseAnalyseCommandArgs(args []string, host CompilerTarget) (analyseCommand, error) {
-	command := analyseCommand{target: host}
+	command := analyseCommand{target: host, depth: sema.AnalysisDeep, presentation: analysePresentDefault}
+	presentations := map[analysePresentation]bool{}
+	value := func(index *int, arg, name string) (string, error) {
+		if prefix := name + "="; strings.HasPrefix(arg, prefix) {
+			return strings.TrimPrefix(arg, prefix), nil
+		}
+		if *index+1 >= len(args) {
+			return "", fmt.Errorf("%s requires a value", name)
+		}
+		*index++
+		return args[*index], nil
+	}
 	for index := 0; index < len(args); index++ {
-		switch arg := args[index]; {
+		arg := args[index]
+		switch {
 		case arg == "--all":
-		case arg == "--target":
-			if index+1 >= len(args) {
-				return analyseCommand{}, fmt.Errorf("--target requires <os-arch>")
+			command.all = true
+		case arg == "--target" || strings.HasPrefix(arg, "--target="):
+			text, err := value(&index, arg, "--target")
+			if err != nil {
+				return analyseCommand{}, err
 			}
-			index++
-			target, ok := parseCompilerTarget(args[index])
+			target, ok := parseCompilerTarget(text)
 			if !ok {
-				return analyseCommand{}, fmt.Errorf("invalid target %q", args[index])
+				return analyseCommand{}, fmt.Errorf("invalid target %q", text)
 			}
 			command.target = target
+		case arg == "-f" || arg == "--function" || strings.HasPrefix(arg, "--function="):
+			name := "--function"
+			if arg == "-f" {
+				name = "-f"
+			}
+			text, err := value(&index, arg, name)
+			if err != nil {
+				return analyseCommand{}, err
+			}
+			if command.function != "" {
+				return analyseCommand{}, fmt.Errorf("only one --function root may be selected")
+			}
+			command.function = text
+		case arg == "-d" || arg == "--depth" || strings.HasPrefix(arg, "--depth="):
+			name := "--depth"
+			if arg == "-d" {
+				name = "-d"
+			}
+			text, err := value(&index, arg, name)
+			if err != nil {
+				return analyseCommand{}, err
+			}
+			depth, err := sema.ParseAnalysisDepth(text)
+			if err != nil {
+				return analyseCommand{}, fmt.Errorf("%s must be interactive, standard or deep, got %q", name, text)
+			}
+			command.depth = depth
+		case arg == "--info":
+			presentations[analysePresentInfo] = true
+		case arg == "--verbose":
+			presentations[analysePresentVerbose] = true
+		case arg == "--json":
+			presentations[analysePresentJSON] = true
 		case strings.HasPrefix(arg, "-"):
-			return analyseCommand{}, fmt.Errorf("unknown analyse option %s", arg)
+			options := []string{"--all", "--function", "-f", "--depth", "-d", "--info", "--verbose", "--json", "--target"}
+			return analyseCommand{}, fmt.Errorf("unknown analyse option %s%s", arg, nearestSuggestion(arg, options))
+		case command.family == "" && len(command.inputs) == 0 && looksLikeAnalysisName(arg):
+			if _, known := findAnalysisFamily(arg); !known {
+				return analyseCommand{}, fmt.Errorf("unknown analysis %q%s; available analyses: %s", arg, nearestSuggestion(arg, analysisFamilyNames()), strings.Join(analysisFamilyNames(), ", "))
+			}
+			command.family = arg
 		default:
 			command.inputs = append(command.inputs, arg)
 		}
 	}
+	if command.all && command.family != "" {
+		return analyseCommand{}, fmt.Errorf("--all and the analysis name %q select different analyses; use one", command.family)
+	}
+	switch {
+	case presentations[analysePresentJSON] && (presentations[analysePresentInfo] || presentations[analysePresentVerbose]):
+		return analyseCommand{}, fmt.Errorf("--json is a separate output format; it cannot be combined with --info or --verbose")
+	case presentations[analysePresentJSON]:
+		command.presentation = analysePresentJSON
+	case presentations[analysePresentVerbose]:
+		// --verbose subsumes --info.
+		command.presentation = analysePresentVerbose
+	case presentations[analysePresentInfo]:
+		command.presentation = analysePresentInfo
+	}
 	if len(command.inputs) == 0 {
-		return analyseCommand{}, fmt.Errorf("analyse requires at least one <file.sec|dir|glob>")
+		command.inputs = []string{"."}
 	}
 	return command, nil
 }
 
 // runAnalyseCommand performs analysis-only compilation: the same source, plan
-// and Sema facts as build/check at Deep depth, without Semantic IR or code
-// generation, and prints the canonical analysis report.
+// and Sema facts as build/check at the requested depth (Deep by default),
+// without Semantic IR or code generation, and presents the requested
+// analyses for the whole program or one callable's reachable call graph.
 //
 // Rules:
 //   - rules/compiler/compiler_pipeline.md — § 65(1–3) analysis-only mode
-//   - rules/compiler/compiler_analysis.md — § 61(1–3) `sec analyse`; § 62 analysis modes
-//   - rules/analysis/pitfall_analysis.md — sec analyse; Deep output
-//   - rules/analysis/parameter_usage_analysis.md — `sec analyse`; Deep output
+//   - rules/compiler/compiler_analysis.md — § 61 `sec analyse`; § 62 analysis modes
+//   - rules/tooling/cli.md — § 5 `sec analyse`
 func runAnalyseCommand(args []string, out io.Writer) {
 	command, err := parseAnalyseCommandArgs(args, hostCompilerTarget())
 	if err != nil {
 		reportToolError("usage", "%v", err)
-		printUsage()
+		fmt.Fprintln(os.Stderr, "run `sec help analyse` for the analysis names, options and examples")
 		exitCLI(1)
 	}
+	if command.family != "" {
+		if family, _ := findAnalysisFamily(command.family); family.Availability != analysisAvailable {
+			reportToolError("analysis", "the %s analysis cannot run on its own: %s", family.Name, family.Limitation)
+			exitCLI(1)
+		}
+	}
+	var report analyseReport
+	if command.presentation == analysePresentJSON {
+		cliDiagnostics.format = diagnosticFormatJSON
+		cliDiagnostics.documentWriter = func(occurrences []emittedOccurrence, summary diagnosticSummary) {
+			writeAnalysisJSON(out, report.document(command, occurrences, summary))
+		}
+	}
+	deferSemaWarnings = true
 	program, summary := parseSourceInputs(command.inputs, command.target, true)
 	selected := analyseSelectedFiles(program)
-	analyzer := analyzeProgramWithSourcesAtDepth(program, command.target, collectSourceRootsFromInputs(command.inputs), summary, true, sema.AnalysisDeep)
-	report := buildAnalyseReport(analyzer, selected, command.target)
-	report.write(out)
+	analyzer := analyzeProgramWithSourcesAtDepth(program, command.target, collectSourceRootsFromInputs(command.inputs), summary, false, command.depth)
+	var scope *analyseScope
+	if command.function != "" {
+		scope, err = resolveAnalyseScope(analyzer.CallGraph(), command.function, selected)
+		if err != nil {
+			reportToolError("analysis", "%v", err)
+			exitCLI(1)
+		}
+	}
+	report = buildAnalyseReport(analyzer, selected, command.target, command.family, scope)
+	report.completed = true
+	if command.presentation != analysePresentJSON {
+		report.writeHuman(out, command)
+	}
 	if report.counts[analyseClassError] > 0 {
 		exitCLI(3)
 	}
@@ -108,6 +208,17 @@ type analyseReport struct {
 	depth    sema.AnalysisDepth
 	sections []analyseSection
 	counts   map[analyseReportClass]int
+	// family is the selected analysis ("" for all), scope the function focus.
+	family string
+	scope  *analyseScope
+	names  map[sema.CallableID]string
+	// warnings are the selected registered and unregistered diagnostics;
+	// findings the reportable analysis results; limitations what kept the
+	// result from being complete.
+	warnings    []sema.Error
+	findings    []analyseFinding
+	limitations []string
+	completed   bool
 }
 
 type analyseSection struct {
@@ -131,33 +242,78 @@ func (s *analyseSection) add(format string, args ...any) {
 // Rules:
 //   - rules/compiler/compiler.md — § 56(4) one shared fact model
 //   - rules/compiler/compiler_analysis.md — § 61(2) report contents; § 61(3) report classes
-func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, target CompilerTarget) analyseReport {
-	report := analyseReport{target: target, depth: analyzer.AnalysisDepth(), counts: map[analyseReportClass]int{}}
-	for _, warning := range analyzer.Warnings() {
-		if selected[warning.File] {
-			report.counts[analyseDiagnosticClass(warning)]++
-		}
+func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, target CompilerTarget, family string, scope *analyseScope) analyseReport {
+	report := analyseReport{target: target, depth: analyzer.AnalysisDepth(), counts: map[analyseReportClass]int{}, family: family, scope: scope}
+	inSelection := func(token lexer.Token) bool {
+		return selected[token.File] && (scope == nil || scope.includes(token))
 	}
-	inSelection := func(token lexer.Token) bool { return selected[token.File] }
+	for _, warning := range analyzer.Warnings() {
+		token := lexer.Token{File: warning.File, Line: warning.Line, Column: warning.Column}
+		if !inSelection(token) || family != "" && analyseFamilyOfWarning(warning) != family {
+			continue
+		}
+		report.warnings = append(report.warnings, warning)
+		report.counts[analyseDiagnosticClass(warning)]++
+	}
 	graph := analyzer.CallGraph()
 	names := map[sema.CallableID]string{}
 	for _, node := range graph.Nodes() {
 		names[node.ID] = analyseCallableName(node)
 	}
+	report.names = names
 	nodes := []sema.CallableNode{}
 	for _, node := range graph.Nodes() {
 		if inSelection(node.Declaration) {
 			nodes = append(nodes, node)
 		}
 	}
-	report.addCallGraph(graph, nodes, names, inSelection)
-	report.addIterators(analyzer, inSelection)
-	report.addEffects(graph, nodes, names)
-	report.addAllocationFacts(analyzer, nodes, names)
-	report.addEscape(analyzer.EscapeAnalysis(), inSelection)
-	report.addParameterUsage(analyzer.ParameterUsageAnalysis(), inSelection)
-	report.addPitfalls(analyzer.PitfallAnalysis(), inSelection)
+	if family == "" {
+		report.addCallGraph(graph, nodes, names, inSelection)
+		report.addIterators(analyzer, inSelection)
+		report.addEffects(graph, nodes, names)
+		report.addAllocationFacts(analyzer, nodes, names)
+		report.addEscape(analyzer.EscapeAnalysis(), inSelection)
+	}
+	if family == "" || family == "parameter-usage" {
+		report.addParameterUsage(analyzer.ParameterUsageAnalysis(), inSelection)
+	}
+	if family == "" || family == "pitfalls" {
+		report.addPitfalls(analyzer.PitfallAnalysis(), inSelection)
+	}
+	if report.depth != sema.AnalysisDeep {
+		report.limitations = append(report.limitations, fmt.Sprintf("depth %s: advisory refinement may be reduced; anything not proven is reported as unproven, never as valid", report.depth))
+	}
+	sort.SliceStable(report.findings, func(i, j int) bool {
+		left, right := report.findings[i].Token, report.findings[j].Token
+		if left.File != right.File {
+			return left.File < right.File
+		}
+		if left.Line != right.Line {
+			return left.Line < right.Line
+		}
+		if left.Column != right.Column {
+			return left.Column < right.Column
+		}
+		return report.findings[i].Rule < report.findings[j].Rule
+	})
 	return report
+}
+
+// finding records one reportable result with the callable that owns it in a
+// focused analysis.
+func (r *analyseReport) finding(finding analyseFinding) {
+	if r.scope != nil {
+		if owner, ok := r.scope.owner(finding.Token); ok {
+			finding.Callable = owner
+		}
+	}
+	r.findings = append(r.findings, finding)
+}
+
+// limitation records an incompleteness that must stay visible even in the
+// default presentation (rules/tooling/cli.md § 5.4(7)).
+func (r *analyseReport) limitation(format string, args ...any) {
+	r.limitations = append(r.limitations, fmt.Sprintf(format, args...))
 }
 
 func analyseCallableName(node sema.CallableNode) string {
@@ -267,9 +423,11 @@ func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, in
 	section := r.section("parameter usage")
 	if iterations, converged := usage.InterproceduralStatus(); !converged {
 		section.add("incomplete demand refinement after %d iteration(s); unresolved call demand is conservative", iterations)
+		r.limitation("parameter usage: incomplete demand refinement after %d iteration(s)", iterations)
 	}
 	if coverage := usage.ImportCoverage(); coverage.SkippedCallables > 0 {
 		section.add("incomplete imported signature coverage: %d callable(s) skipped; work %d/%d, type depth limit %d", coverage.SkippedCallables, coverage.VisitedWork, coverage.MaxWork, coverage.MaxTypeDepth)
+		r.limitation("parameter usage: %d imported callable(s) skipped", coverage.SkippedCallables)
 	}
 	for _, summary := range usage.Summaries() {
 		if !inSelection(summary.Declaration) {
@@ -292,11 +450,15 @@ func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, in
 	recommendations, coverage := usage.RecommendationsWithCoverage()
 	if coverage.SkippedCandidates > 0 {
 		section.add("incomplete recommendation coverage: %d candidate(s) skipped; work %d/%d, type depth limit %d", coverage.SkippedCandidates, coverage.VisitedWork, coverage.MaxWork, coverage.MaxTypeDepth)
+		r.limitation("parameter usage: %d recommendation candidate(s) skipped", coverage.SkippedCandidates)
 	}
 	for _, recommendation := range recommendations {
 		if !inSelection(recommendation.Source) {
 			continue
 		}
+		// Recommended narrowings are already reported as the registered
+		// performance.large-value-parameter diagnostic; they are not a second
+		// finding (compiler_analysis.md § 61(3)).
 		section.add("%s(%s): candidate %s, %s", recommendation.CallableName, recommendation.Parameter, recommendation.Candidate, recommendation.Status)
 		if recommendation.Confidence != "" {
 			section.add("  confidence %s", recommendation.Confidence)
@@ -332,6 +494,7 @@ func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection 
 	section := r.section("pitfalls")
 	if coverage := pitfalls.Coverage(); coverage.SkippedUnits > 0 {
 		section.add("incomplete coverage: %d unit(s) skipped; syntax search %d/%d nodes, depth limit %d", coverage.SkippedUnits, coverage.VisitedNodes, coverage.MaxNodes, coverage.MaxDepth)
+		r.limitation("pitfalls: %d unit(s) not analysed within the budget", coverage.SkippedUnits)
 	}
 	for _, finding := range pitfalls.Results() {
 		if !inSelection(finding.Subject.Source) {
@@ -352,6 +515,11 @@ func (r *analyseReport) addPitfalls(pitfalls *sema.PitfallAnalysis, inSelection 
 		}
 		class := pitfallReportClass(finding)
 		r.counts[class]++
+		actions := []string{}
+		for _, action := range finding.Actions {
+			actions = append(actions, fmt.Sprintf("%s: %s", action.Kind, action.Title))
+		}
+		r.finding(analyseFinding{Family: "pitfalls", Class: class, Rule: string(finding.Rule), Token: finding.Subject.Source, Message: finding.Subject.Expression, Actions: actions})
 		section.add("%s %s at %s: %s (%s, %s, owning rule %s)", class, finding.Rule, position, finding.Subject.Expression, finding.Classification, finding.Confidence, finding.OwningRule)
 		for _, evidence := range finding.EvidenceFor {
 			section.add("  evidence %s: %s", evidence.Strength, evidence.Fact)
@@ -403,4 +571,175 @@ func (r analyseReport) write(out io.Writer) {
 	}
 	fmt.Fprintf(out, "\nresults: %d errors, %d unproven, %d warnings, %d advisory\n",
 		r.counts[analyseClassError], r.counts[analyseClassUnproven], r.counts[analyseClassWarning], r.counts[analyseClassAdvisory])
+}
+
+// writeHuman renders the default, --info and --verbose presentations. The
+// default shows only what needs attention — diagnostics, findings and
+// limitations — and prints nothing for a clean, complete result; --info adds
+// a short summary; --verbose adds every section of facts (and the summary).
+//
+// Rules:
+//   - rules/tooling/cli.md — § 5.4 (human-readable output)
+//   - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md — § 5
+func (r analyseReport) writeHuman(out io.Writer, command analyseCommand) {
+	for _, warning := range r.warnings {
+		label := "Warning"
+		if warning.Severity == diagnostics.SeverityInformation {
+			label = "Info"
+		}
+		if warning.Severity == "" {
+			warning.Severity = diagnostics.SeverityWarning
+		}
+		cliDiagnostics.semaDiagnostic(warning, fmt.Sprintf("%s: %s\n", label, warning))
+	}
+	if command.presentation == analysePresentVerbose {
+		r.write(out)
+		r.writeSummary(out, false)
+		return
+	}
+	for _, finding := range r.findings {
+		fmt.Fprintf(out, "%s %s at %s: %s\n", finding.Class, finding.Rule, analysePosition(finding.Token), finding.Message)
+		if r.scope != nil && finding.Callable != "" && finding.Callable != r.scope.root.ID {
+			fmt.Fprintf(out, "  via %s\n", r.scope.path(finding.Callable, r.names))
+		}
+		for _, action := range finding.Actions {
+			fmt.Fprintf(out, "  %s\n", action)
+		}
+	}
+	for _, limitation := range r.limitations {
+		if command.presentation == analysePresentDefault && strings.HasPrefix(limitation, "depth ") {
+			continue
+		}
+		fmt.Fprintf(out, "incomplete: %s\n", limitation)
+	}
+	if command.presentation == analysePresentInfo {
+		r.writeSummary(out, true)
+	}
+}
+
+// analysedFamilies names the analyses a report covers and notes the
+// families that run only as compilation diagnostics or are unavailable.
+func (r analyseReport) analysedFamilies() (run []string, notes []string) {
+	if r.family != "" {
+		return []string{r.family}, nil
+	}
+	for _, family := range analysisFamilies() {
+		if family.Availability == analysisAvailable {
+			run = append(run, family.Name)
+		} else {
+			notes = append(notes, fmt.Sprintf("%s: %s", family.Name, family.Limitation))
+		}
+	}
+	return run, notes
+}
+
+// writeSummary is the concise --info block: analyses, scope, depth, target,
+// counts and limitations. Verbose output already ends with the results line.
+func (r analyseReport) writeSummary(out io.Writer, withResults bool) {
+	run, notes := r.analysedFamilies()
+	fmt.Fprintln(out, "\nanalysis summary:")
+	if r.family == "" {
+		fmt.Fprintf(out, "  analyses: all (%s)\n", strings.Join(run, ", "))
+	} else {
+		fmt.Fprintf(out, "  analyses: %s\n", strings.Join(run, ", "))
+	}
+	for _, note := range notes {
+		fmt.Fprintf(out, "  not run alone: %s\n", note)
+	}
+	if r.scope == nil {
+		fmt.Fprintln(out, "  scope: whole program")
+	} else {
+		fmt.Fprintf(out, "  scope: %s and %d reachable callable(s); the whole program was analysed\n", r.names[r.scope.root.ID], len(r.scope.reachable)-1)
+	}
+	fmt.Fprintf(out, "  depth: %s\n  target: %s\n", r.depth, r.target.String())
+	if withResults {
+		fmt.Fprintf(out, "  results: %d errors, %d unproven, %d warnings, %d advisory\n",
+			r.counts[analyseClassError], r.counts[analyseClassUnproven], r.counts[analyseClassWarning], r.counts[analyseClassAdvisory])
+	}
+	if len(r.limitations) == 0 {
+		fmt.Fprintln(out, "  limitations: none")
+	}
+	for _, limitation := range r.limitations {
+		fmt.Fprintf(out, "  limitation: %s\n", limitation)
+	}
+}
+
+// document builds the sec.analysis-report for --json. A rejected or
+// interrupted run (no completed report) still produces a valid document
+// whose status says so.
+func (r analyseReport) document(command analyseCommand, occurrences []emittedOccurrence, summary diagnosticSummary) analysisReportDocument {
+	document := analysisReportDocument{
+		Format: analysisReportFormat, Version: analysisReportFormatVersion,
+		Target: command.target.String(), Depth: string(command.depth), Diagnostics: occurrences,
+	}
+	if !r.completed {
+		document.Status = "rejected"
+		document.Summary = analysisReportSummary{Errors: summary.Errors, Warnings: summary.Warnings, Information: summary.Information}
+		document.Limitations = []string{"analysis did not complete; see diagnostics"}
+		return document
+	}
+	document.Status = "complete"
+	if len(r.limitations) > 0 {
+		document.Status = "incomplete"
+	}
+	for _, family := range analysisFamilies() {
+		entry := analysisReportAnalysis{Name: family.Name}
+		switch {
+		case r.family != "" && r.family != family.Name:
+			continue
+		case family.Availability == analysisAvailable:
+			entry.Status, entry.Complete = "executed", true
+		default:
+			entry.Status, entry.Note = "not-selectable", family.Limitation
+		}
+		document.Analyses = append(document.Analyses, entry)
+	}
+	if r.scope != nil {
+		focus := &analysisReportFocus{Selector: r.scope.selector, Callable: string(r.scope.root.ID), Name: r.names[r.scope.root.ID]}
+		for callable := range r.scope.reachable {
+			focus.Reachable = append(focus.Reachable, string(callable))
+		}
+		sort.Strings(focus.Reachable)
+		document.Focus = focus
+	}
+	selectedDiagnostics := []emittedOccurrence{}
+	keep := map[string]bool{}
+	for _, warning := range r.warnings {
+		keep[fmt.Sprintf("%s:%d:%d:%s", warning.File, warning.Line, warning.Column, warning.ID)] = true
+	}
+	for _, occurrence := range occurrences {
+		if occurrence.Severity == diagnostics.SeverityError {
+			selectedDiagnostics = append(selectedDiagnostics, occurrence)
+			continue
+		}
+		id := ""
+		if occurrence.ID != nil {
+			id = *occurrence.ID
+		}
+		if occurrence.Primary != nil && keep[fmt.Sprintf("%s:%d:%d:%s", occurrence.Primary.Span.File, occurrence.Primary.Span.Start.Line, occurrence.Primary.Span.Start.Column, id)] {
+			selectedDiagnostics = append(selectedDiagnostics, occurrence)
+		}
+	}
+	document.Diagnostics = selectedDiagnostics
+	for _, finding := range r.findings {
+		entry := analysisReportFinding{
+			Analysis: finding.Family, Class: string(finding.Class), Rule: finding.Rule, Message: finding.Message,
+			Location: occurrenceSpan{File: finding.Token.File, Start: occurrencePosition{Line: finding.Token.Line, Column: finding.Token.Column},
+				End: occurrencePosition{Line: finding.Token.Line, Column: finding.Token.Column}},
+			Actions: append([]string{}, finding.Actions...),
+		}
+		if finding.Callable != "" {
+			entry.Callable = string(finding.Callable)
+			if r.scope != nil {
+				entry.Path = r.scope.path(finding.Callable, r.names)
+			}
+		}
+		document.Findings = append(document.Findings, entry)
+	}
+	document.Limitations = append([]string{}, r.limitations...)
+	document.Summary = analysisReportSummary{
+		Errors: r.counts[analyseClassError], Unproven: r.counts[analyseClassUnproven], Warnings: r.counts[analyseClassWarning],
+		Advisory: r.counts[analyseClassAdvisory], Information: summary.Information,
+	}
+	return document
 }

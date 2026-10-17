@@ -1,0 +1,9 @@
+module main
+
+fn Use(n: int) void {
+    let text: string := n
+}
+
+fn main() int {
+    return 0
+}

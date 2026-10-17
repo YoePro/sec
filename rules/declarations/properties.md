@@ -421,6 +421,8 @@ Analysis and lowering must preserve:
 
 Effect classification follows the effect-analysis rules.
 
+Each accessor may carry its own `@noPanic` on the line before `get`, `set` or `try set` (MD-030, `rules/foundations/attributes.md`, "Callable-body attachment (MD-030)"). The guarantee is proven on that accessor's body only; the other accessor does not acquire it, and `@noPanic` before `property` is rejected. A fallible setter's declared `Err` is not a panic.
+
 ## 15. Lowering
 
 Properties do not introduce hidden stored fields by themselves.

@@ -16,6 +16,7 @@
 **GitHub review date:** 2026-10-16  
 **Exact GitHub SHA:** Not established by public web inspection; implementer must run `git rev-parse HEAD`.  
 **Decisions:** MD-050 (existing), MD-071 (P23-D1), MD-072 (P23-D2), MD-073 (P23-D3) (recorded in `missing-decisions.yaml`)  
+**Decision status (2026-10-17):** MD-050, MD-071 (P23-D1) and MD-072 (P23-D2) are decided by `rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md`: every `string` is valid UTF-8 (`types.md`, "Valid UTF-8 invariant"); `IndexOf`/`LastIndexOf`/`Slice`/`GetRune`/`RuneAt` use rune positions and `GetByte`/`ByteAt`/`CharAt` byte indexes (`core-library.md` § 5.7); `FromByteArray`/`FromRuneArray` borrow and return `Result[string, StringError]`, `ToByteArray`/`ToRuneArray` return `Result[byte[]/rune[], CollectionError]` (§§ 5.2–5.3). Where this package says a behavior is gated by those three decisions, the decided rule now applies; `StringValidateUTF8Op` validates at decoding boundaries only. MD-073 (P23-D3) remains open; MD-074 was decided 2026-10-17 (`len(...)` is `uint`, `rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`).  
 
 ---
 

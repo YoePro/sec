@@ -10,7 +10,7 @@ import (
 // Rules: rules/analysis/pitfall_analysis.md — "Capacity used as live length",
 // "Evidence against a finding", "sec analyse".
 func TestAnalyseCapacityProofFlow(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/sema/pitfall_capacity_flow.sec")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/sema/pitfall_capacity_flow.sec")
 	if code != 0 {
 		t.Fatal(code, stderr, stdout)
 	}
@@ -24,7 +24,7 @@ func TestAnalyseCapacityProofFlow(t *testing.T) {
 // Rules: rules/analysis/pitfall_analysis.md — "Capacity used as live length",
 // "sec analyse", "Evidence against a finding".
 func TestAnalyseCapacityWhile(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/sema/pitfall_capacity_while.sec")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/sema/pitfall_capacity_while.sec")
 	if code != 0 {
 		t.Fatal(code, stderr, stdout)
 	}
@@ -38,7 +38,7 @@ func TestAnalyseCapacityWhile(t *testing.T) {
 // check remains advisory and unsupported relations remain unknown.
 // Rules: rules/analysis/pitfall_analysis.md — "sec analyse", "Suppressing evidence".
 func TestAnalyseCapacityExpressions(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/sema/pitfall_capacity_expressions.sec")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/sema/pitfall_capacity_expressions.sec")
 	if code != 0 {
 		t.Fatal(code, stderr, stdout)
 	}
@@ -52,7 +52,7 @@ func TestAnalyseCapacityExpressions(t *testing.T) {
 // Rules: rules/analysis/pitfall_analysis.md — "Capacity used as live length",
 // "Diagnostic ownership and coalescing".
 func TestAnalyseCapacityShortCircuitInvalid(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/sema/pitfall_capacity_shortcircuit_invalid.sec")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/sema/pitfall_capacity_shortcircuit_invalid.sec")
 	if code != 3 || !strings.Contains(stdout, "error pitfall.bounds.capacity-as-length") || !strings.Contains(stdout, "proven-invalid") || strings.Contains(stdout, "suppressed pitfall.bounds.capacity-as-length") {
 		t.Fatal(code, stdout, stderr)
 	}

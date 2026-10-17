@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	mlircodegen "sec/internal/codegen/mlir"
-	semantic "sec/internal/ir/semantic"
-	secmlirlowering "sec/internal/lowering/secmlir"
 	mlirtoolchain "sec/internal/mlir"
 	"strings"
 )
@@ -34,27 +31,7 @@ func runEmitSecMLIRCommand(args []string) {
 		exitCLI(1)
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
-	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{options.InputFile}, MaxPackage: 12})
-	if err != nil {
-		reportPipelineError("semantic IR", err)
-		exitCLI(4)
-	}
-	targetDefinition, ok := findTargetDefinition(options.Target)
-	if !ok {
-		reportToolError("target", "unsupported target %s", options.Target.String())
-		exitCLI(1)
-	}
-	scalarPlan, err := targetDefinition.scalarPlan()
-	if err != nil {
-		reportToolError("target", "%v", err)
-		exitCLI(1)
-	}
-	mlirText, err := secmlirlowering.Emit(module, scalarPlan)
-	if err != nil {
-		reportPipelineError("Sec MLIR lowering", err)
-		exitCLI(4)
-	}
-	mlirText = append([]byte(mlirEmissionHeader("Sec dialect MLIR", options.Target)), mlirText...)
+	mlirText, _ := emitSecDialect(analyzed, options.InputFile, options.Target)
 	verifyPath, removeVerifyPath, err := createTempOutputPath(".sec.mlir")
 	if err != nil {
 		reportToolError("temp file", "%v", err)
@@ -121,8 +98,9 @@ func parseEmitSecMLIRCommandArgs(args []string, defaultTarget CompilerTarget) (e
 	return options, options.InputFile != ""
 }
 
-// runEmitMLIRCommand validates the iterator prerequisite before the legacy
-// MLIR backend, independently of backend implementation support.
+// runEmitMLIRCommand publishes the LLVM dialect boundary of the single
+// compilation track: Sec dialect MLIR lowered through standard MLIR by
+// sec-mlir-opt --sec-lower-to-llvm (MD-101).
 // Rules: rules/compiler/compiler_pipeline.md — §§32–34,60(1–3).
 func runEmitMLIRCommand(args []string) {
 	options, ok := parseEmitMLIRCommandArgs(args, hostCompilerTarget())
@@ -137,45 +115,26 @@ func runEmitMLIRCommand(args []string) {
 		exitCLI(1)
 	}
 
-	targetDefinition, err := requireTargetCanEmitLLVM(options.Target)
-	if err != nil {
+	if _, err := requireTargetCanEmitLLVM(options.Target); err != nil {
 		reportToolError("target", "%s", err)
 		exitCLI(1)
 	}
 
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
 	requireOutputLoweringReadiness(analyzed, options.InputFile)
-	mlirText, err := mlircodegen.GenerateAnalyzed(analyzed.Program, analyzed.Analyzer, targetDefinition.LLVMTriple)
+	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target)
+	llvmDialectPath, cleanup := lowerToLLVMDialect(secMLIR, entry, options.MLIRBin, "")
+	defer cleanup()
+	lowered, err := os.ReadFile(llvmDialectPath)
 	if err != nil {
-		reportPipelineError("codegen", err)
-		exitCLI(4)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
-
-	mlirText = mlirEmissionHeader("LLVM dialect MLIR", options.Target) + mlirText
-	if options.Verify {
-		toolchain := mlirtoolchain.NewToolchain(options.MLIRBin)
-		verifyPath, removeVerifyPath, err := createTempOutputPath(".mlir")
-		if err != nil {
-			reportToolError("temp file", "%v", err)
-			exitCLI(1)
-		}
-		if removeVerifyPath {
-			defer os.Remove(verifyPath)
-		}
-		if err := os.WriteFile(verifyPath, []byte(mlirText), 0600); err != nil {
-			reportToolError("write", "%v", err)
-			exitCLI(1)
-		}
-		if err := toolchain.Verify(verifyPath); err != nil {
-			reportPipelineError("mlir", err)
-			exitCLI(4)
-		}
-	}
+	mlirText := mlirEmissionHeader("LLVM dialect MLIR", options.Target) + stripMLIRHeaderComments(string(lowered))
 	if err := writeCompilerOutput(options.OutputFile, []byte(mlirText)); err != nil {
 		reportToolError("write", "%v", err)
 		exitCLI(1)
 	}
-
 }
 
 type emitMLIRCommandOptions struct {
@@ -183,7 +142,6 @@ type emitMLIRCommandOptions struct {
 	OutputFile string
 	Target     CompilerTarget
 	MLIRBin    string
-	Verify     bool
 }
 
 // parseEmitMLIRCommandArgs selects the LLVM dialect inspection path and optional verification.
@@ -217,8 +175,6 @@ func parseEmitMLIRCommandArgs(args []string, defaultTarget CompilerTarget) (emit
 			}
 			options.MLIRBin = args[i+1]
 			i++
-		case "--verify":
-			options.Verify = true
 		default:
 			if strings.HasPrefix(args[i], "-") || options.InputFile != "" {
 				return emitMLIRCommandOptions{}, false

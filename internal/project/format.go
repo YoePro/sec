@@ -20,6 +20,7 @@ type FormatSettings struct {
 	AdaptiveMinWidth      *uint64
 	AdaptiveMaxWidth      *uint64
 	AdaptiveFallbackWidth *uint64
+	MaxAlignmentPadding   *uint64
 	LanguageCorrections   *bool
 }
 
@@ -103,6 +104,8 @@ func ParseManifestFormat(text string) (FormatSettings, []ManifestError) {
 			number(&settings.AdaptiveMaxWidth)
 		case "adaptive_fallback_width":
 			number(&settings.AdaptiveFallbackWidth)
+		case "max_alignment_padding":
+			number(&settings.MaxAlignmentPadding)
 		case "language_corrections":
 			value, err := strconv.ParseBool(raw)
 			if err != nil || (raw != "true" && raw != "false") {

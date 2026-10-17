@@ -390,11 +390,7 @@ integrations:
       - rules/memory/reference_model.md
       - rules/mlir/sec_mlir.md
       - rules/platform/ffi.md
-    code:
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/functions.go
-      - internal/codegen/llvm/statements.go
-      - internal/codegen/llvm/types.go
+    code: []
     implemented:
       - Existing MLIR/LLVM infrastructure lowers broad function, control-flow, aggregate, Result/Option, and reference-adjacent operations; compile-time borrow checking already removes the need for runtime borrow counters in established cases.
     remaining:
@@ -459,11 +455,8 @@ integrations:
       - rules/control-flow/defer.md
       - rules/memory/ownership.md
       - rules/mlir/sec_mlir.md
-    code:
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
+    code: []
     tests:
-      - internal/codegen/mlir/generator_test.go
       - testdata/ir
     implemented:
       - MLIR currently emits multiple statically represented deferred blocks in reverse registration order and has selected cleanup-adjacent return/error behavior.

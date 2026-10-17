@@ -27,13 +27,16 @@ func TestUnsafeFunctionBodyDiagnosticsCLI(t *testing.T) {
 	}
 }
 
-// The named output is returned inside its explicit block and remains available
-// to LLVM emission without extending the asm output's lexical scope.
+// The named output is returned inside its explicit block. Inline assembly is
+// not lowered by the single compilation track yet (Semantic IR has no asm
+// operation), so emit-llvm stops at that explicit capability boundary
+// instead of emitting partial output (MD-101).
 // Rules: rules/memory/unsafe.md — §7(1–3);
-// rules/platform/inline_assembly.md — §30.
+// rules/platform/inline_assembly.md — §30;
+// rules/compiler/compiler_pipeline.md — §32(2–4).
 func TestUnsafeNamedAsmOutputCLI(t *testing.T) {
 	stdout, stderr, code := runCLIForDiagnostics(t, "emit-llvm", "../../testdata/codegen/unsafe_named_asm_output.sec", "--target", "linux-amd64", "-o", "-")
-	if code != 0 || !strings.Contains(stdout, "call i64 asm sideeffect") || !strings.Contains(stdout, "ret i64") {
+	if code != 4 || stdout != "" || !strings.Contains(stderr, "unsupported-lowering") || !strings.Contains(stderr, "AsmStatement") {
 		t.Fatal(code, stdout, stderr)
 	}
 }

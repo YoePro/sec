@@ -1,0 +1,9 @@
+module main
+
+fn Use(text: string) void {
+    let runes: rune[] := text.ToRuneArray()
+}
+
+fn main() int {
+    return 0
+}

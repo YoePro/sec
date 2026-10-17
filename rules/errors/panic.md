@@ -597,6 +597,8 @@ where `[...]` denotes an optional grammar element and is not part of Sec source 
 
 **§ 21(7)** A checked operation whose panic path is eliminated by proof or replaced by a canonical handled fallible path contributes no panic effect for that resolved operation.
 
+**§ 21(8)** `@noPanic` may be written on every eligible callable body, with the placement rules of `rules/foundations/attributes.md`, "Callable-body attachment (MD-030)": a function, method or extern declaration, `init`, `free`, each property `get`, `set` or `try set` accessor, and a `let` that directly initializes a lambda. Each placement verifies exactly that body under §§ 21(1)–(7); the contract is the same for every placement, a fallible setter's declared `Err` is not a panic, and a failed proof is a compile error on that declaration (MD-030, 2026-10-17).
+
 ---
 
 ## § 22 ISR interaction

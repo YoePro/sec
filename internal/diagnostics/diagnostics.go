@@ -310,6 +310,12 @@ const (
 	// reference is required outside a call argument.
 	// Rules: rules/memory/borrowing.md — §§ 5.1, 15.2; rules/memory/references.md — § 5.
 	BorrowExplicitRefRequired = "S1169"
+	// AtomicOrderNotCompileTime rejects runtime-dependent explicit order arguments.
+	// Rules: rules/concurrency/atomics.md — §24(4–6).
+	AtomicOrderNotCompileTime = "S1170"
+	// AtomicInvalidMemoryOrder rejects an incorrectly typed or disallowed order.
+	// Rules: rules/concurrency/atomics.md — §§12–13,24(1–2),45(5–8).
+	AtomicInvalidMemoryOrder = "S1171"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -350,6 +356,8 @@ var registry = map[string]Definition{
 	UnknownCallTarget:                     {ID: UnknownCallTarget, Name: "names.unknown-call-target", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ImportedModuleMismatch:                {ID: ImportedModuleMismatch, Name: "modules.inconsistent-source-module", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
+	AtomicOrderNotCompileTime:             {ID: AtomicOrderNotCompileTime, Name: "atomic.order-not-compile-time", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
+	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowNonAddressable:                  {ID: BorrowNonAddressable, Name: "borrowing.non-addressable-place", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowSharedConflict:                  {ID: BorrowSharedConflict, Name: "borrowing.shared-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowMutableConflict:                 {ID: BorrowMutableConflict, Name: "borrowing.mutable-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},

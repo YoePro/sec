@@ -21,3 +21,15 @@ enum MemoryOrder {
     /** Sequential consistency, including participation in the global SeqCst order. */
     SeqCst
 }
+
+/**
+ * The normal outcomes of strong compare-exchange; this is not an error type.
+ * Rules: rules/concurrency/atomics.md sections 4, 6 and 17.
+ */
+enum CompareExchangeResult[T] {
+    /** The comparison matched expected and desired was stored. */
+    Exchanged
+
+    /** The exchange did not occur; carries the value observed by that same operation. */
+    NotExchanged(T)
+}

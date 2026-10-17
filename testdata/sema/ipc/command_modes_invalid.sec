@@ -1,0 +1,10 @@
+module main
+
+fn WrongInput() CommandInputMode { return CommandInputMode.Discard }
+fn WrongOutput() CommandOutputMode { return CommandOutputMode.Closed }
+fn WrongFamily() CommandInputMode { return CommandOutputMode.Resource }
+fn NotAnError() Result[int, CommandInputMode] { return Ok(0) }
+fn NotOpenError() error { return CommandOutputMode.Resource }
+fn Generic(value: CommandOutputMode[int]) void {}
+fn NoNull() CommandInputMode { return CommandInputMode.Null }
+fn NoHandle() CommandOutputMode { return CommandOutputMode.Handle }

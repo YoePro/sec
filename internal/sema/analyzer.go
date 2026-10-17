@@ -131,6 +131,7 @@ type Analyzer struct {
 	// the branch only registers readiness, so the select records blocking.
 	inSelectOperation          bool
 	resolvedSwitchFlows        map[*ast.SwitchStatement]ResolvedSwitchFlow
+	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
 	resolvedExplicitPanics     map[*ast.PanicStatement]ResolvedExplicitPanic
 	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
@@ -139,6 +140,7 @@ type Analyzer struct {
 	resolvedTryAssignments     map[*ast.TryAssignmentStatement]ResolvedTryAssignment
 	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
 	resolvedCallReferences     map[*ast.CallExpression]ReferenceFacts
+	resolvedCompareExchanges   map[*ast.CallExpression]ResolvedCompareExchange
 	staticBindings             map[sourceTokenKey]ResolvedStatic
 	receiverReborrows          map[*ast.CallExpression]ReferenceFacts
 	matchTerminationPlans      map[*ast.MatchExpression]ResolvedMatchPlan
@@ -198,6 +200,15 @@ type Analyzer struct {
 	genericParameterFacts       map[sourceTokenKey]GenericParameterFact
 	implGenericParameterTargets map[*ast.GenericParameter]string
 	customFreeDeclarations      map[string]lexer.Token
+	// noPanicAccessors and noPanicLambdas are the MD-030 callable bodies with
+	// attribute-declared guarantees that are verified after the call graph
+	// is complete (validateNoPanicGuarantees).
+	noPanicAccessors  []noPanicAccessor
+	noPanicLambdas    []*ast.LambdaExpression
+	noPanicLambdaSeen map[*ast.LambdaExpression]bool
+	// atomicFenceOrders retains the established order of each valid
+	// atomic.Fence call (atomics.md § 26).
+	atomicFenceOrders           map[*ast.CallExpression]string
 	tryFailureSet               *tryFailureSetContext
 	tryHandlerDepth             int
 	openErrorObligationsReady   bool
@@ -210,6 +221,7 @@ type Analyzer struct {
 	// non-addressed module-level bindings, the compile-time-established values
 	// a SemanticCompileTimeRequiredContext may read (MD-011).
 	moduleImmutableBindings map[string]map[string]*ast.LetStatement
+	atomicTypeUses          map[sourceTokenKey]atomicTypeUse
 	// moduleSurfaces maps each module to its first top-level declaration per
 	// name (units excluded), the unqualified module scope of shadowing checks.
 	moduleSurfaces map[string]map[string]moduleDeclaration
@@ -561,6 +573,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.synthesizedStructTypes = map[*ast.StructLiteral]Type{}
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
+	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
@@ -572,6 +585,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTryAssignments = map[*ast.TryAssignmentStatement]ResolvedTryAssignment{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
+	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
 	a.receiverReborrows = map[*ast.CallExpression]ReferenceFacts{}
 	a.matchTerminationPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
@@ -623,11 +637,16 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.openErrorObligationList = nil
 	a.implGenericParameterTargets = map[*ast.GenericParameter]string{}
 	a.customFreeDeclarations = map[string]lexer.Token{}
+	a.noPanicAccessors = nil
+	a.noPanicLambdas = nil
+	a.noPanicLambdaSeen = map[*ast.LambdaExpression]bool{}
+	a.atomicFenceOrders = map[*ast.CallExpression]string{}
 	a.invalidInterfaceInheritance = map[string]bool{}
 	a.registerDeclarations = map[string]*ast.TypeDeclStatement{}
 	a.registerResolutionState = map[string]uint8{}
 	a.registerWidthConstants = map[string]map[string]*big.Int{}
 	a.moduleImmutableBindings = map[string]map[string]*ast.LetStatement{}
+	a.atomicTypeUses = map[sourceTokenKey]atomicTypeUse{}
 	a.moduleSurfaces = map[string]map[string]moduleDeclaration{}
 	a.unitConversionSuggestions = nil
 	a.constInts = map[string]*big.Int{}
@@ -1340,6 +1359,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
+			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
+				return
+			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
@@ -1426,6 +1448,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin, ErrorAssignable: stmt.ErrorType}
 		case *ast.InterfaceDeclaration:
 			if stmt.Name == nil {
+				return
+			}
+			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -6678,8 +6703,7 @@ func samePlaceIdentity(left, right Place) bool {
 		rightProjection := right.Projections[index]
 		if leftProjection.Kind != rightProjection.Kind || leftProjection.Name != rightProjection.Name ||
 			!placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
-			leftProjection.SliceStart != rightProjection.SliceStart || leftProjection.SliceEnd != rightProjection.SliceEnd ||
-			leftProjection.SliceStartKnown != rightProjection.SliceStartKnown || leftProjection.SliceEndKnown != rightProjection.SliceEndKnown {
+			!sliceBoundsEqual(leftProjection.SliceStart, rightProjection.SliceStart) || !sliceBoundsEqual(leftProjection.SliceEnd, rightProjection.SliceEnd) {
 			return false
 		}
 	}
@@ -7914,167 +7938,6 @@ func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Ident
 // Rules: rules/declarations/enums.md — §§3–10;
 // rules/concurrency/atomics.md — §§4–5;
 // rules/concurrency/channels.md — §§4–5.
-func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
-	underlying := a.types["int"]
-	if enum.BitUnderlying {
-		width := enum.UnderlyingBitWidth
-		if width <= 0 || width > 256 {
-			a.addErrorAtToken(enum.Name.Token, "enum %s bit width must be between 1 and 256, got %d", name, width)
-			return Type{Name: name, Kind: InvalidType, Named: true, Declared: true}
-		}
-		max := new(big.Int).Lsh(big.NewInt(1), uint(width))
-		max.Sub(max, big.NewInt(1))
-		underlying = Type{
-			Name:       fmt.Sprintf("bit[%d]", width),
-			Kind:       UintType,
-			MinInteger: big.NewInt(0),
-			MaxInteger: max,
-		}
-	} else if enum.UnderlyingType != nil {
-		resolved, ok := a.resolveType(enum.UnderlyingType)
-		if !ok {
-			return Type{Name: name, Kind: InvalidType}
-		}
-		underlying = resolved
-	}
-
-	if underlying.Kind != IntType && underlying.Kind != UintType && underlying.Kind != StringType {
-		token := enum.Name.Token
-		if enum.UnderlyingType != nil {
-			token = enum.UnderlyingType.Token
-		}
-		a.addErrorAtToken(token, "enum %s underlying type must be integer or string, got %s", name, typeDisplayName(underlying))
-		return Type{Name: name, Kind: InvalidType}
-	}
-
-	noCopy := hasAttribute(enum.Attributes, "noCopy")
-	typ := Type{
-		Name:                  name,
-		Module:                a.currentModule,
-		Kind:                  EnumType,
-		Named:                 true,
-		Declared:              true,
-		ExplicitlyNonCopyable: noCopy,
-		ErrorAssignable:       enum.ErrorType,
-		Underlying:            underlying.Name,
-		GenericParameters:     genericParameterNameValues(enum.GenericParameters),
-		GenericConstraints:    a.resolvedGenericParameterConstraints(enum.GenericParameters),
-		EnumConsts:            map[string]EnumValue{},
-	}
-	// Rules: rules/concurrency/atomics.md — §§4–5 and
-	// rules/concurrency/channels.md — §§4–5: source and compiler
-	// registration are one reserved core identity.
-	if a.isTrustedCoreBuiltinDeclaration(name, enum.Name.Token) {
-		typ.Intrinsic = true
-	}
-	if underlying.MinInteger != nil {
-		typ.MinInteger = new(big.Int).Set(underlying.MinInteger)
-	}
-	if underlying.MaxInteger != nil {
-		typ.MaxInteger = new(big.Int).Set(underlying.MaxInteger)
-	}
-	if noCopy {
-		typ.NoCopyPolicyOrigin = name
-	}
-	if enum.BitUnderlying {
-		typ.BitWidth = enum.UnderlyingBitWidth
-	}
-
-	seen := map[string]lexer.Token{}
-	var repeatedInitializer ast.Expression
-	var explicitDefaultToken lexer.Token
-	semanticIndex := 0
-	for _, value := range enum.Values {
-		if value == nil || value.Invalid || value.Name == nil {
-			continue
-		}
-		i := semanticIndex
-		semanticIndex++
-		if previousToken, exists := seen[value.Name.Value]; exists {
-			a.addErrorAtTokenWithPrevious(value.Token, previousToken, "duplicate enum value %q in enum %s", value.Name.Value, name)
-			continue
-		}
-		a.checkConfusableInDomains(value.Name.Value, value.Name.Token, seen)
-		seen[value.Name.Value] = value.Token
-
-		if value.Default {
-			if typ.EnumDefault != "" {
-				a.addErrorAtTokenWithPrevious(value.DefaultToken, explicitDefaultToken, "enum %s may only mark one member default", name)
-			} else {
-				typ.EnumDefault = value.Name.Value
-				explicitDefaultToken = value.DefaultToken
-			}
-		}
-
-		initializer := value.Initializer
-		if underlying.Kind == StringType {
-			if initializer == nil {
-				a.addErrorAtToken(value.Token, "string-backed enum member %s.%s requires an explicit initializer", name, value.Name.Value)
-				continue
-			}
-			literal, ok := initializer.(*ast.StringLiteral)
-			if !ok {
-				if identifier, isIdentifier := initializer.(*ast.Identifier); isIdentifier && identifier.Value == "iota" {
-					a.addErrorAtToken(identifier.Token, "iota is not available in string-backed enum %s", name)
-					continue
-				}
-				a.addErrorAtToken(expressionToken(initializer), "string-backed enum value %s.%s initializer must be a compile-time string constant", name, value.Name.Value)
-				continue
-			}
-			stringValue := literal.Value
-			typ.EnumValues = append(typ.EnumValues, value.Name.Value)
-			typ.EnumConsts[value.Name.Value] = EnumValue{
-				Name:        value.Name.Value,
-				StringValue: &stringValue,
-				Token:       value.Token,
-			}
-			a.recordDefinition(value.Name.Token)
-			continue
-		}
-		if initializer != nil {
-			repeatedInitializer = initializer
-		} else if repeatedInitializer != nil {
-			initializer = repeatedInitializer
-		} else {
-			initializer = &ast.Identifier{Token: value.Token, Value: "iota"}
-			repeatedInitializer = initializer
-		}
-		next, ok := a.enumInitializerIntegerValue(initializer, i)
-		if !ok {
-			a.addErrorAtToken(expressionToken(initializer), "enum value %s.%s initializer must be integer constant", name, value.Name.Value)
-			continue
-		}
-
-		a.checkIntegerValueRange(underlying, next, value.Token)
-		typ.EnumValues = append(typ.EnumValues, value.Name.Value)
-		typ.EnumConsts[value.Name.Value] = EnumValue{
-			Name:  value.Name.Value,
-			Value: new(big.Int).Set(next),
-			Token: value.Token,
-		}
-		a.recordDefinition(value.Name.Token)
-	}
-	if typ.EnumDefault == "" && len(typ.EnumValues) > 0 {
-		typ.EnumDefault = typ.EnumValues[0]
-	}
-
-	return typ
-}
-
-func (a *Analyzer) enumInitializerIntegerValue(expr ast.Expression, iotaIndex int) (*big.Int, bool) {
-	previous, hadPrevious := a.constInts["iota"]
-	a.constInts["iota"] = big.NewInt(int64(iotaIndex))
-	defer func() {
-		if hadPrevious {
-			a.constInts["iota"] = previous
-			return
-		}
-		delete(a.constInts, "iota")
-	}()
-
-	return a.integerConstantValue(expr)
-}
-
 func semaStructTags(tags []ast.StructTag) []StructTag {
 	out := make([]StructTag, 0, len(tags))
 	for _, tag := range tags {
@@ -8748,7 +8611,9 @@ func (a *Analyzer) analyzePropertyBody(target Type, property *ast.PropertyDeclar
 }
 
 func (a *Analyzer) analyzeGetterBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
+	restore := a.enterNoPanicAccessor(target, property.Name.Value, "get", property.GetterAttributes, property.Getter, propertyType)
 	a.analyzePropertyAccessorBody(target, property.Name.Value+".get", property.Getter, propertyType, false, property.Static, nil, Type{})
+	restore()
 	if !a.blockDefinitelyReturns(property.Getter) {
 		a.addErrorAtToken(property.Name.Token, "getter %s must return %s", property.Name.Value, typeDisplayName(propertyType))
 	}
@@ -8777,7 +8642,13 @@ func (a *Analyzer) analyzeSetterBody(target Type, property *ast.PropertyDeclarat
 		a.fallibleSetterBody = true
 		defer func() { a.fallibleSetterBody = previous }()
 	}
+	accessor := "set"
+	if property.Setter.Fallible {
+		accessor = "try set"
+	}
+	restore := a.enterNoPanicAccessor(target, property.Name.Value, accessor, property.Setter.Attributes, property.Setter.Body, returnType)
 	a.analyzePropertyAccessorBody(target, property.Name.Value+".set", property.Setter.Body, returnType, true, property.Static, property.Setter.Parameter, propertyType)
+	restore()
 }
 
 func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *ast.BlockStatement, returnType Type, mutableSelf, static bool, setterParameter *ast.Identifier, setterType Type) {
@@ -9826,6 +9697,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	typ, ok := a.resolveTypeReference(ref)
 	if ok {
 		typ = a.withCustomFree(typ)
+		a.recordAtomicTypeReference(ref, typ)
 	}
 	return typ, ok
 }
@@ -11064,54 +10936,47 @@ func (a *Analyzer) setResolvedIndexUse(expr *ast.IndexExpression, use ArrayIndex
 	}
 }
 
+// checkSliceBounds reports a compile-time-provable invalid slice range as
+// exactly one error: the first failing condition under the canonical
+// precedence (negative endpoint, then start after end, then source bound),
+// which is also the RangeError the runtime check would produce. The
+// start-after-end check applies to every source, not only fixed arrays.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 18–19
 func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
 	start, startOK := a.integerConstantValue(expr.Start)
 	end, endOK := a.integerConstantValue(expr.End)
-	if expr.Start != nil {
-		if startOK && start.Sign() < 0 {
-			a.addErrorAtToken(expressionToken(expr.Start), "slice lower bound must be non-negative")
+	endpoints := SliceRangeEndpoints{StartOmitted: expr.Start == nil, EndOmitted: expr.End == nil, Inclusive: !expr.Exclusive}
+	if startOK && expr.Start != nil {
+		endpoints.Start = start
+	}
+	if endOK && expr.End != nil {
+		endpoints.End = end
+	}
+	if typ.Kind == ArrayType {
+		if length, fixed := exactFixedArrayLength(typ); fixed {
+			endpoints.Length = length
 		}
 	}
-	if expr.End != nil {
-		if endOK && end.Sign() < 0 {
-			a.addErrorAtToken(expressionToken(expr.End), "slice upper bound must be non-negative")
-		}
-	}
-	if typ.Kind != ArrayType {
-		return
-	}
-	length, fixed := exactFixedArrayLength(typ)
-	if !fixed {
-		return
-	}
-	if expr.Start == nil {
-		start, startOK = new(big.Int), true
-	}
-	if expr.End == nil {
-		end, endOK = new(big.Int).Set(length), true
-	}
-	if startOK && start.Cmp(length) > 0 {
-		a.addErrorAtToken(expr.Token, "slice lower bound %s exceeds length %s", start.String(), length.String())
-	}
-	if endOK {
-		limit := new(big.Int).Set(length)
-		if !expr.Exclusive && expr.End != nil {
-			limit.Sub(limit, big.NewInt(1))
-		}
-		if end.Cmp(limit) > 0 {
-			if expr.Exclusive || expr.End == nil {
-				a.addErrorAtToken(expr.Token, "exclusive slice upper bound %s exceeds length %s", end.String(), length.String())
-			} else {
-				a.addErrorAtToken(expr.Token, "inclusive slice upper bound %s exceeds final index %s", end.String(), limit.String())
-			}
-		}
-	}
-	if startOK && endOK && expr.End != nil && start.Cmp(end) > 0 {
+	classification := ClassifySliceRange(endpoints)
+	switch classification.Cause {
+	case SliceRangeCauseNegativeStart:
+		a.addErrorAtToken(expressionToken(expr.Start), "slice lower bound must be non-negative")
+	case SliceRangeCauseNegativeEnd:
+		a.addErrorAtToken(expressionToken(expr.End), "slice upper bound must be non-negative")
+	case SliceRangeCauseStartAfterEnd:
 		op := ".."
 		if expr.Exclusive {
 			op = "..<"
 		}
 		a.addErrorAtToken(expr.Token, "descending slice range %s%s%s is invalid", start.String(), op, end.String())
+	case SliceRangeCauseStartPastLength:
+		a.addErrorAtToken(expr.Token, "slice lower bound %s exceeds length %s", start.String(), endpoints.Length.String())
+	case SliceRangeCauseExclusiveEndPast:
+		a.addErrorAtToken(expr.Token, "exclusive slice upper bound %s exceeds length %s", end.String(), endpoints.Length.String())
+	case SliceRangeCauseInclusiveEndAtLen:
+		a.addErrorAtToken(expr.Token, "inclusive slice upper bound %s exceeds final index %s", end.String(), new(big.Int).Sub(endpoints.Length, big.NewInt(1)).String())
 	}
 }
 
@@ -13013,6 +12878,9 @@ type matchPatternInfo struct {
 	PayloadBorrow        bool
 	PayloadBorrowMutable bool
 	PayloadToken         lexer.Token
+	// PayloadBorrowToken identifies the ref keyword independently of the
+	// declared payload name (borrowing.md §33(3), diagnostics.md §9).
+	PayloadBorrowToken lexer.Token
 	// PayloadNode is the bound identifier of a borrowed payload, the stable
 	// pattern node (MatchPattern.Expression builds fresh wrappers) that keys
 	// its resolved reference plan (P15-45).
@@ -13461,6 +13329,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 	case *ast.Identifier:
 		if subjectType.Kind == UnionType {
 			if variant, ok := lookupUnionVariant(subjectType, pattern.Value); ok {
+				a.bindDefinition(pattern.Token, variant.Token)
 				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
 					a.reportUnionPatternPayloadBindingRequired(pattern.Token, subjectType, variant)
 					return matchPatternInfo{}, false
@@ -13495,9 +13364,11 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 
 func (a *Analyzer) analyzeUnionPayloadMatchPattern(pattern *ast.CallExpression, subjectType Type) (matchPatternInfo, bool) {
 	variantName := ""
+	variantToken := pattern.Token
 	switch callee := pattern.Callee.(type) {
 	case *ast.Identifier:
 		variantName = callee.Value
+		variantToken = callee.Token
 	case *ast.MemberExpression:
 		typeName, ok := typePathFromExpression(callee.Object)
 		if !ok {
@@ -13510,11 +13381,17 @@ func (a *Analyzer) analyzeUnionPayloadMatchPattern(pattern *ast.CallExpression, 
 			return matchPatternInfo{}, false
 		}
 		variantName = callee.Property.Value
+		variantToken = callee.Property.Token
 	default:
 		a.addErrorAtToken(pattern.Token, "match pattern must match %s", typeDisplayName(subjectType))
 		return matchPatternInfo{}, false
 	}
 
+	// atomics.md §44(4–5): associated-enum patterns navigate to the same
+	// canonical declaration as construction; ordinary unions share this path.
+	if variant, found := lookupUnionVariant(subjectType, variantName); found {
+		a.bindDefinition(variantToken, variant.Token)
+	}
 	return a.analyzeUnionPayloadPattern(variantName, pattern.Arguments, pattern.Token, subjectType)
 }
 
@@ -13550,6 +13427,7 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 	info.PayloadBorrowMutable = mutable
 	if borrowed {
 		info.PayloadNode = binding
+		info.PayloadBorrowToken = expressionToken(bindingExpression)
 	}
 	var payloadType Type
 	if variant.Payload != nil {
@@ -13609,6 +13487,7 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 	info.PayloadBorrowMutable = mutable
 	if borrowed {
 		info.PayloadNode = binding
+		info.PayloadBorrowToken = expressionToken(expr)
 		info.BindingType = Type{
 			Name: referenceTypeName(payloadType, mutable), Kind: ReferenceType,
 			Element: &payloadType, ReferenceMutable: mutable,
@@ -13627,125 +13506,6 @@ func unionPayloadPatternBinding(expr ast.Expression) (binding *ast.Identifier, b
 	default:
 		return nil, false, false, false
 	}
-}
-
-func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo) (Type, branchAnalysis) {
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
-	a.closedResources = copyMoved(previousClosedResources)
-	a.borrows = copyBorrows(previousBorrows)
-	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
-	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
-	if info.InitializesSubject != "" {
-		a.assigned[info.InitializesSubject] = true
-	}
-	if info.PayloadMoves && info.PayloadPlace.Root != "" {
-		switch {
-		case a.rejectCustomFreePartialMove(info.PayloadPlace, info.PayloadToken):
-		case !info.PayloadPlace.PartialMoveSafe:
-			a.reportUnionPayloadMoveStorage(info)
-		default:
-			if _, _, _, unavailable := a.unavailablePlace(info.PayloadPlace); !unavailable && !a.checkBorrowedMovePlace(info.PayloadPlace, info.PayloadToken) {
-				a.markPlaceUnavailable(info.PayloadPlace, info.PayloadToken, "moved")
-			}
-		}
-	}
-	if info.BindingName != "" {
-		if a.defineSymbol(info.BindingName, info.BindingType, false, arm.Token) {
-			a.bindMutexPayloadAcquisition(info.BindingName, info.PayloadPlace.Root)
-			if info.PayloadToken.Line > 0 && info.PayloadToken.Column > 0 {
-				a.bindDefinition(info.PayloadToken, arm.Token)
-			}
-			a.assigned[info.BindingName] = true
-			a.clearRootPlaceState(info.BindingName)
-			delete(a.constInts, info.BindingName)
-			if info.PayloadBorrow && info.PayloadPlace.Root != "" && info.BindingType.Kind != InvalidType {
-				if !a.checkBorrowCreationPlace(info.PayloadPlace, info.PayloadBorrowMutable, info.PayloadToken) {
-					kind := sharedBorrow
-					if info.PayloadBorrowMutable {
-						kind = mutableBorrow
-					}
-					a.borrows[info.PayloadPlace.Root] = append(a.borrows[info.PayloadPlace.Root], borrowRecord{
-						Root: info.PayloadPlace.Root, Place: info.PayloadPlace, Holder: info.BindingName,
-						Kind: kind, Token: info.PayloadToken,
-					})
-					a.localRefContainers[info.BindingName] = localReferenceOrigin{
-						Name: info.BindingType.ReferenceOriginName, Token: info.BindingType.ReferenceOriginToken,
-						Local: info.BindingType.ReferenceOriginLocal, MatchScoped: true,
-						Place: clonePlace(info.PayloadPlace), HasPlace: true,
-					}
-					// package 15 § 99: publish the payload borrow's plan for
-					// Semantic IR, keyed by the ref pattern node.
-					a.recordReferencePlan(info.PayloadNode, info.PayloadPlace, info.PayloadBorrowMutable, false, info.PayloadToken)
-				}
-			}
-		}
-	}
-	defer func() {
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
-		a.closedResources = previousClosedResources
-		a.borrows = previousBorrows
-		a.localRefContainers = previousLocalRefContainers
-		a.arenaGenerations = previousArenaGenerations
-	}()
-
-	if arm.Guard != nil {
-		guardType, _ := a.inferExpression(arm.Guard)
-		if guardType.Kind != InvalidType && guardType.Kind != BoolType {
-			a.addErrorAtToken(expressionToken(arm.Guard), "match guard must be bool, got %s", typeDisplayName(guardType))
-		}
-	}
-
-	if arm.ReturnBody != nil {
-		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: false})
-	}
-	if arm.BlockBody != nil {
-		a.analyzeBlockStatements(arm.BlockBody)
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{
-			assigned:           copyAssigned(a.assigned),
-			moved:              copyMoved(a.moved),
-			moveReasons:        copyMoveReasons(a.moveReasons),
-			closedResources:    copyMoved(a.closedResources),
-			borrows:            copyBorrows(a.borrows),
-			localRefContainers: copyLocalRefContainers(a.localRefContainers),
-			arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-			referenceOrigins:   captureReferenceOrigins(a.symbols),
-			continues:          a.blockCanFallThrough(arm.BlockBody),
-		})
-	}
-	if arm.Body == nil {
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
-	}
-	a.constructionOwnershipDepth++
-	bodyType, _ := a.inferExpression(arm.Body)
-	a.constructionOwnershipDepth--
-	ownershipValid := true
-	if a.terminalReturnDepth > 0 {
-		ownershipValid = !a.validateTerminalReturnConstruction(arm.Body)
-	} else {
-		ownershipValid = a.validateOwningConstructionSource(arm.Body)
-	}
-	if ownershipValid {
-		a.markMoveSource(arm.Body)
-	}
-	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 }
 
 func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {

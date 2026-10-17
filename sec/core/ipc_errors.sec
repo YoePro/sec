@@ -1,0 +1,71 @@
+module core
+
+/** Portable typed-IPC transfer and transport failures. Clean receive completion is Ok(None). */
+enum IPCError error {
+    /** The local endpoint is closed. */
+    Closed
+    /** No peer endpoint can satisfy the operation; clean receive completion is not PeerClosed. */
+    PeerClosed
+    /** Outgoing transfer failed before ownership commit; the source remains available. */
+    TransferFailed
+    /** Incoming transfer could not materialize one complete destination value. */
+    MaterializationFailed
+    /** Required transfer or materialization memory could not be obtained. */
+    OutOfMemory
+    /** A bounded transport, capability, queue or materialization quota was reached. */
+    ResourceLimit
+    /** Transport framing, schema or capability metadata violated the IPC protocol. */
+    ProtocolFailure
+    /** A native transport failure with no more specific portable category. */
+    NativeFailure
+}
+
+/** Portable shared-memory creation, mapping and capability failures. */
+enum SharedMemoryError error {
+    Closed
+    InvalidSize
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    MappingFailed
+    DuplicationFailed
+    NativeFailure
+}
+
+/** Portable process-shared mutex and semaphore failures. */
+enum IPCSyncError error {
+    Closed
+    /** Semaphore construction used an invalid initial or maximum count. */
+    InvalidCount
+    /** Releasing a semaphore permit would exceed Maximum. */
+    LimitExceeded
+    /** The mutex is permanently poisoned after its owner died before release. */
+    OwnerDied
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    NativeFailure
+}
+
+/** Portable SharedValue capability failures; owner death permanently poisons its synchronization identity. */
+enum IPCSharedError error {
+    Closed
+    /** Destination establishment could not prove the exact canonical shared-layout identity. */
+    LayoutMismatch
+    OwnerDied
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    MappingFailed
+    DuplicationFailed
+    NativeFailure
+}
+
+/** IPCAtomic creation and duplication failures. Established atomic operations are infallible; there is no Closed or OwnerDied state. */
+enum IPCAtomicError error {
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    DuplicationFailed
+    NativeFailure
+}

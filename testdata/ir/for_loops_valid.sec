@@ -1,0 +1,19 @@
+module main
+
+fn Bound(value: int) int {
+    return value
+}
+
+fn Ranges(limit: int) int {
+    let mut t: int := 0
+    for i in Bound(0)..<Bound(limit) {
+        t += i
+    }
+    for _ in 1..3 {
+        t += 1
+    }
+    for {
+        break
+    }
+    return t
+}

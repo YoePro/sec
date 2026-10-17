@@ -87,13 +87,14 @@ func TestAnalyseCLI(t *testing.T) {
 			want: []string{"S1134", "Invalid:", "pitfall.bounds.inclusive-length-index (proven-invalid)", "Suggested edit: use the canonical half-open range"},
 		},
 		{name: "explicit target", args: []string{"--target", "linux-arm64", advisory}, code: 0, want: []string{"target linux-arm64)"}},
-		{name: "no inputs", args: []string{"--all"}, code: 1, want: []string{"analyse requires at least one"}},
-		{name: "unknown option", args: []string{"--pitfalls", advisory}, code: 1, want: []string{"unknown analyse option --pitfalls"}},
-		{name: "missing target", args: []string{advisory, "--target"}, code: 1, want: []string{"--target requires <os-arch>"}},
+		{name: "unknown option", args: []string{"--pitfalls", advisory}, code: 1, want: []string{"unknown analyse option --pitfalls", "sec help analyse"}},
+		{name: "missing target", args: []string{advisory, "--target"}, code: 1, want: []string{"--target requires a value"}},
+		{name: "unknown analysis never runs all", args: []string{"deadlock", advisory}, code: 1, want: []string{`unknown analysis "deadlock"`, `did you mean "deadlocks"`}, without: []string{"analysis report"}},
+		{name: "all and a name conflict", args: []string{"--all", "pitfalls", advisory}, code: 1, want: []string{"--all and the analysis name"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := append([]string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse"}, tt.args...)
+			args := append([]string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--verbose"}, tt.args...)
 			cmd := exec.Command(os.Args[0], args...)
 			cmd.Env = append(os.Environ(), "SEC_ANALYSE_TEST_PROCESS=1")
 			output, err := cmd.CombinedOutput()
@@ -165,7 +166,7 @@ func TestTargetsCarryCoherentCABIModels(t *testing.T) {
 		{"linux-amd64", 0, "results: 0 errors"},
 		{"windows-amd64", 3, "value 3000000000 overflows c::long"},
 	} {
-		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--target", test.target, path}
+		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--verbose", "--target", test.target, path}
 		cmd := exec.Command(os.Args[0], args...)
 		cmd.Env = append(os.Environ(), "SEC_ANALYSE_TEST_PROCESS=1")
 		output, err := cmd.CombinedOutput()

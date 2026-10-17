@@ -136,6 +136,8 @@ adaptive_min_width = 80
 adaptive_max_width = 200
 adaptive_fallback_width = 120
 
+max_alignment_padding = 4 × indentation_width
+
 language_corrections = false
 ```
 
@@ -160,7 +162,7 @@ compact
 
 § 4(13) Preferred line width is a target, not a source-language limit. An unbreakable or deliberately preserved construct may exceed it.
 
-§ 4(14) The default maximum alignment padding is four indentation widths. With the default indentation width this is sixteen spaces.
+§ 4(14) The maximum alignment padding is the project setting `max_alignment_padding`, a number of spaces in `1..1024`. When it is omitted the default is four indentation widths; with the default indentation width this is sixteen spaces. A project with wide declaration tables, such as an enum whose member names differ greatly in length, may raise it so the group keeps one aligned column instead of § 9(10) dropping the alignment (MD-098, user decision 2026-10-17). Adding the key does not change the canonical output of a project that omits it, so it requires no new `format_version`.
 
 § 4(15) All configuration that changes canonical source bytes is project-owned. Personal editor preferences must not silently produce a different canonical project source form.
 
@@ -443,7 +445,7 @@ The spacing before a trailing comment is never hard-coded independently of that 
 
 § 9(9) Primary syntax anchors take precedence over distant secondary columns. Alignment must not create large empty gaps merely to align a far-right tag or comment.
 
-§ 9(10) If required alignment padding exceeds the configured maximum alignment padding, the formatter drops candidate alignment columns for the complete contiguous group rather than producing extreme spacing.
+§ 9(10) If required alignment padding exceeds the configured maximum alignment padding, the formatter drops candidate alignment columns for the complete contiguous group rather than producing extreme spacing. Enum value groups are exempt (§ 15(4)).
 
 § 9(11) Properties with bodies are behavioral declarations and are not horizontally aligned across separate property declarations.
 
@@ -696,7 +698,7 @@ declarations in source order
 
 § 15(3) Struct fields use the ordinary declaration alignment rules of § 9.
 
-§ 15(4) Enum explicit-value assignments may align their `=` anchors when they form a homogeneous contiguous group and the grammar uses `=` for that declaration form.
+§ 15(4) Enum explicit-value assignments align their `=` anchors when they form a homogeneous contiguous group and the grammar uses `=` for that declaration form. An enum value group is always aligned: the § 9(10) maximum alignment padding does not apply to it, so members of very different name lengths still share one value column, and their trailing comments share one comment column after the widest value cell (§ 9(8b)). Only a blank line, a standalone comment, an implicit member or a declaration boundary ends the group (MD-100, user decision 2026-10-17).
 
 § 15(5) Documentation comments remain before the member or variant they document and break alignment groups when appropriate.
 

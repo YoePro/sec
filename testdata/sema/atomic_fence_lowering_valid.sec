@@ -1,0 +1,10 @@
+module main
+
+fn Publish() void {
+    atomic.Fence(MemoryOrder.Release)
+}
+
+fn main() int {
+    Publish()
+    return 0
+}

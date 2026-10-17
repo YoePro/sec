@@ -29,9 +29,10 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int], amount: decimal) void {
 	let bits: uint := int32.Bits
 	let decimalScale: uint8 := amount.Scale
 	let formatted: Result[string, StringError] := true.ToString()
-	let bytes: byte[] := text.ToByteArray()
+	let encoded: Result[byte[], CollectionError] := text.ToByteArray()
+	let mut bytes: byte[]
 	let chars: char[] := text.ToCharArray()
-	let decoded: rune[] := text.ToRuneArray()
+	let decoded: Result[rune[], CollectionError] := text.ToRuneArray()
 	let joined: Result[string, StringError] := runes.ToString()
 	let fromRunes: Result[string, StringError] := string.FromRuneArray(runes)
 	let fromBytes: Result[string, StringError] := string.FromByteArray(bytes)
@@ -316,9 +317,9 @@ fn Test(values: int[], view: ref mut int[], users: list[int], entries: map[int, 
 	let listLength: uint := users.Len
 	let mapLength: uint := entries.Len
 	let setLength: uint := members.Len
-	let signedListLength: int := len(users)
-	let signedMapLength: int := len(entries)
-	let signedSetLength: int := len(members)
+	let listCount: uint := len(users)
+	let mapCount: uint := len(entries)
+	let setCount: uint := len(members)
 	view.Fill(3)
 	view.Reverse()
 	try values.Append(4)

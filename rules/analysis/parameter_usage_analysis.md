@@ -1958,8 +1958,8 @@ sec analyse --all
 
 The user may also request parameter usage analysis specifically.
 
-The exact CLI spelling for selecting an individual analysis is owned by the
-compiler/tooling command-line specification.
+Individual selection is spelled `sec analyse parameter-usage`
+(`rules/tooling/cli.md` § 5.2, MD-017).
 
 Deep parameter-usage output may include:
 

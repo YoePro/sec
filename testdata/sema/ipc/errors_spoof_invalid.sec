@@ -1,0 +1,7 @@
+module core
+
+enum IPCError error { Fake }
+enum SharedMemoryError error { Fake }
+enum IPCSyncError error { Fake }
+enum IPCSharedError error { Fake }
+enum IPCAtomicError error { Fake }

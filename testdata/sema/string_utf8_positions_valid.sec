@@ -1,0 +1,19 @@
+module main
+
+fn Use(text: string) Result[uint, CollectionError] {
+    let first: Option[uint] := text.IndexOf("π")
+    let later: Option[uint] := text.IndexOf("π", 2)
+    let last: Option[uint] := text.LastIndexOf("b")
+    let middle: Result[string, RangeError] := text.Slice(1, 3)
+    let scalar: Result[rune, IndexError] := text.GetRune(2)
+    let encodedByte: Result[byte, IndexError] := text.GetByte(3)
+    let bytes := try text.ToByteArray()
+    let runes := try text.ToRuneArray()
+    let decoded: Result[string, StringError] := string.FromByteArray(ref bytes)
+    let encoded: Result[string, StringError] := string.FromRuneArray(ref runes)
+    return Ok(bytes.Len + runes.Len)
+}
+
+fn main() int {
+    return 0
+}

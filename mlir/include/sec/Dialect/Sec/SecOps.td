@@ -134,6 +134,16 @@ def Sec_IntCmpOp : Sec_Op<"int.cmp", [Pure]> {
   let hasVerifier = 1;
 }
 
+// P20 NumericConvertExactOp (sec-mlir-dialect_package20.md §§ 44, 63, 73),
+// admitted early in schema 11 for built-in integer conversions the frontend
+// proved exact; P20 extends it to the float family (MD-104).
+def Sec_NumericConvertExactOp : Sec_Op<"numeric.convert_exact", [Pure]> {
+  let summary = "Exact, infallible numeric conversion proven before lowering";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 def Sec_FailArithmeticOp : Sec_Op<"fail.arithmetic", [Terminator]> {
   let summary = "Deterministic non-returning Sec arithmetic failure";
   let arguments = (ins Variadic<AnyType>:$reasons,

@@ -1,0 +1,6 @@
+module core
+
+type CompareExchangeResult[T] union {
+    Exchanged
+    NotExchanged(T)
+}

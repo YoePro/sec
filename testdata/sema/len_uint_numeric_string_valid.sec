@@ -1,0 +1,29 @@
+module main
+
+type Score int
+
+fn Use(n: int, b: byte, f: float, d: decimal, s: Score, text: string, values: int[]) Result[int, StringError] {
+    let count: uint := len(values)
+    let same: bool := len(values) == values.Len
+    let scalars: uint := len(text)
+    let view: uint := len(ref values)
+
+    let preferred := try n.ToString()
+    let explicit := try string(n)
+    let fromFloat: Result[string, StringError] := string(f)
+    let fromDecimal := try string(d)
+    let fromNamed := try string(s)
+    // byte is the uint8 family member: string(b) equals b.ToString().
+    let fromByte: Result[string, StringError] := string(b)
+    let byteText := try b.ToString()
+    return Ok(0)
+}
+
+fn Signed(values: int[]) Result[int, ConversionError] {
+    let signed := try int(len(values))
+    return Ok(signed)
+}
+
+fn main() int {
+    return 0
+}

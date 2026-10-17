@@ -713,7 +713,6 @@ Required explicit distinctions include:
 ```text
 GetPointer
 GetLength
-GetSignedLength
 SizeOfType
 SizeOfValue
 StringIdentity
@@ -1275,54 +1274,46 @@ len(value)
 Required conceptual overloads:
 
 ```sec
-fn len(value: string) int
+fn len(value: string) uint
 
-fn len[T](value: T[]) int
+fn len[T](value: T[]) uint
 
-fn len[T](value: ref T[]) int
+fn len[T](value: ref T[]) uint
 
-fn len[T](value: ref mut T[]) int
+fn len[T](value: ref mut T[]) uint
 ```
 
 The compiler infers `T`.
 
-`len` returns `int`.
+`len` returns `uint` (MD-074/MD-088, 2026-10-17; `core-library.md` § 1.4).
 
-Its purpose is signed index and offset arithmetic.
+A length is a nonnegative count; signed offsets use an explicit checked
+conversion.
 
 Example:
 
 ```sec
-let index := position + offset
-
-if index < 0 || index >= len(input) {
+// position: uint
+if position >= len(input) {
     return 0r
 }
 ```
 
 `len(value)` and `value.Len` represent the same logical count for the same
-value, with different result types:
+value and have the same result type:
 
 ```text
 value.Len:
     uint
 
 len(value):
-    int
+    uint
 ```
 
-The compiler performs a checked representability proof where the sequence length
-might exceed `int.max`.
-
-A CompilationPlan that permits a sequence larger than `int.max` must:
-
-```text
-reject len(value) when representability cannot be proven;
-or
-define a checked Result form in a later rulebook.
-```
-
-Sec 0.1 does not silently wrap.
+No representability proof, saturation, wrapping, rejection or conversion to
+`int` happens inside `len`; the exact unsigned value is preserved through
+Semantic IR, Sec MLIR and LLVM. `len(values) - 1` on an empty sequence is
+checked unsigned underflow, not a bounds failure.
 
 ---
 
@@ -1759,6 +1750,12 @@ and numeric rulebooks.
 
 The operation may lower to core helpers.
 
+The explicit conversion `string(numericValue)` resolves to this same operation
+(MD-051, 2026-10-17): identical default formatting and the identical result
+`Result[string, StringError]`, with no format argument and no implicit
+application (`types.md`, "Numeric-to-text conversion"). It is not the
+array/slice-to-string constructor cast rejected below.
+
 ---
 
 # `char.ToString()` and `rune.ToString()`
@@ -1857,11 +1854,13 @@ preserves element order;
 does not exist as a general array formatting operation.
 ```
 
-For a byte sequence, `ToString()` materializes a string from exactly the
-represented bytes in order. It has the same byte-preserving semantics as
-`string.FromByteArray`, does not append a terminator, and does not reinterpret
-each byte as a separate Unicode scalar. The program remains responsible for
-supplying bytes permitted by the canonical string encoding policy.
+For a byte sequence, `ToString()` decodes exactly the represented bytes in
+order as strict UTF-8, with the same semantics as `string.FromByteArray`: it
+does not append a terminator, does not reinterpret each byte as a separate
+Unicode scalar, and returns `Err(StringError.InvalidUtf8(offset))` for
+malformed input instead of producing a malformed string (MD-050). Its result is
+the universal `Result[string, StringError]`; no separate conversion error
+family exists.
 
 ---
 
@@ -1953,10 +1952,13 @@ A profile incapable of satisfying the operation rejects its use.
 Required on `string`:
 
 ```sec
-let bytes := text.ToByteArray()
+fn ToByteArray() Result[byte[], CollectionError]
+
+let bytes := try text.ToByteArray()
 ```
 
-It materializes an owning `byte[]`.
+It materializes an owning `byte[]` and reports unavailable or insufficient
+result storage as `CollectionError` (MD-072).
 
 The result contains exactly the encoded bytes represented by the string.
 
@@ -1980,7 +1982,7 @@ text.SizeOf
 ```
 
 when `text.SizeOf` is representable as the owning-array element count. For
-example, `"Hej π".ToByteArray().Len == 6`.
+example, the array produced by `"Hej π".ToByteArray()` has `Len == 6`.
 
 ---
 
@@ -1988,9 +1990,8 @@ example, `"Hej π".ToByteArray().Len == 6`.
 
 `ToByteArray()` is not a text transcoder.
 
-It returns the string's canonical encoded byte sequence.
-
-The string rulebook must define that encoding before documentation freeze.
+It returns the string's canonical encoded byte sequence: well-formed UTF-8,
+the only encoding a `string` has (`types.md`, "Valid UTF-8 invariant").
 
 Low-level FFI code requiring another encoding uses an explicit transcoding API.
 
@@ -2053,10 +2054,13 @@ This document requires all related operations to agree.
 Required on `string`:
 
 ```sec
-let runes := "test string".ToRuneArray()
+fn ToRuneArray() Result[rune[], CollectionError]
+
+let runes := try "test string".ToRuneArray()
 ```
 
-It materializes an owning `rune[]`.
+It materializes an owning `rune[]` and reports unavailable or insufficient
+result storage as `CollectionError` (MD-072).
 
 The result contains one `rune` for every Unicode scalar represented by the
 string, in source order.
@@ -2072,13 +2076,8 @@ does not consume or mutate the source;
 returns an empty array for an empty string.
 ```
 
-When strings are guaranteed valid under the canonical string model, conversion
-is semantically valid for every string.
-
-If strings may contain invalid encoded byte sequences, the string rulebook must
-define a Result/error or replacement policy.
-
-This rulebook does not silently choose one.
+Every string is valid UTF-8 (MD-050), so decoding is valid for every string:
+the result has exactly `text.Len` elements and no `InvalidUtf8` path exists.
 
 ---
 
@@ -2113,23 +2112,16 @@ No mandatory copy-on-write runtime is introduced.
 
 ## Bytes
 
-Where `string.FromByteArray` accepts the canonical encoded bytes:
-
-```text
-string.FromByteArray(text.ToByteArray())
-```
-
-must reconstruct equivalent string content.
-
-The exact error surface belongs to the string constructor rule.
+`string.FromByteArray` accepts the canonical encoded bytes of every string, so
+decoding the array produced by `text.ToByteArray()` (borrowed with `ref`)
+reconstructs equivalent string content; only storage failure can occur
+(`StringError.Allocation`).
 
 ## Runes
 
-```text
-string.FromRuneArray(text.ToRuneArray())
-```
-
-must reconstruct equivalent scalar content.
+Encoding the array produced by `text.ToRuneArray()` with
+`string.FromRuneArray` (borrowed with `ref`) reconstructs equivalent scalar
+content.
 
 ## Chars
 
@@ -2183,9 +2175,12 @@ Such APIs require distinct semantics.
 The compiler-known/core surface includes:
 
 ```sec
-string.FromByteArray(value)
-string.FromRuneArray(value)
+fn FromByteArray(value: ref byte[]) Result[string, StringError]
+fn FromRuneArray(value: ref rune[]) Result[string, StringError]
 ```
+
+Both borrow their input and materialize an independent string (MD-072,
+`core-library.md` § 5.2).
 
 A `FromCharArray` constructor may be added when the canonical char/string model
 is finalized.
@@ -2207,22 +2202,28 @@ registry and privileged core declaration model.
 
 # `FromByteArray`
 
-`FromByteArray` interprets the input according to the canonical string encoding.
+`FromByteArray` decodes the borrowed input as strict UTF-8, the only
+canonical string encoding (MD-050).
 
 It does not assume zero termination.
 
 It uses the represented array or slice bounds.
 
-The exact valid input forms, ownership, allocation, and error behavior belong to
-the string rulebook and core declaration.
+Malformed input returns `Err(StringError.InvalidUtf8(offset))` with the byte
+offset of the leading byte of the first malformed or truncated sequence; it
+never replaces, truncates, skips, panics or yields a partial string. Storage
+failure returns `StringError.Allocation`. The input is never consumed, mutated,
+adopted or aliased (`core-library.md` § 5.2).
 
 ---
 
 # `FromRuneArray`
 
-`FromRuneArray` encodes the represented Unicode scalar sequence.
+`FromRuneArray` encodes the borrowed Unicode scalar sequence as canonical
+UTF-8 and reports storage failure as `StringError.Allocation`.
 
-Every `rune` is already a valid scalar.
+Every `rune` is already a valid scalar, so safe input cannot produce
+`InvalidCodePoint`.
 
 The operation does not:
 
@@ -3217,6 +3218,14 @@ ToByteArray independence;
 ToCharArray independence;
 ToRuneArray independence;
 round trip;
+strict UTF-8 decoding failures with exact first-invalid byte offsets
+    (0xFF, leading continuation bytes, overlong, truncated 2/3/4-byte,
+    surrogates, above U+10FFFF, near buffer ends) leaving the input unchanged;
+rune-position search, slicing and rune access versus byte access
+    (IndexOf, IndexOf(start), LastIndexOf, Slice, GetRune, RuneAt, GetByte)
+    against one shared rune-index oracle;
+Split, SplitToArray and SplitOnce with multibyte separators;
+materialization storage failure as CollectionError / StringError.Allocation;
 allocation-context requirement;
 noalloc profile rejection;
 compile-time constant folding.
@@ -3231,7 +3240,6 @@ Golden tests must verify explicit operations for:
 ```text
 GetPointer;
 GetLength;
-GetSignedLength;
 SizeOfType;
 SizeOfValue;
 StringIdentity;
@@ -3369,7 +3377,8 @@ remaining ToString implementations.
 
 1. Replace `.ptr` with `.Ptr` in normative examples.
 2. Replace `.len` with `.Len` in normative examples.
-3. Retain `len(...)` where signed length is intended.
+3. Retain `len(...)` where it is used; it now returns `uint`, the same as
+   `.Len`, and signed offsets need an explicit checked conversion.
 4. Update core and stdlib source.
 5. Update bootstrap source.
 6. Remove legacy compatibility after the migration gate.
@@ -3618,10 +3627,8 @@ The canonical public low-level properties are `Ptr` and `Len`.
 Existing lowercase `.ptr` and `.len` are migration spellings and resolve to the
 same member IDs only during compatibility migration.
 
-The global compiler-known `len(value)` remains and returns `int` for signed index
-arithmetic.
-
-`value.Len` returns `uint`.
+The global compiler-known `len(value)` remains and, like `value.Len`, returns
+`uint` (MD-074/MD-088).
 
 `Ptr` is unsafe, requires addressable storage, returns `RawPtr`, and does not
 extend lifetime, preserve bounds, transfer ownership, or keep Arena storage

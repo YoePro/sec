@@ -1,0 +1,14 @@
+module main
+
+enum State bit[8] { Ready = 17 }
+
+fn IsReady(value: State) bool {
+    return value == State.Ready
+}
+
+fn main() int {
+    if IsReady(State.Ready) {
+        return 0
+    }
+    return 1
+}

@@ -1,0 +1,17 @@
+module main
+
+let PublishOrder: MemoryOrder := MemoryOrder.Release
+
+fn Publish() void {
+    atomic.Fence(MemoryOrder.Acquire)
+    atomic.Fence(MemoryOrder.Release)
+    atomic.Fence(MemoryOrder.AcqRel)
+    atomic.Fence(MemoryOrder.SeqCst)
+    atomic.Fence(PublishOrder)
+    let local := MemoryOrder.SeqCst
+    atomic.Fence(local)
+}
+
+fn main() int {
+    return 0
+}

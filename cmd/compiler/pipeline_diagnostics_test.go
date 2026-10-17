@@ -132,7 +132,7 @@ func TestPipelineJoinedProofFailures(t *testing.T) {
 // failures in their occurrence stream without inventing an Invalid proof.
 // Rules: rules/compiler/compiler_pipeline.md — §32(2–4).
 func TestPipelineUnsupportedCLI(t *testing.T) {
-	_, output, code := runCLIForDiagnostics(t, "emit-ir", "../../testdata/ir/iterator_readiness_builtin_valid.sec", "-o", "-", "--diagnostic-format=json")
+	_, output, code := runCLIForDiagnostics(t, "emit-ir", "../../testdata/ir/unsupported_for_step.sec", "-o", "-", "--diagnostic-format=json")
 	doc := decodeOccurrenceDocument(t, output)
 	if code != 4 || doc.Summary.Errors != 1 || len(doc.Occurrences) != 1 {
 		t.Fatal(code, output)

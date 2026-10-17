@@ -163,7 +163,7 @@ fn ReplaceN(value: string, search: string, replacement: string, count: uint) Res
                 try builder.Append(before)
                 try builder.Append(replacement)
 
-                position = found + search.SizeOf
+                position = found + search.Len
                 replaced += 1
             }
             None => {
@@ -173,7 +173,7 @@ fn ReplaceN(value: string, search: string, replacement: string, count: uint) Res
     }
 
     // Preserve the remainder without searching it again.
-    let remainder := try value.Slice(position, value.SizeOf) {
+    let remainder := try value.Slice(position, value.Len) {
         Err(_) => {
             panic "ReplaceN: invalid remainder bounds"
         }
@@ -258,8 +258,8 @@ fn ReplaceLast(value: string, search: string, replacement: string) Result[string
                 }
             }
 
-            let afterStart := position + search.SizeOf
-            let suffix := try value.Slice(afterStart, value.SizeOf) {
+            let afterStart := position + search.Len
+            let suffix := try value.Slice(afterStart, value.Len) {
                 Err(_) => {
                     panic "ReplaceLast: invalid suffix bounds"
                 }

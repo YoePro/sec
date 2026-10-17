@@ -9,7 +9,8 @@ import (
 	"sec/internal/lexer"
 )
 
-// Contextual call arguments (MD-027). A bare None, an empty array literal []
+// Contextual call arguments (MD-027). A bare None or Some(...) (MD-102), an
+// empty array literal []
 // and the raw-pointer null sentinel have no standalone type. When every
 // candidate agrees on the argument's type it is bound before inference
 // (bindNullArgumentContexts); otherwise the argument is deferred: overload
@@ -35,7 +36,7 @@ func (a *Analyzer) deferContextualArguments(arguments []ast.Expression) func() {
 		if _, bound := a.expectedExpressionTypes[argument]; bound || a.deferredContextualArguments[argument] {
 			continue
 		}
-		if a.isBareNoneArgument(argument) || isEmptyArrayLiteral(argument) || a.isNullSentinel(argument) {
+		if a.isContextualOptionArgument(argument) || isEmptyArrayLiteral(argument) || a.isNullSentinel(argument) {
 			a.deferredContextualArguments[argument] = true
 			deferred = append(deferred, argument)
 		}
@@ -60,7 +61,7 @@ func (a *Analyzer) hasDeferredContextualArgument(arguments []ast.Expression) boo
 // a contextual argument can be typed as.
 func (a *Analyzer) contextualArgumentAccepts(argument ast.Expression, parameter Type) bool {
 	switch {
-	case a.isBareNoneArgument(argument):
+	case a.isContextualOptionArgument(argument):
 		return isOptionType(parameter)
 	case isEmptyArrayLiteral(argument):
 		return acceptsEmptyArrayLiteral(parameter)
@@ -68,6 +69,22 @@ func (a *Analyzer) contextualArgumentAccepts(argument ast.Expression, parameter 
 		return parameter.Kind == RawPtrType
 	}
 	return false
+}
+
+// contextualArgumentFamily describes a contextual argument that has no
+// standalone type, for a mismatch diagnostic.
+func (a *Analyzer) contextualArgumentFamily(argument ast.Expression) string {
+	switch {
+	case a.isBareNoneArgument(argument):
+		return "None (an Option value)"
+	case a.isBareSomeArgument(argument):
+		return argument.String() + " (an Option value)"
+	case isEmptyArrayLiteral(argument):
+		return "the empty array literal []"
+	case a.isNullSentinel(argument):
+		return "null (a raw-pointer sentinel)"
+	}
+	return argument.String()
 }
 
 // typeDeferredContextualArguments types every deferred argument from the

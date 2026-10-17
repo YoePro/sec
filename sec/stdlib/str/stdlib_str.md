@@ -1453,10 +1453,15 @@ Revision 0.1 uses **UTF-8 byte offsets** for structural edit boundaries.
 
 Reasons:
 
-1. core string slicing/search already naturally exposes byte offsets;
-2. exact search results can feed directly into edits;
-3. UTF-8 storage is byte-addressed;
-4. the implementation can reject boundaries inside a multi-byte rune.
+1. UTF-8 storage is byte-addressed;
+2. the implementation can reject boundaries inside a multi-byte rune.
+
+Since 2026-10-17 (MD-071) the core string search, slicing and rune-access
+members use **rune indexes** (`rules/library/core-library.md` § 5.7), so a
+result of `string.IndexOf` is not directly an edit boundary: edit
+implementations translate validated byte boundaries to rune indexes before
+calling `string.Slice`. Whether the edit API should move to rune indexes so
+that search results feed edits directly is open (MD-090).
 
 Every public parameter name should make the unit visible, e.g.:
 
@@ -2864,6 +2869,13 @@ This API requires a separate core audit.
 
 UTF-8 validation belongs deep, but constructing an owning string from arbitrary
 bytes can allocate.
+
+Decided 2026-10-17 (MD-050, MD-072): core declares
+`string.FromByteArray(value: ref byte[]) Result[string, StringError]`, which
+validates strict UTF-8 and reports allocation failure as
+`StringError.Allocation` (`rules/library/core-library.md` § 5.2); its
+materialization step is the byte-sequence `ToString()` with the same strict
+decoding. The allocation-placement question below remains a stdlib audit item.
 
 The final core contract should prefer one of:
 

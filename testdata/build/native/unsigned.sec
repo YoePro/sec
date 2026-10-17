@@ -1,0 +1,13 @@
+module main
+
+fn Div(a: uint, b: uint) uint {
+    return a / b
+}
+
+fn main() int {
+    let x: uint := Div(42, 6)
+    if x == 7 {
+        return 0
+    }
+    return 2
+}

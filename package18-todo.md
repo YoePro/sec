@@ -39,7 +39,7 @@ Audited HEAD:
 | P16 | `package16-todo.md` exists; canonical slices are predecessor work. | Slice borrowing from `T[]` (§§ 46–48, 101) waits for P16. |
 | P17 | `package17-todo.md` exists; no `ResolvedDestructionPlan`/`ResolvedTransferPlan` or `sec.own.*`/`sec.cleanup.*` operations exist. | Destruction/cleanup/replacement (§§ 54, 97–99) wait for P17. |
 | Schema | Go emission was schema 10 at this snapshot; since P15-50/51 (2026-10-16) it is schema 11 and C++ accepts schemas 1–11 with the Place/reference types. | Schema 14 needs the P15–P17 schemas (11–13) first (§ 81). |
-| Legacy backends | Direct LLVM/legacy MLIR paths handle some dynamic-array forms outside Semantic IR. | Keep them operational or reject explicitly; never treat them as P18 evidence. |
+| Legacy backends | Removed 2026-10-17 (MD-101): the single track rejects dynamic arrays until P18 lowers them; the earlier legacy dynamic-array support is gone. | Keep them operational or reject explicitly; never treat them as P18 evidence. |
 
 Primary implementation anchors:
 
@@ -59,7 +59,7 @@ their semantics):
 
 | MD | Subject | P18 handling |
 |---|---|---|
-| MD-074 | `len(...)` returns `int` while `.Len` returns `uint`; behavior when a length does not fit `int` is undefined (P18 § 14). | Full `.Len`; emit `len(T[]) -> int` only when representability is proven; never narrow, wrap, saturate or panic implicitly. |
+| MD-074 | Decided 2026-10-17: `len(...)` returns `uint`, the same count as `.Len` (`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`). | `.Len` and `len(T[])` lower to the same unsigned length; never narrow, wrap, saturate or panic implicitly. |
 | MD-034 | Allocation profile of freestanding targets. | Freestanding targets keep no positive allocation context; allocating operations are rejected there. |
 | MD-072 | `FromByteArray`/`FromRuneArray`/`ToByteArray`/`ToRuneArray` signatures and error family (P23-D2). | § 73 core materialization integration waits for it. |
 | MD-050 | Invalid UTF-8 policy. | Affects § 73/§ 133 string-producing paths only. |
@@ -142,8 +142,8 @@ hidden allocation, mandatory runtime, physical descriptor or allocator choice
   `DynamicArrayElementPlaceOp`, element reference epoch dependency (§§ 74–77).
 - [ ] P18-20 — Empty owner slicing and indexing; no null owning-array value
   (§§ 78–80).
-- [ ] P18-21 — Length operations: `.Len -> uint` always, `len -> int` only
-  with proven representability (MD-074) (§§ 13–14, 49–50).
+- [ ] P18-21 — Length operations: `.Len` and `len(...)` are both `uint` and the
+  same count (MD-074, decided 2026-10-17) (§§ 13–14, 49–50).
 - [ ] P18-22 — Partial construction, safe empty-with-capacity state and
   element destruction order (§§ 32–34).
 

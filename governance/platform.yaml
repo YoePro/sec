@@ -558,20 +558,15 @@ integrations:
     code:
     - internal/parser/parser.go
     - internal/sema/analyzer.go
-    - internal/codegen/llvm/statements.go
     - sec/platform/linux/amd64/raw_syscall.sec
     tests:
     - internal/parser/parser_test.go
     - internal/sema/analyzer_test.go
-    - internal/codegen/llvm/generator_test.go
     implemented:
     - parser recognizes asm statements and the structured asm block form
     - structured parser retains assembly template plus inputs, outputs, and clobbers
     - Sema classifies asm as requiring an explicit unsafe context
     - Sema visits asm input expressions and creates named output bindings in the current partial model
-    - legacy LLVM lowering can emit LLVM inline asm with sideeffect semantics
-    - legacy LLVM lowering can construct fixed-register input constraints, one fixed-register output, and explicit
-      clobber constraints
     - Linux/amd64 platform syscall source uses structured inline assembly with fixed syscall registers and explicit
       rcx/r11/memory clobbers
     - effect-analysis trust provenance already recognizes facts trusted through an inline assembly declaration

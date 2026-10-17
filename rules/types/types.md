@@ -484,6 +484,41 @@ exclude any external terminator. For example, `"éΩ"` has `Len == 2` and
 `SizeOf == 4`. String length contracts use the units defined by
 `rules/types/contracts.md` revision 2.1.
 
+### Valid UTF-8 invariant (MD-050)
+
+Every `string` value in safe Sec code is a sequence of Unicode scalar values
+encoded as well-formed canonical UTF-8. Invalid leading bytes, malformed or
+truncated continuation sequences, overlong encodings, encoded surrogates and
+scalar values beyond U+10FFFF never occur in a `string`.
+
+The invariant is enforced at every text-creation boundary: string literals,
+binary decoding, string-returning runtime and FFI helpers, and every
+compiler-known path that constructs or materializes a `string`. `unsafe` does
+not authorize ordinary code to present malformed bytes as a `string`;
+privileged or FFI code that bypasses validation carries an explicit trusted
+obligation to establish the invariant before exposing the value.
+
+NUL (U+0000), control characters, combining marks and non-ASCII scalars are
+valid content. No zero termination is implied. UTF-8 validity does not imply a
+normalization form, collation, case folding, grapheme segmentation or any
+protocol-specific textual policy.
+
+`string` is text, not a generic binary buffer. Arbitrary or malformed bytes
+are valid binary data (`byte[]`, byte slices and other binary storage) and
+never become a `string` without successful decoding: malformed UTF-8 received
+from a socket, request or file is an ordinary recoverable input condition, not
+a panic, assertion or memory fault. UTF-8 is the only canonical encoding;
+ASCII, Latin-1, Windows code pages and UTF-16 do not become UTF-8 by
+reinterpretation or guessing, and no encoding is inferred automatically.
+
+`byte`, `char` and `rune` remain distinct: a `char` (0..255) and a `char[]`
+may hold values outside ASCII without being ASCII, UTF-8 or Latin-1 text, and
+a `rune` is always a Unicode scalar value.
+
+Public string positions of the core search, slicing and rune-access members
+are rune indexes; byte-access members use UTF-8 byte indexes and say so
+(`core-library.md` § 5.7, MD-071).
+
 Conversions between strings and arrays, slices, bytes, or runes use explicitly defined core/library operations.
 
 Array slice syntax does not apply directly to `string`. Checked substring
@@ -1443,6 +1478,32 @@ this channel never demotes a proven compile-time error into a runtime result
 (MD-012; `rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` § 4).
 
 Lossy, wrapping, saturating, or otherwise intentionally non-preserving conversion semantics require separately defined explicit operations.
+
+## Numeric-to-text conversion (MD-051)
+
+`.ToString()` is the preferred spelling of numeric-to-text materialization. An
+explicit `string(numericValue)` conversion is also permitted for every numeric
+value (`int`/`uint` families including `byte`, `float`, `decimal`, and named
+numeric types whose conversion contracts allow the route). It is exactly the
+no-argument `ToString()` of that numeric type under another spelling: the same
+default culture-independent formatting and the same fallible result
+`Result[string, StringError]`, with the same allocation and error obligations.
+
+```sec
+let number := 123
+
+let preferred := try number.ToString()
+let explicit := try string(number)
+```
+
+Both yield the same text. `string(numericValue)` is not a code-point
+conversion, has no format argument (format-specific presentation stays
+`.ToString(format)`) and is never applied implicitly: `let text: string :=
+number` remains invalid. The distinct `char` and `rune` conversions are
+unchanged (`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md` § 7).
+`byte` is the `uint8` family member here (owner decision 2026-10-17): `string(b)`
+equals `b.ToString()` and yields decimal text, never a character. Conversion of
+a numeric value to a named string type is undecided (MD-093).
 
 ---
 

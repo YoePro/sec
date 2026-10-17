@@ -199,13 +199,50 @@ LogicalResult normalizeSecIntegerStorage(ModuleOp module) {
       }
     }
     alloca.getResult().setType(converted);
-    for (Operation *user : alloca.getResult().getUsers()) {
-      if (auto load = dyn_cast<memref::LoadOp>(user))
-        load.getResult().setType(converted.getElementType());
+    // A load keeps its semantic signed/unsigned type for its users through a
+    // materialization cast, so checked integer lowering still sees the source
+    // signedness; the conversion folds the cast away.
+    for (Operation *user :
+         llvm::to_vector(alloca.getResult().getUsers())) {
+      auto load = dyn_cast<memref::LoadOp>(user);
+      if (!load)
+        continue;
+      Type semantic = load.getResult().getType();
+      load.getResult().setType(converted.getElementType());
+      OpBuilder builder(load->getContext());
+      builder.setInsertionPointAfter(load);
+      auto cast = builder.create<UnrealizedConversionCastOp>(
+          load.getLoc(), semantic, load.getResult());
+      load.getResult().replaceAllUsesExcept(cast.getResult(0), cast);
     }
     return WalkResult::advance();
   });
   return result.wasInterrupted() ? failure() : success();
+}
+
+// foldRoundTripCasts removes the signless -> semantic -> signless cast pairs
+// that keep a normalized storage load's source signedness visible during
+// conversion (normalizeSecIntegerStorage); no cast survives the pass.
+void foldRoundTripCasts(ModuleOp module) {
+  SmallVector<UnrealizedConversionCastOp> casts;
+  module.walk([&](UnrealizedConversionCastOp cast) { casts.push_back(cast); });
+  for (UnrealizedConversionCastOp cast : casts) {
+    if (cast->getNumOperands() != 1 || cast->getNumResults() != 1)
+      continue;
+    Value source = cast.getOperand(0);
+    for (Operation *user : llvm::to_vector(cast->getUsers())) {
+      auto inverse = dyn_cast<UnrealizedConversionCastOp>(user);
+      if (inverse && inverse->getNumOperands() == 1 &&
+          inverse->getNumResults() == 1 &&
+          inverse.getResult(0).getType() == source.getType()) {
+        inverse.getResult(0).replaceAllUsesWith(source);
+        inverse.erase();
+      }
+    }
+  }
+  for (UnrealizedConversionCastOp cast : casts)
+    if (cast->use_empty())
+      cast.erase();
 }
 
 class FunctionTypeLowering final : public OpConversionPattern<func::FuncOp> {
@@ -336,6 +373,41 @@ public:
     rewriter.replaceOp(op,
                        integerConstant(rewriter, op.getLoc(), type,
                                        value.getValue()));
+    return success();
+  }
+};
+
+// An exact integer conversion is a plain width change: the frontend proved
+// the value fits, so widening extends by the source signedness, narrowing
+// truncates, and equal widths reuse the bits (package20.md § 44).
+class NumericConvertExactLowering final
+    : public OpConversionPattern<sec::NumericConvertExactOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(sec::NumericConvertExactOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto sourceType = dyn_cast<IntegerType>(op.getValue().getType());
+    auto value = adaptor.getValue();
+    auto from = dyn_cast<IntegerType>(value.getType());
+    auto to = dyn_cast_or_null<IntegerType>(
+        getTypeConverter()->convertType(op.getResult().getType()));
+    if (!sourceType || !from || !to ||
+        (!sourceType.isSigned() && !sourceType.isUnsigned()))
+      return op.emitOpError(
+          "requires resolved signed or unsigned builtin integer types");
+    Value result = value;
+    if (to.getWidth() > from.getWidth())
+      result = sourceType.isSigned()
+                   ? arith::ExtSIOp::create(rewriter, op.getLoc(), to, value)
+                         .getResult()
+                   : arith::ExtUIOp::create(rewriter, op.getLoc(), to, value)
+                         .getResult();
+    else if (to.getWidth() < from.getWidth())
+      result =
+          arith::TruncIOp::create(rewriter, op.getLoc(), to, value).getResult();
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -637,6 +709,30 @@ public:
     if (unresolvedTypes.wasInterrupted())
       return signalPassFailure();
 
+    // Signless normalization never recurses into Place/reference referents
+    // and never lowers P15 operations (sec_mlir_lowering_v11.md section 20,
+    // sec-mlir-dialect_package15.md section 33): a module that still has
+    // Place/reference semantics is rejected before any rewrite (MD-087).
+    WalkResult references = module.walk([&](Operation *operation) {
+      bool placeOrReference = sec::hasPlaceOrReferenceType(operation) ||
+                              isa<sec::FailReferenceGenerationOp>(operation);
+      auto isPlaceOrReference = [](Type type) {
+        return isa<sec::PlaceType, sec::RefType, sec::RefMutType>(type);
+      };
+      if (auto function = dyn_cast<func::FuncOp>(operation))
+        placeOrReference |=
+            llvm::any_of(function.getArgumentTypes(), isPlaceOrReference) ||
+            llvm::any_of(function.getResultTypes(), isPlaceOrReference);
+      if (!placeOrReference)
+        return WalkResult::advance();
+      operation->emitOpError(
+          "Place/reference semantics must be discharged by reference "
+          "representation lowering before checked integer lowering");
+      return WalkResult::interrupt();
+    });
+    if (references.wasInterrupted())
+      return signalPassFailure();
+
     WalkResult preconditions = module.walk([&](func::FuncOp function) {
       if (failed(sec::verifyCheckedIntegerGuards(function)))
         return WalkResult::interrupt();
@@ -682,6 +778,7 @@ public:
                            func::FuncDialect, cf::ControlFlowDialect,
                            memref::MemRefDialect>();
     target.addLegalDialect<sec::SecDialect>();
+    target.addIllegalOp<sec::NumericConvertExactOp>();
     target.addIllegalOp<sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
                         sec::IntBinaryCheckedOp, sec::IntBitNotOp,
                         sec::IntBitwiseOp, sec::IntShiftCheckedOp,
@@ -715,7 +812,8 @@ public:
                  SecIntegerStoreLowering,
                  SecCallTypeLowering<sec::CallDirectOp>,
                  SecCallTypeLowering<sec::CallForeignOp>, SecConstIntLowering,
-                 ArithConstantTypeLowering>(typeConverter, context);
+                 ArithConstantTypeLowering, NumericConvertExactLowering>(
+        typeConverter, context);
     for (StringRef operationName : {
              sec::IntUnaryPlusOp::getOperationName(),
              sec::IntNegCheckedOp::getOperationName(),
@@ -731,6 +829,7 @@ public:
 
     if (failed(applyPartialConversion(module, target, std::move(patterns))))
       return signalPassFailure();
+    foldRoundTripCasts(module);
 
     WalkResult remaining = module.walk([&](Operation *operation) {
       if (!isCheckedIntegerOperation(operation))

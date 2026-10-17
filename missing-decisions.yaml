@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-16"
+updated: "2026-10-17"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -56,31 +56,6 @@ decisions:
       compiler-known metadata in particular) needs that A/B decision; the
       implementation registry already classifies member authority (§ 6) but
       cannot choose a declaration form on the rulebooks' behalf.
-    classification: constraining
-    status: open
-  - id: MD-017
-    area: analysis-cli
-    rulebooks:
-      - rules/compiler/compiler_analysis.md
-      - rules/analysis/pitfall_analysis.md
-      - rules/analysis/parameter_usage_analysis.md
-      - rules/analysis/isr_analysis.md
-      - rules/analysis/data_races.md
-      - rules/analysis/deadlock_analysis.md
-    description: >-
-      `sec analyse` and `sec analyse --all` are implemented and run every
-      available analysis at Deep depth. Every analysis rulebook requires that
-      one analysis can also be selected individually, but says that "the exact
-      CLI spelling is owned by CLI/tooling rules", and no such CLI rulebook
-      exists. The conceptual examples are inconsistent: `sec analyse isr` and
-      `sec analyse deadlocks` use positional words, while pitfall and
-      parameter-usage selection have no spelling at all. Decisions needed:
-      (1) the spelling for selecting individual analyses (positional words,
-      flags, or both) and the canonical name of each analysis; (2) whether
-      `--depth interactive|standard|deep` or another option may lower the
-      budget of `sec analyse`; (3) whether a versioned machine-readable report
-      (as with `sec.diagnostic-occurrences`) is required and what its schema
-      is.
     classification: constraining
     status: open
   - id: MD-018
@@ -216,23 +191,6 @@ decisions:
       are allowed in try handlers and match arms, and their binding forms, so
       handler reachability for union payload patterns can be implemented.
     classification: constraining
-    status: open
-
-  - id: MD-030
-    area: no-panic-attribute-placement
-    rulebooks:
-      - rules/foundations/attributes.md
-      - rules/errors/panic.md
-    description: >-
-      panic.md § 21 and frontend.panic ask for @noPanic on every callable form,
-      but attributes.md only says an attribute applies to the next top-level
-      statement (and impl methods by extension); it defines no placement for
-      init declarations, property get/set accessors, lambdas, or free. The
-      parser therefore accepts @noPanic only before fn, unsafe fn, and extern
-      fn. Decide where @noPanic may be written on these callable forms (for
-      example before init, before get/set inside a property, or in a lambda
-      header) so their bodies can be verified.
-    classification: localized
     status: open
 
   - id: MD-031
@@ -439,51 +397,6 @@ decisions:
       frontend.default-values "implement exact successors for exclusive decimal
       upper bounds"; existing behavior continues to require explicit defaults.
     classification: blocking
-    status: open
-
-  - id: MD-050
-    area: string-unicode-validity
-    rulebooks:
-      - rules/types/types.md
-      - rules/compiler/compiler_known_members.md
-      - rules/library/core-library.md
-      - rules/types/contracts.md
-    description: >-
-      Len is now RuneLen by explicit user decision, but the string model does
-      not settle invalid UTF-8. compiler_known_members.md leaves ToRuneArray
-      replacement/error policy undecided, while core string.Slice checks byte
-      bounds without checking code-point boundaries. Decide whether every
-      string must be valid UTF-8 (with boundary-checked Slice and construction)
-      or RuneLen counts U+FFFD once per invalid byte. Compile-time proofs and
-      native runtime helpers must use the same policy before the string-length
-      runtime requirement can be considered complete. User clarification is
-      pending; valid UTF-8 cases are implemented and tested. Related
-      (2026-10-16, SEC-MLIR-P23): the unit of public string offsets and the
-      error for a slice endpoint inside a valid multibyte scalar are MD-071
-      (P23-D1); the byte/rune array materialization signatures are MD-072
-      (P23-D2), whose invalid-byte behavior stays owned by this item.
-    classification: blocking
-    status: open
-
-  - id: MD-051
-    area: numeric-string-constructor-conversions
-    rulebooks:
-      - rules/types/types.md
-      - rules/library/core-library.md
-      - rules/compiler/compiler_known_members.md
-    description: >-
-      The nominal identity and conversion relation audit found pre-existing
-      Sema permission for string(numericValue), including named string wrappers.
-      types.md requires an explicit conversion relation, but neither it nor
-      core-library.md defines this constructor cast: ToString is a separate
-      fallible member operation, and compiler_known_members.md defines string
-      construction from bytes and runes. Decide whether numeric constructor
-      casts are valid and, if so, their formatting, failure/result type and
-      relation to ToString. Existing frontend permission is characterized
-      separately from normative matrix tests; the audit does not declare its
-      runtime semantics implemented. Constrains the scalar conversion and
-      nominal-core conversion completion tracked by frontend.types-core.
-    classification: constraining
     status: open
 
   - id: MD-052
@@ -723,67 +636,6 @@ decisions:
       exercise RawPtr conversions until then.
     classification: localized
     status: open
-  - id: MD-071
-    area: string-public-offset-units-and-boundaries
-    rulebooks:
-      - rules/library/core-library.md
-      - rules/compiler/compiler_known_members.md
-      - rules/types/types.md
-      - rules/mlir/packages/sec-mlir-dialect_package23.md
-    description: >-
-      SEC-MLIR-P23 decision P23-D1 (2026-10-16). string.Len counts Unicode
-      scalars and SizeOf counts UTF-8 bytes (MD-058); the private
-      __StringSliceUnchecked takes byte offsets, and sec/core/string.sec
-      implements IndexOf, LastIndexOf and Slice with byte arithmetic while
-      GetRune enumerates runes. The public API does not say which methods
-      yield or accept byte offsets and which rune indexes, nor what an
-      in-bounds byte endpoint inside one multibyte scalar of valid text is (a
-      RangeError, another existing error, or permitted only under an
-      invalid-UTF-8 model). This is coupled to, but distinct from, MD-050
-      (whether invalid UTF-8 strings can exist). Options: (A) public byte
-      offsets for IndexOf/Slice with required scalar boundaries, GetRune
-      keeps rune indexes, existing checked errors; (B) public rune positions
-      converted internally to bytes (intuitive with .Len, needs scans); (C)
-      separately named byte and rune APIs (clearest, larger API and
-      migration). Package recommendation, not accepted: A with explicitly
-      named offset units and boundary checks, or C; no new RangeError
-      members. Gates the public IndexOf(start)/LastIndexOf/Slice/GetRune
-      semantics and their search/substring lowering; private byte views and
-      length logic may proceed. After approval update core-library.md,
-      compiler_known_members.md, sec/core/string.sec, tests, LSP and MD-050.
-    classification: blocking
-    status: open
-  - id: MD-072
-    area: string-array-materialization-signatures
-    rulebooks:
-      - rules/library/core-library.md
-      - rules/compiler/compiler_known_members.md
-      - rules/memory/allocation.md
-      - rules/mlir/packages/sec-mlir-dialect_package23.md
-    description: >-
-      SEC-MLIR-P23 decision P23-D2 (2026-10-16). The rulebook lists
-      `FromByteArray(value: byte[]) string` and `FromRuneArray(value: rune[])
-      string` but leaves their final ownership, allocation and error
-      signatures unresolved, while the current core uses ref-based
-      Result[..., StringError]; ToByteArray/ToRuneArray examples return
-      owning arrays while the core may use Result[..., CollectionError] or
-      stubs. Decide: source parameter ownership (consuming `byte[]`,
-      non-consuming `ref byte[]`, or both as overloads); the returned Result
-      error family (encoding, allocation, or one explicitly defined combined
-      type covering every possible failure — StringError, CollectionError and
-      AllocationError are not interchangeable); and whether a conversion may
-      adopt storage or always materializes an independent backing. Options:
-      (A) borrowed `ref` input, explicit Result with one approved error
-      family, independent materialization; (B) consuming input with possible
-      zero-copy adoption under ownership, UTF-8 and allocator-domain proofs;
-      (C) both overloads with distinct behavior. Package recommendation, not
-      accepted: A, with a later ownership-taking variant only if useful.
-      Invalid-byte handling stays with MD-050; allocation context follows
-      MD-004 and the P18/P19 plans. Gates public FromByteArray/FromRuneArray,
-      sequence ToString and allocating array conversions; internal bounded
-      encoding/materialization primitives may proceed.
-    classification: blocking
-    status: open
   - id: MD-073
     area: char-array-conversion-outside-char-domain
     rulebooks:
@@ -804,30 +656,10 @@ decisions:
       that char.ToString() encodes the char as code point U+0000..U+00FF in
       canonical UTF-8 (0xE9 becomes bytes C3 A9) rather than copying the raw
       byte. Package recommendation, not accepted: A, with the exact error
-      type synchronized with MD-072, and the UTF-8 encoding for
+      type synchronized with MD-072 (decided 2026-10-17: Result[..., CollectionError]), and the UTF-8 encoding for
       char.ToString(). Gates general public ToCharArray and non-ASCII char
       sequence conversion; rune array conversion for valid strings and char
       conversion of proven ASCII/≤255 input may proceed. Keep char 0..255.
-    classification: constraining
-    status: open
-  - id: MD-074
-    area: len-int-representability
-    rulebooks:
-      - rules/collections/collections.md
-      - rules/types/types.md
-      - rules/mlir/packages/sec-mlir-dialect_package16.md
-      - rules/mlir/packages/sec-mlir-dialect_package18.md
-    description: >-
-      Cross-package gap recorded by P16 § 49, P18 § 14 and the P23 decision
-      index § 4, not previously tracked here (logged 2026-10-16). `.Len`
-      returns uint while the `len(...)` function returns int for slices,
-      dynamic arrays and strings, and no rulebook defines what happens when a
-      runtime length fits uint but not int. The packages refuse to invent
-      saturation, wrapping, an implicit panic, a new maximum length or a
-      changed return type, and emit `len(...) -> int` only when
-      representability is proven. Decide the behavior: for example a
-      language-wide maximum length that fits int, a checked failure, a
-      different return type for len, or removing one of the two forms.
     classification: constraining
     status: open
   - id: MD-075
@@ -1028,3 +860,507 @@ decisions:
     classification: localized
     status: open
 
+  - id: MD-084
+    area: schema11-emitter-metadata-spelling
+    rulebooks:
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17, P15-57). The
+      v11 dialect defines reference metadata only on reference operations
+      (§ 7) and requires parameter facts, returned-origin summaries
+      (lowering v11 § 16, package15.md §§ 59-62) and an address-taken storage
+      fact (package15.md § 67, "sec.address_taken = true or an equivalent")
+      without spelling them. The Go emitter and sec-mlir-opt now use:
+      (1) a `sec.reference` dictionary (keys borrow_id, lifetime_id,
+      validity_policy, validity_proof, invalidation_domain, epoch_dependency,
+      address_stability, provenance, optional source_borrow,
+      origin_storages, pinned, address_space) as a func.func argument
+      attribute on ref/ref-mut parameters and as an attribute on calls with
+      a reference result; (2) `sec.return_origins` as an array of strings in
+      the Semantic IR printer spelling (param#N, receiver, static@N, then
+      .field#N, [K], [*]); (3) `sec.address_taken = true` on
+      sec.storage.declare; (4) discardable `sec.origin_storages`,
+      `sec.pinned` and `sec.reference_address_space` on reference
+      operations, omitted for empty/false/ordinary; (5) call argument
+      actions "shared-reference" and "mutable-reference", required for
+      !sec.ref and !sec.ref_mut operands (replacing the schema-2
+      copy-trivial-only rule); (6) copies and moves omit source_borrow
+      (Semantic IR sets it equal to borrow_id); (7) sec.place.read always
+      carries action "copy-trivial". Since P15-58, `--sec-verify-places`
+      requires `sec.address_taken = true` on any sec.storage.declare that a
+      sec.place.storage addresses, and the discardable reference facts are
+      accepted only on operations defining one reference. Not emitted: the § 6/§ 65 "source
+      binding identity"/sec.source_name of a value root (Semantic IR has no
+      such fact), and a Place's dynamic index identity, which the SSA index
+      operand carries. Target-defined address spaces ("target:...") have no
+      schema-11 form and are rejected as unsupported lowering. Confirm the
+      spellings or choose others (for example structured attributes instead
+      of origin strings).
+    classification: localized
+    status: open
+  - id: MD-085
+    area: schema11-return-origin-verification-depth
+    rulebooks:
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17, P15-56).
+      `--sec-verify-borrow-semantics` checks "returned origin metadata"
+      (dialect v11 § 37, package15.md § 85 "returned ref has non-local
+      allowed origin summary") as follows: a function with a reference
+      result must carry a non-empty sec.return_origins whose parameter
+      entries name reference parameters, and every returned reference must
+      derive (through copies, moves, reborrows, dereferences, Place
+      projections, block arguments, and calls via their reference
+      arguments) only from listed parameters; local storage and value roots
+      are rejected. The projection paths in the summary are not re-derived
+      (package15.md § 86 forbids an independent borrow algorithm), and a
+      call result is attributed to all of its reference arguments rather than
+      the callee's own summary. Confirm this depth or require path- or
+      callee-summary-level checking.
+    classification: localized
+    status: open
+  - id: MD-086
+    area: p15-cli-emit-routes
+    rulebooks:
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/compiler/compiler_pipeline.md
+    description: >-
+      Open decision (2026-10-17). The schema-11 emitter now lowers verified
+      Package 15 Semantic IR (P15-57), but the CLI routes `emit-ir` and
+      `emit-sec-mlir` still build Semantic IR with package ceiling 14, so a
+      valid reference program is rejected as unsupported lowering
+      (`TestReferenceProgramsAreRejectedByEveryEmitRoute`, P15-67). Decide
+      whether those two routes should now emit Package 15 Semantic IR and
+      schema-11 MLIR (the source-to-schema-11 pipeline of P15-65/P15-72),
+      while `emit-llvm`/`emit-mlir` keep rejecting references until physical
+      reference representation exists, or whether the CLI stays at
+      package 14 until Package 15 is accepted as a whole.
+    classification: localized
+    status: open
+  - id: MD-087
+    area: p15-p5-p6-p8-boundaries
+    rulebooks:
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17, P15-59/P15-60).
+      (1) The single authoritative storage query of lowering v11 § 18 is
+      `sec::isReferenceDependentStorage`: storage whose declaration carries
+      `sec.address_taken = true`, or that a sec.place.storage consumes.
+      `--sec-lower-trivial-core` keeps such storage as sec.storage, and
+      `--sec-resolve-scalar-layout` converts only its element type, keeping
+      reference-dependent bool storage as !sec.storage<i1> instead of the
+      P6 memref<i8> form. (2) A sec.call.direct with a !sec.place, !sec.ref or
+      !sec.ref_mut operand or result is not lowered to func.call by
+      trivial-core: it keeps its argument actions and sec.reference facts
+      until reference ABI lowering (package15.md § 87 allows references in
+      func.call signatures but nothing would carry the facts there). P6
+      scalar call lowering now keeps every discardable call attribute.
+      (3) `--sec-lower-checked-integers` (P8) rejects any module that still
+      has Place/reference types or operations ("must be discharged by
+      reference representation lowering before checked integer lowering")
+      instead of lowering around them, because normalizing the plain integer
+      results of place.read while the wrappers keep semantic integers would
+      mix representations (dialect v11 § 33, lowering v11 § 20 only forbid
+      recursion). Confirm, or require P8 to run with P15 operations present
+      (for example with explicit casts at place.read/place.write boundaries).
+    classification: localized
+    status: open
+  - id: MD-089
+    area: slice-place-diagnostic-presentation
+    rulebooks:
+      - rules/memory/borrowing.md
+      - rules/tooling/diagnostics.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17, P16-09). The
+      diagnostic presentation of a Place with a slice projection printed an
+      unknown (runtime) start and a constant start of 0 identically
+      (`values[..<3]`). With exact bounds it now prints an unknown start as
+      `*` (`values[*..<3]`, analogous to `[*]` for a dynamic index), a
+      start of 0 as nothing, an unknown end as `..` and a known end as
+      `..<N` with the exact value. Confirm or choose another presentation.
+    classification: localized
+    status: open
+  - id: MD-090
+    area: stdlib-str-edit-position-unit
+    rulebooks:
+      - sec/stdlib/str/stdlib_str.md
+      - rules/library/core-library.md
+    description: >-
+      Open decision (2026-10-17, follow-up of MD-071). stdlib_str.md § 11.2
+      makes the public edit API of module str (Insert, RemoveRange,
+      ReplaceRange) take UTF-8 byte offsets, partly because core search and
+      slicing "naturally expose byte offsets". Since MD-071 the core
+      IndexOf/LastIndexOf/Slice/GetRune use rune indexes, so a search result
+      no longer feeds an edit directly; the edit functions now translate
+      validated byte boundaries to rune indexes internally. Decide whether
+      the str edit API stays byte-offset based (and how callers obtain byte
+      boundaries) or moves to rune indexes (removing NotRuneBoundary).
+    classification: localized
+    status: open
+  - id: MD-091
+    area: text-sequence-tostring-validity
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17, MD-050
+      correction § 6(5)). core-library.md § 5.2 previously said byte, char and
+      rune sequence ToString() "returns string", while the compiler already
+      types it as the universal Result[string, StringError] and core
+      FromByteArray returns it directly. The correction forbids a byte
+      sequence ToString() from yielding a malformed string and forbids an
+      invented error contract. The rulebooks now state the universal
+      Result[string, StringError] and that a byte sequence ToString() decodes
+      strict UTF-8 exactly like FromByteArray, returning
+      StringError.InvalidUtf8(offset) for malformed bytes. Confirm, or decide
+      another treatment (for example no byte-sequence ToString at all).
+    classification: localized
+    status: open
+  - id: MD-092
+    area: string-charat-byte-access-name
+    rulebooks:
+      - rules/library/core-library.md
+    description: >-
+      Open decision (2026-10-17). The MD-050/MD-071/MD-072 correction § 3(5)
+      keeps the existing byte-oriented string.CharAt(index) with a UTF-8 byte
+      index (it returns one encoded byte as a char) and states explicitly that
+      whether CharAt should be renamed, deprecated or redesigned is not
+      decided. Its name suggests character access while it returns one byte of
+      a possibly multi-byte scalar. Decide its future (keep, rename, deprecate
+      in favour of ByteAt/RuneAt, or redefine).
+    classification: localized
+    status: open
+  - id: MD-093
+    area: numeric-to-named-string-conversion
+    rulebooks:
+      - rules/types/types.md
+      - rules/library/core-library.md
+    description: >-
+      Open decision (2026-10-17, remainder of MD-051, which was closed after
+      the owner confirmed that byte counts as uint8 for string(b)). The
+      decided rule makes string(numericValue) the fallible numeric
+      ToString(). A conversion from a numeric value to a named string type,
+      for example `type Name string` with `Name(123)`, is not covered: Sema
+      still accepts it as an infallible conversion producing Name, which
+      bypasses the fallible text materialization. Decide whether it is
+      rejected (write `Name(try n.ToString())`), fallible
+      (Result[Name, ...] including the Name contracts) or allowed as is.
+    classification: localized
+    status: open
+  - id: MD-094
+    area: constant-slice-range-diagnostic-precedence
+    rulebooks:
+      - rules/mlir/packages/sec-mlir-dialect_package16.md
+      - rules/collections/collections.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17, P16-13).
+      package16.md § 19 fixes the runtime RangeError precedence (negative
+      endpoint, then start after end, then source bound) and § 18 says
+      compile-time-provable invalid ranges stay compile-time errors, but no
+      rule says how many compile-time diagnostics one range gets. Sema now
+      reports only the precedence-first failure (for example `fixed[9..<7]`
+      on int[4] reports the descending range, not also the bound overflow),
+      and reports a constant start after end even when the source length is
+      unknown. Confirm, or require every failing condition to be reported.
+    classification: localized
+    status: open
+  - id: MD-095
+    area: atomic-capability-requirement-keys
+    rulebooks:
+      - rules/concurrency/atomics.md
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+    description: >-
+      Open decision (2026-10-17). atomics.md §§ 37–39 and 48 require Sema to
+      look up the selected CompilationPlan's capability for every concrete
+      atomic operation and to report a focused capability diagnostic, and
+      to reject blocking or non-interrupt-safe emulation where the context
+      forbids it. The plan-side model exists (internal/layout
+      AtomicRequirement / ResolvedScalarPlan.AtomicCapability, exact-match
+      lookup). No rule fixes the three keys a Sema consumer and a target
+      producer must agree on, so source integration of "target diagnostics
+      for unsupported concrete operation/order combinations", "tooling
+      distinguishes semantic invalidity from CompilationPlan capability
+      failure" and blocking/ISR capability validation remains blocked.
+      Plan-side validation of already-resolved requirements is implemented:
+      a supported implementation must prove nonblocking execution when
+      NoBlocking or InterruptSafe is required, and must separately prove
+      interrupt safety for InterruptSafe. Known incompatible and unknown
+      implementation properties are rejected before the capability table
+      is frozen. This decides none of the source key or Unknown-capability
+      questions below and supplies no capability for a registered target.
+      (1) TypeID: the plan model's tests use `core::uint64`, while Sema's
+      canonical type identity has the form `module:kind:name[args]`. Decide
+      the canonical spelling, including named, enum, RawPtr[T] and generic
+      carriers.
+      (2) ContextID: tests use free strings (`thread::main`, `isr::timer`,
+      `test::ordinary`), while target_profiles.md § 19 defines only the
+      compiler-known contexts Ordinary, Task, Thread, Interrupt, Startup and
+      Shutdown and forbids arbitrary string-named contexts. Decide whether
+      the key is that context name alone (with NoBlocking/InterruptSafe from
+      @noBlock/@isr/@interruptSafe) or a per-root identity such as the
+      interrupt vector or task.
+      (3) SizeBytes/AlignmentBytes: no API gives the concrete size and
+      alignment of T per plan. Decide which layout authority supplies them
+      (the scalar plan, P24 layout plans) and what an unresolved size means.
+      Also decide what Sema does with an Unknown capability fact: real
+      registered targets currently declare none, so treating Unknown as
+      failure would reject every atomic program, while § 39(2) requires the
+      plan to prove an ISR use. Suggested direction (not accepted): Sema's
+      canonical type identity, the § 19 context name plus the
+      NoBlocking/InterruptSafe flags, sizes from the resolved scalar plan,
+      Unknown deferred to lowering except in interrupt contexts.
+    classification: blocking
+    status: open
+  - id: MD-096
+    area: semantic-ir-atomic-fence-spelling
+    rulebooks:
+      - rules/compiler/semantic_ir.md
+      - rules/concurrency/atomics.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17).
+      semantic_ir.md § 122 requires explicit fences to be preserved but
+      leaves the operation vocabulary to the implementation. Semantic IR now
+      spells a fence `atomic.fence order=<Acquire|Release|AcqRel|SeqCst>`
+      (OpAtomicFence with an AtomicOrder field, no operands or results), and
+      the operation is built at every Semantic IR package level because no
+      SEC-MLIR package owns atomics yet. Sec MLIR schema 11 rejects it as
+      unsupported lowering. Confirm the spelling and package placement, or
+      assign atomics to a numbered Sec MLIR package.
+    classification: localized
+    status: open
+
+  - id: MD-097
+    area: formatter-trailing-block-comment
+    rulebooks:
+      - rules/tooling/formatter.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17).
+      formatter.md § 9(8)/§ 9(8b) say a trailing comment keeps its alignment
+      group and occupies the trailing-comment column, and § 12(9) permits a
+      single-line block comment, but neither says whether a single-line
+      `/* ... */` that ends a line after code is a "trailing comment". The
+      formatter now treats it exactly like a trailing `//` comment: it keeps
+      the enum `=` group (and every declaration-table group) together and is
+      placed in the same comment column. A block comment followed by more
+      code on the same line, or one starting after the line break, is not
+      trailing (inline respectively standalone) and keeps its previous
+      handling. Confirm, or rule that trailing block comments are inline and
+      keep their source spacing.
+    classification: localized
+    status: open
+  - id: MD-098
+    area: formatter-max-alignment-padding-setting
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/projects/projects.md
+    description: >-
+      User decision 2026-10-17: the § 9(10) alignment padding limit stays,
+      but becomes a project setting so wide enum tables (bootstrap
+      lexer.sec TokenType: EQ vs SHIFT_RIGHT_ASSIGN needs 17 spaces against
+      the default 16) can keep one value column. Implementation choices
+      awaiting confirmation: the `[format]` key is spelled
+      `max_alignment_padding`; it is measured in spaces (not in indentation
+      widths); its domain is 1..1024 (0 is rejected, not "no alignment");
+      omitting it keeps the default of four indentation widths, so no new
+      format_version; there is no `sec fmt` command-line override; `sec init`
+      writes it only as a commented example. formatter.md § 4(5) and § 4(14)
+      are updated accordingly.
+    classification: localized
+    status: open
+  - id: MD-099
+    area: formatter-trailing-comment-column-padding-limit
+    rulebooks:
+      - rules/tooling/formatter.md
+    description: >-
+      Open question found 2026-10-17. § 9(10) says an alignment group whose
+      required padding exceeds the maximum drops its candidate alignment
+      columns, and § 9(9) forbids large gaps merely to align a far-right
+      comment. The `=`/type columns honor the limit, but the trailing-comment
+      column (alignDeclarationTrailingComments) has no limit, so a group can
+      end up with unaligned values but comments pushed far right (bootstrap
+      lexer.sec "// Logical" group). Decide whether the trailing-comment
+      column must also obey max_alignment_padding (and then be dropped
+      together with the value column), or keep aligning comments
+      independently. Current behaviour is unchanged.
+    classification: localized
+    status: open
+  - id: MD-100
+    area: formatter-enum-values-always-aligned
+    rulebooks:
+      - rules/tooling/formatter.md
+    description: >-
+      User decision 2026-10-17: enum explicit values must always stand in
+      one column (and trailing comments in their own column); dropping the
+      `=` alignment to single spaces when § 9(10) padding is exceeded is
+      wrong for enums. formatter.md § 15(4) now makes enum value alignment
+      mandatory and exempt from the padding limit, and § 9(10) names the
+      exemption. Open follow-up: whether struct fields, parameters, named
+      types and register fields should get the same exemption (they still
+      drop alignment beyond max_alignment_padding), and whether MD-098's
+      max_alignment_padding setting is still wanted now that enums no longer
+      depend on it.
+    classification: localized
+    status: open
+  - id: MD-101
+    area: single-compilation-track-sec-mlir-to-llvm
+    rulebooks:
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/initialization.md
+      - rules/errors/panic.md
+      - rules/mlir/sec_mlir_lowering.md
+    description: >-
+      User decisions 2026-10-17: there is one compilation track, Semantic IR
+      -> Sec dialect (where Sec semantics need it) -> standard MLIR (where it
+      suffices) -> LLVM dialect -> LLVM IR -> clang; the legacy direct LLVM
+      and AST-to-LLVM-dialect paths (internal/codegen/llvm, /mlir,
+      /readiness) and `sec build --pipeline` are removed now, accepting that
+      constructs outside the track stop building until the track covers them.
+      No numbered SEC-MLIR package owns LLVM finalization (P24/P25 exclude
+      it), so the track is an interim basic path that later packages widen.
+      Implementation choices awaiting confirmation:
+      (1) the minimal hosted panic endpoint for every deterministic Sec
+      failure (fail.arithmetic, fail.bounds, fail.reference_generation,
+      synthesized unreachable) is llvm.intr.trap + unreachable, with no
+      panic message or policy hook yet (panic.md § 8.1(3), § 12(2));
+      (2) arithmetic failure reasons are i8 codes none=0, overflow=1,
+      division-by-zero=2, invalid-shift=3, kept for a later reporting stage;
+      (3) the hosted startup adapter is a generated C `main` returning the
+      Sec `int` status truncated/sign-extended to the target C int
+      (initialization.md § 23 leaves the physical mapping open);
+      (4) the command entry is identified as "<entry module>::main()";
+      (5) internal Sec functions use the default func-to-llvm calling
+      convention and keep their sec_fn_N symbols (no ABI package yet, P25);
+      (6) the emitter admits Semantic IR up to package level 14 (was 12),
+      which brings while loops, compound assignment and &&/||/! into the
+      track;
+      (7) two gates bound the track: sec-check-lowering-support (entry; an
+      explicit set of lowered Sec operations) and sec-finalize-for-llvm
+      (no Sec operation, type or sec.* attribute reaches LLVM conversion);
+      their capability errors surface as [unsupported-lowering];
+      (8) emit-mlir now prints the track's LLVM dialect and lost --verify
+      (always verified); emit-llvm gained --mlir-bin;
+      (9) mlir-translate is looked up in --mlir-bin/SEC_MLIR_BIN, then the
+      default LLVM/MLIR build directory, then PATH.
+      Known holes (verified 2026-10-17), capabilities the removed paths had
+      or that the track lacks: Semantic IR P14 rejects for, switch, floating
+      operations, rune comparison, explicit conversions such as int(x),
+      extern calls and inline asm; the LLVM track rejects structs, arrays,
+      enum conversions and bit-backed enums, unions and union matches,
+      Result/Option, references, strings and statics. Ordinary integer enum
+      constants, equality, match CFG, storage and direct calls now reach
+      binaries through the dedicated sec-lower-integer-enums representation
+      stage (2026-10-17; lowering.integer-enum-representation); this does not
+      resolve the open startup, panic-policy or ABI choices above.
+    classification: architectural
+    status: open
+  - id: MD-102
+    area: contextual-some-call-arguments
+    rulebooks:
+      - rules/types/types.md
+      - rules/declarations/functions.md
+    description: >-
+      Found 2026-10-17 (user report: Some(next) as a call argument failed
+      with S1157 "unknown function or type Some"). types.md "Contextual None
+      and empty-literal arguments" (MD-027) names only None and []; it says
+      nothing about Some(x) in argument position, and no rule defines a
+      standalone type for Some(x). Implementation choice awaiting
+      confirmation: a bare one-argument Some(...) is a contextual Option
+      argument exactly like None: deferred, accepted only by Option[T]
+      parameters, typed from the single selected overload (the payload is
+      then checked against T). Open questions: (1) should the payload's own
+      type eliminate overloads, so Store(Some(1)) picks Option[int] over
+      Option[string] instead of being ambiguous (S1147)? (2) should Some(x)
+      supply Option[typeof x] for generic inference, so Unwrap(Some(1), 0)
+      infers T = int instead of "cannot infer generic arguments" (None
+      cannot)? (3) should Some(x) have a standalone type anywhere else
+      (let v := Some(3))? (4) None() is now explained under S1157 ("None is
+      not a function and takes no arguments"); confirm the wording/ID. Also
+      fixed: a contextual None/Some/[]/null passed to a parameter outside its
+      family was accepted silently and is now reported.
+    classification: localized
+    status: open
+  - id: MD-103
+    area: semantic-ir-for-and-switch-lowering
+    rulebooks:
+      - rules/compiler/semantic_ir.md
+      - rules/control-flow/flowcontrol_for.md
+      - rules/control-flow/flowcontrol_switch.md
+    description: >-
+      Implementation choices awaiting confirmation (2026-10-17), made while
+      lowering `for` and `switch` into the single compilation track.
+      (1) Loop kinds: semantic_ir.md § 65(2) asks to distinguish infinite
+      and numeric range iteration; Semantic IR spells them LoopForInfinite
+      "for-infinite" and LoopForRange "for-range" next to "while".
+      (2) Range progression: a range loop keeps its state in two
+      compiler-generated mutable storages named "<binding>.cursor" and
+      "<binding>.more" (a discard binding uses "_"); the body entry yields
+      the cursor and advances it before user code, so `continue` returns
+      to the condition; the increment is a checked add whose failure edge
+      is provably dead (value < end) rather than an unchecked add, because
+      Semantic IR has no unchecked integer add.
+      (3) Not lowered yet (Known hole): explicit `step`, float/decimal
+      ranges, collections, strings, Iterator[T], ref/ref mut bindings, ranges
+      over named numeric types; switch subjects of enum, bool, string and
+      named types.
+      (4) switch: § 68(2) permits explicit comparisons/branches, so no
+      semantic switch operation exists; a two-sided range alternative
+      evaluates both bounds, in order, before its tests; a switch Sema proves
+      to have no unmatched path and no default ends its failed-test path in a
+      synthesized unreachable "switch-unmatched-excluded-by-sema".
+      (5) Bug fixed on the way: an untyped literal operand of a compound
+      assignment (`count += 1` on uint) was recorded with type int, giving a
+      mixed-type operation that Semantic IR rejected; it now takes the
+      target's type by context.
+    classification: localized
+    status: open
+  - id: MD-104
+    area: integer-to-integer-conversion-op
+    rulebooks:
+      - rules/types/types.md
+      - rules/mlir/packages/sec-mlir-dialect_package20.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v16.md
+    description: >-
+      User decision 2026-10-17: no package owns built-in integer to integer
+      conversion (P7 excludes numeric conversion operators; P20/dialect v16
+      specify sec.numeric.convert_exact/convert_checked only for integer
+      <-> float); use the P20 name now. Implemented: Semantic IR
+      NumericConvertExactOp "numeric.convert-exact" and Sec dialect
+      sec.numeric.convert_exact admitted early in schema 11 for built-in
+      integer conversions Sema proves exact (source domain fits the target on
+      both 32- and 64-bit plans, or the argument is a compile-time constant
+      Sema validated); it lowers to extsi/extui by source signedness, trunci,
+      or nothing. Implementation choices awaiting confirmation: the schema-11
+      verifier admits only integer operand/result types until P20; the
+      Sema plan type is ResolvedIntegerConversion (P20 § 60 recommends
+      ResolvedNumericConversionPlan, which can absorb it); checked
+      conversions (int8(x) from int) stay unsupported until
+      convert_checked, ConversionError Result lowering and try exist in the
+      track. Note: Sema still accepts a may-fail Sec-scalar conversion
+      without try (MD-056 gap), so such programs type-check but do not build.
+    classification: localized
+    status: open
+  - id: MD-105
+    area: char-rune-comparison-lowering
+    rulebooks:
+      - rules/foundations/operators.md
+      - rules/mlir/packages/sec-mlir-dialect_package7.md
+    description: >-
+      Implementation choice awaiting confirmation (2026-10-17). operators.md
+      defines char ordering by unsigned 8-bit value and rune ordering by
+      Unicode scalar value, but no package owns their lowering (P7 excludes
+      char/rune ordered comparison). Sema now resolves char/rune ==, !=, <,
+      <=, >, >= of two operands of the same character type as new operator
+      kinds character-compare-*; Semantic IR maps them to int.compare over
+      char/rune operands (its verifier and the Sec dialect sec.int.cmp
+      verifier now admit !sec.char/!sec.rune), and scalar layout's existing
+      char -> ui8 / rune -> ui32 makes the comparison unsigned. No new Sec
+      operation was added. Confirm reusing int.compare for character types
+      instead of a dedicated character comparison operation.
+    classification: localized
+    status: open

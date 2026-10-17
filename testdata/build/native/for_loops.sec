@@ -1,0 +1,93 @@
+module main
+
+fn Exclusive() int {
+    let mut t: int := 0
+    for i in 0..<5 {
+        t += i
+    }
+    return t
+}
+
+fn Inclusive() int {
+    let mut t: int := 0
+    for i in 1..5 {
+        t += i
+    }
+    return t
+}
+
+fn FullByte() uint {
+    let mut count: uint := 0
+    let low: uint8 := 0
+    let high: uint8 := 255
+    for b in low..high {
+        count += 1
+    }
+    return count
+}
+
+fn Empty() int {
+    let mut t: int := 0
+    for i in 10..<5 {
+        t += 1
+    }
+    return t
+}
+
+fn Control() int {
+    let mut t: int := 0
+    for i in 0..<100 {
+        if i == 7 {
+            break
+        }
+        if i % 2 == 0 {
+            continue
+        }
+        t += i
+    }
+    return t
+}
+
+fn Discard() int {
+    let mut t: int := 0
+    for _ in 0..<3 {
+        t += 10
+    }
+    return t
+}
+
+fn Forever() int {
+    let mut n: int := 0
+    for {
+        n += 1
+        if n == 4 {
+            break
+        }
+    }
+    return n
+}
+
+fn main() int {
+    if Exclusive() != 10 {
+        return 1
+    }
+    if Inclusive() != 15 {
+        return 2
+    }
+    if FullByte() != 256 {
+        return 3
+    }
+    if Empty() != 0 {
+        return 4
+    }
+    if Control() != 9 {
+        return 5
+    }
+    if Discard() != 30 {
+        return 6
+    }
+    if Forever() != 4 {
+        return 7
+    }
+    return 0
+}

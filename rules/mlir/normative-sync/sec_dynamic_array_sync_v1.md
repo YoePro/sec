@@ -217,11 +217,11 @@ Existing rules remain:
 
 ```text
 T[].Len -> uint
-len(T[]) -> int
+len(T[]) -> uint
 ```
 
-The unresolved `uint`-to-`int` representability case remains the same issue
-already documented for slices.
+Since MD-074/MD-088 (2026-10-17) `len` returns `uint`, the same count as
+`.Len`; the former `uint`-to-`int` representability gap no longer exists.
 
 No silent narrowing is permitted.
 

@@ -32,7 +32,11 @@ type Definition struct {
 	PointerWidthBits uint16
 	Endianness       layout.Endianness
 	// CABI is the target's C ABI data model (rules/platform/abi.md § 19).
-	CABI        layout.CABIModel
+	CABI layout.CABIModel
+	// Atomics is frozen against this definition's resolved scalar/profile plan.
+	// An unspecified table leaves concrete capability unknown.
+	// Rules: rules/concurrency/atomics.md — §37(1–5).
+	Atomics     layout.AtomicCapabilities
 	Status      Status
 	CanParse    bool
 	CanCheck    bool
@@ -531,6 +535,10 @@ func Find(target Target) (Definition, bool) {
 	return Definition{}, false
 }
 
+// ScalarPlan projects canonical representation and frozen atomic capability
+// facts without reconstructing support from host or architecture spellings.
+// Rules: rules/platform/platform_model.md — §9 "Architecture capability";
+// rules/concurrency/atomics.md — §37(1–5).
 func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 	plan := layout.ResolvedScalarPlan{
 		TargetOS:         definition.OS,
@@ -541,6 +549,7 @@ func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 		PointerWidthBits: definition.PointerWidthBits,
 		Endianness:       definition.Endianness,
 		CABI:             definition.CABI,
+		Atomics:          definition.Atomics,
 	}
 	if err := plan.Validate(); err != nil {
 		return layout.ResolvedScalarPlan{}, fmt.Errorf("target %s-%s has no resolved scalar plan: %w", definition.OS, definition.Arch, err)

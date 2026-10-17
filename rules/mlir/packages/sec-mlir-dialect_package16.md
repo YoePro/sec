@@ -1238,6 +1238,8 @@ Do not silently truncate `uint` length to `int`.
 
 # 49. Existing `len` representability gap
 
+**Amended 2026-10-17 (MD-074/MD-088, `rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`):** `len(...)` returns `uint`, the same type and value as `.Len`; there is no signed length, no representability proof and no conversion inside `len`. Text in this package that assumes `len(...) -> int` or an unresolved representability rule is superseded.
+
 Current normative files define:
 
 ```text

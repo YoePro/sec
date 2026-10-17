@@ -2456,8 +2456,10 @@ sec analyse
 The user may explicitly select one supported analysis instead of running all of
 them.
 
-The exact analysis-name vocabulary and full CLI syntax are owned by the compiler
-CLI/tooling rules.
+The analysis-name vocabulary and full CLI syntax are owned by
+`rules/tooling/cli.md` (MD-017). Closure analysis has no registered individual
+name yet; it is selected through `sec analyse` until one is registered
+(§ 5.2(2)).
 
 Closure deep analysis may expose information such as:
 

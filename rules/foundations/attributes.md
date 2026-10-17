@@ -423,6 +423,8 @@ The initial general attribute system applies at compilation-unit level.
 An attribute may attach to a top-level statement allowed by that attribute.
 
 Initial attributes do not attach to arbitrary local statements or expressions.
+The one exception is `@noPanic` before a `let` that directly initializes a
+lambda ("Callable-body attachment (MD-030)").
 
 Invalid:
 
@@ -1891,16 +1893,78 @@ The initial allowed targets for:
 @interrupt
 ```
 
-are functions and methods.
+are functions and methods. `@noPanic` additionally attaches to the callable
+bodies listed in "Callable-body attachment (MD-030)" below.
 
 `@interrupt` and `@isr` have additional target-specific signature rules.
 
-Attributes on lambdas and function types are deferred until function-effect type
-syntax is finalized.
+Attributes on lambda expressions and function types are otherwise deferred
+until function-effect type syntax is finalized.
 
 Attributes on complete `impl` blocks are not part of the initial subset.
 
 Each method must declare or derive its own guarantee.
+
+---
+
+# Callable-body attachment (MD-030)
+
+Decided 2026-10-17
+(`rules/corrections/applied/md030-no-panic-attribute-placement-correction-20261017.md`).
+
+1. A callable declaration with an independently analyzable body may carry
+   `@noPanic` on the line(s) immediately preceding it. The attribute applies to
+   that callable body's invocation contract — never to a containing `impl`,
+   `property` or binding, and never to a sibling body.
+2. Inside an `impl`, `@noPanic` may precede a body-bearing `init` and the
+   `free` lifecycle member. `free` stays a lifecycle member, and its generated
+   field cleanup is part of the proof; an early `return` never skips cleanup.
+3. Inside a `property`, `@noPanic` may precede each accessor — `get`, `set`
+   or `try set` — separately. Annotating one accessor never annotates the
+   other. A fallible setter keeps its declared error channel; returning `Err`
+   does not violate `@noPanic`.
+4. `@noPanic` before a `let` whose initializer is directly a lambda
+   (`fn(...)` or `capture(...) fn(...)`) annotates the lambda's body, both at
+   top level and in local scope. This is the only local statement an attribute
+   may precede. A type annotation on the `let` does not change the target. The
+   guarantee covers invoking the lambda, not evaluating the initializer or the
+   captures.
+5. Not introduced: `@noPanic` on `impl` or `property` as a shortcut, on a
+   `let` whose initializer is not directly a lambda (a call, conversion or
+   conditional), and the expression-prefix form `let f := @noPanic fn(...)`.
+   Each is rejected with a diagnostic naming the supported placements.
+   Anonymous lambdas passed or returned without a binding may still be
+   inferred panic-free but have no explicit attribute placement.
+6. Every placement uses the existing transitive proof of
+   `rules/errors/panic.md` § 21; unknown effect facts are not proof, and
+   FFI/`unsafe` trust boundaries are unchanged. Other verified-effect
+   attributes (`@noAlloc`, `@noBlock`) keep their function and method targets.
+7. The formatter keeps each attribute on its own line before its declaration
+   and never moves it into a lambda expression.
+
+```sec
+impl Counter {
+    @noPanic
+    init(value: int) {
+        self._value = value
+    }
+
+    property Value: int {
+        @noPanic
+        get {
+            return self._value
+        }
+    }
+}
+
+fn Use() bool {
+    @noPanic
+    let identity := fn(value: bool) bool {
+        return value
+    }
+    return identity(true)
+}
+```
 
 ---
 

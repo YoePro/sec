@@ -1,0 +1,7 @@
+module core
+
+impl Atomic[T] {
+    fn Load() string {
+        return "replacement"
+    }
+}

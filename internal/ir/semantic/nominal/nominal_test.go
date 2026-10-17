@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"sec/internal/ast"
-	"sec/internal/codegen/llvm"
-	legacy "sec/internal/codegen/mlir"
 	"sec/internal/codegen/targetplan"
 	"sec/internal/ir/semantic"
 	"sec/internal/lexer"
@@ -98,54 +96,6 @@ func TestCoreRepresentationAudit(t *testing.T) {
 	}
 }
 
-// TestLegacyRepresentationAudit pins the actual legacy signature boundaries;
-// source analysis still establishes identity before permitted carrier erasure.
-// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites;
-// rules/types/types.md — Type identity, explicit lowering support.
-func TestLegacyRepresentationAudit(t *testing.T) {
-	for _, typ := range []string{"Base", "Child", "Task[int]", "Thread[int]", "Reader", "Registers", "Instant", "any", "Option[int]", "Result[int,Failure]"} {
-		declarations := ""
-		switch typ {
-		case "Base", "Child":
-			declarations = "type Base int32\ntype Child Base"
-		case "Reader":
-			declarations = "interface Reader { fn Read() int }"
-		case "Registers":
-			declarations = "type Registers register[8] { Value: bit[8] }"
-		case "Result[int,Failure]":
-			declarations = "enum Failure error { Failed }"
-		}
-		data, err := os.ReadFile("../../../../testdata/sema/nominal_core/legacy.sec.in")
-		if err != nil {
-			t.Fatal(err)
-		}
-		text := strings.NewReplacer("DECLARATIONS", declarations, "TARGET", typ).Replace(string(data))
-		program, a := analyzeText(t, text, "x86_64-pc-linux-gnu")
-		for _, generate := range []struct {
-			name string
-			fn   func(*ast.Program, *sema.Analyzer, string) (string, error)
-		}{{"LLVM", llvm.GenerateAnalyzed}, {"legacy MLIR", legacy.GenerateAnalyzed}} {
-			out, err := generate.fn(program, a, "x86_64-pc-linux-gnu")
-			wantSuccess := typ == "Base" || typ == "Child"
-			if (err == nil) != wantSuccess {
-				t.Fatalf("unexpected boundary %s %s: %v", generate.name, typ, err)
-			}
-			if !wantSuccess {
-				var unsupported *semantic.UnsupportedFeatureError
-				if !errors.As(err, &unsupported) || unsupported.Location.Line == 0 {
-					t.Fatalf("unclassified unsupported signature %s %s: %v", generate.name, typ, err)
-				}
-			}
-			if err != nil && out != "" {
-				t.Fatalf("partial output for %s %s", generate.name, typ)
-			}
-			if err == nil && out == "" {
-				t.Fatalf("empty success for %s %s", generate.name, typ)
-			}
-		}
-	}
-}
-
 // TestNamedArgumentReferencesAreVerified rejects forged generic references
 // before an emitter can drop them from a physical carrier representation.
 // Rules: rules/compiler/semantic_ir.md — type reference verification;
@@ -165,16 +115,9 @@ func TestNamedArgumentReferencesAreVerified(t *testing.T) {
 // Rules: rules/compiler/semantic_ir.md — §20; semantic-ir-units correction — Erasure boundary.
 func TestQuantityBoundaryAppliesToRawAndAnalyzedAPIs(t *testing.T) {
 	program, a := analyze(t, "int<Meter>", "x86_64-pc-linux-gnu")
-	for _, generate := range []func() (string, error){
-		func() (string, error) { return llvm.Generate(program) },
-		func() (string, error) { return llvm.GenerateAnalyzed(program, a, "x86_64-pc-linux-gnu") },
-		func() (string, error) { return legacy.GenerateWithTriple(program, "x86_64-pc-linux-gnu") },
-		func() (string, error) { return legacy.GenerateAnalyzed(program, a, "x86_64-pc-linux-gnu") },
-	} {
-		out, err := generate()
-		var unsupported *semantic.UnsupportedFeatureError
-		if out != "" || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "unit quantity") || unsupported.Location.Line == 0 {
-			t.Fatalf("quantity boundary: %q %v", out, err)
-		}
+	module, err := semantic.Build(program, a, semantic.BuildOptions{RequestedModule: "main"})
+	var unsupported *semantic.UnsupportedFeatureError
+	if module != nil || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "unit quantity") || unsupported.Location.Line == 0 {
+		t.Fatalf("quantity boundary: %v %v", module, err)
 	}
 }

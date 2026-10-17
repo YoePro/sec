@@ -19,15 +19,10 @@ integrations:
       - Failure ordering is not required to be weaker than success ordering.
       - SeqCst is the default for ordinary atomic object operations.
       - "atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed."
+      - Explicit MemoryOrder arguments are SemanticCompileTimeRequiredContext values; runtime-dependent orders are rejected, while omitted ordinary operation orders remain SeqCst.
     remaining:
-      - Implement/source-register the canonical generic CompareExchangeResult[T] enum.
-      - Ensure Atomic[T] compiler-known identity exposes the exact public API through compiler and LSP.
-      - Implement exact per-T method applicability.
-      - Implement exact MemoryOrder operation matrix.
-      - Implement CompareExchange success/failure typing and observed-value transfer.
-      - Implement fence parsing/name resolution/Sema/IR/lowering.
-      - Add target diagnostics for unsupported concrete operation/order combinations.
-      - Synchronize documentation, formatter fixtures, hover, completion and navigation.
+      - Implement atomic.Fence lowering below Semantic IR (Sec MLIR has no fence operation yet; name resolution, Sema and the Semantic IR atomic.fence operation exist since 2026-10-17); record the fence as an ordering effect in call-graph/effect summaries.
+      - "Add target diagnostics for unsupported concrete operation/order combinations, including Sema's resolved execution-context requirement production and integration with plan-side nonblocking/ISR validation (blocked on MD-095: requirement key conventions)."
     required_tests:
       - id: memory-order-core-enum
         expectation: Core exposes exactly Relaxed, Acquire, Release, AcqRel, SeqCst and LSP hover shows the declaration.
@@ -51,13 +46,22 @@ integrations:
         expectation: Valid failure order is not rejected merely for being stronger than success order.
       - id: atomic-fence
         expectation: atomic.Fence requires explicit Acquire/Release/AcqRel/SeqCst and rejects Relaxed.
+      - Explicit order arguments must be compile-time-established MemoryOrder values; runtime parameters and mutable or runtime-derived aliases are rejected, and unavailable semantic CTE call execution is diagnosed distinctly.
     corrections_applied:
       - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/atomic-orders-compile-time-correction-20261017.md
     implemented:
       - canonical MemoryOrder is a real core enum with exactly Relaxed, Acquire, Release, AcqRel and SeqCst; standalone semantic registration and the trusted source declaration share its reserved nominal identity, and LSP presents the closed declaration, variant documentation and source navigation
       - atomic member lookup uses Load, Store, Swap, CompareExchange, FetchAdd, FetchSub, FetchAnd, FetchOr and FetchXor; lowercase alternatives are rejected, and the shared compiler member catalog supplies the canonical names to hover and completion
       - "Atomic element eligibility is target-independent: bool, signed and unsigned integer carriers including target-sized and wide integers, RawPtr, integer-backed enums and compatible named carriers pass semantic checking on 32-bit and 64-bit plans; floats, decimals, strings, string-backed enums and composites remain invalid; this does not claim native, lock-free or emulated operation support"
-    revised: "2026-10-16"
+      - "One canonical per-T applicability check governs Sema and compiler member facts: eligible carriers expose Load, Store, Swap and CompareExchange; unconstrained integer carriers also expose all five fetch operations, while bool, raw pointers, integer enums and constrained named integers (including inherited constraints) reject fetch operations and omit them from completion; nominal result types and shared-reference receivers are preserved independently of target width, and the non-generic methods reject method type arguments"
+      - The shared exact MemoryOrder matrix validates every explicit order on Atomic object methods before lowering and supplies operation-specific hover documentation; Load and Store reject their invalid rows, all RMW success orders are allowed, CompareExchange failure is independently Relaxed/Acquire/SeqCst with no relative-strength restriction, and omitted orders remain SeqCst. Explicit orders must be compile-time-established canonical MemoryOrder values, including immutable aliases; runtime-dependent values are rejected with S1170 and unavailable semantic CTE execution remains S1101. The shared fence row is defined and tested; the separately listed fence source/IR/lowering pipeline is not claimed implemented.
+      - Atomic[T] has one compiler-owned nominal core identity with opaque storage and exactly one contained type. Canonical constructor inference preserves that identity, uses a contextual T for literals and enforces ordinary nominal/range contracts; source struct fabrication, wrong arity, type redeclaration and untrusted impl replacement are rejected, including module-core spoofing. Compiler-owned AtomicTypeFacts and resolved type/constructor positions supply the same exact per-T public signatures to type-use, binding and constructor hover; template hover explicitly documents integer-only availability, and all nine public methods retain canonical synthetic navigation. This completes the compiler/LSP API identity surface without claiming CompareExchangeResult payloads, atomic IR, lowering or target capability.
+      - "CompareExchange success/failure typing and observed-value transfer (governance sync 2026-10-17): implemented by the ResolvedCompareExchangeOf path facts recorded in frontend.atomics-v2 — CompareExchangeResult[T] result, Exchanged as RMW success, NotExchanged(T) carrying the value observed by the same operation, independent success/failure orders (TestCompareExchangePaths, TestCompareExchangeResultSurface); the stale remaining entry is closed"
+      - "documentation and tooling synchronized (2026-10-17): `atomic.` completes the core namespace function Fence (a local value named atomic keeps member completion), MemoryOrder completion inside atomic.Fence(...) offers only Acquire, Release, AcqRel and SeqCst, fence hover and synthetic navigation present the canonical surface, and the formatter is idempotent on every atomic fixture, keeps CamelCase operations, explicit orders and fence calls and never inserts an omitted SeqCst (TestAtomicFenceCompletion, TestAtomicFenceHoverAndNavigation, TestAtomicSourceFormatting); the rulebook status row names the implemented surface"
+      - "atomic.Fence (2026-10-17): calls of atomic.Fence resolve in the core atomic namespace (a local value named atomic keeps ordinary method lookup); exactly one explicit MemoryOrder argument is required (no default), established as a compile-time AtomicMemoryOrderArgument through the shared order evaluation, and checked against the shared Fence row Acquire/Release/AcqRel/SeqCst; Relaxed, a missing order, a runtime-dependent order and a non-MemoryOrder argument are rejected (S1171/S1170) with the canonical message `MemoryOrder.Relaxed is not valid for atomic.Fence`; the call is void and Sema retains its order (AtomicFenceOrderOf) for later IR (internal/sema/atomic_fence.go; TestAtomicFenceSurface)"
+      - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
+    revised: "2026-10-17"
     code:
       - sec/core/atomic.sec
       - internal/sema/atomic_types.go
@@ -71,14 +75,92 @@ integrations:
       - cmd/lsp/enum_hover.go
       - cmd/lsp/hover.go
       - cmd/lsp/main.go
+      - internal/sema/atomic_orders.go
+      - internal/sema/analyzer_let_bindings.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/atomic_identity.go
+      - cmd/lsp/atomic_hover.go
+      - cmd/lsp/type_hover.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/compare_exchange_result.go
+      - internal/sema/union_member_inference.go
+      - internal/sema/union_construction_inference.go
+      - cmd/lsp/compare_exchange_result_hover.go
+      - internal/sema/match_arm_bindings.go
+      - internal/sema/union_payload_diagnostics.go
     tests:
+      - cmd/compiler/atomic_formatter_test.go
+      - cmd/lsp/atomic_fence_completion_test.go
+      - cmd/lsp/atomic_fence_tooling_test.go
+      - cmd/compiler/atomic_fence_test.go
+      - testdata/sema/atomic_fence_valid.sec
+      - testdata/sema/atomic_fence_invalid.sec
+      - testdata/sema/atomic_fence_shadowed_valid.sec
       - internal/sema/atomic_surface_test.go
       - internal/sema/concurrency_test.go
       - cmd/compiler/atomic_surface_test.go
       - cmd/lsp/atomic_surface_test.go
       - testdata/sema/atomic_surface_valid.sec
       - testdata/sema/atomic_surface_invalid.sec
+      - internal/sema/atomic_applicability_test.go
+      - cmd/compiler/atomic_applicability_test.go
+      - cmd/lsp/atomic_applicability_test.go
+      - testdata/sema/atomic_applicability_valid.sec
+      - testdata/sema/atomic_applicability_invalid.sec
+      - internal/sema/atomic_orders_test.go
+      - cmd/compiler/atomic_orders_test.go
+      - cmd/lsp/atomic_orders_test.go
+      - testdata/sema/atomic_orders_valid.sec
+      - testdata/sema/atomic_orders_invalid.sec
+      - internal/diagnostics/diagnostics_test.go
+      - internal/sema/atomic_identity_test.go
+      - cmd/compiler/atomic_identity_test.go
+      - cmd/lsp/atomic_identity_test.go
+      - testdata/sema/atomic_identity_valid.sec
+      - testdata/sema/atomic_identity_invalid.sec
+      - testdata/sema/atomic_identity_spoof_invalid.sec
+      - internal/parser/compare_exchange_result_test.go
+      - internal/formatter/compare_exchange_result_test.go
+      - internal/sema/compare_exchange_result_test.go
+      - cmd/compiler/compare_exchange_result_test.go
+      - cmd/lsp/compare_exchange_result_test.go
+      - testdata/sema/atomics/compare_exchange_result/compare_exchange_result_valid.sec
+      - testdata/sema/atomics/compare_exchange_result/compare_exchange_result_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/compare_exchange_result_spoof_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/core_payload_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/core_shape_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/ordinary_payload_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/lowering_valid.sec
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
     verification:
+      - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|Atomic|StaticLetAndCompilerKnownConcurrencyTypes|TestMatchPatternBindingCannotShadowOuterVariable|TestSharedUnionPayloadPatternBorrowBlocksVariantMutation|TestNestedUnionPayloadPatternBorrowUsesNestedPlace' -count=1
+        result: passed on 2026-10-17; full atomic regression matrix, canonical enum parsing/formatter round trips, core declaration source fidelity, and corrected payload declaration/borrow-origin/holder locations
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|UnionVariantPayload|UnionPatternPayload' -count=1
+        result: passed on 2026-10-17; canonical core/fallback identity, 32/64-bit source typing, 13 invalid uses plus spoof rejection, malformed trusted declarations, exact enum diagnostics, payload/default/match behavior, verified Semantic IR construction/extraction, explicit legacy LLVM unsupported-lowering, and LSP hover/completion/type-variant-binding navigation
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-17 after canonical associated-enum registration, generic-context compatibility fixes, and payload-name/ref-keyword source provenance corrections
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-17 after introducing canonical nominal Atomic core storage and contextual construction; the final tightened identity predicate also passed the full Sema/IR rerun and targeted compiler/LSP race suite
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after Atomic identity/API integration
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'Atomic|StaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-17 after canonical Atomic core identity and public type/API hover integration; 32/64-bit nominal/contextual construction, 14 rejected source cases plus core-module spoof rejection, opaque storage, exact per-T type/binding/constructor hover, and synthetic navigation for all nine public methods
+      - command: go vet ./internal/diagnostics ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after atomic order diagnostics S1170/S1171 were registered
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAtomicOrderMatrix|TestAtomicFenceOrderRow' -count=1
+        result: passed on 2026-10-17; all object-operation/order combinations, all 25 CompareExchange pairs, omitted defaults, immutable module/local aliases, 32/64-bit plans, 43 source errors including runtime-dependent orders and unavailable CTE execution, and matching CLI/LSP diagnostics and hover; the fence matrix row is tested separately from its unimplemented pipeline
+      - command: go test ./internal/diagnostics ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-17 after adding compile-time atomic order validation; all Sema, Semantic IR, diagnostic and compiler suites passed
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-17 after unifying per-T atomic operation applicability and rejecting method type arguments
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'Atomic|StaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-17; exact common/fetch applicability, named-result preservation, inherited contracts, 32/64-bit scalar plans, all nine non-generic method signatures, 49 rejected source calls, and matching unsaved LSP diagnostics/completion/hover
       - command: go test ./cmd/lsp ./internal/formatter -run 'TestLSPPresentsEveryDefaultForm|TestFormatPreserves.*Default' -count=1
         result: passed on 2026-10-16 after synchronizing the owning-array default provenance fixture
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler ./cmd/lsp -count=1
@@ -90,15 +172,117 @@ integrations:
 
   - id: frontend.atomics-v2
     area: parser-sema-atomic-surface
-    status: partial
+    status: implemented
     rules:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
-    remaining:
-      - Register canonical core symbols and generic arity.
-      - Implement per-T member availability.
-      - Implement exact order matrix before lowering.
-      - Preserve successful versus failed CompareExchange semantic paths.
+      - rules/corrections/applied/atomic-orders-compile-time-correction-20261017.md
+    remaining: []
+    implemented:
+      - Sema and shared compiler member facts use one exact per-T operation applicability check, preserving named carriers and inherited constraints on shared-reference receivers and rejecting method type arguments; source, CLI and LSP tests cover the complete common/fetch surface on 32-bit and 64-bit scalar plans without claiming target operation capability
+      - The shared exact MemoryOrder matrix validates every explicit order on Atomic object methods before lowering and supplies operation-specific hover documentation; Load and Store reject their invalid rows, all RMW success orders are allowed, CompareExchange failure is independently Relaxed/Acquire/SeqCst with no relative-strength restriction, and omitted orders remain SeqCst. Explicit orders must be compile-time-established canonical MemoryOrder values, including immutable aliases; runtime-dependent values are rejected with S1170 and unavailable semantic CTE execution remains S1101. The shared fence row is defined and tested; the separately listed fence source/IR/lowering pipeline is not claimed implemented.
+      - Atomic[T] has one compiler-owned nominal core identity with opaque storage and exactly one contained type. Canonical constructor inference preserves that identity, uses a contextual T for literals and enforces ordinary nominal/range contracts; source struct fabrication, wrong arity, type redeclaration and untrusted impl replacement are rejected, including module-core spoofing. Compiler-owned AtomicTypeFacts and resolved type/constructor positions supply the same exact per-T public signatures to type-use, binding and constructor hover; template hover explicitly documents integer-only availability, and all nine public methods retain canonical synthetic navigation. This completes the compiler/LSP API identity surface without claiming CompareExchangeResult payloads, atomic IR, lowering or target capability.
+      - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
+      - Validated CompareExchange calls expose immutable ResolvedCompareExchangeOf facts with exact source call/storage/operand identities and nominal result/payload identities. Success is Exchanged with its independently resolved order, an atomic read-modify-write and a possible release-sequence extension; failure is NotExchanged(T) with its independently resolved order, a pure atomic read and no modification or release-sequence extension. Its observed payload names the same operation, never a separate Load. Invalid value/order/arity/type-argument calls produce no validated plan; analysis resets stale plans. This completes frontend path preservation only; Semantic IR atomic operations, native observed-value transfer and CompilationPlan capability validation remain under their existing integration IDs.
+    revised: "2026-10-17"
+    tests:
+      - internal/sema/atomic_applicability_test.go
+      - cmd/compiler/atomic_applicability_test.go
+      - cmd/lsp/atomic_applicability_test.go
+      - testdata/sema/atomic_applicability_valid.sec
+      - testdata/sema/atomic_applicability_invalid.sec
+      - internal/sema/atomic_orders_test.go
+      - cmd/compiler/atomic_orders_test.go
+      - cmd/lsp/atomic_orders_test.go
+      - testdata/sema/atomic_orders_valid.sec
+      - testdata/sema/atomic_orders_invalid.sec
+      - internal/diagnostics/diagnostics_test.go
+      - internal/sema/atomic_identity_test.go
+      - cmd/compiler/atomic_identity_test.go
+      - cmd/lsp/atomic_identity_test.go
+      - testdata/sema/atomic_identity_valid.sec
+      - testdata/sema/atomic_identity_invalid.sec
+      - testdata/sema/atomic_identity_spoof_invalid.sec
+      - internal/parser/compare_exchange_result_test.go
+      - internal/formatter/compare_exchange_result_test.go
+      - internal/sema/compare_exchange_result_test.go
+      - cmd/compiler/compare_exchange_result_test.go
+      - cmd/lsp/compare_exchange_result_test.go
+      - testdata/sema/atomics/compare_exchange_result/compare_exchange_result_valid.sec
+      - testdata/sema/atomics/compare_exchange_result/compare_exchange_result_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/compare_exchange_result_spoof_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/core_payload_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/core_shape_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/ordinary_payload_invalid.sec
+      - testdata/sema/atomics/compare_exchange_result/lowering_valid.sec
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/compare_exchange_paths_test.go
+      - testdata/sema/atomics/compare_exchange_result/paths_valid.sec
+      - testdata/sema/atomics/compare_exchange_result/paths_invalid.sec
+    code:
+      - internal/sema/atomic_types.go
+      - internal/sema/atomic_calls.go
+      - internal/sema/atomic_members.go
+      - internal/sema/atomic_orders.go
+      - internal/sema/analyzer_let_bindings.go
+      - internal/sema/types.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/atomic_identity.go
+      - cmd/lsp/atomic_hover.go
+      - cmd/lsp/type_hover.go
+      - cmd/lsp/hover.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - sec/core/atomic.sec
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/compare_exchange_result.go
+      - internal/sema/union_member_inference.go
+      - internal/sema/union_construction_inference.go
+      - cmd/lsp/compare_exchange_result_hover.go
+      - cmd/lsp/enum_hover.go
+      - internal/sema/match_arm_bindings.go
+      - internal/sema/union_payload_diagnostics.go
+      - internal/sema/compare_exchange_paths.go
+      - internal/sema/semantic_snapshot.go
+    verification:
+      - command: go test ./internal/sema -race -run 'CompareExchangePaths|AtomicOrderMatrix|CompareExchangeResult' -count=1
+        result: passed on 2026-10-17; all valid CompareExchange order pairs and default orders, 32/64-bit plans, nominal payloads, same-operation observed-value provenance, read-only failure versus RMW success, invalid-call plan withholding, detached type facts and stale-plan reset
+      - command: go test ./internal/sema ./internal/ir/... -count=1
+        result: passed on 2026-10-17 after frontend CompareExchange path preservation; complete Sema and Semantic IR suites
+      - command: go vet ./internal/sema
+        result: passed on 2026-10-17 after CompareExchange path facts and detached enum snapshots
+      - command: go test ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|Atomic' -count=1
+        result: passed on 2026-10-17 after frontend CompareExchange path preservation; CLI and LSP atomic and associated-enum regressions passed
+      - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|Atomic|StaticLetAndCompilerKnownConcurrencyTypes|TestMatchPatternBindingCannotShadowOuterVariable|TestSharedUnionPayloadPatternBorrowBlocksVariantMutation|TestNestedUnionPayloadPatternBorrowUsesNestedPlace' -count=1
+        result: passed on 2026-10-17; full atomic regression matrix, canonical enum parsing/formatter round trips, core declaration source fidelity, and corrected payload declaration/borrow-origin/holder locations
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|UnionVariantPayload|UnionPatternPayload' -count=1
+        result: passed on 2026-10-17; canonical core/fallback identity, 32/64-bit source typing, 13 invalid uses plus spoof rejection, malformed trusted declarations, exact enum diagnostics, payload/default/match behavior, verified Semantic IR construction/extraction, explicit legacy LLVM unsupported-lowering, and LSP hover/completion/type-variant-binding navigation
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-17 after canonical associated-enum registration, generic-context compatibility fixes, and payload-name/ref-keyword source provenance corrections
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-17 after introducing canonical nominal Atomic core storage and contextual construction; the final tightened identity predicate also passed the full Sema/IR rerun and targeted compiler/LSP race suite
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after Atomic identity/API integration
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'Atomic|StaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-17 after canonical Atomic core identity and public type/API hover integration; 32/64-bit nominal/contextual construction, 14 rejected source cases plus core-module spoof rejection, opaque storage, exact per-T type/binding/constructor hover, and synthetic navigation for all nine public methods
+      - command: go vet ./internal/diagnostics ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after atomic order diagnostics S1170/S1171 were registered
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAtomicOrderMatrix|TestAtomicFenceOrderRow' -count=1
+        result: passed on 2026-10-17; all object-operation/order combinations, all 25 CompareExchange pairs, omitted defaults, immutable module/local aliases, 32/64-bit plans, 43 source errors including runtime-dependent orders and unavailable CTE execution, and matching CLI/LSP diagnostics and hover; the fence matrix row is tested separately from its unimplemented pipeline
+      - command: go test ./internal/diagnostics ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-17 after adding compile-time atomic order validation; all Sema, Semantic IR, diagnostic and compiler suites passed
+      - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
+        result: passed on 2026-10-17 after unifying per-T atomic operation applicability and rejecting method type arguments
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'Atomic|StaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-17; exact common/fetch applicability, named-result preservation, inherited contracts, 32/64-bit scalar plans, all nine non-generic method signatures, 49 rejected source calls, and matching unsaved LSP diagnostics/completion/hover
+    required_tests:
+      - Explicit order arguments must be compile-time-established MemoryOrder values; runtime parameters and mutable or runtime-derived aliases are rejected, and unavailable semantic CTE call execution is diagnosed distinctly.
 
   - id: tooling.atomics-v2
     area: lsp-format-docs-atomic-surface
@@ -106,19 +290,39 @@ integrations:
     rules:
       - rules/concurrency/atomics.md
     remaining:
-      - Hover shows exact core enum/type/member shapes and comments.
-      - Navigation reaches canonical core declarations where source navigation applies.
-      - Tooling distinguishes semantic invalidity from CompilationPlan capability failure.
+      - "Tooling distinguishes semantic invalidity from CompilationPlan capability failure (blocked on MD-095: requirement key conventions)."
     implemented:
+      - "atomic.Fence tooling (2026-10-17): a resolved fence call records the compiler-known CKF-ATOMIC-FENCE identity on its Fence name, so hover shows the canonical signature `fn Fence(order: MemoryOrder) void`, documentation, rule and the MemoryOrder the call establishes, and go-to-definition reaches its synthetic read-only definition; MemoryOrder and its variants already hover with core documentation and navigate to sec/core/atomic.sec (TestAtomicFenceHoverAndNavigation, cmd/lsp/atomic_fence_tooling_test.go)"
       - Completion uses canonical CamelCase members.
-    revised: "2026-10-16"
+      - Atomic type-use, shared-reference binding and constructor hover render the resolved contained type and exact applicable public overloads from canonical compiler-owned AtomicTypeFacts; template hover labels integer-only fetch availability, and every public Atomic method navigates to its receiver-specific compiler-known synthetic definition.
+      - CompareExchangeResult's source enum shape, generic arity, concrete payload and non-error meaning are presented in type, constructor, variant and binding hover; completion exposes Exchanged and NotExchanged. Type owners and variants navigate to canonical core declarations, while payload bindings navigate to their own local names. All three core atomic types and implemented object methods now have their public presentation; the pending fence surface remains listed separately.
+    revised: "2026-10-17"
     code:
       - internal/sema/atomic_members.go
       - internal/sema/compiler_known_members.go
+      - internal/sema/atomic_identity.go
+      - cmd/lsp/atomic_hover.go
+      - cmd/lsp/type_hover.go
+      - cmd/lsp/hover.go
+      - internal/sema/compare_exchange_result.go
+      - cmd/lsp/compare_exchange_result_hover.go
+      - cmd/lsp/enum_hover.go
     tests:
       - cmd/lsp/atomic_surface_test.go
       - internal/sema/atomic_surface_test.go
+      - cmd/lsp/atomic_identity_test.go
+      - cmd/lsp/compare_exchange_result_test.go
     verification:
+      - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|Atomic|StaticLetAndCompilerKnownConcurrencyTypes|TestMatchPatternBindingCannotShadowOuterVariable|TestSharedUnionPayloadPatternBorrowBlocksVariantMutation|TestNestedUnionPayloadPatternBorrowUsesNestedPlace' -count=1
+        result: passed on 2026-10-17; full atomic regression matrix, canonical enum parsing/formatter round trips, core declaration source fidelity, and corrected payload declaration/borrow-origin/holder locations
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|UnionVariantPayload|UnionPatternPayload' -count=1
+        result: passed on 2026-10-17; canonical core/fallback identity, 32/64-bit source typing, 13 invalid uses plus spoof rejection, malformed trusted declarations, exact enum diagnostics, payload/default/match behavior, verified Semantic IR construction/extraction, explicit legacy LLVM unsupported-lowering, and LSP hover/completion/type-variant-binding navigation
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after Atomic identity/API integration
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'Atomic|StaticLetAndCompilerKnownConcurrencyTypes' -count=1
+        result: passed on 2026-10-17 after canonical Atomic core identity and public type/API hover integration; 32/64-bit nominal/contextual construction, 14 rejected source cases plus core-module spoof rejection, opaque storage, exact per-T type/binding/constructor hover, and synthetic navigation for all nine public methods
       - command: go test ./cmd/lsp ./internal/formatter -run 'TestLSPPresentsEveryDefaultForm|TestFormatPreserves.*Default' -count=1
         result: passed on 2026-10-16 after synchronizing the owning-array default provenance fixture
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler ./cmd/lsp -count=1
@@ -130,13 +334,19 @@ integrations:
 
   - id: semantic-ir.atomics-v2
     area: semantic-ir-atomic-facts
-    status: planned
+    status: partial
     rules:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/compiler/semantic_ir.md
+    implemented:
+      - "atomic.fence (2026-10-17): a valid atomic.Fence call lowers to one atomic.fence operation carrying Sema's compile-time-established MemoryOrder (AtomicOrder) and its source location, with no operands, results or storage; the verifier requires Acquire, Release, AcqRel or SeqCst and no operands/results/successors; the printer writes `atomic.fence order=<Order>`. Sec MLIR schema 11 rejects it as explicit unsupported lowering (internal/ir/semantic/atomic_fence.go; TestAtomicFenceLowersToSemanticIR, TestAtomicFenceEmitRoutes; spelling MD-096)"
+    tests:
+      - internal/ir/semantic/atomic_fence_test.go
+      - cmd/compiler/atomic_fence_test.go
+      - testdata/sema/atomic_fence_lowering_valid.sec
     remaining:
-      - Preserve storage identity, T, operation kind, success/failure order, RMW classification, fence semantics, execution context and source provenance.
+      - Preserve storage identity, T, operation kind, success/failure order, RMW classification, fence execution context and source provenance for Atomic[T] object operations (the fence order itself is preserved).
       - Preserve successful CompareExchange as modification/RMW and failure as read-only.
 
   - id: lowering.atomics-v2
@@ -153,12 +363,55 @@ integrations:
 
   - id: platform.atomics-v2
     area: compilation-plan-atomic-capability
-    status: planned
+    status: implemented
     rules:
       - rules/concurrency/atomics.md
       - rules/platform/target_profiles.md
       - rules/platform/platform_model.md
-    remaining:
-      - Model capability by concrete T, size/alignment, operation, ordering and execution context.
-      - Separate semantic eligibility from native/lock-free/emulated capability.
-      - Reject blocking or ISR-incompatible emulation where context forbids it.
+    remaining: []
+    revised: "2026-10-17"
+    implemented:
+      - "The authoritative scalar/profile plan carries a frozen AtomicCapabilities snapshot, preserved by canonical target Definition.ScalarPlan resolution. Exact requirements retain canonical nominal T identity (including generic arguments), resolved byte size/alignment, operation, success and separate CompareExchange failure order, execution-contract identity, no-blocking and interrupt-safety requirements; fences have no fabricated storage layout or implicit order. Known support and denial retain producer provenance and reason; absent evidence stays Unknown on every registered target, independently of compiler host and pointer width. Freezing rejects incomplete requests, missing proof provenance and duplicate keys, copies producer inputs, and binds the table to every represented scalar/profile plan fact; validation and queries reject cross-plan reuse. This completes the capability model only: source requirement production and capability diagnostics (MD-095), concrete registered-target realization guarantees and lowering remain under the related language/tooling/lowering integration IDs."
+      - "Concrete capability facts now retain a declared implementation kind and identity independently of language eligibility: native instruction, compiler intrinsic, verified platform primitive or target-declared emulation. Separate three-state LockFree, Blocking and InterruptSafe facts preserve explicit guarantees and unknowns without inferring them from mechanism, target width, profile or host. Affirmative availability requires producer provenance and a selected implementation; unknown or denied availability cannot select one, and invalid classifications or property values are rejected before freezing. Immutable lookup and canonical target projection preserve all realization facts. Source analysis on 32/64-bit plans confirms that unknown, denied, native and emulated facts neither remove uint64 eligibility nor authorize float64. These are compiler-internal facts, not a new public lock-free query, target guarantee, runtime fallback or native lowering path; source requirement production and capability diagnostics (MD-095), concrete registered-target guarantees and lowering remain pending."
+      - Plan freezing rejects a supported realization unless Blocking is proven No when NoBlocking or InterruptSafe is required, and InterruptSafe is separately proven Yes when required. Known violations and missing property proofs are distinct typed AtomicContextViolation errors retaining exact requirement/implementation evidence; errors include target/profile context and preserve every failed guarantee. Native, intrinsic, primitive and emulated mechanisms use the same checks; a lock-free claim or interrupt-related name never substitutes for context proof. Validation occurs before publishing the immutable table and never selects a fallback. Unknown or denied capability facts remain non-affirmative without inventing Sema's Unknown policy. This completes the represented plan model and context checks; source-to-requirement production, source diagnostics and concrete registered-target guarantees remain under concurrency.atomics-v2/tooling.atomics-v2 and MD-095, and backend consumption/lowering remains under lowering.atomics-v2.
+    code:
+      - internal/layout/atomic_capabilities.go
+      - internal/layout/scalar_plan.go
+      - internal/platform/target/target.go
+      - internal/layout/atomic_realization.go
+      - internal/layout/atomic_context.go
+    tests:
+      - internal/layout/atomic_capabilities_test.go
+      - internal/platform/target/atomic_capabilities_test.go
+      - internal/layout/atomic_realization_test.go
+      - internal/sema/atomic_realization_test.go
+      - testdata/sema/atomics/realization_valid.sec
+      - testdata/sema/atomics/realization_invalid.sec
+      - internal/layout/atomic_context_test.go
+    verification:
+      - command: go vet ./internal/layout ./internal/platform/target ./internal/sema
+        result: passed on 2026-10-17 after plan-side nonblocking/ISR proof enforcement
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Atomic|Target|ScalarPlan' -count=1
+        result: passed on 2026-10-17 after plan-side nonblocking/ISR proof enforcement
+      - command: go test ./internal/sema ./internal/ir/... -count=1
+        result: passed on 2026-10-17 after plan-side nonblocking/ISR proof enforcement
+      - command: go test ./internal/layout ./internal/platform/target ./internal/codegen/targetplan ./internal/project -race -count=1
+        result: passed on 2026-10-17 after enforcing resolved atomic context requirements at plan freeze; 32/64-bit matrix across four realization kinds, both constraints and all known/unknown property combinations, all ten operation kinds, exact diagnostic evidence and preservation of non-affirmative availability
+      - command: go vet ./internal/layout ./internal/platform/target ./internal/sema
+        result: passed on 2026-10-17 after explicit atomic realization classification
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Atomic|Target|ScalarPlan' -count=1
+        result: passed on 2026-10-17 after explicit atomic realization classification
+      - command: go test ./internal/sema ./internal/ir/... -count=1
+        result: passed on 2026-10-17 after separating atomic language eligibility from target realization and progress facts
+      - command: go test ./internal/layout ./internal/platform/target ./internal/codegen/targetplan ./internal/project -race -count=1
+        result: passed on 2026-10-17 after adding implementation identities and three-state progress/context facts; complete layout, registry and project regressions, including canonical realization projection
+      - command: go test ./internal/layout ./internal/platform/target ./internal/sema -race -run 'AtomicRealization|AtomicCapabilities|RegistryDoesNotGuessAtomic|DefinitionPreservesFrozenAtomic' -count=1
+        result: passed on 2026-10-17 after explicit realization classification; independent native/lock-free/emulated facts, immutable snapshots, missing/invalid proof rejection and source eligibility independence on 32/64-bit plans
+      - command: go vet ./internal/layout ./internal/platform/target ./internal/codegen/targetplan
+        result: passed on 2026-10-17
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Atomic|Target|ScalarPlan' -count=1
+        result: passed on 2026-10-17; atomic and target-plan CLI/LSP regressions
+      - command: go test ./internal/sema ./internal/ir/... -count=1
+        result: passed on 2026-10-17 after adding frozen atomic capability facts to resolved plans
+      - command: go test ./internal/layout ./internal/platform/target ./internal/codegen/targetplan ./internal/project -race -count=1
+        result: passed on 2026-10-17; exact type/layout/operation/order/context matching, independent CompareExchange orders, storage-free fence requirements, unknown versus denial, immutable input/output facts, complete plan/profile binding, malformed/duplicate proof rejection and canonical target-definition projection

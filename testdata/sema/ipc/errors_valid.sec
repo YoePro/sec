@@ -1,0 +1,31 @@
+module main
+
+fn Typed() Result[int, IPCError] { return Err(IPCError.TransferFailed) }
+fn Memory() Result[int, SharedMemoryError] { return Err(SharedMemoryError.MappingFailed) }
+fn Sync() Result[int, IPCSyncError] { return Err(IPCSyncError.OwnerDied) }
+fn Shared() Result[int, IPCSharedError] { return Err(IPCSharedError.LayoutMismatch) }
+fn Atomic() Result[int, IPCAtomicError] { return Err(IPCAtomicError.DuplicationFailed) }
+
+fn OpenIPC() error { return IPCError.Closed }
+fn OpenMemory() error { return SharedMemoryError.InvalidSize }
+fn OpenSync() error { return IPCSyncError.InvalidCount }
+fn OpenShared() error { return IPCSharedError.OwnerDied }
+fn OpenAtomic() error { return IPCAtomicError.PermissionDenied }
+
+fn Inspect(value: IPCError) int {
+    return match value {
+        IPCError.Closed => 0
+        IPCError.PeerClosed => 1
+        IPCError.TransferFailed => 2
+        IPCError.MaterializationFailed => 3
+        IPCError.OutOfMemory => 4
+        IPCError.ResourceLimit => 5
+        IPCError.ProtocolFailure => 6
+        IPCError.NativeFailure => 7
+    }
+}
+
+fn DefaultAtomic() IPCAtomicError {
+    let mut value: IPCAtomicError
+    return value
+}

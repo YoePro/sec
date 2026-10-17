@@ -353,6 +353,8 @@ P18 keeps those operations distinct.
 
 # 14. `len(T[])` representability gap
 
+**Amended 2026-10-17 (MD-074/MD-088, `rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`):** `len(...)` returns `uint`, the same type and value as `.Len`; there is no signed length, no representability proof and no conversion inside `len`. Text in this package that assumes `len(...) -> int` or an unresolved representability rule is superseded.
+
 The same outstanding issue identified in P16 applies:
 
 ```text

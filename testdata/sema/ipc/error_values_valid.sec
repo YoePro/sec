@@ -1,0 +1,7 @@
+module main
+
+fn Typed() IPCError { return IPCError.ProtocolFailure }
+fn Memory() SharedMemoryError { return SharedMemoryError.MappingFailed }
+fn Sync() IPCSyncError { return IPCSyncError.OwnerDied }
+fn Shared() IPCSharedError { return IPCSharedError.LayoutMismatch }
+fn Atomic() IPCAtomicError { return IPCAtomicError.DuplicationFailed }

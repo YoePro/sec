@@ -34,7 +34,7 @@ func TestPitfallDiagnosticOwnershipCLI(t *testing.T) {
 	program := parser.New(lexer.NewWithFile(string(data), file)).ParseProgram()
 	analyzer := sema.NewAnalyzerWithDepth(sema.AnalysisDeep)
 	analyzer.Analyze(program)
-	report := buildAnalyseReport(analyzer, map[string]bool{file: true}, hostCompilerTarget())
+	report := buildAnalyseReport(analyzer, map[string]bool{file: true}, hostCompilerTarget(), "", nil)
 	var output bytes.Buffer
 	report.write(&output)
 	if strings.Count(output.String(), "not a second diagnostic") != 3 || report.counts[analyseClassError] != 0 {
@@ -46,7 +46,7 @@ func TestPitfallDiagnosticOwnershipCLI(t *testing.T) {
 // explanations without incrementing diagnostics or changing validity.
 // Rules: rules/analysis/pitfall_analysis.md — Diagnostic ownership and coalescing, sec analyse Deep output.
 func TestAnalyseSuppressedPitfallIsEvidenceOnly(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/tooling/pitfall_suppressed.sec", "--diagnostic-format=json")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/tooling/pitfall_suppressed.sec", "--diagnostic-format=json")
 	if code != 0 || !strings.Contains(stdout, "suppressed "+string(sema.PitfallFinalElementNeedsNonEmpty)) {
 		t.Fatal(code, stdout, stderr)
 	}

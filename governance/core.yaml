@@ -29,8 +29,6 @@ integrations:
       - cmd/lsp/function_visibility.go
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
-      - internal/codegen/llvm/statements.go
-      - internal/codegen/mlir/generator.go
       - cmd/lsp/main.go
       - sec/core/string.sec
     tests:
@@ -39,8 +37,6 @@ integrations:
       - testdata/core/private_helpers
       - internal/sema/compiler_known_members_test.go
       - internal/sema/analyzer_test.go
-      - internal/codegen/llvm/generator_test.go
-      - internal/codegen/mlir/generator_test.go
       - cmd/lsp/main_test.go
     implemented:
       - "ordinary private core-helper frontend (2026-10-09, user-scoped separately from low-level bodies): existing fn __Helper syntax is retained by lexer, parser, AST and formatter, including generic signatures and source owner tokens. Sema preserves source-file context across passes and enforces file-private access before direct/generic calls and callable-value binding; trusted core provenance grants no sibling-file access. Module-internal helpers remain callable from sibling files. Shadowing/confusable checks use the visible file surface, and LSP general/expected-return completion uses the same private-function boundary. Fixtures cover formatting fixed points, AST/source identity, both file orders and diagnosed invalid accesses."
@@ -68,10 +64,6 @@ integrations:
         result: passed on 2026-10-09; 46 registered fragments and 304 unique integration IDs; ordinary helper frontend completed, deferred low-level requirements remain 5 and core total remains 15
       - command: go test ./internal/sema -run 'TestCompilerKnown(StringSlice|GlobalRegistry)' -count=1
         result: passed on 2026-09-24 with exact owner-file metadata, same-file acceptance, other-core-file rejection, argument typing, and registry coverage
-      - command: go test ./internal/codegen/llvm -run TestGenerateCompilerKnownStringSliceUnchecked -count=1
-        result: passed on 2026-09-24 after the owner-file increment through the full repository test run
-      - command: go test ./internal/codegen/mlir -run TestGenerateCompilerKnownStringSliceUnchecked -count=1
-        result: passed on 2026-09-24 after the owner-file increment through the full repository test run
       - command: go test ./cmd/lsp -run TestCompletionExcludesCompilerInternalFunctions -count=1
         result: passed on 2026-09-24 after the owner-file increment through the full repository test run
       - command: go test ./... -count=1 && go vet ./...
@@ -139,9 +131,6 @@ integrations:
     code:
       - internal/sema/call_graph_identity.go
       - internal/sema/analyzer_arena.go
-      - internal/codegen/llvm/functions.go
-      - internal/codegen/llvm/string_contracts.go
-      - internal/codegen/mlir/string_length.go
       - internal/sema/parameter_naming.go
       - cmd/lsp/function_visibility.go
       - internal/sema/type_declarations.go
@@ -155,9 +144,6 @@ integrations:
       - internal/sema/types.go
       - internal/sema/analyzer_for_categories.go
       - internal/sema/function_visibility.go
-      - internal/codegen/readiness/compiler_authority.go
-      - internal/codegen/llvm/generator.go
-      - internal/codegen/mlir/generator.go
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_temporal.go
@@ -165,7 +151,6 @@ integrations:
       - cmd/lsp/main.go
     tests:
       - internal/sema/corehelpers/generated_identity_test.go
-      - internal/codegen/readiness/authority/generated_identity_test.go
       - testdata/core/generated_identity
       - cmd/lsp/function_visibility_test.go
       - internal/sema/corehelpers/extension_authority_test.go
@@ -173,7 +158,6 @@ integrations:
       - cmd/lsp/compiler_known_definition_test.go
       - internal/sema/interfacecatalog/catalog_test.go
       - testdata/sema/interface_catalog
-      - internal/codegen/readiness/authority/authority_test.go
       - testdata/codegen/compiler_authority
       - internal/sema/compiler_known_members_test.go
       - internal/sema/temporal/analyzer_test.go
@@ -242,8 +226,6 @@ integrations:
         result: passed on 2026-10-09 after the final compiler-authority changes; compiler, LSP, Sema, maintained lowering and both legacy codegen regression suites pass
       - command: go test -race ./internal/codegen/... ./internal/sema/corehelpers -count=1
         result: passed on 2026-10-09 after the compiler-authority boundary changes, including both scalar plans, stale/revoked proof checks and internal callable reference ownership
-      - command: go test ./internal/codegen/readiness/authority -count=1
-        result: passed on 2026-10-09; forged paths, ordinary users, other trusted files and invalid arguments produce no output; authorized LLVM compiled with Clang for amd64/armv7 and the amd64 fixture executed successfully
       - command: go vet ./... and git diff --check; governance YAML/evidence/unique-owner validation
         result: passed on 2026-10-09; 46 registered fragments and 304 unique integration IDs, surfaces remaining 10 to 9 and core remaining 15 to 14
       - command: go test ./internal/sema -run 'CompilerKnown(FundamentalMembers|CanonicalPropertyAndCollectionRestrictions|GlobalRegistryHasStableRequiredIDs)|RemovedGlobalSizeOf' -count=1

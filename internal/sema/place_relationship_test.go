@@ -43,7 +43,7 @@ func TestPlaceRelationshipClassifiesCanonicalPaths(t *testing.T) {
 		{"different union variants", relationshipPlace("shape", PlaceProjection{Kind: PlaceUnionPayload, Name: "Circle"}), relationshipPlace("shape", PlaceProjection{Kind: PlaceUnionPayload, Name: "Square"}), PlaceDisjoint},
 		{"dereference path", relationshipPlace("holder", PlaceProjection{Kind: PlaceDereference}), relationshipPlace("holder", PlaceProjection{Kind: PlaceDereference}, relationshipField("Left")), PlaceContains},
 		{"property receiver", relationshipPlace("box", PlaceProjection{Kind: PlaceProperty, Name: "Size"}), relationshipPlace("box", PlaceProjection{Kind: PlaceProperty, Name: "Size"}), PlacePotentiallyOverlapping},
-		{"statically disjoint slices", relationshipPlace("values", PlaceProjection{Kind: PlaceSlice, SliceStartKnown: true, SliceEndKnown: true, SliceEnd: 2}), relationshipPlace("values", PlaceProjection{Kind: PlaceSlice, SliceStartKnown: true, SliceStart: 2, SliceEndKnown: true, SliceEnd: 4}), PlaceDisjoint},
+		{"statically disjoint slices", relationshipPlace("values", PlaceProjection{Kind: PlaceSlice, SliceStart: big.NewInt(0), SliceEnd: big.NewInt(2)}), relationshipPlace("values", PlaceProjection{Kind: PlaceSlice, SliceStart: big.NewInt(2), SliceEnd: big.NewInt(4)}), PlaceDisjoint},
 		{"unresolved root", relationshipPlace(""), relationshipPlace("values"), PlaceUnknown},
 	}
 	mirror := map[PlaceRelationship]PlaceRelationship{PlaceContains: PlaceContainedBy, PlaceContainedBy: PlaceContains}

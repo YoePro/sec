@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"math/big"
 	"os"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestStorageOverlap(t *testing.T) {
 	nested := root
 	nested.AlternativeOrigins = []Place{mixed}
 	rangeOf := func(start, end int64) PlaceProjection {
-		return PlaceProjection{Kind: PlaceSlice, SliceStart: start, SliceEnd: end, SliceStartKnown: true, SliceEndKnown: true}
+		return PlaceProjection{Kind: PlaceSlice, SliceStart: big.NewInt(start), SliceEnd: big.NewInt(end)}
 	}
 	dynamic := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true}
 	cases := []struct {

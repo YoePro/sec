@@ -41,7 +41,6 @@ integrations:
       - internal/parser
       - internal/parser/interpolation.go
       - cmd/compiler/main.go
-      - internal/codegen/llvm/expressions.go
       - internal/ast
       - internal/sema
       - internal/sema/reserved_names.go
@@ -85,7 +84,6 @@ integrations:
       - internal/parser/parser_test.go
       - testdata/parser/documentation_attachment_valid.sec
       - internal/parser/interpolation_test.go
-      - internal/codegen/llvm/generator_test.go
       - testdata/parser/interpolation_parts_valid.sec
       - testdata/parser/interpolation_parts_invalid.sec
       - testdata/parser/interpolation_lowering_deferred.sec
@@ -154,7 +152,6 @@ integrations:
       - "every interpolation hole is validated once against an explicit Sema formatting plan: ordinary string/char/rune values use direct text, supported built-ins and char/rune sequences retain stable compiler-known ToString identities, and an exact shared user-owned fn ToString() string replaces the fallback; other overloads, byte sequences, void, and unsupported types emit mandatory S1029 operator.invalid-interpolation-value at the embedded expression, plan queries are immutable, and user formatter effects propagate through the call graph to verified guarantees"
       - valid finite string + and interpolation trees produce one immutable maximal frontend StringConcatPlan whose constant, direct string, char, rune, compiler-formatted, and user-materialized segments preserve left-to-right exact-once source order; compatible nested plans are consumed into the outer root without crossing a binding boundary, adjacent constants coalesce, and resolved interpolation formatter identities are reused without member lookup
       - raw string literals are accepted by the expression parser without escape decoding
-      - legacy LLVM interpolation placeholder now explicitly rejects unsupported materialization instead of silently emitting source spelling and omitting expression evaluation
       - line comments
       - nested block comments
       - unterminated outer or nested block comments are retained through end of file as one ILLEGAL token with mandatory L1015 lexer.unterminated-block-comment; parser recovery preserves the invalid token without P2007 or Sema cascades, CLI/LSP publish only L1015, and multiline LSP ranges end at the true exclusive source position

@@ -17,7 +17,7 @@ This is an **additive compatibility proposal**, not blanket replacement of exist
 
 ## § 2. Correct string properties
 
-Public `Len`/compatibility `.len` count Unicode scalars; instance `SizeOf` UTF-8 payload bytes; `len(string)` returns `int` scalar count; type-form `string.SizeOf` physical descriptor size. No public `ByteLen`, `RuneLen`, `CharLen`.
+Public `Len`/compatibility `.len` count Unicode scalars; instance `SizeOf` UTF-8 payload bytes; `len(string)` returns the `uint` scalar count (MD-074, 2026-10-17; formerly `int`); type-form `string.SizeOf` physical descriptor size. No public `ByteLen`, `RuneLen`, `CharLen`.
 
 ## § 3. Empty/NUL/Unicode
 

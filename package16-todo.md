@@ -118,12 +118,12 @@ snapshot; old results in the P15 TODO are not fresh P16 evidence.
    `AddressStability` and a separate pin dependency, as documented by P15's
    revised §28 and `rules/memory/storage.md` §14. Synchronize the metadata
    contracts before wiring schema 11/12; do not restore the withdrawn model.
-3. **Signed length:** `len(slice): int` and `slice.Len: uint` remain distinct.
-   P16 §49 and slice-sync §17 explicitly leave lengths fitting `uint` but not
-   `int` undecided. Emit signed length only with target-aware representability
-   proof; otherwise return an explicit unsupported implementation error. No
-   wrapping, cap, invented panic or changed return type. Track the normative
-   gap in `missing-decisions.yaml` when activating this work if still absent.
+3. **Length type (decided 2026-10-17, MD-074/MD-088):** `len(slice)` and
+   `slice.Len` are both `uint` and the same count
+   (`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`).
+   No signed length operation and no representability proof exist; signed
+   offsets use an explicit checked conversion. No wrapping, cap or invented
+   panic.
 4. **P15 bridge:** P15-50–58 (schema 11, emitter and three MLIR verifiers) and
    its relevant integration tests are prerequisites for schema-12 acceptance.
    Their implementation/evidence stays owned by `lowering.sec-mlir-package15`.
@@ -185,10 +185,12 @@ sources unless an actual synchronized migration requires them.
   history and the implementation/specification distinction. Reconcile the old
   Semantic IR version-1 assumption with today's canonical v2 document and the
   still-version-1 executable IR; P16 itself requires no executable version bump.
-- [ ] P16-06 — Create the sole `lowering.sec-mlir-package16` integration in
+- [x] P16-06 — Create the sole `lowering.sec-mlir-package16` integration in
   `governance/lowering.yaml` when execution begins, with accurate planned/partial
   status, current baseline, dependencies, evidence and deferrals. Validate with
   `yamlstatus`; do not recreate `implementation-status.yaml`.
+
+  Completed 2026-10-17: `lowering.sec-mlir-package16` (status partial) lists the rules, the P15 predecessor state, what is implemented (P16-09), the remaining sections and the deferrals. `yamlstatus` passes. There is no baseline snapshot yet; that is P16-01.
 - [ ] P16-07 — Close the relevant P15 schema/emitter/verifier and returned-origin
   dependencies in their P15 owner. Re-run the predecessor checks before treating
   schema 11 as accepted. Keep static/MMIO and unrelated P15 gaps explicit.
@@ -198,10 +200,30 @@ sources unless an actual synchronized migration requires them.
 - [ ] P16-08 — Audit slice projections, aliases, reference origins, nested range
   composition, borrowing, escape/return summaries, analysis and tooling consumers.
   Use the existing canonical Place model as the single migration target (§§24–30).
-- [ ] P16-09 — Replace canonical `int64` slice bounds with detached immutable
+
+  Partial audit 2026-10-17 (range representation only).
+  - Slice projections live in `internal/sema/place.go`: `PlaceSlice`, `slicePlaceProjection`, `appendSliceProjection`/`appendIndexProjection`, the printer, `placeIsStaticallyEmpty`, `slicesAreStaticallyDisjoint`/`Equal` and `indexOutsideSlice`.
+  - Every bound consumer was migrated in P16-09:
+    - `storage_overlap.go` (`singleStorageOverlap`);
+    - `parameter_usage_place.go` (callee demand places);
+    - `parameter_usage_persistence.go` (persisted projections; schema version bumped to 2);
+    - `analyzer.go` (`samePlaceIdentity`).
+  - `CanonicalProjectionSlice` stays the deferred P15 category.
+  - Semantic IR has no slice projection: `builder.go` rejects ref-of-slice at package 14/15.
+  - Still to audit: about 68 `SliceType` consumers in Sema, among them escape analysis, reference-origin joins, FFI legality, known members (`.Len`), iterator dependencies and try failure sets. Also LSP/tooling presentation.
+- [x] P16-09 — Replace canonical `int64` slice bounds with detached immutable
   arbitrary-precision half-open ranges. Migrate comparisons, printing, cloning,
   empty-range checks and nested slice/index composition; remove host-width
   arithmetic from correctness decisions (§§25,27–29).
+
+  Completed 2026-10-17:
+  - `PlaceProjection.SliceStart`/`SliceEnd` are `*big.Int` half-open bounds, with nil for a non-constant endpoint. They replace `int64` plus `SliceStartKnown`/`SliceEndKnown`, and `clonePlaceProjection` copies them.
+  - Normalization is exact: a missing start is 0, an inclusive end is `end + 1` (no MaxInt64 give-up), and a missing end of a fixed array is its exact length, even beyond int64.
+  - Exact arithmetic is used throughout: nested slice and index composition (inputs are never mutated), emptiness, disjointness, equality (`sliceBoundsEqual`), index containment, storage overlap, callee demand places and identity comparison. `addInt64` is removed.
+  - Persisted parameter-demand summaries are now schema version 2.
+  - Diagnostic presentation prints an unknown start as `*` (MD-089).
+  - Tests: `TestSliceProjectionBoundsAreExactBeyondInt64` and `TestSlicePlaceProjectionNormalizesEndpointsExactly`; the existing overlap, relationship and disjoint-borrow tests are migrated.
+  - The signed `len(slice)` gap is logged as MD-088.
 - [ ] P16-10 — Add stable `SliceRangeID` for evaluated dynamic ranges using
   compiler semantic identity, not endpoint text, spelling or runtime tags.
   Define absent state, deterministic allocation and detached query behavior (§26).
@@ -211,9 +233,20 @@ sources unless an actual synchronized migration requires them.
 - [ ] P16-12 — Preserve static disjointness and empty-element-range behavior;
   compose nested static ranges exactly. Dynamic/unknown overlap stays conservative;
   an empty slice still retains provenance/lifetime dependencies (§§28–30,59–62).
-- [ ] P16-13 — Verify constant-invalid source diagnostics and canonical runtime
+- [x] P16-13 — Verify constant-invalid source diagnostics and canonical runtime
   classification: InvalidRange, then StartAfterEnd, then OutOfBounds. Preserve
   precedence where multiple conditions fail (§§18–23).
+
+  Completed 2026-10-17 (`internal/sema/slice_range_classification.go`):
+  - `ClassifySliceRange` is the one canonical classifier with exact `big.Int` arithmetic. It checks:
+    1. a negative start, then a negative end → `InvalidRange`;
+    2. an explicit start greater than the explicit end → `StartAfterEnd`;
+    3. a start beyond the length, an exclusive end beyond the length, or an inclusive end at or beyond the length → `OutOfBounds`.
+  - Unknown facts never fail. The same function defines the runtime `RangeError` for the same values, so P16-14/P16-31 can reuse it and the observable error stays the same under optimization.
+  - `checkSliceBounds` now reports exactly one compile-time error per range: the first failure under that precedence, where it used to report every failing condition. It also diagnoses start after end for sources of unknown length (dynamic arrays, slices), not only fixed arrays. The message texts are unchanged.
+  - Reporting only the precedence-first failure at compile time is logged as MD-094.
+  - Tests: `TestClassifySliceRangePrecedence` (including values beyond int64) and `TestConstantSliceRangeDiagnosticsFollowPrecedence`.
+  - Not done here: runtime and fallible lowering of the classification (P16-31/P16-32), and the evaluation-order part of P16-11.
 - [ ] P16-14 — Publish `ResolvedSliceCreationPlanOf(*ast.RefExpression)` with
   source kind, authority, element type, source Place/slice, original endpoint
   types/signedness/constants, range/proof, BorrowID/LifetimeID, P15 reference facts
@@ -249,8 +282,8 @@ sources unless an actual synchronized migration requires them.
 - [ ] P16-23 — Add explicit shared slice copy/mutable slice move, preserving
   holder/borrow facts without element transfer. Extend borrow-end verification;
   neither ending a slice nor discarding it destroys backing storage (§§39–41,63).
-- [ ] P16-24 — Add unsigned length and separately proven signed-length operations.
-  Validate target int representability proof; reject missing proof explicitly.
+- [ ] P16-24 — Add the unsigned length operation for both `.Len` and `len(...)`
+  (one `uint` count since MD-074/MD-088; no signed-length operation).
   Dynamic slice observations require the P15 validity guard (§§47–49,110–111).
 - [ ] P16-25 — Add slice index predicate and element Place, then reuse P15
   PlaceRead/PlaceWrite/reference-borrow operations for trivial reads, replacement

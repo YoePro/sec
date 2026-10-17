@@ -1,0 +1,351 @@
+// Basic Sec MLIR -> LLVM path: the last Sec-owned stages of the single
+// compilation track Sec dialect -> standard MLIR -> LLVM dialect. Each stage
+// lowers only constructs whose semantics are fully discharged; everything
+// else is rejected by sec-finalize-for-llvm with the construct's name, so a
+// later package widens the path by lowering more constructs before that gate
+// and never by a fallback (MD-101).
+//
+// Rules:
+//   - rules/compiler/initialization.md — §§ 20–23, 28 command entry and status
+//   - rules/errors/panic.md — §§ 8.1, 12(2) root panic, minimal endpoint
+//   - rules/mlir/sec_mlir_lowering.md — staged lowering, no hidden fallback
+
+#include "sec/Conversion/SecToLLVM/Passes.h"
+
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Pass/PassManager.h"
+#include "sec/Conversion/SecIntegerToArith/Passes.h"
+#include "sec/Conversion/SecToCore/Passes.h"
+#include "sec/Dialect/Sec/SecDialect.h"
+#include "sec/Dialect/Sec/SecOps.h"
+#include "sec/Dialect/Sec/SecTypes.h"
+#include "llvm/ADT/StringSwitch.h"
+
+namespace sec {
+#define GEN_PASS_DEF_SECCHECKLOWERINGSUPPORT
+#define GEN_PASS_DEF_SECLOWERFAILUREENDPOINTS
+#define GEN_PASS_DEF_SECLOWERCOMMANDENTRY
+#define GEN_PASS_DEF_SECFINALIZEFORLLVM
+#include "sec/Conversion/SecToLLVM/Passes.h.inc"
+} // namespace sec
+
+using namespace mlir;
+
+namespace {
+
+bool isSecType(Type type) {
+  bool found = false;
+  type.walk([&](Type nested) {
+    if (isa<sec::SecDialect>(nested.getDialect())) {
+      found = true;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return found;
+}
+
+// The i8 code of an arithmetic failure reason. Reporting the reason is a
+// later panic-policy stage; the code keeps it available until then.
+std::optional<int64_t> failureReasonCode(StringRef reason) {
+  return llvm::StringSwitch<std::optional<int64_t>>(reason)
+      .Case("none", 0)
+      .Case("overflow", 1)
+      .Case("division-by-zero", 2)
+      .Case("invalid-shift", 3)
+      .Default(std::nullopt);
+}
+
+bool isFailureTerminator(Operation *operation) {
+  return isa<sec::FailArithmeticOp, sec::FailBoundsOp,
+             sec::FailReferenceGenerationOp, sec::UnreachableOp>(operation);
+}
+
+// The Sec operations the track lowers today. Adding lowering for a construct
+// adds its operations here; nothing outside this set reaches conversion.
+bool isLoweredSecOperation(Operation *operation) {
+  // Only ordinary integer enums have their representation discharged by this
+  // slice (rules/memory/layout.md § 14; lowering v7 sections 1–6).
+  if (isa<sec::EnumConstantOp, sec::EnumCmpOp>(operation)) {
+    Type valueType = isa<sec::EnumConstantOp>(operation)
+                         ? operation->getResult(0).getType()
+                         : operation->getOperand(0).getType();
+    auto type = cast<sec::EnumType>(valueType);
+    return type.getRepresentation() == "integer";
+  }
+  return isa<sec::ConstIntOp, sec::ConstBoolOp, sec::StorageDeclareOp,
+             sec::StorageInitOp, sec::StorageLoadOp, sec::StorageStoreOp,
+             sec::CallDirectOp, sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
+             sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
+             sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
+             sec::ArithmeticFailureReasonConstantOp, sec::FailArithmeticOp,
+             sec::UnreachableOp>(operation);
+}
+
+struct CheckLoweringSupportPass
+    : sec::impl::SecCheckLoweringSupportBase<CheckLoweringSupportPass> {
+  void runOnOperation() override {
+    bool failed = false;
+    getOperation().walk([&](Operation *operation) {
+      if (isa<sec::SecDialect>(operation->getDialect()) &&
+          !isLoweredSecOperation(operation)) {
+        operation->emitError()
+            << "the Sec MLIR -> LLVM track does not lower '"
+            << operation->getName() << "' yet";
+        failed = true;
+      }
+    });
+    if (failed)
+      signalPassFailure();
+  }
+};
+
+struct LowerFailureEndpointsPass
+    : sec::impl::SecLowerFailureEndpointsBase<LowerFailureEndpointsPass> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    MLIRContext *context = module.getContext();
+    Type code = IntegerType::get(context, 8);
+
+    // A reason may flow only to a failure endpoint here; any other Sec
+    // consumer (for example a Result error mapping) is not lowered yet.
+    bool failed = false;
+    auto checkReasonUses = [&](Value value) {
+      for (Operation *user : value.getUsers()) {
+        if (isa<sec::SecDialect>(user->getDialect()) &&
+            !isa<sec::FailArithmeticOp>(user)) {
+          user->emitError() << "the Sec MLIR -> LLVM track does not "
+                               "lower '"
+                            << user->getName()
+                            << "' over an arithmetic failure reason yet";
+          failed = true;
+        }
+      }
+    };
+    module.walk([&](Operation *operation) {
+      for (Region &region : operation->getRegions())
+        for (Block &block : region)
+          for (BlockArgument argument : block.getArguments())
+            if (isa<sec::ArithmeticFailureReasonType>(argument.getType()))
+              checkReasonUses(argument);
+      for (Value result : operation->getResults())
+        if (isa<sec::ArithmeticFailureReasonType>(result.getType()))
+          checkReasonUses(result);
+    });
+    if (failed)
+      return signalPassFailure();
+
+    SmallVector<sec::ArithmeticFailureReasonConstantOp> constants;
+    module.walk([&](sec::ArithmeticFailureReasonConstantOp constant) {
+      constants.push_back(constant);
+    });
+    for (sec::ArithmeticFailureReasonConstantOp constant : constants) {
+      std::optional<int64_t> value = failureReasonCode(constant.getValue());
+      if (!value) {
+        constant.emitError("unknown arithmetic failure reason");
+        return signalPassFailure();
+      }
+      OpBuilder builder(constant);
+      Value replacement = builder.create<arith::ConstantOp>(
+          constant.getLoc(), code, builder.getIntegerAttr(code, *value));
+      constant.getResult().replaceAllUsesWith(replacement);
+      constant.erase();
+    }
+    module.walk([&](Operation *operation) {
+      for (Region &region : operation->getRegions())
+        for (Block &block : region)
+          for (BlockArgument argument : block.getArguments())
+            if (isa<sec::ArithmeticFailureReasonType>(argument.getType()))
+              argument.setType(code);
+      for (Value result : operation->getResults())
+        if (isa<sec::ArithmeticFailureReasonType>(result.getType()))
+          result.setType(code);
+    });
+
+    SmallVector<Operation *> endpoints;
+    module.walk([&](Operation *operation) {
+      if (isFailureTerminator(operation))
+        endpoints.push_back(operation);
+    });
+    for (Operation *endpoint : endpoints) {
+      OpBuilder builder(endpoint);
+      builder.create<LLVM::Trap>(endpoint->getLoc());
+      builder.create<LLVM::UnreachableOp>(endpoint->getLoc());
+      endpoint->erase();
+    }
+  }
+};
+
+struct LowerCommandEntryPass
+    : sec::impl::SecLowerCommandEntryBase<LowerCommandEntryPass> {
+  using SecLowerCommandEntryBase::SecLowerCommandEntryBase;
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    func::FuncOp source;
+    module.walk([&](func::FuncOp function) {
+      auto identity = function->getAttrOfType<StringAttr>("sec.function_id");
+      if (identity && identity.getValue() == entry)
+        source = function;
+    });
+    if (!source) {
+      module.emitError() << "command entry '" << entry
+                         << "' is not defined in this module";
+      return signalPassFailure();
+    }
+    FunctionType type = source.getFunctionType();
+    auto status = type.getNumResults() == 1
+                      ? dyn_cast<IntegerType>(type.getResult(0))
+                      : IntegerType();
+    if (type.getNumInputs() != 0 || !status) {
+      source.emitError() << "the Sec MLIR -> LLVM track supports only "
+                            "the command entry `fn main() int`, got "
+                         << type;
+      return signalPassFailure();
+    }
+    if (SymbolTable::lookupSymbolIn(module, "main")) {
+      module.emitError("the platform entry symbol 'main' is already defined");
+      return signalPassFailure();
+    }
+
+    // The hosted startup adapter maps the logical termination status to the
+    // C int of the target (initialization.md § 23 leaves the physical
+    // mapping to the execution environment; MD-101).
+    MLIRContext *context = module.getContext();
+    Type cInt = IntegerType::get(context, 32);
+    OpBuilder builder = OpBuilder::atBlockEnd(module.getBody());
+    auto adapter = builder.create<func::FuncOp>(
+        source.getLoc(), "main", FunctionType::get(context, {}, {cInt}));
+    Block *body = adapter.addEntryBlock();
+    builder.setInsertionPointToStart(body);
+    Value result =
+        builder.create<func::CallOp>(source.getLoc(), source, ValueRange{})
+            .getResult(0);
+    if (status.getWidth() > 32)
+      result = builder.create<arith::TruncIOp>(source.getLoc(), cInt, result);
+    else if (status.getWidth() < 32)
+      result = builder.create<arith::ExtSIOp>(source.getLoc(), cInt, result);
+    builder.create<func::ReturnOp>(source.getLoc(), result);
+  }
+};
+
+struct FinalizeForLLVMPass
+    : sec::impl::SecFinalizeForLLVMBase<FinalizeForLLVMPass> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    bool failed = false;
+    auto reject = [&](Operation *operation, const Twine &what) {
+      operation->emitError() << "the Sec MLIR -> LLVM track does not "
+                                "lower "
+                             << what << " yet";
+      failed = true;
+    };
+    module.walk([&](Operation *operation) {
+      if (isa<sec::SecDialect>(operation->getDialect())) {
+        reject(operation, "'" + operation->getName().getStringRef() + "'");
+        return;
+      }
+      for (Type type : operation->getResultTypes())
+        if (isSecType(type)) {
+          std::string text;
+          llvm::raw_string_ostream(text) << type;
+          reject(operation, "values of type " + text);
+          return;
+        }
+      for (Region &region : operation->getRegions())
+        for (Block &block : region)
+          for (BlockArgument argument : block.getArguments())
+            if (isSecType(argument.getType())) {
+              std::string text;
+              llvm::raw_string_ostream(text) << argument.getType();
+              reject(operation, "values of type " + text);
+              return;
+            }
+      if (auto function = dyn_cast<FunctionOpInterface>(operation))
+        if (isSecType(function.getFunctionType())) {
+          reject(operation, "this function signature");
+          return;
+        }
+    });
+    if (failed)
+      return signalPassFailure();
+
+    MLIRContext *context = module.getContext();
+    if (auto triple = module->getAttrOfType<StringAttr>("sec.target_triple"))
+      module->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(), triple);
+    auto stripped = [](Operation *operation) {
+      SmallVector<StringAttr> names;
+      for (NamedAttribute attribute : operation->getDiscardableAttrs())
+        if (attribute.getName().strref().starts_with("sec."))
+          names.push_back(attribute.getName());
+      for (StringAttr name : names)
+        operation->removeDiscardableAttr(name);
+    };
+    auto strippedDictionary = [&](DictionaryAttr dictionary) {
+      SmallVector<NamedAttribute> kept;
+      for (NamedAttribute attribute : dictionary)
+        if (!attribute.getName().strref().starts_with("sec."))
+          kept.push_back(attribute);
+      return DictionaryAttr::get(context, kept);
+    };
+    module.walk([&](Operation *operation) {
+      stripped(operation);
+      if (auto function = dyn_cast<func::FuncOp>(operation)) {
+        for (unsigned index = 0; index < function.getNumArguments(); ++index)
+          if (DictionaryAttr attributes = function.getArgAttrDict(index))
+            function.setArgAttrs(index, strippedDictionary(attributes));
+        for (unsigned index = 0; index < function.getNumResults(); ++index)
+          if (DictionaryAttr attributes = function.getResultAttrDict(index))
+            function.setResultAttrs(index, strippedDictionary(attributes));
+      }
+    });
+  }
+};
+
+} // namespace
+
+namespace {
+// An empty entry lowers a module without a program entry (library or
+// firmware targets are not supported by the basic path yet).
+struct LowerToLLVMOptions : public PassPipelineOptions<LowerToLLVMOptions> {
+  Option<std::string> entry{*this, "entry",
+                            llvm::cl::desc("Sec function identity of the "
+                                           "command entry; empty for none"),
+                            llvm::cl::init("main::main()")};
+};
+} // namespace
+
+void sec::registerSecToLLVMPipelines() {
+  static PassPipelineRegistration<LowerToLLVMOptions> pipeline(
+      "sec-lower-to-llvm",
+      "Lower verified Sec MLIR through standard MLIR to the LLVM dialect",
+      [](OpPassManager &manager, const LowerToLLVMOptions &options) {
+        manager.addPass(sec::createSecCheckLoweringSupport());
+        manager.addPass(sec::createSecLowerTrivialCorePass());
+        manager.addPass(sec::createSecResolveScalarLayoutPass());
+        manager.addPass(sec::createSecLowerIntegerEnums());
+        manager.addPass(sec::createSecLowerTrivialCorePass());
+        manager.addPass(sec::createSecLowerCheckedIntegersPass());
+        manager.addPass(sec::createSecLowerFailureEndpoints());
+        if (!options.entry.getValue().empty())
+          manager.addPass(sec::createSecLowerCommandEntry(
+              sec::SecLowerCommandEntryOptions{options.entry.getValue()}));
+        manager.addPass(sec::createSecFinalizeForLLVM());
+        manager.addPass(createArithToLLVMConversionPass());
+        manager.addPass(createConvertControlFlowToLLVMPass());
+        manager.addPass(createFinalizeMemRefToLLVMConversionPass());
+        manager.addPass(createConvertFuncToLLVMPass());
+        manager.addPass(createReconcileUnrealizedCastsPass());
+      });
+  (void)pipeline;
+}

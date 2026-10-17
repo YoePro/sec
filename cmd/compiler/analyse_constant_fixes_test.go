@@ -14,7 +14,7 @@ import (
 // "Fix safety"; rules/compiler/compiler_analysis.md — §61.
 func TestAnalyseConstantFixes(t *testing.T) {
 	for _, options := range [][]string{nil, {"--all"}} {
-		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse"}
+		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--verbose"}
 		args = append(args, options...)
 		args = append(args, "../../testdata/sema/pitfall_constant_fixes_valid.sec")
 		command := exec.Command(os.Args[0], args...)

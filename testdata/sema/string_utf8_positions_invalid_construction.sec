@@ -1,0 +1,10 @@
+module main
+
+fn Use() void {
+    let mut bytes: byte[]
+    let value: string := string.FromByteArray(ref bytes)
+}
+
+fn main() int {
+    return 0
+}

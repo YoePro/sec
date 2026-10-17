@@ -19,7 +19,8 @@ module str
  *
  * Unicode:
  * Empty-separator splitting and predicate-based fields operate at rune
- * boundaries.
+ * boundaries. Positions passed to string.Slice are rune indexes (MD-071,
+ * 2026-10-17).
  *
  * Rulebook:
  * stdlib/str/stdlib_str.md
@@ -27,6 +28,29 @@ module str
 
 // TODO: Implement stdlib/str/split.sec
 
+/**
+ * Splits a string at occurrences of a separator.
+ *
+ * Description:
+ * Materializes the parts produced by the core string split operation.
+ * The separator is excluded from the returned parts.
+ * Leading, trailing, and adjacent separators produce empty parts.
+ * The handling of an empty separator follows the core split contract.
+ * Part order and the original Unicode text are preserved.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to split.
+ * - separator: The string identifying split boundaries.
+ *
+ * Returns:
+ * An array of strings in their original order.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting parts.
+ *
+ * Allocation:
+ * Allocates the result collection and its required storage.
+ */
 fn Split(value: string, separator: string) Result[string[], CollectionError] {
     let mut result: string[]
 
@@ -37,6 +61,30 @@ fn Split(value: string, separator: string) Result[string[], CollectionError] {
     return Ok(result)
 }
 
+/**
+ * Splits a string into at most maxParts parts.
+ *
+ * Description:
+ * Uses the same separator semantics as Split, but limits the
+ * number of returned elements rather than the number of splits.
+ * A maxParts value of zero returns an empty array; one returns
+ * the original string as its only element. When the limit is
+ * reached, the final element contains the unsplit remainder.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to split.
+ * - separator: The string identifying split boundaries.
+ * - maxParts: Maximum number of elements in the result.
+ *
+ * Returns:
+ * An array containing no more than maxParts strings.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting parts.
+ *
+ * Allocation:
+ * Allocates the result collection when elements are collected.
+ */
 fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], CollectionError] {
     let mut result: string[]
 
@@ -59,7 +107,7 @@ fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], Col
     for part in value.Split(separator) {
         if result.Len == maxParts - 1 {
             // Preserve the complete unsplit remainder.
-            let remainder := try value.Slice(position, value.SizeOf) {
+            let remainder := try value.Slice(position, value.Len) {
                 Err(_) => {
                     panic "SplitN: invalid remainder position"
                 }
@@ -71,10 +119,10 @@ fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], Col
 
         try result.Append(part)
 
-        let end := position + part.SizeOf
+        let end := position + part.Len
 
-        if separator.SizeOf > 0 && end < value.SizeOf {
-            position = end + separator.SizeOf
+        if separator.SizeOf > 0 && end < value.Len {
+            position = end + separator.Len
         } else {
             position = end
         }
@@ -83,15 +131,37 @@ fn SplitN(value: string, separator: string, maxParts: uint) Result[string[], Col
     return Ok(result)
 }
 
+/**
+ * Splits a string while retaining each consumed separator.
+ *
+ * Description:
+ * Splits at the same boundaries as Split. Each consumed
+ * separator remains at the end of the preceding part rather
+ * than being discarded. A final unterminated part does not
+ * gain a separator. The original text and part order are preserved.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to split.
+ * - separator: The string identifying split boundaries.
+ *
+ * Returns:
+ * An array of strings whose completed parts retain their separators.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting parts.
+ *
+ * Allocation:
+ * Allocates the result collection and any required string storage.
+ */
 fn SplitAfter(value: string, separator: string) Result[string[], CollectionError] {
     let mut result: string[]
     let mut position: uint := 0
 
     for part in value.Split(separator) {
-        let end := position + part.SizeOf
+        let end := position + part.Len
 
-        if separator.SizeOf > 0 && end < value.SizeOf {
-            let nextPosition := end + separator.SizeOf
+        if separator.SizeOf > 0 && end < value.Len {
+            let nextPosition := end + separator.Len
 
             let retained := try value.Slice(position, nextPosition) {
                 Err(_) => {
@@ -110,6 +180,30 @@ fn SplitAfter(value: string, separator: string) Result[string[], CollectionError
     return Ok(result)
 }
 
+/**
+ * Splits a string after separators into at most maxParts parts.
+ *
+ * Description:
+ * Combines SplitAfter separator retention with the SplitN
+ * result-count limit. A maxParts value of zero returns an
+ * empty array; one returns the entire original string.
+ * When the limit is reached, the final element contains
+ * the complete remainder without further splitting.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to split.
+ * - separator: The string identifying split boundaries.
+ * - maxParts: Maximum number of elements in the result.
+ *
+ * Returns:
+ * An array containing no more than maxParts strings.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting parts.
+ *
+ * Allocation:
+ * Allocates the result collection and any required string storage.
+ */
 fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[], CollectionError] {
     let mut result: string[]
 
@@ -131,7 +225,7 @@ fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[]
     for part in value.Split(separator) {
         if result.Len == maxParts - 1 {
             // Preserve the complete unsplit remainder.
-            let remainder := try value.Slice(position, value.SizeOf) {
+            let remainder := try value.Slice(position, value.Len) {
                 Err(_) => {
                     panic "SplitAfterN: invalid remainder position"
                 }
@@ -141,10 +235,10 @@ fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[]
             return Ok(result)
         }
 
-        let end := position + part.SizeOf
+        let end := position + part.Len
 
-        if separator.SizeOf > 0 && end < value.SizeOf {
-            let nextPosition := end + separator.SizeOf
+        if separator.SizeOf > 0 && end < value.Len {
+            let nextPosition := end + separator.Len
 
             let retained := try value.Slice(position, nextPosition) {
                 Err(_) => {
@@ -163,6 +257,27 @@ fn SplitAfterN(value: string, separator: string, maxParts: uint) Result[string[]
     return Ok(result)
 }
 
+/**
+ * Collects the lines of a string into an array.
+ *
+ * Description:
+ * Materializes the line iterator provided by core string.SplitLines.
+ * The recognition and treatment of line separators follow that
+ * core operation; this function does not independently normalize
+ * line endings or alter Unicode content.
+ *
+ * Parameters:
+ * - value: The UTF-8 string whose lines are collected.
+ *
+ * Returns:
+ * An array of lines in source order.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting lines.
+ *
+ * Allocation:
+ * Allocates the result collection and its required storage.
+ */
 fn SplitLines(value: string) Result[string[], CollectionError] {
     let mut result: string[]
 
@@ -173,6 +288,28 @@ fn SplitLines(value: string) Result[string[], CollectionError] {
     return Ok(result)
 }
 
+/**
+ * Splits a string into fields separated by Unicode whitespace.
+ *
+ * Description:
+ * Treats runs of whitespace recognized by the underlying
+ * Unicode whitespace predicate as field separators.
+ * Leading and trailing whitespace is ignored, and adjacent
+ * separators do not create empty fields.
+ * The text of every nonempty field is preserved.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to divide into fields.
+ *
+ * Returns:
+ * An array of nonempty fields in source order.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting fields.
+ *
+ * Allocation:
+ * Allocates the result collection and its required storage.
+ */
 fn Fields(value: string) Result[string[], CollectionError] {
     let mut result: string[]
     let mut position: uint := 0
@@ -198,7 +335,7 @@ fn Fields(value: string) Result[string[], CollectionError] {
             }
         }
 
-        position += character.Utf8Length
+        position += 1
     }
 
     // Materialize the final field if the string
@@ -216,6 +353,29 @@ fn Fields(value: string) Result[string[], CollectionError] {
     return Ok(result)
 }
 
+/**
+ * Splits a string into fields using a rune predicate.
+ *
+ * Description:
+ * Treats each rune for which separator returns true as a
+ * field separator. Runs of separators delimit fields without
+ * producing empty elements. A false result keeps the rune
+ * in its field. Existing Unicode content and field order
+ * are preserved.
+ *
+ * Parameters:
+ * - value: The UTF-8 string to divide into fields.
+ * - separator: Predicate returning true for separator runes.
+ *
+ * Returns:
+ * An array of nonempty fields in source order.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure while collecting fields.
+ *
+ * Allocation:
+ * Allocates the result collection and its required storage.
+ */
 fn FieldsBy(value: string, separator: fn(rune) bool) Result[string[], CollectionError] {
     let mut result: string[]
     let mut position: uint := 0
@@ -241,7 +401,7 @@ fn FieldsBy(value: string, separator: fn(rune) bool) Result[string[], Collection
             }
         }
 
-        position += character.Utf8Length
+        position += 1
     }
 
     if inField {

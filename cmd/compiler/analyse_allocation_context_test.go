@@ -30,7 +30,7 @@ func TestAnalyseAllocationContexts(t *testing.T) {
 			}
 			a := sema.NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{TargetOS: "baremetal", TargetArch: "cortex-m3", Profile: profile, PointerWidthBits: 32})
 			a.Analyze(program)
-			report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget())
+			report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget(), "", nil)
 			var output bytes.Buffer
 			report.write(&output)
 			for _, fact := range a.AllocationContextFacts() {

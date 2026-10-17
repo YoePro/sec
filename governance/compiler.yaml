@@ -59,16 +59,21 @@ integrations:
       - Semantic IR and dedicated verifier exist
       - P1-P14 provide versioned Sec MLIR schemas and executable verified vertical lowering slices
       - real sec-mlir-opt / MLIR verification participates in represented package paths
-      - legacy direct LLVM and legacy AST-to-LLVM-dialect paths remain for represented subsets
-      - emit-ir builds Semantic IR through the newest completed package, P14, by default (2026-10-05); constructs outside the SEC-MLIR package sequence (while loops, compound assignment, &&/||/!, range membership) are admitted from package gate 13, so emit-sec-mlir (P12) keeps rejecting them explicitly
+      - "single compilation track (2026-10-17, MD-101 user decision; compiler_pipeline.md § 45(6)): sec build, emit-mlir and emit-llvm run Sema -> Semantic IR (package level 14) -> Sec dialect -> sec-mlir-opt --sec-lower-to-llvm (existing scalar/integer core lowering, sec-lower-failure-endpoints, sec-lower-command-entry, sec-finalize-for-llvm, upstream arith/cf/memref/func-to-llvm) -> mlir-translate -> clang; the legacy direct LLVM and AST-to-LLVM-dialect generators (internal/codegen/llvm, /mlir, /readiness) and --pipeline are removed; executable evidence: TestNativeTrackBuildsAndRuns (status, while, &&, uint division, overflow and division traps), TestNativeTrackNamesUnloweredConstructs, lit Conversion/SecToLLVM/*"
+      - "track gates: sec-check-lowering-support names every Sec operation outside the lowered set and sec-finalize-for-llvm rejects remaining Sec operations/types; both surface as [unsupported-lowering] capability diagnostics through internal/mlir LoweringCapabilityError"
+      - SecLowerCheckedIntegers keeps a normalized storage load's source signedness through a folded cast pair, fixing checked comparison of loaded locals in loops (lit Conversion/SecToLLVM/loop-storage-signedness.mlir)
+      - emit-ir builds Semantic IR through the newest completed package, P14, by default (2026-10-05); constructs outside the SEC-MLIR package sequence (while loops, compound assignment, &&/||/!, range membership) are admitted from package gate 13; since 2026-10-17 emit-sec-mlir and the whole track also build at level 14
+      - "Ordinary integer enums now reach executable binaries through sec-lower-integer-enums in the one track (2026-10-17; lowering.integer-enum-representation): exact constants/aliases/defaults, eq/ne, enum match CFG, local storage and direct calls; 32/64-bit representation tests and native execution evidence. Enum conversions and bit-backed enums remain unsupported."
     remaining:
       - make the Semantic IR -> Sec MLIR path cover all maintained Sec 0.1 features
-      - "route `sec build` through Semantic IR: both --pipeline llvm and --pipeline mlir currently generate code from the AST through internal/codegen, bypassing Semantic IR and its verifier (observed 2026-10-05)"
-      - retire or explicitly isolate semantic duplication in legacy direct LLVM/legacy MLIR emitters
-      - make every maintained legacy backend consume canonical CompilationPlan layout/type facts or reject unsupported lowering
+      - "widen the single track (Known hole, verified 2026-10-17): Semantic IR P14 rejects explicit for steps, collection/iterator for loops, non-integer switch subjects (for and integer/subjectless switch lowered 2026-10-17, MD-103), floating operations, checked integer conversions needing try (exact int(x) conversions and char/rune comparisons lowered 2026-10-17, MD-104/MD-105), extern calls and inline asm; the LLVM track rejects structs, arrays, enum conversions and bit-backed enums, unions and union matches, Result/Option, references, strings and statics. Each widening adds lowering plus its operations to sec-check-lowering-support"
+      - "panic reporting: the minimal endpoint traps without a message (MD-101); a hosted panic policy with bounded reporting is not lowered"
       - centralize implementation-capability diagnostics distinct from source/target errors
       - preserve verified target/profile/reference/ownership/effect facts through object/link generation
       - preserve, transform, or explicitly invalidate canonical debug provenance through final emission under compiler.debug-information-v1
+    verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-17; includes native integer-enum executable (exit 0), all emission boundaries, deferred-operation rejection preserving output and existing compiler/emitter regressions
 
   - id: compiler.debug-information-v1
     area: compiler-debug-information-and-artifact-correlation

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"sec/internal/codegen/llvm"
-	"sec/internal/codegen/mlir"
 	"sec/internal/codegen/targetplan"
 	"sec/internal/ir/semantic"
 	"sec/internal/lexer"
@@ -59,21 +57,6 @@ func TestAllocationFreeLowering(t *testing.T) {
 					}
 					node, _ := graph.Node(fact.Callable)
 					allowed[node.Name] = true
-				}
-				ll, err := llvm.GenerateAnalyzed(program, a, triple)
-				if err != nil {
-					t.Fatal(err)
-				}
-				auditCalls(t, ll, allowed, regexp.MustCompile(`(?m)^\s*(?:%[^=\s]+\s*=\s*)?call\s+[^\n@]*@([A-Za-z_][A-Za-z_0-9.]*)\(`))
-				verifyLLVM(t, ll, triple)
-				legacy, err := mlir.GenerateAnalyzed(program, a, triple)
-				if err != nil && filepath.Base(file) == "scalars.sec" && legacy == "" && strings.Contains(err.Error(), "return representation for char") {
-					// The maintained legacy MLIR path must reject unsupported
-					// character transport before producing any runtime substitute.
-				} else if err != nil {
-					t.Fatal(err)
-				} else {
-					auditCalls(t, legacy, allowed, regexp.MustCompile(`(?m)^\s*(?:%[^=\s]+\s*=\s*)?llvm\.call\s+@([A-Za-z_][A-Za-z_0-9.]*)\(`))
 				}
 				module, err := semantic.Build(program, a, semantic.BuildOptions{RequestedModule: "main"})
 				if err != nil {
@@ -185,24 +168,10 @@ func TestAllocationFreeBorrowBoundary(t *testing.T) {
 	if errors := a.Analyze(program); len(errors) != 0 {
 		t.Fatal(errors)
 	}
-	allowed := map[string]bool{"Borrow": true, "main": true}
 	for _, fact := range a.AllocationFacts() {
 		if fact.Knowledge != sema.AllocationFree || fact.HasUnknown {
 			t.Fatal(fact)
 		}
-	}
-	ll, err := llvm.GenerateAnalyzed(program, a, plan.LLVMTriple)
-	if err == nil {
-		auditCalls(t, ll, allowed, regexp.MustCompile(`(?m)^\s*(?:%[^=\s]+\s*=\s*)?call\s+[^\n@]*@([A-Za-z_][A-Za-z_0-9.]*)\(`))
-		verifyLLVM(t, ll, plan.LLVMTriple)
-	} else if ll != "" || !strings.Contains(strings.ToLower(err.Error()), "ref") {
-		t.Fatal(ll, err)
-	}
-	legacy, err := mlir.GenerateAnalyzed(program, a, plan.LLVMTriple)
-	if err == nil {
-		auditCalls(t, legacy, allowed, regexp.MustCompile(`(?m)^\s*(?:%[^=\s]+\s*=\s*)?llvm\.call\s+@([A-Za-z_][A-Za-z_0-9.]*)\(`))
-	} else if legacy != "" || !strings.Contains(strings.ToLower(err.Error()), "ref") {
-		t.Fatal(legacy, err)
 	}
 	module, err := semantic.Build(program, a, semantic.BuildOptions{RequestedModule: "main"})
 	if err == nil {
@@ -210,23 +179,5 @@ func TestAllocationFreeBorrowBoundary(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "ref") {
 		t.Fatal("missing explicit reference capability boundary", err)
-	}
-}
-
-// verifyLLVM requires target-aware LLVM verification rather than accepting
-// textual output that might not represent a valid allocation-free artifact.
-// Rules: rules/memory/allocation.md — §30(6); rules/compiler/compiler_testing.md — backend verification.
-func verifyLLVM(t *testing.T, text, triple string) {
-	t.Helper()
-	clang, err := exec.LookPath("clang")
-	if err != nil {
-		t.Skip("clang is unavailable")
-	}
-	path := filepath.Join(t.TempDir(), "free.ll")
-	if err := os.WriteFile(path, []byte(text), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := exec.Command(clang, "-target", triple, "-x", "ir", "-c", path, "-o", filepath.Join(t.TempDir(), "free.o")).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
 	}
 }

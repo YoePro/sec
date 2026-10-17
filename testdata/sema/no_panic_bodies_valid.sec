@@ -1,0 +1,71 @@
+module main
+
+type Counter struct {
+    _value: int,
+}
+
+enum CounterError error {
+    Negative,
+}
+
+impl Counter {
+    @noPanic
+    init(value: int) {
+        self._value = value
+    }
+
+    @noPanic
+    free {
+    }
+
+    property Value: int {
+        @noPanic
+        get {
+            return self._value
+        }
+
+        @noPanic
+        set value {
+            self._value = value
+        }
+    }
+
+    property Checked: int {
+        get {
+            return self._value
+        }
+
+        @noPanic
+        try set value CounterError {
+            if value < 0 {
+                return Err(CounterError.Negative)
+            }
+            self._value = value
+        }
+    }
+}
+
+fn Use() bool {
+    @noPanic
+    let identity := fn(value: bool) bool {
+        return value
+    }
+
+    let flag := true
+
+    @noPanic
+    let negate := capture(flag) fn(value: bool) bool {
+        return value != flag
+    }
+
+    @noPanic
+    let typed: fn(bool) bool := fn(value: bool) bool {
+        return value
+    }
+
+    return negate(typed(identity(true)))
+}
+
+fn main() int {
+    return 0
+}

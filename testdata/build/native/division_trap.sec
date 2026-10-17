@@ -1,0 +1,9 @@
+module main
+
+fn Div(a: int, b: int) int {
+    return a / b
+}
+
+fn main() int {
+    return Div(1, 0)
+}

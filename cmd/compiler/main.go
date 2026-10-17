@@ -12,7 +12,6 @@ import (
 	"text/tabwriter"
 
 	"sec/internal/ast"
-	llvmcodegen "sec/internal/codegen/llvm"
 	"sec/internal/diagnostics"
 	"sec/internal/formatconfig"
 	secformatter "sec/internal/formatter"
@@ -35,6 +34,15 @@ func runCLI() {
 		exitCLI(1)
 	}
 	cliDiagnostics.format = format
+	// Help forms are recognized before flag parsing, which would otherwise
+	// treat --help as its own flag (rules/tooling/cli.md § 4).
+	if topic, requested := helpRequest(args); requested {
+		if err := writeCLIHelp(os.Stdout, topic); err != nil {
+			fmt.Fprintf(os.Stderr, "help error: %v\n", err)
+			exitCLI(1)
+		}
+		return
+	}
 	os.Args = append([]string{os.Args[0]}, args...)
 	flag.Parse()
 
@@ -126,6 +134,11 @@ func runCLI() {
 		return
 	}
 
+	if _, known := findCLICommand(command); !known {
+		fmt.Fprintf(os.Stderr, "unknown command %q%s; run `sec help` to list commands\n", command, nearestSuggestion(command, cliCommandNames()))
+		exitCLI(1)
+	}
+
 	if flag.NArg() != 2 {
 		printUsage()
 		exitCLI(1)
@@ -162,27 +175,6 @@ func runCLI() {
 		printUsage()
 		exitCLI(1)
 	}
-}
-
-func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
-	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json|<ID>]")
-	fmt.Fprintln(os.Stderr, "       sec init [path] [--dry-run] [--minimal] [--name <name>] [--target <os-arch>] [--profile <profile>]")
-	fmt.Fprintln(os.Stderr, "       sec init module <path> [--dry-run]")
-	fmt.Fprintln(os.Stderr, "       sec init command|library|firmware|test <name> [--target <os-arch>] [--dry-run]")
-	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
-	fmt.Fprintln(os.Stderr, "       sec check [--target <os-arch>] <file.sec|dir|glob>... (frontend validation; no backend tools)")
-	fmt.Fprintln(os.Stderr, "       sec analyse [--all] [--target <os-arch>] <file.sec|dir|glob>...")
-	fmt.Fprintln(os.Stderr, "       sec test [--list] [--run <regexp>] [--json] [--target <os-arch>] [<file_test.sec|dir|glob>...]")
-	fmt.Fprintln(os.Stderr, "       sec fmt [--check] <file.sec>...")
-	fmt.Fprintln(os.Stderr, "       sec fmt --stdin")
-	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
-	fmt.Fprintln(os.Stderr, "       sec emit-ir <file.sec> [-o <file.sir|->] [--target <os-arch>]")
-	fmt.Fprintln(os.Stderr, "       sec emit-sec-mlir <file.sec> [-o <file.mlir|->] [--target <os-arch>] [--mlir-bin <path>]")
-	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
-	fmt.Fprintln(os.Stderr, "       MLIR boundaries: emit-sec-mlir = verified Sec dialect; emit-mlir = LLVM dialect (--verify checks it)")
-	fmt.Fprintln(os.Stderr, "       sec build <file.sec|TargetName> [--build-number <number>] [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
-	fmt.Fprintln(os.Stderr, "       diagnostic-producing commands accept --diagnostic-format <human|json>")
 }
 
 // formatCheckError reports every selected file that the shared formatter would
@@ -578,32 +570,47 @@ func runSemaInputs(inputs []string, target CompilerTarget) {
 	fmt.Println("OK")
 }
 
-// runEmitLLVMCommand validates the iterator prerequisite before the legacy
-// LLVM backend and publishes output only after successful generation.
+// runEmitLLVMCommand publishes the LLVM IR boundary of the single
+// compilation track: Sec dialect -> standard MLIR -> LLVM dialect, translated
+// by mlir-translate (MD-101).
 // Rules: rules/compiler/compiler_pipeline.md — §§32–34.
 func runEmitLLVMCommand(args []string) {
-	inputFile, outputFile, target, ok := parseEmitLLVMCommandArgs(args, hostCompilerTarget())
+	inputFile, outputFile, target, mlirBin, ok := parseEmitLLVMCommandArgs(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
 		exitCLI(1)
 	}
 
-	targetDefinition, err := requireTargetCanEmitLLVM(target)
-	if err != nil {
+	if _, err := requireTargetCanEmitLLVM(target); err != nil {
 		reportToolError("target", "%s", err)
 		exitCLI(1)
 	}
 
 	analyzed := parseAndAnalyzeFileForLowering(inputFile, target)
-	ir, err := llvmcodegen.GenerateAnalyzed(analyzed.Program, analyzed.Analyzer, targetDefinition.LLVMTriple)
-	if err != nil {
-		reportPipelineError("codegen", err)
-		exitCLI(4)
+	secMLIR, entry := emitSecDialect(analyzed, inputFile, target)
+	llvmDialectPath, cleanup := lowerToLLVMDialect(secMLIR, entry, mlirBin, "")
+	defer cleanup()
+	llvmPath := outputFile
+	if outputFile == "-" {
+		path, _, err := createTempOutputPath(".ll")
+		if err != nil {
+			reportToolError("temp file", "%v", err)
+			exitCLI(1)
+		}
+		defer os.Remove(path)
+		llvmPath = path
 	}
-
-	if err := writeCompilerOutput(outputFile, []byte(ir)); err != nil {
-		reportToolError("write", "%v", err)
-		exitCLI(1)
+	translateToLLVMIR(llvmDialectPath, llvmPath, mlirBin)
+	if outputFile == "-" {
+		ir, err := os.ReadFile(llvmPath)
+		if err != nil {
+			reportToolError("read", "%v", err)
+			exitCLI(1)
+		}
+		if err := writeCompilerOutput("-", ir); err != nil {
+			reportToolError("write", "%v", err)
+			exitCLI(1)
+		}
 	}
 }
 
@@ -712,38 +719,44 @@ func parseOutputCommandArgs(args []string) (inputFile string, outputFile string,
 	return inputFile, outputFile, inputFile != "" && outputFile != ""
 }
 
-func parseEmitLLVMCommandArgs(args []string, defaultTarget CompilerTarget) (inputFile string, outputFile string, target CompilerTarget, ok bool) {
+func parseEmitLLVMCommandArgs(args []string, defaultTarget CompilerTarget) (inputFile string, outputFile string, target CompilerTarget, mlirBin string, ok bool) {
 	target = defaultTarget
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-o":
 			if i+1 >= len(args) || outputFile != "" {
-				return "", "", CompilerTarget{}, false
+				return "", "", CompilerTarget{}, "", false
 			}
 			outputFile = args[i+1]
 			if !isValidEmitOutputFile(outputFile) {
-				return "", "", CompilerTarget{}, false
+				return "", "", CompilerTarget{}, "", false
 			}
 			i++
 		case "--target":
 			if i+1 >= len(args) {
-				return "", "", CompilerTarget{}, false
+				return "", "", CompilerTarget{}, "", false
 			}
 			parsed, parseOK := parseCompilerTarget(args[i+1])
 			if !parseOK {
-				return "", "", CompilerTarget{}, false
+				return "", "", CompilerTarget{}, "", false
 			}
 			target = parsed
 			i++
+		case "--mlir-bin":
+			if i+1 >= len(args) || mlirBin != "" {
+				return "", "", CompilerTarget{}, "", false
+			}
+			mlirBin = args[i+1]
+			i++
 		default:
 			if strings.HasPrefix(args[i], "-") || inputFile != "" {
-				return "", "", CompilerTarget{}, false
+				return "", "", CompilerTarget{}, "", false
 			}
 			inputFile = args[i]
 		}
 	}
 
-	return inputFile, outputFile, target, inputFile != "" && outputFile != ""
+	return inputFile, outputFile, target, mlirBin, inputFile != "" && outputFile != ""
 }
 
 func isValidEmitOutputFile(path string) bool {

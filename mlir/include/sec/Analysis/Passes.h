@@ -21,6 +21,12 @@ std::unique_ptr<mlir::Pass> createSecVerifyMatchCFGPass();
 mlir::LogicalResult verifyMatchCFG(mlir::func::FuncOp function);
 std::unique_ptr<mlir::Pass> createSecVerifyArrayIndexGuardsPass();
 mlir::LogicalResult verifyArrayIndexGuards(mlir::func::FuncOp function);
+std::unique_ptr<mlir::Pass> createSecVerifyPlacesPass();
+mlir::LogicalResult verifyPlaces(mlir::func::FuncOp function);
+std::unique_ptr<mlir::Pass> createSecVerifyReferenceGuardsPass();
+mlir::LogicalResult verifyReferenceGuards(mlir::func::FuncOp function);
+std::unique_ptr<mlir::Pass> createSecVerifyBorrowSemanticsPass();
+mlir::LogicalResult verifyBorrowSemantics(mlir::func::FuncOp function);
 
 #define GEN_PASS_REGISTRATION
 #include "sec/Analysis/Passes.h.inc"

@@ -1,4 +1,0 @@
-module main
-DECLARATIONS
-fn Hold(value: TARGET) void {}
-fn main() void {}

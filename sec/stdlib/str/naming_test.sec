@@ -1,0 +1,729 @@
+module str
+
+/*
+ * Sec Standard Library - str - Naming conversion tests
+ *
+ * File:        stdlib/str/naming_test.sec
+ * Module:      str
+ * Revision:    1
+ * Updated:     2026-10-17
+ *
+ * Purpose:
+ * Verify naming convention transformations, acronym boundaries,
+ * digits, repeated separators, Unicode preservation, configurable
+ * delimiters, and consistency between specialized conversions.
+ *
+ * Contract:
+ * Acronyms are split structurally, without a known-acronym table.
+ * The final uppercase rune before a lowercase rune starts a word.
+ * Only ASCII '_' and '-' plus core rune whitespace are separators.
+ * Unicode case mapping follows the available core implementation.
+ *
+ * Rulebook:
+ * stdlib/str/stdlib_str.md
+ *
+ * Note:
+ * This file specifies expected behavior. It has not been executed.
+ */
+
+// ToSnakeCase: conversion and boundary regression tests.
+
+test "ToSnakeCase empty input" {
+    let result := try ToSnakeCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToSnakeCase single lowercase word" {
+    let result := try ToSnakeCase("hello")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToSnakeCase single uppercase word" {
+    let result := try ToSnakeCase("HELLO")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToSnakeCase simple PascalCase" {
+    let result := try ToSnakeCase("HelloWorld")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase simple camelCase" {
+    let result := try ToSnakeCase("helloWorld")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase HTTP acronym" {
+    let result := try ToSnakeCase("HTTPServer")
+    testing.ExpectEqual("http_server", result)
+}
+
+test "ToSnakeCase XML acronym" {
+    let result := try ToSnakeCase("XMLParser")
+    testing.ExpectEqual("xml_parser", result)
+}
+
+test "ToSnakeCase acronym inside name" {
+    let result := try ToSnakeCase("parseHTTPResponse")
+    testing.ExpectEqual("parse_http_response", result)
+}
+
+test "ToSnakeCase camelCase ending in acronym" {
+    let result := try ToSnakeCase("userID")
+    testing.ExpectEqual("user_id", result)
+}
+
+test "ToSnakeCase adjacent acronyms without a dictionary" {
+    let result := try ToSnakeCase("XMLHTTPRequest")
+    testing.ExpectEqual("xmlhttp_request", result)
+}
+
+test "ToSnakeCase all capitals without a lowercase suffix" {
+    let result := try ToSnakeCase("HTTP")
+    testing.ExpectEqual("http", result)
+}
+
+test "ToSnakeCase two capitals and a lowercase suffix" {
+    let result := try ToSnakeCase("ABc")
+    testing.ExpectEqual("a_bc", result)
+}
+
+test "ToSnakeCase digits inside the first word" {
+    let result := try ToSnakeCase("Version2Beta")
+    testing.ExpectEqual("version2_beta", result)
+}
+
+test "ToSnakeCase digits following acronym" {
+    let result := try ToSnakeCase("MyHTTP2Server")
+    testing.ExpectEqual("my_http2_server", result)
+}
+
+test "ToSnakeCase digit before uppercase" {
+    let result := try ToSnakeCase("a2B")
+    testing.ExpectEqual("a2_b", result)
+}
+
+test "ToSnakeCase digit prefix before capitals" {
+    let result := try ToSnakeCase("123ABC")
+    testing.ExpectEqual("123_abc", result)
+}
+
+test "ToSnakeCase trailing digits" {
+    let result := try ToSnakeCase("Server42")
+    testing.ExpectEqual("server42", result)
+}
+
+test "ToSnakeCase underscore separated" {
+    let result := try ToSnakeCase("hello_world")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase hyphen separated" {
+    let result := try ToSnakeCase("hello-world")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase space separated" {
+    let result := try ToSnakeCase("hello world")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase tabs as separators" {
+    let result := try ToSnakeCase("hello\tworld")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase newlines as separators" {
+    let result := try ToSnakeCase("hello\nworld")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase mixed repeated separators" {
+    let result := try ToSnakeCase("hello--__  world")
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToSnakeCase leading and trailing separators" {
+    let result := try ToSnakeCase("___hello---")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToSnakeCase separators only" {
+    let result := try ToSnakeCase("_-_  _")
+    testing.ExpectEqual("", result)
+}
+
+test "ToSnakeCase Unicode lowercase retained" {
+    let result := try ToSnakeCase("å🦊ö")
+    testing.ExpectEqual("å🦊ö", result)
+}
+
+test "ToSnakeCase combining rune preserved" {
+    let result := try ToSnakeCase("e\u{0301}clair")
+    testing.ExpectEqual("e\u{0301}clair", result)
+}
+
+test "ToSnakeCase NUL in the name preserved" {
+    let result := try ToSnakeCase("a\0b")
+    testing.ExpectEqual("a\0b", result)
+}
+
+// ToCamelCase: conversion and boundary regression tests.
+
+test "ToCamelCase empty input" {
+    let result := try ToCamelCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToCamelCase single lowercase word" {
+    let result := try ToCamelCase("hello")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToCamelCase single uppercase word" {
+    let result := try ToCamelCase("HELLO")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToCamelCase PascalCase" {
+    let result := try ToCamelCase("HelloWorld")
+    testing.ExpectEqual("helloWorld", result)
+}
+
+test "ToCamelCase already camelCase" {
+    let result := try ToCamelCase("helloWorld")
+    testing.ExpectEqual("helloWorld", result)
+}
+
+test "ToCamelCase acronym leading" {
+    let result := try ToCamelCase("HTTPServer")
+    testing.ExpectEqual("httpServer", result)
+}
+
+test "ToCamelCase acronym trailing" {
+    let result := try ToCamelCase("userID")
+    testing.ExpectEqual("userId", result)
+}
+
+test "ToCamelCase acronym between words" {
+    let result := try ToCamelCase("parseHTTPResponse")
+    testing.ExpectEqual("parseHttpResponse", result)
+}
+
+test "ToCamelCase underscore" {
+    let result := try ToCamelCase("hello_world")
+    testing.ExpectEqual("helloWorld", result)
+}
+
+test "ToCamelCase hyphen" {
+    let result := try ToCamelCase("hello-world")
+    testing.ExpectEqual("helloWorld", result)
+}
+
+test "ToCamelCase spaces" {
+    let result := try ToCamelCase("hello world")
+    testing.ExpectEqual("helloWorld", result)
+}
+
+test "ToCamelCase repeated separators" {
+    let result := try ToCamelCase("__HELLO---WORLD__")
+    testing.ExpectEqual("helloWorld", result)
+}
+
+test "ToCamelCase digit before capital" {
+    let result := try ToCamelCase("Version2Beta")
+    testing.ExpectEqual("version2Beta", result)
+}
+
+test "ToCamelCase digits within acronym" {
+    let result := try ToCamelCase("MyHTTP2Server")
+    testing.ExpectEqual("myHttp2Server", result)
+}
+
+test "ToCamelCase digits-only input" {
+    let result := try ToCamelCase("123")
+    testing.ExpectEqual("123", result)
+}
+
+test "ToCamelCase no word characters" {
+    let result := try ToCamelCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToCamelCase Unicode rune inside word preserved" {
+    let result := try ToCamelCase("a🦊b")
+    testing.ExpectEqual("a🦊b", result)
+}
+
+// ToPascalCase: conversion and boundary regression tests.
+
+test "ToPascalCase empty input" {
+    let result := try ToPascalCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToPascalCase single lowercase word" {
+    let result := try ToPascalCase("hello")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "ToPascalCase single uppercase word" {
+    let result := try ToPascalCase("HELLO")
+    testing.ExpectEqual("Hello", result)
+}
+
+test "ToPascalCase already PascalCase" {
+    let result := try ToPascalCase("HelloWorld")
+    testing.ExpectEqual("HelloWorld", result)
+}
+
+test "ToPascalCase from camelCase" {
+    let result := try ToPascalCase("helloWorld")
+    testing.ExpectEqual("HelloWorld", result)
+}
+
+test "ToPascalCase leading acronym" {
+    let result := try ToPascalCase("HTTPServer")
+    testing.ExpectEqual("HttpServer", result)
+}
+
+test "ToPascalCase trailing acronym" {
+    let result := try ToPascalCase("userID")
+    testing.ExpectEqual("UserId", result)
+}
+
+test "ToPascalCase internal acronym" {
+    let result := try ToPascalCase("parseHTTPResponse")
+    testing.ExpectEqual("ParseHttpResponse", result)
+}
+
+test "ToPascalCase underscore" {
+    let result := try ToPascalCase("hello_world")
+    testing.ExpectEqual("HelloWorld", result)
+}
+
+test "ToPascalCase hyphen" {
+    let result := try ToPascalCase("Hello-world")
+    testing.ExpectEqual("HelloWorld", result)
+}
+
+test "ToPascalCase spaces" {
+    let result := try ToPascalCase("hello world")
+    testing.ExpectEqual("HelloWorld", result)
+}
+
+test "ToPascalCase repeated separators" {
+    let result := try ToPascalCase("__HELLO---WORLD__")
+    testing.ExpectEqual("HelloWorld", result)
+}
+
+test "ToPascalCase digit within words" {
+    let result := try ToPascalCase("Version2Beta")
+    testing.ExpectEqual("Version2Beta", result)
+}
+
+test "ToPascalCase acronym before number" {
+    let result := try ToPascalCase("MyHTTP2Server")
+    testing.ExpectEqual("MyHttp2Server", result)
+}
+
+test "ToPascalCase digits-only input" {
+    let result := try ToPascalCase("123")
+    testing.ExpectEqual("123", result)
+}
+
+test "ToPascalCase leading digits and word" {
+    let result := try ToPascalCase("123abc")
+    testing.ExpectEqual("123abc", result)
+}
+
+// ToKebabCase: conversion and boundary regression tests.
+
+test "ToKebabCase empty input" {
+    let result := try ToKebabCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToKebabCase single lowercase word" {
+    let result := try ToKebabCase("hello")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToKebabCase single uppercase word" {
+    let result := try ToKebabCase("HELLO")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToKebabCase acronym leading" {
+    let result := try ToKebabCase("HTTPServer")
+    testing.ExpectEqual("http-server", result)
+}
+
+test "ToKebabCase acronym internal" {
+    let result := try ToKebabCase("parseHTTPResponse")
+    testing.ExpectEqual("parse-http-response", result)
+}
+
+test "ToKebabCase acronym trailing" {
+    let result := try ToKebabCase("userID")
+    testing.ExpectEqual("user-id", result)
+}
+
+test "ToKebabCase underscore" {
+    let result := try ToKebabCase("hello_world")
+    testing.ExpectEqual("hello-world", result)
+}
+
+test "ToKebabCase spaces" {
+    let result := try ToKebabCase("Hello World")
+    testing.ExpectEqual("hello-world", result)
+}
+
+test "ToKebabCase already kebab" {
+    let result := try ToKebabCase("already-kebab-case")
+    testing.ExpectEqual("already-kebab-case", result)
+}
+
+test "ToKebabCase mixed repeated separators" {
+    let result := try ToKebabCase("hello--__ world")
+    testing.ExpectEqual("hello-world", result)
+}
+
+test "ToKebabCase leading and trailing separators" {
+    let result := try ToKebabCase("___hello---")
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToKebabCase digit before uppercase" {
+    let result := try ToKebabCase("Version2Beta")
+    testing.ExpectEqual("version2-beta", result)
+}
+
+test "ToKebabCase separator-only" {
+    let result := try ToKebabCase("_---_")
+    testing.ExpectEqual("", result)
+}
+
+test "ToKebabCase unicode word preserved" {
+    let result := try ToKebabCase("å-ö")
+    testing.ExpectEqual("å-ö", result)
+}
+
+// ToScreamingKebabCase: conversion and boundary regression tests.
+
+test "ToScreamingKebabCase empty input" {
+    let result := try ToScreamingKebabCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToScreamingKebabCase single word" {
+    let result := try ToScreamingKebabCase("hello")
+    testing.ExpectEqual("HELLO", result)
+}
+
+test "ToScreamingKebabCase leading acronym" {
+    let result := try ToScreamingKebabCase("HTTPServer")
+    testing.ExpectEqual("HTTP-SERVER", result)
+}
+
+test "ToScreamingKebabCase internal acronym" {
+    let result := try ToScreamingKebabCase("parseHTTPResponse")
+    testing.ExpectEqual("PARSE-HTTP-RESPONSE", result)
+}
+
+test "ToScreamingKebabCase trailing acronym" {
+    let result := try ToScreamingKebabCase("userID")
+    testing.ExpectEqual("USER-ID", result)
+}
+
+test "ToScreamingKebabCase underscore input" {
+    let result := try ToScreamingKebabCase("hello_world")
+    testing.ExpectEqual("HELLO-WORLD", result)
+}
+
+test "ToScreamingKebabCase spaces" {
+    let result := try ToScreamingKebabCase("Hello World")
+    testing.ExpectEqual("HELLO-WORLD", result)
+}
+
+test "ToScreamingKebabCase repeated delimiters" {
+    let result := try ToScreamingKebabCase("hello--__world")
+    testing.ExpectEqual("HELLO-WORLD", result)
+}
+
+test "ToScreamingKebabCase number before word" {
+    let result := try ToScreamingKebabCase("Version2Beta")
+    testing.ExpectEqual("VERSION2-BETA", result)
+}
+
+test "ToScreamingKebabCase already screaming kebab" {
+    let result := try ToScreamingKebabCase("HTTP-SERVER")
+    testing.ExpectEqual("HTTP-SERVER", result)
+}
+
+// ToConstantCase: conversion and boundary regression tests.
+
+test "ToConstantCase empty input" {
+    let result := try ToConstantCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToConstantCase single word" {
+    let result := try ToConstantCase("hello")
+    testing.ExpectEqual("HELLO", result)
+}
+
+test "ToConstantCase leading acronym" {
+    let result := try ToConstantCase("HTTPServer")
+    testing.ExpectEqual("HTTP_SERVER", result)
+}
+
+test "ToConstantCase internal acronym" {
+    let result := try ToConstantCase("parseHTTPResponse")
+    testing.ExpectEqual("PARSE_HTTP_RESPONSE", result)
+}
+
+test "ToConstantCase trailing acronym" {
+    let result := try ToConstantCase("userID")
+    testing.ExpectEqual("USER_ID", result)
+}
+
+test "ToConstantCase hyphen input" {
+    let result := try ToConstantCase("hello-world")
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToConstantCase spaces" {
+    let result := try ToConstantCase("Hello World")
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToConstantCase repeated separators" {
+    let result := try ToConstantCase("hello--__world")
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToConstantCase digit before uppercase" {
+    let result := try ToConstantCase("Version2Beta")
+    testing.ExpectEqual("VERSION2_BETA", result)
+}
+
+test "ToConstantCase already constant" {
+    let result := try ToConstantCase("HTTP_SERVER")
+    testing.ExpectEqual("HTTP_SERVER", result)
+}
+
+// ToScreamingSnakeCase: conversion and boundary regression tests.
+
+test "ToScreamingSnakeCase empty input" {
+    let result := try ToScreamingSnakeCase("")
+    testing.ExpectEqual("", result)
+}
+
+test "ToScreamingSnakeCase single word" {
+    let result := try ToScreamingSnakeCase("hello")
+    testing.ExpectEqual("HELLO", result)
+}
+
+test "ToScreamingSnakeCase leading acronym" {
+    let result := try ToScreamingSnakeCase("HTTPServer")
+    testing.ExpectEqual("HTTP_SERVER", result)
+}
+
+test "ToScreamingSnakeCase internal acronym" {
+    let result := try ToScreamingSnakeCase("parseHTTPResponse")
+    testing.ExpectEqual("PARSE_HTTP_RESPONSE", result)
+}
+
+test "ToScreamingSnakeCase trailing acronym" {
+    let result := try ToScreamingSnakeCase("userID")
+    testing.ExpectEqual("USER_ID", result)
+}
+
+test "ToScreamingSnakeCase hyphen input" {
+    let result := try ToScreamingSnakeCase("hello-world")
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToScreamingSnakeCase spaces" {
+    let result := try ToScreamingSnakeCase("Hello World")
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToScreamingSnakeCase repeated separators" {
+    let result := try ToScreamingSnakeCase("hello--__world")
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToScreamingSnakeCase digit before uppercase" {
+    let result := try ToScreamingSnakeCase("Version2Beta")
+    testing.ExpectEqual("VERSION2_BETA", result)
+}
+
+test "ToScreamingSnakeCase already screaming snake" {
+    let result := try ToScreamingSnakeCase("HTTP_SERVER")
+    testing.ExpectEqual("HTTP_SERVER", result)
+}
+
+// ToDelimiterCase: custom rune delimiters and case selection.
+
+test "ToDelimiterCase empty input" {
+    let result := try ToDelimiterCase("", 45r, false)
+    testing.ExpectEqual("", result)
+}
+
+test "ToDelimiterCase hyphen lowercase" {
+    let result := try ToDelimiterCase("HTTPServer", 45r, false)
+    testing.ExpectEqual("http-server", result)
+}
+
+test "ToDelimiterCase hyphen uppercase" {
+    let result := try ToDelimiterCase("HTTPServer", 45r, true)
+    testing.ExpectEqual("HTTP-SERVER", result)
+}
+
+test "ToDelimiterCase underscore lowercase" {
+    let result := try ToDelimiterCase("helloWorld", 95r, false)
+    testing.ExpectEqual("hello_world", result)
+}
+
+test "ToDelimiterCase underscore uppercase" {
+    let result := try ToDelimiterCase("helloWorld", 95r, true)
+    testing.ExpectEqual("HELLO_WORLD", result)
+}
+
+test "ToDelimiterCase dot lowercase" {
+    let result := try ToDelimiterCase("XMLParser", 46r, false)
+    testing.ExpectEqual("xml.parser", result)
+}
+
+test "ToDelimiterCase dot uppercase" {
+    let result := try ToDelimiterCase("XMLParser", 46r, true)
+    testing.ExpectEqual("XML.PARSER", result)
+}
+
+test "ToDelimiterCase space lowercase" {
+    let result := try ToDelimiterCase("HelloWorld", 32r, false)
+    testing.ExpectEqual("hello world", result)
+}
+
+test "ToDelimiterCase space uppercase" {
+    let result := try ToDelimiterCase("HelloWorld", 32r, true)
+    testing.ExpectEqual("HELLO WORLD", result)
+}
+
+test "ToDelimiterCase Unicode bullet delimiter lowercase" {
+    let result := try ToDelimiterCase("myHTTPServer", 8226r, false)
+    testing.ExpectEqual("my•http•server", result)
+}
+
+test "ToDelimiterCase emoji delimiter uppercase" {
+    let result := try ToDelimiterCase("hello_world", 129418r, true)
+    testing.ExpectEqual("HELLO🦊WORLD", result)
+}
+
+test "ToDelimiterCase repeated separators" {
+    let result := try ToDelimiterCase("hello__- world", 45r, false)
+    testing.ExpectEqual("hello-world", result)
+}
+
+test "ToDelimiterCase no separator in name" {
+    let result := try ToDelimiterCase("HELLO", 46r, true)
+    testing.ExpectEqual("HELLO", result)
+}
+
+test "ToDelimiterCase leading trailing separators" {
+    let result := try ToDelimiterCase("___hello---", 46r, false)
+    testing.ExpectEqual("hello", result)
+}
+
+test "ToDelimiterCase trailing acronym and digits" {
+    let result := try ToDelimiterCase("userID2", 46r, false)
+    testing.ExpectEqual("user.id2", result)
+}
+
+test "ToDelimiterCase numeric name" {
+    let result := try ToDelimiterCase("12345", 45r, false)
+    testing.ExpectEqual("12345", result)
+}
+
+test "ToDelimiterCase delimiter itself is the only character" {
+    let result := try ToDelimiterCase("---", 45r, false)
+    testing.ExpectEqual("", result)
+}
+
+// Cross-function consistency: shared word splitting and alias behavior.
+
+test "Naming consistency KebabCase delegates to delimiter case" {
+    let actual := try ToKebabCase("HTTPServer")
+    let expected := try ToDelimiterCase("HTTPServer", 45r, false)
+    testing.ExpectEqual(expected, actual)
+}
+
+test "Naming consistency ScreamingKebabCase delegates to delimiter case" {
+    let actual := try ToScreamingKebabCase("parseHTTPResponse")
+    let expected := try ToDelimiterCase("parseHTTPResponse", 45r, true)
+    testing.ExpectEqual(expected, actual)
+}
+
+test "Naming consistency ConstantCase delegates to delimiter case" {
+    let actual := try ToConstantCase("HTTPServer")
+    let expected := try ToDelimiterCase("HTTPServer", 95r, true)
+    testing.ExpectEqual(expected, actual)
+}
+
+test "Naming consistency ScreamingSnakeCase agrees with ConstantCase" {
+    let actual := try ToScreamingSnakeCase("parseHTTPResponse")
+    let expected := try ToConstantCase("parseHTTPResponse")
+    testing.ExpectEqual(expected, actual)
+}
+
+test "Naming consistency SnakeCase agrees with delimiter underscore" {
+    let actual := try ToSnakeCase("helloWorld")
+    let expected := try ToDelimiterCase("helloWorld", 95r, false)
+    testing.ExpectEqual(expected, actual)
+}
+
+// Idempotence: applying a conversion twice must not change its output.
+
+test "ToSnakeCase is idempotent" {
+    let once := try ToSnakeCase("HTTPServer")
+    let twice := try ToSnakeCase(once)
+    testing.ExpectEqual(once, twice)
+}
+
+test "ToCamelCase is idempotent" {
+    let once := try ToCamelCase("HTTPServer")
+    let twice := try ToCamelCase(once)
+    testing.ExpectEqual(once, twice)
+}
+
+test "ToPascalCase is idempotent" {
+    let once := try ToPascalCase("HTTPServer")
+    let twice := try ToPascalCase(once)
+    testing.ExpectEqual(once, twice)
+}
+
+test "ToKebabCase is idempotent" {
+    let once := try ToKebabCase("HTTPServer")
+    let twice := try ToKebabCase(once)
+    testing.ExpectEqual(once, twice)
+}
+
+test "ToScreamingKebabCase is idempotent" {
+    let once := try ToScreamingKebabCase("HTTPServer")
+    let twice := try ToScreamingKebabCase(once)
+    testing.ExpectEqual(once, twice)
+}
+
+test "ToConstantCase is idempotent" {
+    let once := try ToConstantCase("HTTPServer")
+    let twice := try ToConstantCase(once)
+    testing.ExpectEqual(once, twice)
+}
+
+test "ToScreamingSnakeCase is idempotent" {
+    let once := try ToScreamingSnakeCase("HTTPServer")
+    let twice := try ToScreamingSnakeCase(once)
+    testing.ExpectEqual(once, twice)
+}

@@ -154,20 +154,75 @@ The implementation must exist only once.
 available without an import:
 
 ```sec
-fn len(value: string) int
-fn len[T](value: T[]) int
-fn len[T](value: ref T[]) int
-fn len[T](value: ref mut T[]) int
+/**
+ * Returns the Unicode scalar count of a valid UTF-8 string.
+ *
+ * Returns:
+ *   The nonnegative scalar count, as uint.
+ */
+fn len(value: string) uint
+
+/**
+ * Returns the element count of an owning sequence.
+ *
+ * Parameters:
+ *   - value: The array to inspect; no ownership is consumed.
+ *
+ * Returns:
+ *   The nonnegative element count, as uint.
+ */
+fn len[T](value: T[]) uint
+
+/**
+ * Returns the element count of a shared array view.
+ *
+ * Parameters:
+ *   - value: A non-consuming shared array view.
+ *
+ * Returns:
+ *   The nonnegative element count, as uint.
+ */
+fn len[T](value: ref T[]) uint
+
+/**
+ * Returns the element count of a mutable array view.
+ *
+ * Parameters:
+ *   - value: A non-consuming mutable array view.
+ *
+ * Returns:
+ *   The nonnegative element count, as uint.
+ */
+fn len[T](value: ref mut T[]) uint
 ```
 
-The compiler infers `T` from the argument. `len` returns `int` in Sec 0.1 so
-that it composes directly with indexes, offsets and positions without an
-integer conversion:
+The compiler infers `T` from the argument. A length is a nonnegative count, so
+`len` returns `uint` and denotes exactly the same logical count as `.Len`
+(MD-074/MD-088, 2026-10-17,
+`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`).
+`len(string)` counts Unicode scalars, never encoded bytes; `string.SizeOf`
+remains the UTF-8 payload-byte count.
+
+1. A legitimate `uint` length is never reduced, saturated, wrapped, rejected or
+   converted to `int` because `len` was called. Compiler, Semantic IR, Sec
+   MLIR, LLVM and other backends preserve the unsigned width and the exact
+   value; a target may still enforce its own independently defined
+   storage/object-size limits.
+2. No implicit `uint` ↔ `int` conversion exists. Code that needs a signed
+   offset uses an explicit checked conversion (`try int(len(values))`), which
+   fails when the length does not fit.
+3. A length and an index are distinct: signed index and offset arithmetic and
+   its bounds checks are unchanged; this revision does not broaden the legal
+   element index domain or add a panic or error type.
+4. `len(values) - 1` on an empty `values` is checked unsigned underflow under
+   `rules/foundations/operators.md`; it fails before any indexing and never
+   wraps to `uint.Max`. Indexing with a signed `-1` is a separate bounds
+   violation. The two are not interchangeable.
 
 ```sec
-let index := self.pos + offset
-if index < 0 || index >= len(self.input) {
-    return 0r
+if values.Len > 0 {
+    let last := values[len(values) - 1]
+    Process(last)
 }
 ```
 
@@ -176,9 +231,9 @@ slice reference. It evaluates its argument once, does not allocate and does
 not consume the argument. Its name is compiler-owned and cannot be redeclared
 or overloaded by user code.
 
-The existing intrinsic member properties `string.len`, `array.len` and
-`slice.len` remain `uint` in Sec 0.1. Compiler and standard-library code that
-performs signed index arithmetic should use the `len(...)` function.
+The intrinsic member properties `.Len` (with the migration spelling `.len`) on
+strings, arrays and slices are also `uint`; `len(value)` and `value.Len` always
+have the same type and value.
 
 ## 1.5 Private representation helpers
 
@@ -381,7 +436,8 @@ The compiler must not silently allocate or extend a lifetime merely to provide
 
 # 5. String
 
-`string` is a built-in type.
+`string` is a built-in type. Every `string` is valid UTF-8 text, never a
+binary buffer (`types.md`, "Valid UTF-8 invariant", MD-050).
 
 The compiler defines:
 
@@ -414,47 +470,59 @@ The compatibility lowercase `.len` and compiler-known `len(text)` count runes;
 `len(text)` retains its `int` result. This supersedes the earlier byte-count
 meaning (string-length-contracts-correction-20261009).
 
+`Len` and `SizeOf` are independent facts that Sema, Semantic IR, Sec MLIR, LSP
+and runtime helpers carry separately.
+
 ## 5.2 Required associated functions
 
 ```sec
 impl string {
-    fn FromByteArray(value: byte[]) string
-    fn FromRuneArray(value: rune[]) string
+    fn FromByteArray(value: ref byte[]) Result[string, StringError]
+    fn FromRuneArray(value: ref rune[]) Result[string, StringError]
 }
 ```
+
+Both are compiler-known associated functions supplied by trusted core
+(MD-072, 2026-10-17). They **borrow** the input array: it is neither consumed
+nor mutated, and the resulting string stays valid after the array is moved,
+modified or destroyed. They never adopt or alias the array's mutable backing;
+a sharing optimization must still produce an independently owned, immutable
+result. No consuming zero-copy overload exists in Sec 0.1.
+
+`FromByteArray` decodes its entire represented input as strict UTF-8 — never as
+Latin-1, ASCII with extended bytes or a platform default. Malformed input
+returns `Err(StringError.InvalidUtf8(offset))`, where `offset` is the
+zero-based byte offset of the leading byte of the first malformed or truncated
+sequence (or of the first immediately invalid byte). It does not replace,
+truncate, skip, panic or return a partially decoded string.
+
+`FromRuneArray` encodes the scalars to canonical UTF-8 in order. Safe `rune`
+values are always valid scalars, so ordinary input cannot produce
+`InvalidCodePoint`; an invalid rune fabricated by broken privileged code is an
+invariant violation.
+
+Both may allocate through the active permitted allocation context and report
+storage failure as `StringError.Allocation(AllocationError)`. Neither appends a
+terminator, normalizes or changes case. Failure leaves the borrowed source
+unchanged and exposes no partially formed string or leaked storage.
 
 `byte`, `char`, and `rune` arrays and slice views additionally provide a
 compiler-known materializing method:
 
 ```sec
 let runes: rune[2] := ['A', 'B']
-let text := runes.ToString()
+let text := try runes.ToString()
 ```
 
-For those three element types, `ToString()` accepts no arguments, returns
-`string`, and does not mutate or consume the source. Byte sequences preserve
-the represented encoded bytes as `string.FromByteArray` does; char sequences
-apply `char.ToString()` element semantics; rune sequences encode each Unicode
-scalar as `string.FromRuneArray` does. Other concrete values retain the
-universal compiler-provided fallback described by
+For those three element types, `ToString()` accepts no arguments, has the
+universal result `Result[string, StringError]`, and does not mutate or consume
+the source. Byte sequences decode the represented bytes as strict UTF-8 exactly
+as `string.FromByteArray` does, so malformed bytes yield
+`StringError.InvalidUtf8` and never a malformed string; char sequences apply
+`char.ToString()` element semantics (char-domain details: MD-073); rune
+sequences encode each Unicode scalar as `string.FromRuneArray` does. Other
+concrete values retain the universal compiler-provided fallback described by
 `compiler_known_members.md`, but do not use these text-sequence semantics.
-
-These are the minimum required constructors.
-
-Their ownership and allocation behavior must be defined by the string memory
-model.
-
-If construction can fail, the signatures must use `Result`.
-
-Possible final signatures include:
-
-```sec
-fn FromByteArray(value: byte[]) Result[string, EncodingError]
-fn FromRuneArray(value: rune[]) Result[string, EncodingError]
-```
-
-The final choice depends on whether invalid encoding is accepted, replaced or
-rejected.
 
 ## 5.3 Required instance methods
 
@@ -470,7 +538,14 @@ impl string {
     fn Contains(value: string) bool
 
     fn IndexOf(value: string) Option[uint]
+    fn IndexOf(value: string, start: uint) Option[uint]
     fn LastIndexOf(value: string) Option[uint]
+    fn Slice(start: uint, end: uint) Result[string, RangeError]
+
+    fn GetRune(index: uint) Result[rune, IndexError]
+    fn RuneAt(index: uint) rune
+    fn GetByte(index: uint) Result[byte, IndexError]
+    fn ByteAt(index: uint) byte
 
     fn Trim() string
     fn TrimStart() string
@@ -478,12 +553,25 @@ impl string {
 
     fn Split(separator: string) StringSplitIterator
 
-    fn ToByteArray() byte[]
-    fn ToRuneArray() rune[]
+    fn ToByteArray() Result[byte[], CollectionError]
+    fn ToRuneArray() Result[rune[], CollectionError]
 }
 ```
 
-This is a minimum surface, not a complete string API.
+This is a minimum surface, not a complete string API. The position units of
+the search, slicing and access members are defined in § 5.7. Every public
+declaration in trusted core carries a structured documentation comment stating
+its position unit, errors and allocation.
+
+`ToByteArray` and `ToRuneArray` (MD-072) materialize owning arrays whose storage
+is independent of the source string; callers may mutate or move them without
+altering the string, and no mutable alias to the string's UTF-8 storage exists.
+`ToByteArray` returns exactly `self.SizeOf` bytes — the UTF-8 encoding already
+represented, with no transcoding, terminator or unused capacity. `ToRuneArray`
+returns exactly `self.Len` scalar values in order. Neither has an
+`InvalidUtf8` path, because the source is valid. Storage failure uses the
+existing `CollectionError` family, consistent with array allocation and growth;
+a failed materialization is never reported as a successful empty array.
 
 ## 5.4 Bytes and runes
 
@@ -546,6 +634,50 @@ Copy
 ```
 
 They are not mandatory in the minimum core surface.
+
+## 5.7 Rune positions and byte access (MD-071)
+
+The following members accept and return **zero-based Unicode-scalar (rune)
+indexes**, not UTF-8 byte offsets:
+
+```text
+IndexOf(value)            IndexOf(value, start)     LastIndexOf(value)
+Slice(start, end)         GetRune(index)            RuneAt(index)
+```
+
+1. Every index in `0..self.Len` denotes a boundary between complete scalars.
+2. `Slice(start, end)` selects the half-open rune range `[start, end)` and never
+   cuts a scalar. A reversed range returns `RangeError.StartAfterEnd` and an
+   end beyond `self.Len` returns `RangeError.OutOfBounds`; no scalar-boundary
+   error exists for this API.
+3. `IndexOf(value, start)` searches from rune index `start` and returns the rune
+   index of the first exact match. A `start` beyond `self.Len` returns `None`.
+   An empty `value` returns `Some(start)` when `start <= self.Len`.
+4. `IndexOf(value)` equals `IndexOf(value, 0)`. `LastIndexOf(value)` returns the
+   rune index of the last exact match; an empty `value` returns
+   `Some(self.Len)`.
+5. Searches are ordinal Unicode-scalar sequence searches with no
+   normalization, case folding or locale rules.
+6. `GetRune` returns `IndexError.OutOfBounds` and `RuneAt` panics when `index`
+   is not below `self.Len`.
+
+The separately named byte-access members `GetByte(index)`, `ByteAt(index)` and
+the existing byte-oriented `CharAt(index)` use **UTF-8 byte indexes** below
+`self.SizeOf` and are documented as access to encoded bytes. Whether `CharAt`
+is renamed or redesigned is not decided. No writable string byte reference
+exists.
+
+Implementations may scan UTF-8 bytes internally, including byte-based
+substring matching and lazy iterators that keep byte and rune counters without
+allocating, but must translate every externally visible position to rune
+coordinates. Private byte-offset helpers such as `__StringSliceUnchecked`
+receive only verified byte coordinates on scalar boundaries.
+
+These rules apply to `string` only; array, `vector`, list, binary-view and
+`char[]` positions keep the index semantics of their own types.
+
+Hover and diagnostics name the unit of every `uint` position: `IndexOf`
+returns rune indexes and `GetByte` takes a byte index.
 
 ---
 
@@ -1076,6 +1208,12 @@ Every `ToString`, including each overload, returns exactly
 `Result[string, StringError]` (decision 2026-10-03, MD-035; see
 `rules/compiler/compiler_known_members.md` "Uniform `ToString` result").
 
+`.ToString()` is the preferred numeric-to-text spelling. The explicit
+conversion `string(numericValue)` is the same operation as the numeric type's
+no-argument `ToString()` — same default formatting, same
+`Result[string, StringError]` result and failure — and has no format overload
+(`types.md`, "Numeric-to-text conversion", MD-051, 2026-10-17).
+
 ## 15.1 `StringError`
 
 `StringError` is the one compiler-known failure family of text. Every
@@ -1104,7 +1242,11 @@ enum FormatError error {
 `ToString(format)` whose format is invalid or unsupported at run time.
 `InvalidUtf8`, `InvalidCodePoint`, and `OutOfBounds` are the text decoding
 failures of the core string conversions (`string.FromByteArray`,
-`string.FromRuneArray`, UTF-8 decoding). `StringError` and `FormatError` are
+`string.FromRuneArray`, UTF-8 decoding). `InvalidUtf8(offset)` carries the
+zero-based byte offset of the leading byte of the first malformed or truncated
+UTF-8 sequence; strict decoding reports it instead of producing a malformed
+string (§ 5.2, MD-050). Safe `FromRuneArray` input cannot produce
+`InvalidCodePoint`. `StringError` and `FormatError` are
 compiler-known identities; trusted core supplies their source declarations and
 ordinary code cannot redeclare them.
 

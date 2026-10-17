@@ -109,7 +109,7 @@ func (a *Analyzer) bindNullArgumentContexts(functions []Function, arguments []as
 		switch {
 		case a.isNullSentinel(argument):
 			family = func(typ Type) bool { return typ.Kind == RawPtrType }
-		case a.isBareNoneArgument(argument):
+		case a.isContextualOptionArgument(argument):
 			family = isOptionType
 		case isEmptyArrayLiteral(argument):
 			family = acceptsEmptyArrayLiteral
@@ -130,7 +130,9 @@ func (a *Analyzer) bindNullArgumentContexts(functions []Function, arguments []as
 			}
 			context = &parameter
 		}
-		if !agreed || context == nil {
+		// An uninstantiated generic parameter is no context: the argument's
+		// type cannot be fixed before T is inferred (MD-027).
+		if !agreed || context == nil || typeMentionsGenericParameter(*context) {
 			continue
 		}
 		if _, exists := a.expectedExpressionTypes[argument]; exists {
@@ -155,6 +157,30 @@ func (a *Analyzer) isBareNoneArgument(expr ast.Expression) bool {
 	}
 	_, shadowed := a.symbols["None"]
 	return !shadowed
+}
+
+// isBareSomeArgument reports an unqualified one-argument Some(...) that
+// constructs the Option variant rather than calling a visible binding or a
+// declared function named Some. Like a bare None it has no standalone
+// Option[T] type, so a call argument takes T from its parameter (MD-102).
+func (a *Analyzer) isBareSomeArgument(expr ast.Expression) bool {
+	call, ok := expr.(*ast.CallExpression)
+	if !ok || len(call.Arguments) != 1 || len(call.GenericArguments) != 0 {
+		return false
+	}
+	identifier, ok := call.Callee.(*ast.Identifier)
+	if !ok || identifier.Value != "Some" {
+		return false
+	}
+	if _, shadowed := a.symbols["Some"]; shadowed {
+		return false
+	}
+	return len(a.functions["Some"]) == 0
+}
+
+// isContextualOptionArgument reports a bare None or Some(...) argument.
+func (a *Analyzer) isContextualOptionArgument(expr ast.Expression) bool {
+	return a.isBareNoneArgument(expr) || a.isBareSomeArgument(expr)
 }
 
 func isOptionType(typ Type) bool {

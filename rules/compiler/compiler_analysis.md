@@ -1445,6 +1445,8 @@ target/profile applicability.
 
 § 61(3) Reports distinguish errors, unproven safety requirements, warnings, and informational/advisory findings.
 
+§ 61(4) The command forms, analysis names, function focus (`-f`/`--function`), presentation (`--info`, `--verbose`, `--json`), the versioned `sec.analysis-report`, help and exit behavior of `sec analyse` are owned by `rules/tooling/cli.md` § 5–§ 6 (MD-017, 2026-10-17). The presentation options change only what is shown, never what is analysed.
+
 ---
 
 ## § 62 Analysis modes
@@ -1456,6 +1458,8 @@ target/profile applicability.
 § 62(3) A reduced mode must not falsely report positive proof for a skipped required analysis.
 
 § 62(4) Build-producing modes must run every analysis required by the selected language/profile guarantees.
+
+§ 62(5) `sec analyse` selects the mode with `--depth`/`-d` `interactive|standard|deep`, defaulting to `deep`; a reduced depth is reported as a limitation (`rules/tooling/cli.md` § 5.5).
 
 ---
 

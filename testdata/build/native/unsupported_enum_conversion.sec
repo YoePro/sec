@@ -1,0 +1,11 @@
+module main
+
+enum State { Ready = 17 }
+
+fn Read(value: State) int {
+    return int(value)
+}
+
+fn main() int {
+    return Read(State.Ready)
+}

@@ -353,7 +353,6 @@ integrations:
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
       - cmd/lsp/main.go
-      - internal/codegen/mlir/member_expressions.go
       - sec/stdlib/net/ip/ipv4.sec
       - internal/sema/compiler_known_presentation.go
       - internal/sema/compiler_known_synthetic.go
@@ -362,9 +361,6 @@ integrations:
       - internal/sema/compiler_known_members_test.go
       - internal/sema/analyzer_test.go
       - cmd/lsp/main_test.go
-      - internal/codegen/mlir/member_expressions_test.go
-      - internal/codegen/mlir/scalar/generator_test.go
-      - internal/codegen/llvm/scalar/generator_test.go
       - internal/sema/lifetime_test.go
       - internal/sema/compiler_known_presentation_test.go
       - cmd/lsp/compiler_known_definition_test.go
@@ -421,7 +417,7 @@ integrations:
       - "Omitted mutable T[] initialization resolves to the distinct EmptyDynamicArrayDefault fact: an initialized allocation-free empty owner with zero length and internal capacity, no backing storage and no live elements; element defaults are never required. Recursive aggregate defaults, presentation and LSP source edits consume the same fact; immutable owners and safe slices still require initialization."
       - Structural dynamic-array methods consume the canonical member mutation contract and Place/liveness borrow model before publishing successful calls or growth effects (2026-10-16). Append, Clear and RemoveAt reject overlapping live element/slice loans, including field paths, parameter-derived aliases, branch-merged origins and defer-retained uses; granting-reference access, ended loans and disjoint fields/elements remain valid. Rejected range Append publishes neither its range plan nor a growth request. Canonical reference-holder provenance now preserves parameter-derived referents across intermediate alias last uses. Existing iteration and mutable-borrow read checks remain authoritative; this is static rejection, with no runtime borrow checker or claim of executable owner lowering.
     remaining:
-      - "SEC-MLIR-P18 owning dynamic-array Semantic IR/schema-14 representation: implementation plan in package18-todo.md (created 2026-10-16, P18-01..P18-47); nothing implemented yet; Semantic IR still rejects `T[]`; gated on P15-P17 and on MD-074 (len representability), MD-034, MD-072 and MD-050"
+      - "SEC-MLIR-P18 owning dynamic-array Semantic IR/schema-14 representation: implementation plan in package18-todo.md (created 2026-10-16, P18-01..P18-47); nothing implemented yet; Semantic IR still rejects `T[]`; gated on P15-P17 and on MD-034 (MD-074 len is uint since 2026-10-17; MD-072 and MD-050 decided 2026-10-17)"
       - lower range-segment Append as one all-or-nothing growth on the P18 substrate
       - implement transactional Append on the P18 growth substrate
       - make Clear reverse-destroy live elements while retaining backing
@@ -473,12 +469,10 @@ integrations:
     code:
       - internal/sema/analyzer.go
       - internal/sema/compiler_known_members.go
-      - internal/codegen/mlir/generator.go
       - internal/sema/compiler_known_fill.go
       - internal/diagnostics/diagnostics.go
     tests:
       - internal/sema/compiler_known_members_test.go
-      - internal/codegen/mlir/generator_test.go
       - testdata/ir/test_fixed_array_fill.sec
       - internal/sema/fill_copyability_test.go
       - cmd/compiler/fill_copyability_test.go
@@ -504,8 +498,6 @@ integrations:
         result: passed on 2026-10-14; sema/check/emit-ir/emit-llvm return structured S1156 and preserve existing output
       - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic ./internal/codegen/mlir/... -count=1
         result: passed on 2026-10-14; full package suites including copyability rejection, zero extents/counts, positive struct construction and slice replacement
-      - command: go test ./internal/codegen/mlir -run 'TestGenerateFixedArray' -v
-        result: passed
       - command: go run ./cmd/compiler emit-mlir testdata/ir/test_fixed_array_fill.sec --verify -o /tmp/sec-fixed-array-fill.mlir
         result: passed; value evaluated once, seven total inline insertions emitted, and no allocation or runtime fill dependency introduced
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./... && go vet ./...

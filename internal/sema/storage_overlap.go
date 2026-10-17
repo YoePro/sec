@@ -91,7 +91,7 @@ func singleStorageOverlap(left, right Place) StorageOverlap {
 			switch projection.Kind {
 			case PlaceField, PlaceIndex:
 			case PlaceSlice:
-				if !projection.SliceStartKnown || !projection.SliceEndKnown || projection.SliceStart < 0 || projection.SliceEnd < projection.SliceStart {
+				if projection.SliceStart == nil || projection.SliceEnd == nil || projection.SliceStart.Sign() < 0 || projection.SliceEnd.Cmp(projection.SliceStart) < 0 {
 					return StorageMayOverlap
 				}
 			default:

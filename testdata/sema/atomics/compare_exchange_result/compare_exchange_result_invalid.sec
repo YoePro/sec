@@ -1,0 +1,56 @@
+module main
+
+type Count uint64
+
+fn WrongPayload() CompareExchangeResult[Count] {
+    return CompareExchangeResult[Count].NotExchanged("wrong")
+}
+
+fn MissingPayload() CompareExchangeResult[int] {
+    return CompareExchangeResult[int].NotExchanged
+}
+
+fn ExtraPayload() CompareExchangeResult[int] {
+    return CompareExchangeResult[int].Exchanged(1)
+}
+
+fn MissingGeneric(value: CompareExchangeResult) void {
+}
+
+fn ExtraGeneric(value: CompareExchangeResult[int, bool]) void {
+}
+
+fn WrongVariant() CompareExchangeResult[int] {
+    return CompareExchangeResult[int].Failed
+}
+
+fn NotAnError(value: Result[int, CompareExchangeResult[int]]) void {
+}
+
+fn Incomplete(result: CompareExchangeResult[int]) int {
+    return match result {
+        Exchanged => 0
+    }
+}
+
+fn WrongObservedType(result: CompareExchangeResult[Count]) string {
+    return match result {
+        Exchanged => "success"
+        NotExchanged(observed) => observed
+    }
+}
+
+fn WrongOwner() CompareExchangeResult[Count] {
+    return CompareExchangeResult[bool].Exchanged
+}
+
+fn PayloadRange() CompareExchangeResult[uint8] {
+    return CompareExchangeResult[uint8].NotExchanged(256)
+}
+
+fn NotAtomic(value: Atomic[CompareExchangeResult[int]]) void {
+}
+
+fn EmptyCall() CompareExchangeResult[int] {
+    return CompareExchangeResult[int].Exchanged()
+}

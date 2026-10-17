@@ -140,6 +140,12 @@ func (a *Analyzer) recordLambdaCallableIdentity(lambda *ast.LambdaExpression) {
 	}
 	a.resolvedCallableIdentities[lambda] = identity
 	a.recordClosureCreationSummary(lambda, identity, captures)
+	// MD-030: a lambda directly initializing an attributed let carries its
+	// @noPanic guarantee; it is verified on the lambda's own body.
+	if len(lambda.Attributes) > 0 && !a.noPanicLambdaSeen[lambda] {
+		a.noPanicLambdaSeen[lambda] = true
+		a.noPanicLambdas = append(a.noPanicLambdas, lambda)
+	}
 }
 
 // recordFunctionValueCall connects an indirect invocation to the canonical

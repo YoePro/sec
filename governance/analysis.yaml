@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-15"
+    updated: "2026-10-17"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -246,7 +246,9 @@ integrations:
       - inclusive cross-collection bound-source analysis accepts explicit positive integer constant steps, including folded integer expressions, as canonical ascending progression evidence. Strict indexed.Len > bound.Len proofs suppress intent findings; equality/non-strict proofs and collection mutation retain advice. Runtime steps remain outside this normalized domain. CLI and LSP preserve shared proof/suggestion policy, and optional body cache contract v9 invalidates results from before this domain extension.
       - dominating element-zero intent witnesses are searched backward from start-at-one traversals and revoked by canonical collection/parent replacement, structural mutation and mutable/opaque call effects; reads and element writes preserve the witness, and a fresh unconditional zero access can re-establish it after mutation. Conditional logical RHS, match arms, callable/spawn and deferred bodies do not establish same-block dominance; unconditional logical LHS accesses can. This remains optional Standard/Deep advice with Interactive exclusion, shared CLI/LSP presentation and cache contract v10, consuming expression-type, operation-contract and operator-semantics prerequisite revisions.
       - skipped-first-element intent witnesses join over every continuing if/else path, including nested branches, canonical constant-true reachability and return-only siblings. Each continuing branch must establish fresh element-zero handling; branch-local mutation revokes stale witnesses, fresh handling after mutation can restore them, and exiting-branch mutation cannot erase proof of the continuing path. Every contributing access retains its own suppression evidence/source token. Missing, wrong-collection or deferred branch witnesses and mutations after the join retain advisory results; shared CLI/LSP and body cache contract v11 preserve this evidence.
+      - "len(x) - 1 final-element form (MD-074/MD-088, 2026-10-17): lengthReceiver recognizes the compiler-known len(x) as the same uint length observation as x.Len, so the final-element, omitted-last-element and inclusive-length families apply to both spellings; the compiler-known len call never invalidates non-empty or guard proofs (callMayChangeLength). Tests: TestPitfallAnalysisRequiresNonEmptyProofForFinalElement (len missing proof, len exiting empty guard)"
     remaining:
+      - "MD-074/MD-088 pitfall extension (rules/analysis/pitfall_analysis.md \"Final-element access requires non-empty proof\", 2026-10-17): predecessor access values[i - 1] with i possibly 0 and reverse loops, and explaining whether the hazard is checked unsigned underflow or a bounds violation, are not implemented yet"
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
       - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
@@ -1315,7 +1317,6 @@ integrations:
       - internal/sema/unsafe_function_body_test.go
       - cmd/compiler/unsafe_function_body_test.go
       - cmd/lsp/unsafe_function_body_test.go
-      - internal/codegen/llvm/unsafe_function_body_test.go
       - testdata/codegen/unsafe_named_asm_output.sec
       - testdata/tooling/unsafe_function_asm_invalid.sec
       - testdata/tooling/unsafe_function_asm_valid.sec

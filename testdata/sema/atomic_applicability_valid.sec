@@ -1,0 +1,120 @@
+module main
+
+type Count uint64
+type AliasCount Count
+type Flag bool
+enum State uint8 { Idle, Running }
+type NamedState State
+type Pointer RawPtr[byte]
+type Bounded int range 0..100
+type InheritedBound Bounded
+
+fn Signed(value: ref Atomic[int128], item: int128) int128 {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+    return value.Load()
+}
+
+fn Unsigned(value: ref Atomic[uint128], item: uint128) uint128 {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+    return value.Load()
+}
+
+fn Named(value: ref Atomic[Count], item: Count) Count {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+    return value.Load()
+}
+
+fn NamedChain(value: ref Atomic[AliasCount], item: AliasCount) AliasCount {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+    return value.Load()
+}
+
+fn Boolean(value: ref Atomic[bool], item: bool) bool {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn NamedBool(value: ref Atomic[Flag], item: Flag) Flag {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn Enum(value: ref Atomic[State], item: State) State {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn NamedEnum(value: ref Atomic[NamedState], item: NamedState) NamedState {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn PointerOps(value: ref Atomic[RawPtr[byte]], item: RawPtr[byte]) RawPtr[byte] {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn NamedPointer(value: ref Atomic[Pointer], item: Pointer) Pointer {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn Constrained(value: ref Atomic[Bounded], item: Bounded) Bounded {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn InheritedConstraint(value: ref Atomic[InheritedBound], item: InheritedBound) InheritedBound {
+    value.Store(item)
+    discard value.Swap(item)
+    discard value.CompareExchange(item, item)
+    return value.Load()
+}
+
+fn Inferred(item: Count) Count {
+    let value := Atomic(item)
+    discard value.FetchAdd(item)
+    return value.Load()
+}

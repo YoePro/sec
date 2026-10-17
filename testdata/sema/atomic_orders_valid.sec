@@ -1,0 +1,238 @@
+module main
+
+fn LoadRelaxed(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.Relaxed)
+}
+
+fn LoadAcquire(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.Acquire)
+}
+
+fn LoadSeqCst(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.SeqCst)
+}
+
+fn StoreRelaxed(value: ref Atomic[int]) void {
+    value.Store(1, MemoryOrder.Relaxed)
+}
+
+fn StoreRelease(value: ref Atomic[int]) void {
+    value.Store(1, MemoryOrder.Release)
+}
+
+fn StoreSeqCst(value: ref Atomic[int]) void {
+    value.Store(1, MemoryOrder.SeqCst)
+}
+
+fn SwapRelaxed(value: ref Atomic[int]) void {
+    discard value.Swap(1, MemoryOrder.Relaxed)
+}
+
+fn SwapAcquire(value: ref Atomic[int]) void {
+    discard value.Swap(1, MemoryOrder.Acquire)
+}
+
+fn SwapRelease(value: ref Atomic[int]) void {
+    discard value.Swap(1, MemoryOrder.Release)
+}
+
+fn SwapAcqRel(value: ref Atomic[int]) void {
+    discard value.Swap(1, MemoryOrder.AcqRel)
+}
+
+fn SwapSeqCst(value: ref Atomic[int]) void {
+    discard value.Swap(1, MemoryOrder.SeqCst)
+}
+
+fn FetchAddRelaxed(value: ref Atomic[int]) void {
+    discard value.FetchAdd(1, MemoryOrder.Relaxed)
+}
+
+fn FetchAddAcquire(value: ref Atomic[int]) void {
+    discard value.FetchAdd(1, MemoryOrder.Acquire)
+}
+
+fn FetchAddRelease(value: ref Atomic[int]) void {
+    discard value.FetchAdd(1, MemoryOrder.Release)
+}
+
+fn FetchAddAcqRel(value: ref Atomic[int]) void {
+    discard value.FetchAdd(1, MemoryOrder.AcqRel)
+}
+
+fn FetchAddSeqCst(value: ref Atomic[int]) void {
+    discard value.FetchAdd(1, MemoryOrder.SeqCst)
+}
+
+fn FetchSubRelaxed(value: ref Atomic[int]) void {
+    discard value.FetchSub(1, MemoryOrder.Relaxed)
+}
+
+fn FetchSubAcquire(value: ref Atomic[int]) void {
+    discard value.FetchSub(1, MemoryOrder.Acquire)
+}
+
+fn FetchSubRelease(value: ref Atomic[int]) void {
+    discard value.FetchSub(1, MemoryOrder.Release)
+}
+
+fn FetchSubAcqRel(value: ref Atomic[int]) void {
+    discard value.FetchSub(1, MemoryOrder.AcqRel)
+}
+
+fn FetchSubSeqCst(value: ref Atomic[int]) void {
+    discard value.FetchSub(1, MemoryOrder.SeqCst)
+}
+
+fn FetchAndRelaxed(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, MemoryOrder.Relaxed)
+}
+
+fn FetchAndAcquire(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, MemoryOrder.Acquire)
+}
+
+fn FetchAndRelease(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, MemoryOrder.Release)
+}
+
+fn FetchAndAcqRel(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, MemoryOrder.AcqRel)
+}
+
+fn FetchAndSeqCst(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, MemoryOrder.SeqCst)
+}
+
+fn FetchOrRelaxed(value: ref Atomic[int]) void {
+    discard value.FetchOr(1, MemoryOrder.Relaxed)
+}
+
+fn FetchOrAcquire(value: ref Atomic[int]) void {
+    discard value.FetchOr(1, MemoryOrder.Acquire)
+}
+
+fn FetchOrRelease(value: ref Atomic[int]) void {
+    discard value.FetchOr(1, MemoryOrder.Release)
+}
+
+fn FetchOrAcqRel(value: ref Atomic[int]) void {
+    discard value.FetchOr(1, MemoryOrder.AcqRel)
+}
+
+fn FetchOrSeqCst(value: ref Atomic[int]) void {
+    discard value.FetchOr(1, MemoryOrder.SeqCst)
+}
+
+fn FetchXorRelaxed(value: ref Atomic[int]) void {
+    discard value.FetchXor(1, MemoryOrder.Relaxed)
+}
+
+fn FetchXorAcquire(value: ref Atomic[int]) void {
+    discard value.FetchXor(1, MemoryOrder.Acquire)
+}
+
+fn FetchXorRelease(value: ref Atomic[int]) void {
+    discard value.FetchXor(1, MemoryOrder.Release)
+}
+
+fn FetchXorAcqRel(value: ref Atomic[int]) void {
+    discard value.FetchXor(1, MemoryOrder.AcqRel)
+}
+
+fn FetchXorSeqCst(value: ref Atomic[int]) void {
+    discard value.FetchXor(1, MemoryOrder.SeqCst)
+}
+
+fn CompareRelaxedRelaxed(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Relaxed, MemoryOrder.Relaxed)
+}
+
+fn CompareRelaxedAcquire(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Relaxed, MemoryOrder.Acquire)
+}
+
+fn CompareRelaxedSeqCst(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Relaxed, MemoryOrder.SeqCst)
+}
+
+fn CompareAcquireRelaxed(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Acquire, MemoryOrder.Relaxed)
+}
+
+fn CompareAcquireAcquire(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Acquire, MemoryOrder.Acquire)
+}
+
+fn CompareAcquireSeqCst(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Acquire, MemoryOrder.SeqCst)
+}
+
+fn CompareReleaseRelaxed(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Release, MemoryOrder.Relaxed)
+}
+
+fn CompareReleaseAcquire(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Release, MemoryOrder.Acquire)
+}
+
+fn CompareReleaseSeqCst(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Release, MemoryOrder.SeqCst)
+}
+
+fn CompareAcqRelRelaxed(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.AcqRel, MemoryOrder.Relaxed)
+}
+
+fn CompareAcqRelAcquire(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.AcqRel, MemoryOrder.Acquire)
+}
+
+fn CompareAcqRelSeqCst(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.AcqRel, MemoryOrder.SeqCst)
+}
+
+fn CompareSeqCstRelaxed(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.SeqCst, MemoryOrder.Relaxed)
+}
+
+fn CompareSeqCstAcquire(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.SeqCst, MemoryOrder.Acquire)
+}
+
+fn CompareSeqCstSeqCst(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.SeqCst, MemoryOrder.SeqCst)
+}
+
+fn Aliases(value: ref Atomic[int]) void {
+    let order := MemoryOrder.Acquire
+    let alias: MemoryOrder := order
+    discard value.Load(alias)
+}
+
+fn Defaults(value: ref Atomic[int]) void {
+    discard value.Load()
+    value.Store(1)
+    discard value.Swap(1)
+    discard value.CompareExchange(0, 1)
+    discard value.FetchAdd(1)
+    discard value.FetchSub(1)
+    discard value.FetchAnd(1)
+    discard value.FetchOr(1)
+    discard value.FetchXor(1)
+}
+
+let ModuleOrder := MemoryOrder.SeqCst
+
+fn ModuleAlias(value: ref Atomic[int]) void {
+    discard value.Load(ModuleOrder)
+}
+
+fn AliasScopes(value: ref Atomic[int], nested: bool) void {
+    let order := MemoryOrder.Acquire
+    if nested {
+        let inner := MemoryOrder.Release
+        value.Store(1, inner)
+    }
+    discard value.Load(order)
+}

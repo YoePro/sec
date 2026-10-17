@@ -1,5 +1,6 @@
 add_mlir_library(SecMLIRAnalysis
   VerifyCheckedIntegerGuards.cpp
+  VerifyPlaceReferences.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${SEC_MLIR_SOURCE_DIR}/include/sec/Analysis

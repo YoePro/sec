@@ -27,6 +27,12 @@ func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 	}
 	contents += shapedFactsHoverSuffix(typ)
 	contents += collectionFactsHoverSuffix(typ)
+	if fact, atomic := sema.AtomicTypeFactsOf(typ); atomic {
+		contents += atomicFactsHoverSuffix(fact)
+	}
+	if shape, associatedEnum := compareExchangeResultHoverContents(typ, nil); associatedEnum {
+		contents += "\n\n" + shape
+	}
 	if value, source, ok := sema.DefaultValuePreview(typ, 8); ok {
 		contents += fmt.Sprintf("\n\nDefault: `%s`\n\nSource: `%s`", value, source)
 	} else {

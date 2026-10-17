@@ -101,7 +101,7 @@ func TestGeneralAttributeParserValidation(t *testing.T) {
 		{"link name on Sec function", "@link_name(\"x\")\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "@link_name may only annotate an extern declaration at 2:1"},
 		{"address on function", "@address(16)\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "@address may only annotate a let declaration at 2:1"},
 		{"effect on type", "@noBlock\ntype T int\n", diagnostics.AttributeNotAllowedOnTarget, "@noBlock may only annotate a function or method at 2:1"},
-		{"local attachment", "fn F() void {\n    @noPanic\n    let x := 1\n}\n", diagnostics.AttributeNotAllowedOnTarget, "@noPanic may only annotate a top-level declaration at 2:5"},
+		{"local attachment", "fn F() void {\n    @noPanic\n    let x := 1\n}\n", diagnostics.AttributeNotAllowedOnTarget, "@noPanic may annotate a local let only when it directly initializes a lambda (fn or capture(...) fn) at 2:5"},
 		{"unknown inside a set", "@noPanic\n@audit\nfn F() void {}\n", diagnostics.UnknownAttribute, "unknown attribute @audit at 2:1"},
 	}
 	for _, test := range tests {

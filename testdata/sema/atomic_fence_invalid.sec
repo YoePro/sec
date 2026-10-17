@@ -1,0 +1,21 @@
+module main
+
+fn Relaxed() void {
+    atomic.Fence(MemoryOrder.Relaxed)
+}
+
+fn Missing() void {
+    atomic.Fence()
+}
+
+fn Runtime(order: MemoryOrder) void {
+    atomic.Fence(order)
+}
+
+fn WrongType() void {
+    atomic.Fence(1)
+}
+
+fn main() int {
+    return 0
+}

@@ -18,7 +18,6 @@ type buildCommandOptions struct {
 	LLVMOutputFile string
 	MLIROutputFile string
 	MLIRBin        string
-	Pipeline       string
 }
 
 func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
@@ -30,9 +29,8 @@ func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, 
 // Rules: rules/projects/projects.md — §§8(3),30(1–4).
 func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buildCommandOptions, bool) {
 	options := buildCommandOptions{
-		Target:   defaultTarget,
-		Clang:    "clang",
-		Pipeline: "llvm",
+		Target: defaultTarget,
+		Clang:  "clang",
 	}
 
 	for i := 0; i < len(args); i++ {
@@ -82,17 +80,6 @@ func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buil
 				return buildCommandOptions{}, false
 			}
 			options.Clang = args[i+1]
-			i++
-		case "--pipeline":
-			if i+1 >= len(args) {
-				return buildCommandOptions{}, false
-			}
-			switch args[i+1] {
-			case "llvm", "mlir":
-				options.Pipeline = args[i+1]
-			default:
-				return buildCommandOptions{}, false
-			}
 			i++
 		case "--mlir-bin":
 			if i+1 >= len(args) || options.MLIRBin != "" {

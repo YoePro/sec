@@ -408,7 +408,7 @@ fn IsBlank(value: string) bool {
 func TestCompilerLoadsCoreRuneAndStringConversionAPI(t *testing.T) {
 	source := `module main
 
-fn Runes(value: string) rune[] {
+fn Runes(value: string) Result[rune[], CollectionError] {
 	return value.ToRuneArray()
 }
 
@@ -541,7 +541,7 @@ func TestParseBuildCommandArgs(t *testing.T) {
 
 func TestParseBuildCommandOptions(t *testing.T) {
 	options, ok := parseBuildCommandOptions(
-		[]string{"main.sec", "--target", "linux-amd64", "--pipeline", "mlir", "--keep-mlir", "--keep-llvm", "--mlir-bin", "/opt/mlir/bin", "--clang", "custom-clang", "-o", "program"},
+		[]string{"main.sec", "--target", "linux-amd64", "--keep-mlir", "--keep-llvm", "--mlir-bin", "/opt/mlir/bin", "--clang", "custom-clang", "-o", "program"},
 		CompilerTarget{OS: "macos", Arch: "arm64"},
 	)
 	if !ok {
@@ -568,14 +568,14 @@ func TestParseBuildCommandOptions(t *testing.T) {
 	if options.MLIRBin != "/opt/mlir/bin" {
 		t.Fatalf("MLIRBin = %q, want /opt/mlir/bin", options.MLIRBin)
 	}
-	if options.Pipeline != "mlir" {
-		t.Fatalf("Pipeline = %q, want mlir", options.Pipeline)
+	if _, ok := parseBuildCommandOptions([]string{"main.sec", "--pipeline", "mlir"}, CompilerTarget{}); ok {
+		t.Fatal("--pipeline was removed with the single compilation track (MD-101)")
 	}
 }
 
 func TestParseEmitMLIRCommandArgs(t *testing.T) {
 	options, ok := parseEmitMLIRCommandArgs(
-		[]string{"main.sec", "-o", "main.mlir", "--target", "linux-amd64", "--mlir-bin", "/opt/mlir/bin", "--verify"},
+		[]string{"main.sec", "-o", "main.mlir", "--target", "linux-amd64", "--mlir-bin", "/opt/mlir/bin"},
 		CompilerTarget{OS: "macos", Arch: "arm64"},
 	)
 	if !ok {
@@ -593,13 +593,13 @@ func TestParseEmitMLIRCommandArgs(t *testing.T) {
 	if options.MLIRBin != "/opt/mlir/bin" {
 		t.Fatalf("MLIRBin = %q, want /opt/mlir/bin", options.MLIRBin)
 	}
-	if !options.Verify {
-		t.Fatal("Verify = false, want true")
+	if _, ok := parseEmitMLIRCommandArgs([]string{"main.sec", "-o", "-", "--verify"}, CompilerTarget{}); ok {
+		t.Fatal("--verify was removed: emit-mlir always verifies through sec-mlir-opt")
 	}
 }
 
 func TestEmitOutputDashMeansStdout(t *testing.T) {
-	_, outputFile, _, ok := parseEmitLLVMCommandArgs(
+	_, outputFile, _, _, ok := parseEmitLLVMCommandArgs(
 		[]string{"main.sec", "-o", "-"},
 		CompilerTarget{OS: "linux", Arch: "amd64"},
 	)
@@ -623,7 +623,7 @@ func TestEmitOutputDashMeansStdout(t *testing.T) {
 }
 
 func TestRejectDashPrefixedOutputFiles(t *testing.T) {
-	if _, _, _, ok := parseEmitLLVMCommandArgs([]string{"main.sec", "-o", "-bad.ll"}, CompilerTarget{}); ok {
+	if _, _, _, _, ok := parseEmitLLVMCommandArgs([]string{"main.sec", "-o", "-bad.ll"}, CompilerTarget{}); ok {
 		t.Fatal("parseEmitLLVMCommandArgs accepted dash-prefixed output file")
 	}
 	if _, ok := parseEmitMLIRCommandArgs([]string{"main.sec", "-o", "-bad.mlir"}, CompilerTarget{}); ok {
@@ -913,9 +913,9 @@ func TestDefaultBuildOutputPath(t *testing.T) {
 	}
 }
 
-func TestParseMLIRBuildDefaultsToCurrentDirectoryArtifacts(t *testing.T) {
+func TestParseBuildKeepArtifactsDefaultToCurrentDirectory(t *testing.T) {
 	options, ok := parseBuildCommandOptions(
-		[]string{"testdata/ir/test_complex1.sec", "--pipeline", "mlir", "--keep-mlir", "--keep-llvm"},
+		[]string{"testdata/ir/test_complex1.sec", "--keep-mlir", "--keep-llvm"},
 		CompilerTarget{OS: "linux", Arch: "amd64"},
 	)
 	if !ok {

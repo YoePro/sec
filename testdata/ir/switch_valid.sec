@@ -1,0 +1,32 @@
+module main
+
+fn Subject() int {
+    return 2
+}
+
+fn Limit() int {
+    return 5
+}
+
+fn Classify() int {
+    switch Subject() {
+    case 1, Limit():
+        return 1
+    case 10..<20:
+        return 2
+    default:
+        return 3
+    }
+}
+
+fn Fall(x: int) int {
+    let mut t: int := 0
+    switch x {
+    case 1:
+        t += 1
+        fallthrough
+    case 2:
+        t += 10
+    }
+    return t
+}

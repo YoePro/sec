@@ -1,0 +1,41 @@
+module main
+
+fn IsDigit(r: rune) bool {
+    return r >= '0' && r <= '9'
+}
+
+fn IsUpper(c: char) bool {
+    return c >= 'A' && c <= 'Z'
+}
+
+fn Classify(r: rune) int {
+    switch {
+    case r == ' ':
+        return 1
+    case IsDigit(r):
+        return 2
+    default:
+        return 3
+    }
+}
+
+fn main() int {
+    let five: rune := '5'
+    let letter: rune := 'x'
+    let big: rune := 'é'
+    let upper: char := 'Q'
+    let lower: char := 'q'
+    if !IsDigit(five) || IsDigit(letter) {
+        return 1
+    }
+    if !IsUpper(upper) || IsUpper(lower) {
+        return 2
+    }
+    if Classify(' ') != 1 || Classify(five) != 2 || Classify(big) != 3 {
+        return 3
+    }
+    if big <= letter {
+        return 4
+    }
+    return 0
+}

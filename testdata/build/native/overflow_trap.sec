@@ -1,0 +1,9 @@
+module main
+
+fn Big(x: int) int {
+    return x * 4611686018427387904
+}
+
+fn main() int {
+    return Big(4)
+}

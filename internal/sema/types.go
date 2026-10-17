@@ -129,7 +129,10 @@ type Type struct {
 	EnumValues             []string
 	EnumConsts             map[string]EnumValue
 	EnumDefault            string
-	BitWidth               int64
+	// AssociatedEnum retains enum source identity while its discriminant and
+	// payload use the shared sum-type machinery (atomics.md — §6).
+	AssociatedEnum bool
+	BitWidth       int64
 	// FloatBits is the IEEE binary width (32 or 64) of float32, float64, and
 	// plain float, and of named types over them. Plain float is platform-sized
 	// like int and uint: float32 on a 32-bit platform and float64 on a 64-bit
@@ -887,6 +890,9 @@ func decimalCoefficientBits(target Type) uint {
 }
 
 type Symbol struct {
+	// atomicMemoryOrder snapshots an immutable canonical MemoryOrder value
+	// for operation/order validation (rules/concurrency/atomics.md — §24).
+	atomicMemoryOrder *atomicOrderConstant
 	// mutexAcquisition preserves proven held-resource provenance through local
 	// guard moves (rules/concurrency/mutex.md — §§28,42–43).
 	mutexAcquisition *mutexAcquisition
@@ -1134,8 +1140,8 @@ func newBuiltinTypes() map[string]Type {
 		"ContextError":          builtinContextErrorType(),
 		"MemoryOrder":           builtinMemoryOrderType(),
 		"ChannelCapability":     builtinChannelCapabilityType(),
-		"Atomic":                {Name: "Atomic", Kind: StructType, GenericParameters: []string{"T"}},
-		"CompareExchangeResult": {Name: "CompareExchangeResult", Kind: StructType, GenericParameters: []string{"T"}},
+		"Atomic":                builtinAtomicType(),
+		"CompareExchangeResult": builtinCompareExchangeResultType(),
 		"Event":                 {Name: "Event", Kind: StructType, GenericParameters: []string{"T"}},
 		"EventStorage":          {Name: "EventStorage", Kind: StructType, GenericParameters: []string{"T"}},
 		"Subscription":          {Name: "Subscription", Kind: StructType},
@@ -1239,6 +1245,15 @@ func newBuiltinTypes() map[string]Type {
 
 	for _, iface := range CompilerKnownInterfaces() {
 		types[iface.Name] = iface
+	}
+
+	// rules/concurrency/ipc.md — §§6,27,44,55,68,79: nominal core errors.
+	for _, name := range []string{"IPCError", "SharedMemoryError", "IPCSyncError", "IPCSharedError", "IPCAtomicError"} {
+		types[name] = builtinIPCErrorType(name)
+	}
+	// rules/concurrency/ipc.md — §94; rules/concurrency/processes.md — §§5.12–5.13.
+	for _, name := range []string{"CommandInputMode", "CommandOutputMode"} {
+		types[name] = builtinCommandIOModeType(name)
 	}
 
 	for name, typ := range types {

@@ -1,0 +1,51 @@
+module main
+
+type Counter struct {
+    _value: int,
+}
+
+impl Counter {
+    @noPanic
+    init(value: int) {
+        self._value = value * 2
+    }
+
+    @noPanic
+    free {
+        assert self._value > 0, "positive"
+    }
+
+    property Doubled: int {
+        @noPanic
+        get {
+            return self._value * 2
+        }
+
+        set value {
+            self._value = value * 3
+        }
+    }
+
+    property Tripled: int {
+        get {
+            return self._value * 3
+        }
+
+        @noPanic
+        set value {
+            self._value = value * 3
+        }
+    }
+}
+
+fn Use(factor: int) int {
+    @noPanic
+    let multiply := capture(factor) fn(value: int) int {
+        return value * factor
+    }
+    return multiply(2)
+}
+
+fn main() int {
+    return 0
+}

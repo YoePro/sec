@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-09-15
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-17
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/atomics.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
@@ -713,6 +713,14 @@ successful CompareExchange
 
 § 24(3) Target capability validation occurs after or alongside semantic order validation and must not make an otherwise semantically invalid order valid.
 
+§ 24(4) Each explicit `MemoryOrder` argument to an ordinary `Atomic[T]` operation or `atomic.Fence` is a `SemanticCompileTimeRequiredContext` as defined by `rules/compiler/compile_time_evaluation.md`. Its canonical context name is `AtomicMemoryOrderArgument`, its expected type is `MemoryOrder`, and its owning rule is this section. Its value must be established during semantic analysis before operation/order and target capability validation.
+
+§ 24(5) Enum variants and immutable bindings whose values are established at compile time are valid order expressions. Ordinary typed semantic CTE applies, including its execution, effect and failure rules; this requirement introduces no separate constant-expression syntax or evaluator. Runtime-dependent parameters, mutable state and volatile reads cannot supply an explicit order. An immutable binding alone does not establish that its value is compile-time-known.
+
+The legal result domain is the operation's allowed values in §24(1), with success and failure checked independently. No runtime storage materialization is required for the order value. Permitted compiler-known inputs are exactly those allowed by ordinary semantic CTE; this context grants no additional capabilities.
+
+§ 24(6) A non-evaluable explicit order is a compile-time semantic error. The compiler must not defer selection of an order to runtime or silently replace it with another order. If semantic CTE requires execution that the compiler does not yet implement, report that implementation limitation distinctly from a proven invalid order. Omitted ordinary object-operation orders remain `SeqCst` under §25; `atomic.Fence` still requires an explicit order.
+
 ---
 
 ## § 25. Default memory order
@@ -1162,7 +1170,7 @@ atomic.Fence
 
 § 45(4) The compiler must validate operation availability by concrete `T`.
 
-§ 45(5) The compiler must validate each explicit `MemoryOrder`.
+§ 45(5) The compiler must establish each explicit `MemoryOrder` at compile time under §24(4–6), then validate it against the operation/order matrix.
 
 § 45(6) The compiler must validate compare-exchange success and failure orders independently.
 

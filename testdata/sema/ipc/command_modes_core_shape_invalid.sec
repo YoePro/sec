@@ -1,0 +1,4 @@
+module core
+
+type CommandInputMode int
+type CommandOutputMode struct { Value: int }

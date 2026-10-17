@@ -10,7 +10,7 @@ import (
 // Rules: rules/analysis/pitfall_analysis.md — Final-element access requires
 // non-empty proof, sec analyse, Evidence against a finding.
 func TestAnalyseNonEmptyProofs(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/sema/pitfall_nonempty_flow.sec")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/sema/pitfall_nonempty_flow.sec")
 	if code != 0 {
 		t.Fatal(code, stderr, stdout)
 	}

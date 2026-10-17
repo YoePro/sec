@@ -1864,7 +1864,8 @@ includes data race analysis as part of all-analysis behavior.
 Tooling must also permit explicit selection of data race analysis without
 requiring every unrelated optional analysis.
 
-The exact CLI spelling is owned by CLI/tooling rules.
+The selection is spelled `sec analyse data-races` (`rules/tooling/cli.md`
+§ 5.2, MD-017).
 
 Deep data-race output may include:
 

@@ -1,0 +1,7 @@
+module core
+
+type IPCError int
+type SharedMemoryError struct { Value: int }
+type IPCSyncError union { Fake }
+type IPCSharedError int
+type IPCAtomicError int

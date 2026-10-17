@@ -840,6 +840,15 @@ Invalid:
 
 Attributes remain governed by the canonical attribute rules for declaration contexts that explicitly permit them.
 
+The one such context is `@noPanic` on its own line before a `let` that directly initializes a lambda (MD-030, `rules/foundations/attributes.md`, "Callable-body attachment (MD-030)"). It annotates the lambda's body — every invocation is proven panic-free under `rules/errors/panic.md` § 21 — not the binding, the initializer or the captures. Capturing and non-capturing lambdas are both eligible; the expression-prefix form `let f := @noPanic fn(...)` stays invalid.
+
+```sec
+@noPanic
+let identity := fn(value: bool) bool {
+    return value
+}
+```
+
 ## 33. Direct recursion
 
 An unnamed lambda does not see the binding being initialized by its own lambda expression.

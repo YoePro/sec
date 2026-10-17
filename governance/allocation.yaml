@@ -183,7 +183,7 @@ integrations:
       - represent resulting storage origin/domain, lifetime/generation dependency, ownership/borrow mode and destruction responsibility
       - keep allocation, initialization, destruction and reclamation distinct
       - verify contradictory or incomplete allocation facts before lowering
-      - "SEC-MLIR-P19 Arena and allocation-context Semantic IR/schema-15 representation: implementation plan in package19-todo.md (created 2026-10-16, P19-01..P19-44); nothing implemented yet; the existing Arena/allocation frontend facts are the basis for the P19 Sema plans; gated on P15-P18 and on MD-034, MD-053, MD-065, MD-074; the owning dynamic-array part is package18-todo.md"
+      - "SEC-MLIR-P19 Arena and allocation-context Semantic IR/schema-15 representation: implementation plan in package19-todo.md (created 2026-10-16, P19-01..P19-44); nothing implemented yet; the existing Arena/allocation frontend facts are the basis for the P19 Sema plans; gated on P15-P18 and on MD-034, MD-053, MD-065 (MD-074 decided 2026-10-17: len is uint); the owning dynamic-array part is package18-todo.md"
     required_tests:
       - explicit allocation op
       - context/domain preserved
@@ -241,8 +241,6 @@ integrations:
         result: "Passed on 2026-10-14: target-aware clang object verification, real Sec MLIR core lowering with verify-each, identity-based call audits, injected hidden-call rejection and explicit unsupported-reference/char boundaries."
     code:
       - internal/sema/allocation_lowering_readiness.go
-      - internal/codegen/llvm/contract_readiness.go
-      - internal/codegen/mlir/target.go
       - internal/ir/semantic/builder.go
 
   - id: target-policy.allocation

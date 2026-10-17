@@ -23,6 +23,9 @@ type Options struct {
 	IndentationWidth int
 	// VerticalStyle is `vertical_style`; empty selects structured.
 	VerticalStyle VerticalStyle
+	// MaxAlignmentPadding is `max_alignment_padding` in spaces. Zero selects
+	// the default of four indentation widths (§ 4(14)).
+	MaxAlignmentPadding int
 }
 
 // VerticalStyle selects whether optional structural blank lines are emitted.
@@ -61,6 +64,9 @@ func ValidateOptions(options Options) error {
 	default:
 		return fmt.Errorf("vertical_style must be \"structured\" or \"compact\", got %q", options.VerticalStyle)
 	}
+	if options.MaxAlignmentPadding < 0 {
+		return fmt.Errorf("max_alignment_padding must be a positive number of spaces, got %d", options.MaxAlignmentPadding)
+	}
 	return nil
 }
 
@@ -75,8 +81,12 @@ func (options Options) indentationWidth() int {
 	}
 }
 
-// maximumAlignmentPadding is four indentation widths (§ 4(14)).
+// maximumAlignmentPadding is the project's `max_alignment_padding`, or four
+// indentation widths when it is not set (§ 4(14), MD-098).
 func (options Options) maximumAlignmentPadding() int {
+	if options.MaxAlignmentPadding > 0 {
+		return options.MaxAlignmentPadding
+	}
 	return 4 * options.indentationWidth()
 }
 
@@ -342,7 +352,8 @@ func alignDeclarationBodyGroups(lines []string, start int, end int, itemIndent i
 	for index := start; index < end; index++ {
 		line := lines[index]
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || leadingSpaces(line) != itemIndent || isStandaloneComment(trimmed) || delimiters(codeBeforeTrailingComment(trimmed)) > 0 {
+		code, _, _ := splitTrailingComment(trimmed)
+		if trimmed == "" || leadingSpaces(line) != itemIndent || isStandaloneComment(trimmed) || delimiters(strings.TrimSpace(code)) > 0 {
 			flush()
 			continue
 		}
@@ -360,7 +371,7 @@ func alignTrailingCommentGroup(lines []string, group []int) {
 	maxCodeWidth := 0
 	commented := 0
 	for _, index := range group {
-		code, _, hasComment := splitTrailingLineComment(lines[index])
+		code, _, hasComment := splitTrailingComment(lines[index])
 		if width := utf8.RuneCountInString(code); width > maxCodeWidth {
 			maxCodeWidth = width
 		}
@@ -372,13 +383,58 @@ func alignTrailingCommentGroup(lines []string, group []int) {
 		return
 	}
 	for _, index := range group {
-		code, comment, hasComment := splitTrailingLineComment(lines[index])
+		code, comment, hasComment := splitTrailingComment(lines[index])
 		if !hasComment {
 			continue
 		}
 		padding := maxCodeWidth - utf8.RuneCountInString(code) + structuralColumnSpacing
 		lines[index] = code + strings.Repeat(" ", padding) + comment
 	}
+}
+
+// splitTrailingComment splits a declaration-table row at its trailing
+// comment: a line comment, or a single-line block comment that ends the line
+// after code. Both occupy the same trailing-comment column; a block comment
+// followed by more code on the line is inline, not trailing (MD-097).
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 9(8), § 9(8b), § 12(5), § 12(9)
+func splitTrailingComment(line string) (string, string, bool) {
+	if index := trailingBlockCommentIndex(line); index >= 0 {
+		return strings.TrimRight(line[:index], " \t"), strings.TrimRight(line[index:], " \t"), true
+	}
+	return splitTrailingLineComment(line)
+}
+
+// trailingBlockCommentIndex returns the start of a single-line block comment
+// that is the last lexical element of a line containing code before it, or -1.
+func trailingBlockCommentIndex(line string) int {
+	if !strings.Contains(line, "/*") {
+		return -1
+	}
+	syntax := cst.Build(line, "")
+	if len(syntax.Diagnostics) != 0 {
+		return -1
+	}
+	last := -1
+	for index, element := range syntax.Elements {
+		if element.Kind != cst.Whitespace {
+			last = index
+		}
+	}
+	if last <= 0 {
+		return -1
+	}
+	element := syntax.Elements[last]
+	if element.Kind != cst.Comment || !strings.HasPrefix(element.Text, "/*") || strings.Contains(element.Text, "\n") {
+		return -1
+	}
+	for index := 0; index < last; index++ {
+		if syntax.Elements[index].Kind == cst.Token {
+			return element.Span.Start
+		}
+	}
+	return -1
 }
 
 func splitTrailingLineComment(line string) (string, string, bool) {

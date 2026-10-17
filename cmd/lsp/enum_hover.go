@@ -14,6 +14,13 @@ import (
 // rules/concurrency/atomics.md — §43(1) (MemoryOrder variants).
 func enumVariantHoverContents(analyzer *sema.Analyzer, program *ast.Program, definition lexer.Token) (string, bool) {
 	for _, typ := range analyzer.Types() {
+		if _, associated := sema.CompareExchangeResultType(typ); associated {
+			for index, variant := range typ.UnionVariants {
+				if sameSourceToken(variant.Token, definition) {
+					return compareExchangeVariantContents(typ, uint32(index), program)
+				}
+			}
+		}
 		if typ.Kind != sema.EnumType {
 			continue
 		}

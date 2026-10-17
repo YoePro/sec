@@ -9,7 +9,7 @@ import (
 )
 
 // attributeTargets is the set of declaration kinds an attribute may modify.
-type attributeTargets uint8
+type attributeTargets uint16
 
 const (
 	attributeOnFunction attributeTargets = 1 << iota
@@ -18,7 +18,16 @@ const (
 	attributeOnNominalType
 	attributeOnLet
 	attributeOnAnyTopLevel
+	// The callable-body targets of MD-030: init, free, one property accessor
+	// (get, set or try set) and a let that directly initializes a lambda.
+	attributeOnInit
+	attributeOnFree
+	attributeOnAccessor
+	attributeOnLambdaLet
 )
+
+// noPanicTargetText names every MD-030 placement of @noPanic.
+const noPanicTargetText = "a function, method, extern declaration, init, free, property get/set/try set accessor, or a let that directly initializes a lambda"
 
 // attributeArgumentShape is the argument form an attribute defines.
 type attributeArgumentShape uint8
@@ -56,7 +65,7 @@ var compilerKnownAttributes = map[string]attributeSpec{
 	"interruptSafe":  {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares that the function may be called from ISR code; implies @noPanic, @noAlloc, and @noBlock."},
 	"noCopy":         {targets: attributeOnNominalType, targetText: "a nominal type declaration", shape: attributeNoArguments, summary: "Makes the nominal type non-copyable: values move or are borrowed, never implicitly copied."},
 	"noAlloc":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path allocates; a trusted foreign contract on an extern declaration."},
-	"noPanic":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path panics; a trusted foreign contract on an extern declaration."},
+	"noPanic":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern | attributeOnInit | attributeOnFree | attributeOnAccessor | attributeOnLambdaLet, targetText: noPanicTargetText, shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path panics; a trusted foreign contract on an extern declaration."},
 	"noBlock":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path waits or parks the current execution; a trusted foreign contract on an extern declaration."},
 	"link_name":      {targets: attributeOnExtern, targetText: "an extern declaration", shape: attributeOneStringLiteral, summary: "Sets the foreign link symbol of an extern declaration without changing its Sec name, ABI, or effects."},
 }
@@ -85,6 +94,51 @@ func compilerKnownAttributeName(name string) bool {
 //     "Attribute order", "Parser representation"
 func (p *Parser) parseAttributedStatement() ast.Statement {
 	local := p.recoveryContext != RecoveryContextTopLevel && p.recoveryContext != RecoveryContextMember
+	attributes, attached := p.parseAttributeSet()
+	if !attached {
+		return nil
+	}
+	member := p.recoveryContext == RecoveryContextMember
+	p.nextToken()
+	start := p.curToken
+	statement := p.parseStatement()
+	if isNilStatement(statement) {
+		return statement
+	}
+	// MD-030: @noPanic before a let that directly initializes a lambda
+	// annotates the lambda's body, at top level and in local scope alike.
+	if let, ok := statement.(*ast.LetStatement); ok {
+		if lambda, direct := let.Value.(*ast.LambdaExpression); direct && lambda != nil {
+			bodyAttributes, rest := splitLambdaBodyAttributes(attributes)
+			lambda.Attributes = append(lambda.Attributes, p.acceptAttributes(bodyAttributes, attributeOnLambdaLet, start)...)
+			attributes = rest
+		}
+	}
+	if local {
+		for _, attribute := range attributes {
+			if compilerKnownAttributes[attribute.Name.Value].targets&attributeOnLambdaLet != 0 {
+				p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+					"@%s may annotate a local let only when it directly initializes a lambda (fn or capture(...) fn) at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
+				continue
+			}
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+				"@%s may only annotate a top-level declaration at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
+		}
+		return statement
+	}
+	p.attachAttributes(statement, attributes, member, start)
+	return statement
+}
+
+// parseAttributeSet parses one attachment set — every consecutive attribute,
+// with comments allowed between them — with the current token on the first
+// `@`, and leaves the current token on the end of the last attribute. It
+// reports duplicates and conflicts and returns false (after reporting) when
+// the set is not followed by anything it could attach to.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "General syntax", "Comments and whitespace", "Duplicate attributes"
+func (p *Parser) parseAttributeSet() ([]*ast.Attribute, bool) {
 	attributes := []*ast.Attribute{}
 	first := map[string]*ast.Attribute{}
 	for {
@@ -118,24 +172,92 @@ func (p *Parser) parseAttributedStatement() ast.Statement {
 			p.addDiagnostic(compilerdiagnostics.UnattachedAttribute, attribute.Name.Token, nil, nil,
 				"attribute @%s is not attached to a statement at %d:%d", attribute.Name.Value, attribute.Name.Token.Line, attribute.Name.Token.Column)
 		}
+		return nil, false
+	}
+	return attributes, true
+}
+
+// splitLambdaBodyAttributes separates the attributes that may annotate a
+// directly initialized lambda body from the rest of a let's attachment set.
+func splitLambdaBodyAttributes(attributes []*ast.Attribute) (body, rest []*ast.Attribute) {
+	for _, attribute := range attributes {
+		if compilerKnownAttributes[attribute.Name.Value].targets&attributeOnLambdaLet != 0 {
+			body = append(body, attribute)
+		} else {
+			rest = append(rest, attribute)
+		}
+	}
+	return body, rest
+}
+
+// acceptAttributes keeps the attributes allowed on one callable-body target
+// and reports every other one with its allowed placements (MD-030 § 8(1)).
+func (p *Parser) acceptAttributes(attributes []*ast.Attribute, kind attributeTargets, declaration lexer.Token) []*ast.Attribute {
+	accepted := []*ast.Attribute{}
+	for _, attribute := range attributes {
+		spec := compilerKnownAttributes[attribute.Name.Value]
+		if spec.targets&kind == 0 {
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+				"@%s may only annotate %s at %d:%d", attribute.Name.Value, spec.targetText, declaration.Line, declaration.Column)
+			continue
+		}
+		accepted = append(accepted, attribute)
+	}
+	return accepted
+}
+
+// parseAttributedImplMember parses an attachment set inside an impl and the
+// member it annotates: a method, `init` or `free` (MD-030). A set before
+// `property` is rejected: each accessor carries its own attributes.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Callable-body attachment (MD-030)"
+//   - rules/declarations/impl.md — `init`, `free`
+func (p *Parser) parseAttributedImplMember() ast.ImplMember {
+	attributes, attached := p.parseAttributeSet()
+	if !attached {
 		return nil
 	}
-	member := p.recoveryContext == RecoveryContextMember
+	switch {
+	case p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == contextualInit && p.tokenAfterPeek() == lexer.LPAREN:
+		p.nextToken()
+		start := p.curToken
+		initializer := p.parseInitDeclaration()
+		if initializer == nil {
+			return nil
+		}
+		initializer.Attributes = p.acceptAttributes(attributes, attributeOnInit, start)
+		return initializer
+	case p.peekToken.Type == lexer.FREE && p.tokenAfterPeek() == lexer.LBRACE:
+		p.nextToken()
+		free := &ast.FreeDeclaration{Token: p.curToken}
+		free.Body = p.parseFunctionBlockStatement()
+		if free.Body == nil {
+			return nil
+		}
+		free.Attributes = p.acceptAttributes(attributes, attributeOnFree, free.Token)
+		return free
+	case p.peekToken.Type == lexer.PROPERTY:
+		for _, attribute := range attributes {
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+				"@%s cannot annotate a whole property; write it immediately before get, set or try set at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
+		}
+		p.nextToken()
+		property := p.parsePropertyDeclaration()
+		if property == nil {
+			return nil
+		}
+		return property
+	}
 	p.nextToken()
 	start := p.curToken
 	statement := p.parseStatement()
-	if isNilStatement(statement) {
-		return statement
+	fn, ok := statement.(*ast.FunctionDeclaration)
+	if !ok || fn == nil {
+		return nil
 	}
-	if local {
-		for _, attribute := range attributes {
-			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
-				"@%s may only annotate a top-level declaration at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
-		}
-		return statement
-	}
-	p.attachAttributes(statement, attributes, member, start)
-	return statement
+	p.attachAttributes(fn, attributes, true, start)
+	return fn
 }
 
 // parseAttribute parses `@name` and its optional argument list with the

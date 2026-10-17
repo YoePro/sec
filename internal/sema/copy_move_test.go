@@ -2285,18 +2285,18 @@ fn Process(frame: Frame) int {
 
 func TestStaticSlicePlaceOverlap(t *testing.T) {
 	left := Place{Root: "values", Projections: []PlaceProjection{{
-		Kind: PlaceSlice, SliceStart: 0, SliceEnd: 2, SliceStartKnown: true, SliceEndKnown: true,
+		Kind: PlaceSlice, SliceStart: big.NewInt(0), SliceEnd: big.NewInt(2),
 	}}}
 	right := Place{Root: "values", Projections: []PlaceProjection{{
-		Kind: PlaceSlice, SliceStart: 2, SliceEnd: 4, SliceStartKnown: true, SliceEndKnown: true,
+		Kind: PlaceSlice, SliceStart: big.NewInt(2), SliceEnd: big.NewInt(4),
 	}}}
 	overlap := Place{Root: "values", Projections: []PlaceProjection{{
-		Kind: PlaceSlice, SliceStart: 1, SliceEnd: 3, SliceStartKnown: true, SliceEndKnown: true,
+		Kind: PlaceSlice, SliceStart: big.NewInt(1), SliceEnd: big.NewInt(3),
 	}}}
 	inside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: big.NewInt(1)}}}
 	outside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: big.NewInt(4)}}}
 	empty := Place{Root: "values", Projections: []PlaceProjection{{
-		Kind: PlaceSlice, SliceStart: 2, SliceEnd: 2, SliceStartKnown: true, SliceEndKnown: true,
+		Kind: PlaceSlice, SliceStart: big.NewInt(2), SliceEnd: big.NewInt(2),
 	}}}
 
 	if PlacesOverlap(left, right) {
@@ -2479,7 +2479,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to choice while it is shared borrowed at 18:4, borrow origin at 16:12, borrow holder payload keeps authority live at 16:3",
+		"cannot assign to choice while it is shared borrowed at 18:4, borrow origin at 16:8, borrow holder payload keeps authority live at 16:12",
 	})
 }
 
@@ -2535,7 +2535,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to immutable place choice.<Some> at 16:16",
+		"cannot create mutable reference to immutable place choice.<Some> at 16:8",
 	})
 }
 
@@ -2639,7 +2639,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to choice.<Some> while it is already borrowed at 13:16, borrow origin at 11:14, borrow holder view keeps authority live at 11:6",
+		"cannot create mutable reference to choice.<Some> while it is already borrowed at 13:8, borrow origin at 11:14, borrow holder view keeps authority live at 11:6",
 	})
 }
 
@@ -2672,7 +2672,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot assign to wrapper.choice while it is shared borrowed at 19:12, borrow origin at 17:12, borrow holder value keeps authority live at 17:3",
+		"cannot assign to wrapper.choice while it is shared borrowed at 19:12, borrow origin at 17:8, borrow holder value keeps authority live at 17:12",
 	})
 }
 

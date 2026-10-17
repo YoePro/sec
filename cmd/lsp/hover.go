@@ -49,6 +49,14 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}()
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := compareExchangeResultHoverAt(text, program, analyzer, token); ok {
+			return hover, true
+		}
+		if typ, resolved := analyzer.AtomicTypeAt(token.File, token.Line, token.Column); resolved {
+			if hover, ok := atomicTypeHover(tokenRange(text, token), typ); ok {
+				return hover, true
+			}
+		}
 		if hover, ok := iteratorHover(text, analyzer, token); ok {
 			return hover, true
 		}
@@ -145,6 +153,12 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		return hover, true
 	}
 	if typ, ok := analyzer.Types()[name]; ok {
+		if contents, associatedEnum := compareExchangeResultHoverContents(typ, program); associatedEnum {
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
+		}
+		if hover, atomic := atomicTypeHover(nameRange, typ); atomic {
+			return hover, true
+		}
 		if contents, opaque := mutexTypeHoverContents(typ, program); opaque {
 			return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 		}

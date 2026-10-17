@@ -1,0 +1,3 @@
+module main
+
+fn Ineligible(value: ref Atomic[float64]) void {}

@@ -1,0 +1,33 @@
+module main
+
+type Counter struct {
+    _value: int,
+}
+
+fn Make() fn(bool) bool {
+    return fn(value: bool) bool {
+        return value
+    }
+}
+
+@noPanic
+impl Counter {
+    @noPanic
+    property Value: int {
+        get {
+            return self._value
+        }
+    }
+}
+
+fn Use() void {
+    @noPanic
+    let operation := Make()
+    let inline := @noPanic fn(value: bool) bool {
+        return value
+    }
+}
+
+fn main() int {
+    return 0
+}

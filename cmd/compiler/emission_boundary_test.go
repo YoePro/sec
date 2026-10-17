@@ -41,7 +41,6 @@ func TestMLIREmissionBoundaries(t *testing.T) {
 			boundary := "Sec dialect MLIR"
 			if command == "emit-mlir" {
 				boundary = "LLVM dialect MLIR"
-				args = append(args[:len(args)-1], "--verify", "-o")
 			}
 			stdout, diagnostics, code := runCLIForDiagnostics(t, append(args, "-")...)
 			prefix := "// Sec compiler MLIR boundary: " + boundary + "\n// Selected target: " + target + "\n"
@@ -72,9 +71,6 @@ func TestMLIREmissionBoundaries(t *testing.T) {
 				}
 			}
 			args := []string{command, input, "-o", output, "--mlir-bin", tools}
-			if command == "emit-mlir" {
-				args = append(args, "--verify")
-			}
 			stdout, diagnostics, code := runCLIForDiagnostics(t, args...)
 			if code != 4 || stdout != "" || !strings.Contains(diagnostics, "rejected") {
 				t.Fatalf("failed verifier published output: %s %d %s %s", command, code, stdout, diagnostics)
@@ -89,13 +85,14 @@ func TestMLIREmissionBoundaries(t *testing.T) {
 	}
 }
 
-// TestLabeledLLVMMLIRParsesAndTranslates verifies that real MLIR tools accept
-// the inspection labels and that both selected targets survive translation.
+// TestLabeledLLVMMLIRParsesAndTranslates verifies that the LLVM dialect the
+// single track produces keeps its labels parseable and both selected targets
+// survive translation (MD-101).
 // Rules: rules/compiler/compiler_pipeline.md — §60(1–3),§61(2).
 func TestLabeledLLVMMLIRParsesAndTranslates(t *testing.T) {
-	toolchain := mlirtoolchain.NewToolchain(os.Getenv("SEC_LEGACY_MLIR_BIN"))
-	if _, err := os.Stat(filepath.Join(toolchain.BinDir, "mlir-opt")); err != nil {
-		t.Skip("LLVM MLIR tools unavailable")
+	toolchain := mlirtoolchain.NewToolchain("")
+	if _, err := os.Stat(filepath.Join(toolchain.BinDir, "sec-mlir-opt")); err != nil {
+		t.Skip("Sec MLIR tools unavailable")
 	}
 	for _, target := range []string{"linux-amd64", "linux-armv7"} {
 		root := t.TempDir()
@@ -111,7 +108,7 @@ func TestLabeledLLVMMLIRParsesAndTranslates(t *testing.T) {
 			t.Fatal(err)
 		}
 		output := filepath.Join(root, "labeled.mlir")
-		stdout, diagnostics, code := runCLIForDiagnostics(t, "emit-mlir", input, "--target", target, "-o", output, "--verify", "--mlir-bin", toolchain.BinDir)
+		stdout, diagnostics, code := runCLIForDiagnostics(t, "emit-mlir", input, "--target", target, "-o", output, "--mlir-bin", toolchain.BinDir)
 		if code != 0 || stdout != "" {
 			t.Fatalf("%s: %d %s %s", target, code, stdout, diagnostics)
 		}

@@ -24,11 +24,12 @@ type emitter struct {
 }
 
 // Emit verifies Semantic IR version 1 and emits deterministic Sec MLIR schema
-// version 10. It preserves high-level fixed-array values and performs no
-// external tool invocation.
+// version 11. It preserves high-level fixed-array values, semantic Places and
+// direct references, and performs no external tool invocation.
 //
 // Rules:
 //   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 1-23
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md — sections 1-28
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 58-85
 func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, error) {
 	if err := semantic.Verify(module); err != nil {
@@ -221,6 +222,12 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 		if scalarKind, ok := e.scalarKind(parameter.Value.Type); ok {
 			fmt.Fprintf(&e.out, " {sec.scalar_kind = %s}", mlirString(scalarKind))
 		}
+		if parameter.Reference != nil {
+			if err := validateReferenceFacts(parameter.Reference, function.ID); err != nil {
+				return err
+			}
+			fmt.Fprintf(&e.out, " {%s}", referenceDictionary(parameter.Reference))
+		}
 	}
 	e.out.WriteByte(')')
 	if !e.isVoid(function.ReturnType) {
@@ -253,6 +260,9 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 			e.out.WriteString(mlirString(parameter.Name))
 		}
 		e.out.WriteByte(']')
+	}
+	if len(function.ReturnOrigins) > 0 {
+		fmt.Fprintf(&e.out, ", sec.return_origins = %s", returnOriginsText(function.ReturnOrigins))
 	}
 	e.out.WriteByte('}')
 	if function.Extern {
@@ -354,6 +364,9 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if scalarKind, ok := e.scalarKind(storage.Type); ok {
 			fmt.Fprintf(&e.out, ", sec.scalar_kind = %s", mlirString(scalarKind))
 		}
+		if storage.AddressTaken {
+			e.out.WriteString(", sec.address_taken = true")
+		}
 		fmt.Fprintf(&e.out, "} : () -> !sec.storage<%s>", elementType)
 	case semantic.OpStorageInit, semantic.OpStorageStore:
 		storage, ok := storages[operation.Storage]
@@ -408,7 +421,14 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			}
 			e.out.WriteString(mlirString(string(action)))
 		}
-		e.out.WriteString("]} : (")
+		e.out.WriteByte(']')
+		if operation.Reference != nil {
+			if err := validateReferenceFacts(operation.Reference, function.ID); err != nil {
+				return err
+			}
+			fmt.Fprintf(&e.out, ", %s", referenceDictionary(operation.Reference))
+		}
+		e.out.WriteString("} : (")
 		if err := e.emitOperandTypes(operation.Operands, values); err != nil {
 			return err
 		}
@@ -487,6 +507,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitSemanticIntegerOperation(operation, "sec.int.neg_checked", "", "", values)
 	case semantic.OpIntBitNot:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.bit_not", "", "", values)
+	case semantic.OpNumericConvertExact:
+		return e.emitSemanticIntegerOperation(operation, "sec.numeric.convert_exact", "", "", values)
 	case semantic.OpIntBinaryChecked:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.binary_checked", "kind", string(operation.IntegerBinary), values)
 	case semantic.OpIntBitwise:
@@ -572,6 +594,13 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitArrayReplace(operation, values)
 	case semantic.OpBoundsFailure:
 		fmt.Fprintf(&e.out, "\"sec.fail.bounds\"() {operation = %s} : () -> ()", mlirString(operation.ArrayOperation))
+	case semantic.OpPlaceValueRoot, semantic.OpPlaceStorageRoot, semantic.OpPlaceStaticRoot, semantic.OpPlaceField,
+		semantic.OpPlaceArrayIndexInBounds, semantic.OpPlaceArrayElement, semantic.OpPlaceUnionPayload,
+		semantic.OpReferenceDerefPlace, semantic.OpPlaceRead, semantic.OpPlaceWrite, semantic.OpReferenceBorrowShared,
+		semantic.OpReferenceBorrowMutable, semantic.OpReferenceCopyShared, semantic.OpReferenceMove,
+		semantic.OpReferenceReborrowShared, semantic.OpReferenceReborrowMutable, semantic.OpReferenceIsValid,
+		semantic.OpReferenceGenerationFailure, semantic.OpReferenceEndBorrow, semantic.OpReferenceCompare:
+		return e.emitPlaceReference(function, operation, values, storages)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
@@ -1246,6 +1275,12 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = fmt.Sprintf("!sec.array<%s, %s>", element, mlirString(typeValue.Length))
+	case semantic.TypePlace, semantic.TypeReference:
+		placeReference, err := e.placeReferenceTypeText(typeValue)
+		if err != nil {
+			return "", err
+		}
+		text = placeReference
 	case semantic.TypeVoid:
 		return "", fmt.Errorf("void has no MLIR value type")
 	}

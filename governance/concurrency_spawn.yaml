@@ -1,4 +1,0 @@
-schema_version: 1
-area: concurrency-spawn
-purpose: Spawn expressions and execution creation semantics.
-integrations: []

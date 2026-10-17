@@ -1,0 +1,6 @@
+module core
+
+enum CompareExchangeResult[T] {
+    Exchanged
+    NotExchanged(T)
+}

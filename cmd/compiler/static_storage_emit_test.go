@@ -32,19 +32,3 @@ func TestStaticStorageEmitRoutes(t *testing.T) {
 		t.Fatal(string(contents), err)
 	}
 }
-
-// The legacy direct emit-llvm and emit-mlir routes have no static storage:
-// they reject a function-local static instead of lowering it to a stack slot
-// that is re-initialized on every call (which made Next() always return 1).
-//
-// Rules:
-//   - rules/declarations/static.md — § 4
-func TestLegacyRoutesRejectFunctionLocalStatics(t *testing.T) {
-	file := "../../testdata/semantic_ir/static_local_valid.sec"
-	for _, command := range []string{"emit-llvm", "emit-mlir"} {
-		stdout, stderr, code := runCLIForDiagnostics(t, command, file, "-o", "-")
-		if code == 0 || strings.Contains(stdout, "alloca") || !strings.Contains(stderr, "function-local static storage") {
-			t.Fatal(command, code, stdout, stderr)
-		}
-	}
-}

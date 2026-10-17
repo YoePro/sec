@@ -1,0 +1,30 @@
+module main
+
+fn Widen(x: int8) int {
+    return int(x)
+}
+
+fn WidenUnsigned(x: uint8) int {
+    return int(x)
+}
+
+fn Narrow() int8 {
+    let c := 100
+    return int8(c)
+}
+
+
+fn main() int {
+    let small: int8 := -5
+    let octet: uint8 := 250
+    if Widen(small) != -5 {
+        return 1
+    }
+    if WidenUnsigned(octet) != 250 {
+        return 2
+    }
+    if int(Narrow()) != 100 {
+        return 3
+    }
+    return 0
+}

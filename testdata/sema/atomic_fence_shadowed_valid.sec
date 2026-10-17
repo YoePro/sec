@@ -1,0 +1,20 @@
+module main
+
+type Barrier struct {
+    count: int,
+}
+
+impl Barrier {
+    fn Fence(value: int) int {
+        return value
+    }
+}
+
+fn Use() int {
+    let atomic := Barrier { count: 1 }
+    return atomic.Fence(2)
+}
+
+fn main() int {
+    return 0
+}

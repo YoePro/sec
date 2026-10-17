@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"math/big"
+
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
@@ -51,14 +53,16 @@ func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*Para
 		if !ok {
 			return nil, Place{}, false
 		}
-		projection := PlaceProjection{Kind: PlaceSlice, SliceStartKnown: expression.Start == nil, Token: expression.Token}
-		if value, constant := constantIntegerValue(expression.Start); constant && value.IsInt64() {
-			projection.SliceStart, projection.SliceStartKnown = value.Int64(), true
+		projection := PlaceProjection{Kind: PlaceSlice, Token: expression.Token}
+		if expression.Start == nil {
+			projection.SliceStart = new(big.Int)
+		} else if value, constant := constantIntegerValue(expression.Start); constant {
+			projection.SliceStart = new(big.Int).Set(value)
 		}
-		if value, constant := constantIntegerValue(expression.End); constant && value.IsInt64() {
-			projection.SliceEnd, projection.SliceEndKnown = value.Int64(), true
+		if value, constant := constantIntegerValue(expression.End); constant {
+			projection.SliceEnd = new(big.Int).Set(value)
 			if !expression.Exclusive {
-				projection.SliceEnd++
+				projection.SliceEnd.Add(projection.SliceEnd, big.NewInt(1))
 			}
 		}
 		return parameter, appendPlaceProjection(place, projection), true

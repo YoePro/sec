@@ -158,7 +158,6 @@ integrations:
       - internal/sema/parameter_usage.go
       - internal/diagnostics/diagnostics.go
       - internal/formatter/formatter.go
-      - internal/codegen/llvm/statements.go
       - cmd/compiler/main.go
     tests:
       - internal/parser/parser_test.go
@@ -297,15 +296,12 @@ integrations:
       - internal/sema/analyzer_defer.go
       - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_defer_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
-      - internal/codegen/mlir/generator_test.go
       - testdata/defer_valid.sec
       - testdata/defer_invalid.sec
     implemented:
@@ -367,8 +363,6 @@ integrations:
       - command: go test ./internal/parser -run Defer -count=1
         result: passed
       - command: go test ./internal/sema -run Defer -count=1
-        result: passed
-      - command: go test ./internal/codegen/mlir -run Defer -count=1
         result: passed
       - command: go test ./internal/formatter -run Defer -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
@@ -454,8 +448,6 @@ integrations:
       - internal/sema/analyzer_if_flow.go
       - internal/sema/analyzer_union_state.go
       - internal/formatter/formatter.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -464,12 +456,10 @@ integrations:
       - internal/formatter/formatter_test.go
       - internal/parser/control_flow_forms_test.go
       - internal/sema/union_state_test.go
-      - internal/codegen/mlir/generator_test.go
       - testdata/if_invalid.sec
       - testdata/parser/condition_pattern_binding_invalid.sec
       - testdata/sema/union_state_tests_valid.sec
       - testdata/basic_types_valid.sec
-      - internal/codegen/readiness/controlflow/if_lazy_test.go
       - testdata/control_flow/if_lazy/evaluation.sec
       - testdata/control_flow/if_lazy/harness.c
     implemented:
@@ -496,7 +486,7 @@ integrations:
       - "MD-006 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 7, 2026-10-03): non-binding is state tests are ordinary bool expressions at the non-chainable equality level in every expression context (let, return, &&/||, arguments); `is not` negates variant, empty, Some, None, and available tests; ungrouped chaining with == or != is rejected; `(test) == true` (A2002) and `!(test)` (A2003) are bad-practice warnings with explicit Language Corrections; `is Some(binding)` binds only as the complete if condition, while `is not Some(value)` and `!(option is Some(value))` receive focused parser diagnostics; negated tests keep data-flow refinement"
       - "executable lazy-if regression matrix (2026-10-10): 20 exact side-effect traces cover dynamic AND/OR, nested grouping, first/second/third/else branch selection and logical conditions throughout else-if chains; LLVM and existing MLIR verify and compile for amd64 and armv7 at O0/O2, and every host executable checks condition frequency, left-to-right ordering, skipped RHS/later-condition calls and exactly one selected body"
     remaining:
-      - "MD-006 lowering: the legacy LLVM generator and Semantic IR do not lower state tests outside the existing if/while condition forms; they reject them explicitly"
+      - "MD-006 lowering: Semantic IR does not lower state tests outside the existing if/while condition forms; it rejects them explicitly"
       - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
       - add explicit try Result[bool, E] acceptance and non-bool successful-result rejection coverage
@@ -519,12 +509,8 @@ integrations:
       - definite assignment fails when a continuing path does not assign
       - proven unreachable statements follow the canonical unreachable-code diagnostic policy
     verification:
-      - command: go vet ./internal/codegen/readiness/controlflow
-        result: passed on 2026-10-10
       - command: go test ./internal/sema -run 'ResolvedIfFlow|ResolvedLogicalFlow|LogicalShortCircuit|FoldedBooleanConditions' -count=1
         result: passed on 2026-10-10
-      - command: go test -race ./internal/codegen/readiness/controlflow -count=1 -v
-        result: passed on 2026-10-10 with no skipped subtests; 20 observable lazy-if scenarios run through LLVM and existing MLIR at O0/O2 on amd64, with armv7 cross-target object validation; remaining reduced from 6 to 5, control_flow remaining from 112 to 111
       - command: go test ./internal/parser -run 'If|ComparisonChaining' -count=1
         result: passed
       - command: go test ./internal/sema -run 'IfConditionMustBeBool|IfBranchesCanSatisfyFunctionReturn|ComparisonChainingIsRejected|IfBranch|DefiniteAssignment' -count=1
@@ -574,8 +560,6 @@ integrations:
       - internal/parser/expression.go
       - internal/cst/roles.go
       - internal/formatter/formatter.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
       - internal/ir/semantic/loops.go
       - internal/ir/semantic/builder.go
       - internal/ir/semantic/model.go
@@ -591,8 +575,6 @@ integrations:
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
       - cmd/lsp/main_test.go
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
       - internal/ir/semantic/loops_test.go
       - internal/ir/semantic/boolean_test.go
       - testdata/while_valid.sec
@@ -636,7 +618,7 @@ integrations:
       - apply union state-test refinement on loop exits that pass through reachable break edges
       - extend non-literal condition proof beyond the current integer-comparison and boolean-operator subset and route other non-continuing flow through the canonical unreachable-code policy
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
-      - verify that break and continue inside a switch nested in while target the surrounding loop in CFG, Semantic IR, and both backends
+      - verify that break and continue inside a switch nested in while target the surrounding loop in CFG, Semantic IR, and the compilation track
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
       - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
       - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
@@ -680,10 +662,6 @@ integrations:
         result: passed on 2026-10-01; body and exit refinement from state tests, break-path conservatism, and monotone state-test facts are covered
       - command: go test ./internal/sema -run 'While|BreakAndContinue|ComparisonChaining' -count=1
         result: passed
-      - command: go test ./internal/codegen/mlir -run While -count=1
-        result: passed
-      - command: go test ./internal/codegen/llvm -run While -count=1
-        result: passed
       - command: go test ./internal/formatter -run While -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
       - command: go test ./internal/parser ./cmd/lsp -run 'TestParseDoWhileReportsFocusedErrorAndPreservesDoIdentifierCalls|TestParseWhileElseReportsFocusedErrorAndRecovers|TestParseLabeledLoopControlReportsFocusedErrors|TestParseWhileDeclarationHeadersReportFocusedErrorsAndRecover|TestAnalyzeReportsFocusedDoWhileDiagnostic|TestAnalyzeReportsFocusedWhileElseDiagnostic|TestAnalyzeReportsFocusedLabeledLoopControlDiagnostics|TestAnalyzeReportsFocusedWhileDeclarationHeaderDiagnostic' -count=1
@@ -700,7 +678,7 @@ integrations:
     document_revision: "2.0"
     repository_baseline: 56be75d
     replaces: rules/control-flow/flowcontrol_switch.txt
-    summary: Tracks revision-2.0 subject and subjectless switch statements. Parser and Sema support ordered value, range, relational, and comma-separated alternatives, default and explicit fallthrough validation, independent case scopes, continuing-path assignment merges, termination analysis, compiler-owned ResolvedSwitchFlow coverage facts, and substantial compile-time duplicate and coverage diagnostics. LLVM covers the currently supported expression families and lazy subjectless alternatives. MLIR covers integer and bool subject switches, subjectless boolean switches with reached-only comma alternatives, and explicit body-to-body fallthrough with independent scopes; broader lowering, cleanup edges, and the complete regression matrix remain.
+    summary: Tracks revision-2.0 subject and subjectless switch statements. Parser and Sema support ordered value, range, relational, and comma-separated alternatives, default and explicit fallthrough validation, independent case scopes, continuing-path assignment merges, termination analysis, compiler-owned ResolvedSwitchFlow coverage facts, and substantial compile-time duplicate and coverage diagnostics. Semantic IR and the compilation track lower integer subject switches and subjectless switches with value, relational and range alternatives, reached-only comma alternatives and explicit body-to-body fallthrough (2026-10-17); enum, bool, string and named-type subjects, cleanup edges and the complete regression matrix remain.
     rules:
       - rules/control-flow/flowcontrol_switch.md
       - rules/control-flow/flowcontrol_if.md
@@ -719,12 +697,8 @@ integrations:
       - internal/sema/analyzer_switch_coverage.go
       - internal/sema/analyzer_switch_flow.go
       - internal/formatter/formatter.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
       - internal/diagnostics/diagnostics.go
       - internal/parser/switch_case.go
-      - internal/codegen/mlir/switch.go
-      - internal/codegen/llvm/switch.go
     tests:
       - internal/parser/parser_test.go
       - internal/parser/switch_recovery_test.go
@@ -737,18 +711,14 @@ integrations:
       - internal/sema/analyzer_switch_flow_test.go
       - internal/sema/switch_coverage_test.go
       - internal/sema/destruction_test.go
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
       - testdata/switch_valid.sec
       - testdata/switch_invalid.sec
       - internal/parser/switch_struct_pattern_test.go
       - cmd/compiler/switch_pattern_diagnostic_test.go
       - cmd/lsp/switch_pattern_diagnostic_test.go
       - testdata/parser/switch_patterns
-      - internal/codegen/readiness/controlflow/subjectless_switch_test.go
       - testdata/control_flow/subjectless_switch/evaluation.sec
       - testdata/control_flow/subjectless_switch/harness.c
-      - internal/codegen/readiness/controlflow/switch_fallthrough_test.go
       - testdata/control_flow/switch_fallthrough
     implemented:
       - subject and subjectless switch parsing with AST source-order retention
@@ -766,8 +736,7 @@ integrations:
       - enum cases normalize to integer/string underlying value classes and complete closed-enum coverage participates in continuation and return analysis
       - immutable ResolvedSwitchFlow facts expose subject type, exhaustiveness, unmatched continuation, source clause order, item counts, ordinary continuation, and explicit fallthrough without AST reconstruction
       - unreachable statements inside case bodies routed through the canonical error policy
-      - LLVM lowering for the currently supported subject, subjectless, range, relational, and fallthrough subset
-      - MLIR lowering for integer and bool subject switches with value alternatives
+      - "single-track switch lowering (2026-10-17, MD-103; semantic_ir.md § 68(2)): Semantic IR lowers subject switches over built-in integers and subjectless switches to explicit comparisons and branches: subject evaluated once, clauses in source order, comma alternatives left to right and evaluated only when reached, value/relational/one- and two-sided range alternatives, first match wins, normal completion continues after the switch, explicit fallthrough enters the next body directly, default only after all tests fail, break/continue inside the switch target the enclosing loop; a Sema-proven unmatched-free switch without default ends in a synthesized unreachable; built and executed through the compilation track (TestSwitchLowersToOrderedTests, TestNativeTrackBuildsAndRuns/switch)"
       - canonical Markdown metadata with implementation governance kept in this ledger
       - switch in expression position reports P2011 "switch is a statement and does not produce a value" once and skips the switch as one balanced region while retaining the enclosing construct
       - a where guard after a case item reports P2011 "switch case guards are not part of Sec 0.1" while retaining the clause items, body, and later clauses
@@ -775,16 +744,13 @@ integrations:
       - break and continue directly inside switch are rejected outside loops and resolve to the enclosing loop inside one, with a nested-switch break recorded as a reachable loop exit
       - switch statement analysis lives in internal/sema/analyzer_switch.go with per-function rulebook traceability
       - struct-shaped switch case destructuring (bare or qualified type heads, shorthand fields, wildcard and reference fields) reports one focused P2009 parser.invalid-pattern with match help; balanced recovery preserves comma alternatives, clause bodies, later clauses and declarations, while explicit struct-value fields, spreads, nested values and empty literals retain ordinary expression parsing
-      - subjectless switch is lowered through the existing MLIR backend with one conditional edge per comma alternative, source-order reached-only evaluation, first-match selection, optional default/unmatched continuation, normal case completion, independent case scopes and enclosing-loop control; LLVM subjectless comma alternatives use the same lazy edge model after executable traces exposed eager evaluation
-      - explicit fallthrough lowers through the existing MLIR backend as a direct edge to the immediate successor body, bypassing destination tests and supporting chained and nested switches, default successors and terminal returns; case bodies retain sibling lexical scopes, trailing comments are accepted, and invalid final/default/non-final-position transfers remain rejected
       - fallthrough placement authority is tied to membership in the current AST case body instead of an inherited boolean context, so nested if, loop, lambda and unsafe blocks cannot transfer to an enclosing case while a nested switch retains its own valid successor
     remaining:
       - add focused lowering tests proving nested switch break and continue resolve only to an enclosing loop
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
-      - lower range and relational switch cases through MLIR
-      - lower string and other currently unsupported subject types through MLIR
+      - lower enum, bool, string and named-type switch subjects through Semantic IR and the compilation track
       - extend compile-time coverage to computed string constants beyond direct literals
       - implement full unit-aware and named-semantic-type-aware overlap reasoning
       - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
@@ -823,18 +789,12 @@ integrations:
         result: passed on 2026-10-10 after explicit MLIR fallthrough lowering and direct-case Sema placement validation
       - command: go test ./... -count=1
         result: passed on 2026-10-10 after explicit MLIR fallthrough lowering and direct-case Sema placement validation
-      - command: go test ./internal/codegen/mlir ./internal/codegen/llvm -run 'Switch|Match' -count=1
-        result: passed on 2026-10-10 after fallthrough lowering and restoring match-statement emission alongside other match methods
       - command: go test -race ./internal/codegen/readiness/controlflow ./internal/sema -run 'Switch|Fallthrough' -count=1
         result: passed on 2026-10-10; 15 executable fallthrough traces verify body-to-body transfer and skipped successor tests through LLVM/MLIR at O0/O2 on amd64 with armv7 objects, and eight invalid fixtures verify placement and lexical scope; remaining reduced from 12 to 11, control_flow remaining from 110 to 109
       - command: go vet ./...
         result: passed on 2026-10-10 after subjectless switch lowering
       - command: go test ./... -count=1
         result: passed on 2026-10-10 after subjectless MLIR switch lowering, lazy LLVM comma-alternative correction and cohesive switch emitter extraction
-      - command: go test -race ./internal/codegen/readiness/controlflow -count=1 -v
-        result: passed on 2026-10-10 with no skipped subtests; 17 observable subjectless-switch scenarios and the existing 20 lazy-if scenarios run through LLVM and MLIR at O0/O2 on amd64, with armv7 object validation; switch remaining reduced from 13 to 12, control_flow remaining from 111 to 110
-      - command: go test ./internal/codegen/llvm ./internal/codegen/mlir -run Switch -count=1
-        result: passed on 2026-10-10; existing subject-valued switches retain their supported behavior and unsupported range/fallthrough forms remain gated in MLIR
       - command: go test ./... -count=1
         result: passed on 2026-10-10 after focused struct-pattern recovery was implemented; frontend.switch-statements-v2 remaining reduced from 14 to 13, control_flow fragment remaining from 113 to 112
       - command: go vet ./...
@@ -844,10 +804,6 @@ integrations:
       - command: go test ./internal/parser -run Switch -count=1
         result: passed
       - command: go test ./internal/sema -run Switch -count=1
-        result: passed
-      - command: go test ./internal/codegen/mlir -run Switch -count=1
-        result: passed
-      - command: go test ./internal/codegen/llvm -run Switch -count=1
         result: passed
       - command: go test ./internal/parser ./internal/sema ./internal/diagnostics -run 'Test(Switch(InExpression|CaseGuard|Wildcard|Pattern|CreatesNo)|SwitchPatternBindingDiagnosticIsRegistered)' -count=1
         result: passed on 2026-10-01; value use, guards, payload binding, wildcard items, and loop-control targeting produce focused diagnostics without cascades
@@ -905,9 +861,6 @@ integrations:
       - internal/ir/semantic/builder.go
       - internal/ir/semantic/verifier.go
       - internal/lowering/secmlir/emitter.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/expressions.go
-      - internal/codegen/llvm/statements.go
       - internal/sema/analyzer_union_state.go
       - internal/ir/semantic/builder.go
     tests:
@@ -918,8 +871,6 @@ integrations:
       - internal/ir/semantic/package13_test.go
       - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/package12_test.go
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
       - testdata/match_valid.sec
       - testdata/match_invalid.sec
       - testdata/errorhandling_match_invalid.sec
@@ -1055,8 +1006,6 @@ integrations:
         result: passed
       - command: go test ./internal/ir/semantic -run 'Match|Package12' -count=1
         result: passed
-      - command: go test ./internal/codegen/mlir ./internal/codegen/llvm -run Match -count=1
-        result: passed
       - command: go test ./internal/formatter -run Match -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
       - command: go test ./cmd/lsp ./internal/lsp/...
@@ -1077,8 +1026,8 @@ integrations:
       sequential index/value and map key/value arity, iterable inference, finite
       range validation, immutable lexical bindings, loop-control flow,
       zero/non-continuing path analysis, and explicit compiler-known Iterator[T]
-      conformance with a Sema-owned static Next plan. LLVM lowers infinite and
-      integer range loops; MLIR additionally lowers fixed arrays and explicit
+      conformance with a Sema-owned static Next plan. Semantic IR and the compilation track lower infinite
+      loops and integer ranges with the implicit step (2026-10-17); fixed arrays and explicit
       floating ranges. Explicit ref/ref-mut binding modes, copy-only value
       iteration, canonical ascending default steps, structural iteration
       borrows, and broad collection lowering remain incomplete.
@@ -1105,8 +1054,6 @@ integrations:
       - internal/sema/place.go
       - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
       - sec/core/string.sec
       - internal/sema/analyzer_for.go
       - internal/sema/analyzer_for_categories.go
@@ -1117,8 +1064,6 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
       - cmd/lsp/main_test.go
       - testdata/for_valid.sec
       - testdata/for_invalid.sec
@@ -1148,8 +1093,7 @@ integrations:
       - fixed array, reference-slice, list, set, map, vector, and legacy collection-family inference
       - unspecified ordinary map and set iteration order
       - finite-loop zero-iteration preservation and infinite-loop non-continuation through a current-loop-targeted break query that excludes nested-loop and constant-unreachable breaks
-      - LLVM lowering for infinite loops, integer ranges, explicit integer steps, break, and continue
-      - MLIR lowering for infinite loops, integer and explicit floating ranges, break, and continue
+      - "single-track for lowering (2026-10-17, MD-103; semantic_ir.md § 65(2)): Semantic IR lowers `for { }` (LoopForInfinite) and integer ranges a..<b / a..b over built-in integers with the implicit +1 step (LoopForRange): bounds evaluated exactly once, progression in compiler-generated cursor/flag storage advanced at body entry so continue returns to the condition, start greater than end yields zero iterations, and an inclusive range ending at the type maximum never performs an overflowing increment (flowcontrol_for.md § 29); discard bindings, break and continue are supported; built and executed through the compilation track (TestForLoopsLowerToLoopCFG, TestNativeTrackBuildsAndRuns/for_loops)"
       - MLIR fixed-array iteration with one value or two index/value bindings and discard support without runtime allocation
       - compiler-known generic Iterator[T] interface requiring mutable Next() Option[T], with explicit primary-impl conformance and no naming-based discovery
       - concrete generic interface method, property, and event type substitution for resolved instances
@@ -1165,7 +1109,6 @@ integrations:
       - ref mut loop bindings use the canonical borrow-creation check, so iterating with ref mut over a collection that is already borrowed is rejected
       - plain element bindings whose yielded type is move-only or non-copyable are rejected with ref guidance instead of silently moving or borrowing
       - float and decimal range iteration requires an explicit step, and an unsigned range rejects a compile-time negative step
-      - the legacy MLIR generator rejects reference loop bindings explicitly instead of lowering them as copies
       - for statement analysis lives in internal/sema/analyzer_for.go with per-function rulebook traceability
       - while a loop iterates reusable dynamic-array, list, map, or set storage, a compiler-known structural operation (selected by the registry StructuralMutation contract, never by name) or an assignment on the iterated collection or any storage enclosing it is rejected with mandatory S1075 for.structural-mutation-during-iteration, the operation, both Places, help, and the loop location; element assignment, mutation inside one element or through a ref mut binding, sibling storage, ranges, and code after the loop remain valid
       - "generic iterator parameters (2026-10-10): a for loop over a generic parameter constrained by Iterator[T], by value (fn F[I: Iterator[T]](values: I)) or as ref mut I, takes its element type and Next requirement from the constraint without an interface value or dispatch; each specialization resolves the concrete Next statically, a ref mut I parameter infers I from an owned mutable argument through the implicit call-site borrow (borrowing.md §15.2), and lowering readiness reports such template loops as Unproven (per-specialization lowering) instead of Invalid"
@@ -1177,12 +1120,12 @@ integrations:
       - enforce exact map key/value reference modes, including shared keys and values, mutable values with authority, and rejection of mutable key references
       - permit plain-copy or shared-reference set iteration and reject mutable set element references
       - ensure discard bindings introduce no transfer, copy, move, or copyability requirement for the discarded yielded component
-      - make omitted integer-like range step unconditionally ascending +1 so start greater than end yields zero iterations in Sema, Semantic IR, MLIR, and LLVM
+      - "lower explicit for range steps (Known hole, verified 2026-10-17): Semantic IR rejects `step` as 'for range with an explicit step'"
       - require explicit compatible negative steps for descending iteration without synthesizing signed conversion for unsigned ranges
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
-      - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and maintained backends
+      - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and the compilation track
       - extend structural-stability checking to user-defined operations and calls that receive mutable authority over the iterated collection (requires interprocedural structural-mutation summaries) and to collections reached through Iterator[T] sources
-      - lower compiler-known Iterator[T] loops through Semantic IR and maintained backends as repeated statically resolved Next calls with Some/None control flow and cleanup
+      - lower compiler-known Iterator[T] loops through Semantic IR and the compilation track as repeated statically resolved Next calls with Some/None control flow and cleanup
       - expose Iterator[T], resolved element type, and selected Next operation in dedicated LSP hover and completion contexts beyond ordinary shared Sema diagnostics
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
@@ -1253,10 +1196,6 @@ integrations:
       - command: go test ./internal/parser -run For -count=1
         result: passed
       - command: go test ./internal/sema -run '^(TestFor|TestInfiniteFor)' -count=1
-        result: passed
-      - command: go test ./internal/codegen/mlir -run 'For|Array' -count=1
-        result: passed
-      - command: go test ./internal/codegen/llvm -run For -count=1
         result: passed
       - command: go test ./internal/formatter -run For -count=1
         result: passed
@@ -1415,14 +1354,10 @@ integrations:
       - internal/sema/semantic_facts.go
       - internal/ir/semantic
       - internal/lowering/secmlir
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_logical_test.go
       - internal/sema/copy_move_test.go
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
     implemented:
       - logical bool operand type validation
       - logical expression result type bool
@@ -1554,16 +1489,12 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/analyzer_switch_coverage.go
       - internal/sema/analyzer_switch_flow.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/llvm/statements.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_switch_flow_test.go
       - internal/sema/switch_coverage_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
       - testdata/switch_valid.sec
       - testdata/switch_invalid.sec
     implemented:

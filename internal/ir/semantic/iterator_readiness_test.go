@@ -96,9 +96,10 @@ func TestBuildIteratorReadinessDoesNotRequireProtocolForOtherLoops(t *testing.T)
 	if err := analyzer.ValidateIteratorLoweringReadiness(program, "main"); err != nil {
 		t.Fatal(err)
 	}
+	// The range loop lowers through numeric range iteration without any
+	// Iterator[T] protocol requirement (semantic_ir.md § 65(2)).
 	module, err := Build(program, analyzer, BuildOptions{RequestedModule: "main"})
-	var unsupported *UnsupportedFeatureError
-	if module != nil || !errors.As(err, &unsupported) {
+	if err != nil || module == nil || len(module.Functions) != 1 || len(module.Functions[0].Loops) != 1 || module.Functions[0].Loops[0].Kind != LoopForRange {
 		t.Fatal("built-in loop acquired a protocol requirement", module, err)
 	}
 }

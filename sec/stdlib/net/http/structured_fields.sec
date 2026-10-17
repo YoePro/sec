@@ -231,6 +231,27 @@ impl _StructuredFieldParser {
     }
 
     /**
+     * Translates a byte position on a scalar boundary of the input to its
+     * rune index, because string.Slice takes rune indexes (MD-071). Key
+     * bytes are ASCII, so every key boundary is a scalar boundary.
+     */
+    fn _RuneIndexAt(byteOffset: uint) uint {
+        let mut runes: uint := 0
+        let mut position: uint := 0
+
+        for character in self._input {
+            if position >= byteOffset {
+                return runes
+            }
+
+            position += character.Utf8Length
+            runes += 1
+        }
+
+        return runes
+    }
+
+    /**
      * Parses one RFC 9651 key from the current parser position.
      *
      * A key begins with a lowercase ASCII letter or '*'. Remaining characters
@@ -258,7 +279,8 @@ impl _StructuredFieldParser {
             self._position += 1
         }
 
-        let key := try self._input.Slice(start, self._position) {
+        // The parser scans bytes; string.Slice takes rune indexes (MD-071).
+        let key := try self._input.Slice(self._RuneIndexAt(start), self._RuneIndexAt(self._position)) {
             Err(error) => return Err(StructuredFieldError.InvalidSyntax)
         }
 

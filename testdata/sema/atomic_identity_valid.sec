@@ -1,0 +1,55 @@
+module main
+
+type Count uint64
+type Bounded int range 0..100
+
+enum State uint8 {
+    Idle
+    Busy
+}
+
+static let Requests: Atomic[uint64] := Atomic(0)
+
+fn Contextual() uint64 {
+    let value: Atomic[uint64] := Atomic(0)
+    return value.Load()
+}
+
+fn ContextualNamed() Count {
+    let value: Atomic[Count] := Atomic(0)
+    return value.Load()
+}
+
+fn Inferred(amount: Count) Count {
+    let value := Atomic(amount)
+    return value.Load()
+}
+
+fn Boolean(value: ref Atomic[bool]) bool {
+    return value.Load()
+}
+
+fn Numeric(value: ref Atomic[Count], amount: Count) Count {
+    discard value.FetchAdd(amount)
+    return value.Load()
+}
+
+fn Enumeration(value: ref Atomic[State]) State {
+    return value.Load()
+}
+
+fn Constrained(value: ref Atomic[Bounded]) Bounded {
+    return value.Load()
+}
+
+fn Methods(value: ref Atomic[int]) int {
+    value.Store(1)
+    discard value.Swap(1)
+    discard value.CompareExchange(0, 1)
+    discard value.FetchAdd(1)
+    discard value.FetchSub(1)
+    discard value.FetchAnd(1)
+    discard value.FetchOr(1)
+    discard value.FetchXor(1)
+    return value.Load()
+}

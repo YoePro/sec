@@ -47,7 +47,7 @@ func TestAnalyseReportUsesCanonicalSnapshot(t *testing.T) {
 			t.Fatal("fixture did not exercise informational diagnostics")
 		}
 		selected := map[string]bool{file: true}
-		report := buildAnalyseReport(a, selected, hostCompilerTarget())
+		report := buildAnalyseReport(a, selected, hostCompilerTarget(), "", nil)
 		if report.depth != depth || report.counts[analyseClassAdvisory] != info || report.counts[analyseClassWarning] != warning {
 			t.Fatal(depth, warnings, report)
 		}
@@ -56,10 +56,10 @@ func TestAnalyseReportUsesCanonicalSnapshot(t *testing.T) {
 		if !strings.Contains(output.String(), "analysis report (depth "+string(depth)+",") {
 			t.Fatal(output.String())
 		}
-		if !reflect.DeepEqual(report, buildAnalyseReport(a, selected, hostCompilerTarget())) || !reflect.DeepEqual(warnings, a.Warnings()) || !reflect.DeepEqual(allocations, a.AllocationFacts()) {
+		if !reflect.DeepEqual(report, buildAnalyseReport(a, selected, hostCompilerTarget(), "", nil)) || !reflect.DeepEqual(warnings, a.Warnings()) || !reflect.DeepEqual(allocations, a.AllocationFacts()) {
 			t.Fatal("report changed or recomputed owned facts")
 		}
-		other := buildAnalyseReport(a, map[string]bool{"another.sec": true}, hostCompilerTarget())
+		other := buildAnalyseReport(a, map[string]bool{"another.sec": true}, hostCompilerTarget(), "", nil)
 		if other.counts[analyseClassAdvisory] != 0 || other.counts[analyseClassWarning] != 0 {
 			t.Fatal("unselected diagnostics counted", other.counts)
 		}
@@ -90,7 +90,7 @@ func TestAnalyseDiagnosticClassesUseOwnerFacts(t *testing.T) {
 // counting the same informational owner as a warning or a second diagnostic.
 // Rules: rules/compiler/compiler_analysis.md — §61(3).
 func TestAnalyseCLIAdvisoryCountsMatchOccurrences(t *testing.T) {
-	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "../../testdata/sema/parameter_recommendations_valid.sec", "--diagnostic-format=json")
+	stdout, stderr, code := runCLIForDiagnostics(t, "analyse", "--verbose", "../../testdata/sema/parameter_recommendations_valid.sec", "--diagnostic-format=json")
 	if code != 0 {
 		t.Fatal(code, stdout, stderr)
 	}

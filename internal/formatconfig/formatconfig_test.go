@@ -25,13 +25,14 @@ func TestResolveAppliesOverridesManifestAndDefaults(t *testing.T) {
 		overrides Overrides
 		want      formatter.Options
 	}{
-		"no project":       {"", Overrides{}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured}},
-		"absent table":     {"[analysis]\nlsp_depth = \"standard\"\n", Overrides{}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured}},
-		"partial table":    {"[format]\nindentation_width = 2\n", Overrides{}, formatter.Options{IndentationWidth: 2, VerticalStyle: formatter.VerticalStructured}},
-		"complete table":   {"[format]\nformat_version = 1\nindentation_width = 6\nvertical_style = \"compact\"\nwidth_mode = \"adaptive\"\nline_width = 100\nadaptive_min_width = 80\nadaptive_max_width = 160\nadaptive_fallback_width = 100\nlanguage_corrections = true # opt in\n", Overrides{}, formatter.Options{IndentationWidth: 6, VerticalStyle: formatter.VerticalCompact, Fix: true}},
-		"cli wins":         {"[format]\nindentation_width = 4\nlanguage_corrections = false\n", Overrides{IndentationWidth: &two, LanguageCorrections: &enabled}, formatter.Options{IndentationWidth: 2, VerticalStyle: formatter.VerticalStructured, Fix: true}},
-		"omitted cli":      {"[format]\nindentation_width = 2\n", Overrides{LanguageCorrections: &enabled}, formatter.Options{IndentationWidth: 2, VerticalStyle: formatter.VerticalStructured, Fix: true}},
-		"cli over default": {"", Overrides{IndentationWidth: &four}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured}},
+		"no project":        {"", Overrides{}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured}},
+		"absent table":      {"[analysis]\nlsp_depth = \"standard\"\n", Overrides{}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured}},
+		"partial table":     {"[format]\nindentation_width = 2\n", Overrides{}, formatter.Options{IndentationWidth: 2, VerticalStyle: formatter.VerticalStructured}},
+		"complete table":    {"[format]\nformat_version = 1\nindentation_width = 6\nvertical_style = \"compact\"\nwidth_mode = \"adaptive\"\nline_width = 100\nadaptive_min_width = 80\nadaptive_max_width = 160\nadaptive_fallback_width = 100\nlanguage_corrections = true # opt in\n", Overrides{}, formatter.Options{IndentationWidth: 6, VerticalStyle: formatter.VerticalCompact, Fix: true}},
+		"cli wins":          {"[format]\nindentation_width = 4\nlanguage_corrections = false\n", Overrides{IndentationWidth: &two, LanguageCorrections: &enabled}, formatter.Options{IndentationWidth: 2, VerticalStyle: formatter.VerticalStructured, Fix: true}},
+		"omitted cli":       {"[format]\nindentation_width = 2\n", Overrides{LanguageCorrections: &enabled}, formatter.Options{IndentationWidth: 2, VerticalStyle: formatter.VerticalStructured, Fix: true}},
+		"cli over default":  {"", Overrides{IndentationWidth: &four}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured}},
+		"alignment padding": {"[format]\nmax_alignment_padding = 32\n", Overrides{}, formatter.Options{IndentationWidth: 4, VerticalStyle: formatter.VerticalStructured, MaxAlignmentPadding: 32}},
 	} {
 		path := ""
 		if test.manifest != "" {
@@ -68,6 +69,9 @@ func TestResolveRejectsInvalidConfiguration(t *testing.T) {
 		"bad width mode":      {"[format]\nwidth_mode = \"auto\"\n", Overrides{}, "width_mode"},
 		"inverted range":      {"[format]\nadaptive_min_width = 200\nadaptive_max_width = 80\n", Overrides{}, "adaptive_min_width 200 exceeds"},
 		"bad cli width":       {"", Overrides{IndentationWidth: &three}, "indentation_width must be 2, 4, or 6"},
+		"zero padding":        {"[format]\nmax_alignment_padding = 0\n", Overrides{}, "max_alignment_padding must be 1..1024"},
+		"huge padding":        {"[format]\nmax_alignment_padding = 5000\n", Overrides{}, "max_alignment_padding must be 1..1024"},
+		"padding type":        {"[format]\nmax_alignment_padding = \"wide\"\n", Overrides{}, "max_alignment_padding must be a non-negative integer"},
 	} {
 		path := ""
 		if test.manifest != "" {

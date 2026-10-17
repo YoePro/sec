@@ -1,0 +1,20 @@
+module main
+
+fn Observe(result: CompareExchangeResult[int]) int {
+    return match result {
+        Exchanged => 0
+        NotExchanged(observed) => observed
+    }
+}
+
+fn Success() CompareExchangeResult[int] {
+    return CompareExchangeResult[int].Exchanged
+}
+
+fn Failure() CompareExchangeResult[int] {
+    return CompareExchangeResult[int].NotExchanged(7)
+}
+
+fn main() int {
+    return Observe(Failure())
+}

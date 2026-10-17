@@ -1,0 +1,179 @@
+module main
+
+enum OtherOrder { Acquire }
+
+fn LoadRelease(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.Release)
+}
+
+fn LoadAcqRel(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.AcqRel)
+}
+
+fn StoreAcquire(value: ref Atomic[int]) void {
+    value.Store(1, MemoryOrder.Acquire)
+}
+
+fn StoreAcqRel(value: ref Atomic[int]) void {
+    value.Store(1, MemoryOrder.AcqRel)
+}
+
+fn CompareRelaxedRelease(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Relaxed, MemoryOrder.Release)
+}
+
+fn CompareRelaxedAcqRel(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Relaxed, MemoryOrder.AcqRel)
+}
+
+fn CompareAcquireRelease(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Acquire, MemoryOrder.Release)
+}
+
+fn CompareAcquireAcqRel(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Acquire, MemoryOrder.AcqRel)
+}
+
+fn CompareReleaseRelease(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Release, MemoryOrder.Release)
+}
+
+fn CompareReleaseAcqRel(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Release, MemoryOrder.AcqRel)
+}
+
+fn CompareAcqRelRelease(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.AcqRel, MemoryOrder.Release)
+}
+
+fn CompareAcqRelAcqRel(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.AcqRel, MemoryOrder.AcqRel)
+}
+
+fn CompareSeqCstRelease(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.SeqCst, MemoryOrder.Release)
+}
+
+fn CompareSeqCstAcqRel(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.SeqCst, MemoryOrder.AcqRel)
+}
+
+fn LoadWrongType(value: ref Atomic[int]) void {
+    discard value.Load(OtherOrder.Acquire)
+}
+
+fn StoreWrongType(value: ref Atomic[int]) void {
+    value.Store(1, OtherOrder.Acquire)
+}
+
+fn SwapWrongType(value: ref Atomic[int]) void {
+    discard value.Swap(1, OtherOrder.Acquire)
+}
+
+fn FetchAddWrongType(value: ref Atomic[int]) void {
+    discard value.FetchAdd(1, OtherOrder.Acquire)
+}
+
+fn FetchSubWrongType(value: ref Atomic[int]) void {
+    discard value.FetchSub(1, OtherOrder.Acquire)
+}
+
+fn FetchAndWrongType(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, OtherOrder.Acquire)
+}
+
+fn FetchOrWrongType(value: ref Atomic[int]) void {
+    discard value.FetchOr(1, OtherOrder.Acquire)
+}
+
+fn FetchXorWrongType(value: ref Atomic[int]) void {
+    discard value.FetchXor(1, OtherOrder.Acquire)
+}
+
+fn CompareWrongTypes(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, 0, false)
+}
+
+fn UnknownOrder(value: ref Atomic[int]) void {
+    discard value.Load(missing)
+}
+
+fn UnknownVariant(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.Consume)
+}
+
+fn InvalidAlias(value: ref Atomic[int]) void {
+    let order := MemoryOrder.Release
+    let alias := order
+    discard value.Load(alias)
+}
+
+fn InvalidTypedAlias(value: ref Atomic[int]) void {
+    let order: MemoryOrder := MemoryOrder.Acquire
+    value.Store(1, order)
+}
+
+let ModuleOrder := MemoryOrder.Release
+
+fn InvalidModuleAlias(value: ref Atomic[int]) void {
+    discard value.Load(ModuleOrder)
+}
+
+fn LoadRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.Load(order)
+}
+
+fn StoreRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    value.Store(1, order)
+}
+
+fn SwapRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.Swap(1, order)
+}
+
+fn FetchAddRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.FetchAdd(1, order)
+}
+
+fn FetchSubRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.FetchSub(1, order)
+}
+
+fn FetchAndRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.FetchAnd(1, order)
+}
+
+fn FetchOrRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.FetchOr(1, order)
+}
+
+fn FetchXorRuntimeOrder(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.FetchXor(1, order)
+}
+
+fn CompareRuntimeOrders(value: ref Atomic[int], order: MemoryOrder) void {
+    discard value.CompareExchange(0, 1, order, order)
+}
+
+fn MutableOrder(value: ref Atomic[int]) void {
+    let mut order := MemoryOrder.Acquire
+    discard value.Load(order)
+}
+
+fn RuntimeAlias(value: ref Atomic[int], order: MemoryOrder) void {
+    let alias := order
+    discard value.Load(alias)
+}
+
+fn SelectedOrder() MemoryOrder {
+    return MemoryOrder.Acquire
+}
+
+fn OrderExecution(value: ref Atomic[int]) void {
+    discard value.Load(SelectedOrder())
+}
+
+fn OrderAliasExecution(value: ref Atomic[int]) void {
+    let order := SelectedOrder()
+    discard value.Load(order)
+}

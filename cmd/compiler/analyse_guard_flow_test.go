@@ -12,7 +12,7 @@ import (
 // Rules: rules/analysis/pitfall_analysis.md — "CLI integration", "Guard checks the wrong value",
 // "Safety check without control transfer", "Diagnostic ownership and coalescing".
 func TestAnalyseGuardFlow(t *testing.T) {
-	command := exec.Command(os.Args[0], "-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "../../testdata/sema/pitfall_guard_flow_valid.sec")
+	command := exec.Command(os.Args[0], "-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--verbose", "../../testdata/sema/pitfall_guard_flow_valid.sec")
 	command.Env = append(os.Environ(), "SEC_ANALYSE_TEST_PROCESS=1")
 	output, err := command.CombinedOutput()
 	if err != nil {

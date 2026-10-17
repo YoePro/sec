@@ -14,6 +14,15 @@ func semanticSnapshotType(typ Type) Type {
 
 func semanticSnapshotTypeSeen(typ Type, seen map[string]bool) Type {
 	result := escapeSnapshotType(typ)
+	// Associated-value enums retain their source category and closed variant
+	// names in post-Sema facts, rather than becoming an anonymous union.
+	// Rules: rules/concurrency/atomics.md — §§6,17,46(3–4).
+	result.AssociatedEnum = typ.AssociatedEnum
+	result.ErrorAssignable = typ.ErrorAssignable
+	result.EnumValues = append([]string(nil), typ.EnumValues...)
+	result.EnumDefault = typ.EnumDefault
+	result.UnionDefault = typ.UnionDefault
+	result.DeclarationToken = typ.DeclarationToken
 	// Bounded collection arguments are part of structural type identity, not
 	// declaration bodies. Preserve them for map component and source facts.
 	// Rules: rules/collections/collections.md — §§13.1,14.1,15.1.

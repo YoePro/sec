@@ -1,0 +1,9 @@
+module main
+
+fn Use(text: string) void {
+    let bytes: byte[] := text.ToByteArray()
+}
+
+fn main() int {
+    return 0
+}

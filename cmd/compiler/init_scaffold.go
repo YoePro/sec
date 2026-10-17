@@ -127,6 +127,10 @@ adaptive_min_width = 80
 adaptive_max_width = 200
 adaptive_fallback_width = 120
 
+# Largest padding in spaces that column alignment may insert; a group needing
+# more is not aligned. Default: four indentation widths (16 at width 4).
+# max_alignment_padding = 16
+
 # Optional supported syntax corrections: true enables them; false keeps
 # formatting limited to layout. Default: false. CLI --fix can opt in.
 language_corrections = false

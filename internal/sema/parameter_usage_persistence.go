@@ -9,7 +9,10 @@ import (
 	"sec/internal/lexer"
 )
 
-const parameterDemandSchemaVersion = 1
+// parameterDemandSchemaVersion 2 (2026-10-17): slice projection bounds are
+// exact arbitrary-precision values with nil for an unknown endpoint, replacing
+// int64 bounds plus known flags (P16-09); version-1 summaries are invalidated.
+const parameterDemandSchemaVersion = 2
 
 var zeroParameterSource lexer.Token
 

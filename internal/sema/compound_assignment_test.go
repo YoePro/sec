@@ -94,3 +94,27 @@ func assignmentTargetName(stmt *ast.AssignmentStatement) string {
 	}
 	return "?"
 }
+
+// An untyped numeric operand of a compound assignment takes the target's type
+// by context, so `count += 1` on a uint resolves as uint + uint and never as
+// a mixed uint/int operation (types.md "Context shaping").
+func TestCompoundAssignmentShapesUntypedOperandToTarget(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+fn Count() uint {
+    let mut count: uint := 0
+    count += 1
+    let mut small: uint8 := 0
+    small += 2
+    return count
+}
+`)
+	if len(errors) != 0 {
+		t.Fatal(errors)
+	}
+	for stmt := range analyzer.resolvedCompoundAssignments {
+		resolved, _ := analyzer.ResolvedCompoundAssignmentOf(stmt)
+		if resolved.RightType == nil || !sameConcreteType(resolved.LeftType, *resolved.RightType) {
+			t.Errorf("%s %s: left %s, right %v", assignmentTargetName(stmt), stmt.Operator, typeDisplayName(resolved.LeftType), resolved.RightType)
+		}
+	}
+}

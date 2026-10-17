@@ -45,6 +45,11 @@ func TestAtomicSurfaceLSP(t *testing.T) {
 	if len(definitions) != 1 || !strings.HasSuffix(definitions[0].URI, "/sec/core/atomic.sec") {
 		t.Fatal(definitions)
 	}
+	ownerPosition := offsetPosition(source, strings.Index(source, "MemoryOrder.SeqCst"))
+	ownerDefinitions := definitionsForSource(uri, source, ownerPosition)
+	if len(ownerDefinitions) != 1 || !strings.HasSuffix(ownerDefinitions[0].URI, "/sec/core/atomic.sec") {
+		t.Fatal(ownerDefinitions)
+	}
 	position = offsetPosition(source, strings.Index(source, "Orders() MemoryOrder")+len("Orders() "))
 	hover, ok = hoverForSource(uri, source, position)
 	if !ok || !strings.Contains(hover.Contents.Value, "enum MemoryOrder {\n    Relaxed\n    Acquire\n    Release\n    AcqRel\n    SeqCst\n}") {

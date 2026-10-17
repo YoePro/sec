@@ -10,6 +10,7 @@ import (
 
 // reportUnionVariantPayloadRequired reports a payload-carrying variant used
 // as a value without its payload (rules/declarations/unions.md §§5.2,5.3).
+// Canonical associated enums retain their source kind (atomics.md §6).
 func (a *Analyzer) reportUnionVariantPayloadRequired(token lexer.Token, union Type, variant UnionVariant) {
 	name := typeDisplayName(union) + "." + variant.Name
 	var help string
@@ -27,12 +28,13 @@ func (a *Analyzer) reportUnionVariantPayloadRequired(token lexer.Token, union Ty
 		help = fmt.Sprintf("`%s` carries a payload; construct it with %s, for example `%s(value)`.", name, payload, name)
 	}
 	a.addErrorAtTokenWithMetadata(token, diagnostics.UnionVariantPayloadRequired, help,
-		"union variant %s requires payload", name)
+		"%s variant %s requires payload", sumSourceKind(union), name)
 }
 
 // reportUnionPatternPayloadBindingRequired reports a match pattern naming a
 // payload-carrying variant without binding the payload
 // (rules/declarations/unions.md §§8.1,9.2–9.4).
+// Rules: rules/concurrency/atomics.md — §6 (associated-value core enum).
 func (a *Analyzer) reportUnionPatternPayloadBindingRequired(token lexer.Token, union Type, variant UnionVariant) {
 	name := typeDisplayName(union) + "." + variant.Name
 	help := fmt.Sprintf("Bind the payload in the pattern, for example `%s(payload) => ...`", variant.Name)
@@ -41,5 +43,5 @@ func (a *Analyzer) reportUnionPatternPayloadBindingRequired(token lexer.Token, u
 	}
 	help += fmt.Sprintf(". To test the active variant without the payload, use `value is %s`.", name)
 	a.addErrorAtTokenWithMetadata(token, diagnostics.UnionPatternPayloadBindingRequired, help,
-		"union variant %s requires payload binding", name)
+		"%s variant %s requires payload binding", sumSourceKind(union), name)
 }

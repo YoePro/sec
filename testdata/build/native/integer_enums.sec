@@ -1,0 +1,82 @@
+module main
+
+enum State {
+    Idle = 17
+    Running = 29
+    RunningAlias = 29
+    Done default = 43
+}
+
+enum Signed int8 {
+    Low = -128
+    High = 127
+}
+
+enum Unsigned uint64 {
+    Low = 0
+    High = 18446744073709551615
+}
+
+enum Wide uint256 {
+    Low = 0
+    High = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+}
+
+fn Echo(value: State) State {
+    return value
+}
+
+fn Choose(value: State) State {
+    return match value {
+        State.Idle => State.Running
+        State.Running => State.Done
+        State.Done => State.Idle
+    }
+}
+
+fn Classify(value: State) int {
+    return match value {
+        State.Idle => 1
+        State.Running => 2
+        State.Done => 3
+    }
+}
+
+fn SignedEqual(left: Signed, right: Signed) bool {
+    return left == right
+}
+
+fn UnsignedEqual(left: Unsigned, right: Unsigned) bool {
+    return left == right
+}
+
+fn WideEqual(left: Wide, right: Wide) bool {
+    return left == right
+}
+
+fn main() int {
+    let mut state: State
+    if state != State.Done {
+        return 1
+    }
+    state = Echo(State.RunningAlias)
+    if state != State.Running || state == State.Idle {
+        return 2
+    }
+    if Classify(state) != 2 || Classify(State.Idle) != 1 || Classify(State.Done) != 3 {
+        return 3
+    }
+    if Choose(State.Idle) != State.Running || Choose(State.Running) != State.Done {
+        return 4
+    }
+    if !SignedEqual(Signed.Low, Signed.Low) || SignedEqual(Signed.Low, Signed.High) {
+        return 5
+    }
+    if !UnsignedEqual(Unsigned.High, Unsigned.High) || UnsignedEqual(Unsigned.Low, Unsigned.High) {
+        return 6
+    }
+    if !WideEqual(Wide.High, Wide.High) || WideEqual(Wide.Low, Wide.High) {
+        return 7
+    }
+    return 0
+}

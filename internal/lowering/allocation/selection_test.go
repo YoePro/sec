@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"sec/internal/ast"
-	"sec/internal/codegen/llvm"
-	"sec/internal/codegen/mlir"
 	"sec/internal/codegen/targetplan"
 	"sec/internal/ir/semantic"
 	"sec/internal/lexer"
@@ -60,16 +58,6 @@ func TestAllocationSelectionBoundary(t *testing.T) {
 					}
 				}
 				check(a.ValidateAllocationLoweringReadiness(program, "main"))
-				ll, err := llvm.GenerateAnalyzed(program, a, triple)
-				if ll != "" {
-					t.Fatal("partial LLVM", ll)
-				}
-				check(err)
-				legacy, err := mlir.GenerateAnalyzed(program, a, triple)
-				if legacy != "" {
-					t.Fatal("partial legacy MLIR", legacy)
-				}
-				check(err)
 				module, err := semantic.Build(program, a, semantic.BuildOptions{RequestedModule: "main", MaxPackage: 15})
 				if module != nil {
 					t.Fatal("partial Semantic IR", module)
@@ -131,12 +119,6 @@ func TestAllocationSelectionForeignCall(t *testing.T) {
 	if err := a.ValidateAllocationLoweringReadiness(program, "main"); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := llvm.GenerateAnalyzed(program, a, triple); err != nil || !strings.Contains(out, "@Native") {
-		t.Fatal(out, err)
-	}
-	if out, err := mlir.GenerateAnalyzed(program, a, triple); err != nil || !strings.Contains(out, "@Native") {
-		t.Fatal(out, err)
-	}
 	if module, err := semantic.Build(program, a, semantic.BuildOptions{RequestedModule: "main"}); err != nil || module == nil {
 		t.Fatal(module, err)
 	}
@@ -164,21 +146,9 @@ func TestAllocationSelectionScope(t *testing.T) {
 	if err := a.ValidateAllocationLoweringReadiness(&subset, ""); err != nil {
 		t.Fatal("non-output allocation leaked into subset", err)
 	}
-	if out, err := llvm.GenerateAnalyzed(&subset, a, triple); err != nil || out == "" {
-		t.Fatal(out, err)
-	}
-	if out, err := mlir.GenerateAnalyzed(&subset, a, triple); err != nil || out == "" {
-		t.Fatal(out, err)
-	}
 	other, _ := selectionFixture(t, "modules", triple)
 	if err := a.ValidateAllocationLoweringReadiness(other, "main"); err == nil {
 		t.Fatal("stale analyzer accepted")
-	}
-	if out, err := llvm.GenerateAnalyzed(other, a, triple); err == nil || out != "" {
-		t.Fatal("stale LLVM output", out, err)
-	}
-	if out, err := mlir.GenerateAnalyzed(other, a, triple); err == nil || out != "" {
-		t.Fatal("stale MLIR output", out, err)
 	}
 	var absent *sema.Analyzer
 	if err := absent.ValidateAllocationLoweringReadiness(program, "main"); err == nil {

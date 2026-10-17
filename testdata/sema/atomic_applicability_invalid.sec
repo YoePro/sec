@@ -1,0 +1,86 @@
+module main
+
+type Count uint64
+type AliasCount Count
+type Flag bool
+enum State uint8 { Idle, Running }
+type NamedState State
+type Pointer RawPtr[byte]
+type Bounded int range 0..100
+type InheritedBound Bounded
+
+fn Boolean(value: ref Atomic[bool], item: bool) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn NamedBool(value: ref Atomic[Flag], item: Flag) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn Enum(value: ref Atomic[State], item: State) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn NamedEnum(value: ref Atomic[NamedState], item: NamedState) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn PointerOps(value: ref Atomic[RawPtr[byte]], item: RawPtr[byte]) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn NamedPointer(value: ref Atomic[Pointer], item: Pointer) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn Constrained(value: ref Atomic[Bounded], item: Bounded) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn InheritedConstraint(value: ref Atomic[InheritedBound], item: InheritedBound) void {
+    discard value.FetchAdd(item)
+    discard value.FetchSub(item)
+    discard value.FetchAnd(item)
+    discard value.FetchOr(item)
+    discard value.FetchXor(item)
+}
+
+fn NoMethodTypeArguments(value: ref Atomic[int]) void {
+    discard value.Load[int]()
+    value.Store[int](1)
+    discard value.Swap[int](1)
+    discard value.CompareExchange[int](1, 2)
+    discard value.FetchAdd[int](1)
+    discard value.FetchSub[int](1)
+    discard value.FetchAnd[int](1)
+    discard value.FetchOr[int](1)
+    discard value.FetchXor[int](1)
+}

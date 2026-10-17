@@ -1,0 +1,57 @@
+module main
+
+type Count uint64
+
+fn StructConstruction() void {
+    let value := Atomic[int] {}
+}
+
+fn StructStorage() void {
+    let value := Atomic[int] { Value: 0 }
+}
+
+fn NewConstruction() void {
+    let value := new Atomic[int]()
+}
+
+fn Storage(value: ref Atomic[int]) void {
+    discard value.Value
+}
+
+fn StorageReference(value: ref Atomic[int]) void {
+    let reference := ref value.Value
+}
+
+fn MissingType(value: ref Atomic) void {
+}
+
+fn ExtraType(value: ref Atomic[int, bool]) void {
+}
+
+fn WrongInitializer(amount: int) void {
+    let value: Atomic[Count] := Atomic(amount)
+}
+
+fn OutOfRange() void {
+    let value: Atomic[uint8] := Atomic(256)
+}
+
+fn MissingValue() void {
+    let value := Atomic()
+}
+
+fn ExtraValue() void {
+    let value := Atomic(0, 1)
+}
+
+fn ExplicitType() void {
+    let value := Atomic[int](0)
+}
+
+impl Atomic[T] {
+    fn Load() string {
+        return "replacement"
+    }
+}
+
+type Atomic int

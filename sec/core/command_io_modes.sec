@@ -1,0 +1,25 @@
+module core
+
+/** Selects how child standard input is established at Command.Start commit. */
+enum CommandInputMode {
+    /** Bind the effective parent standard input. */
+    Inherit
+    /** Establish a valid endpoint that immediately reaches end-of-input. */
+    Closed
+    /** Create an anonymous pipe with a parent-side PipeWriter. */
+    Pipe
+    /** Use an existing owned File or PipeReader supplied transactionally; this is not a raw native handle. */
+    Resource
+}
+
+/** Selects how child stdout or stderr is established at Command.Start commit. */
+enum CommandOutputMode {
+    /** Bind the matching effective parent output stream. */
+    Inherit
+    /** Discard bytes written to the child stream. */
+    Discard
+    /** Create an anonymous pipe with a parent-side PipeReader. */
+    Pipe
+    /** Use an existing owned File or PipeWriter supplied transactionally; this is distinct from creating a new pipe. */
+    Resource
+}

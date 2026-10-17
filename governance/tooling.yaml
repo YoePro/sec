@@ -2,6 +2,40 @@ schema_version: 1
 area: tooling
 purpose: Shared tooling infrastructure and cross-tooling coordination.
 integrations:
+  - id: tooling.cli
+    area: command-line-interface-help-and-analyse
+    status: partial
+    integrated: "2026-10-17"
+    document_revision: "1.0"
+    rules:
+      - rules/tooling/cli.md
+      - rules/compiler/compiler_analysis.md
+      - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md
+    evidence:
+      code:
+        - cmd/compiler/cli_help.go
+        - cmd/compiler/analyse_cli.go
+        - cmd/compiler/analyse.go
+        - cmd/compiler/diagnostic_output.go
+        - cmd/compiler/analysis_pipeline.go
+        - cmd/compiler/main.go
+      tests:
+        - cmd/compiler/analyse_cli_test.go
+        - cmd/compiler/analyse_test.go
+        - testdata/tooling/analyse_cli/clean.sec
+        - testdata/tooling/analyse_cli/advisory.sec
+        - testdata/tooling/analyse_cli/rejected.sec
+    implemented:
+      - "MD-017 (2026-10-17): one command registry renders the usage synopsis, `sec help`, `sec --help`, `sec help <command>` and `sec <command> --help`; unknown commands, help topics, options and analysis names get nearest-name suggestions and a pointer to `sec help` (TestCLIHelpForms)"
+      - "`sec analyse [--all | <analysis>] [-f|--function <callable>] [-d|--depth interactive|standard|deep] [--info|--verbose|--json] [--target] [inputs]`: the current directory when no input is named; the analysis-name registry (isr, deadlocks, data-races, pitfalls, parameter-usage, stack) is shared by parser, help, human and JSON output; unknown names never fall back to --all (TestAnalyseFamilySelection, TestAnalyseCLI)"
+      - "presentation: the default prints only diagnostics, findings and limitations and is silent on a clean run; --info adds a short summary; --verbose prints the full fact report plus the summary once; --json writes one versioned sec.analysis-report (v1) on stdout, also for rejected programs, reusing emitted diagnostic occurrences (TestAnalysePresentationModes, TestAnalyseJSONReport)"
+      - "function focus: -f/--function resolves a canonical callable ID, Type.Method or unique short name (ambiguous overloads are rejected with candidates) and reports findings of the root and every reachable callee with the call path; the whole program is still analysed, so no dependency is omitted (TestAnalyseFunctionFocus)"
+      - "depth: -d/--depth selects the Sema analysis budget (default deep); a reduced depth is reported as a limitation (TestAnalyseDepthSelection)"
+    remaining:
+      - "known hole (verified 2026-10-17): isr, deadlocks and data-races cannot be selected individually; ISR and same-resource reacquisition checks run only as mandatory compilation diagnostics and the data race analysis is not implemented, so selecting them fails with an explanation"
+      - "focus attributes findings to the nearest preceding named-function declaration in the same file; the call graph carries no body ranges, so attribution inside nested declarations is approximate, and recursion, generic specialization and open indirect target cases of correction § 11(4)-(5) are not covered by tests yet"
+      - "cold/incremental/parallel agreement and optimized-build checks of correction § 11(9)-(11) are not implemented"
+      - "closure analysis has no registered individual name (rules/tooling/cli.md § 5.2(2))"
   - id: tooling.borrowing
     area: diagnostics-lsp-formatter-traceability-borrowing
     status: partial

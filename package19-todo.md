@@ -58,7 +58,7 @@ invent their semantics):
 | MD-034 | Allocation profile of freestanding targets. | Freestanding targets provide no positive allocation context; the bare-metal bounded profile (§ 134) and strict profile validation (§ 82) must not assume one. |
 | MD-053 | Constraint/effect contracts. | Effect summaries (§§ 65–66, 136) follow current effect rules; no new contract surface. |
 | MD-065 | Borrow-end marker placement. | Applies to Arena references once ordinary borrow ends are emitted. |
-| MD-074 | `len(...)` representability. | Arena `Alloc[T](count)` element counts and slices follow the same no-narrowing rule. |
+| MD-074 | Decided 2026-10-17: `len(...)` is `uint` like `.Len`. | Arena `Alloc[T](count)` element counts and slices follow the same no-narrowing rule. |
 
 Predecessor gates: P15 (dynamic-epoch references), P16 (slices for
 `Arena.Alloc`), P17 (ownership, destruction, cleanup), P18 (owning

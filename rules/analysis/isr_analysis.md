@@ -1282,7 +1282,7 @@ Tooling may provide an explicit ISR-only selection equivalent to:
 sec analyse isr
 ```
 
-The exact CLI spelling is owned by CLI/tooling rules.
+`isr` is the canonical analysis name (`rules/tooling/cli.md` § 5.2, MD-017).
 
 Detailed analysis output should be capable of reporting per interrupt root:
 

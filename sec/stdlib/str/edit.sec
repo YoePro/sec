@@ -18,7 +18,8 @@ module str
  *
  * Unicode:
  * Edit boundaries are byte offsets and must lie on valid UTF-8 rune
- * boundaries.
+ * boundaries. core string.Slice takes rune indexes (MD-071, 2026-10-17), so
+ * validated byte boundaries are translated with _RuneIndexOfBoundary.
  *
  * Rulebook:
  * stdlib/str/stdlib_str.md
@@ -86,13 +87,13 @@ fn Insert(value: string, byteIndex: uint, insertion: string) Result[string, Edit
         return Ok(value)
     }
 
-    let prefix := try value.Slice(0, byteIndex) {
+    let prefix := try value.Slice(0, _RuneIndexOfBoundary(value, byteIndex)) {
         Err(_) => {
             panic "Insert: invalid prefix bounds"
         }
     }
 
-    let suffix := try value.Slice(byteIndex, value.SizeOf) {
+    let suffix := try value.Slice(_RuneIndexOfBoundary(value, byteIndex), value.Len) {
         Err(_) => {
             panic "Insert: invalid suffix bounds"
         }
@@ -162,13 +163,13 @@ fn Insert(value: string, byteIndex: uint, insertion: string) Result[string, Edit
 fn Insert(value: string, byteIndex: uint, insertion: rune) Result[string, EditError] {
     try _ValidateEditBoundary(value, byteIndex)
 
-    let prefix := try value.Slice(0, byteIndex) {
+    let prefix := try value.Slice(0, _RuneIndexOfBoundary(value, byteIndex)) {
         Err(_) => {
             panic "Insert: invalid prefix bounds"
         }
     }
 
-    let suffix := try value.Slice(byteIndex, value.SizeOf) {
+    let suffix := try value.Slice(_RuneIndexOfBoundary(value, byteIndex), value.Len) {
         Err(_) => {
             panic "Insert: invalid suffix bounds"
         }
@@ -250,13 +251,13 @@ fn RemoveRange(value: string, startByte: uint, endByte: uint) Result[string, Edi
         return Ok(value)
     }
 
-    let prefix := try value.Slice(0, startByte) {
+    let prefix := try value.Slice(0, _RuneIndexOfBoundary(value, startByte)) {
         Err(_) => {
             panic "RemoveRange: invalid prefix bounds"
         }
     }
 
-    let suffix := try value.Slice(endByte, value.SizeOf) {
+    let suffix := try value.Slice(_RuneIndexOfBoundary(value, endByte), value.Len) {
         Err(_) => {
             panic "RemoveRange: invalid suffix bounds"
         }
@@ -335,13 +336,13 @@ fn ReplaceRange(value: string, startByte: uint, endByte: uint, replacement: stri
         return Ok(value)
     }
 
-    let prefix := try value.Slice(0, startByte) {
+    let prefix := try value.Slice(0, _RuneIndexOfBoundary(value, startByte)) {
         Err(_) => {
             panic "ReplaceRange: invalid prefix bounds"
         }
     }
 
-    let suffix := try value.Slice(endByte, value.SizeOf) {
+    let suffix := try value.Slice(_RuneIndexOfBoundary(value, endByte), value.Len) {
         Err(_) => {
             panic "ReplaceRange: invalid suffix bounds"
         }
@@ -413,4 +414,38 @@ fn _ValidateEditBoundary(value: string, byteIndex: uint) Result[void, EditError]
     }
 
     return Ok()
+}
+
+/**
+ * Translates a validated UTF-8 byte boundary to its rune index.
+ *
+ * Description:
+ * core string.Slice takes rune indexes (MD-071), while this module's
+ * public edit positions are byte offsets. byteIndex must already have been
+ * validated by _ValidateEditBoundary; value.SizeOf maps to value.Len.
+ *
+ * Parameters:
+ * - value: The source UTF-8 string.
+ * - byteIndex: A validated byte boundary.
+ *
+ * Returns:
+ * The number of runes before byteIndex.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _RuneIndexOfBoundary(value: string, byteIndex: uint) uint {
+    let mut runes: uint := 0
+    let mut position: uint := 0
+
+    for character in value {
+        if position >= byteIndex {
+            return runes
+        }
+
+        position += character.Utf8Length
+        runes += 1
+    }
+
+    return runes
 }

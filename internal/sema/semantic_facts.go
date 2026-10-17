@@ -263,12 +263,21 @@ const (
 	ResolvedIntegerCompareLE                 ResolvedOperatorKind = "integer-compare-le"
 	ResolvedIntegerCompareGT                 ResolvedOperatorKind = "integer-compare-gt"
 	ResolvedIntegerCompareGE                 ResolvedOperatorKind = "integer-compare-ge"
-	ResolvedEnumCompareEQ                    ResolvedOperatorKind = "enum-compare-eq"
-	ResolvedEnumCompareNE                    ResolvedOperatorKind = "enum-compare-ne"
-	ResolvedMembershipCompare                ResolvedOperatorKind = "membership-compare"
-	ResolvedBoolNot                          ResolvedOperatorKind = "bool-not"
-	ResolvedNegatedMembershipCompare         ResolvedOperatorKind = "negated-membership-compare"
-	ResolvedMatrixMultiply                   ResolvedOperatorKind = "matrix-multiply"
+	// Character comparisons compare char by unsigned 8-bit value and rune by
+	// Unicode scalar value (operators.md "Character ordering", "Rune
+	// ordering"); both operands have the same character type (MD-105).
+	ResolvedCharacterCompareEQ       ResolvedOperatorKind = "character-compare-eq"
+	ResolvedCharacterCompareNE       ResolvedOperatorKind = "character-compare-ne"
+	ResolvedCharacterCompareLT       ResolvedOperatorKind = "character-compare-lt"
+	ResolvedCharacterCompareLE       ResolvedOperatorKind = "character-compare-le"
+	ResolvedCharacterCompareGT       ResolvedOperatorKind = "character-compare-gt"
+	ResolvedCharacterCompareGE       ResolvedOperatorKind = "character-compare-ge"
+	ResolvedEnumCompareEQ            ResolvedOperatorKind = "enum-compare-eq"
+	ResolvedEnumCompareNE            ResolvedOperatorKind = "enum-compare-ne"
+	ResolvedMembershipCompare        ResolvedOperatorKind = "membership-compare"
+	ResolvedBoolNot                  ResolvedOperatorKind = "bool-not"
+	ResolvedNegatedMembershipCompare ResolvedOperatorKind = "negated-membership-compare"
+	ResolvedMatrixMultiply           ResolvedOperatorKind = "matrix-multiply"
 )
 
 type OperatorFailureBehavior string
@@ -973,62 +982,6 @@ func (a *Analyzer) ResolvedTypeDeclarationLocation(typ Type) (lexer.Token, bool)
 	return token, ok
 }
 
-// ResolvedEnumCaseOf returns the exact declared case selected by a successfully
-// analyzed member expression. Alias cases retain distinct ordinals.
-func (a *Analyzer) ResolvedEnumCaseOf(expr *ast.MemberExpression) (ResolvedEnumCase, bool) {
-	if a == nil || expr == nil || expr.Property == nil {
-		return ResolvedEnumCase{}, false
-	}
-	typ, ok := a.ResolvedTypeOf(expr)
-	if !ok || typ.Kind != EnumType {
-		return ResolvedEnumCase{}, false
-	}
-	value, ok := typ.EnumConsts[expr.Property.Value]
-	if !ok {
-		return ResolvedEnumCase{}, false
-	}
-	for ordinal, name := range typ.EnumValues {
-		if name == value.Name {
-			resolved := ResolvedEnumCase{EnumType: typ, Name: value.Name, Ordinal: uint32(ordinal), Token: value.Token}
-			if value.Value != nil {
-				resolved.Value = new(big.Int).Set(value.Value)
-			}
-			if value.StringValue != nil {
-				stringValue := *value.StringValue
-				resolved.StringValue = &stringValue
-			}
-			if resolved.Value == nil && resolved.StringValue == nil {
-				return ResolvedEnumCase{}, false
-			}
-			return resolved, true
-		}
-	}
-	return ResolvedEnumCase{}, false
-}
-
-// ResolvedEnumConversionOf classifies only explicit conversions accepted by
-// Sema. It does not infer a conversion from callee spelling alone.
-func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedEnumConversion, bool) {
-	if a == nil || call == nil || len(call.Arguments) != 1 {
-		return ResolvedEnumConversion{}, false
-	}
-	result, resultOK := a.ResolvedTypeOf(call)
-	operand, operandOK := a.ResolvedTypeOf(call.Arguments[0])
-	if !resultOK || !operandOK {
-		return ResolvedEnumConversion{}, false
-	}
-	if result.Kind == EnumType && isIntegerType(operand) {
-		return ResolvedEnumConversion{Kind: ResolvedIntegerToEnum, EnumType: result, IntegerType: operand}, true
-	}
-	if operand.Kind == EnumType && isIntegerType(result) {
-		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}, true
-	}
-	if operand.Kind == EnumType && result.Kind == ResultType && len(result.TypeArgs) == 2 && isIntegerType(result.TypeArgs[0]) {
-		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result.TypeArgs[0], Fallible: true}, true
-	}
-	return ResolvedEnumConversion{}, false
-}
-
 // ResolvedUnionConstructionOf exposes the concrete union and stable variant
 // selected by Sema, including source and canonical field order.
 func (a *Analyzer) ResolvedUnionConstructionOf(expr ast.Expression) (ResolvedUnionConstruction, bool) {
@@ -1729,6 +1682,14 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 			}
 			break
 		}
+		if (left.Kind == CharType || left.Kind == RuneType) && !left.Named && sameConcreteType(left, right) {
+			kind, ok := map[string]ResolvedOperatorKind{"==": ResolvedCharacterCompareEQ, "!=": ResolvedCharacterCompareNE, "<": ResolvedCharacterCompareLT, "<=": ResolvedCharacterCompareLE, ">": ResolvedCharacterCompareGT, ">=": ResolvedCharacterCompareGE}[expression.Operator]
+			if !ok {
+				return
+			}
+			resolved.Kind = kind
+			break
+		}
 		integer, ok := resolvedIntegerInfixOperator(expression.Operator, left, right, result)
 		if !ok {
 			return
@@ -1874,6 +1835,12 @@ func (a *Analyzer) recordResolvedCompoundAssignment(stmt *ast.AssignmentStatemen
 	operator, ok := compoundAssignmentOperators[stmt.Operator]
 	if !ok {
 		return
+	}
+	// An untyped numeric operand takes the target's type, as in `count += 1`
+	// on a uint: the literal is shaped by context, never a mixed-type
+	// operation (types.md "Context shaping").
+	if !sameConcreteType(target, value) && isUntypedNumericExpression(stmt.Value) && a.canInitializeUnrecorded(target, value, stmt.Value) {
+		value = target
 	}
 	resolved, ok := resolvedIntegerInfixOperator(operator, target, value, target)
 	if !ok {

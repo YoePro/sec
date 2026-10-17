@@ -34,7 +34,7 @@ func TestAnalyseIteratorResolutions(t *testing.T) {
 	if len(facts) != 3 {
 		t.Fatal(facts)
 	}
-	report := buildAnalyseReport(a, map[string]bool{"iterators.sec": true}, CompilerTarget{})
+	report := buildAnalyseReport(a, map[string]bool{"iterators.sec": true}, CompilerTarget{}, "", nil)
 	var output bytes.Buffer
 	report.write(&output)
 	last := -1
@@ -47,13 +47,13 @@ func TestAnalyseIteratorResolutions(t *testing.T) {
 	}
 	for i := 0; i < 10; i++ {
 		var repeated bytes.Buffer
-		buildAnalyseReport(a, map[string]bool{"iterators.sec": true}, CompilerTarget{}).write(&repeated)
+		buildAnalyseReport(a, map[string]bool{"iterators.sec": true}, CompilerTarget{}, "", nil).write(&repeated)
 		if output.String() != repeated.String() {
 			t.Fatal("nondeterministic report")
 		}
 	}
 	var filtered bytes.Buffer
-	buildAnalyseReport(a, map[string]bool{"other.sec": true}, CompilerTarget{}).write(&filtered)
+	buildAnalyseReport(a, map[string]bool{"other.sec": true}, CompilerTarget{}, "", nil).write(&filtered)
 	if strings.Contains(filtered.String(), "Next target:") {
 		t.Fatal("unselected source exposed")
 	}
@@ -63,7 +63,7 @@ func TestAnalyseIteratorResolutions(t *testing.T) {
 // with source filtering despite automatically loaded core/stdlib loops.
 // Rules: rules/compiler/semantic_ir.md — §109(1–4),§115(2).
 func TestAnalyseIteratorCLI(t *testing.T) {
-	cmd := exec.Command(os.Args[0], "-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "../../testdata/tooling/iterator_resolution.sec")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--verbose", "../../testdata/tooling/iterator_resolution.sec")
 	cmd.Env = append(os.Environ(), "SEC_ANALYSE_TEST_PROCESS=1")
 	output, err := cmd.CombinedOutput()
 	if err != nil {

@@ -870,8 +870,9 @@ with result type:
 uint
 ```
 
-It does not broaden or redefine the separate compiler-known `len(...) -> int`
-surface for dynamic arrays/slices.
+It does not broaden or redefine the separate compiler-known `len(...)`
+surface for dynamic arrays/slices (`uint` since MD-074/MD-088, 2026-10-17;
+formerly `int`).
 
 If fixed-array `len(...)` is already accepted by current frontend behavior, keep
 it compatible but do not infer that semantic from P14 array member lowering.

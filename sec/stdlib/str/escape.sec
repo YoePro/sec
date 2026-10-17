@@ -207,7 +207,9 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
 
         // Copy the unchanged UTF-8 segment.
         if segmentStart < index {
-            let segment := try value.Slice(segmentStart, index) {
+            // Byte scanning positions translate to rune indexes for
+            // string.Slice (MD-071); both lie on ASCII boundaries.
+            let segment := try value.Slice(_RuneIndexOfBoundary(value, segmentStart), _RuneIndexOfBoundary(value, index)) {
                 Err(_) => {
                     panic "UnescapeLiteral: invalid segment bounds"
                 }
@@ -329,7 +331,7 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
 
     // Copy any text following the final escape.
     if segmentStart < value.SizeOf {
-        let suffix := try value.Slice(segmentStart, value.SizeOf) {
+        let suffix := try value.Slice(_RuneIndexOfBoundary(value, segmentStart), value.Len) {
             Err(_) => {
                 panic "UnescapeLiteral: invalid suffix bounds"
             }
@@ -427,7 +429,9 @@ fn Unquote(value: string) Result[string, UnescapeError] {
         index += 1
     }
 
-    let contents := try value.Slice(1, closingIndex) {
+    // Both delimiters are one-byte ASCII quotes, so the contents are runes
+    // 1 ..< value.Len - 1 (string.Slice takes rune indexes, MD-071).
+    let contents := try value.Slice(1, value.Len - 1) {
         Err(_) => {
             panic "Unquote: invalid content bounds"
         }

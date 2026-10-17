@@ -8,4 +8,4 @@ module {
   }
 }
 
-// CHECK: only copy-trivial argument actions are valid in schema 2
+// CHECK: argument action must be copy-trivial

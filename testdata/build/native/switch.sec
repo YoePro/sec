@@ -1,0 +1,97 @@
+module main
+
+fn Value(x: int) int {
+    switch x {
+    case 1:
+        return 10
+    case 2, 3, 5, 7:
+        return 20
+    default:
+        return 0
+    }
+}
+
+fn Relational(x: int) int {
+    switch x {
+    case < 0:
+        return -1
+    case 0:
+        return 0
+    default:
+        return 1
+    }
+}
+
+fn Ranges(score: uint) int {
+    switch score {
+    case 0..<50:
+        return 1
+    case 50..<80:
+        return 2
+    case 80..100:
+        return 3
+    }
+    return 4
+}
+
+fn Fall(x: int) int {
+    let mut t: int := 0
+    switch x {
+    case 1:
+        t += 1
+        fallthrough
+    case 2:
+        t += 10
+    case 3:
+    default:
+        t += 100
+    }
+    return t
+}
+
+fn Subjectless(x: int) int {
+    switch {
+    case x < 0, x > 100:
+        return 1
+    case x == 50:
+        return 2
+    default:
+        return 3
+    }
+}
+
+fn InLoop() int {
+    let mut t: int := 0
+    for i in 0..<10 {
+        switch i {
+        case 3:
+            continue
+        case 6:
+            break
+        }
+        t += i
+    }
+    return t
+}
+
+fn main() int {
+    if Value(1) != 10 || Value(5) != 20 || Value(4) != 0 {
+        return 1
+    }
+    if Relational(-5) != -1 || Relational(0) != 0 || Relational(9) != 1 {
+        return 2
+    }
+    if Ranges(10) != 1 || Ranges(79) != 2 || Ranges(100) != 3 || Ranges(101) != 4 {
+        return 3
+    }
+    if Fall(1) != 11 || Fall(2) != 10 || Fall(3) != 0 || Fall(9) != 100 {
+        return 4
+    }
+    if Subjectless(-1) != 1 || Subjectless(50) != 2 || Subjectless(7) != 3 {
+        return 5
+    }
+    if InLoop() != 12 {
+        return 6
+    }
+    return 0
+}

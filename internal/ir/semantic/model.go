@@ -339,7 +339,13 @@ type LoopID uint32
 //   - rules/compiler/semantic_ir.md — § 65(2), § 67(4)
 type LoopKind string
 
-const LoopWhile LoopKind = "while"
+const (
+	LoopWhile LoopKind = "while"
+	// LoopForInfinite is `for { }` (semantic_ir.md § 65(2)).
+	LoopForInfinite LoopKind = "for-infinite"
+	// LoopForRange is numeric range iteration (semantic_ir.md § 65(2)).
+	LoopForRange LoopKind = "for-range"
+)
 
 // LoopEdge classifies a control transfer that belongs to a loop's CFG.
 type LoopEdge string
@@ -444,26 +450,29 @@ type Storage struct {
 type OpKind string
 
 const (
-	OpConstInt         OpKind = "const.int"
-	OpConstBool        OpKind = "const.bool"
-	OpConstString      OpKind = "const.string"
-	OpConstDecimal     OpKind = "const.decimal"
-	OpConstFloat       OpKind = "const.float"
-	OpReturn           OpKind = "return"
-	OpStorageDeclare   OpKind = "storage.declare"
-	OpStorageInit      OpKind = "storage.init"
-	OpStorageLoad      OpKind = "storage.load"
-	OpStorageStore     OpKind = "storage.store"
-	OpDirectCall       OpKind = "call.direct"
-	OpForeignCall      OpKind = "call.foreign"
-	OpBranch           OpKind = "branch"
-	OpCondBranch       OpKind = "conditional-branch"
-	OpUnreachable      OpKind = "unreachable"
-	OpIntUnaryPlus     OpKind = "int.unary-plus"
-	OpIntNegChecked    OpKind = "int.neg-checked"
-	OpIntBitNot        OpKind = "int.bit-not"
-	OpIntBinaryChecked OpKind = "int.binary-checked"
-	OpIntBitwise       OpKind = "int.bitwise"
+	OpConstInt       OpKind = "const.int"
+	OpConstBool      OpKind = "const.bool"
+	OpConstString    OpKind = "const.string"
+	OpConstDecimal   OpKind = "const.decimal"
+	OpConstFloat     OpKind = "const.float"
+	OpReturn         OpKind = "return"
+	OpStorageDeclare OpKind = "storage.declare"
+	OpStorageInit    OpKind = "storage.init"
+	OpStorageLoad    OpKind = "storage.load"
+	OpStorageStore   OpKind = "storage.store"
+	OpDirectCall     OpKind = "call.direct"
+	OpForeignCall    OpKind = "call.foreign"
+	OpBranch         OpKind = "branch"
+	OpCondBranch     OpKind = "conditional-branch"
+	OpUnreachable    OpKind = "unreachable"
+	OpIntUnaryPlus   OpKind = "int.unary-plus"
+	OpIntNegChecked  OpKind = "int.neg-checked"
+	OpIntBitNot      OpKind = "int.bit-not"
+	// OpNumericConvertExact is P20's NumericConvertExactOp, admitted early for
+	// built-in integer conversions Sema proved exact (MD-104).
+	OpNumericConvertExact OpKind = "numeric.convert-exact"
+	OpIntBinaryChecked    OpKind = "int.binary-checked"
+	OpIntBitwise          OpKind = "int.bitwise"
 	// OpIntBitExtract is `bit[N](value)`: the unsigned value of the N
 	// (Operation.Integer) low bits of an integer, byte or char operand.
 	OpIntBitExtract                   OpKind = "int.bit-extract"
@@ -704,8 +713,10 @@ type Operation struct {
 	ArrayGuard          ValueID
 	// VariantGuard names the union.is-variant predicate whose true edge
 	// proves the active variant of a place.union-payload (P15-45).
-	VariantGuard         ValueID
-	ArrayOperation       string
+	VariantGuard   ValueID
+	ArrayOperation string
+	// AtomicOrder is the established MemoryOrder of an atomic.fence.
+	AtomicOrder          string
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int
 	TryHandlerExhaustive bool

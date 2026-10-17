@@ -1,0 +1,9 @@
+module main
+
+fn Add(left: int, right: int) int {
+    return left + right
+}
+
+fn main() int {
+    return Add(1, 2) - 3
+}

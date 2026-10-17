@@ -2,7 +2,6 @@ package sema
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 	"strings"
 
@@ -30,16 +29,18 @@ type PlaceProjection struct {
 	// DynamicIndexID identifies the evaluated runtime index expression of a
 	// dynamic index (package15.md § 14); IndexType, IndexSigned, ArrayLength
 	// and IndexProof retain the P14 index facts when known.
-	DynamicIndexID  DynamicIndexID
-	IndexType       Type
-	IndexSigned     bool
-	ArrayLength     *big.Int
-	IndexProof      ArrayIndexProofKind
-	SliceStart      int64
-	SliceEnd        int64
-	SliceStartKnown bool
-	SliceEndKnown   bool
-	Token           lexer.Token
+	DynamicIndexID DynamicIndexID
+	IndexType      Type
+	IndexSigned    bool
+	ArrayLength    *big.Int
+	IndexProof     ArrayIndexProofKind
+	// SliceStart and SliceEnd are the exact normalized half-open bounds of a
+	// slice projection; nil marks an endpoint that is not a compile-time
+	// constant. They are arbitrary precision so no correctness decision
+	// depends on host int64 width (package16.md §§ 25, 27-29).
+	SliceStart *big.Int
+	SliceEnd   *big.Int
+	Token      lexer.Token
 }
 
 // clonePlaceConstantIndex creates an independently owned exact integer so
@@ -62,6 +63,8 @@ func clonePlaceConstantIndex(index *big.Int) *big.Int {
 func clonePlaceProjection(projection PlaceProjection) PlaceProjection {
 	projection.ConstantIndex = clonePlaceConstantIndex(projection.ConstantIndex)
 	projection.ArrayLength = clonePlaceConstantIndex(projection.ArrayLength)
+	projection.SliceStart = clonePlaceConstantIndex(projection.SliceStart)
+	projection.SliceEnd = clonePlaceConstantIndex(projection.SliceEnd)
 	return projection
 }
 
@@ -224,12 +227,14 @@ func (p Place) String() string {
 			}
 		case PlaceSlice:
 			out.WriteByte('[')
-			if projection.SliceStartKnown && projection.SliceStart != 0 {
-				fmt.Fprintf(&out, "%d", projection.SliceStart)
+			if projection.SliceStart == nil {
+				out.WriteByte('*')
+			} else if projection.SliceStart.Sign() != 0 {
+				out.WriteString(projection.SliceStart.String())
 			}
-			if projection.SliceEndKnown {
+			if projection.SliceEnd != nil {
 				out.WriteString("..<")
-				fmt.Fprintf(&out, "%d", projection.SliceEnd)
+				out.WriteString(projection.SliceEnd.String())
 			} else {
 				out.WriteString("..")
 			}
@@ -428,7 +433,7 @@ func appendPlaceProjection(place Place, projection PlaceProjection) Place {
 
 func placeIsStaticallyEmpty(place Place) bool {
 	for _, projection := range place.Projections {
-		if projection.Kind == PlaceSlice && projection.SliceStartKnown && projection.SliceEndKnown && projection.SliceStart >= projection.SliceEnd {
+		if projection.Kind == PlaceSlice && projection.SliceStart != nil && projection.SliceEnd != nil && projection.SliceStart.Cmp(projection.SliceEnd) >= 0 {
 			return true
 		}
 	}
@@ -436,14 +441,21 @@ func placeIsStaticallyEmpty(place Place) bool {
 }
 
 func slicesAreStaticallyDisjoint(left, right PlaceProjection) bool {
-	return left.SliceEndKnown && right.SliceStartKnown && left.SliceEnd <= right.SliceStart ||
-		right.SliceEndKnown && left.SliceStartKnown && right.SliceEnd <= left.SliceStart
+	return left.SliceEnd != nil && right.SliceStart != nil && left.SliceEnd.Cmp(right.SliceStart) <= 0 ||
+		right.SliceEnd != nil && left.SliceStart != nil && right.SliceEnd.Cmp(left.SliceStart) <= 0
 }
 
 func slicesAreStaticallyEqual(left, right PlaceProjection) bool {
-	return left.SliceStartKnown == right.SliceStartKnown && left.SliceEndKnown == right.SliceEndKnown &&
-		(!left.SliceStartKnown || left.SliceStart == right.SliceStart) &&
-		(!left.SliceEndKnown || left.SliceEnd == right.SliceEnd)
+	return sliceBoundsEqual(left.SliceStart, right.SliceStart) && sliceBoundsEqual(left.SliceEnd, right.SliceEnd)
+}
+
+// sliceBoundsEqual compares two exact slice endpoints; unknown endpoints are
+// equal only to each other.
+func sliceBoundsEqual(left, right *big.Int) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Cmp(right) == 0
 }
 
 func projectionsAreDisjointIndexAndSlice(left, right PlaceProjection) bool {
@@ -460,8 +472,8 @@ func indexOutsideSlice(index, slice PlaceProjection) bool {
 	if index.DynamicIndex {
 		return false
 	}
-	return slice.SliceStartKnown && placeConstantIndexValue(index.ConstantIndex).Cmp(big.NewInt(slice.SliceStart)) < 0 ||
-		slice.SliceEndKnown && placeConstantIndexValue(index.ConstantIndex).Cmp(big.NewInt(slice.SliceEnd)) >= 0
+	return slice.SliceStart != nil && placeConstantIndexValue(index.ConstantIndex).Cmp(slice.SliceStart) < 0 ||
+		slice.SliceEnd != nil && placeConstantIndexValue(index.ConstantIndex).Cmp(slice.SliceEnd) >= 0
 }
 
 func unionPayloadPlace(subject Place, variant string, payloadType Type, token lexer.Token) Place {
@@ -604,33 +616,36 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 	}
 }
 
+// slicePlaceProjection normalizes a source slice to exact half-open bounds: a
+// missing start is 0, an inclusive end is end+1 computed exactly, and a
+// missing end of a fixed array is its exact length. Non-constant endpoints
+// stay unknown.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 13-19, 25, 27-29
 func (a *Analyzer) slicePlaceProjection(expr *ast.SliceExpression, containerType Type) PlaceProjection {
-	projection := PlaceProjection{Kind: PlaceSlice, SliceStartKnown: true, Token: expr.Token}
+	projection := PlaceProjection{Kind: PlaceSlice, SliceStart: new(big.Int), Token: expr.Token}
 	if expr.Start != nil {
-		projection.SliceStart, projection.SliceStartKnown = a.integerExpressionInt64(expr.Start)
+		projection.SliceStart = nil
+		if value, ok := a.integerConstantValue(expr.Start); ok {
+			projection.SliceStart = new(big.Int).Set(value)
+		}
 	}
 	if expr.End != nil {
-		end, ok := a.integerExpressionInt64(expr.End)
-		if ok && !expr.Exclusive {
-			if end == math.MaxInt64 {
-				ok = false
-			} else {
-				end++
+		if value, ok := a.integerConstantValue(expr.End); ok {
+			projection.SliceEnd = new(big.Int).Set(value)
+			if !expr.Exclusive {
+				projection.SliceEnd.Add(projection.SliceEnd, big.NewInt(1))
 			}
 		}
-		projection.SliceEnd = end
-		projection.SliceEndKnown = ok
-	} else if containerType.Kind == ArrayType && arrayShapeOf(containerType) == ArrayShapeFixed {
-		if length, ok := legacyArrayLength(containerType); ok {
-			projection.SliceEnd = length
-			projection.SliceEndKnown = true
-		}
+	} else if length, ok := exactFixedArrayLength(containerType); ok {
+		projection.SliceEnd = new(big.Int).Set(length)
 	}
 	return projection
 }
 
-// appendIndexProjection composes a constant index through a legacy static
-// slice using arbitrary-precision arithmetic and no int64 index adapter.
+// appendIndexProjection composes a constant index through a static slice
+// using arbitrary-precision arithmetic and no int64 index adapter.
 //
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
@@ -640,57 +655,50 @@ func appendIndexProjection(projections []PlaceProjection, index PlaceProjection)
 		return append(projections, index)
 	}
 	last := projections[len(projections)-1]
-	if last.Kind != PlaceSlice || !last.SliceStartKnown {
+	if last.Kind != PlaceSlice || last.SliceStart == nil {
 		return append(projections, index)
 	}
 	constant := placeConstantIndexValue(index.ConstantIndex)
-	if constant.Sign() < 0 || (last.SliceEndKnown && constant.Cmp(big.NewInt(last.SliceEnd-last.SliceStart)) >= 0) {
+	if constant.Sign() < 0 || (last.SliceEnd != nil && constant.Cmp(new(big.Int).Sub(last.SliceEnd, last.SliceStart)) >= 0) {
 		return append(projections, index)
 	}
-	index.ConstantIndex = new(big.Int).Add(constant, big.NewInt(last.SliceStart))
+	index.ConstantIndex = new(big.Int).Add(constant, last.SliceStart)
 	return append(projections[:len(projections)-1], index)
 }
 
+// appendSliceProjection composes a nested static slice into absolute exact
+// bounds of its parent; a nested range that is negative or exceeds the
+// parent stays a separate projection.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 27-29
 func appendSliceProjection(projections []PlaceProjection, child PlaceProjection) []PlaceProjection {
+	child = clonePlaceProjection(child)
 	if len(projections) == 0 {
 		return append(projections, child)
 	}
 	parent := projections[len(projections)-1]
-	if parent.Kind != PlaceSlice || !parent.SliceStartKnown {
+	if parent.Kind != PlaceSlice || parent.SliceStart == nil {
 		return append(projections, child)
 	}
-	if (child.SliceStartKnown && child.SliceStart < 0) || (child.SliceEndKnown && child.SliceEnd < 0) {
+	if (child.SliceStart != nil && child.SliceStart.Sign() < 0) || (child.SliceEnd != nil && child.SliceEnd.Sign() < 0) {
 		return append(projections, child)
 	}
-	if parent.SliceEndKnown {
-		length := parent.SliceEnd - parent.SliceStart
-		if (child.SliceStartKnown && child.SliceStart > length) || (child.SliceEndKnown && child.SliceEnd > length) {
+	if parent.SliceEnd != nil {
+		length := new(big.Int).Sub(parent.SliceEnd, parent.SliceStart)
+		if (child.SliceStart != nil && child.SliceStart.Cmp(length) > 0) || (child.SliceEnd != nil && child.SliceEnd.Cmp(length) > 0) {
 			return append(projections, child)
 		}
 	}
-	if absolute, ok := addInt64(child.SliceStart, parent.SliceStart); child.SliceStartKnown && ok {
-		child.SliceStart = absolute
-	} else if child.SliceStartKnown {
-		child.SliceStartKnown = false
+	if child.SliceStart != nil {
+		child.SliceStart.Add(child.SliceStart, parent.SliceStart)
 	}
-	if child.SliceEndKnown {
-		if absolute, ok := addInt64(child.SliceEnd, parent.SliceStart); ok {
-			child.SliceEnd = absolute
-		} else {
-			child.SliceEndKnown = false
-		}
-	} else if parent.SliceEndKnown {
-		child.SliceEnd = parent.SliceEnd
-		child.SliceEndKnown = true
+	if child.SliceEnd != nil {
+		child.SliceEnd.Add(child.SliceEnd, parent.SliceStart)
+	} else if parent.SliceEnd != nil {
+		child.SliceEnd = new(big.Int).Set(parent.SliceEnd)
 	}
 	return append(projections[:len(projections)-1], child)
-}
-
-func addInt64(left, right int64) (int64, bool) {
-	if (right > 0 && left > math.MaxInt64-right) || (right < 0 && left < math.MinInt64-right) {
-		return 0, false
-	}
-	return left + right, true
 }
 
 func (a *Analyzer) canonicalDereferencePlace(expr ast.Expression, fallback Place, referenceType Type) Place {

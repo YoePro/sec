@@ -25,10 +25,13 @@ func (a *Analyzer) validateNoPanicGuarantees(program *ast.Program) {
 				fn, ok := member.(*ast.FunctionDeclaration)
 				if ok && fn != nil {
 					a.validateFunctionNoPanicGuarantee(fn, statement.Target.Name+"."+fn.Name.Value)
+					continue
 				}
+				a.validateBodyNoPanicGuarantees(statement.Target.Name, member)
 			}
 		}
 	})
+	a.validateAccessorAndLambdaNoPanicGuarantees()
 }
 
 // validateFunctionNoPanicGuarantee selects a canonical panic cause for the verified root.
@@ -38,18 +41,35 @@ func (a *Analyzer) validateFunctionNoPanicGuarantee(fn *ast.FunctionDeclaration,
 	if !ok || (fn.Extern && guarantee.Explicit()) {
 		return
 	}
-	attribute := guarantee.Source
 	function, ok := a.lookupFunctionByToken(name, fn.Name.Token)
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
 	}
-	summary := a.callGraph.EffectSummary(callableID(function))
+	a.reportNoPanicViolation(fn.Attributes, callableID(function), "function", name)
+}
+
+// reportNoPanicViolation reports the canonical panic path of one callable
+// body whose attributes declare @noPanic (directly or through an implying
+// attribute): a function, init, free, property accessor or lambda (MD-030).
+// The diagnostic names the body kind, the reachable path and the introducing
+// operation, and is a compile error, never advisory.
+//
+// Rules:
+//   - rules/errors/panic.md — §§21,25,28(2)–(3)
+//   - rules/foundations/attributes.md — "Callable-body attachment (MD-030)"
+func (a *Analyzer) reportNoPanicViolation(attributes []*ast.Attribute, id CallableID, kindLabel, name string) {
+	guarantee, ok := EffectiveGuaranteeOf(attributes, GuaranteeNoPanic)
+	if !ok || id == "" {
+		return
+	}
+	attribute := guarantee.Source
+	summary := a.callGraph.EffectSummary(id)
 	if !summary.MayPanic || len(summary.PanicPath) == 0 {
 		return
 	}
 	chain := make([]string, 0, len(summary.PanicPath))
-	for _, id := range summary.PanicPath {
-		if node, exists := a.callGraph.Node(id); exists {
+	for _, step := range summary.PanicPath {
+		if node, exists := a.callGraph.Node(step); exists {
 			chain = append(chain, node.Name)
 		}
 	}
@@ -63,7 +83,7 @@ func (a *Analyzer) validateFunctionNoPanicGuarantee(fn *ast.FunctionDeclaration,
 			break
 		}
 	}
-	message := fmt.Sprintf("function %s does not satisfy @noPanic%s: reachable %s effect via %s", name, guarantee.impliedSuffix(), kind, strings.Join(chain, " -> "))
+	message := fmt.Sprintf("%s %s does not satisfy @noPanic%s: reachable %s effect via %s", kindLabel, name, guarantee.impliedSuffix(), kind, strings.Join(chain, " -> "))
 	if source.Line > 0 && source.Column > 0 {
 		message += fmt.Sprintf("; effect introduced at %s", formatLocation(source.File, source.Line, source.Column))
 	}
@@ -71,7 +91,7 @@ func (a *Analyzer) validateFunctionNoPanicGuarantee(fn *ast.FunctionDeclaration,
 	if len(chain) > 1 {
 		help = "The panic comes from " + chain[len(chain)-1] + ", which " + name + " calls. " + help
 	}
-	if root, context := interruptPanicRoot(fn.Attributes); root != nil {
+	if root, context := interruptPanicRoot(attributes); root != nil {
 		message = context + " " + message
 		help = interruptPanicHelp(kind, root.Name.Value)
 		if len(chain) > 1 {
@@ -122,4 +142,72 @@ func noPanicEffectHelp(kind EffectKind) string {
 		return "A call to an extern function has unknown foreign behavior and may abort. When the foreign documentation guarantees it cannot abort or unwind, mark the extern declaration @noPanic as a trusted foreign contract."
 	}
 	return "Remove the panic-capable operation from every path reachable from this function, or remove @noPanic."
+}
+
+// noPanicAccessor is a property accessor whose own body carries an
+// attribute-declared guarantee (MD-030 § 3(3)).
+type noPanicAccessor struct {
+	attributes []*ast.Attribute
+	callable   CallableID
+	name       string
+	kind       string
+}
+
+// enterNoPanicAccessor gives an accessor annotated with a verified guarantee
+// its own call-graph callable while its body is analysed, so the effects of
+// exactly that accessor are summarized and verified; the other accessor of
+// the property does not acquire the guarantee. It returns the restore step.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Callable-body attachment (MD-030)"
+//   - rules/errors/panic.md — § 21
+func (a *Analyzer) enterNoPanicAccessor(target Type, property, kind string, attributes []*ast.Attribute, body *ast.BlockStatement, returnType Type) func() {
+	if _, ok := EffectiveGuaranteeOf(attributes, GuaranteeNoPanic); !ok || body == nil || a.summaryPass {
+		return func() {}
+	}
+	function := Function{
+		Name: property + "." + strings.ReplaceAll(kind, " ", "-"), ImplTarget: target.Name,
+		Module: a.currentModule, Token: body.Token, ReturnType: returnType,
+	}
+	id := a.callGraph.addCallable(function)
+	a.noPanicAccessors = append(a.noPanicAccessors, noPanicAccessor{attributes: attributes, callable: id, name: target.Name + "." + property, kind: kind})
+	previous := a.currentCallable
+	a.currentCallable = id
+	return func() { a.currentCallable = previous }
+}
+
+// validateBodyNoPanicGuarantees verifies the MD-030 callable bodies: init,
+// free, property accessors and directly initialized lambdas.
+func (a *Analyzer) validateBodyNoPanicGuarantees(target string, member ast.ImplMember) {
+	switch member := member.(type) {
+	case *ast.InitDeclaration:
+		if member == nil {
+			return
+		}
+		if function, ok := a.lookupFunctionByToken(initFunctionName(target), member.Token); ok && function.ReturnType.Kind != InvalidType {
+			a.reportNoPanicViolation(member.Attributes, callableID(function), "init", target+".init")
+		}
+	case *ast.FreeDeclaration:
+		if member == nil {
+			return
+		}
+		if function, ok := a.lookupFunctionByToken(freeFunctionName(target), member.Token); ok && function.ReturnType.Kind != InvalidType {
+			a.reportNoPanicViolation(member.Attributes, callableID(function), "free", target+".free")
+		}
+	}
+}
+
+func (a *Analyzer) validateAccessorAndLambdaNoPanicGuarantees() {
+	for _, accessor := range a.noPanicAccessors {
+		a.reportNoPanicViolation(accessor.attributes, accessor.callable, "property "+accessor.kind+" accessor", accessor.name)
+	}
+	for _, lambda := range a.noPanicLambdas {
+		identity, ok := a.resolvedCallableIdentities[lambda]
+		if !ok {
+			continue
+		}
+		if id, exists := a.callGraph.bodyNodes[identity.Body]; exists {
+			a.reportNoPanicViolation(lambda.Attributes, id, "lambda", fmt.Sprintf("at %s", formatLocation(lambda.Token.File, lambda.Token.Line, lambda.Token.Column)))
+		}
+	}
 }

@@ -53,7 +53,7 @@ func TestAnalyseForeignUnits(t *testing.T) {
 	if errs := a.Analyze(program); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget())
+	report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget(), "", nil)
 	var output bytes.Buffer
 	report.write(&output)
 	for _, want := range []string{"pitfall.ffi.extent-unit-mismatch", "measured in bytes", "measured in elements", "resolved element storage stride is 4 bytes", "suggested-edit: check whether a partial transfer is intentional", "results: 0 errors"} {

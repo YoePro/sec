@@ -314,51 +314,38 @@ and is the runtime element count.
 
 ---
 
-# 16. Compiler-known `len(slice)` remains `int`
+# 16. Compiler-known `len(slice)` is `uint`
 
-The existing core rule remains:
+Decided 2026-10-17 (MD-074/MD-088,
+`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`):
 
 ```sec
-len(slice) -> int
+len(slice) -> uint
 ```
 
-P16 does not silently change that decision.
+`len(slice)` and `slice.Len` are the same logical count with the same type.
+This supersedes the former `len(slice) -> int` rule.
 
 ---
 
-# 17. Unresolved representability rule
+# 17. Representability (resolved)
 
-The current normative rules do not specify what happens if a runtime slice
-length:
+Because `len` returns `uint`, a runtime slice length that fits `uint` but not
+`int` needs no special rule: `len` never converts to a signed type. Semantic IR
+emits an unsigned length with the exact value.
 
-```text
-fits uint
-does not fit int
-```
-
-This synchronization intentionally does not invent semantics.
-
-Until a later normative decision is made:
-
-```text
-new Semantic IR may emit len(slice) -> int only when representability is proven
-```
-
-Otherwise report an explicit implementation gap.
-
-Forbidden behavior:
+Still forbidden:
 
 ```text
 wrap
 truncate
 saturate
 silently narrow
-change return type
 silently reduce maximum slice length
 ```
 
-This issue should be resolved in the compiler-known length/core synchronization
-work.
+Code that needs a signed offset uses an explicit checked conversion, which may
+fail.
 
 ---
 

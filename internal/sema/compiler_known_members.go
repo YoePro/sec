@@ -177,7 +177,9 @@ func isCompilerKnownValueName(name string) bool {
 func CompilerKnownFunctions() []CompilerKnownFunction {
 	types := sharedBuiltinTypes()
 	return []CompilerKnownFunction{
-		{ID: "CKF-LEN", Name: "len", Result: types["int"]},
+		// MD-074/MD-088 (2026-10-17): len(value) is the same nonnegative
+		// logical count as value.Len and has type uint (core-library.md § 1.4).
+		{ID: "CKF-LEN", Name: "len", Result: types["uint"]},
 		{ID: "CKF-FILL", Name: "fill", Result: Type{Kind: InvalidType}},
 		{
 			ID:        "CKF-STRING-SLICE-UNCHECKED",
@@ -361,9 +363,13 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	}
 	if typ.Kind == StringType {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-STRING-TOBYTEARRAY", Name: "ToByteArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("byte"))},
+			// MD-072 (2026-10-17): byte and rune materialization returns an
+			// independent owning array and reports storage failure as
+			// CollectionError (core-library.md § 5.3). ToCharArray keeps its
+			// infallible form until MD-073 settles the char domain.
+			CompilerKnownMember{ID: "CKM-STRING-TOBYTEARRAY", Name: "ToByteArray", Kind: CompilerKnownMethod, Result: compilerKnownResult(compilerKnownDynamicArray(builtinType("byte")), builtinType("CollectionError"))},
 			CompilerKnownMember{ID: "CKM-STRING-TOCHARARRAY", Name: "ToCharArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("char"))},
-			CompilerKnownMember{ID: "CKM-STRING-TORUNEARRAY", Name: "ToRuneArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("rune"))},
+			CompilerKnownMember{ID: "CKM-STRING-TORUNEARRAY", Name: "ToRuneArray", Kind: CompilerKnownMethod, Result: compilerKnownResult(compilerKnownDynamicArray(builtinType("rune")), builtinType("CollectionError"))},
 		)
 	}
 	// Borrowed pointer values expose the same pointee-specialized operations.
@@ -523,9 +529,10 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		}
 	}
 	if typ.Kind == StringType {
-		// Materializing a string can fail to allocate, and FromByteArray also
-		// validates the encoding, so both return Result[string, StringError]
-		// like the core declarations (sec/core/string.sec).
+		// MD-072 (2026-10-17): both borrow their input and return
+		// Result[string, StringError]; FromByteArray rejects malformed UTF-8
+		// with StringError.InvalidUtf8 and both report allocation failure as
+		// StringError.Allocation (core-library.md § 5.2).
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
 			CompilerKnownMember{ID: "CKM-STRING-FROMRUNEARRAY", Name: "FromRuneArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},

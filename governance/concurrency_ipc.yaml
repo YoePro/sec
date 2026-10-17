@@ -4,19 +4,20 @@ purpose: Inter-process communication, process-shared storage and synchronization
 integrations:
   - id: concurrency.ipc-v1
     area: inter-process-communication
-    status: planned
-    reviewed: '2026-09-15'
-    document_revision: '1.0'
+    status: partial
+    reviewed: "2026-09-15"
+    document_revision: "1.0"
     repository_baseline: main-reviewed-2026-09-15
     summary: >-
-      Implements the canonical Sec 0.1 IPC model defined by rules/concurrency/ipc.md:
-      anonymous byte pipes, typed IPCSender[T]/IPCReceiver[T] messaging,
-      process-shared backing storage and mappings, IPCMutex/IPCSemaphore,
-      safe SharedValue[T], lock-free process-shared IPCAtomic[T], typed
-      capability/resource transfer, Command standard-I/O resource binding,
-      target capability planning, transactional transfer/materialization,
-      select/cancellation commit semantics, cross-process analysis, defensive
-      materialization, diagnostics, lowering, and conformance tests.
+      Implements the canonical Sec 0.1 IPC model defined by
+      rules/concurrency/ipc.md: anonymous byte pipes, typed
+      IPCSender[T]/IPCReceiver[T] messaging, process-shared backing storage and
+      mappings, IPCMutex/IPCSemaphore, safe SharedValue[T], lock-free
+      process-shared IPCAtomic[T], typed capability/resource transfer, Command
+      standard-I/O resource binding, target capability planning, transactional
+      transfer/materialization, select/cancellation commit semantics,
+      cross-process analysis, defensive materialization, diagnostics, lowering,
+      and conformance tests.
     rules:
       - rules/concurrency/ipc.md
       - rules/concurrency/processes.md
@@ -38,10 +39,11 @@ integrations:
       - rules/platform/platform_model.md
       - rules/library/stdlib.md
       - language-rulebook-status.md
-    implemented: []
+    implemented:
+      - IPCError, SharedMemoryError, IPCSyncError, IPCSharedError and IPCAtomicError are exact real core error enums with one reserved nominal compiler identity per family. Standalone registration and trusted core source retain the same closed variant sets, error-root/Result compatibility, ordinary enum defaults and source declaration/member provenance. Project declarations, module-core spoofing and malformed trusted replacements are rejected without altering the canonical fallback. Existing Semantic IR preserves enum identities and constants; formatter round trips and shared LSP enum hover/completion/navigation use the real declarations without a parallel IPC model. This completes the error identity point only, without claiming IPC operation surfaces, runtime error production, transport, target capability or resource lowering.
+      - CommandInputMode is exactly Inherit/Closed/Pipe/Resource and CommandOutputMode is exactly Inherit/Discard/Pipe/Resource, as real reserved nominal core enums with matching standalone registration. Both remain copyable non-error values with Inherit defaults; Resource is a separate closed variant retaining its owned File/Pipe capability meaning. Trusted declaration checks share the canonical IPC core-enum path, rejecting altered shapes, error markers, defaults, variant sets and non-enum replacements while preserving exact fallback identities. Sema, verified enum Semantic IR, formatter and source-backed LSP hover/completion/navigation cover both complete sets. This completes the mode-enum extension only; Command configuration ownership, Resource binding, Take*Pipe and process-start behavior remain separate pending points.
     remaining:
       - add compiler-known/core identities for Pipe, PipeReader, PipeWriter, IPCPair[T], IPCSender[T], IPCReceiver[T], SharedMemory, SharedReadMapping, SharedWriteMapping, IPCMutex, IPCMutexGuard, IPCSemaphore, SharedValue[T], SharedValueGuard[T], and IPCAtomic[T]
-      - add compiler-known/core error identities IPCError, SharedMemoryError, IPCSyncError, IPCSharedError, and IPCAtomicError with exactly the variants in rules/concurrency/ipc.md
       - add exact CreatePipe(), CreateIPC[T](), CreateSharedMemory(), CreateIPCMutex(), CreateIPCSemaphore(), CreateSharedValue[T](), and CreateIPCAtomic[T]() source surfaces
       - implement Pipe as an ordinary move-only aggregate of independently tracked PipeReader and PipeWriter fields with canonical partial-move/destruction behavior
       - implement PipeReader Read, ReadExact, Duplicate, Close, IsClosed, best-effort free, EOF, short-read, and select semantics
@@ -93,7 +95,6 @@ integrations:
       - implement all-or-nothing composite transfer and destination materialization rollback for capability-bearing typed messages
       - add File.Duplicate() Result[File, IOError] to the canonical File surface and implementation
       - add PipeReader.Duplicate() and PipeWriter.Duplicate() using IOError as specified by rules/concurrency/ipc.md
-      - extend CommandInputMode and CommandOutputMode with Resource
       - extend CommandConfigurationError with InvalidIOResource
       - add ownership-consuming Command SetStdin(File), SetStdin(PipeReader), SetStdout(File), SetStdout(PipeWriter), SetStderr(File), and SetStderr(PipeWriter) overloads
       - preserve Command configuration transactionality so failed resource binding leaves both previous configuration and source ownership intact
@@ -177,4 +178,48 @@ integrations:
       - governance/concurrency_ipc.yaml is registered in governance/index.yaml with ownership of inter-process communication, process-shared storage/synchronization, and capability-transfer semantics
       - governance/concurrency_process.yaml reflects Command Resource modes/API/target facts and the resolved IPC standard-I/O boundary
       - concurrency.ipc-v1 remains unique to this fragment and is not duplicated into adjacent concurrency, memory, lowering, or analysis fragments
-      - language-rulebook-status.md records IPC revision 1.0 as Written while implementation remains planned
+      - language-rulebook-status.md records IPC revision 1.0 as Written with partial compiler integration of its five core error enums; IPC operations, runtime and platform integration remain pending
+    revised: "2026-10-17"
+    code:
+      - sec/core/ipc_errors.sec
+      - internal/sema/ipc_core_enums.go
+      - internal/sema/types.go
+      - internal/sema/type_declarations.go
+      - internal/sema/analyzer.go
+      - sec/core/command_io_modes.sec
+    tests:
+      - internal/sema/ipc_errors_test.go
+      - internal/formatter/ipc_errors_test.go
+      - cmd/compiler/ipc_errors_test.go
+      - cmd/lsp/ipc_errors_test.go
+      - testdata/sema/ipc/errors_valid.sec
+      - testdata/sema/ipc/errors_invalid.sec
+      - testdata/sema/ipc/errors_spoof_invalid.sec
+      - testdata/sema/ipc/errors_core_shape_invalid.sec
+      - testdata/sema/ipc/error_values_valid.sec
+      - internal/sema/command_io_modes_test.go
+      - cmd/compiler/command_io_modes_test.go
+      - cmd/lsp/command_io_modes_test.go
+      - testdata/sema/ipc/command_modes_valid.sec
+      - testdata/sema/ipc/command_modes_invalid.sec
+      - testdata/sema/ipc/command_modes_spoof_invalid.sec
+      - testdata/sema/ipc/command_modes_core_shape_invalid.sec
+    verification:
+      - command: go test ./internal/sema ./internal/ir/... ./internal/formatter ./cmd/compiler -count=1
+        result: "2026-10-17: complete Sema, Semantic IR and formatter suites passed. The compiler suite initially reported six missing-sec-mlir-opt failures; all affected tests and then the complete compiler suite passed with SEC_MLIR_BIN selected as recorded separately. No source changes were required for tool discovery."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -count=1
+        result: passed on 2026-10-17; complete compiler suite with the locally built Sec MLIR tool selected explicitly after native pipeline discovery initially failed without SEC_MLIR_BIN
+      - command: go vet ./internal/sema ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after Command I/O mode core integration and shared IPC enum validation
+      - command: go test ./internal/sema ./internal/formatter ./cmd/compiler ./cmd/lsp -race -run 'CommandIOModes|IPCError|FormatIPCErrors' -count=1
+        result: passed on 2026-10-17; both exact non-error core mode sets with Resource, nominal separation, Inherit defaults, copyability, malformed trusted/source-spoof rejection, verified enum IR and source-backed hover/completion/navigation; canonical IPC errors remain green after shared declaration validation moved to ipc_core_enums.go
+      - command: go run ./cmd/yamlstatus check
+        result: "2026-10-17: global check reports two listed fragments missing from the concurrent working tree: concurrency_events.yaml and concurrency_spawn.yaml. The edited IPC fragment passes yamlstatus fmt -check; no unrelated deletions or index entries were changed by this implementation."
+      - command: go test ./internal/sema ./internal/formatter ./cmd/compiler ./cmd/lsp -race -run 'TestIPCError|TestFormatIPCErrors' -count=1
+        result: passed on 2026-10-17 after canonical IPC errors and enum declaration extraction; exact core/fallback identities, 25 malformed trusted enum cases plus five non-enum replacements, eight invalid uses and five spoof declarations, Result/open-error compatibility, verified enum IR, formatter stability and source-backed LSP hover/completion/navigation
+      - command: go vet ./internal/sema ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-17 after IPC error integration and enum declaration extraction
+      - command: go test ./internal/sema ./internal/ir/... -count=1
+        result: passed on 2026-10-17 after extracting enum declaration/initializer analysis into type_declarations.go
+      - command: go test ./internal/sema ./internal/ir/... ./internal/formatter ./cmd/compiler -count=1
+        result: passed on 2026-10-17; complete Sema, Semantic IR, formatter and compiler suites with canonical IPC errors. The subsequent behavior-preserving enum declaration extraction passed the final full Sema/IR and targeted IPC race reruns recorded separately.

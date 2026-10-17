@@ -1,0 +1,5 @@
+module main
+
+enum Ordinary {
+    Value(int)
+}

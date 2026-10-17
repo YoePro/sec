@@ -29,7 +29,7 @@ integrations:
       - incompatible values and non-comparable element types retain operator membership diagnostic metadata and help
       - HTTP Status.IsRegistered uses the user-provided table typed as Status[] to match the named receiver
     remaining:
-      - dynamic array representation, construction, ownership and destruction in maintained backends
+      - dynamic array representation, construction, ownership and destruction in the compilation track
       - exact-once left-to-right short-circuit dynamic-array membership lowering without allocation
       - backend execution tests for empty arrays, first match, no match, operand effects and non-consuming search
     verification:
@@ -47,8 +47,8 @@ integrations:
     summary: >-
       Accepts contextual not in as the boolean complement of membership without
       reserving not as a keyword. Parser, Sema and LSP share the canonical AST
-      operator, and the legacy direct range backends perform one membership
-      search followed by boolean negation.
+      operator; lowering in the single compilation track is pending (the
+      removed legacy range backends negated one membership search; MD-101).
     rules:
       - rules/foundations/lexical_structure.md
       - rules/foundations/grammar.md
@@ -58,16 +58,12 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/semantic_facts.go
       - internal/ir/semantic/builder.go
-      - internal/codegen/llvm/expressions.go
-      - internal/codegen/mlir/generator.go
       - cmd/lsp/main.go
       - internal/lsp/features/semantic_tokens.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/semantic_facts_test.go
-      - internal/codegen/llvm/generator_test.go
-      - internal/codegen/mlir/generator_test.go
       - cmd/lsp/main_test.go
       - testdata/sema/in_not_in.sec
       - testdata/lsp/contextual_membership_semantic_tokens.sec
@@ -82,7 +78,6 @@ integrations:
       - LSP semantic tokens classify parser-confirmed in and both not-in token segments as operators while iteration in and identifier not retain their ordinary roles
       - compiler-owned ResolvedOperator facts preserve membership, negated-membership, and matrix-multiplication operand and result types without tooling re-analysis
       - hover on either token segment of not in presents one full compound-operator range, resolved operand/result types, and canonical complement behavior
-      - legacy direct LLVM and MLIR range lowering negate the completed membership result
       - fixed-array Semantic IR deferral recognizes in and not in consistently
     remaining:
       - maintained Semantic IR membership lowering for fixed arrays, dynamic arrays and slices
@@ -142,12 +137,8 @@ integrations:
       - internal/ir/semantic
       - internal/ir/semantic/string_concat.go
       - internal/lowering/secmlir
-      - internal/codegen/mlir
-      - internal/codegen/llvm
       - internal/formatter
       - internal/lsp
-      - internal/codegen/mlir/float_operators.go
-      - cmd/compiler/mlir_runtime_libraries.go
       - cmd/compiler/build_command.go
     tests:
       - internal/lexer/lexer_test.go
@@ -163,10 +154,7 @@ integrations:
       - internal/ir/semantic/boolean_test.go
       - internal/ir/semantic
       - internal/lowering/secmlir
-      - internal/codegen/mlir/generator_test.go
-      - internal/codegen/llvm/generator_test.go
       - internal/formatter/formatter_test.go
-      - internal/codegen/mlir/float_operators_test.go
       - cmd/compiler/float_operators_test.go
       - testdata/codegen/float_operators/matrix.sec
       - testdata/codegen/float_operators/effects.sec
@@ -202,8 +190,6 @@ integrations:
       - P9 typed arithmetic-failure reasons and Result integration
       - stable structured diagnostics S1016, S1017, S1018, S1019, S1021, and S1022
       - direct LLVM CFG short-circuit lowering for && and ||
-      - legacy direct LLVM division, ordered comparison, and range membership preserve represented integer signedness
-      - legacy direct LLVM rejects string comparison explicitly instead of emitting invalid or identity-based icmp
       - "canonical precedence catalog (2026-10-05): internal/operators owns the complete weak-to-strong precedence, associativity, hard-token, and contextual-spelling matrix; the Pratt parser and formatter multiline infix layout consume that catalog instead of maintaining unrelated tables, including contextual x, in, not in, is, and is not metadata; adjacent parser levels and left associativity are covered directly (TestCanonicalPrecedenceDefinitions, TestTokenAndContextualSpellingsShareCanonicalPrecedence, TestCanonicalAdjacentBinaryPrecedence, TestCanonicalBinaryAssociativity, TestFormatMultilineContextualInfixUsesCanonicalPrecedence)"
       - "compile-time string concatenation materialization (2026-10-05): a fully constant maximal StringConcatPlan retains its exact lexer-decoded FoldedText; Semantic IR consumes the plan as exactly one const.string with no child evaluation, intermediate string, allocation context, failure edge, or try requirement, and the existing Sec-MLIR path emits one sec.const.string (TestCompileTimeStringConcatBuildsOneFoldedConstant; testdata/ir/test_folded_string_concat.sec)"
       - reserved question marks in statement and expression positions produce focused P2012 diagnostics with the canonical Sec 0.1 message, structured unexpected-token metadata, and retained invalid syntax for recovery and tooling
@@ -219,7 +205,7 @@ integrations:
       - operator Semantic IR metadata and effect metadata are not complete for all operator families
       - formatter, diagnostics, LSP explanations, and quick fixes are incomplete across the full operator matrix
       - parser recovery around malformed operator expressions is incomplete
-      - maintained Semantic IR and Sec MLIR floating comparison/remainder lowering awaits P20; the legacy MLIR NaN predicate and truncation-remainder path is implemented
+      - Semantic IR and Sec MLIR floating comparison/remainder lowering awaits P20 (the removed legacy MLIR path had a NaN predicate and truncation-remainder lowering; MD-101)
       - decimal remainder support is incomplete
     remaining:
       - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior

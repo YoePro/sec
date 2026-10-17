@@ -139,7 +139,10 @@ type functionBuilder struct {
 	nextMatch    MatchID
 	nextLoop     LoopID
 	loops        []*activeLoop
-	bindings     map[sema.BindingID]binding
+	// fallthroughTargets is the innermost-last stack of next clause bodies
+	// of the switches being built; nil marks a final clause.
+	fallthroughTargets []*Block
+	bindings           map[sema.BindingID]binding
 	// failures routes the fallible points of the failure-set try whose
 	// protected expression is being built (failure_set_try.go).
 	failures *failureRouter
@@ -637,6 +640,24 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if err := fb.buildWhile(stmt); err != nil {
 				return err
 			}
+		case *ast.SwitchStatement:
+			if fb.owner.maxPackage < 13 {
+				return fb.unsupported("switch statement", stmt.Token)
+			}
+			if err := fb.buildSwitch(stmt); err != nil {
+				return err
+			}
+		case *ast.FallthroughStatement:
+			if err := fb.buildFallthrough(stmt.Token); err != nil {
+				return err
+			}
+		case *ast.ForStatement:
+			if fb.owner.maxPackage < 13 {
+				return fb.unsupported("for loop", stmt.Token)
+			}
+			if err := fb.buildFor(stmt); err != nil {
+				return err
+			}
 		case *ast.PanicStatement, *ast.UnreachableStatement, *ast.AssertStatement:
 			if fb.owner.maxPackage < 13 {
 				return fb.unsupported(fmt.Sprintf("%T", statement), statementToken(statement))
@@ -672,6 +693,12 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			call, ok := stmt.Expression.(*ast.CallExpression)
 			if !ok {
 				return fb.unsupported("expression statement", stmt.Token)
+			}
+			// atomics.md § 26: atomic.Fence lowers from Sema's established
+			// order to one atomic.fence operation; it has no call target.
+			if order, fence := fb.owner.analyzer.AtomicFenceOrderOf(call); fence {
+				fb.emit(Operation{Kind: OpAtomicFence, AtomicOrder: order, Location: location(call.Token)})
+				continue
 			}
 			resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 			if !ok {
@@ -1675,6 +1702,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		if fb.owner.maxPackage < 3 {
 			return builtValue{}, fb.unsupported("function call", e.Token)
+		}
+		if conversion, resolved := fb.owner.analyzer.ResolvedIntegerConversionOf(e); resolved {
+			return fb.buildIntegerConversion(e, conversion)
 		}
 		return fb.buildCall(e)
 	case *ast.PrefixExpression, *ast.InfixExpression:
@@ -3298,17 +3328,17 @@ func semanticOperatorKind(resolved sema.ResolvedOperator, op *Operation) bool {
 		op.Kind, op.IntegerShift = OpIntShiftChecked, IntegerShiftRightUnsigned
 	case sema.ResolvedIntegerShiftRightSignedChecked:
 		op.Kind, op.IntegerShift = OpIntShiftChecked, IntegerShiftRightSigned
-	case sema.ResolvedIntegerCompareEQ:
+	case sema.ResolvedIntegerCompareEQ, sema.ResolvedCharacterCompareEQ:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareEQ
-	case sema.ResolvedIntegerCompareNE:
+	case sema.ResolvedIntegerCompareNE, sema.ResolvedCharacterCompareNE:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareNE
-	case sema.ResolvedIntegerCompareLT:
+	case sema.ResolvedIntegerCompareLT, sema.ResolvedCharacterCompareLT:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareLT
-	case sema.ResolvedIntegerCompareLE:
+	case sema.ResolvedIntegerCompareLE, sema.ResolvedCharacterCompareLE:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareLE
-	case sema.ResolvedIntegerCompareGT:
+	case sema.ResolvedIntegerCompareGT, sema.ResolvedCharacterCompareGT:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareGT
-	case sema.ResolvedIntegerCompareGE:
+	case sema.ResolvedIntegerCompareGE, sema.ResolvedCharacterCompareGE:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareGE
 	case sema.ResolvedEnumCompareEQ:
 		op.Kind, op.IntegerCompare = OpEnumCompare, IntegerCompareEQ

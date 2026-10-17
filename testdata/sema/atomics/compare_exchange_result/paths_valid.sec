@@ -1,0 +1,18 @@
+module main
+
+type Count uint64
+
+fn Aliased(value: ref Atomic[Count], expected: Count, desired: Count) Count {
+    let success := MemoryOrder.Relaxed
+    let failure := MemoryOrder.SeqCst
+    let result := value.CompareExchange(expected, desired, success, failure)
+    return match result {
+        Exchanged => desired
+        NotExchanged(observed) => observed
+    }
+}
+
+fn Repeated(value: ref Atomic[int]) void {
+    discard value.CompareExchange(1, 1)
+    discard value.CompareExchange(1, 2)
+}

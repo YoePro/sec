@@ -179,16 +179,26 @@ LogicalResult verifyStoragePair(Operation *operation, Value storage,
   return success();
 }
 
+// Ordinary arguments are copied trivially; a direct reference argument is
+// passed with the action of its reference kind (schema 11,
+// sec-mlir-dialect_package15.md sections 59-60 and 87).
 LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
   auto actions = operation->getAttrOfType<ArrayAttr>("sec.argument_actions");
   if (!actions)
     return operation->emitOpError("requires sec.argument_actions array attribute");
   if (actions.size() != arity)
     return operation->emitOpError("argument action count must equal operand count");
-  for (Attribute action : actions) {
+  for (auto [action, operand] : llvm::zip(actions, operation->getOperands())) {
     auto string = dyn_cast<StringAttr>(action);
-    if (!string || string.getValue() != "copy-trivial")
-      return operation->emitOpError("only copy-trivial argument actions are valid in schema 2");
+    StringRef expected = "copy-trivial";
+    if (isa<RefType>(operand.getType()))
+      expected = "shared-reference";
+    else if (isa<RefMutType>(operand.getType()))
+      expected = "mutable-reference";
+    if (!string || string.getValue() != expected)
+      return operation->emitOpError()
+             << "argument action must be " << expected
+             << ": copy-trivial for ordinary values, shared-reference for !sec.ref and mutable-reference for !sec.ref_mut";
   }
   return success();
 }
@@ -322,6 +332,14 @@ LogicalResult IntBinaryCheckedOp::verify() {
   return verifyBinaryInteger(*this, getLeft(), getRight(), (*this)->getResult(0));
 }
 
+LogicalResult NumericConvertExactOp::verify() {
+  if (!isBuiltinIntegerSemanticType(getValue().getType()) ||
+      !isBuiltinIntegerSemanticType(getResult().getType()))
+    return emitOpError(
+        "schema 11 admits only builtin Sec integer operand and result types");
+  return success();
+}
+
 LogicalResult IntBitNotOp::verify() {
   return verifyUnaryInteger(*this, getValue(), getResult());
 }
@@ -351,9 +369,12 @@ LogicalResult IntShiftCheckedOp::verify() {
 LogicalResult IntCmpOp::verify() {
   if (!isOneOf(getPredicate(), {"eq", "ne", "lt", "le", "gt", "ge"}))
     return emitOpError("invalid integer comparison predicate");
-  if (!isBuiltinIntegerSemanticType(getLeft().getType()) ||
+  // char and rune compare unsigned by code value; scalar layout resolves
+  // them to ui8/ui32 before integer lowering (MD-105).
+  if (!(isBuiltinIntegerSemanticType(getLeft().getType()) ||
+        isa<CharType, RuneType>(getLeft().getType())) ||
       getLeft().getType() != getRight().getType())
-    return emitOpError("comparison operands must have the same builtin Sec integer semantic type");
+    return emitOpError("comparison operands must have the same builtin Sec integer, char or rune semantic type");
   return success();
 }
 
@@ -994,6 +1015,13 @@ LogicalResult PlaceStorageOp::verify() {
     return failure();
   if (place->getElementType() != storage.getElementType())
     return emitOpError("Place element type must match the storage element type");
+  // The root authority cannot exceed the declared storage mutability
+  // (sec-mlir-dialect_package15.md section 64).
+  if (auto declare = getStorage().getDefiningOp<StorageDeclareOp>()) {
+    auto mutableAttr = declare->getAttrOfType<BoolAttr>("sec.mutable");
+    if (isReadWrite(*place) && mutableAttr && !mutableAttr.getValue())
+      return emitOpError("a rw Place root requires mutable storage");
+  }
   return verifyPlaceRootMetadata(*this, getPlaceRootId(), getStorageIdentity(),
                                  getAddressSpace());
 }
@@ -1242,4 +1270,23 @@ LogicalResult FailReferenceGenerationOp::verify() {
   if (getReason() != "panic.invalid-reference-generation")
     return emitOpError("reason must be panic.invalid-reference-generation");
   return success();
+}
+
+bool sec::isReferenceDependentStorage(Value storage) {
+  if (auto declare = storage.getDefiningOp<StorageDeclareOp>())
+    if (auto addressTaken =
+            declare->getAttrOfType<BoolAttr>("sec.address_taken");
+        addressTaken && addressTaken.getValue())
+      return true;
+  return llvm::any_of(storage.getUsers(), [](Operation *user) {
+    return isa<PlaceStorageOp>(user);
+  });
+}
+
+bool sec::hasPlaceOrReferenceType(Operation *operation) {
+  auto placeOrReference = [](Type type) {
+    return isa<PlaceType, RefType, RefMutType>(type);
+  };
+  return llvm::any_of(operation->getOperandTypes(), placeOrReference) ||
+         llvm::any_of(operation->getResultTypes(), placeOrReference);
 }

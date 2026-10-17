@@ -10,6 +10,8 @@ set(LIBS
   SecMLIRDialect
   SecMLIRSecIntegerToArith
   SecMLIRSecToCore
+  SecMLIRSecToLLVM
+  MLIRLLVMDialect
 )
 
 add_llvm_executable(sec-mlir-opt sec-mlir-opt.cpp)

@@ -1,0 +1,21 @@
+module main
+
+fn WrongExpected(value: ref Atomic[int]) void {
+    discard value.CompareExchange("wrong", 1)
+}
+
+fn WrongDesired(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, "wrong")
+}
+
+fn MissingValue(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0)
+}
+
+fn MissingFailureOrder(value: ref Atomic[int]) void {
+    discard value.CompareExchange(0, 1, MemoryOrder.Acquire)
+}
+
+fn UnresolvedExpected(value: ref Atomic[int]) void {
+    discard value.CompareExchange(missing, 1)
+}

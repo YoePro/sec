@@ -2489,7 +2489,7 @@ fn Check(ch: rune) bool {
 func TestCompletionIncludesCompilerKnownLen(t *testing.T) {
 	source := `module main
 
-fn Count(text: string) int {
+fn Count(text: string) uint {
 	return le
 }
 `

@@ -13,14 +13,16 @@ type enumValueAlignmentAnchor struct {
 }
 
 // enumValueAlignmentReplacements aligns parser-confirmed explicit enum-value
-// assignments in contiguous homogeneous groups. Comments, blank lines,
-// implicit members, declaration boundaries, and excessive padding split or
-// disable alignment without changing member order or initializer spelling.
+// assignments in contiguous homogeneous groups. Standalone comments, blank
+// lines, implicit members and declaration boundaries split a group; no
+// padding limit disables it. Member order and initializer spelling never
+// change;
+// a trailing comment belongs to its member and does not split the group.
 //
 // Rules:
 //   - rules/tooling/formatter.md — §9(1–2) syntactic alignment anchors
-//   - rules/tooling/formatter.md — §9(8–10) group boundaries and padding limit
-//   - rules/tooling/formatter.md — §15(4) enum explicit-value assignments
+//   - rules/tooling/formatter.md — §9(8) group boundaries
+//   - rules/tooling/formatter.md — §15(4) enum explicit-value assignments, always aligned (MD-100)
 func enumValueAlignmentReplacements(document cst.Document, maxPadding int) []formatterReplacement {
 	anchors := enumValueAlignmentAnchors(document)
 	replacements := []formatterReplacement{}
@@ -53,14 +55,25 @@ func enumValueAnchorsAreContiguous(document cst.Document, previous, current enum
 	if current.line != previous.line+1 {
 		return false
 	}
+	lineBreakSeen := false
 	for index := previous.assignment + 1; index < current.assignment; index++ {
 		element := document.Elements[index]
-		if element.Kind == cst.Comment || element.Kind == cst.Token &&
-			(element.Token.Type == lexer.LBRACE || element.Token.Type == lexer.RBRACE) {
+		if element.Kind == cst.Token && (element.Token.Type == lexer.LBRACE || element.Token.Type == lexer.RBRACE) {
 			return false
 		}
-		if element.Kind == cst.Whitespace && strings.Count(strings.ReplaceAll(element.Text, "\r\n", "\n"), "\n") > 1 {
+		// A trailing comment belongs to its member and keeps the group; a
+		// comment after the line break is standalone and ends it (§ 9(8)).
+		if element.Kind == cst.Comment && lineBreakSeen {
 			return false
+		}
+		if element.Kind == cst.Whitespace {
+			breaks := strings.Count(strings.ReplaceAll(element.Text, "\r\n", "\n"), "\n")
+			if breaks > 1 {
+				return false
+			}
+			if breaks > 0 {
+				lineBreakSeen = true
+			}
 		}
 	}
 	return true
@@ -81,14 +94,9 @@ func alignEnumValueGroup(document cst.Document, group []enumValueAlignmentAnchor
 			targetColumn = endColumn + 1
 		}
 	}
-	for _, anchor := range group {
-		previous := previousEnumValueToken(document, anchor)
-		_, endColumn := document.Elements[previous].Token.EndPosition()
-		if targetColumn-endColumn > maxPadding {
-			targetColumn = 0
-			break
-		}
-	}
+	// Enum value tables always keep one `=` column: the § 9(10) padding
+	// limit does not apply to them (MD-100, user decision 2026-10-17).
+	_ = maxPadding
 
 	replacements := []formatterReplacement{}
 	for _, anchor := range group {

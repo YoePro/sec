@@ -786,16 +786,46 @@ If that equality is reachable, the subsequent indexed access is invalid.
 Example:
 
 ```sec
-let last := values[values.len - 1]
+// Potential checked unsigned underflow if values is empty.
+let last := values[len(values) - 1]
 ```
 
 This expression requires a proof that the collection is non-empty, subject to
 Sec's canonical arithmetic and bounds semantics.
 
-A preceding guard or type/contract proof may satisfy that requirement.
+A preceding guard or type/contract proof may satisfy that requirement. A safe,
+non-allocating form is:
+
+```sec
+if values.Len > 0 {
+    let last := values[values.Len - 1]
+    Process(last)
+}
+```
 
 Without such a proof, the owning arithmetic/bounds rules determine validity,
 and pitfall analysis may provide the intent-aware explanation.
+
+`len(values)` and `values.Len` are `uint` (MD-074/MD-088, 2026-10-17), so for an
+empty `values` the subtraction is checked **unsigned underflow** that fails
+before any indexing; it is not "indexing at -1". A signed index expression that
+yields `-1` is a separate bounds violation. Findings explain which of the two
+hazards applies.
+
+The same family covers predecessor access (`values[i - 1]` when `i` may be
+`0`) and reverse loops:
+
+1. The analysis considers dominating guards and control-flow proofs and never
+   warns on the textual presence of `- 1` alone.
+2. When invalid arithmetic or bounds are statically proven, the owning
+   arithmetic or bounds diagnostic takes priority; pitfall analysis enriches
+   the explanation and fix instead of reporting an overlapping error.
+3. When safety can be neither proven nor disproven, a configurable pitfall
+   finding may explain the missing non-empty or positive-index proof under the
+   existing confidence and severity model; no new mandatory diagnostic ID is
+   introduced without a diagnostic registry update.
+4. A valid dominating non-empty or index-positive proof suppresses the
+   finding.
 
 ---
 
@@ -1705,9 +1735,8 @@ sec analyse
 
 runs all available analyses by default, including pitfall analysis.
 
-The tooling must also permit pitfall analysis to be selected individually.
-
-The exact command-line spelling is owned by CLI/tooling rules.
+The tooling must also permit pitfall analysis to be selected individually:
+`sec analyse pitfalls` (`rules/tooling/cli.md` § 5.2, MD-017).
 
 Deep pitfall output may include:
 

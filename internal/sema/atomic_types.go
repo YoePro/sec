@@ -1,5 +1,14 @@
 package sema
 
+// builtinAtomicType reserves the nominal core storage family. Its physical
+// representation is compiler-owned and has no ordinary public fields.
+// Rules: rules/concurrency/atomics.md — §§4,7,11;
+// rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md — §2.
+func builtinAtomicType() Type {
+	return Type{Name: "Atomic", Module: "core", Kind: StructType, Named: true,
+		Intrinsic: true, GenericParameters: []string{"T"}}
+}
+
 // builtinMemoryOrderType supplies the predeclared core identity for standalone
 // Sema. The trusted core source declaration refines this same reserved name.
 // Rules: rules/concurrency/atomics.md — §§4–5.
@@ -30,17 +39,29 @@ func atomicElementTypeSupported(typ Type) bool {
 // projection; a same-spelled user struct is not atomic storage.
 // Rules: rules/concurrency/atomics.md — §§4,7.
 func isAtomicType(typ Type) bool {
-	return typ.Intrinsic && typ.Name == "Atomic" && len(typ.TypeArgs) == 1
+	return isAtomicFamilyIdentity(typ) && len(typ.TypeArgs) == 1
 }
 
-// atomicFetchOperationSupported restricts integer fetch operations to integer
-// carriers whose contracts need no additional atomic failure/result model.
-// Rules: rules/concurrency/atomics.md — §§13,27(5–6),28–30.
-func atomicFetchOperationSupported(operation string, element Type) bool {
+// isAtomicFamilyIdentity recognizes the nominal compiler-owned core family,
+// independently of whether this is its template or a closed instance.
+// Rules: rules/concurrency/atomics.md — §§4,7.
+func isAtomicFamilyIdentity(typ Type) bool {
+	return typ.Intrinsic && typ.Named && typ.Module == "core" && typ.Name == "Atomic" && typ.Kind == StructType
+}
+
+// atomicOperationApplicability supplies the shared semantic operation matrix
+// for Sema and tooling. All eligible carriers have the common surface; fetch
+// operations require integer carriers whose contracts need no additional
+// atomic failure/result model. Unknown names stay outside the atomic API.
+// This says nothing about concrete target/lock-free/emulation capability.
+// Rules: rules/concurrency/atomics.md — §§8–10,12–13,21–22,27–30,43–45.
+func atomicOperationApplicability(operation string, element Type) (supported, known bool) {
 	switch operation {
+	case "Load", "Store", "Swap", "CompareExchange":
+		return atomicElementTypeSupported(element), true
 	case "FetchAdd", "FetchSub", "FetchAnd", "FetchOr", "FetchXor":
-		return isIntegerType(element) && element.Kind != EnumType && len(element.Contracts) == 0
+		return atomicElementTypeSupported(element) && isIntegerType(element) && element.Kind != EnumType && len(element.Contracts) == 0, true
 	default:
-		return false
+		return false, false
 	}
 }

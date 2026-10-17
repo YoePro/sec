@@ -54,7 +54,9 @@ impl StringSplitIterator implements Iterator[string] {
             return Some(part)
         }
 
-        let found := self.source.IndexOf(self.separator, self.position)
+        // self.position is a UTF-8 byte offset on a scalar boundary; the
+        // internal byte search keeps every coordinate in bytes (MD-071).
+        let found := self.source._ByteIndexOf(self.separator, self.position)
 
         return match found {
             Some(index) => {
@@ -65,12 +67,12 @@ impl StringSplitIterator implements Iterator[string] {
                 }
 
                 if self.separator.SizeOf > self.source.SizeOf - index {
-                    // IndexOf must never return a match that extends beyond the source.
+                    // A match must never extend beyond the source.
                     self.finished = true
                     return None()
                 }
 
-                let nextPosition := index + self.separator.Len
+                let nextPosition := index + self.separator.SizeOf
                 let mut partEnd: uint := index
 
                 if self.retainSeparator {
@@ -156,7 +158,14 @@ impl string {
         return 0
     }
 
-    /** Returns the byte ar the given byte index */
+    /**
+     * Returns the encoded UTF-8 byte at the given byte index.
+     *
+     * Parameters:
+     *   - index: Zero-based UTF-8 byte index (not a rune index); below self.SizeOf.
+     * Errors:
+     *   IndexError.OutOfBounds when index is not below self.SizeOf.
+     */
     fn GetByte(index: uint) Result[byte, IndexError] {
         if index >= self.SizeOf {
             return Err(IndexError.OutOfBounds)
@@ -171,7 +180,14 @@ impl string {
         }
     }
 
-    /** Returns the rune at the given byte index */
+    /**
+     * Returns a Unicode scalar at the specified rune index.
+     *
+     * Parameters:
+     *   - index: Zero-based rune index, not a byte offset.
+     * Errors:
+     *   IndexError.OutOfBounds when index is not below self.Len.
+     */
     fn GetRune(index: uint) Result[rune, IndexError] {
         let mut current: uint := 0
 
@@ -186,7 +202,14 @@ impl string {
         return Err(IndexError.OutOfBounds)
     }
 
-    /** Returns the byte at the given index. Panics if the index is out of bounds. */
+    /**
+     * Returns the encoded UTF-8 byte at the given byte index.
+     *
+     * Parameters:
+     *   - index: Zero-based UTF-8 byte index (not a rune index).
+     * Panics:
+     *   When index is not below self.SizeOf.
+     */
     fn ByteAt(index: uint) byte {
         if index >= self.SizeOf {
             panic "String index is out of bounds"
@@ -200,7 +223,18 @@ impl string {
         }
     }
 
-    /** Returns the char at the given index. Panics if the index is out of bounds. */
+    /**
+     * Returns the encoded UTF-8 byte at the given byte index as a char.
+     *
+     * This is byte access, not character or rune access: index is a UTF-8
+     * byte index and a non-ASCII scalar spans several chars. Whether CharAt
+     * is renamed or redesigned is not decided (MD-050/MD-071 correction § 3(5)).
+     *
+     * Parameters:
+     *   - index: Zero-based UTF-8 byte index (not a rune index).
+     * Panics:
+     *   When index is not below self.SizeOf.
+     */
     fn CharAt(index: uint) char {
         if index >= self.SizeOf {
             panic "String index is out of bounds"
@@ -215,7 +249,14 @@ impl string {
         }
     }
 
-    /** Returns the rune at the given rune index. */
+    /**
+     * Returns a Unicode scalar at the specified rune index.
+     *
+     * Parameters:
+     *   - index: Zero-based rune index, not a byte offset.
+     * Panics:
+     *   When index is not below self.Len.
+     */
     fn RuneAt(index: uint) rune {
         let mut current: uint := 0
 
@@ -230,7 +271,25 @@ impl string {
         panic "String index is out of bounds"
     }
 
-    // TODO: This should be moved to stdlib and even more - a string should be able to hold binary data as well. But since it can allocate we cannot have it in the core library. So for now it is here.
+    /**
+     * Decodes exactly the represented bytes as strict UTF-8 text.
+     *
+     * A string is always valid UTF-8 text, never a binary buffer (MD-050):
+     * malformed input is an ordinary recoverable error, not a panic, and the
+     * borrowed bytes are left unchanged.
+     *
+     * Parameters:
+     *   - value: Borrowed byte array; no terminator or capacity bytes are read.
+     * Returns:
+     *   An independent, valid UTF-8 string on success.
+     * Errors:
+     *   StringError.InvalidUtf8(byteOffset) for malformed UTF-8, where
+     *   byteOffset is the leading byte of the first invalid or truncated
+     *   sequence.
+     *   StringError.Allocation(error) if text storage cannot be acquired.
+     * Allocation:
+     *   May allocate; uses the active permitted allocation context.
+     */
     fn FromByteArray(value: ref byte[]) Result[string, StringError] {
         let mut index: uint := 0
 
@@ -348,6 +407,9 @@ impl string {
             return Err(StringError.InvalidUtf8(index))
         }
 
+        // The bytes are validated above; the byte-sequence materialization
+        // copies exactly those bytes into independent storage and reports
+        // allocation failure as StringError.Allocation.
         return value.ToString()
     }
 
@@ -361,18 +423,56 @@ impl string {
         return value in 0x80..0xBF
     }
 
+    /**
+     * Encodes an array of Unicode scalars as canonical UTF-8 text.
+     *
+     * Parameters:
+     *   - value: Borrowed rune array; every rune is already a valid scalar.
+     * Returns:
+     *   An independent UTF-8 string preserving scalar order.
+     * Errors:
+     *   StringError.Allocation(error) if text storage cannot be acquired.
+     * Allocation:
+     *   May allocate; uses the active permitted allocation context.
+     */
     fn FromRuneArray(value: ref rune[]) Result[string, StringError] {
-        // TODO: Implement string.FromRuneArray
-        return Ok("")
+        // The compiler-known rune-sequence materialization encodes each
+        // scalar to canonical UTF-8 in order (compiler_known_members.md,
+        // "Rune-sequence semantics"); safe runes cannot be invalid.
+        return value.ToString()
     }
 
     /**
-     * Materializes this string as an owning array of Unicode runes.
+     * Materializes the UTF-8 encoding into a separate owning byte array.
      *
-     * The string is decoded using Sec's normal UTF-8 string iteration semantics.
-     * One array element is produced for each rune in the string.
+     * Returns:
+     *   Exactly self.SizeOf bytes in encoded order; no terminator.
+     * Errors:
+     *   CollectionError for unavailable or insufficient result storage.
+     * Allocation:
+     *   May allocate; the returned mutable array never aliases string storage.
+     */
+    fn ToByteArray() Result[byte[], CollectionError] {
+        let mut result: byte[]
+        let mut index: uint := 0
+
+        while index < self.SizeOf {
+            try result.Append(self.ByteAt(index))
+            index += 1
+        }
+
+        return Ok(result)
+    }
+
+    /**
+     * Materializes the text into a separate owning rune array.
      *
-     * Returns CollectionError when storage for the result cannot be allocated.
+     * Returns:
+     *   Exactly self.Len Unicode scalar values in order.
+     * Errors:
+     *   CollectionError for unavailable or insufficient result storage.
+     * Allocation:
+     *   May allocate; the returned mutable array never aliases string storage.
      */
     fn ToRuneArray() Result[rune[], CollectionError] {
         let mut result: rune[]
@@ -462,18 +562,39 @@ impl string {
     }
 
     fn Contains(value: string) bool {
-        return match self.IndexOf(value) {
+        return match self._ByteIndexOf(value, 0) {
             Some(_) => true
             None => false
         }
     }
 
+    /**
+     * Finds the first exact occurrence of value.
+     *
+     * Parameters:
+     *   - value: Text to find; an empty value matches rune position zero.
+     * Returns:
+     *   Some(zero-based rune index) or None if no match exists.
+     * Allocation:
+     *   Does not allocate.
+     */
     fn IndexOf(value: string) Option[uint] {
         return self.IndexOf(value, 0)
     }
 
+    /**
+     * Finds the first exact occurrence of value at or after start.
+     *
+     * Parameters:
+     *   - value: UTF-8 text to find, interpreted as Unicode scalars.
+     *   - start: Zero-based rune position, inclusive.
+     * Returns:
+     *   Some(rune index) or None, including an out-of-range start.
+     * Allocation:
+     *   Does not allocate.
+     */
     fn IndexOf(value: string, start: uint) Option[uint] {
-        if start > self.SizeOf {
+        if start > self.Len {
             return None()
         }
 
@@ -481,14 +602,80 @@ impl string {
             return Some(start)
         }
 
-        if value.SizeOf > self.SizeOf - start {
+        let mut startByte: uint := 0
+
+        match self._ByteOffsetOfRune(start) {
+            Some(offset) => {
+                startByte = offset
+            }
+
+            None => {
+                return None()
+            }
+        }
+
+        match self._ByteIndexOf(value, startByte) {
+            Some(found) => {
+                return Some(self._RuneIndexAtByte(found))
+            }
+
+            None => {
+                return None()
+            }
+        }
+    }
+
+    /**
+     * Finds the last exact occurrence of value.
+     *
+     * Parameters:
+     *   - value: UTF-8 text to find; empty text matches at self.Len.
+     * Returns:
+     *   Some(zero-based rune index) or None if no match exists.
+     * Allocation:
+     *   Does not allocate.
+     */
+    fn LastIndexOf(value: string) Option[uint] {
+        if value.SizeOf == 0 {
+            return Some(self.Len)
+        }
+
+        match self._ByteLastIndexOf(value) {
+            Some(found) => {
+                return Some(self._RuneIndexAtByte(found))
+            }
+
+            None => {
+                return None()
+            }
+        }
+    }
+
+    /**
+     * Internal byte search: the UTF-8 byte offset of the first exact match of
+     * value at or after the byte offset startByte.
+     *
+     * A match of valid UTF-8 text in valid UTF-8 text always begins on a
+     * scalar boundary, because value begins with a leading byte. Public
+     * members translate the result to rune coordinates (MD-071).
+     */
+    fn _ByteIndexOf(value: string, startByte: uint) Option[uint] {
+        if startByte > self.SizeOf {
             return None()
         }
 
-        // Fast path: one-byte separator/search value.
+        if value.SizeOf == 0 {
+            return Some(startByte)
+        }
+
+        if value.SizeOf > self.SizeOf - startByte {
+            return None()
+        }
+
+        // Fast path: one-byte search value.
         if value.SizeOf == 1 {
             let needle := value.ByteAt(0)
-            let mut index := start
+            let mut index := startByte
 
             while index < self.SizeOf {
                 if self.ByteAt(index) == needle {
@@ -502,7 +689,7 @@ impl string {
         }
 
         let lastStart := self.SizeOf - value.SizeOf
-        let mut index := start
+        let mut index := startByte
 
         while index <= lastStart {
             let mut needleIndex: uint := 0
@@ -525,12 +712,12 @@ impl string {
         return None()
     }
 
-    fn LastIndexOf(value: string) Option[uint] {
-        if value.SizeOf == 0 {
-            return Some(self.SizeOf)
-        }
-
-        if value.SizeOf > self.SizeOf {
+    /**
+     * Internal byte search: the UTF-8 byte offset of the last exact match of
+     * a non-empty value.
+     */
+    fn _ByteLastIndexOf(value: string) Option[uint] {
+        if value.SizeOf == 0 || value.SizeOf > self.SizeOf {
             return None()
         }
 
@@ -559,6 +746,51 @@ impl string {
         }
 
         return None()
+    }
+
+    /**
+     * Internal: the UTF-8 byte offset of the scalar boundary before the rune
+     * at runeIndex, with runeIndex == self.Len giving self.SizeOf; None when
+     * runeIndex exceeds self.Len.
+     */
+    fn _ByteOffsetOfRune(runeIndex: uint) Option[uint] {
+        let mut current: uint := 0
+        let mut offset: uint := 0
+
+        for character in self {
+            if current == runeIndex {
+                return Some(offset)
+            }
+
+            offset += character.Utf8Length
+            current += 1
+        }
+
+        if current == runeIndex {
+            return Some(offset)
+        }
+
+        return None()
+    }
+
+    /**
+     * Internal: the rune index of the scalar boundary at the UTF-8 byte offset
+     * byteOffset, which must lie on a scalar boundary.
+     */
+    fn _RuneIndexAtByte(byteOffset: uint) uint {
+        let mut current: uint := 0
+        let mut position: uint := 0
+
+        for character in self {
+            if position >= byteOffset {
+                return current
+            }
+
+            position += character.Utf8Length
+            current += 1
+        }
+
+        return current
     }
 
     fn Trim() string {
@@ -615,17 +847,52 @@ impl string {
         return __StringSliceUnchecked(self, 0, end)
     }
 
+    /**
+     * Produces text from the half-open rune interval [start, end).
+     *
+     * Parameters:
+     *   - start: Inclusive Unicode-scalar index.
+     *   - end: Exclusive Unicode-scalar index.
+     * Returns:
+     *   The exact selected text without normalization.
+     * Errors:
+     *   RangeError.StartAfterEnd or RangeError.OutOfBounds.
+     */
     fn Slice(start: uint, end: uint) Result[string, RangeError] {
         if start > end {
             return Err(RangeError.StartAfterEnd)
         }
 
-        if end > self.SizeOf {
+        if end > self.Len {
             return Err(RangeError.OutOfBounds)
         }
 
-        // Bounds are established above before entering the private compiler intrinsic.
-        return Ok(__StringSliceUnchecked(self, start, end))
+        let mut startByte: uint := 0
+        let mut endByte: uint := 0
+
+        match self._ByteOffsetOfRune(start) {
+            Some(offset) => {
+                startByte = offset
+            }
+
+            None => {
+                return Err(RangeError.OutOfBounds)
+            }
+        }
+
+        match self._ByteOffsetOfRune(end) {
+            Some(offset) => {
+                endByte = offset
+            }
+
+            None => {
+                return Err(RangeError.OutOfBounds)
+            }
+        }
+
+        // Both bounds are resolved scalar-boundary byte offsets with
+        // startByte <= endByte <= self.SizeOf before the private byte helper.
+        return Ok(__StringSliceUnchecked(self, startByte, endByte))
     }
 
     /**
@@ -693,7 +960,9 @@ impl string {
      * rulebook and must be added to the canonical string API specification.
      */
     fn SplitOnce(separator: string) Option[string[2]] {
-        match self.IndexOf(separator) {
+        // Byte coordinates throughout: the internal search returns a byte
+        // offset on a scalar boundary (MD-071).
+        match self._ByteIndexOf(separator, 0) {
             Some(index) => {
                 let afterSeparator := index + separator.SizeOf
 

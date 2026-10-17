@@ -26,6 +26,92 @@ void SecDialect::registerOperations() {
       >();
 }
 
+namespace {
+// Reference facts of a value no schema-11 operation defines: a reference
+// function parameter or call result (`sec.reference`, implementation choice
+// MD-084). The keys mirror the reference operation properties of
+// sec_mlir_dialect_v11.md section 7.
+LogicalResult verifyReferenceDictionary(Operation *operation,
+                                        Attribute value) {
+  auto facts = dyn_cast<DictionaryAttr>(value);
+  if (!facts)
+    return operation->emitError("sec.reference must be a dictionary attribute");
+  auto identity = [&](StringRef key, bool required) -> LogicalResult {
+    Attribute entry = facts.get(key);
+    if (!entry)
+      return required ? operation->emitError()
+                            << "sec.reference requires " << key
+                      : success();
+    auto integer = dyn_cast<IntegerAttr>(entry);
+    auto type = integer ? dyn_cast<IntegerType>(integer.getType())
+                        : IntegerType{};
+    if (!integer || !type || type.getWidth() != 32 || integer.getInt() <= 0)
+      return operation->emitError()
+             << "sec.reference " << key << " must be a non-zero i32";
+    return success();
+  };
+  auto text = [&](StringRef key) -> StringRef {
+    auto string = facts.getAs<StringAttr>(key);
+    return string ? string.getValue() : StringRef();
+  };
+  if (failed(identity("borrow_id", true)) ||
+      failed(identity("lifetime_id", true)) ||
+      failed(identity("invalidation_domain", false)) ||
+      failed(identity("epoch_dependency", false)) ||
+      failed(identity("source_borrow", false)))
+    return failure();
+  if (text("address_stability").empty() || text("provenance").empty())
+    return operation->emitError(
+        "sec.reference requires non-empty address_stability and provenance");
+  StringRef policy = text("validity_policy");
+  if (policy == "proven") {
+    if (text("validity_proof").empty() || facts.get("epoch_dependency"))
+      return operation->emitError(
+          "a proven sec.reference names validity_proof and no epoch_dependency");
+  } else if (policy == "dynamic-epoch") {
+    if (!facts.get("invalidation_domain") || !facts.get("epoch_dependency"))
+      return operation->emitError(
+          "a dynamic-epoch sec.reference requires invalidation_domain and epoch_dependency");
+  } else {
+    return operation->emitError(
+        "sec.reference validity_policy must be proven or dynamic-epoch");
+  }
+  if (Attribute space = facts.get("address_space"))
+    if (!isa<StringAttr>(space) || cast<StringAttr>(space).getValue() != "mmio")
+      return operation->emitError(
+          "sec.reference address_space is omitted for ordinary memory and otherwise mmio");
+  if (Attribute pinned = facts.get("pinned"))
+    if (!isa<BoolAttr>(pinned))
+      return operation->emitError("sec.reference pinned must be a boolean");
+  if (Attribute origins = facts.get("origin_storages")) {
+    auto array = dyn_cast<ArrayAttr>(origins);
+    if (!array || !llvm::all_of(array, [](Attribute origin) {
+          auto integer = dyn_cast<IntegerAttr>(origin);
+          return integer && integer.getType().isInteger(32);
+        }))
+      return operation->emitError(
+          "sec.reference origin_storages must be an array of i32");
+  }
+  return success();
+}
+} // namespace
+
+LogicalResult SecDialect::verifyRegionArgAttribute(Operation *operation,
+                                                   unsigned regionIndex,
+                                                   unsigned argIndex,
+                                                   NamedAttribute attribute) {
+  (void)regionIndex;
+  StringRef name = attribute.getName().getValue();
+  if (name != "sec.reference")
+    return success();
+  auto function = dyn_cast<func::FuncOp>(operation);
+  if (!function || argIndex >= function.getNumArguments() ||
+      !isa<RefType, RefMutType>(function.getArgumentTypes()[argIndex]))
+    return operation->emitError(
+        "sec.reference annotates a !sec.ref or !sec.ref_mut function parameter");
+  return verifyReferenceDictionary(operation, attribute.getValue());
+}
+
 // SecDialect::verifyOperationAttribute validates versioned module and operation
 // metadata while retaining schemas 1-9 as compatibility inputs.
 //
@@ -226,6 +312,59 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     if (!integer || !type || type.getWidth() != 32 || integer.getInt() < -1)
       return operation->emitError(
           "sec.try_handler_index must be an i32 integer >= -1");
+  }
+  // Schema-11 discardable facts (implementation choice MD-084).
+  auto definesReference = [&]() {
+    return operation->getNumResults() == 1 &&
+           isa<RefType, RefMutType>(operation->getResult(0).getType());
+  };
+  if (name == "sec.address_taken") {
+    if (!isa<StorageDeclareOp>(operation))
+      return operation->emitError(
+          "sec.address_taken annotates sec.storage.declare");
+    return requireBool();
+  }
+  if ((name == "sec.pinned" || name == "sec.origin_storages" ||
+       name == "sec.reference_address_space") &&
+      !definesReference())
+    return operation->emitError()
+           << name << " annotates an operation defining one !sec.ref or !sec.ref_mut";
+  if (name == "sec.pinned")
+    return requireBool();
+  if (name == "sec.reference") {
+    if (operation->getNumResults() != 1 ||
+        !isa<RefType, RefMutType>(operation->getResult(0).getType()))
+      return operation->emitError(
+          "sec.reference annotates an operation with one !sec.ref or !sec.ref_mut result");
+    return verifyReferenceDictionary(operation, value);
+  }
+  if (name == "sec.reference_address_space") {
+    auto space = dyn_cast<StringAttr>(value);
+    if (!space || space.getValue() != "mmio")
+      return operation->emitError(
+          "sec.reference_address_space is omitted for ordinary memory and otherwise mmio");
+    return success();
+  }
+  if (name == "sec.origin_storages") {
+    auto array = dyn_cast<ArrayAttr>(value);
+    if (!array || !llvm::all_of(array, [](Attribute origin) {
+          auto integer = dyn_cast<IntegerAttr>(origin);
+          return integer && integer.getType().isInteger(32);
+        }))
+      return operation->emitError("sec.origin_storages must be an array of i32");
+    return success();
+  }
+  if (name == "sec.return_origins") {
+    auto function = dyn_cast<func::FuncOp>(operation);
+    auto array = dyn_cast<ArrayAttr>(value);
+    if (!function || !array || array.empty() ||
+        !llvm::all_of(array, [](Attribute origin) {
+          auto string = dyn_cast<StringAttr>(origin);
+          return string && !string.getValue().empty();
+        }))
+      return operation->emitError(
+          "sec.return_origins must be a non-empty array of origin strings on func.func");
+    return success();
   }
   if (name == "sec.match_id" || name == "sec.match_arm_index") {
     auto integer = dyn_cast<IntegerAttr>(value);

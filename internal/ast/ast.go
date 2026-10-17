@@ -410,6 +410,9 @@ type EnumValue struct {
 	DefaultToken     lexer.Token
 	InitializerToken lexer.Token
 	Initializer      Expression
+	// Payload is the associated value of the canonical CompareExchangeResult
+	// enum member (rules/concurrency/atomics.md — §6); ordinary enums have none.
+	Payload *TypeReference
 	// Invalid marks a recovered enum-member position that has no semantic
 	// member identity but remains in source order for tooling.
 	Invalid  bool
@@ -1076,7 +1079,11 @@ func (p *Parameter) TokenLiteral() string {
 }
 
 type LambdaExpression struct {
-	Token         lexer.Token
+	Token lexer.Token
+	// Attributes are the callable-body attributes written before a `let`
+	// that directly initializes this lambda (`@noPanic`, MD-030); they
+	// belong to the lambda's invocation, not to the binding.
+	Attributes    []*Attribute
 	CaptureOpen   lexer.Token
 	Captures      []LambdaCapture
 	ParameterOpen lexer.Token
@@ -2375,7 +2382,9 @@ type ImplMember interface {
 // InitDeclaration is a lifecycle member. ErrorType describes construction
 // failure only; successful completion produces the enclosing impl target.
 type InitDeclaration struct {
-	Token         lexer.Token
+	Token lexer.Token
+	// Attributes are written immediately before `init` (`@noPanic`, MD-030).
+	Attributes    []*Attribute
 	ParameterOpen lexer.Token
 	Parameters    []*Parameter
 	ErrorType     *TypeReference
@@ -2394,7 +2403,9 @@ func (id *InitDeclaration) TokenLiteral() string { return id.Token.Lexeme }
 //   - rules/foundations/grammar.md — FreeDeclaration
 type FreeDeclaration struct {
 	Token lexer.Token
-	Body  *BlockStatement
+	// Attributes are written immediately before `free` (`@noPanic`, MD-030).
+	Attributes []*Attribute
+	Body       *BlockStatement
 }
 
 func (fd *FreeDeclaration) implMemberNode() {}
@@ -2431,7 +2442,10 @@ type PropertyDeclaration struct {
 	Type   *TypeReference
 	Static bool
 	Getter *BlockStatement
-	Setter *PropertySetter
+	// GetterAttributes are written immediately before `get`; they apply to
+	// the getter only, never to the property or its setter (MD-030).
+	GetterAttributes []*Attribute
+	Setter           *PropertySetter
 }
 
 func (pd *PropertyDeclaration) implMemberNode() {}
@@ -2458,13 +2472,15 @@ func (ed *EventDeclaration) TokenLiteral() string {
 // Rules:
 //   - rules/errors/errorhandling.md — §24 "Fallible property setters"
 type PropertySetter struct {
-	Token     lexer.Token
-	Fallible  bool
-	Parameter *Identifier
-	ErrorType *TypeReference
-	Body      *BlockStatement
-	Invalid   bool
-	Recovery  *RecoveryInfo
+	Token lexer.Token
+	// Attributes are written immediately before `set` or `try set` (MD-030).
+	Attributes []*Attribute
+	Fallible   bool
+	Parameter  *Identifier
+	ErrorType  *TypeReference
+	Body       *BlockStatement
+	Invalid    bool
+	Recovery   *RecoveryInfo
 }
 
 type BlockStatement struct {

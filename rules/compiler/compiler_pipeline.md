@@ -1051,6 +1051,8 @@ dialect conversion.
 
 § 45(5) Governance tracks divergence and retirement of legacy backend paths.
 
+§ 45(6) Since 2026-10-17 the implementation has one track (MD-101, user decision): Semantic IR lowers to the Sec dialect where Sec semantics need it and to standard MLIR where that suffices, and the Sec MLIR lowering pipeline lowers both to the LLVM dialect, which is translated to LLVM IR and linked. The legacy direct-LLVM and AST-to-LLVM-dialect paths of § 45(2) and § 46 are retired; a construct the track does not lower yet is reported as an implementation capability limit (§ 32(2–4)) and never routed to another backend. `sec build`, `emit-mlir` and `emit-llvm` are boundaries of that one track.
+
 ---
 
 ## § 46 Legacy direct LLVM path

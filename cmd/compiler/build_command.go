@@ -7,9 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	llvmcodegen "sec/internal/codegen/llvm"
-	mlircodegen "sec/internal/codegen/mlir"
-	mlirtoolchain "sec/internal/mlir"
 	"sec/internal/project"
 )
 
@@ -83,7 +80,6 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 	}
 
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
-	program := analyzed.Program
 	entryErrors := validateBuildEntry(analyzed, options.InputFile)
 	for _, err := range entryErrors {
 		printSemaError(os.Stderr, err)
@@ -99,41 +95,36 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 			exitCLI(1)
 		}
 	}
-	llvmPath := ""
-	var runtimeLibraries []string
-	switch options.Pipeline {
-	case "llvm":
-		ir, err := llvmcodegen.GenerateAnalyzed(program, analyzed.Analyzer, targetDefinition.LLVMTriple)
+	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target)
+	if entry == "" {
+		reportToolError("build", "the entry module of %s defines no `fn main() int`", options.InputFile)
+		exitCLI(3)
+	}
+	llvmDialectPath, cleanup := lowerToLLVMDialect(secMLIR, entry, options.MLIRBin, options.MLIROutputFile)
+	defer cleanup()
+	llvmPath := options.LLVMOutputFile
+	if llvmPath == "" {
+		path, remove, err := createTempOutputPath(".ll")
 		if err != nil {
-			reportPipelineError("codegen", err)
-			exitCLI(4)
+			reportToolError("temp file", "%v", err)
+			exitCLI(1)
 		}
-		llvmPath = options.LLVMOutputFile
-		removeLLVM := false
-		if llvmPath == "" {
-			llvmPath, removeLLVM, err = createTempOutputPath(".ll")
-			if err != nil {
-				reportToolError("temp file", "%v", err)
-				exitCLI(1)
-			}
+		if remove {
+			defer os.Remove(path)
 		}
-		if removeLLVM {
-			defer os.Remove(llvmPath)
+		llvmPath = path
+	}
+	translateToLLVMIR(llvmDialectPath, llvmPath, options.MLIRBin)
+	if invocation != nil {
+		data, err := os.ReadFile(llvmPath)
+		if err != nil {
+			reportToolError("read", "%v", err)
+			exitCLI(1)
 		}
-		if invocation != nil {
-			ir = buildVersionLLVMComment(invocation, variant) + ir
-		}
-		if err := os.WriteFile(llvmPath, []byte(ir), 0644); err != nil {
+		if err := os.WriteFile(llvmPath, append([]byte(buildVersionLLVMComment(invocation, variant)), data...), 0644); err != nil {
 			reportToolError("write", "%v", err)
 			exitCLI(1)
 		}
-	case "mlir":
-		var cleanup func()
-		llvmPath, runtimeLibraries, cleanup = runMLIRBuildPipeline(analyzed, targetDefinition.LLVMTriple, options)
-		defer cleanup()
-	default:
-		reportToolError("build", "unknown pipeline %q", options.Pipeline)
-		exitCLI(1)
 	}
 
 	// rules/compiler/linking.md sections 8, 29, and 37: this is the legacy
@@ -145,19 +136,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		exitCLI(1)
 	}
 
-	if options.Pipeline == "mlir" && invocation != nil {
-		data, err := os.ReadFile(llvmPath)
-		if err != nil {
-			reportToolError("read", "%v", err)
-			exitCLI(1)
-		}
-		if err := os.WriteFile(llvmPath, append([]byte(buildVersionLLVMComment(invocation, variant)), data...), 0644); err != nil {
-			reportToolError("write", "%v", err)
-			exitCLI(1)
-		}
-	}
 	clangArgs := []string{"-target", targetDefinition.LLVMTriple, llvmPath, "-o", options.OutputFile}
-	clangArgs = append(clangArgs, runtimeLibraries...)
 	cmd := exec.Command(clangPath, clangArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -166,66 +145,6 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		exitCLI(5)
 	}
 	printDiagnosticSummary(diagnosticSummary{Warnings: len(analyzed.Analyzer.Warnings())})
-}
-
-// runMLIRBuildPipeline generates and verifies target MLIR before LLVM
-// translation, preserving structured analysis failures through build reporting.
-// Rules: rules/compiler/compiler_pipeline.md — §§2(8–9), 32–34;
-// rules/compiler/compiler_analysis.md — §58(3).
-func runMLIRBuildPipeline(analyzed analyzedProgram, triple string, options buildCommandOptions) (string, []string, func()) {
-	cleanupPaths := []string{}
-	cleanup := func() {
-		for _, path := range cleanupPaths {
-			_ = os.Remove(path)
-		}
-	}
-
-	mlirText, err := mlircodegen.GenerateAnalyzed(analyzed.Program, analyzed.Analyzer, triple)
-	if err != nil {
-		reportPipelineError("codegen", err)
-		exitCLI(4)
-	}
-
-	mlirPath := options.MLIROutputFile
-	removeMLIR := false
-	if mlirPath == "" {
-		mlirPath, removeMLIR, err = createTempOutputPath(".mlir")
-		if err != nil {
-			reportToolError("temp file", "%v", err)
-			exitCLI(1)
-		}
-	}
-	if removeMLIR {
-		cleanupPaths = append(cleanupPaths, mlirPath)
-	}
-	if err := os.WriteFile(mlirPath, []byte(mlirText), 0644); err != nil {
-		reportToolError("write", "%v", err)
-		exitCLI(1)
-	}
-
-	llvmPath := options.LLVMOutputFile
-	removeLLVM := false
-	if llvmPath == "" {
-		llvmPath, removeLLVM, err = createTempOutputPath(".ll")
-		if err != nil {
-			reportToolError("temp file", "%v", err)
-			exitCLI(1)
-		}
-	}
-	if removeLLVM {
-		cleanupPaths = append(cleanupPaths, llvmPath)
-	}
-
-	toolchain := mlirtoolchain.NewToolchain(options.MLIRBin)
-	if err := toolchain.Verify(mlirPath); err != nil {
-		reportPipelineError("mlir", err)
-		exitCLI(4)
-	}
-	if err := toolchain.TranslateToLLVMIR(mlirPath, llvmPath); err != nil {
-		reportPipelineError("mlir", err)
-		exitCLI(4)
-	}
-	return llvmPath, legacyMLIRRuntimeLibraries(mlirText, options.Target.OS), cleanup
 }
 
 // buildVersionLLVMComment records the invocation's version and artifact identity

@@ -26,30 +26,530 @@ module str
 
 // TODO: Implement stdlib/str/naming.sec
 
+/**
+ * Converts a name to lowerCamelCase.
+ *
+ * Description:
+ * Converts a name into words using the same boundary
+ * rules as ToSnakeCase(), then joins the words without
+ * separators.
+ *
+ * The first word is lowercase. Each following word
+ * begins with an uppercase letter.
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Underscores, hyphens, and whitespace are treated
+ * as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * Unicode casing uses the core rune case operations.
+ * Full Unicode case mappings depend on the completeness
+ * of the core Unicode implementation.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to lowerCamelCase.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate an intermediate snake_case string
+ * and the resulting camelCase string.
+ */
 fn ToCamelCase(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let snake := try ToSnakeCase(value)
+
+    if snake.IsEmpty {
+        return Ok(snake)
+    }
+
+    let mut builder := try new Builder(snake.Len)
+    let mut capitalizeNext := false
+
+    for character in snake {
+        if character == 95r {
+            capitalizeNext = true
+            continue
+        }
+
+        if capitalizeNext {
+            try builder.Append(character.ToUpper())
+            capitalizeNext = false
+        } else {
+            try builder.Append(character)
+        }
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Converts a name to PascalCase.
+ *
+ * Description:
+ * Converts a name into words using the same boundary
+ * rules as ToSnakeCase(), then joins the words without
+ * separators.
+ *
+ * Each word begins with an uppercase letter, including
+ * the first word.
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Underscores, hyphens, and whitespace are treated
+ * as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * Unicode casing uses the core rune case operations.
+ * Full Unicode case mappings depend on the completeness
+ * of the core Unicode implementation.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to PascalCase.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate an intermediate snake_case string
+ * and the resulting PascalCase string.
+ */
 fn ToPascalCase(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let snake := try ToSnakeCase(value)
+
+    if snake.IsEmpty {
+        return Ok(snake)
+    }
+
+    let mut builder := try new Builder(snake.Len)
+    let mut capitalizeNext := true
+
+    for character in snake {
+        if character == 95r {
+            capitalizeNext = true
+            continue
+        }
+
+        if capitalizeNext {
+            try builder.Append(character.ToUpper())
+            capitalizeNext = false
+        } else {
+            try builder.Append(character)
+        }
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Converts a name to snake_case.
+ *
+ * Description:
+ * Splits words at lowercase-to-uppercase,
+ * digit-to-uppercase, and acronym-to-word boundaries.
+ *
+ * Existing underscores, hyphens, and whitespace
+ * are treated as word separators.
+ *
+ * Consecutive separators become a single underscore.
+ * Leading and trailing separators are removed.
+ *
+ * Letter casing follows core rune.ToLower().
+ * Full Unicode case mapping depends on the
+ * completeness of the core Unicode implementation.
+ *
+ * No dictionary of acronyms is used.
+ * Other characters are preserved.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to snake_case.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate the resulting string.
+ * Uses constant additional working storage.
+ */
 fn ToSnakeCase(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    if value.IsEmpty {
+        return Ok(value)
+    }
+
+    let mut builder := try new Builder(value.Len)
+
+    let mut pending: Option[rune] := None()
+    let mut previous: Option[rune] := None()
+
+    let mut hasOutput := false
+    let mut pendingSeparator := false
+
+    for next in value {
+        match pending {
+            None => {
+            }
+
+            Some(character) => {
+                if _IsNamingSeparator(character) {
+                    pendingSeparator = hasOutput
+                    previous = None()
+                } else {
+                    let mut separate := pendingSeparator
+
+                    match previous {
+                        Some(before) => {
+                            if _HasSnakeBoundary(before, character, Some(next)) {
+                                separate = true
+                            }
+                        }
+                        None => {
+                        }
+                    }
+
+                    if hasOutput && separate {
+                        try builder.Append(95r)
+                    }
+
+                    try builder.Append(character.ToLower())
+
+                    previous = Some(character)
+                    hasOutput = true
+                    pendingSeparator = false
+                }
+            }
+        }
+
+        pending = Some(next)
+    }
+
+    // Flush the final rune, which has no following rune.
+    match pending {
+        Some(character) => {
+            if !_IsNamingSeparator(character) {
+                let mut separate := pendingSeparator
+
+                match previous {
+                    Some(before) => {
+                        if _HasSnakeBoundary(
+                            before,
+                            character,
+                            None,
+                        ) {
+                            separate = true
+                        }
+                    }
+                    None => {
+                    }
+                }
+
+                if hasOutput && separate {
+                    try builder.Append(95r)
+                }
+
+                try builder.Append(character.ToLower())
+            }
+        }
+        None => {
+        }
+    }
+
+    return builder.Finish()
 }
 
+/**
+ * Converts a name to SCREAMING_SNAKE_CASE.
+ *
+ * Description:
+ * Converts a name into uppercase words separated by
+ * ASCII underscores (U+005F).
+ *
+ * This naming convention is identical to CONSTANT_CASE.
+ * The implementation delegates to ToConstantCase().
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Underscores, hyphens, and whitespace are treated
+ * as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * Unicode casing follows the core rune operations.
+ * Full Unicode case mappings depend on the completeness
+ * of the core Unicode implementation.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to SCREAMING_SNAKE_CASE.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate through ToConstantCase().
+ * Does not introduce additional intermediate strings.
+ */
 fn ToScreamingSnakeCase(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return ToConstantCase(value)
 }
 
+/**
+ * Converts a name to kebab-case.
+ *
+ * Description:
+ * Converts a name into words using the same boundary
+ * rules as ToSnakeCase(), then joins the words using
+ * ASCII hyphens (U+002D).
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Underscores, hyphens, and whitespace are treated
+ * as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * The resulting words use lowercase letters.
+ * Unicode casing follows the core rune operations.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to kebab-case.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate an intermediate snake_case string
+ * and the resulting kebab-case string.
+ */
 fn ToKebabCase(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return ToDelimiterCase(value, 45r, false)
 }
 
+/**
+ * Converts a name to SCREAMING-KEBAB-CASE.
+ *
+ * Description:
+ * Converts a name into words using the same boundary
+ * rules as ToKebabCase(), then converts the resulting
+ * letters to uppercase.
+ *
+ * Words are separated using ASCII hyphens (U+002D).
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Underscores, hyphens, and whitespace are treated
+ * as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * Unicode casing follows the core rune operations.
+ * Full Unicode case mappings depend on the completeness
+ * of the core Unicode implementation.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to SCREAMING-KEBAB-CASE.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate an intermediate kebab-case string
+ * and the resulting uppercase string.
+ */
 fn ToScreamingKebabCase(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return ToDelimiterCase(value, 45r, true)
 }
 
+/**
+ * Converts a name to CONSTANT_CASE.
+ *
+ * Description:
+ * Converts a name into words using the same boundary
+ * rules as ToSnakeCase(), then converts the resulting
+ * letters to uppercase.
+ *
+ * Words are separated using ASCII underscores (U+005F).
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Underscores, hyphens, and whitespace are treated
+ * as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * Unicode casing follows the core rune operations.
+ * Full Unicode case mappings depend on the completeness
+ * of the core Unicode implementation.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ *
+ * Returns:
+ * The name converted to CONSTANT_CASE.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate an intermediate snake_case string
+ * and the resulting uppercase string.
+ */
+fn ToConstantCase(value: string) Result[string, CollectionError] {
+    return ToDelimiterCase(value, 95r, true)
+}
+
+/**
+ * Converts a name to a delimiter-separated naming convention.
+ *
+ * Description:
+ * Splits the input into words using the same boundary
+ * rules as ToSnakeCase().
+ *
+ * Joins the resulting words using the specified delimiter.
+ * The delimiter may be any Unicode scalar value.
+ *
+ * When uppercase is true, all letters are converted
+ * to uppercase. Otherwise, they are converted to lowercase.
+ *
+ * Uppercase sequences are recognized structurally,
+ * without relying on a dictionary of known acronyms.
+ *
+ * Existing underscores, hyphens, and whitespace are
+ * treated as word separators.
+ *
+ * Consecutive separators are collapsed, and leading
+ * and trailing separators are removed.
+ *
+ * Unicode casing follows the core rune operations.
+ * Full Unicode case mappings depend on the completeness
+ * of the core Unicode implementation.
+ *
+ * No Unicode normalization is performed.
+ *
+ * Parameters:
+ * - value: The name to convert.
+ * - delimiter: Rune inserted between words.
+ * - uppercase: Whether to use uppercase instead of lowercase.
+ *
+ * Returns:
+ * The name converted to the requested naming convention.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate an intermediate snake_case string
+ * and the resulting delimiter-separated string.
+ */
 fn ToDelimiterCase(value: string, delimiter: rune, uppercase: bool) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let snake := try ToSnakeCase(value)
+
+    if snake.IsEmpty {
+        return Ok(snake)
+    }
+
+    let mut builder := try new Builder(snake.Len)
+
+    for character in snake {
+        if character == 95r {
+            try builder.Append(delimiter)
+        } else if uppercase {
+            try builder.Append(character.ToUpper())
+        } else {
+            try builder.Append(character)
+        }
+    }
+
+    return builder.Finish()
+}
+
+/**
+ * Reports whether a rune separates naming words.
+ *
+ * Description:
+ * Recognizes underscores, hyphens, and whitespace.
+ * Consecutive separators are treated as one boundary.
+ */
+fn _IsNamingSeparator(character: rune) bool {
+    return character in [45r, 95r] || character.IsWhitespace
+}
+
+/**
+ * Determines whether a word boundary precedes a rune.
+ *
+ * Description:
+ * Detects lowercase-to-uppercase, digit-to-uppercase,
+ * and acronym-to-word transitions.
+ *
+ * A boundary occurs before the last uppercase rune
+ * in an uppercase sequence when that rune is followed
+ * by a lowercase rune.
+ *
+ * No dictionary of known acronyms is used.
+ *
+ * Parameters:
+ * - previous: Rune preceding the candidate boundary.
+ * - current: Rune immediately after the candidate boundary.
+ * - next: Rune following current, when available.
+ *
+ * Returns:
+ * True when an underscore should precede current.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _HasSnakeBoundary(previous: rune, current: rune, next: Option[rune]) bool {
+    if !current.IsUpperLetter {
+        return false
+    }
+
+    if previous.IsLowerLetter || previous.IsUnicodeDigit {
+        return true
+    }
+
+    return match next {
+        Some(following) => {
+            previous.IsUpperLetter && following.IsLowerLetter
+        }
+        None => false
+    }
 }

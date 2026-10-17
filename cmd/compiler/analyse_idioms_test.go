@@ -11,7 +11,7 @@ import (
 // "Diagnostic ownership and coalescing"; rules/compiler/compiler_analysis.md — §61.
 func TestAnalyseCanonicalIdiomGuidance(t *testing.T) {
 	for _, options := range [][]string{nil, {"--all"}} {
-		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse"}
+		args := []string{"-test.run=^TestAnalyseCLIProcess$", "--", "analyse", "--verbose"}
 		args = append(args, options...)
 		args = append(args, "../../testdata/sema/pitfall_idioms_valid.sec")
 		command := exec.Command(os.Args[0], args...)

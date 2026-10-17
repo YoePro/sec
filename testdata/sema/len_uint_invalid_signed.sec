@@ -1,0 +1,9 @@
+module main
+
+fn Use(values: int[]) void {
+    let signed: int := len(values)
+}
+
+fn main() int {
+    return 0
+}

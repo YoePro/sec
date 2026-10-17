@@ -100,6 +100,8 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		NoBlockViolation:                              SeverityError,
 		AttributeConflict:                             SeverityError,
 		AttributeArgumentNotCompileTime:               SeverityError,
+		AtomicOrderNotCompileTime:                     SeverityError,
+		AtomicInvalidMemoryOrder:                      SeverityError,
 		ArrayRangeSegmentInvalid:                      SeverityError,
 		TryPropagationIncompatible:                    SeverityError,
 		TryResidualUnpropagatable:                     SeverityError,

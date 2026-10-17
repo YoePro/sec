@@ -23,6 +23,10 @@ import (
 // SupportedFormatVersion is the only format_version this formatter implements.
 const SupportedFormatVersion = 1
 
+// maxAlignmentPaddingLimit bounds `max_alignment_padding` so a manifest value
+// cannot overflow the formatter's column arithmetic (MD-098).
+const maxAlignmentPaddingLimit = 1024
+
 // Overrides are formatter options supplied explicitly for one invocation. A
 // nil field was not supplied and never shadows the project setting.
 type Overrides struct {
@@ -138,6 +142,12 @@ func Resolve(manifestPath, manifestText string, overrides Overrides) (Settings, 
 			if field.value != nil {
 				*field.target = *field.value
 			}
+		}
+		if table.MaxAlignmentPadding != nil {
+			if *table.MaxAlignmentPadding == 0 || *table.MaxAlignmentPadding > maxAlignmentPaddingLimit {
+				return Settings{}, fmt.Errorf("%s: max_alignment_padding must be 1..%d spaces, got %d", manifestPath, maxAlignmentPaddingLimit, *table.MaxAlignmentPadding)
+			}
+			settings.Options.MaxAlignmentPadding = int(*table.MaxAlignmentPadding)
 		}
 		if table.LanguageCorrections != nil {
 			settings.Options.Fix = *table.LanguageCorrections

@@ -1,0 +1,5 @@
+module main
+
+fn Wide(value: ref Atomic[uint64]) uint64 {
+    return value.Load()
+}

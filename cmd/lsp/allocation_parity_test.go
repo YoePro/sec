@@ -89,6 +89,9 @@ func TestAllocationConsumerParity(t *testing.T) {
 					args := []string{command, path, "--target", target, "--diagnostic-format=json"}
 					if command == "emit-ir" {
 						args = append(args, "-o", "-")
+					} else {
+						// The fact report is the --verbose presentation (rules/tooling/cli.md § 5.4).
+						args = append(args, "--verbose")
 					}
 					cmd := exec.Command(binary, args...)
 					var stdout, stderr bytes.Buffer

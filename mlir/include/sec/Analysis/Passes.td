@@ -46,4 +46,21 @@ def SecVerifyArrayIndexGuards : Pass<"sec-verify-array-index-guards", "mlir::fun
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+// Schema 11 (SEC-MLIR-P15). Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+// sections 34-37.
+def SecVerifyPlaces : Pass<"sec-verify-places", "mlir::func::FuncOp"> {
+  let summary = "Verify Sec Place non-escape, element bounds guards and payload variant guards";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
+def SecVerifyReferenceGuards : Pass<"sec-verify-reference-guards", "mlir::func::FuncOp"> {
+  let summary = "Verify validity guards of dynamic-epoch Sec reference uses";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
+def SecVerifyBorrowSemantics : Pass<"sec-verify-borrow-semantics", "mlir::func::FuncOp"> {
+  let summary = "Verify Sec borrow derivation, end-borrow ordering and reference moves";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

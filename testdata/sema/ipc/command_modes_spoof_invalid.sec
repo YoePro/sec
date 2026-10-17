@@ -1,0 +1,4 @@
+module core
+
+enum CommandInputMode { Fake }
+enum CommandOutputMode { Fake }

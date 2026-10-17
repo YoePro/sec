@@ -270,12 +270,67 @@ func TestFormatAlignsExplicitEnumValueAssignmentsFromCST(t *testing.T) {
 	}
 }
 
-func TestFormatDropsEnumAlignmentBeyondMaximumPadding(t *testing.T) {
-	input := "enum Status uint8 {\nA       =1\nExceptionallyLongStatusName=2\n}\n"
-	want := "enum Status uint8 {\n    A = 1\n    ExceptionallyLongStatusName = 2\n}\n"
+// A trailing comment, line or single-line block, belongs to its enum member:
+// it keeps the `=` group together and both comment forms share one column
+// after the widest value cell, while a standalone comment still ends the
+// group.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §9(8), §9(8b) trailing comments
+//   - rules/tooling/formatter.md — §15(4) enum explicit-value assignments
+//   - missing-decisions.yaml — MD-097 trailing block comments
+func TestFormatEnumTrailingCommentsKeepValueAndCommentColumns(t *testing.T) {
+	input := "enum T string {\nA = \"A\",\nLONGNAME = \"LONGNAME\", // c1\nB = \"B\",\nCC = \"CC\", /* c2 */\nDDDDDD = \"DDDDDD\",\n/* standalone */\nE = \"E\", // c3\nFF = \"FF\",\n}\n"
+	want := "enum T string {\n" +
+		"    A        = \"A\",\n" +
+		"    LONGNAME = \"LONGNAME\", // c1\n" +
+		"    B        = \"B\",\n" +
+		"    CC       = \"CC\",       /* c2 */\n" +
+		"    DDDDDD   = \"DDDDDD\",\n" +
+		"    /* standalone */\n" +
+		"    E  = \"E\",  // c3\n" +
+		"    FF = \"FF\",\n" +
+		"}\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
-		t.Fatalf("enum assignment padding limit failed:\n%s\nwant:\n%s", got, want)
+		t.Fatalf("enum trailing-comment alignment:\n%s\nwant:\n%s", got, want)
+	}
+	if second := Format(Source{Text: got}, Options{}).Text; second != got {
+		t.Fatalf("not idempotent:\nfirst:\n%s\nsecond:\n%s", got, second)
+	}
+}
+
+// A wide enum table keeps one value column and one comment column with the
+// default settings (bootstrap lexer.sec TokenType, MD-100).
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 4(5), § 4(14), § 9(10)
+//   - missing-decisions.yaml — MD-098
+func TestFormatWideEnumTableKeepsValueAndCommentColumns(t *testing.T) {
+	input := "enum T string {\nEQ = \"EQ\", /* == */\nNEQ = \"NEQ\", // !=\nSHIFT_RIGHT_ASSIGN = \"SHIFT_RIGHT_ASSIGN\", //\n}\n"
+	want := "enum T string {\n" +
+		"    EQ                 = \"EQ\",                 /* == */\n" +
+		"    NEQ                = \"NEQ\",                // !=\n" +
+		"    SHIFT_RIGHT_ASSIGN = \"SHIFT_RIGHT_ASSIGN\", //\n" +
+		"}\n"
+	options := Options{}
+	got := Format(Source{Text: input}, options).Text
+	if got != want {
+		t.Fatalf("wide enum table:\n%s\nwant:\n%s", got, want)
+	}
+	if second := Format(Source{Text: got}, options).Text; second != got {
+		t.Fatalf("not idempotent:\n%s", second)
+	}
+}
+
+// Enum value tables are always aligned; the § 9(10) padding limit does not
+// apply to them (MD-100).
+func TestFormatAlignsEnumValuesBeyondMaximumPadding(t *testing.T) {
+	input := "enum Status uint8 {\nA       =1\nExceptionallyLongStatusName=2\n}\n"
+	want := "enum Status uint8 {\n    A                           = 1\n    ExceptionallyLongStatusName = 2\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("enum values must align regardless of padding:\n%s\nwant:\n%s", got, want)
 	}
 }
 

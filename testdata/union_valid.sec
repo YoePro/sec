@@ -177,12 +177,13 @@ fn StateWithCatchAll(state: State) string {
     }
 }
 
-fn NumberToString(number: Number) string {
+// string(numericValue) is the numeric ToString() and is fallible (MD-051).
+fn NumberToString(number: Number) Result[string, StringError] {
     return match number {
         Integer(value) => string(value)
         Unsigned(value) => string(value)
         Decimal(value) => string(value)
-        Text(value) => value
+        Text(value) => value.ToString()
     }
 }
 
@@ -204,10 +205,10 @@ fn ShapeArea(shape: DrawingShape) decimal {
     }
 }
 
-fn MessageDescription(message: Message) string {
+fn MessageDescription(message: Message) Result[string, StringError] {
     return match message {
-        Quit => "quit"
-        Text(text) => text
+        Quit => "quit".ToString()
+        Text(text) => text.ToString()
         Move(move) => string(move.x)
     }
 }
@@ -247,17 +248,17 @@ fn MaybeValue(value: Maybe[int]) int {
     }
 }
 
-fn EitherValue(value: Either[int, string]) string {
+fn EitherValue(value: Either[int, string]) Result[string, StringError] {
     return match value {
         Left(number) => string(number)
-        Right(text) => text
+        Right(text) => text.ToString()
     }
 }
 
-fn GenericResultValue(value: GenericResult[int, string]) string {
+fn GenericResultValue(value: GenericResult[int, string]) Result[string, StringError] {
     return match value {
         Ok(number) => string(number)
-        Err(error) => error
+        Err(failure) => failure.ToString()
     }
 }
 

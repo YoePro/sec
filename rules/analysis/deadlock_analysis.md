@@ -1887,7 +1887,8 @@ Tooling may expose an explicit deadlock-only selection, conceptually:
 sec analyse deadlocks
 ```
 
-Exact CLI spelling belongs to the canonical tooling rules.
+`deadlocks` is the canonical analysis name (`rules/tooling/cli.md` § 5.2,
+MD-017).
 
 Deep output may include:
 

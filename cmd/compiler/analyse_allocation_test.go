@@ -28,7 +28,7 @@ func TestAnalyseAllocationFacts(t *testing.T) {
 	if errs := a.Analyze(program); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget())
+	report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget(), "", nil)
 	var output bytes.Buffer
 	report.write(&output)
 	names := map[sema.CallableID]string{}
@@ -49,7 +49,7 @@ func TestAnalyseAllocationFacts(t *testing.T) {
 	if report.counts[analyseClassError] != 0 {
 		t.Fatal(report.counts)
 	}
-	selected := buildAnalyseReport(a, map[string]bool{"different.sec": true}, hostCompilerTarget())
+	selected := buildAnalyseReport(a, map[string]bool{"different.sec": true}, hostCompilerTarget(), "", nil)
 	var other bytes.Buffer
 	selected.write(&other)
 	if strings.Contains(other.String(), ": allocation ") {

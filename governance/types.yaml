@@ -245,7 +245,6 @@ integrations:
       - internal/parser/expression.go
       - internal/sema/analyzer.go
       - internal/diagnostics/diagnostics.go
-      - internal/codegen/mlir/generator.go
       - cmd/lsp/main.go
     tests:
       - internal/lowering/defaults/backends_test.go
@@ -275,7 +274,6 @@ integrations:
       - internal/parser/collection_literal_test.go
       - internal/diagnostics/diagnostics_test.go
       - testdata/sema/default_diagnostics_invalid.sec
-      - internal/codegen/mlir/generator_test.go
       - cmd/lsp/main_test.go
       - cmd/lsp/contract_diagnostic_test.go
     implemented:
@@ -310,7 +308,6 @@ integrations:
       - date, time, datetime, and duration are explicitly non-defaultable; default initialization never performs a wall-clock read
       - LSP hover and completion display resolved default value and source from the Sema-owned resolver
       - LSP hover abbreviates large fixed-array defaults as a bounded preview such as [0, ...] without materializing or rendering every element
-      - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
       - "explicit type defaults are classified in rulebook order: a non-constant default keeps S1008 types.invalid-explicit-default, a default outside the base type keeps mandatory S1060 types.default-not-representable, and a representable default failing a contract keeps mandatory S1059 types.default-violates-contract whose help names the first violated contract in source order"
       - storage sites needing an implicit default distinguish an ambiguous nearest-to-zero tie with mandatory S1061 types.ambiguous-implicit-default naming both equally near values and requesting an explicit default; the type itself stays legal
       - omitted struct fields whose type has an invalid explicit default report mandatory S1063 struct.invalid-defaulted-field instead of the generic S1010
@@ -417,24 +414,18 @@ integrations:
       - internal/ir/semantic/named_scalar.go
       - internal/ir/semantic/builder.go
       - internal/ir/semantic/verifier.go
-      - internal/codegen/mlir/nominal_readiness.go
-      - internal/codegen/readiness/unit_quantities.go
       - cmd/lsp/main.go
       - internal/sema/type_compatibility.go
       - internal/sema/compiler_known_type_facts.go
       - internal/sema/analyzer_struct_resolution.go
       - internal/sema/type_declarations.go
       - internal/sema/type_references.go
-      - internal/codegen/llvm/characters.go
-      - internal/codegen/readiness/float.go
       - cmd/compiler/build_command.go
       - internal/lexer/lexer.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/defaults.go
       - internal/sema/types.go
-      - internal/codegen/llvm
-      - internal/codegen/mlir
       - sec/core/char.sec
       - sec/core/rune.sec
       - internal/sema/checked_conversions.go
@@ -449,9 +440,7 @@ integrations:
       - testdata/defaults/default_presentation.json
       - internal/sema/typecompatibility/matrix_test.go
       - testdata/sema/type_compatibility
-      - internal/codegen/llvm/characters/characters_test.go
       - testdata/codegen/characters
-      - internal/codegen/llvm/float_readiness_test.go
       - cmd/compiler/llvm_float_readiness_test.go
       - testdata/codegen/llvm_platform_float
       - internal/sema/type_diagnostics_matrix_test.go
@@ -461,8 +450,6 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/defaults_test.go
-      - internal/codegen/llvm/generator_test.go
-      - internal/codegen/mlir/generator_test.go
       - internal/formatter/declaration_forms_test.go
       - internal/parser/named_function_type_test.go
       - testdata/formatter/declaration_forms.sec
@@ -476,10 +463,7 @@ integrations:
       - "representation audit fixes (2026-10-09): named scalar lowering uses the resolved declaration base and retains concrete generic arguments; recursive argument identity distinguishes nested specializations and excludes inherited carrier parameters from nongeneric declarations. Verification checks all type-argument references. Legacy MLIR rejects unavailable value signatures instead of emitting void, legacy LLVM rejects general Result instead of keeping only its success carrier (the existing analyzed string-result implementation remains separate), and raw/analyzed legacy APIs plus Semantic IR reject unresolved quantity erasure before publishing output. Identity helpers and audit fixtures/tests live in focused files and a dedicated test subdirectory."
       - "nominal identity, assignability and explicit conversion relation matrix audit (2026-10-09): typed values retain declared identity at initialization, mutation, calls and returns, including named bool/string/char/rune, array and callable wrappers; contextual literals remain separately shapeable. The source matrix covers 38 scalar identities on 32/64-bit plans at all analysis depths plus generic arguments, fixed representations, array extents, borrowed reference modes, callable capabilities/signatures/variadic shape, enum/union/register, collection/shape/rank, Result/Option/Task/Thread, temporal, raw-pointer and any/error boundaries."
       - "audit fixes (2026-10-09): unrelated structs, enums, unions and registers cannot gain an explicit conversion from equal carriers; wrapper conversions follow resolved declaration ancestry with exact generic/constant arguments. Dependency ordering resolves generic templates before wrappers, fixed base arguments survive nongeneric references and substitution, nominal identity survives cache keys and source display, compiler-known results retain trusted core refinements, and dynamic-array references match canonical borrowed slices while preserving original provenance. Shared compatibility logic is extracted from analyzer.go; the source matrix and fixtures have dedicated child directories."
-      - "legacy LLVM character literals (2026-10-09, MD-043 §§2–3): analyzed emission snapshots the exact AST character types from Sema; rune literals use i32 even for ASCII/Latin-1 and explicit char contexts use i8. Returns, inferred storage, arguments, named types and match result storage share these facts; raw APIs and stale/missing facts fail explicitly without partial output, and malformed decoded scalars cannot be truncated. Cohesive character lowering is extracted from expressions.go, with tests in a dedicated child directory; Clang compiles both scalar plans and executes the amd64 fixture."
       - LSP active target/variant switching and distinct-plan per-variant diagnostics are complete under frontend.target-sized-integer-semantics (2026-10-08); target comparison views remain owned by tooling.lsp-multi-target-diagnostics
-      - "legacy LLVM platform-float rejection (2026-10-08, MD-014): all generator entry points reject plain float in signatures, conversions, aliases, nested types, fields and defaults before emission because legacy floating-point lowering is unsupported; inferred binary-float family literals are rejected with structured unsupported-lowering source context, including integer-shaped g literals; plain float is no longer mapped to double by spelling, and explicit float32/float64 signatures retain their fixed widths on 32/64-bit triples"
-      - emit-llvm and build --pipeline llvm preserve existing outputs on rejected platform floats; build diagnostics finish only after backend success or failure, so the rejection is not hidden by an earlier empty JSON success summary; the build driver now has its own focused file
       - immutable-by-default let declarations with inferred or explicit types
       - comma-separated let declarations and type-first declaration groups
       - mutable typed declarations without initializers when current defaultability rules permit them
@@ -492,7 +476,7 @@ integrations:
       - function-type parsing, semantic identity, assignability, direct callable-value invocation, and capture-independent source signatures
       - RawPtr[T] and RawPtr[void] semantic identities with unsafe conversion, dereference, and pointer-operation validation
       - compiler-known list, map, set, vector, matrix, tensor, tensor_view, Result, Option, Task, Thread, shape, layout, and memory-space identities
-      - exact decimal literal semantic interpretation and legacy direct LLVM decimal constants, integer conversion, and return values
+      - exact decimal literal semantic interpretation
       - active int128, int256, uint128, uint256, and decimal128 language identities
       - representability-checked contextual shaping of integer-family literals for comparisons, arithmetic, and non-shift bitwise operators, including fixed-width contexts such as uint32 & 1 and uint32 ^ 1u
       - typed runtime numeric operands remain subject to exact compatibility and are not treated as shapeable literals
@@ -516,8 +500,12 @@ integrations:
       - "bit extraction with units (MD-046/MD-056, 2026-10-13, rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md §§ 3.8, 4.4-4.6): unit-bearing integer sources are accepted and yield a unitless result; the optional adjacent suffix `bit[N](value)<U>` (parsed only after the extraction, same line, no space) labels a unitless source or keeps the source's own unit and rejects any unit change; named and constrained sources stay rejected (register_field_write.go, bit_extraction.go)"
       - "explicit low-bit extraction (MD-046/MD-056, 2026-10-12, types.md \"Explicit low-bit extraction\", rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md): the parser reads the contextual form `bit[N](value)` as a BitExtractionExpression (rolling back to indexing when `bit[...]` has no call operand); Sema requires a compile-time N in 1..256 not above the source width (target-sized int/uint from the CompilationPlan, diagnosed when unavailable), accepts only primitive integers, byte and char, rejects named, constrained, unit-bearing and other sources, types the result as uint8/16/32/64/128/256 by N, folds constants as the non-negative x mod 2^N, publishes ResolvedBitExtractionOf and the proven interval 0..2^N-1; Semantic IR lowers it as int.bit-extract (verified width and carrier, no failure edge), Sec MLIR schema 10 rejects that operation explicitly, and the formatter prints bit[N](value) canonically (TestBitExtractionTypesAndRegisterWrites, TestBitExtractionConstantsUseNonNegativeModulo, TestBitExtractionRejections, TestParseBitExtractionExpression, TestBitExtractionLowersToIntBitExtract, TestFormatBitExtractionCanonically)"
       - "S1140 types.type-name-used-as-value (2026-10-10): a compiler-known lowercase type name such as list, map or set in value position is reported as a type instead of an undefined variable; since MD-058 (2026-10-12) `list[T].WithCapacity(...)` is a valid associated factory call and no longer an S1140 case"
+      - "MD-050/MD-071/MD-072 string decisions (applied 2026-10-17, rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md): rulebooks types.md (Valid UTF-8 invariant), core-library.md §§ 5.2, 5.3, 5.7, 15.1, compiler_known_members.md and allocation.md § 17(10). sec/core/string.sec: IndexOf/IndexOf(start)/LastIndexOf/Slice take and return rune indexes through internal byte search (_ByteIndexOf, _ByteLastIndexOf) and boundary translation (_ByteOffsetOfRune, _RuneIndexAtByte); empty-needle results use Len; GetByte/ByteAt/CharAt document UTF-8 byte indexes; the confirmed StringSplitIterator defect (byte position advanced by separator.Len and byte start passed to IndexOf) and the SplitOnce mixed units are fixed; FromRuneArray encodes through the rune-sequence materialization instead of returning an empty string; ToByteArray is declared; structured member documentation follows the correction. Registry: ToByteArray/ToRuneArray return Result[byte[]/rune[], CollectionError]. stdlib str (split, edit, replace, escape, whitespace) and net/http structured_fields migrated to rune positions or explicit byte-to-rune translation. Tests: TestStringUTF8PositionsAndMaterializationSurface, TestCompilerKnownFundamentalMembers"
+      - "MD-074/MD-088 and MD-051 (applied 2026-10-17, rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md): compiler-known len(value) returns uint, the same count as .Len (registry CKF-LEN and len inference); string(numericValue) for int/uint (including byte), float, decimal and named numeric values is typed Result[string, StringError] using the trusted-core StringError, in both conversion forms, while implicit numeric-to-string coercion stays invalid. Rulebooks core-library.md §§ 1.4, 15, collections.md § 3.1, compiler_known_members.md (Global len, numeric ToString), types.md (Numeric-to-text conversion), pitfall_analysis.md and the P14/P16/P18/P23 package and sync notes. Tests: TestLenIsUintAndNumericStringConversionIsFallible, TestCompilerKnownLenReturnsUintForStringsAndArrays, TestUnionValidFixture"
     remaining:
-      - "SEC-MLIR-P23 (installed 2026-10-16, not implemented): string values, UTF-8 facts and core materialization through Semantic IR, schema-19 dialect and lowering-v19 (gates B-D depend on P15/P17-P19 and the planned schema 17/18 predecessors). Open decisions: MD-050 (invalid UTF-8), MD-071 public offset units and boundaries (P23-D1), MD-072 byte/rune array materialization signatures (P23-D2), MD-073 char conversion above 255 (P23-D3), MD-074 len(...) int representability"
+      - "known hole (verified 2026-10-17): no lowering route lowers the global len(...) call or materializes numeric text for string(numericValue); the uint length and the ToString equality are therefore unverified at run time (MD-051 closed 2026-10-17 on the owner's decision that byte counts as uint8; numeric-to-named-string conversion is MD-093 and Sema still accepts Name(123) infallibly)"
+      - "known hole (verified 2026-10-17): the corrected core string algorithms (rune-position search and slicing, split, FromRuneArray, ToByteArray) and the migrated stdlib str/http code are verified only by compilation; `sec test` cannot execute test bodies yet, so the correction § 9 runtime conformance gates (UTF-8 negative cases, rune-index oracle, multibyte separators, allocation failure, HTTP malformed input) remain open"
+      - "SEC-MLIR-P23 (installed 2026-10-16, not implemented): string values, UTF-8 facts and core materialization through Semantic IR, schema-19 dialect and lowering-v19 (gates B-D depend on P15/P17-P19 and the planned schema 17/18 predecessors). MD-050, MD-071 (P23-D1) and MD-072 (P23-D2) decided 2026-10-17; open decisions: MD-073 char conversion above 255 (P23-D3); MD-074 decided 2026-10-17 (len(...) is uint)"
       - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
       - "enforce the try requirement for bare Sec-only scalar conversions that may fail (types.md \"Explicit conversions\"); MD-056 is decided (2026-10-12): signed values passed in unsigned syscall/register words use explicit `bit[N](value)` extraction, so first migrate those passes in sec/platform/linux and sec/stdlib/io (and the remaining sites in sec/stdlib/str) to bit[N] or checked conversions, then enforce; measured 2026-10-12: enabling enforcement today adds 17 errors in sec/platform/linux, 20 in sec/stdlib/io, 6 in sec/stdlib/str and fails 5 Go tests; also classify floating and decimal conversions (PrecisionLoss, ScaleOverflow, NonFinite)"
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
@@ -550,12 +538,6 @@ integrations:
         result: passed on 2026-10-09 for Sema/codegen, including a final race rerun of typecompatibility; go vet ./... also passes after the final LSP presentation adjustment. git diff --check and governance validation pass; 46 registered fragments, 304 unique integration IDs including migration source, evidence paths present; types-core remaining reduced from 11 to 10 and types total from 41 to 40
       - command: go test ./... -count=1
         result: passed on 2026-10-09; all packages including compiler and LSP after replacing value-based legacy character widths with Sema facts
-      - command: go test -race ./internal/codegen/llvm/... -count=1 and go vet ./...
-        result: passed on 2026-10-09; git diff --check and governance YAML validation also pass, with 46 registered fragments and 304 unique integration IDs; types-core remaining reduced from 12 to 11 and types total from 42 to 41
-      - command: compiler emit-llvm on linux-amd64/linux-armv7 and build --pipeline llvm on linux-amd64 for testdata/codegen/characters/scalars.sec
-        result: passed on 2026-10-09; CLI outputs preserve Sema char/rune widths, the armv7 module compiles with Clang, and the built amd64 entry point exits successfully
-      - command: go test ./internal/codegen/llvm/... -count=1
-        result: passed on 2026-10-09; char/rune widths on both scalar plans, fail-closed raw/stale facts, invalid char domain and malformed ASTs; Clang compiled armv7/amd64 objects and executed the amd64 calls, storage and match fixture
       - command: go test ./... -count=1
         result: passed on 2026-10-08 after implementing MD-043 rune-default character literals, char context shaping limited to 0..255, separate t-suffix validation and S1138, with char-bound pitfall proofs widened to Latin-1 code points
       - command: go test ./internal/codegen/llvm ./cmd/compiler -count=1
@@ -598,8 +580,6 @@ integrations:
       - internal/sema/constants.go
       - internal/sema/defaults.go
       - internal/sema/analyzer.go
-      - internal/codegen/llvm/expressions.go
-      - internal/codegen/mlir/generator.go
       - vscode/syntaxes/sec.tmLanguage.json
       - ../bootstrap/internal/lexer/lexer.sec
     tests:
@@ -607,8 +587,6 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/formatter/formatter_test.go
-      - internal/codegen/llvm/generator_test.go
-      - internal/codegen/mlir/generator_test.go
     implemented:
       - canonical i/u/g/m/t/r suffix recognition on integer-form literals
       - canonical g/m-only suffix recognition on fractional and exponent literals
@@ -787,13 +765,9 @@ integrations:
       - internal/sema/type_declarations.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_inference.go
-      - internal/codegen/readiness/temporal.go
-      - internal/codegen/llvm/generator.go
-      - internal/codegen/mlir/generator.go
       - vscode/syntaxes/sec.tmLanguage.json
     tests:
       - internal/sema/temporal/instant_test.go
-      - internal/codegen/readiness/temporal_test.go
       - cmd/lsp/main_test.go
       - testdata/sema/temporal/instant_identity.sec
       - testdata/sema/temporal/instant_derived_construct_invalid.sec
@@ -816,7 +790,7 @@ integrations:
       - ordinary and forged core-module redeclarations are rejected; trusted core cannot add an invented backing representation
       - the stable monotonic carrier fact survives recursive named derivations, preventing aliases from inventing constructors or wall-clock reinterpretations
       - conversions between Instant and wall-clock or unrelated struct types are rejected in both directions; deferred Now, comparison and arithmetic surfaces remain unavailable
-      - legacy LLVM and LLVM-dialect MLIR reject Instant uses explicitly without publishing partial IR; Semantic IR already rejects unsupported intrinsic opaque types rather than inventing storage
+      - Semantic IR rejects Instant uses as unsupported intrinsic opaque types rather than inventing storage
       - LSP intrinsic type completion and TextMate highlighting recognize Instant
       - tests reside in the existing temporal subpackage, legacy readiness checks share a focused subpackage, and the core declaration allowlist moves out of the analyzer monolith into the existing type declaration file
     remaining:
@@ -858,18 +832,12 @@ integrations:
       - internal/lowering/secmlir
       - mlir/lib/Conversion/SecToCore
       - mlir/lib/Conversion/SecIntegerToArith
-      - internal/codegen/readiness/wide.go
-      - internal/codegen/llvm/expressions.go
-      - internal/codegen/llvm/contract_readiness.go
-      - internal/codegen/mlir/generator.go
-      - internal/codegen/mlir/target.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/ir/semantic/semantic_test.go
       - internal/layout/scalar_plan_test.go
       - internal/lowering/secmlir/emitter_test.go
       - mlir/test/Conversion/SecIntegerToArith
-      - internal/codegen/readiness/wide_test.go
       - cmd/compiler/wide_readiness_test.go
       - testdata/codegen/wide_legacy/
     implemented:
@@ -883,8 +851,6 @@ integrations:
     remaining:
       - complete decimal128 arithmetic, comparison, precision, and failure semantics
     verification:
-      - command: GOCACHE=/tmp/sec-go-cache go test ./... -count=1; go test ./internal/codegen/readiness -run Wide -count=1
-        result: passed on 2026-10-08; the full Go suite covers the final production changes, and the wide matrix was rerun after adding array-element and struct-field compound-write fixtures
       - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/codegen/... ./cmd/compiler -run 'Wide|LegacyWide' -count=1; go test -race ./internal/codegen/readiness -run Wide -count=1; go vet ./...
         result: passed on 2026-10-08; raw/analyzed API gates, exact carriers, both target widths, imported aliases, structured CLI diagnostics, and output preservation; the readiness race matrix was rerun after the final aggregate fixtures
       - command: Python YAML validation and git diff --check
@@ -934,9 +900,6 @@ integrations:
       - internal/sema/type_references.go
       - internal/sema/stringcontract/plan.go
       - internal/sema/string_contracts.go
-      - internal/codegen/llvm/string_contracts.go
-      - internal/codegen/mlir/string_length.go
-      - internal/codegen/readiness/string_contracts.go
       - sec/core/string.sec
       - internal/sema/errors.go
       - internal/sema/type_diagnostic_locations.go
@@ -950,7 +913,6 @@ integrations:
       - internal/sema/collection_literals.go
       - internal/sema/try_failure_set.go
       - internal/ast/walk/inspect.go
-      - internal/codegen/llvm/contract_readiness.go
       - cmd/compiler/build_command.go
       - internal/sema/contract_cte.go
       - internal/sema/contract_cte_operators.go
@@ -977,8 +939,6 @@ integrations:
       - internal/diagnostics/diagnostics.go
       - internal/ir/semantic
       - internal/lowering/secmlir
-      - internal/codegen/mlir
-      - internal/codegen/llvm
       - sec/core/error.sec
     tests:
       - internal/sema/collectionshape/unique_test.go
@@ -986,8 +946,6 @@ integrations:
       - testdata/sema/collection_contracts/unique_semantics_invalid.sec
       - testdata/sema/collection_contracts/unique_elements_invalid.sec
       - internal/sema/stringcontract/plan_test.go
-      - internal/codegen/llvm/stringcontracts/runtime_test.go
-      - internal/codegen/mlir/stringlength/length_test.go
       - testdata/sema/string_contracts
       - testdata/codegen/string_contracts
       - internal/sema/contractdiagnostics/locations_test.go
@@ -996,7 +954,6 @@ integrations:
       - internal/sema/collectionshape/empty_lists_test.go
       - internal/sema/collectionshape/length_test.go
       - testdata/sema/collection_contracts/
-      - internal/codegen/llvm/contract_readiness_test.go
       - cmd/compiler/llvm_contract_readiness_test.go
       - testdata/codegen/llvm_contracts
       - internal/sema/contract_named_operators_test.go
@@ -1011,7 +968,6 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/defaults_test.go
-      - internal/codegen/mlir/generator_test.go
       - internal/sema/contract_representability_test.go
       - internal/sema/contract_values_test.go
       - internal/sema/collectionshape/length_contracts_test.go
@@ -1058,7 +1014,6 @@ integrations:
       - list defaultability checks the complete collection contract set before synthesizing an allocation-free zero-length default; invalid constrained list defaults make enclosing structs and nonempty fixed arrays nondefaultable, while valid empty defaults remain independent of element defaultability and bounded capacity
       - proved empty-list conversions retain compile-time contract validation without inventing a runtime failure or panic effect; noPanic regression cases cover valid conversions and aggregate defaults
       - collectionshape owns arbitrary-precision length requirements and conjunctions without importing Sema; length and empty-list source conformance tests moved from two parent files into its external test package, with extracted Sec fixtures under testdata/sema/collection_contracts and package boundaries documented in internal/sema/README.md
-      - "complete legacy/direct LLVM contract audit (2026-10-08): raw generator APIs reject every AST contract family before emission; emit-llvm and build --pipeline llvm consume canonical Sema facts and reject inherited/imported contracts, including nested fields, sequence elements, union payloads and callable signatures; loader-owned core declarations are excluded from output roots while their used contract facts remain checked, preventing unrelated unused core contracts from blocking ordinary code"
       - "legacy contract erasure paths closed (2026-10-08): try assignment previously emitted nothing and now reports unsupported lowering; unresolved nominal representations no longer silently become void; generator retries discard earlier failed output buffers; source-invalid values retain their earlier Sema errors, valid contracted source receives a structured capability limitation with source/help, existing output files remain untouched, and ordinary contract-free aliases still emit LLVM"
       - "rulebook status migration (2026-10-08): all implementation-progress prose from contracts.md is owned here; the rulebook retains normative scope, contract requirements, and compile-time/runtime rules, with a direct link to this canonical integration"
       - contracts are represented on named semantic types and inherited contracts are copied into derived named types
@@ -1120,7 +1075,7 @@ integrations:
       - "MD-010 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 2): the regex language moves to a dedicated future regex rulebook; the contract continues to evaluate and retain the pattern and reject the contract with S1058"
     remaining:
       - define the canonical regular-expression syntax/engine (MD-010), then replace S1058 with compile-time pattern validation, literal/default proofs, and runtime regex validation
-      - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty; native bodyless checks are implemented for valid UTF-8, but invalid UTF-8 and byte-slice boundary policy awaits MD-050 before this requirement can close
+      - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty; native bodyless checks are implemented for valid UTF-8; since MD-050 (2026-10-17) every string is valid UTF-8, so only valid-text validation remains
       - implement runtime supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
       - execute calls and property getters in contract arguments once the canonical semantic CTE executor exists (currently S1101 compile-time.execution-unavailable); MD-011 already classifies every contract position as a SemanticCompileTimeRequiredContext
       - implement runtime validation for explicit conversion into constrained named types
@@ -1132,7 +1087,7 @@ integrations:
       - "MD-012 runtime channel: make runtime-dependent checked conversions into constrained named types fail with ConversionError, mapping intrinsic failures to their variants and the first violated contract in source order to Contract(ContractError.Violation { Kind, DeclarationIndex }) with zero-based declaration indices; distinguish missing relation, intrinsic failure and contract failure in diagnostics (rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md §§ 4–5)"
     governance_reconciliation:
       - "unique comparison semantics completion (2026-10-09): this closes the direct-element equality requirement, with 32/64-bit source tests at every analysis depth and callback execution tests including non-reflexive equality and signed zero. The existing runtime collection validation/lowering and shared CTE executor requirements remain open: unknown runtime expressions, spreads and unsupported construction receive no fabricated compile-time proof; map entry semantics are not inferred from key representation. type-contracts-v2 remaining reduced from 11 to 10 and types total from 40 to 39."
-      - "string runtime slice (2026-10-09): native LLVM validation and legacy MLIR rune/byte length getters are implemented and executable; maintained Semantic IR/MLIR contract lowering, handled try, general constrained assignment and other runtime contract families retain their existing remaining owners. MD-050 records the unresolved invalid UTF-8 decision; string runtime remaining is retained until that policy is normative and tested, so type-contracts-v2 remaining stays 11 and types total stays 41."
+      - "string runtime slice (2026-10-09): maintained Semantic IR/MLIR contract lowering, handled try, general constrained assignment and other runtime contract families retain their existing remaining owners. MD-050 records the unresolved invalid UTF-8 decision; string runtime remaining is retained until that policy is normative and tested, so type-contracts-v2 remaining stays 11 and types total stays 41."
       - "partial audit (2026-10-09): the stale numeric-literal-only range parser and single-previous-location diagnostic limitations are removed; completed MD-011 context classification, compile-time conversion precedence, primitive binding operators, source provenance, legacy syntax recovery and package extraction are recorded under implemented. This completes one diagnostic partial and reconciles seven previously completed or stale partial records: partial count 13 to 5; remaining stays 11 and types total stays 41, because runtime/CTE executor/IR work is unchanged."
       - frontend.default-values remains authoritative for detailed default selection/materialization status and should not be duplicated here.
       - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
@@ -1303,18 +1258,8 @@ integrations:
       - vscode/src/targets.ts
       - vscode/src/extension.ts
       - vscode/package.json
-      - internal/codegen/readiness/integer.go
-      - internal/codegen/llvm/scalar_conversion.go
-      - internal/codegen/mlir/scalar_conversion.go
-      - internal/codegen/readiness/float.go
-      - internal/codegen/mlir/target.go
-      - internal/codegen/mlir/scalar/types.go
       - cmd/compiler/build_command.go
       - internal/codegen/targetplan/plan.go
-      - internal/codegen/llvm/scalar/types.go
-      - internal/codegen/llvm/contract_readiness.go
-      - internal/codegen/llvm/expressions.go
-      - internal/codegen/llvm/statements.go
       - internal/sema/types.go
       - internal/sema/analyzer.go
       - cmd/compiler/main.go
@@ -1328,23 +1273,15 @@ integrations:
       - internal/ir/semantic/signed_integer_literal.go
       - mlir/lib/Conversion/SecToCore/SecToCore.cpp
       - internal/lowering/secmlir
-      - internal/codegen/llvm/types.go
-      - internal/codegen/llvm/generator.go
-      - internal/codegen/mlir/generator.go
     tests:
       - cmd/lsp/target_selection_test.go
       - testdata/lsp/target_selection/
-      - internal/codegen/readiness/integer_test.go
-      - internal/codegen/readiness/integer_execution_test.go
       - testdata/codegen/runtime_integer_conversions/
-      - internal/codegen/readiness/float_test.go
       - testdata/codegen/llvm_platform_float/
-      - internal/codegen/mlir/scalar/generator_test.go
       - cmd/compiler/emit_ir_test.go
       - testdata/codegen/mlir_target_integers/aggregates.sec
       - testdata/codegen/mlir_target_integers/native_32_overflow.sec
       - testdata/codegen/mlir_target_integers/native_overflow_invalid.sec
-      - internal/codegen/llvm/scalar/generator_test.go
       - testdata/codegen/llvm_target_integers/scalars.sec
       - testdata/codegen/llvm_target_integers/bounds.sec.in
       - internal/sema/target_sized_consumers_test.go
@@ -1356,8 +1293,6 @@ integrations:
       - internal/lowering/secmlir/target_scalar_parity_test.go
       - testdata/ir/target_scalar_boundaries.sec.in
       - testdata/ir/target_scalar_representability.sec.in
-      - internal/codegen/llvm/generator_test.go
-      - internal/codegen/mlir/generator_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/target_plan_test.go
     implemented:
@@ -1367,18 +1302,11 @@ integrations:
       - "VS Code selection: SEC: Select Project Target and a status-bar indicator use the server's declared variant list, show platform and pointer width, and refresh on editor/save changes; project manifests are watched; protocol and refresh behavior are documented in vscode/README.md"
       - runtime integer conversion audit uses the canonical physical native width and distinct signed/unsigned domains; whole-source-domain inclusion or an exact constant proof is required before either legacy backend emits an explicit integer coercion
       - narrowing and unsafe signedness changes return source-located unsupported errors with no partial IR until runtime checked conversions are implemented with the decided core ConversionError (MD-012, decided 2026-10-08); nominal carriers and both call and explicit AST conversion routes share the checks
-      - legacy MLIR no longer implements explicit decimal-to-integer conversion by repeated division and truncation; decimal/floating sources requiring exactness and integer-domain validation are unsupported, while Sema continues to diagnose missing float-to-integer conversion relations separately
       - integer-to-decimal conversions validate the signed coefficient domain, rejecting unresolved native uint64 overflow while accepting native uint32 via zero extension; LLVM signed int8/int16 widening now uses sign extension rather than zero extension
       - 200 source domain cases on 32/64-bit plans are checked against an independent bit-domain oracle through both raw and analyzed APIs of both legacy backends, plus nominal/explicit-AST and scalar destination controls; existing Semantic IR rejects unresolved ordinary scalar conversion calls and dedicated enum/register conversion contracts remain separately owned
       - compiler CLI rejects the same int64-to-int runtime conversion on 32 bits while accepting it on 64 bits, and preserves existing output files on unsupported emission
-      - shared conversion readiness and external tests stay in the focused codegen/readiness subpackage; cohesive scalar conversion emitters move out of both legacy generator/statement monoliths
-      - canonical 32-bit plans reject every legacy MLIR platform-float consumer before output, including nested and unused signatures, aliases, conversions, fields, defaults and inferred fractional/integer g literals; raw and analyzed APIs and compiler emit/build paths share this readiness barrier
-      - native float readiness is shared by both legacy backends in the focused codegen/readiness subpackage, removing the former LLVM parent-directory implementation file while preserving fixed-width signatures and the existing 64-bit MLIR path
-      - "legacy AST-to-LLVM-dialect MLIR native integer integration (2026-10-08): int/uint signatures, aliases, inferred and module constants, conversion destinations, ordinary enum carriers, struct and nested fixed-array fields, stored/default values, arithmetic, mutation, match results, array iteration index bindings and uint-valued length members consume ResolvedScalarPlan.PointerWidthBits; fixed-width destinations retain exact large constants and signed minima on 32-bit targets"
-      - "shared legacy target ownership: targetplan resolves exact canonical registry identities for both LLVM and MLIR without architecture-string width guesses; MLIR analyzed APIs, emit-mlir and build --pipeline mlir check Sema native-width agreement; unknown targets and unsupported out-of-range inferred constants return no output, and reused generators reset failed invocation state"
       - native MLIR mapping lives in the focused mlir/scalar package; build MLIR verification/translation now lives with the existing build driver rather than cmd/compiler/main.go; the overlapping native-width remaining item in frontend.types-core is reconciled here as the authoritative owner
       - "direct LLVM target scalar integration (2026-10-08): exact canonical target-registry identity resolves ResolvedScalarPlan for every generator invocation; int and uint references, signatures, aliases, inferred signed/unsigned literals, ordinary enum carriers, local storage, mutation, arithmetic, negation, match results and uint-valued string length use PointerWidthBits rather than independent i32/i64 guesses; explicit fixed-width carriers stay fixed"
-      - "legacy LLVM source context and target safety: constant operands and storage initializers retain contextual fixed widths, runtime integer extension preserves signedness, analyzed entry points reject Sema/target-width mismatches, and unregistered triples fail before output; canonical scalar mapping and plan selection live in the focused llvm/scalar subpackage"
       - cross-layer representability agreement is checked with 96 source cases over int, uint, int32, uint32, int64, and uint64 on 32-bit and 64-bit plans, using an independent physical bit-domain oracle for endpoints, adjacent overflow/underflow, and 3000000000
       - accepted boundary programs retain target-sized uint and recursively resolved nominal scalar bases in Semantic IR; signed literal minima become exact constants in their contextual carrier, including fixed-width mutable locals, while runtime negation retains its checked operation
       - real Sec MLIR scalar-layout verification accepts signed and unsigned endpoints through returns, calls, mutable storage, arrays, named derivations, and fixed-width controls on both plans, and rejects eight injected native integer constants outside the same physical bounds
@@ -1399,7 +1327,6 @@ integrations:
       - explicit compile-time integer conversions reject constants outside the selected target-sized int or uint range while accepting the same constants on a wider target
     partial:
       - general public Result/error typing and executable runtime validation of potentially failing scalar conversions with the decided core ConversionError (MD-012 decided 2026-10-08); the destination-bound audit implements safe proofs and explicit rejection, not a lossy conversion policy
-      - legacy AST-to-LLVM-dialect MLIR does not implement native float lowering on 32-bit plans; plain float references and binary-floating family literals are explicitly unsupported before emission, including literals with an explicit-width context because AST-only readiness lacks resolved context facts; explicit float32/float64 signatures remain supported
     remaining: []
     bug_reference:
       - correction5.md
@@ -1418,7 +1345,6 @@ integrations:
       - target-sized explicit conversion bounds
       - target-sized enum underlying bounds
       - direct LLVM int and uint target-width parity or explicit unsupported error
-      - legacy MLIR int and uint target-width parity or explicit unsupported error
       - Sema and Sec MLIR scalar-layout representability agreement
     verification:
       - command: go test ./... -count=1
@@ -1435,8 +1361,6 @@ integrations:
         result: passed on 2026-10-08; 46 fragments, 304 unique integration IDs and valid types evidence paths; types remaining 47 to 46, target-sized-integer-semantics 2 to 1; MD-012 remains open with the completed safe-domain audit recorded
       - command: go test ./internal/codegen/readiness ./cmd/compiler -run 'TestLegacyRuntimeInteger|TestLegacyNativeScalar' -count=1
         result: passed on 2026-10-08 for native/fixed signedness and width domains, safe widening, rejected runtime narrowing, aliases, explicit AST routes, decimal coefficient bounds, unsupported decimal-to-integer precision loss, and CLI output preservation
-      - command: go test ./internal/codegen/readiness -run TestLegacyRuntimeIntegerSignedExecution -count=1 -v
-        result: passed on 2026-10-08; both backends compile armv7 object code and execute amd64 programs preserving int8 -7 and uint8 255, with real mlir-opt verification, mlir-translate and Clang
       - command: go test ./... -count=1
         result: passed on 2026-10-08 after shared legacy float readiness and canonical 32-bit MLIR rejection
       - command: go test ./cmd/compiler ./internal/codegen/... -run 'TestLegacy.*Float|TestLegacyMLIRTargetIntegers' -count=1
@@ -1449,16 +1373,12 @@ integrations:
         result: passed on 2026-10-08 after canonical MLIR integer widths, shared targetplan extraction and compiler emit/build integration
       - command: go test -race ./internal/codegen/llvm/... ./internal/codegen/mlir/... ./cmd/compiler -run 'TestLegacy|TestGenerate|TestPlanRegistryParity' -count=1
         result: passed on 2026-10-08 for both legacy backends, shared target selection, scalar/aggregate contexts, failed invocation reset and compiler CLI transport
-      - command: go test ./internal/codegen/mlir/scalar -run TestLegacyMLIRTargetIntegers -count=1 -v
-        result: passed on 2026-10-08 with real mlir-opt verification, mlir-translate LLVM emission and Clang compilation for armv7 and amd64; signed/unsigned native endpoints, wide fixed constants/minima, aliases, ordinary/default enums, nested structs/arrays/defaults, module constants, conversion destinations, lengths, iteration indices and mismatch/overflow rejection are covered
       - command: go vet ./...; Python YAML validation; git diff --check
         result: passed on 2026-10-08; 46 fragments and 304 unique integration IDs with existing types evidence paths; types remaining 51 to 49 because the same native-width work closes overlapping target-sized-integers and types-core rows (4 to 3 and 12 to 11 respectively); platform-float lowering remains explicitly partial
       - command: go test ./... -count=1; go test ./internal/codegen/llvm/... ./cmd/compiler -count=1
         result: passed on 2026-10-08; full Go suite and final LLVM/compiler regression after exact literal minima, host registry selection and width fixes
       - command: go test -race ./internal/codegen/llvm/... ./cmd/compiler -run 'TestLegacyLLVM|TestGenerate|TestPlanRegistryParity' -count=1
         result: passed on 2026-10-08 for generator APIs, canonical registry selection and compiler diagnostics
-      - command: go test ./internal/codegen/llvm/scalar -run TestLegacyLLVMTargetIntegers -count=1
-        result: passed on 2026-10-08; Clang 21 compiles actual 32-bit armv7 and 64-bit amd64 LLVM modules, including signed minima/maxima, unsigned maxima, fixed-width large constants, aliases, ordinary/default enums, arithmetic, negation, mutation, match, uint length, signed/unsigned extension and rejected analyzer/target mismatches
       - command: go vet ./...; Python YAML validation; git diff --check
         result: passed on 2026-10-08; 46 registered fragments, 304 unique integration IDs, types evidence paths valid; types remaining 52 to 51 and target-sized integers 5 to 4
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/semantic ./internal/lowering/secmlir -count=1

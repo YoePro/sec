@@ -78,7 +78,11 @@ func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarge
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
 	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
 	errors := analyzer.Analyze(program)
-	printSemaWarnings(analyzer)
+	// `sec analyse` prints its warnings itself after resolving its analysis
+	// selection and function focus; on rejection every warning is shown here.
+	if !deferSemaWarnings || len(errors) > 0 {
+		printSemaWarnings(analyzer)
+	}
 	for _, warning := range analyzer.Warnings() {
 		if warning.Severity == diagnostics.SeverityInformation {
 			summary.Information++
@@ -114,3 +118,8 @@ func projectDiagnosticRules(sourceFiles []string) diagnostics.RulePolicy {
 	}
 	return diagnostics.ParseRulePolicy(string(data))
 }
+
+// deferSemaWarnings lets a command that filters and presents warnings itself
+// (`sec analyse`, rules/tooling/cli.md § 5.4) take over successful-run warning
+// output from the shared analysis pipeline.
+var deferSemaWarnings bool

@@ -2,6 +2,7 @@ package sema
 
 import (
 	"fmt"
+	"math/big"
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
@@ -88,12 +89,17 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 // isCoreBuiltinDeclaration identifies compiler-owned names with trusted core declarations.
 // Rules: rules/library/core-library.md; rules/concurrency/mutex.md §§5–8,13;
 // rules/types/contracts.md "Public conversion and contract errors" (ContractError, MD-012).
-// rules/concurrency/atomics.md — §§4–5 (MemoryOrder).
+// rules/concurrency/atomics.md — §§4–6 (MemoryOrder, CompareExchangeResult).
 // rules/concurrency/channels.md — §§4–5 (ChannelCapability).
 func isCoreBuiltinDeclaration(name string) bool {
+	// rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
+	// rules/concurrency/processes.md — §§5.12–5.13.
+	if len(ipcErrorVariants(name)) != 0 || len(commandIOModeVariants(name)) != 0 {
+		return true
+	}
 	switch name {
 	case "IndexError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
-		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError":
+		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError":
 		return true
 	default:
 		return false
@@ -258,4 +264,180 @@ func isCoreBuiltinImplTarget(target string) bool {
 func compilerOwnedImplIdentity(target Type) bool {
 	canonical, registered := sharedBuiltinTypes()[target.Name]
 	return registered && canonical.Intrinsic && target.Intrinsic
+}
+
+// typeFromEnumDeclaration resolves ordinary enum carriers, constants and defaults
+// while retaining exact trusted compiler-known core declarations.
+// Rules: rules/declarations/enums.md — §§3–6,8–10;
+// rules/types/default_values.md — Enums;
+// rules/concurrency/atomics.md — §§4–6; rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
+// rules/concurrency/processes.md — §§5.12–5.13.
+func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
+	if typ, canonical := a.ipcCoreEnumFromDeclaration(enum); canonical {
+		return typ
+	}
+	if typ, canonical := a.compareExchangeResultFromDeclaration(enum); canonical {
+		return typ
+	}
+	underlying := a.types["int"]
+	if enum.BitUnderlying {
+		width := enum.UnderlyingBitWidth
+		if width <= 0 || width > 256 {
+			a.addErrorAtToken(enum.Name.Token, "enum %s bit width must be between 1 and 256, got %d", name, width)
+			return Type{Name: name, Kind: InvalidType, Named: true, Declared: true}
+		}
+		max := new(big.Int).Lsh(big.NewInt(1), uint(width))
+		max.Sub(max, big.NewInt(1))
+		underlying = Type{
+			Name:       fmt.Sprintf("bit[%d]", width),
+			Kind:       UintType,
+			MinInteger: big.NewInt(0),
+			MaxInteger: max,
+		}
+	} else if enum.UnderlyingType != nil {
+		resolved, ok := a.resolveType(enum.UnderlyingType)
+		if !ok {
+			return Type{Name: name, Kind: InvalidType}
+		}
+		underlying = resolved
+	}
+
+	if underlying.Kind != IntType && underlying.Kind != UintType && underlying.Kind != StringType {
+		token := enum.Name.Token
+		if enum.UnderlyingType != nil {
+			token = enum.UnderlyingType.Token
+		}
+		a.addErrorAtToken(token, "enum %s underlying type must be integer or string, got %s", name, typeDisplayName(underlying))
+		return Type{Name: name, Kind: InvalidType}
+	}
+
+	noCopy := hasAttribute(enum.Attributes, "noCopy")
+	typ := Type{
+		Name:                  name,
+		Module:                a.currentModule,
+		Kind:                  EnumType,
+		Named:                 true,
+		Declared:              true,
+		ExplicitlyNonCopyable: noCopy,
+		ErrorAssignable:       enum.ErrorType,
+		Underlying:            underlying.Name,
+		GenericParameters:     genericParameterNameValues(enum.GenericParameters),
+		GenericConstraints:    a.resolvedGenericParameterConstraints(enum.GenericParameters),
+		EnumConsts:            map[string]EnumValue{},
+	}
+	// Rules: rules/concurrency/atomics.md — §§4–5 and
+	// rules/concurrency/channels.md — §§4–5: source and compiler
+	// registration are one reserved core identity.
+	if a.isTrustedCoreBuiltinDeclaration(name, enum.Name.Token) {
+		typ.Intrinsic = true
+	}
+	if underlying.MinInteger != nil {
+		typ.MinInteger = new(big.Int).Set(underlying.MinInteger)
+	}
+	if underlying.MaxInteger != nil {
+		typ.MaxInteger = new(big.Int).Set(underlying.MaxInteger)
+	}
+	if noCopy {
+		typ.NoCopyPolicyOrigin = name
+	}
+	if enum.BitUnderlying {
+		typ.BitWidth = enum.UnderlyingBitWidth
+	}
+
+	seen := map[string]lexer.Token{}
+	var repeatedInitializer ast.Expression
+	var explicitDefaultToken lexer.Token
+	semanticIndex := 0
+	for _, value := range enum.Values {
+		if value == nil || value.Invalid || value.Name == nil {
+			continue
+		}
+		i := semanticIndex
+		semanticIndex++
+		if previousToken, exists := seen[value.Name.Value]; exists {
+			a.addErrorAtTokenWithPrevious(value.Token, previousToken, "duplicate enum value %q in enum %s", value.Name.Value, name)
+			continue
+		}
+		a.checkConfusableInDomains(value.Name.Value, value.Name.Token, seen)
+		seen[value.Name.Value] = value.Token
+
+		if value.Default {
+			if typ.EnumDefault != "" {
+				a.addErrorAtTokenWithPrevious(value.DefaultToken, explicitDefaultToken, "enum %s may only mark one member default", name)
+			} else {
+				typ.EnumDefault = value.Name.Value
+				explicitDefaultToken = value.DefaultToken
+			}
+		}
+
+		initializer := value.Initializer
+		if underlying.Kind == StringType {
+			if initializer == nil {
+				a.addErrorAtToken(value.Token, "string-backed enum member %s.%s requires an explicit initializer", name, value.Name.Value)
+				continue
+			}
+			literal, ok := initializer.(*ast.StringLiteral)
+			if !ok {
+				if identifier, isIdentifier := initializer.(*ast.Identifier); isIdentifier && identifier.Value == "iota" {
+					a.addErrorAtToken(identifier.Token, "iota is not available in string-backed enum %s", name)
+					continue
+				}
+				a.addErrorAtToken(expressionToken(initializer), "string-backed enum value %s.%s initializer must be a compile-time string constant", name, value.Name.Value)
+				continue
+			}
+			stringValue := literal.Value
+			typ.EnumValues = append(typ.EnumValues, value.Name.Value)
+			typ.EnumConsts[value.Name.Value] = EnumValue{
+				Name:        value.Name.Value,
+				StringValue: &stringValue,
+				Token:       value.Token,
+			}
+			a.recordDefinition(value.Name.Token)
+			continue
+		}
+		if initializer != nil {
+			repeatedInitializer = initializer
+		} else if repeatedInitializer != nil {
+			initializer = repeatedInitializer
+		} else {
+			initializer = &ast.Identifier{Token: value.Token, Value: "iota"}
+			repeatedInitializer = initializer
+		}
+		next, ok := a.enumInitializerIntegerValue(initializer, i)
+		if !ok {
+			a.addErrorAtToken(expressionToken(initializer), "enum value %s.%s initializer must be integer constant", name, value.Name.Value)
+			continue
+		}
+
+		a.checkIntegerValueRange(underlying, next, value.Token)
+		typ.EnumValues = append(typ.EnumValues, value.Name.Value)
+		typ.EnumConsts[value.Name.Value] = EnumValue{
+			Name:  value.Name.Value,
+			Value: new(big.Int).Set(next),
+			Token: value.Token,
+		}
+		a.recordDefinition(value.Name.Token)
+	}
+	if typ.EnumDefault == "" && len(typ.EnumValues) > 0 {
+		typ.EnumDefault = typ.EnumValues[0]
+	}
+
+	return typ
+}
+
+// enumInitializerIntegerValue evaluates an enum initializer with its lexical
+// iota index and restores the surrounding compile-time integer environment.
+// Rules: rules/declarations/enums.md — §§5–6.2.
+func (a *Analyzer) enumInitializerIntegerValue(expr ast.Expression, iotaIndex int) (*big.Int, bool) {
+	previous, hadPrevious := a.constInts["iota"]
+	a.constInts["iota"] = big.NewInt(int64(iotaIndex))
+	defer func() {
+		if hadPrevious {
+			a.constInts["iota"] = previous
+			return
+		}
+		delete(a.constInts, "iota")
+	}()
+
+	return a.integerConstantValue(expr)
 }

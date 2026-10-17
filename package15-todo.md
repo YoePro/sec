@@ -545,38 +545,121 @@ equally named roots of different declarations stay distinct alternatives
   - Guard dominance, escapes and borrow semantics are left to P15-54..P15-56.
   - lit tests: `schema11-place-reference-ops.mlir`, `schema11-place-projections.mlir`, `invalid-schema11-place-reference-ops.mlir` (16 cases); the full suite (96 tests) passes.
 
-- [ ] P15-54 — Register `--sec-verify-places`. Verify roots, wrapper and
+- [x] P15-54 — Register `--sec-verify-places`. Verify roots, wrapper and
   projection types, authority non-escalation, field identity/type, P14 array
   proof or guard, union active variant, deref authority, property exclusion,
   and every prohibited Place escape.
-- [ ] P15-55 — Register `--sec-verify-reference-guards`. For dynamic facts,
+- [x] P15-55 — Register `--sec-verify-reference-guards`. For dynamic facts,
   require validation of the same reference SSA, true-edge dominance of every
   dereference/read/write/reborrow/compare, and a false path ending in
   `sec.fail.reference_generation`. For proven facts, require closed
   compiler-owned proof provenance and no bogus runtime guard requirement.
-- [ ] P15-56 — Register `--sec-verify-borrow-semantics`. Verify immutable
+- [x] P15-56 — Register `--sec-verify-borrow-semantics`. Verify immutable
   metadata consistency, shared-copy authority, mutable no-copy/move behavior,
   legal reborrow origins, BorrowID/LifetimeID transitions, no reachable
   post-end use, allowed return origins, and place/reference type agreement.
   It must not duplicate Sema's source-language borrow checker.
-- [ ] P15-57 — Extend the Go emitter from verified Semantic IR to schema 11.
+
+  Completed 2026-10-16 (P15-54, P15-55; P15-56 partial): `mlir/lib/Analysis/VerifyPlaceReferences.cpp` registers `--sec-verify-places`, `--sec-verify-reference-guards` and `--sec-verify-borrow-semantics`. Root/projection types, authority, field identity, deref authority and copy/move authority are enforced by the per-op verifiers (P15-52/53); properties never become Places.
+  - `--sec-verify-places` rejects:
+    - Places in function signatures, block arguments, returns, calls, branches and any consumer other than Place and borrow ops;
+    - a runtime-check element Place not dominated by the exclusive true edge of `sec.place.array_index_in_bounds` on the same base and index;
+    - a payload Place not dominated by a same-variant `sec.union.is_variant` (or `sec.result.is_err`, Ok on the false edge) on a value denoting the same Place. A canonical chain (value/storage/deref root plus field path) is compared through `place.read`, `struct.extract` and `storage.load`.
+  - `--sec-verify-reference-guards` requires every deref, compare and direct reborrow of a dynamic-epoch reference to be dominated by the true edge of `sec.ref.is_valid` on the same SSA value, whose false edge ends in `sec.fail.reference_generation`. Proven references need no guard; their proof provenance is required by the per-op verifier.
+  - `--sec-verify-borrow-semantics` requires:
+    - reborrows to name the source reference's `borrow_id` (directly or through a dereferenced sub-Place);
+    - `end_borrow` to name the ended reference's own identities;
+    - no use to be reachable after `end_borrow` or after `ref.move`.
+  - lit: `Analysis/verify-place-references.mlir` (4 well-formed CFGs) and `Analysis/invalid-verify-place-references.mlir` (12 violations); the full suite (98 tests) passes.
+
+  P15-56 completed 2026-10-17 together with P15-57:
+  - A reference parameter's facts come from its `sec.reference` argument attribute, and a call result's from the call's `sec.reference` attribute. Uses of dynamic-epoch parameters are therefore guard-checked, and `end_borrow`/derivations of them are checked against their identities.
+  - Returned origins: a function with a reference result must carry a non-empty `sec.return_origins` whose parameter entries name reference parameters. Every returned reference must derive only from listed parameters, traced through copies, moves, reborrows, dereferences, field/element/payload projections, block arguments and calls (through their reference arguments). Local storage and value roots are rejected. Projection paths are Sema facts and are not re-derived (MD-085).
+  - Fix: a reborrow from an element or payload sub-Place of a dereference was rejected as underived; derivation now follows field, element and payload projections down to `place.deref`.
+- [x] P15-57 — Extend the Go emitter from verified Semantic IR to schema 11.
   Preserve TypeIDs, root/storage/domain/epoch/borrow/lifetime facts, exact
   big-int index/proof metadata, source locations, CFG ownership, and high-level
   storage. Reject unrepresented physical ABI/layout requests explicitly.
-- [ ] P15-58 — Add schema-11 MLIR round-trip and invalid suites for all types
+
+  Completed 2026-10-17 (`internal/lowering/secmlir/place_reference.go`):
+  - Types: `TypePlace` becomes `!sec.place<T, "ro"|"rw">` and `TypeReference` becomes `!sec.ref<T>`/`!sec.ref_mut<T>`, recursively over the referent.
+  - Operations: every Semantic IR Place/reference operation lowers to its schema-11 operation.
+    - Roots carry `place_root_id`, `storage_identity` and `address_space`.
+    - Projections carry the P13 field ordinal, P14 `bounds_kind`/`bounds_proof` and `index_signed`, and the P11/P12 variant (Result Ok 0, Err 1).
+    - Reference operations carry `borrow_id`, `lifetime_id`, `validity_policy`, `validity_proof`, `invalidation_domain`/`epoch_dependency` for dynamic-epoch references, `address_stability`, `provenance` and `source_borrow` for reborrows.
+    - `fail.reference_generation` carries `panic.invalid-reference-generation`. Source locations and the CFG (guard branches, `fail.bounds` and failure blocks) are kept as is.
+  - Facts outside the operation properties, all with spellings awaiting confirmation (MD-084):
+    - `sec.reference` dictionary on reference parameters and call results;
+    - `sec.return_origins` on reference-returning functions;
+    - `sec.address_taken = true` on address-taken storage;
+    - `sec.origin_storages`, `sec.pinned` and `sec.reference_address_space` on reference operations.
+  - Calls pass `shared-reference`/`mutable-reference` argument actions; the dialect call verifier now requires the action matching each operand type.
+  - Rejected as unsupported lowering instead of dropped: target-defined address spaces and static Place roots. Module statics were already rejected.
+  - `sec-mlir-opt` validates the new attributes (`verifyRegionArgAttribute` for parameter facts), and the dialect `kSchemaVersion` is now 11.
+  - Tests:
+    - `TestPackage15EmitsSchema11PlacesAndReferences` covers the returned, place-borrow, payload and parameters fixtures on 32/64-bit plans. It checks deterministic output, an unmutated module and no physical vocabulary, and that all three verifiers pass.
+    - `TestPackage15EmitsDynamicReferenceGuards` covers a dynamic parameter guard, move/reborrow/copy/compare and the endpoint.
+    - `TestPackage15EmitRejectsUnrepresentedReferenceFacts`.
+    - lit `verify-place-references.mlir` adds a dynamic parameter, origins through block arguments, and a call with reference actions.
+    - lit `invalid-verify-place-references.mlir` adds 8 violations.
+    - The full lit suite (98) passes.
+  - Known hole (verified 2026-10-17): the CLI routes `emit-ir`/`emit-sec-mlir` still build at package ceiling 14 and reject reference programs (MD-086). TypeIDs remain structural MLIR types, as in schemas 9–10.
+- [x] P15-58 — Add schema-11 MLIR round-trip and invalid suites for all types
   and operations; schema 9/10 regression; malformed root/authority/field/index/
   variant/reference metadata; place escape; guard errors; borrow errors; end
   use; deterministic printing; and canonical panic failure.
 
+  Completed 2026-10-17:
+  - Round-trip:
+    - `schema11-place-reference-types.mlir`, `schema11-place-reference-ops.mlir` and `schema11-place-projections.mlir` cover every type and operation.
+    - The new `schema11-emitter-metadata.mlir` covers the emitter facts outside operation properties: `sec.reference` on parameters and call results, `sec.return_origins`, `sec.address_taken`, `sec.origin_storages`, `sec.pinned`, `sec.reference_address_space`, and reference argument actions. It prints the module twice and `diff`s the two outputs (deterministic printing), then passes the three verifiers.
+  - Invalid, per-op contracts (`invalid-schema11-place-reference-ops.mlir`, 16 → 54 cases):
+    - root: address space, value/storage type, storage operand, a rw root over immutable storage (new check, package15.md § 64);
+    - field: non-struct base, ordinal range, field type;
+    - index: non-array base, `index_signed`, non-integer index, element type and authority, `bounds_kind`, runtime and proven proofs;
+    - variant: Result variant 2, union variant range, payload authority;
+    - deref: operand and referent;
+    - read/write: types;
+    - borrow: result kinds, zero identities, empty provenance, a proven reference with an epoch, unknown policy;
+    - copy/move, reborrow referent, ro-Place mutable reborrow, reborrow source;
+    - `is_valid`/`end_borrow` operands, zero `lifetime_id`, compare referents;
+    - `fail.reference_generation` not last in its block.
+  - Invalid emitter metadata (`invalid-schema11-emitter-metadata.mlir`, 19 cases):
+    - each malformed `sec.reference` key, with misplaced or malformed `sec.reference`;
+    - empty `sec.return_origins`;
+    - `sec.address_taken` value and placement;
+    - `sec.origin_storages`, `sec.pinned` and `sec.reference_address_space` value and placement (now restricted to operations defining one reference);
+    - mismatched argument actions for `!sec.ref_mut` and for ordinary values.
+  - Place escape, guard errors, borrow errors and post-end use: `Analysis/invalid-verify-place-references.mlir` (21 cases). It now also covers a Place root over storage whose declaration lacks `sec.address_taken = true`, which `--sec-verify-places` requires (package15.md § 67, spelling MD-084).
+  - Canonical panic failure: wrong reason (existing) and terminator placement.
+  - Schema 9/10 regression: the schema-9/10 round-trip and invalid suites are unchanged and pass.
+  - The full lit suite (100 tests) and the emitter Go tests with `SEC_MLIR_BIN` pass.
+
 ## G. Prove predecessor integration and architecture boundaries
 
-- [ ] P15-59 — P5: prove reference-dependent/address-taken storage remains
+- [x] P15-59 — P5: prove reference-dependent/address-taken storage remains
   high-level through `--sec-lower-trivial-core`; reject MemRef conversion while
   a Place/reference dependency exists, without changing ordinary P5 storage.
-- [ ] P15-60 — P6/P8: prove target scalar resolution recursively converts only
+
+  Completed 2026-10-17:
+  - `sec::isReferenceDependentStorage` (SecOps.h) is the one authoritative query of lowering v11 § 18: storage counts as reference-dependent when its declaration carries `sec.address_taken = true` or a `sec.place.storage` consumes it.
+  - `--sec-lower-trivial-core` keeps declare/init/load/store of such storage as `sec.storage`. `--sec-resolve-scalar-layout` converts only the element type and keeps reference-dependent bool storage as `!sec.storage<i1>` instead of `memref<i8>`.
+  - Ordinary storage keeps its P5 `memref<T>` and P6 `memref<i8>` lowering.
+  - The marker is valid only on `sec.storage.declare`, so a MemRef can never carry it.
+  - A `sec.call.direct` with Place/reference operands or results stays a Sec call with its argument actions and `sec.reference` facts. P6 call lowering keeps every discardable attribute (MD-087).
+  - lit: `Conversion/SecToCore/schema11-reference-storage.mlir` (trivial-core and the scalar pipeline, then the three verifiers) and `invalid-schema11-lowered-reference-storage.mlir`.
+  - Go: `TestPackage15EmitsSchema11PlacesAndReferences` runs every emitted fixture through `--sec-lower-scalar-core` plus the verifiers on 32/64-bit plans and asserts that no address-taken storage becomes `memref.alloca`.
+- [x] P15-60 — P6/P8: prove target scalar resolution recursively converts only
   referents under `!sec.place`, `!sec.ref`, and `!sec.ref_mut` on 32- and
   64-bit plans, while checked-integer signless normalization does not recurse
   through those wrappers or lower P15 operations.
+
+  Completed 2026-10-17:
+  - `--sec-resolve-scalar-layout` converts `!sec.place<T,a>`, `!sec.ref<T>` and `!sec.ref_mut<T>` by converting only `T` (recursively through structs, arrays, unions and Results), keeping wrapper and authority.
+  - All schema-11 Place/reference operations take part unchanged apart from their types, with properties and discardable facts kept. Function `sec.reference` argument attributes are kept.
+  - `--sec-lower-checked-integers` rejects a module with Place/reference types or operations before any rewrite, so it never recurses through the wrappers or lowers P15 operations (MD-087).
+  - lit: `Conversion/SecToCore/schema11-reference-scalar-layout.mlir` checks a nested struct/array referent through deref, field, bounds, element, reborrow, end_borrow, read and write. It resolves to `si64`/`ui64` and `si32`/`ui32` with identical metadata, verifies under the three passes, and is rejected by `--sec-lower-integer-core` and by `--sec-lower-checked-integers` after resolution.
+  - Go: the emitter fixtures pass through the scalar pipeline on both plans with no `!sec.int`/`!sec.uint` left and are rejected by `--sec-lower-integer-core`.
 - [x] P15-61 — P13: test shared and mutable struct-field references, two
   disjoint mutable field borrows, whole-struct versus mutable-field conflict,
   nested subfield reborrow, property rejection, and `int128`/`uint256` field

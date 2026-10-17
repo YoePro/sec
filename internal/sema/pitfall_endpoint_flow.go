@@ -63,6 +63,11 @@ func (s *pitfallEndpointScan) callMayChangeLength(call *ast.CallExpression) bool
 	if len(s.builder.mutationsInExpression(call, s.collection, false)) != 0 {
 		return true
 	}
+	// The compiler-known len evaluates its argument once and never mutates
+	// it (core-library.md § 1.4); its argument was scanned above.
+	if callExpressionName(call) == "len" && len(call.Arguments) == 1 && len(call.GenericArguments) == 0 {
+		return false
+	}
 	resolved, ok := s.builder.analyzer.ResolvedCallTarget(call)
 	if !ok {
 		return true

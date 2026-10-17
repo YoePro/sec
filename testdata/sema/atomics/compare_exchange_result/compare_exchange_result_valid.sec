@@ -1,0 +1,39 @@
+module main
+
+type Count uint64
+
+fn Success() CompareExchangeResult[Count] {
+    return CompareExchangeResult[Count].Exchanged
+}
+
+fn Failure(observed: Count) CompareExchangeResult[Count] {
+    return CompareExchangeResult[Count].NotExchanged(observed)
+}
+
+fn GenericFailure[T](observed: T) CompareExchangeResult[T] {
+    return CompareExchangeResult[T].NotExchanged(observed)
+}
+
+fn StringFailure(observed: string) CompareExchangeResult[string] {
+    return CompareExchangeResult[string].NotExchanged(observed)
+}
+
+fn Inspect(result: CompareExchangeResult[Count]) Count {
+    return match result {
+        Exchanged => Count(0)
+        NotExchanged(observed) => observed
+    }
+}
+
+fn Observe(value: ref Atomic[Count], expected: Count, desired: Count) Count {
+    let result := value.CompareExchange(expected, desired)
+    return match result {
+        Exchanged => expected
+        NotExchanged(observed) => observed
+    }
+}
+
+fn DefaultResult() CompareExchangeResult[Count] {
+    let mut result: CompareExchangeResult[Count]
+    return result
+}

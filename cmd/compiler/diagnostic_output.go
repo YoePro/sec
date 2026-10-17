@@ -109,6 +109,10 @@ type diagnosticReporter struct {
 	// file names the single input of a one-file command whose lexer tokens
 	// carry no file; it fills otherwise empty span files.
 	file string
+	// documentWriter replaces the occurrence document in JSON mode when a
+	// command owns one combined machine-readable report (`sec analyse
+	// --json`, rules/tooling/cli.md § 6); it also runs on early failure.
+	documentWriter func(occurrences []emittedOccurrence, summary diagnosticSummary)
 }
 
 var cliDiagnostics = &diagnosticReporter{format: diagnosticFormatHuman, output: os.Stderr}
@@ -333,7 +337,7 @@ func (r *diagnosticReporter) summary(summary diagnosticSummary) {
 		fmt.Fprintln(r.output)
 		return
 	}
-	if r.written {
+	if r.written || r.documentWriter != nil {
 		return
 	}
 	r.written = true
@@ -366,6 +370,16 @@ func (r *diagnosticReporter) finish() {
 	if r.format != diagnosticFormatJSON || r.written {
 		return
 	}
+	if r.documentWriter != nil {
+		r.written = true
+		r.documentWriter(sortedOccurrences(r.occurrences), r.occurrenceSummary())
+		return
+	}
+	r.summary(r.occurrenceSummary())
+}
+
+// occurrenceSummary counts the recorded occurrences by severity.
+func (r *diagnosticReporter) occurrenceSummary() diagnosticSummary {
 	summary := diagnosticSummary{}
 	for _, occurrence := range r.occurrences {
 		switch occurrence.Severity {
@@ -377,7 +391,7 @@ func (r *diagnosticReporter) finish() {
 			summary.Information++
 		}
 	}
-	r.summary(summary)
+	return summary
 }
 
 // exitCLI flushes pending machine-readable diagnostics before terminating

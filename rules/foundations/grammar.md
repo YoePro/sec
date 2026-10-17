@@ -1127,11 +1127,23 @@ Lifecycle and construction syntax:
 
 ```text
 InitDeclaration
-    ::= "init" "(" [ ParameterList ] ")" [ TypeReference ] Block
+    ::= [ CallableBodyAttributes ] "init" "(" [ ParameterList ] ")" [ TypeReference ] Block
 
 FreeDeclaration
-    ::= "free" Block
+    ::= [ CallableBodyAttributes ] "free" Block
 
+CallableBodyAttributes
+    ::= AttributeSet
+```
+
+`AttributeSet` is the consecutive attribute sequence of
+`rules/foundations/attributes.md`, "General syntax". `CallableBodyAttributes`
+attach to the immediately following callable body only — `init`, `free`, one
+property accessor, or the lambda of a `LambdaLetDeclaration` — never to the
+enclosing `impl` or `property` (MD-030, attributes.md "Callable-body
+attachment (MD-030)").
+
+```text
 NestedImplDeclaration
     ::= "impl" TypeReference ImplBody
 
@@ -1233,9 +1245,9 @@ PropertyDeclaration
         "}"
 
 PropertyAccessor
-    ::= Getter
-      | Setter
-      | FallibleSetter
+    ::= [ CallableBodyAttributes ] Getter
+      | [ CallableBodyAttributes ] Setter
+      | [ CallableBodyAttributes ] FallibleSetter
 
 StaticPropertyDeclaration
     ::= "static" PropertyDeclaration
@@ -1541,6 +1553,16 @@ LetDeclaration
         LetDeclarator
         { "," LetDeclarator }
 
+LambdaLetDeclaration
+    ::= CallableBodyAttributes "let" [ "mut" ] Identifier [ ":" TypeReference ]
+        ":=" LambdaExpression
+```
+
+A `LambdaLetDeclaration` is valid at top level and in local scope; its
+initializer is syntactically a `LambdaExpression` (with an optional capture
+clause), and its attributes annotate the lambda body, not the binding (MD-030).
+
+```text
 LetDeclarator
     ::= Identifier
         [ ":" TypeReference ]

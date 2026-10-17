@@ -902,6 +902,19 @@ func pitfallBlockDefinitelyExits(block *ast.BlockStatement) bool {
 // Rules: rules/analysis/pitfall_analysis.md — "Semantic recognition, not syntax matching",
 // "Canonical facts consumed by pitfall analysis", "Direct index at length".
 func (b *pitfallBuilder) lengthReceiver(expression ast.Expression) (string, lexer.Token, bool) {
+	// The compiler-known len(x) is the same uint count as x.Len
+	// (MD-074/MD-088); len cannot be redeclared, so the call spelling
+	// names the same length observation.
+	if call, isCall := expression.(*ast.CallExpression); isCall {
+		if callExpressionName(call) != "len" || len(call.Arguments) != 1 || len(call.GenericArguments) != 0 {
+			return "", lexer.Token{}, false
+		}
+		if b.boundsOnly && !b.pitfallPureOperand(call.Arguments[0]) {
+			return "", lexer.Token{}, false
+		}
+		identity, ok := b.expressionIdentity(call.Arguments[0])
+		return identity, call.Token, ok
+	}
 	member, ok := expression.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
 		return "", lexer.Token{}, false

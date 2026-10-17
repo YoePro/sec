@@ -3454,11 +3454,12 @@ fn Different(letter: char, codepoint: rune) bool {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestCompilerKnownLenReturnsIntForStringsAndArrays(t *testing.T) {
+// len returns uint, the same count as .Len (MD-074/MD-088, 2026-10-17).
+func TestCompilerKnownLenReturnsUintForStringsAndArrays(t *testing.T) {
 	input := `
 module main
 
-fn Count(text: string, slice: ref rune[]) int {
+fn Count(text: string, slice: ref rune[]) uint {
 	let owned := [0r, 1r]
 	return len(text) + len(slice) + len(owned)
 }
@@ -8615,8 +8616,8 @@ fn ShadowErr() int {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"variable \"value\" already declared at 15:3, previous declaration at 13:6",
-		"variable \"error\" already declared at 24:3, previous declaration at 21:6",
+		"variable \"value\" already declared at 15:6, previous declaration at 13:6",
+		"variable \"error\" already declared at 24:7, previous declaration at 21:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }

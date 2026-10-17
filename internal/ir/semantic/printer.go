@@ -235,7 +235,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		formatTarget(out, op.Successors[0])
 		out.WriteString(",")
 		formatTarget(out, op.Successors[1])
-	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot:
+	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot, OpNumericConvertExact:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpIntBinaryChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])
@@ -318,6 +318,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpBoundsFailure:
 		fmt.Fprintf(out, " operation=%q", op.ArrayOperation)
+	case OpAtomicFence:
+		fmt.Fprintf(out, " order=%s", op.AtomicOrder)
 	default:
 		if isPlaceReferenceOperation(op.Kind) {
 			formatPlaceReferenceOperation(out, op)

@@ -176,3 +176,99 @@ fn Invalid(a: int, b: string) string {
 		t.Fatalf("errors = %v, want only the return-type-only duplicate rejected", errors)
 	}
 }
+
+// A bare Some(...) argument is a contextual Option argument like None: its
+// Option[T] comes from the parameter in that position, for ordinary calls,
+// methods, middle positions and struct fields; a non-Option parameter is a
+// reported mismatch (never silent), overloads differing only in the Option
+// payload stay ambiguous, an uninstantiated generic parameter gives no
+// context, and None() is explained (MD-102).
+//
+// Rules:
+//   - rules/types/types.md — "Contextual None and empty-literal arguments"
+//   - rules/foundations/language_philosophy.md — §16 "Infer, do not guess"
+func TestBareSomeArgumentUsesParameterContext(t *testing.T) {
+	valid := analyzeSourceRaw(t, `
+module main
+
+type Box struct {
+    value: Option[int],
+}
+
+impl Box {
+    fn Has(probe: Option[int]) bool {
+        return true
+    }
+}
+
+fn Pick(value: Option[int]) int {
+    return match value {
+        Some(v) => v
+        None => 0
+    }
+}
+
+fn Middle(a: int, value: Option[rune], b: int) int {
+    return a + b
+}
+
+fn Calls(x: int, r: rune) int {
+    let box := Box { value: Some(x) }
+    discard box.Has(Some(2))
+    discard Middle(1, Some(r), 2)
+    return Pick(Some(x))
+}
+`)
+	if len(valid) != 0 {
+		t.Fatalf("valid Some arguments rejected: %v", valid)
+	}
+	invalid := analyzeSourceRaw(t, `
+module main
+
+fn Pick(value: Option[int]) int {
+    return 0
+}
+
+fn Plain(value: int) int {
+    return value
+}
+
+fn Store(value: Option[int]) void {
+}
+
+fn Store(value: Option[string]) void {
+}
+
+fn Unwrap[T](value: Option[T], fallback: T) T {
+    return fallback
+}
+
+fn Calls() int {
+    discard Pick(Some("text"))
+    discard Plain(Some(1))
+    discard Plain(None)
+    Store(Some(1))
+    discard Unwrap(Some(1), 0)
+    return Pick(None())
+}
+`)
+	for _, want := range []string{
+		"payload must be int, got string",
+		"argument 1 to Plain must be int, got Some(1) (an Option value)",
+		"argument 1 to Plain must be int, got None (an Option value)",
+		"ambiguous call to Store: Some(1) could be Option[int] or Option[string]",
+		"cannot infer generic arguments for Unwrap",
+		"None is not a function and takes no arguments",
+	} {
+		found := false
+		for _, err := range invalid {
+			found = found || strings.Contains(err.Error(), want)
+		}
+		if !found {
+			t.Errorf("missing %q in %v", want, invalid)
+		}
+	}
+	if len(invalid) != 6 {
+		t.Fatalf("want exactly 6 errors, got %d: %v", len(invalid), invalid)
+	}
+}

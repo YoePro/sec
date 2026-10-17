@@ -197,10 +197,11 @@ The compiler-known global:
 len(value)
 ```
 
-may remain available where the core member rules define a signed `int` result
-for index arithmetic.
-
-`len(value)` and `value.Len` describe the same logical count.
+is defined for strings, owning arrays and shared or mutable slices
+(`rules/library/core-library.md` § 1.4). `len(value)` and `value.Len` describe
+the same logical count and both have type `uint` (MD-074/MD-088, 2026-10-17);
+there is no signed `len` and no conversion inside it. Signed offset arithmetic
+uses an explicit checked conversion.
 
 ## 3.2 `IsEmpty`
 

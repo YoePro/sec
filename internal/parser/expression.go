@@ -123,6 +123,22 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		left = p.parseCaptureLambdaExpression()
 
 	case lexer.AT:
+		// MD-030 § 5(2): an attribute is never an expression prefix; a
+		// lambda's @noPanic is written on its own line before its `let`.
+		if p.peekToken.Type == lexer.IDENT && compilerKnownAttributeName(p.peekToken.Lexeme) &&
+			(p.tokenAfterPeek() == lexer.FN || p.tokenAfterPeek() == lexer.CAPTURE) {
+			attribute := p.peekToken
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, p.curToken, nil, nil,
+				"@%s cannot prefix a lambda expression; write it on its own line before the let that directly initializes the lambda at %d:%d", attribute.Lexeme, p.curToken.Line, p.curToken.Column)
+			p.nextToken()
+			p.nextToken()
+			if p.curToken.Type == lexer.CAPTURE {
+				left = p.parseCaptureLambdaExpression()
+			} else {
+				left = p.parseLambdaExpression(nil, lexer.Token{})
+			}
+			break
+		}
 		left = p.parseRuntimeCallExpression()
 
 	case lexer.LBRACKET:

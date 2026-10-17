@@ -1,0 +1,32 @@
+module main
+
+fn InputResource() CommandInputMode { return CommandInputMode.Resource }
+fn OutputResource() CommandOutputMode { return CommandOutputMode.Resource }
+
+fn Input(value: CommandInputMode) int {
+    return match value {
+        CommandInputMode.Inherit => 0
+        CommandInputMode.Closed => 1
+        CommandInputMode.Pipe => 2
+        CommandInputMode.Resource => 3
+    }
+}
+
+fn Output(value: CommandOutputMode) int {
+    return match value {
+        CommandOutputMode.Inherit => 0
+        CommandOutputMode.Discard => 1
+        CommandOutputMode.Pipe => 2
+        CommandOutputMode.Resource => 3
+    }
+}
+
+fn DefaultInput() CommandInputMode {
+    let mut mode: CommandInputMode
+    return mode
+}
+
+fn DefaultOutput() CommandOutputMode {
+    let mut mode: CommandOutputMode
+    return mode
+}

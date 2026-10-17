@@ -50,7 +50,7 @@ func TestAnalyseForeignOrigin(t *testing.T) {
 	if errs := a.Analyze(program); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget())
+	report := buildAnalyseReport(a, map[string]bool{file: true}, hostCompilerTarget(), "", nil)
 	var output bytes.Buffer
 	report.write(&output)
 	for _, want := range []string{"pitfall.ffi.pointer-extent-origin-mismatch", "the pointer derives from first", "the extent derives from disjoint storage second", "suggested-edit: check that the extent describes", "results: 0 errors"} {

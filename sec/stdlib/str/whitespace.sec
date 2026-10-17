@@ -223,10 +223,10 @@ fn Dedent(value: string) Result[string, CollectionError] {
 
             common = _UpdateDedentPrefix(common, line)
 
-            position += character.Utf8Length
+            position += 1
             lineStart = position
         } else {
-            position += character.Utf8Length
+            position += 1
         }
     }
 
@@ -271,10 +271,10 @@ fn Dedent(value: string) Result[string, CollectionError] {
             // Preserve the original line separator.
             try builder.Append(character)
 
-            position += character.Utf8Length
+            position += 1
             lineStart = position
         } else {
-            position += character.Utf8Length
+            position += 1
         }
     }
 

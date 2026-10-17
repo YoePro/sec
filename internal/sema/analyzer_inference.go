@@ -737,9 +737,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		a.addErrorAtToken(expr.Token, "Instant has no source struct constructor; its representation is runtime-private")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	// Rules: rules/concurrency/mutex.md — §§4–8,18(1),(6): opaque
+	// Rules: rules/concurrency/mutex.md — §§4–8,18(1),(6),
+	// rules/concurrency/atomics.md — §§7(5–7),11: opaque
 	// synchronization/acquisition state is never an ordinary source struct.
-	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || typ.Name == "Context") {
+	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || typ.Name == "Context" || isAtomicType(typ)) {
 		a.addErrorAtToken(expr.Token, "%s has no source struct constructor; its representation is runtime-private", typ.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1563,36 +1564,6 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 	}, expressionValue{Display: expr.String()}
 }
 
-func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type, bool) {
-	typeName, ok := typePathFromExpression(expr.Object)
-	if !ok {
-		return Type{}, false
-	}
-	typeName = a.resolveTypeName(typeName)
-
-	typ, ok := a.types[typeName]
-	if !ok || typ.Kind != UnionType {
-		return Type{}, false
-	}
-	if len(typ.GenericParameters) > 0 && a.currentFunctionReturn.Kind == UnionType && a.currentFunctionReturn.Name == typ.Name {
-		typ = a.currentFunctionReturn
-	}
-	for _, variant := range typ.UnionVariants {
-		if variant.Name != expr.Property.Value {
-			continue
-		}
-		if variant.Payload != nil {
-			a.bindDefinition(expr.Property.Token, variant.Token)
-			a.reportUnionVariantPayloadRequired(expr.Property.Token, typ, variant)
-			return Type{Kind: InvalidType}, true
-		}
-		a.bindDefinition(expr.Property.Token, variant.Token)
-		return typ, true
-	}
-	a.addErrorAtToken(expr.Property.Token, "unknown union variant %s.%s", typ.Name, expr.Property.Value)
-	return Type{Kind: InvalidType}, true
-}
-
 // inferEnumValueExpression resolves a qualified enum member against either its
 // ordinary owner or the concrete generic owner written as Enum[T].Member.
 //
@@ -1615,6 +1586,11 @@ func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, b
 	typ, ok := a.types[typeName]
 	if !ok || typ.Kind != EnumType {
 		return Type{}, false
+	}
+	// rules/concurrency/atomics.md §44(4–5): the owner and variant both
+	// navigate to their canonical source declarations.
+	if definition, exists := a.typeDefinitionTokens[typeName]; exists {
+		a.bindDefinition(expressionToken(owner), definition)
 	}
 	if len(expr.OwnerGenericArguments) > 0 {
 		concrete, resolved := a.resolveType(&ast.TypeReference{
@@ -1690,6 +1666,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
 		return targetType, expressionValue{Display: expr.String()}
+	}
+	if result, numeric := a.numericStringConversionType(expr, targetType, valueType); numeric {
+		return result, expressionValue{Display: expr.String()}
 	}
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -2035,6 +2014,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return typ, value
 	}
 	if typ, value, ok := a.inferAtomicCall(expr); ok {
+		return typ, value
+	}
+	if a.isAtomicFenceCall(expr) {
+		typ, value, _ := a.inferAtomicFence(expr)
 		return typ, value
 	}
 	if typ, value, ok := a.inferArenaCall(expr); ok {
@@ -2417,6 +2400,14 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			if !parameterOK {
 				break
 			}
+			if a.deferredContextualArguments[arg] {
+				// A contextual argument has no standalone type to compare;
+				// name its family so the mismatch is never silent (MD-027).
+				if !a.contextualArgumentAccepts(arg, param.Type) {
+					a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), a.contextualArgumentFamily(arg))
+				}
+				continue
+			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], param.Type)
 			if !a.canInitialize(param.Type, argType, arg) {
 				a.addTypeMismatchError(expressionToken(arg), param.Type, argType, arg, "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
@@ -2455,7 +2446,8 @@ func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, e
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if compilerKnownSequenceType(argumentType) {
-		return a.types["int"], expressionValue{Display: expr.String()}, true
+		// The registry result: uint, the same count as .Len (MD-074/MD-088).
+		return knownFunction.Result, expressionValue{Display: expr.String()}, true
 	}
 
 	a.addErrorAtToken(expressionToken(expr.Arguments[0]), "len requires a compiler-known sequence or collection, got %s", typeDisplayName(argumentType))
@@ -2705,7 +2697,10 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 		}
 		return channelType(messageType), expressionValue{Display: expr.String()}, true
 	}
-	if name != "Mutex" && name != "Atomic" {
+	if name == "Atomic" {
+		return a.inferAtomicConstructor(expr)
+	}
+	if name != "Mutex" {
 		return Type{}, expressionValue{}, false
 	}
 	if len(expr.GenericArguments) > 0 {
@@ -2720,17 +2715,7 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	if name == "Atomic" && !atomicElementTypeSupported(valueType) {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "type %s is not supported by Atomic", typeDisplayName(valueType))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if name == "Atomic" || name == "Mutex" {
-		// Rules: rules/concurrency/atomics.md — §§4,7,11 and
-		// rules/concurrency/mutex.md — §§4–5,18: construction retains the
-		// compiler-owned nominal synchronization/storage identity.
-		return a.intrinsicGenericType(name, valueType), expressionValue{Display: expr.String()}, true
-	}
-	return Type{Name: name, Kind: StructType, TypeArgs: []Type{valueType}}, expressionValue{Display: expr.String()}, true
+	return a.intrinsicGenericType(name, valueType), expressionValue{Display: expr.String()}, true
 }
 
 func (a *Analyzer) inferEventCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -2944,95 +2929,6 @@ func (a *Analyzer) inferReceiverCall(expr *ast.CallExpression, member *ast.Membe
 	}
 }
 
-func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, expected *Type) (Type, expressionValue, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-
-	typeName, ok := typePathFromExpression(member.Object)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-	typeName = a.resolveTypeName(typeName)
-
-	template, ok := a.types[typeName]
-	if !ok || template.Kind != UnionType {
-		return Type{}, expressionValue{}, false
-	}
-
-	variant, ok := lookupUnionVariant(template, member.Property.Value)
-	if !ok {
-		a.addErrorAtToken(member.Property.Token, "unknown union variant %s.%s", template.Name, member.Property.Value)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	a.bindDefinition(member.Property.Token, variant.Token)
-
-	unionType := template
-	if len(expr.GenericArguments) > 0 {
-		explicit, ok := a.resolveType(&ast.TypeReference{
-			Token:    expr.Token,
-			Name:     typeName,
-			TypeArgs: expr.GenericArguments,
-		})
-		if !ok {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		unionType = explicit
-	} else if expected != nil && expected.Kind == UnionType && expected.Name == template.Name {
-		unionType = *expected
-	} else if len(template.GenericParameters) > 0 {
-		// Generic inference observes the same owning-payload context as the
-		// subsequent concrete payload check, including explicit <- syntax.
-		a.constructionOwnershipDepth++
-		concrete, ok := a.inferGenericUnionVariantInstance(template, variant, expr)
-		a.constructionOwnershipDepth--
-		if !ok {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		unionType = concrete
-	}
-
-	concreteVariant, ok := lookupUnionVariant(unionType, member.Property.Value)
-	if !ok {
-		a.addErrorAtToken(member.Property.Token, "unknown union variant %s.%s", unionType.Name, member.Property.Value)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	if len(concreteVariant.PayloadFields) > 0 {
-		a.addErrorAtToken(expr.Token, "union variant %s.%s requires named payload fields", typeDisplayName(unionType), concreteVariant.Name)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	if concreteVariant.Payload == nil {
-		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return unionType, expressionValue{Display: expr.String()}, true
-	}
-
-	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Token, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	payloadType := *concreteVariant.Payload
-	valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
-	if valueType.Kind != InvalidType && !a.canInitialize(payloadType, valueType, expr.Arguments[0]) {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	return unionType, expressionValue{Display: expr.String()}, true
-}
-
 func (a *Analyzer) inferGenericUnionVariantInstance(template Type, variant UnionVariant, expr *ast.CallExpression) (Type, bool) {
 	if variant.Payload == nil {
 		a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s.%s", template.Name, variant.Name)
@@ -3085,6 +2981,9 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	if name == "len" {
 		return a.inferCompilerKnownFunction(expr)
 	}
+	if a.isAtomicFenceCall(expr) {
+		return a.inferAtomicFence(expr)
+	}
 	functions, ok := a.functions[name]
 	if !ok || len(functions) == 0 {
 		if implName, implOK := a.implScopedFunctionName(name); implOK {
@@ -3101,6 +3000,22 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	functions = a.accessibleFunctions(functions)
 	if len(functions) == 0 {
 		return Type{}, expressionValue{}, false
+	}
+	// This path only infers generic arguments from the expected type. A call
+	// without a generic candidate, or with a contextual None/Some/[]/null
+	// argument that needs MD-027 deferral, belongs to the ordinary call path;
+	// inferring its arguments here would type them without their context.
+	hasGeneric := false
+	for _, function := range functions {
+		hasGeneric = hasGeneric || len(function.GenericParameters) > 0
+	}
+	if !hasGeneric {
+		return Type{}, expressionValue{}, false
+	}
+	for _, argument := range expr.Arguments {
+		if a.isContextualOptionArgument(argument) || isEmptyArrayLiteral(argument) || a.isNullSentinel(argument) {
+			return Type{}, expressionValue{}, false
+		}
 	}
 
 	argTypes, args, _, runtimeSpreadValues, argsOK := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
@@ -3309,6 +3224,12 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 					"%s is a unit, not a function or type", name)
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
+			if name == "None" && len(expr.Arguments) == 0 && a.isBareNoneArgument(expr.Callee) {
+				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget,
+					"None is the Option variant without a payload; write None without parentheses.",
+					"None is not a function and takes no arguments")
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget,
 				"Verify the import and qualifier, the type name, and the associated static function. The compiler could not resolve this complete call target; imported modules are not ordinary value variables.",
 				"unknown function or type %s", name)
@@ -3379,6 +3300,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
 		return targetType, expressionValue{Display: expr.String()}
 	}
+	if result, numeric := a.numericStringConversionType(expr, targetType, valueType); numeric {
+		return result, expressionValue{Display: expr.String()}
+	}
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -3390,6 +3314,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		a.recordContractConversionEffect(expr)
 	}
 	a.recordCheckedConversion(expr, targetType, valueType)
+	a.recordIntegerConversion(expr, targetType, valueType)
 
 	return targetType, expressionValue{Display: expr.String()}
 }

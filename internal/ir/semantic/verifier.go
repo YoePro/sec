@@ -754,6 +754,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 				return err
 			}
 		}
+	case OpNumericConvertExact:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || !isBuiltinIntegerType(module.Types, op.Results[0].Type) {
+			return fmt.Errorf("invalid numeric.convert-exact")
+		}
 	case OpIntUnaryPlus, OpIntBitNot:
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || op.Results[0].Type != values[op.Operands[0]].Type {
 			return fmt.Errorf("invalid %s", op.Kind)
@@ -779,7 +783,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid int.shift-checked")
 		}
 	case OpIntCompare:
-		if !validIntegerComparePredicate(op.IntegerCompare) || len(op.Operands) != 2 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
+		if !validIntegerComparePredicate(op.IntegerCompare) || len(op.Operands) != 2 || len(op.Results) != 1 || !isComparableScalarType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
 			return fmt.Errorf("invalid int.compare")
 		}
 	case OpArithmeticFailure:
@@ -989,6 +993,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpBoundsFailure:
 		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || op.ArrayOperation != "fixed-array-index" {
 			return fmt.Errorf("invalid fail.bounds")
+		}
+	case OpAtomicFence:
+		if err := verifyAtomicFence(op); err != nil {
+			return err
 		}
 	case OpPlaceValueRoot, OpPlaceStorageRoot, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement,
 		OpPlaceUnionPayload, OpReferenceDerefPlace, OpPlaceRead, OpPlaceWrite, OpReferenceBorrowShared,
@@ -1300,6 +1308,14 @@ func validArithmeticFailureReason(reason ArithmeticFailureReason) bool {
 func isBuiltinIntegerType(types *TypeTable, id TypeID) bool {
 	typ, ok := types.Lookup(id)
 	return ok && (typ.Kind == TypeInt || typ.Kind == TypeUint || typ.Kind == TypeByte)
+}
+
+// isComparableScalarType admits the operand types of int.compare: built-in
+// integers and the character types char and rune, which compare unsigned
+// (operators.md "Character ordering", "Rune ordering"; MD-105).
+func isComparableScalarType(types *TypeTable, id TypeID) bool {
+	typ, ok := types.Lookup(id)
+	return ok && (typ.Kind == TypeInt || typ.Kind == TypeUint || typ.Kind == TypeByte || typ.Kind == TypeChar || typ.Kind == TypeRune)
 }
 
 func isSignedBuiltinIntegerType(types *TypeTable, id TypeID) bool {

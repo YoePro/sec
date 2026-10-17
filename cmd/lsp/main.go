@@ -1096,6 +1096,15 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		if items, ok := testingNamespaceCompletionItems(fileAST, parseText, context.DotOffset, context.Prefix); ok {
 			return items
 		}
+		// `atomic.` is the core namespace unless `atomic` is a value in scope.
+		if items, ok := atomicNamespaceCompletionItems(parseText, context.DotOffset, context.Prefix); ok {
+			if targetExpr == nil {
+				return items
+			}
+			if _, isValue := analyzer.TypeOf(targetExpr); !isValue {
+				return items
+			}
+		}
 		if targetExpr == nil {
 			return []completionItem{}
 		}
@@ -1114,7 +1123,7 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		}
 		if identifier, ok := targetExpr.(*ast.Identifier); ok {
 			if staticType, exists := analyzer.Types()[identifier.Value]; exists {
-				return memberCompletionItems(staticType, analyzer, context.Prefix, true, activeModule, expected)
+				return fenceOrderCompletionItems(text, receiverStart, identifier.Value, memberCompletionItems(staticType, analyzer, context.Prefix, true, activeModule, expected))
 			}
 		}
 		exprType, ok := analyzer.TypeOf(targetExpr)

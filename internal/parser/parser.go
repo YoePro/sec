@@ -3455,6 +3455,7 @@ func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
 //
 // Rules:
 //   - rules/declarations/enums.md — "Enum members"
+//   - rules/concurrency/atomics.md — §6(1–4), canonical associated-value core enum
 //   - rules/compiler/parser_recovery.md — "Enum recovery", "Missing value name"
 func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	if !p.expectPeek(lexer.LBRACE) {
@@ -3487,6 +3488,22 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 		value := &ast.EnumValue{
 			Token: p.curToken,
 			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+		}
+		// atomics.md §6(1–4) defines this associated-value core enum. This
+		// exception does not introduce payload members for ordinary enums.
+		if p.peekToken.Type == lexer.LPAREN {
+			if enum.Name.Value != "CompareExchangeResult" {
+				p.addError("associated-value enum members are only defined for CompareExchangeResult at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
+			p.nextToken()
+			if !p.expectPeekTypeStart() {
+				return nil
+			}
+			value.Payload = p.parseTypeReference()
+			if value.Payload == nil || !p.expectPeek(lexer.RPAREN) {
+				return nil
+			}
 		}
 		if p.peekToken.Type == lexer.DEFAULT {
 			p.nextToken()
@@ -4939,12 +4956,9 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			p.appendImplMember(stmt, documentation, fn)
 		case lexer.AT:
-			parsed := p.parseAttributedStatement()
-			fn, ok := parsed.(*ast.FunctionDeclaration)
-			if !ok || fn == nil {
-				continue
+			if member := p.parseAttributedImplMember(); member != nil {
+				p.appendImplMember(stmt, documentation, member)
 			}
-			p.appendImplMember(stmt, documentation, fn)
 		case lexer.IDENT:
 			if p.curToken.Lexeme == contextualInit && p.peekToken.Type == lexer.LPAREN {
 				initializer := p.parseInitDeclaration()
@@ -5257,9 +5271,24 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 		return property
 	}
 
+	// pending is an attachment set written before the next accessor
+	// (MD-030); it annotates exactly that get, set or try set.
+	var pending []*ast.Attribute
+	attachPending := func(token lexer.Token) []*ast.Attribute {
+		accepted := p.acceptAttributes(pending, attributeOnAccessor, token)
+		pending = nil
+		return accepted
+	}
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.nextToken()
 		switch p.curToken.Type {
+		case lexer.AT:
+			attributes, attached := p.parseAttributeSet()
+			if !attached {
+				return property
+			}
+			pending = append(pending, attributes...)
+			continue
 		case lexer.GET:
 			if property.Getter != nil {
 				p.addError("duplicate get in property %q", property.Name.Value)
@@ -5274,11 +5303,13 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				p.skipPropertyRemainder()
 				return nil
 			}
+			getterToken := p.curToken
 			property.Getter = p.parseStatementBlock("property getter")
 			if property.Getter == nil {
 				p.skipPropertyRemainder()
 				return nil
 			}
+			property.GetterAttributes = attachPending(getterToken)
 		case lexer.IDENT:
 			if p.curToken.Lexeme != contextualSet {
 				p.addError("unexpected token %q in property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
@@ -5302,6 +5333,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				p.skipPropertyRemainder()
 				return nil
 			}
+			property.Setter.Attributes = attachPending(property.Setter.Token)
 		case lexer.TRY:
 			if !p.expectPeekContextualSet() {
 				p.skipPropertyRemainder()
@@ -5324,6 +5356,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				p.skipPropertyRemainder()
 				return nil
 			}
+			property.Setter.Attributes = attachPending(property.Setter.Token)
 		case lexer.COMMENT:
 			continue
 		default:
@@ -5333,6 +5366,10 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 		}
 	}
 
+	for _, attribute := range pending {
+		p.addDiagnostic(compilerdiagnostics.UnattachedAttribute, attribute.Name.Token, nil, nil,
+			"attribute @%s is not attached to a get, set or try set accessor at %d:%d", attribute.Name.Value, attribute.Name.Token.Line, attribute.Name.Token.Column)
+	}
 	if property.Getter == nil && property.Setter == nil {
 		if property.Type != nil && property.Type.Invalid {
 			if p.peekToken.Type == lexer.RBRACE {

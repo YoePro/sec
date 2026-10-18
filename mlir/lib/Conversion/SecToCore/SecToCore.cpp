@@ -258,8 +258,9 @@ public:
     Type converted = getTypeConverter()->convertType(op.getResult().getType());
     if (!converted)
       return failure();
-    rewriter.replaceOpWithNewOp<sec::ConstFloatOp>(op, converted,
-                                                   op.getLexemeAttr());
+    // Keep the canonical bit pattern (P20 § 74) with the resolved type.
+    rewriter.replaceOpWithNewOp<sec::ConstFloatOp>(op, TypeRange{converted},
+                                                   ValueRange{}, op->getAttrs());
     return success();
   }
 };
@@ -566,8 +567,12 @@ public:
       return IntegerType::get(context, pointerWidth,
                               IntegerType::SignednessSemantics::Unsigned);
     });
-    typeConverter.addConversion(
-        [&](sec::FloatType) -> Type { return Float64Type::get(context); });
+    // Plain float follows the platform width like int and uint (MD-014).
+    typeConverter.addConversion([&](sec::FloatType) -> Type {
+      if (pointerWidth == 32)
+        return Float32Type::get(context);
+      return Float64Type::get(context);
+    });
     typeConverter.addConversion([&](sec::CharType) -> Type {
       return IntegerType::get(context, 8,
                               IntegerType::SignednessSemantics::Unsigned);
@@ -813,6 +818,7 @@ public:
         sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
         sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
         sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
+        sec::FloatNegOp, sec::FloatBinaryOp, sec::FloatCmpOp,
         sec::StaticLoadOp, sec::StaticStoreOp, sec::EnumConstantOp,
         sec::EnumFromIntegerOp, sec::EnumToIntegerOp, sec::EnumCmpOp,
         sec::UnionConstructOp, sec::UnionIsVariantOp,
@@ -843,6 +849,9 @@ public:
              sec::IntShiftCheckedOp::getOperationName(),
              sec::IntCmpOp::getOperationName(),
              sec::NumericConvertExactOp::getOperationName(),
+             sec::FloatNegOp::getOperationName(),
+             sec::FloatBinaryOp::getOperationName(),
+             sec::FloatCmpOp::getOperationName(),
              sec::StaticLoadOp::getOperationName(),
              sec::StaticStoreOp::getOperationName(),
              sec::EnumConstantOp::getOperationName(),

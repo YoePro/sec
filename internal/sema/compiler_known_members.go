@@ -193,6 +193,19 @@ func CompilerKnownFunctions() []CompilerKnownFunction {
 			Result:   types["string"],
 			Internal: true,
 		},
+		{
+			// MD-091 (2026-10-18): the narrow string-materialization capability.
+			// It validates strict UTF-8 itself, so it carries no unsafe
+			// obligation; it is not a public API and only loader-proven core
+			// knows it (owner decision 2026-10-18: never stdlib).
+			ID:   "CKF-STRING-FROM-UTF8",
+			Name: "_stringFromUtf8",
+			Parameters: []FunctionParameter{
+				{Name: "value", Type: compilerKnownSharedReference(NewDynamicArrayType(types["byte"]))},
+			},
+			Result:   compilerKnownResult(types["string"], types["StringError"]),
+			Internal: true,
+		},
 	}
 }
 
@@ -529,12 +542,12 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		}
 	}
 	if typ.Kind == StringType {
-		// MD-072 (2026-10-17): both borrow their input and return
-		// Result[string, StringError]; FromByteArray rejects malformed UTF-8
-		// with StringError.InvalidUtf8 and both report allocation failure as
-		// StringError.Allocation (core-library.md § 5.2).
+		// MD-072 (2026-10-17): FromRuneArray borrows its input, returns
+		// Result[string, StringError] and reports allocation failure as
+		// StringError.Allocation (core-library.md § 5.2). MD-091 (2026-10-18)
+		// removed string.FromByteArray: byte decoding is stdlib/str's
+		// str.FromByteArray, never a public core or registry entry.
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
 			CompilerKnownMember{ID: "CKM-STRING-FROMRUNEARRAY", Name: "FromRuneArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
 		)
 	}

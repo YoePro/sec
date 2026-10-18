@@ -111,9 +111,21 @@ func (a *Analyzer) checkConstantListIndexBounds(expr *ast.IndexExpression, typ T
 
 // checkConstantIndexBounds enforces the exact I >= 0 && I < N rule from
 // SEC-MLIR Package 14 section 35 without narrowing either operand.
-// Rules: rules/mlir/packages/sec-mlir-dialect_package14.md — §35.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package14.md — §35;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §52.
 func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) bool {
 	index, ok := a.integerConstantValue(expr.Index)
+	if typ.Kind == SliceType {
+		if !ok {
+			return true
+		}
+		length := a.sliceIndexLength(expr)
+		if index.Sign() < 0 || length != nil && index.Cmp(length) >= 0 {
+			a.reportIndexBoundsError(expr, "slice index %s is out of bounds for %s", index.String(), typeDisplayName(typ))
+			return false
+		}
+		return true
+	}
 	length, fixed := exactFixedArrayLength(typ)
 	if !ok || typ.Kind != ArrayType || !fixed {
 		return true

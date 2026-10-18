@@ -110,6 +110,8 @@ The high-level operation returns `(string candidate, i1 failed, AllocationError 
 
 ## § 23. FromByteArray/FromRuneArray source conflict
 
+**Superseded in part (MD-091, 2026-10-18):** core has no `string.FromByteArray`; public byte decoding is the stdlib `str.FromByteArray` / `str.FromByteArrayLossy`, and the lower-level non-public materializer below is the internal capability `_stringFromUtf8` (registry `CKF-STRING-FROM-UTF8`, `compiler_known_members.md` "Internal core string materialization"), known only to trusted core (the stdlib path is MD-109). `byte[].ToString()` is a type summary, not a decoder. Its Semantic IR and lowering remain P23 work.
+
 `rules/library/core-library.md` lists owning-array/infallible illustrative signatures but explicitly leaves final signatures pending; the current `sec/core/string.sec` instead declares ref parameters and Result errors, and one rune body is a stub. **MD-072 (P23-D2)** owns this independent source signature/ownership/allocation-error question; MD-050 owns the validity rule. Until approval do not invent `string.FromByteArray` source overloads or ABI; implement a **lower-level, non-public** byte/rune materializer with explicit bounds/encoding assumption and allocation context, so selected approved signature can reuse it.
 
 ## § 24. ToByteArray/ToRuneArray/ToCharArray

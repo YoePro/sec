@@ -60,6 +60,7 @@ func TestConstantSliceRangeDiagnosticsFollowPrecedence(t *testing.T) {
 		{"inclusive end at length", "fixed[..4]", "inclusive slice upper bound 4 exceeds final index 3"},
 		{"start past length", "fixed[5..]", "slice lower bound 5 exceeds length 4"},
 		{"dynamic source descending", "dynamic[3..<1]", "descending slice range 3..<1 is invalid"},
+		{"dynamic source negative start first", "dynamic[-1..<-3]", "slice lower bound must be non-negative"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

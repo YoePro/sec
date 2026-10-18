@@ -9,7 +9,6 @@ fn Use(text: string) Result[uint, CollectionError] {
     let encodedByte: Result[byte, IndexError] := text.GetByte(3)
     let bytes := try text.ToByteArray()
     let runes := try text.ToRuneArray()
-    let decoded: Result[string, StringError] := string.FromByteArray(ref bytes)
     let encoded: Result[string, StringError] := string.FromRuneArray(ref runes)
     return Ok(bytes.Len + runes.Len)
 }

@@ -1,6 +1,7 @@
 add_mlir_conversion_library(SecMLIRSecToLLVM
   SecToLLVM.cpp
   IntegerEnums.cpp
+  Floats.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${SEC_MLIR_SOURCE_DIR}/include/sec/Conversion/SecToLLVM

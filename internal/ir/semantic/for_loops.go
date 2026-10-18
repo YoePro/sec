@@ -297,13 +297,13 @@ func (fb *functionBuilder) forWideDistanceSetup(element sema.Type, end builtValu
 	if err != nil {
 		return nil, err
 	}
-	wideEnd := fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{end.id}, Location: loc}, wideType)
+	wideEnd := fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{end.id}, ConversionProof: &compilerWideningProof, Location: loc}, wideType)
 	absStep := fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Abs(step), Location: loc}, wideType)
 	return &forWideDistance{wideType: wideType, wideEnd: wideEnd, absStep: absStep}, nil
 }
 
 func (fb *functionBuilder) forHasNextWide(wide *forWideDistance, value builtValue, ascending, exclusive bool, boolType TypeID, loc Location) (builtValue, error) {
-	wideValue := fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{value.id}, Location: loc}, wide.wideType)
+	wideValue := fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{value.id}, ConversionProof: &compilerWideningProof, Location: loc}, wide.wideType)
 	left, right := wide.wideEnd, wideValue
 	if !ascending {
 		left, right = wideValue, wide.wideEnd

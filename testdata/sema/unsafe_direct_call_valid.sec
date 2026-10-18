@@ -1,0 +1,46 @@
+module main
+
+unsafe fn Danger(value: int) int {
+    return value + 1
+}
+
+fn Safe() int {
+    return 2
+}
+
+fn Expression() int {
+    return unsafe Danger(1) + Safe()
+}
+
+fn Statement() void {
+    unsafe Danger(2)
+}
+
+fn Nested() int {
+    return unsafe Danger(unsafe Danger(3))
+}
+
+fn InsideBlock() int {
+    unsafe {
+        return Danger(Danger(4))
+    }
+}
+
+fn Pointer(pointer: RawPtr[int], value: int) int {
+    unsafe pointer.Write(value)
+    let current := unsafe pointer.Read()
+    return current
+}
+
+fn Indirect(callback: fn(int) int) int {
+    return unsafe callback(5)
+}
+
+fn Tried() Result[int, StringError] {
+    let value := try Checked(unsafe Danger(6))
+    return Ok(value)
+}
+
+fn Checked(value: int) Result[int, StringError] {
+    return Ok(value)
+}

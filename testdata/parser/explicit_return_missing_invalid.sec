@@ -1,0 +1,4 @@
+module main
+
+fn Broken() int { return <- }
+fn Next() int { return 1 }

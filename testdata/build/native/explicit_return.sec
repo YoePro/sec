@@ -1,0 +1,27 @@
+module main
+
+static let mut calls: int := 0
+
+fn Source() int {
+    calls += 1
+    return <-20
+}
+
+fn Sum(value: int) int {
+    return <-value + Source()
+}
+
+fn Branch(value: int) int {
+    if value > 0 {
+        return <-Sum(value)
+    }
+    return <-0
+}
+
+fn main() int {
+    let answer := Branch(22)
+    if answer != 42 || calls != 1 {
+        return <-1
+    }
+    return <-0
+}

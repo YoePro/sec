@@ -37,5 +37,17 @@ fn main() int {
     if big <= letter {
         return 4
     }
+    // MD-105: char compares by its unsigned 8-bit value, rune by its scalar
+    // value (also above U+FFFF), for all six predicates.
+    let high: char := '\xC8'
+    let low: char := 'A'
+    if !(high > low) || !(high >= low) || high < low || high <= low || high == low || !(high != low) {
+        return 5
+    }
+    let fox: rune := '🦊'
+    let bmp: rune := '\u{FFFF}'
+    if !(fox > bmp) || !(bmp < fox) || !(fox >= fox) || !(fox <= fox) || !(fox == fox) || fox != fox {
+        return 6
+    }
     return 0
 }

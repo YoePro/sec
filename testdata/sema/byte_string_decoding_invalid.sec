@@ -1,0 +1,26 @@
+module main
+
+fn Legacy(bytes: ref byte[]) Result[string, StringError] {
+    return string.FromByteArray(bytes)
+}
+
+fn Internal(bytes: ref byte[]) Result[string, StringError] {
+    return _stringFromUtf8(bytes)
+}
+
+fn Cast(bytes: byte[]) string {
+    return string(bytes)
+}
+
+fn Implicit(bytes: byte[]) string {
+    let text: string := bytes
+    return text
+}
+
+fn Summary(bytes: byte[]) Result[string, StringError] {
+    return bytes.ToString()
+}
+
+fn main() int {
+    return 0
+}

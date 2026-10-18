@@ -31,6 +31,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		trap    bool
 	}{
 		{"add", 5, false},
+		{"explicit_return", 0, false},
 		{"loop", 5, false},
 		{"unsigned", 0, false},
 		{"overflow_trap", 0, true},
@@ -47,6 +48,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"panic_trap", 0, true},
 		{"assert_trap", 0, true},
 		{"integer_enums", 0, false},
+		{"floats", 0, false},
 	} {
 		t.Run(test.fixture, func(t *testing.T) {
 			program := filepath.Join(t.TempDir(), test.fixture)

@@ -514,6 +514,12 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	call, ok := expr.(*ast.CallExpression)
 	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
 		typ, value := a.inferExpression(expr)
+		if expected.Kind == FloatType && typ.Kind != FloatType && isUntypedNumericExpression(expr) {
+			// An untyped numeric literal in a float context is shaped to
+			// that float type and recorded so, not kept as decimal or int
+			// (types.md "Context shaping"; package20.md § 11).
+			typ, _ = a.contextualNumericLiteralType(expr, typ, expected)
+		}
 		return a.typeWithExpectedDimension(expr, typ, value, expected)
 	}
 	if typ, value, ok := a.inferCallAsUnionVariantConstructor(call, &expected); ok {
@@ -1444,7 +1450,9 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		elementType := *leftType.Element
 		if leftType.Kind == ArrayType && arrayShapeOf(leftType) == ArrayShapeFixed {
 			a.recordFixedArrayIndexPlan(expr, leftType, elementType, indexType, ArrayIndexRead)
-		} else if leftType.Kind == SliceType || arrayShapeOf(leftType) == ArrayShapeDynamic {
+		} else if leftType.Kind == SliceType {
+			a.recordSliceIndexPlan(expr, a.expressionTypes[expr.Left], leftType, elementType, indexType)
+		} else if arrayShapeOf(leftType) == ArrayShapeDynamic {
 			a.recordSequenceIndexEffect(expr)
 		}
 		if elementType.Kind == ReferenceType {
@@ -2229,7 +2237,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if len(best) == 1 {
-		if best[0].Function.Unsafe && !a.inUnsafe {
+		if best[0].Function.Unsafe && !a.callUnsafeAuthorized(expr) {
 			kind := "function"
 			if best[0].Function.Extern {
 				kind = "extern function"
@@ -2461,6 +2469,10 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 		return Type{Kind: InvalidType}, result, true
 	}
 
+	if known.ID == "CKF-STRING-FROM-UTF8" {
+		return a.inferStringFromUtf8Intrinsic(expr, known)
+	}
+
 	valid := true
 	for index, parameter := range known.Parameters {
 		actual, _ := a.inferExpressionWithExpected(expr.Arguments[index], parameter.Type)
@@ -2481,10 +2493,7 @@ func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression,
 	}
 	argumentType, _ := a.inferExpression(expr.Arguments[0])
 	sequence := dereferenceType(argumentType)
-	want := "byte"
-	if member.Name == "FromRuneArray" {
-		want = "rune"
-	}
+	want := "rune"
 	if (sequence.Kind != ArrayType && sequence.Kind != SliceType) || sequence.Element == nil || sequence.Element.Name != want {
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "string.%s requires a %s array or slice, got %s", member.Name, want, typeDisplayName(argumentType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2522,7 +2531,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 
 	switch member.Property.Value {
 	case "Read":
-		if !a.inUnsafe {
+		if !a.callUnsafeAuthorized(expr) {
 			a.addErrorAtToken(member.Property.Token, "RawPtr.Read requires unsafe because it reads through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2539,7 +2548,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return element, expressionValue{Display: expr.String()}, true
 	case "Write":
-		if !a.inUnsafe {
+		if !a.callUnsafeAuthorized(expr) {
 			a.addErrorAtToken(member.Property.Token, "RawPtr.Write requires unsafe because it writes through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2561,7 +2570,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	case "VolatileRead":
-		if !a.inUnsafe {
+		if !a.callUnsafeAuthorized(expr) {
 			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileRead requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2581,7 +2590,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return element, expressionValue{Display: expr.String()}, true
 	case "VolatileWrite":
-		if !a.inUnsafe {
+		if !a.callUnsafeAuthorized(expr) {
 			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileWrite requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3057,7 +3066,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		// call-graph checks as the main call path, so effects, borrows and
 		// moves of calls in return and typed-let positions are not lost.
 		function := best[0].Function
-		if function.Unsafe && !a.inUnsafe {
+		if function.Unsafe && !a.callUnsafeAuthorized(expr) {
 			a.addErrorAtToken(expr.Token, "calling unsafe function %s requires unsafe", name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -3671,6 +3680,13 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return a.inferNumericUnitInfixExpression(expr, leftType, rightType)
 	}
 
+	// An untyped fractional literal beside a float operand is shaped to that
+	// float type by the expression context, not read as decimal
+	// (types.md "Context shaping"; package20.md § 11).
+	if (leftType.Kind == FloatType && isUntypedNumericExpression(expr.Right)) || (rightType.Kind == FloatType && isUntypedNumericExpression(expr.Left)) {
+		return a.inferPlainArithmeticExpression(expr, leftType, rightType)
+	}
+
 	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
 		return a.inferDecimalInfixExpression(expr, leftType, rightType)
 	}
@@ -4028,6 +4044,10 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 	}
 
 	if leftType.Kind != DecimalType || rightType.Kind != DecimalType {
+		// No implicit conversion relates decimal and another numeric family
+		// here; reporting it keeps an invalid operand pair from passing
+		// silently (types.md "No implicit conversion").
+		a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -4084,8 +4104,16 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 			return leftType, expressionValue{Display: expr.String()}
 		}
 		return a.typeForDimension(DecimalType, leftType.Dimension.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
+	case "%":
+		// Decimal `%` is the truncation remainder (operators.md "Decimal
+		// remainder"); like + and -, both operands share one dimension and
+		// the result keeps the dividend's type.
+		if sameConcreteType(leftType, rightType) || (leftType.Dimension.Equal(rightType.Dimension) && !isNominal(leftType) && !isNominal(rightType)) {
+			return leftType, expressionValue{Display: expr.String()}
+		}
 	}
 
+	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 

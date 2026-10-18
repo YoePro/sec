@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-10-15
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-18
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
 - **Replaces:** `rules/tooling/diagnostics.txt`
@@ -459,6 +459,8 @@ DiagnosticMessage {
 § 10(5) When multiple safe corrections exist, help may present more than one alternative.
 
 § 10(6) Compiler-theory terminology may appear as secondary detail, but the primary explanation should describe the programmer-visible problem.
+
+§ 10(7) A projected Place is rendered by one shared renderer in diagnostics, notes, traces and related tooling. Slice projections follow `rules/memory/borrowing.md` § 12(9): unknown start `*`, zero start omitted, unknown end `..`, known exclusive end `..<N` exactly (`values[*..<3]` versus `values[..<3]`); a dynamic index is `[*]`. Rendering never guesses an unknown bound and never alters the underlying Place identity (MD-089, 2026-10-18).
 
 ---
 
@@ -1004,6 +1006,15 @@ S3201  control-flow.assignment-in-condition
 § 24(4b) `S1168` / `borrowing.non-addressable-place` (family `borrowing`, mandatory `Error`) rejects an explicit or implicit `ref`/`ref mut` of a computed expression that is not an independently addressable Place, such as a computed property or a temporary (`rules/memory/borrowing.md` § 5.2(5)–(7)). Its help explains that only stored Places may be borrowed; that storing the value in a local and borrowing that local yields a reference to the local copy, not to the property's underlying storage; and that an accessible stored field or a property explicitly returning a reference with a valid lifetime contract are the alternatives. It never suggests borrowing an inaccessible backing field. As a mandatory borrow-safety error it cannot be suppressed or demoted (§ 4); `sec diagnostics S1168`, JSON output and LSP publish this one identity, with the range on the attempted borrow target (MD-064, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` §§ 2–3).
 
 § 24(4c) A branch-scoped match/union payload reference that would escape its permitted scope — returned, stored outside its arm, produced by a match expression or captured beyond it — is reported with the existing `S1130` / `escape.match-payload`, explaining the branch/payload lifetime that prevents the escape. No separate identity exists for it; it is distinct from `S1168`, since a payload is addressable inside its arm (MD-064, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` § 4).
+
+§ 24(4d) `S1169` / `borrowing.explicit-ref-required` (family `borrowing`, mandatory `Error`) rejects an owned value or Place used where `ref T` / `ref mut T` is required outside a call argument — a typed local or module initializer, assignment, return or struct/aggregate field — because only call arguments borrow implicitly (`rules/memory/borrowing.md` § 15.2(5), `rules/memory/references.md` § 5(10)). Its canonical help is:
+
+```text
+Only call arguments may borrow implicitly.
+Write `ref value` or `ref mut value` to create an explicit reference.
+```
+
+The occurrence message names the required reference type and the source Place and distinguishes `ref` from `ref mut`. Origin and lifetime errors of the explicit borrow remain independent diagnostics and are not hidden by S1169 (MD-080, 2026-10-18).
 
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 

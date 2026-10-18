@@ -1,0 +1,53 @@
+module main
+
+type Slot uint256 range 0..<4
+
+fn Known() int {
+    let values := [10, 20, 30, 40]
+    let view := ref values[1..<4]
+    return view[1]
+}
+
+fn Access(values: ref int[], writable: ref mut int[], index: int128, replacement: int) int {
+    let before := values[index]
+    writable[index] = replacement
+    let shared := ref values[index]
+    discard shared
+    let mutable := ref mut writable[index]
+    discard mutable
+    return before
+}
+
+fn Unknown(values: ref int[]) int {
+    return values[uint256(9223372036854775808)]
+}
+
+fn Huge(values: int[9223372036854775809]) int {
+    let view := ref values[..]
+    return view[uint256(9223372036854775808)]
+}
+
+fn Ranged(values: int[4], index: Slot) int {
+    let view := ref values[..]
+    return view[index]
+}
+
+fn Guarded(values: int[4], index: int128) int {
+    let view := ref values[..]
+    if index >= 0 && index < view.Len {
+        return view[index]
+    }
+    return 0
+}
+
+fn Fallible(values: ref int[], index: uint128) Result[int, IndexError] {
+    return Ok(try values[index])
+}
+
+fn Handled(values: ref int[], index: int256) int {
+    return try values[index] { Err(_) => 0 }
+}
+
+fn Array(values: int[4]) int {
+    return values[0]
+}

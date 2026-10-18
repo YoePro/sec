@@ -847,6 +847,17 @@ Those depend on string/materialization/formatting semantics.
 
 # 39. Numeric conversion core error
 
+**Reconciled 2026-10-18 (MD-104):** the public failure family of checked
+conversions is the existing core `ConversionError` (MD-012), with
+`ConversionError.OutOfRange` for integer-domain failure. `NumericConversionError`
+and `NumericConversionErrorFromReasonOp` below must be reconciled with it when
+checked conversion is integrated; they may survive only as internal
+implementation names and never as a second public error type. Meanwhile
+`numeric.convert-exact` / `sec.numeric.convert_exact` is already used for
+Sema-proved exact built-in integer conversions; the early schema-11 verifier
+admits only integer operand and result types until this package's float scope
+is implemented (`rules/compiler/semantic_ir.md` § 124).
+
 Add:
 
 ```sec

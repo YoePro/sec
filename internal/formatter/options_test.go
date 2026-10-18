@@ -63,3 +63,15 @@ func TestValidateOptions(t *testing.T) {
 		t.Fatal("unknown vertical style accepted")
 	}
 }
+
+// MD-098: an omitted max_alignment_padding is four indentation widths.
+func TestDefaultMaximumAlignmentPaddingFollowsIndentation(t *testing.T) {
+	for width, want := range map[int]int{2: 8, 4: 16, 6: 24} {
+		if got := (Options{IndentationWidth: width}).maximumAlignmentPadding(); got != want {
+			t.Errorf("width %d: %d, want %d", width, got, want)
+		}
+	}
+	if got := (Options{IndentationWidth: 4, MaxAlignmentPadding: 1}).maximumAlignmentPadding(); got != 1 {
+		t.Errorf("explicit 1: %d", got)
+	}
+}

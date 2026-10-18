@@ -194,6 +194,15 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %s coefficient=%s scale=%d", strconv.Quote(op.Decimal.Lexeme), op.Decimal.Coefficient.String(), op.Decimal.Scale)
 	case OpConstFloat:
 		fmt.Fprintf(out, " %s", op.FloatLexeme)
+		if op.Float != nil {
+			fmt.Fprintf(out, " bits=0x%x format=binary%d", op.Float.Bits, op.Float.Format)
+		}
+	case OpFloatNeg:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpFloatBinary:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.FloatBinary, op.Operands[0], op.Operands[1])
+	case OpFloatCompare:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
 	case OpStorageDeclare:
 		fmt.Fprintf(out, " $%d", op.Storage)
 	case OpStorageInit, OpStorageStore:
@@ -231,6 +240,9 @@ func formatOperation(out *strings.Builder, op Operation) {
 			fmt.Fprintf(out, "%%%d[%s]", id, op.ArgumentActions[i])
 		}
 		out.WriteByte(')')
+		if op.UnsafeAuthorization != nil {
+			fmt.Fprintf(out, " unsafe-direct@%s", formatLocation(*op.UnsafeAuthorization))
+		}
 		formatReferenceMetadata(out, op.Reference)
 	case OpBranch:
 		formatTarget(out, op.Successors[0])
@@ -242,7 +254,10 @@ func formatOperation(out *strings.Builder, op Operation) {
 		formatTarget(out, op.Successors[0])
 		out.WriteString(",")
 		formatTarget(out, op.Successors[1])
-	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot, OpNumericConvertExact:
+	case OpNumericConvertExact:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+		formatConversionProof(out, op.ConversionProof)
+	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpIntBinaryChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])
@@ -272,6 +287,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " case=#%d", op.EnumCase)
 	case OpEnumFromInteger, OpEnumToInteger:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
+		formatConversionProof(out, op.ConversionProof)
 	case OpEnumCompare:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
 	case OpUnionConstruct:
@@ -388,4 +404,16 @@ func formatLocation(l Location) string {
 		return "loc(unknown)"
 	}
 	return fmt.Sprintf("loc(%q:%d:%d)", l.File, l.Line, l.Column)
+}
+
+// formatConversionProof prints an exactness proof as `proof=<basis>` and,
+// for a plan-specific proof, `plan=<bits>` (semantic_ir.md § 124).
+func formatConversionProof(out *strings.Builder, proof *ConversionProof) {
+	if proof == nil {
+		return
+	}
+	fmt.Fprintf(out, " proof=%s", proof.Basis)
+	if proof.PlanPointerWidthBits != 0 {
+		fmt.Fprintf(out, " plan=%d", proof.PlanPointerWidthBits)
+	}
 }

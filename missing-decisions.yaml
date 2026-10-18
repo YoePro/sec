@@ -743,43 +743,6 @@ decisions:
       producers).
     classification: localized
     status: open
-  - id: MD-079
-    area: unsafe-direct-call-expression-form
-    rulebooks:
-      - rules/foundations/grammar.md
-      - rules/memory/unsafe.md
-    description: >-
-      The MD-059 correction (2026-10-16) § 2(3) shows a direct call of an
-      unsafe function as `unsafe PerformUnchecked()` and calls it "existing",
-      but grammar.md defines only the statement form `UnsafeStatement ::=
-      "unsafe" Block` (and `unsafe` as a declaration modifier); the parser
-      rejects `unsafe Call()`. The integration used the existing
-      `unsafe { PerformUnchecked() }` form and did not add an expression
-      form. Decide whether the example was illustrative (block form only) or
-      whether Sec 0.1 gets an `unsafe` expression/call prefix — its grammar,
-      precedence, scope of the authorized obligations and formatter canon.
-    classification: localized
-    status: open
-  - id: MD-080
-    area: diagnostic-identity-explicit-ref-required
-    rulebooks:
-      - rules/tooling/diagnostics.md
-      - rules/memory/borrowing.md
-      - rules/memory/references.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-16). Sema used to
-      accept an owned value wherever a direct reference was required (typed
-      let, module initializer, assignment, return, struct field), creating a
-      reference with no recorded origin, so a borrow of local storage stored
-      through a ref mut parameter or returned escaped unchecked and dangled.
-      borrowing.md § 15.2 allows marker-free borrowing only at call sites and
-      references.md § 5 requires an explicit `ref`, so these are now rejected
-      with a new mandatory error S1169, registry name
-      `borrowing.explicit-ref-required`, family borrowing, help "Only a call
-      argument borrows implicitly. Write `ref x` ...". Confirm or change the
-      ID, name and help text.
-    classification: localized
-    status: open
   - id: MD-081
     area: static-initializer-reference-to-static
     rulebooks:
@@ -802,47 +765,6 @@ decisions:
       element sub-Places of a static may be referenced.
     classification: localized
     status: open
-  - id: MD-082
-    area: decimal-scale-member-spelling
-    rulebooks:
-      - rules/library/core-library.md
-      - rules/compiler/compiler_known_members.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-16).
-      core-library.md § 10.1 declares the decimal value property `scale:
-      uint8` (lowercase, like `ptr`), while compiler_known_members.md lists
-      `decimal Scale` and its "Legacy lowercase member spellings" section
-      names only `.ptr`/`.len` as migration spellings of canonical
-      `.Ptr`/`.Len`. The compiler previously exposed a type-qualified static
-      `decimal.Scale: int`. It now exposes the value property under the
-      canonical spelling `Scale` with `scale` accepted as a legacy name (same
-      member ID), typed uint8, for decimal only (decimal128 waits for
-      MD-068). Confirm that `scale` follows the Ptr/ptr, Len/len migration
-      rule (and amend core-library.md § 10.1 and the legacy-spelling list),
-      or state the intended canonical spelling.
-    classification: localized
-    status: open
-  - id: MD-083
-    area: temporal-arithmetic-error-name
-    rulebooks:
-      - sec/stdlib/temporal/arithmetic/std-temporal-arithmetic.md
-      - sec/stdlib/temporal/std-temporal.md
-      - rules/errors/errorhandling.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-16). The
-      provisional temporal API scaffold (sec-temporal-api-stubs-v0.1)
-      declared `enum ArithmeticError error` in module temporal/arithmetic,
-      following its `<Module>Error` pattern (CalendarError, BusinessError,
-      HistoricalError, ParseError, TimeZoneError), but `ArithmeticError` is
-      a compiler-known core type that cannot be redeclared (S1028) and must
-      not be repurposed (P21 sync § 4). It was renamed
-      `TemporalArithmeticError` in arithmetic/period.sec, arithmetic/apply.sec
-      and the child book std-temporal-arithmetic.md so the module compiles.
-      Confirm or choose another name (for example PeriodError or
-      CalendarArithmeticError).
-    classification: localized
-    status: open
-
   - id: MD-084
     area: schema11-emitter-metadata-spelling
     rulebooks:
@@ -953,21 +875,6 @@ decisions:
       (for example with explicit casts at place.read/place.write boundaries).
     classification: localized
     status: open
-  - id: MD-089
-    area: slice-place-diagnostic-presentation
-    rulebooks:
-      - rules/memory/borrowing.md
-      - rules/tooling/diagnostics.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17, P16-09). The
-      diagnostic presentation of a Place with a slice projection printed an
-      unknown (runtime) start and a constant start of 0 identically
-      (`values[..<3]`). With exact bounds it now prints an unknown start as
-      `*` (`values[*..<3]`, analogous to `[*]` for a dynamic index), a
-      start of 0 as nothing, an unknown end as `..` and a known end as
-      `..<N` with the exact value. Confirm or choose another presentation.
-    classification: localized
-    status: open
   - id: MD-090
     area: stdlib-str-edit-position-unit
     rulebooks:
@@ -983,25 +890,6 @@ decisions:
       validated byte boundaries to rune indexes internally. Decide whether
       the str edit API stays byte-offset based (and how callers obtain byte
       boundaries) or moves to rune indexes (removing NotRuneBoundary).
-    classification: localized
-    status: open
-  - id: MD-091
-    area: text-sequence-tostring-validity
-    rulebooks:
-      - rules/library/core-library.md
-      - rules/compiler/compiler_known_members.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17, MD-050
-      correction § 6(5)). core-library.md § 5.2 previously said byte, char and
-      rune sequence ToString() "returns string", while the compiler already
-      types it as the universal Result[string, StringError] and core
-      FromByteArray returns it directly. The correction forbids a byte
-      sequence ToString() from yielding a malformed string and forbids an
-      invented error contract. The rulebooks now state the universal
-      Result[string, StringError] and that a byte sequence ToString() decodes
-      strict UTF-8 exactly like FromByteArray, returning
-      StringError.InvalidUtf8(offset) for malformed bytes. Confirm, or decide
-      another treatment (for example no byte-sequence ToString at all).
     classification: localized
     status: open
   - id: MD-092
@@ -1033,23 +921,6 @@ decisions:
       bypasses the fallible text materialization. Decide whether it is
       rejected (write `Name(try n.ToString())`), fallible
       (Result[Name, ...] including the Name contracts) or allowed as is.
-    classification: localized
-    status: open
-  - id: MD-094
-    area: constant-slice-range-diagnostic-precedence
-    rulebooks:
-      - rules/mlir/packages/sec-mlir-dialect_package16.md
-      - rules/collections/collections.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17, P16-13).
-      package16.md § 19 fixes the runtime RangeError precedence (negative
-      endpoint, then start after end, then source bound) and § 18 says
-      compile-time-provable invalid ranges stay compile-time errors, but no
-      rule says how many compile-time diagnostics one range gets. Sema now
-      reports only the precedence-first failure (for example `fixed[9..<7]`
-      on int[4] reports the descending range, not also the bound overflow),
-      and reports a constant start after end even when the source length is
-      unknown. Confirm, or require every failing condition to be reported.
     classification: localized
     status: open
   - id: MD-095
@@ -1099,62 +970,6 @@ decisions:
       NoBlocking/InterruptSafe flags, sizes from the resolved scalar plan,
       Unknown deferred to lowering except in interrupt contexts.
     classification: blocking
-    status: open
-  - id: MD-096
-    area: semantic-ir-atomic-fence-spelling
-    rulebooks:
-      - rules/compiler/semantic_ir.md
-      - rules/concurrency/atomics.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17).
-      semantic_ir.md § 122 requires explicit fences to be preserved but
-      leaves the operation vocabulary to the implementation. Semantic IR now
-      spells a fence `atomic.fence order=<Acquire|Release|AcqRel|SeqCst>`
-      (OpAtomicFence with an AtomicOrder field, no operands or results), and
-      the operation is built at every Semantic IR package level because no
-      SEC-MLIR package owns atomics yet. Sec MLIR schema 11 rejects it as
-      unsupported lowering. Confirm the spelling and package placement, or
-      assign atomics to a numbered Sec MLIR package.
-    classification: localized
-    status: open
-
-  - id: MD-097
-    area: formatter-trailing-block-comment
-    rulebooks:
-      - rules/tooling/formatter.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17).
-      formatter.md § 9(8)/§ 9(8b) say a trailing comment keeps its alignment
-      group and occupies the trailing-comment column, and § 12(9) permits a
-      single-line block comment, but neither says whether a single-line
-      `/* ... */` that ends a line after code is a "trailing comment". The
-      formatter now treats it exactly like a trailing `//` comment: it keeps
-      the enum `=` group (and every declaration-table group) together and is
-      placed in the same comment column. A block comment followed by more
-      code on the same line, or one starting after the line break, is not
-      trailing (inline respectively standalone) and keeps its previous
-      handling. Confirm, or rule that trailing block comments are inline and
-      keep their source spacing.
-    classification: localized
-    status: open
-  - id: MD-098
-    area: formatter-max-alignment-padding-setting
-    rulebooks:
-      - rules/tooling/formatter.md
-      - rules/projects/projects.md
-    description: >-
-      User decision 2026-10-17: the § 9(10) alignment padding limit stays,
-      but becomes a project setting so wide enum tables (bootstrap
-      lexer.sec TokenType: EQ vs SHIFT_RIGHT_ASSIGN needs 17 spaces against
-      the default 16) can keep one value column. Implementation choices
-      awaiting confirmation: the `[format]` key is spelled
-      `max_alignment_padding`; it is measured in spaces (not in indentation
-      widths); its domain is 1..1024 (0 is rejected, not "no alignment");
-      omitting it keeps the default of four indentation widths, so no new
-      format_version; there is no `sec fmt` command-line override; `sec init`
-      writes it only as a commented example. formatter.md § 4(5) and § 4(14)
-      are updated accordingly.
-    classification: localized
     status: open
   - id: MD-099
     area: formatter-trailing-comment-column-padding-limit
@@ -1302,57 +1117,6 @@ decisions:
       target's type by context.
     classification: localized
     status: open
-  - id: MD-104
-    area: integer-to-integer-conversion-op
-    rulebooks:
-      - rules/types/types.md
-      - rules/mlir/packages/sec-mlir-dialect_package20.md
-      - rules/mlir/dialect-versions/sec_mlir_dialect_v16.md
-    description: >-
-      User decision 2026-10-17: no package owns built-in integer to integer
-      conversion (P7 excludes numeric conversion operators; P20/dialect v16
-      specify sec.numeric.convert_exact/convert_checked only for integer
-      <-> float); use the P20 name now. Implemented: Semantic IR
-      NumericConvertExactOp "numeric.convert-exact" and Sec dialect
-      sec.numeric.convert_exact admitted early in schema 11 for built-in
-      integer conversions Sema proves exact (source domain fits the target on
-      both 32- and 64-bit plans, or the argument is a compile-time constant
-      Sema validated); it lowers to extsi/extui by source signedness, trunci,
-      or nothing. Implementation choices awaiting confirmation: the schema-11
-      verifier admits only integer operand/result types until P20; the
-      Sema plan type is ResolvedIntegerConversion (P20 § 60 recommends
-      ResolvedNumericConversionPlan, which can absorb it); checked
-      conversions (int8(x) from int) stay unsupported until
-      convert_checked, ConversionError Result lowering and try exist in the
-      track. Note: Sema still accepts a may-fail Sec-scalar conversion
-      without try (MD-056 gap), so such programs type-check but do not build.
-      Extended 2026-10-18 to enum.to_integer: the conversion is lowered as
-      exact (identity to the carrier, otherwise convert_exact) when the
-      target is the carrier or every declared case value fits the target,
-      decided from the enum's declared cases because an enum value is always
-      one of them; otherwise it is named as not lowered. Confirm that the
-      declared-case argument is acceptable as the exactness proof.
-    classification: localized
-    status: open
-  - id: MD-105
-    area: char-rune-comparison-lowering
-    rulebooks:
-      - rules/foundations/operators.md
-      - rules/mlir/packages/sec-mlir-dialect_package7.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17). operators.md
-      defines char ordering by unsigned 8-bit value and rune ordering by
-      Unicode scalar value, but no package owns their lowering (P7 excludes
-      char/rune ordered comparison). Sema now resolves char/rune ==, !=, <,
-      <=, >, >= of two operands of the same character type as new operator
-      kinds character-compare-*; Semantic IR maps them to int.compare over
-      char/rune operands (its verifier and the Sec dialect sec.int.cmp
-      verifier now admit !sec.char/!sec.rune), and scalar layout's existing
-      char -> ui8 / rune -> ui32 makes the comparison unsigned. No new Sec
-      operation was added. Confirm reusing int.compare for character types
-      instead of a dedicated character comparison operation.
-    classification: localized
-    status: open
   - id: MD-106
     area: stdlib-str-iterator-parameter-ownership
     rulebooks:
@@ -1415,5 +1179,32 @@ decisions:
       operations (view creation from a concrete reference, interface method
       call through a view, Next dispatch in for), the Sec MLIR dialect
       surface, and which package owns it.
+    classification: architectural
+    status: open
+  - id: MD-109
+    area: stdlib-byte-to-string-materialization-path
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+      - sec/stdlib/str/stdlib_str.md
+    description: >-
+      Open 2026-10-18 (raised while applying MD-091). MD-091 moved public
+      byte decoding to stdlib/str (str.FromByteArray, FromByteArrayLossy)
+      and made byte[].ToString() a type summary. The owner then decided that
+      the internal materialization capability `_stringFromUtf8`
+      (CKF-STRING-FROM-UTF8) is known only to loader-proven core, never to
+      stdlib, and core may allocate only in ToString(); core cannot
+      implement methods on array types. So no stdlib code can currently
+      turn validated bytes into a string: str.FromByteArray,
+      str.Builder.Finish (which all Builder-based str functions use),
+      stdlib/io directory-entry names (file.linux.amd64.sec) and
+      stdlib/net/url percent decoding (percent.sec, two sites) fail to
+      compile. Candidate directions raised: (a) a core type such as a
+      validated borrowed `Utf8Bytes` view whose ToString() materializes via
+      `_stringFromUtf8` (new public core type; amends MD-091 § 5.3.3);
+      (b) a compiler-known byte-sequence overload ToString(TextEncoding.Utf8)
+      analogous to byte.ToString(ByteStringFormat) (amends MD-091 § 5.2.3);
+      (c) another mechanism. Decide the single bytes -> string path stdlib
+      uses and its allocation/ownership contract.
     classification: architectural
     status: open

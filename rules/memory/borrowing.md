@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-10-15
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-18
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/borrowing.md`
 - **Replaces:** `rules/memory/borrowing.txt`
@@ -357,6 +357,8 @@ Modify(r)                // permitted after view's last required use
 
 **§ 12(8)** Unknown or over-limit provenance must be conservative. The compiler must not pretend that one origin is proven when several or unknown origins remain possible.
 
+**§ 12(9)** Diagnostic presentation of a Place with a slice projection distinguishes a runtime-unknown bound from a compile-time-known bound; it is display/provenance information and changes neither slicing semantics nor Place identity (MD-089, 2026-10-18). For an exclusive-upper-bound slice: an unknown start is printed as `*`, a known start of zero is omitted, an unknown end uses the open `..` form, and a known exclusive end is `..<N` with the exact `N`. So `values[*..<3]` is a runtime-unknown start with known end 3, and `values[..<3]` is a constant start 0 with known end 3; an unknown start is never printed as `values[..<3]`, which would falsely claim a proof that it is zero. Known bounds are printed exactly and unknown bounds are never guessed. The same rendering applies wherever a projected Place is presented (`rules/tooling/diagnostics.md` § 10(7)).
+
 ---
 
 ## § 13 Fields, properties, and aggregate Places
@@ -448,6 +450,8 @@ let right := ref mut pair.Right
 **§ 15.2(3)** This implicit call-site borrowing is permitted because it does not consume caller ownership. It must never be confused with the mandatory `<-` marker required by consuming ownership transfer.
 
 **§ 15.2(4)** Overload/call resolution must know the selected parameter borrow mode before borrow legality is committed.
+
+**§ 15.2(5)** The marker-free borrow of § 15.2(1)–(2) exists only for call arguments. It never extends to storage, initializers, assignments, returns, aggregate fields or inferred reference construction; there an owned value used where a reference is required is the mandatory error `S1169` / `borrowing.explicit-ref-required`, and the program must write `ref place` / `ref mut place` (`references.md` § 5(10); MD-080, 2026-10-18). Reference-origin and lifetime errors remain separate diagnostics.
 
 ### § 15.3 Reborrowed arguments
 

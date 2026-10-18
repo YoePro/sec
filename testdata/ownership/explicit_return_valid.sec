@@ -1,0 +1,34 @@
+module main
+
+@noCopy
+type Resource struct { Value: int }
+
+type Container struct { Value: Resource }
+
+fn Direct(value: Resource) Resource {
+    return <-value
+}
+
+fn Fresh() Resource {
+    return <-Resource { Value: 42 }
+}
+
+fn Nested(value: Resource) Container {
+    return <-Container { Value: value }
+}
+
+fn Optional(value: Resource) Option[Resource] {
+    return <-Some(value)
+}
+
+fn Shared(value: ref int) ref int {
+    return <-value
+}
+
+fn Scalar(value: int) int {
+    return <-value + 1
+}
+
+fn Fallible(value: Resource) Result[Resource, ArithmeticError] {
+    return <-Ok(value)
+}

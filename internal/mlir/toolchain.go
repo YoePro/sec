@@ -41,6 +41,15 @@ func (t Toolchain) TranslateToLLVMIR(mlirPath string, llvmPath string) error {
 	return t.run("mlir-translate", args...)
 }
 
+// CompileObject compiles LLVM IR to a target object with the llc of the same
+// LLVM build as mlir-translate. Textual LLVM IR is version-specific, so it
+// never crosses into a differently versioned tool; the system C driver only
+// links the object (position-independent, for default PIE links).
+func (t Toolchain) CompileObject(llvmPath string, objectPath string, triple string) error {
+	args := []string{"-filetype=obj", "-relocation-model=pic", "-mtriple=" + triple, llvmPath, "-o", objectPath}
+	return t.run("llc", args...)
+}
+
 // VerifySec parses and verifies Sec-dialect MLIR with the Sec-aware driver.
 func (t Toolchain) VerifySec(mlirPath string) error {
 	args := append([]string{mlirPath}, secVerificationPasses...)

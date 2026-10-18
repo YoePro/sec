@@ -1,0 +1,19 @@
+module main
+
+type Pair struct { Value: int }
+
+fn Aggregate(value: int) Pair {
+    return <-Pair { Value: value }
+}
+
+fn Shared(value: ref int) ref int {
+    return <-value
+}
+
+fn Source(value: int) Result[int, ArithmeticError] {
+    return <-Ok(value)
+}
+
+fn Forward(value: int) Result[int, ArithmeticError] {
+    return <-try Source(value)
+}

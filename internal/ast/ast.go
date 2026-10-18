@@ -1154,7 +1154,10 @@ type LambdaCapture struct {
 
 type ReturnStatement struct {
 	Token lexer.Token
-	Value Expression
+	// MoveToken retains optional `return <-value` source spelling. It does not
+	// alter terminal result ownership (rules/declarations/functions.md §14).
+	MoveToken lexer.Token
+	Value     Expression
 }
 
 func (rs *ReturnStatement) statementNode() {}
@@ -1930,6 +1933,17 @@ type CallExpression struct {
 	// ArgumentsOpen is the real opening parenthesis of the argument list,
 	// used by formatter roles for multiline trailing commas.
 	ArgumentsOpen lexer.Token
+	// Unsafe is the direct `unsafe` prefix of a single-call authorization
+	// (`unsafe pointer.Read()`); its Type is lexer.UNSAFE only when present.
+	// It authorizes exactly this call, not its arguments or receiver.
+	// Rules: rules/memory/unsafe.md § 4; rules/foundations/grammar.md (MD-079).
+	Unsafe lexer.Token
+}
+
+// HasUnsafePrefix reports whether the call is written in the direct
+// single-call `unsafe` form.
+func (ce *CallExpression) HasUnsafePrefix() bool {
+	return ce != nil && ce.Unsafe.Type == lexer.UNSAFE
 }
 
 // NewExpression selects lifecycle construction for Type. It is deliberately
@@ -2005,6 +2019,9 @@ func (ce *CallExpression) String() string {
 	}
 
 	out := name
+	if ce.HasUnsafePrefix() {
+		out = "unsafe " + out
+	}
 	if len(ce.GenericArguments) > 0 {
 		out += "["
 		for i, arg := range ce.GenericArguments {

@@ -1069,6 +1069,8 @@ type Statistics struct {
 
 § 40(6) Two fences do not synchronize merely because they are both fences.
 
+§ 40(7) In Semantic IR a fence is `atomic.fence order=<Acquire|Release|AcqRel|SeqCst>` with no operands or results (`rules/compiler/semantic_ir.md` § 123). Until a Sec MLIR package specifies fence lowering, emission fails closed with an unsupported-lowering diagnostic (MD-096, 2026-10-18).
+
 ---
 
 ## § 41. Modification order participation

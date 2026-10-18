@@ -2,7 +2,7 @@
 
 - **Status:** Draft — proposed normative standard-library design
 - **Created:** 2026-10-05
-- **Last updated:** 2026-10-18 (MD-057 iterator parameter forms)
+- **Last updated:** 2026-10-18 (MD-057 iterator parameter forms; MD-091 byte-to-string decoding)
 - **Document revision:** 0.1
 - **Sec language version:** 0.1
 - **Canonical path:** `stdlib/str/stdlib_str.md`
@@ -1357,7 +1357,16 @@ fn ToByteArray(value: string) Result[byte[], CollectionError]
 
 fn FromRunes[I: Iterator[rune]](values: I) Result[string, CollectionError]
 fn FromRunes(values: ref rune[]) Result[string, CollectionError]
+
+// Decode a borrowed byte sequence as strictly validated UTF-8.
+fn FromByteArray(value: ref byte[]) Result[string, StringError]
+
+// Decode a borrowed byte sequence while replacing malformed UTF-8.
+fn FromByteArrayLossy(value: ref byte[]) Result[string, CollectionError]
 ```
+
+`FromByteArray` and `FromByteArrayLossy` are the public byte-to-string
+decoders of Sec 0.1 (MD-091, 2026-10-18; § 10.6).
 
 `Iterator[T]` is an interface, not a by-value type: an iterator parameter is
 either a named generic parameter constrained by `Iterator[T]` (static
@@ -1402,9 +1411,41 @@ The function:
 - never creates invalid UTF-8;
 - uses builder/direct pre-sizing as appropriate.
 
-## 10.6 Byte-to-string conversion is not owned here by default
+## 10.6 Byte-to-string conversion
 
-A general:
+**Decided 2026-10-18 (MD-091):** public conversion from a `byte[]` sequence
+to a `string` is owned by `stdlib/str`, not by core and not by the
+compiler-known registry, because materializing the string allocates or needs
+explicit result storage. This supersedes the "not owned here by default"
+text below, which is kept for provenance.
+
+- `FromByteArray(value: ref byte[]) Result[string, StringError]` validates
+  strict UTF-8 and returns `Err(StringError.InvalidUtf8(index))` — the byte
+  offset of the leading byte — for invalid lead bytes, malformed continuation
+  bytes, overlong sequences, surrogate code points, values beyond U+10FFFF and
+  incomplete sequences; it never returns a partial or invalid string.
+- `FromByteArrayLossy(value: ref byte[]) Result[string, CollectionError]`
+  replaces each maximal malformed subpart with U+FFFD and keeps its declared
+  `CollectionError` storage contract.
+- Both borrow the input and never mutate, adopt or consume it; the result is
+  an independent valid UTF-8 string.
+- How the validated bytes become a string is open as MD-109: the internal
+  capability `_stringFromUtf8` is known only to core, never to stdlib
+  (owner decision 2026-10-18), and core may allocate only in `ToString()`.
+  Until then `FromByteArray` and `Builder.Finish` panic with an MD-109
+  message after validation/copying.
+- `byte[].ToString()` is **not** decoding: it yields the type summary
+  `byte[]` (`core-library.md` § 5.2). There is no `string.FromByteArray`, no
+  `string(bytes)` cast and no implicit `byte[]` → `string` conversion; the
+  round trip is `str.FromByteArray(ref bytes)` over `ToByteArray()`.
+
+Known hole (verified 2026-10-18): no stdlib bytes -> string path exists
+(MD-109); the decoding tests in `collect_test.sec` cannot execute yet —
+strings are not lowered on the native track (P23) and the `str` module does
+not compile as a whole (pre-existing Builder/escape diagnostics); the Sema
+boundary is covered by `TestByteStringDecodingBelongsToStdlibStr`.
+
+Previous revision-0.1 text: a general:
 
 ```text
 FromBytes(byte[])
@@ -2896,6 +2937,10 @@ The important rule is that an ordinary core helper named `FromByteArray` must
 not remain allocating merely by internally calling `ToString()` and thereby
 circumvent the allocation rule.
 
+Resolved 2026-10-18 (MD-091): core `string.FromByteArray` is removed; the API
+is `str.FromByteArray` / `str.FromByteArrayLossy` (§ 10.6), and the
+byte-sequence `ToString()` no longer decodes.
+
 ---
 
 # 21. Cross-file ownership of operations
@@ -2919,6 +2964,7 @@ The following table is normative guidance for avoiding duplicate APIs.
 | mutable string construction | str/builder |
 | full-string case conversion | str/case |
 | rune/byte array materialization | str/collect |
+| byte-to-string decoding (`FromByteArray`, `FromByteArrayLossy`) | str/collect (MD-091) |
 | known-range immutable editing | str/edit |
 | Sec literal escaping | str/escape |
 | join/concat | str/join |

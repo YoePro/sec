@@ -92,3 +92,25 @@ let mut slot: ref int := ref shared
 		})
 	}
 }
+
+// MD-080: S1169 carries the canonical help text, the occurrence names the
+// required reference type and distinguishes `ref` from `ref mut`, and the
+// explicit spelling is accepted.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — S1169 borrowing.explicit-ref-required
+func TestExplicitRefRequiredCanonicalHelp(t *testing.T) {
+	errors := analyzeSourceRaw(t, "module main\nfn Use() int {\n    let mut count: int := 10\n    let view: ref mut int := count\n    return 0\n}\n")
+	if len(errors) != 1 || errors[0].ID != diagnostics.BorrowExplicitRefRequired {
+		t.Fatalf("want one S1169, got %v", errors)
+	}
+	if errors[0].Help != "Only call arguments may borrow implicitly.\nWrite `ref value` or `ref mut value` to create an explicit reference." {
+		t.Fatalf("non-canonical help %q", errors[0].Help)
+	}
+	if want := "ref mut int is required here, got owned int; write `ref mut count`"; errors[0].Message != want {
+		t.Fatalf("message %q, want %q", errors[0].Message, want)
+	}
+	if errors := analyzeSourceRaw(t, "module main\nfn Use() int {\n    let count: int := 10\n    let countView: ref int := ref count\n    return 0\n}\n"); len(errors) != 0 {
+		t.Fatalf("explicit reference rejected: %v", errors)
+	}
+}

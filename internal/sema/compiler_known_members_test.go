@@ -35,7 +35,6 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int], amount: decimal) void {
 	let decoded: Result[rune[], CollectionError] := text.ToRuneArray()
 	let joined: Result[string, StringError] := runes.ToString()
 	let fromRunes: Result[string, StringError] := string.FromRuneArray(runes)
-	let fromBytes: Result[string, StringError] := string.FromByteArray(bytes)
 	unsafe {
 		let address: RawPtr[byte] := text.Ptr
 		let migrationAddress: RawPtr[byte] := text.ptr
@@ -900,34 +899,54 @@ impl Queue {
 `), nil)
 }
 
-// string.FromByteArray and string.FromRuneArray materialize a new string and
-// can fail, so a handled try over them is valid and a bare string binding is
-// not.
+// string.FromRuneArray materializes a new string and can fail, so a handled
+// try over it is valid and a bare string binding is not.
 //
 // Rules:
-//   - rules/compiler/compiler_known_members.md — `FromByteArray`, `FromRuneArray`
-//   - sec/core/string.sec — FromByteArray, FromRuneArray declarations
+//   - rules/compiler/compiler_known_members.md — `FromRuneArray`
+//   - sec/core/string.sec — FromRuneArray declaration
 func TestStringConstructorsReturnStringErrorResult(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 module main
 
-enum DecodeError error {
+enum EncodeError error {
     Invalid,
 }
 
-fn Decode(bytes: ref byte[]) Result[string, DecodeError] {
-    let text := try string.FromByteArray(bytes) {
-        Err(_) => return Err(DecodeError.Invalid)
+fn Encode(runes: ref rune[]) Result[string, EncodeError] {
+    let text := try string.FromRuneArray(runes) {
+        Err(_) => return Err(EncodeError.Invalid)
     }
     return Ok(text)
 }
 
-fn Plain(bytes: ref byte[]) string {
-    let text: string := string.FromByteArray(bytes)
+fn Plain(runes: ref rune[]) string {
+    let text: string := string.FromRuneArray(runes)
     return text
 }
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "Result[string, StringError]") {
 		t.Fatalf("expected only the bare string binding to be rejected, got %+v", errors)
+	}
+}
+
+// MD-091: the registry has no public string.FromByteArray alias of the stdlib
+// decoder; the only byte materialization is the internal capability, limited
+// to trusted core, and a byte sequence's
+// ToString() is documented as a summary, never as decoding.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Internal core string materialization"
+func TestRegistryHasNoPublicByteDecoder(t *testing.T) {
+	if member, ok := compilerKnownMember(builtinType("string"), "FromByteArray", true); ok {
+		t.Fatalf("string.FromByteArray is still registered: %+v", member)
+	}
+	known, ok := compilerKnownFunction("_stringFromUtf8")
+	if !ok || !known.Internal || !isToStringResultType(known.Result) {
+		t.Fatalf("internal string materialization registry entry is wrong: %+v", known)
+	}
+	info := compilerKnownSyntheticCatalog["CKM-TOSTRING-BYTE-SEQUENCE"]
+	if !strings.Contains(info.Documentation, "never UTF-8 decoding") || !strings.Contains(info.Documentation, "str.FromByteArray") {
+		t.Fatalf("byte-sequence ToString documentation still implies decoding: %q", info.Documentation)
 	}
 }

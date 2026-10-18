@@ -23,14 +23,18 @@ import (
 type Analyzer struct {
 	// analyzedContractNodes tracks exact declarations consumed during this analysis.
 	// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites.
-	analyzedContractNodes        map[ast.Contract]bool
-	analysisDepth                AnalysisDepth
-	analysisBudget               AnalysisBudget
-	pitfallPrioritySources       map[string]bool
-	pitfallCacheRun              *pitfallCacheRun
-	parameterBudget              ParameterUsageBudget
-	analysisSchedule             []AnalysisPassRecord
-	targetUintWidthBits          uint16
+	analyzedContractNodes  map[ast.Contract]bool
+	analysisDepth          AnalysisDepth
+	analysisBudget         AnalysisBudget
+	pitfallPrioritySources map[string]bool
+	pitfallCacheRun        *pitfallCacheRun
+	parameterBudget        ParameterUsageBudget
+	analysisSchedule       []AnalysisPassRecord
+	targetUintWidthBits    uint16
+	// scalarPlanWidthBits is the selected CompilationPlan's pointer width,
+	// or zero when no plan was supplied; plan-specific exactness proofs use
+	// only a resolved width (MD-104 Option A).
+	scalarPlanWidthBits          uint16
 	legacyDefaultAST             bool
 	types                        map[string]Type
 	units                        map[string]UnitDefinition
@@ -157,6 +161,7 @@ type Analyzer struct {
 	resolvedArrayLiteralPlans map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
 	resolvedArrayIndexPlans   map[*ast.IndexExpression]ResolvedArrayIndexPlan
 	resolvedListIndexPlans    map[*ast.IndexExpression]ResolvedListIndexPlan
+	resolvedSliceIndexPlans   map[*ast.IndexExpression]ResolvedSliceIndexPlan
 	activeConditionFacts      []activeConditionFact
 	conditionBindingVersions  map[string]uint64
 	conditionProofBarrier     uint64
@@ -612,6 +617,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.implicitReceiverUses = map[*ast.Identifier]ImplicitReceiverUse{}
 	a.referenceLifetimeEnds = nil
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
+	a.resolvedSliceIndexPlans = map[*ast.IndexExpression]ResolvedSliceIndexPlan{}
 	a.activeConditionFacts = nil
 	a.conditionBindingVersions = map[string]uint64{}
 	a.conditionProofBarrier = 0
@@ -5038,254 +5044,6 @@ func switchCoversBoolLiterals(stmt *ast.SwitchStatement) bool {
 	return seen[true] && seen[false]
 }
 
-// analyzeReturnStatement validates an ordinary return and commits its terminal
-// ownership transfer. Compatible Result and Option carriers may cross the return
-// boundary unchanged; this never implicitly constructs Ok or Some around a
-// plain payload.
-//
-// Rules:
-//   - rules/errors/errorhandling.md — §5 "Ok and Err"
-//   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
-//   - rules/memory/ownership.md — §17 "Function return boundary"
-//   - rules/memory/copy_move.md — §9 "Return boundaries"
-//   - rules/declarations/functions.md — §32 "Variadic pack cannot escape"
-func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
-	// A return is terminal even when reached through a match/try arm. Keeping
-	// this as analyzer context lets aggregate and union inference apply the same
-	// rule recursively without teaching each constructor about ReturnStatement.
-	a.terminalReturnDepth++
-	defer func() { a.terminalReturnDepth-- }()
-	defer a.recordReferenceReturnUse(stmt.Value, returnType)
-
-	if a.currentFunctionMetadata.Initializer {
-		if stmt.Value == nil {
-			return
-		}
-		if _, ok := stmt.Value.(*ast.ErrExpression); ok && a.currentFunctionMetadata.ConstructionError != nil {
-			a.analyzeResultReturnStatement("init", returnType, stmt)
-			return
-		}
-		a.addErrorAtToken(expressionToken(stmt.Value), "initializer cannot return a success value; complete the init body to construct self or return Err(error)")
-		return
-	}
-	if a.fallibleSetterBody && functionName != "lambda" {
-		a.analyzeFallibleSetterReturn(functionName, returnType, stmt)
-		return
-	}
-	if a.currentFunctionMetadata.CustomFree && functionName != "lambda" && stmt.Value != nil {
-		// MD-025.6 (destruction.md § 15.7): free has no result; a bare
-		// return is an early exit that still runs field cleanup.
-		a.addErrorAtTokenWithMetadata(expressionToken(stmt.Value), "",
-			"Use bare `return` to leave free early; the remaining field destruction still runs.",
-			"'return' in 'free' cannot return a value")
-		return
-	}
-	if stmt.Value == nil {
-		if returnType.Kind != VoidType {
-			if functionName == "lambda" {
-				a.addErrorAtToken(stmt.Token, "lambda must return %s", typeDisplayName(returnType))
-				return
-			}
-			a.addErrorAtToken(stmt.Token, "function %s must return %s", functionName, typeDisplayName(returnType))
-		}
-		return
-	}
-
-	if returnType.Kind == ResultType {
-		a.analyzeResultReturnStatement(functionName, returnType, stmt)
-		return
-	}
-
-	if returnType.Kind == FunctionType {
-		if a.checkReturningLambdaCapturingLocalReference(functionName, stmt.Value) {
-			return
-		}
-	}
-
-	if returnType.Kind == FunctionType && containsCapturedLambdaExpression(stmt.Value) {
-		a.addErrorAtToken(expressionToken(stmt.Value), "escaping captured lambda is not supported yet")
-		return
-	}
-
-	valueType, _ := a.inferExpressionWithExpected(stmt.Value, returnType)
-	if valueType.Kind == InvalidType {
-		return
-	}
-	if valueType.Name == "Arena" && a.rejectBorrowedArenaReturn(stmt.Value) {
-		return
-	}
-	if variadicPackValue(valueType) {
-		// rules/declarations/functions.md section 32: a pack may not escape
-		// the invocation through the function result.
-		a.reportEscapeExpressionDiagnostic(stmt.Value, lexer.Token{}, diagnostics.EscapeVariadicPack, "variadic parameter pack cannot escape this call")
-		return
-	}
-	if a.validateTerminalReturnConstruction(stmt.Value) {
-		return
-	}
-
-	if returnType.Kind == VoidType {
-		if functionName == "lambda" {
-			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return void, got %s", typeDisplayName(valueType))
-			return
-		}
-		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return void, got %s", functionName, typeDisplayName(valueType))
-		return
-	}
-
-	if a.rejectImplicitBorrow(returnType, valueType, stmt.Value) {
-		return
-	}
-	if !a.canInitialize(returnType, valueType, stmt.Value) && !a.isExplicitUnitConversionReturn(returnType, valueType) {
-		if functionName == "lambda" {
-			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return %s, got %s", typeDisplayName(returnType), typeDisplayName(valueType))
-			return
-		}
-		a.addTypeMismatchError(expressionToken(stmt.Value), returnType, valueType, stmt.Value, "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
-		return
-	}
-	if a.checkDeclaredContractExpression(returnType, stmt.Value) {
-		return
-	}
-	a.recordFunctionReturnOrigin(returnType, stmt.Value)
-	if a.checkReturningReferenceToLocal(functionName, returnType, valueType, stmt.Value) {
-		return
-	}
-	if a.checkExpressionEscapesMatchPayload(functionName, stmt.Value) {
-		return
-	}
-	if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
-		return
-	}
-	a.markResourceTransfer(stmt.Value)
-	a.markMoveSource(stmt.Value)
-}
-
-// rejectImplicitIndexedReturnExtraction prevents the intrinsically transferring
-// return context from turning ordinary collection indexing into an implicit
-// move of an element that is not copyable. The collection must instead expose
-// an owning extraction operation, or the program must move the containing value
-// or return an appropriate borrow.
-//
-// Rules:
-//   - rules/collections/collections.md — "Move-only indexed reads"
-//   - rules/memory/copy_move.md — §5.3 "Copy of a copyable field or element"
-//   - rules/memory/copy_move.md — §9.1 "Return is intrinsically transferring"
-func (a *Analyzer) rejectImplicitIndexedReturnExtraction(expr ast.Expression, elementType Type) bool {
-	index, indexed := expr.(*ast.IndexExpression)
-	if !indexed || !requiresOwnershipTransfer(elementType) {
-		return false
-	}
-	source := index.String()
-	if place, resolved := a.resolvePlace(index); resolved {
-		source = place.String()
-	}
-	a.addErrorAtTokenWithMetadata(
-		index.Token,
-		diagnostics.ImplicitMoveDisallowed,
-		"move the containing collection or return a reference to the element",
-		"cannot return %s element %s by ordinary indexing because it is not implicitly copyable",
-		typeDisplayName(elementType),
-		source,
-	)
-	return true
-}
-
-// validateTerminalReturnConstruction recursively validates only structural
-// ownership edges that directly form the returned value. Ordinary calls remain
-// governed by their declared parameter modes and are deliberately opaque here.
-//
-// Rules:
-//   - rules/memory/ownership.md — section 17 "Function return boundary"
-//   - rules/memory/copy_move.md — sections 9-10
-func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool {
-	if expr == nil {
-		return false
-	}
-	switch expr := expr.(type) {
-	case *ast.StructLiteral:
-		invalid := false
-		for _, field := range expr.Fields {
-			if field != nil && a.validateTerminalReturnConstruction(field.Value) {
-				invalid = true
-			}
-		}
-		return invalid
-	case *ast.ArrayLiteral:
-		invalid := false
-		for _, element := range expr.Elements {
-			if a.validateTerminalReturnConstruction(element) {
-				invalid = true
-			}
-		}
-		return invalid
-	case *ast.OkExpression:
-		return a.validateTerminalReturnConstruction(expr.Value)
-	case *ast.ErrExpression:
-		return a.validateTerminalReturnConstruction(expr.Value)
-	case *ast.SpreadExpression:
-		return a.validateTerminalReturnConstruction(expr.Value)
-	case *ast.BitExtractionExpression:
-		return a.validateTerminalReturnConstruction(expr.Value)
-	case *ast.ConversionExpression:
-		return a.validateTerminalReturnConstruction(expr.Value)
-	case *ast.PrefixExpression:
-		if expr.Operator == "<-" {
-			return false // inferPrefixExpression already validated the explicit move.
-		}
-	case *ast.CallExpression:
-		if _, structural := a.unionConstructorPayload(expr); structural {
-			return a.validateTerminalReturnConstruction(expr.Arguments[0])
-		}
-		return false
-	case *ast.MatchExpression:
-		// Match arms are checked in their branch-local ownership state. Doing
-		// so again after the merge would lose the relevant Place context.
-		return false
-	}
-	typ, ok := a.expressionTypes[expr]
-	if !ok || typ.Kind == InvalidType {
-		return false
-	}
-	if a.rejectVariadicPackElementReturn(expr, typ) || a.rejectImplicitIndexedReturnExtraction(expr, typ) {
-		return true
-	}
-	place, reusable := a.resolvePlace(expr)
-	if !reusable || !requiresOwnershipTransfer(place.Type) {
-		return false
-	}
-	return !a.validateNamedOwnershipSource(ast.OwnershipMove, expr, expressionToken(expr), false, false)
-}
-
-// rejectVariadicPackElementReturn preserves the invocation-lifetime pack
-// boundary before applying the more general move-only collection-read rule.
-// A pack element may be observed but cannot be transferred out by a return,
-// including a terminal Ok or Err payload return.
-//
-// Rules:
-//   - rules/declarations/functions.md — section 34 "Ownership and lifetime"
-//   - rules/collections/collections.md — §8.5 "Move-only indexed reads"
-func (a *Analyzer) rejectVariadicPackElementReturn(expr ast.Expression, elementType Type) bool {
-	if !a.variadicPackElementExpression(expr) || !requiresOwnershipTransfer(elementType) {
-		return false
-	}
-	a.addErrorAtToken(expressionToken(expr), "cannot move element out of variadic parameter pack")
-	return true
-}
-
-// isExplicitUnitConversionReturn recognizes the declaration form described by
-// rules/types/units.md, "Conversions": a same-named one-argument unit function
-// is an explicit conversion boundary and may cross named identity or Kind after
-// declaration validation has established compatible dimensions.
-func (a *Analyzer) isExplicitUnitConversionReturn(target, source Type) bool {
-	fn := a.currentFunctionMetadata
-	if a.currentFunctionName != target.Name || fn.ImplTarget != target.Name || target.Unit != target.Name || len(fn.Parameters) != 1 ||
-		!hasUnitSemantics(source) || !target.Dimension.Equal(source.Dimension) {
-		return false
-	}
-	return isLinearRatioSemantics(target.UnitSemantics) && isLinearRatioSemantics(source.UnitSemantics)
-}
-
 func typeContainsReference(typ Type, visiting map[string]bool) bool {
 	if typeCarriesReferenceOrigin(typ) {
 		return true
@@ -9457,6 +9215,8 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		if registerFieldOK {
 			targetType = registerField.Type
 			a.bindDefinition(member.Property.Token, registerField.Token)
+		} else if a.rejectCompilerKnownPropertyWrite(objectType, member) {
+			return
 		} else {
 			var ok bool
 			targetType, ok = a.inferMemberExpression(member)
@@ -10557,365 +10317,6 @@ func indexableKindName(typ Type) string {
 //   - rules/collections/collections.md — §2 and §8 "Indexing"
 func isCompilerKnownListType(typ Type) bool {
 	return typ.Name == "list" && len(typ.TypeArgs) == 1
-}
-
-// recordListIndexPlan publishes the runtime-checked frontend decision for a
-// list element Place. It deliberately does not create an array-index fact:
-// Semantic IR must reject list lowering until it has dedicated operations.
-//
-// Rules:
-//   - rules/collections/collections.md — §8 "Indexing"
-func (a *Analyzer) recordListIndexPlan(expr *ast.IndexExpression, listType, elementType, indexType Type, use ArrayIndexUseKind) {
-	plan := ResolvedListIndexPlan{
-		ListType:    listType,
-		ElementType: elementType,
-		IndexType:   indexType,
-		IndexSigned: indexType.Kind == IntType,
-		CheckKind:   ArrayIndexRuntimeCheck,
-		UseKind:     use,
-		Action:      arrayIndexTransferAction(elementType, use),
-		FailureMode: ArrayIndexFailureOrdinary,
-		ErrorType:   a.indexErrorType(),
-	}
-	if constant, ok := a.integerConstantValue(expr.Index); ok {
-		plan.ConstantIndex = new(big.Int).Set(constant)
-	}
-	a.recordResolvedListIndexPlan(expr, plan)
-	a.recordListIndexEffect(expr, plan)
-}
-
-// recordFixedArrayIndexPlan publishes the already-resolved index decision
-// required by SEC-MLIR Package 14 sections 31-36. It preserves the source
-// integer type and uses exact constants/type ranges as proof provenance.
-func (a *Analyzer) recordFixedArrayIndexPlan(expr *ast.IndexExpression, arrayType, elementType, indexType Type, use ArrayIndexUseKind) {
-	length, ok := exactFixedArrayLength(arrayType)
-	if !ok {
-		return
-	}
-	plan := ResolvedArrayIndexPlan{
-		ArrayType:   arrayType,
-		ArrayLength: length,
-		ElementType: elementType,
-		IndexType:   indexType,
-		IndexSigned: indexType.Kind == IntType,
-		CheckKind:   ArrayIndexRuntimeCheck,
-		UseKind:     use,
-		Action:      arrayIndexTransferAction(elementType, use),
-		FailureMode: ArrayIndexFailureOrdinary,
-		ErrorType:   a.indexErrorType(),
-	}
-	if constant, constantOK := a.integerConstantValue(expr.Index); constantOK {
-		plan.ConstantIndex = new(big.Int).Set(constant)
-		plan.CheckKind = ArrayIndexProvenSafe
-		plan.ProofKind = ArrayIndexProofConstant
-		plan.FailureMode = ArrayIndexFailureNone
-		plan.ErrorType = Type{}
-	} else if proof, proven := integerTypeRangeArrayIndexProof(indexType, length); proven {
-		plan.CheckKind = ArrayIndexProvenSafe
-		plan.ProofKind = proof
-		plan.FailureMode = ArrayIndexFailureNone
-		plan.ErrorType = Type{}
-	} else if proof, proven := a.refinementProvesArrayIndex(expr.Left, expr.Index, indexType, length); proven {
-		plan.CheckKind = ArrayIndexProvenSafe
-		plan.ProofKind = proof
-		plan.FailureMode = ArrayIndexFailureNone
-		plan.ErrorType = Type{}
-	}
-	a.recordResolvedArrayIndexPlan(expr, plan)
-	a.recordArrayIndexEffect(expr, plan)
-}
-
-// refinementProvesArrayIndex combines currently dominating branch/assertion
-// conditions into the exact 0 <= index < N proof required for a fixed array.
-// It never proves an index into a zero-length array.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 32 and 36
-//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
-func (a *Analyzer) refinementProvesArrayIndex(array, index ast.Expression, indexType Type, length *big.Int) (ArrayIndexProofKind, bool) {
-	if array == nil || index == nil || length == nil || length.Sign() == 0 {
-		return "", false
-	}
-	lower := integerTypeMinimumIsNonNegative(indexType)
-	upper := false
-	proofKinds := map[ArrayIndexProofKind]bool{}
-	for _, refinement := range a.activeConditionFacts {
-		if refinement.epoch != a.arrayIndexMutationEpoch {
-			continue
-		}
-		conditionLower, conditionUpper := a.conditionBoundsArrayIndex(refinement.fact.Condition, array, index, length)
-		proof := ArrayIndexProofOther
-		switch refinement.fact.Kind {
-		case ConditionFactBranchTrue, ConditionFactLogicalRHSTrue:
-			proof = ArrayIndexProofBranch
-		case ConditionFactAssertionSuccess:
-			proof = ArrayIndexProofAssertion
-		case ConditionFactLogicalRHSFalse:
-			continue
-		}
-		if conditionLower && !lower {
-			lower = true
-			proofKinds[proof] = true
-		}
-		if conditionUpper && !upper {
-			upper = true
-			proofKinds[proof] = true
-		}
-	}
-	if !lower || !upper || len(proofKinds) == 0 {
-		return "", false
-	}
-	if len(proofKinds) == 1 {
-		for proof := range proofKinds {
-			return proof, true
-		}
-	}
-	return ArrayIndexProofOther, true
-}
-
-// conditionBoundsArrayIndex recognizes only conjunctions of exact integer
-// comparisons. Disjunctions and unrelated expressions cannot establish facts.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
-func (a *Analyzer) conditionBoundsArrayIndex(condition, array, index ast.Expression, length *big.Int) (bool, bool) {
-	comparison, ok := condition.(*ast.InfixExpression)
-	if !ok || comparison == nil {
-		return false, false
-	}
-	if comparison.Operator == "&&" {
-		leftLower, leftUpper := a.conditionBoundsArrayIndex(comparison.Left, array, index, length)
-		rightLower, rightUpper := a.conditionBoundsArrayIndex(comparison.Right, array, index, length)
-		return leftLower || rightLower, leftUpper || rightUpper
-	}
-	leftIndex := a.sameResolvedExpression(comparison.Left, index)
-	rightIndex := a.sameResolvedExpression(comparison.Right, index)
-	if !leftIndex && !rightIndex {
-		return false, false
-	}
-	if comparison.Operator == "==" {
-		other := comparison.Right
-		if rightIndex {
-			other = comparison.Left
-		}
-		constant, constantOK := a.integerConstantValue(other)
-		return constantOK && constant.Sign() >= 0, constantOK && constant.Sign() >= 0 && constant.Cmp(length) < 0
-	}
-	if leftIndex {
-		switch comparison.Operator {
-		case ">=":
-			return a.lowerComparisonProvesNonNegative(comparison.Right, false), false
-		case ">":
-			return a.lowerComparisonProvesNonNegative(comparison.Right, true), false
-		case "<":
-			return false, a.upperComparisonProvesInBounds(comparison.Right, array, length, false)
-		case "<=":
-			return false, a.upperComparisonProvesInBounds(comparison.Right, array, length, true)
-		}
-	}
-	switch comparison.Operator {
-	case "<=":
-		return a.lowerComparisonProvesNonNegative(comparison.Left, false), false
-	case "<":
-		return a.lowerComparisonProvesNonNegative(comparison.Left, true), false
-	case ">":
-		return false, a.upperComparisonProvesInBounds(comparison.Left, array, length, false)
-	case ">=":
-		return false, a.upperComparisonProvesInBounds(comparison.Left, array, length, true)
-	}
-	return false, false
-}
-
-// lowerComparisonProvesNonNegative evaluates the exact constant side of a
-// lower-bound comparison without host-width narrowing.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 35-36
-func (a *Analyzer) lowerComparisonProvesNonNegative(bound ast.Expression, strict bool) bool {
-	constant, ok := a.integerConstantValue(bound)
-	if !ok {
-		return false
-	}
-	if strict {
-		return constant.Cmp(big.NewInt(-1)) >= 0
-	}
-	return constant.Sign() >= 0
-}
-
-// upperComparisonProvesInBounds accepts an exact constant boundary or the Len
-// property of the same resolved fixed-array binding.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 35-36
-func (a *Analyzer) upperComparisonProvesInBounds(bound, array ast.Expression, length *big.Int, inclusive bool) bool {
-	if !inclusive && a.isLengthOfArray(bound, array) {
-		return true
-	}
-	constant, ok := a.integerConstantValue(bound)
-	if !ok {
-		return false
-	}
-	if inclusive {
-		return constant.Cmp(length) < 0
-	}
-	return constant.Cmp(length) <= 0
-}
-
-// sameResolvedExpression compares identifier/member paths by compiler-owned
-// binding identity so shadowed names cannot forge a bounds proof.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
-func (a *Analyzer) sameResolvedExpression(left, right ast.Expression) bool {
-	switch left := left.(type) {
-	case *ast.Identifier:
-		right, ok := right.(*ast.Identifier)
-		if !ok {
-			return false
-		}
-		leftBinding, leftOK := a.ResolvedBindingOf(left)
-		rightBinding, rightOK := a.ResolvedBindingOf(right)
-		return leftOK && rightOK && leftBinding.ID == rightBinding.ID
-	case *ast.MemberExpression:
-		right, ok := right.(*ast.MemberExpression)
-		return ok && left.Property != nil && right.Property != nil &&
-			left.Property.Value == right.Property.Value && a.sameResolvedExpression(left.Object, right.Object)
-	default:
-		return false
-	}
-}
-
-// isLengthOfArray recognizes only the canonical/accepted Len property on the
-// exact resolved array expression used by the indexed access.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
-//   - rules/library/core-library.md — fixed-array Len
-func (a *Analyzer) isLengthOfArray(expression, array ast.Expression) bool {
-	member, ok := expression.(*ast.MemberExpression)
-	if !ok || member == nil || member.Property == nil || member.Object == nil {
-		return false
-	}
-	return (member.Property.Value == "Len" || member.Property.Value == "len") && a.sameResolvedExpression(member.Object, array)
-}
-
-// integerTypeMinimumIsNonNegative derives only the lower-bound half of the
-// Package 14 index predicate from canonical integer range facts.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
-//   - rules/types/contracts.md — range contracts
-func integerTypeMinimumIsNonNegative(indexType Type) bool {
-	if indexType.MinInteger == nil {
-		return false
-	}
-	minimum := new(big.Int).Set(indexType.MinInteger)
-	for _, contract := range indexType.Contracts {
-		rangeContract, ok := contract.(RangeContract)
-		if ok && rangeContract.Min != nil && rangeContract.Min.Cmp(minimum) > 0 {
-			minimum.Set(rangeContract.Min)
-		}
-	}
-	return minimum.Sign() >= 0
-}
-
-// indexErrorType resolves the core declaration when it is part of the module
-// graph and otherwise provides the same compiler-owned semantic identity for
-// standalone Sema analysis. IndexError remains declarable by sec/core and is
-// not reserved as a language intrinsic.
-func (a *Analyzer) indexErrorType() Type {
-	if typ, ok := a.types["IndexError"]; ok && typ.Kind != InvalidType {
-		return typ
-	}
-	return Type{
-		Name:            "IndexError",
-		Kind:            EnumType,
-		Underlying:      "uint",
-		ErrorAssignable: true,
-		EnumValues:      []string{"OutOfBounds"},
-		EnumConsts:      builtinEnumConsts([]string{"OutOfBounds"}),
-	}
-}
-
-// integerTypeRangeArrayIndexProof distinguishes a named integer range from an
-// inline declaration contract while proving the same exact 0 <= index < N
-// predicate.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 32 and 36
-//   - rules/types/contracts.md — range contracts
-func integerTypeRangeArrayIndexProof(indexType Type, length *big.Int) (ArrayIndexProofKind, bool) {
-	if length == nil || length.Sign() == 0 || indexType.MinInteger == nil || indexType.MaxInteger == nil {
-		return "", false
-	}
-	minimum := new(big.Int).Set(indexType.MinInteger)
-	maximum := new(big.Int).Set(indexType.MaxInteger)
-	hasRangeContract := false
-	for _, contract := range indexType.Contracts {
-		rangeContract, ok := contract.(RangeContract)
-		if !ok {
-			continue
-		}
-		hasRangeContract = true
-		if rangeContract.Min != nil && rangeContract.Min.Cmp(minimum) > 0 {
-			minimum.Set(rangeContract.Min)
-		}
-		if rangeContract.Max != nil {
-			contractMaximum := new(big.Int).Set(rangeContract.Max)
-			if rangeContract.Exclusive {
-				contractMaximum.Sub(contractMaximum, big.NewInt(1))
-			}
-			if contractMaximum.Cmp(maximum) < 0 {
-				maximum.Set(contractMaximum)
-			}
-		}
-	}
-	if minimum.Sign() < 0 || maximum.Cmp(length) >= 0 {
-		return "", false
-	}
-	if hasRangeContract && !indexType.Named {
-		return ArrayIndexProofContract, true
-	}
-	return ArrayIndexProofRange, true
-}
-
-func arrayIndexTransferAction(elementType Type, use ArrayIndexUseKind) ResolvedArrayTransferAction {
-	switch use {
-	case ArrayIndexWrite:
-		return ArrayTransferConstructDirect
-	case ArrayIndexBorrow:
-		return ArrayTransferBorrowShared
-	case ArrayIndexMutBorrow:
-		return ArrayTransferBorrowMutable
-	}
-	switch CopyClassificationOf(elementType) {
-	case CopyTrivial:
-		return ArrayTransferCopyTrivial
-	case CopySemantic:
-		return ArrayTransferCopySemantic
-	default:
-		return ArrayTransferMove
-	}
-}
-
-// setResolvedIndexUse updates access mode and transfer action on exactly the
-// collection-specific fact already established during expression inference.
-//
-// Rules:
-//   - rules/collections/collections.md — §8.1 and §8.4
-func (a *Analyzer) setResolvedIndexUse(expr *ast.IndexExpression, use ArrayIndexUseKind) {
-	plan, ok := a.resolvedArrayIndexPlans[expr]
-	if ok {
-		plan.UseKind = use
-		plan.Action = arrayIndexTransferAction(plan.ElementType, use)
-		a.recordResolvedArrayIndexPlan(expr, plan)
-	}
-	listPlan, listOK := a.resolvedListIndexPlans[expr]
-	if listOK {
-		listPlan.UseKind = use
-		listPlan.Action = arrayIndexTransferAction(listPlan.ElementType, use)
-		a.recordResolvedListIndexPlan(expr, listPlan)
-	}
 }
 
 func (a *Analyzer) integerExpressionInt64(expr ast.Expression) (int64, bool) {
@@ -13877,6 +13278,13 @@ func (a *Analyzer) contextualNumericLiteralType(expr ast.Expression, actual Type
 		}
 	}
 	a.expressionTypes[expr] = target
+	// A signed literal shapes its operand with it (`-1.5` beside a float64 is
+	// the float64 literal 1.5 negated, package20.md § 17).
+	if prefix, ok := expr.(*ast.PrefixExpression); ok && (prefix.Operator == "-" || prefix.Operator == "+") && target.Kind == FloatType {
+		if operand, recorded := a.expressionTypes[prefix.Right]; recorded {
+			a.contextualNumericLiteralType(prefix.Right, operand, target)
+		}
+	}
 	return target, true
 }
 

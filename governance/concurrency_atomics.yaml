@@ -340,7 +340,7 @@ integrations:
       - rules/concurrency/concurrency_memory_model.md
       - rules/compiler/semantic_ir.md
     implemented:
-      - "atomic.fence (2026-10-17): a valid atomic.Fence call lowers to one atomic.fence operation carrying Sema's compile-time-established MemoryOrder (AtomicOrder) and its source location, with no operands, results or storage; the verifier requires Acquire, Release, AcqRel or SeqCst and no operands/results/successors; the printer writes `atomic.fence order=<Order>`. Sec MLIR schema 11 rejects it as explicit unsupported lowering (internal/ir/semantic/atomic_fence.go; TestAtomicFenceLowersToSemanticIR, TestAtomicFenceEmitRoutes; spelling MD-096)"
+      - "atomic.fence (2026-10-17): a valid atomic.Fence call lowers to one atomic.fence operation carrying Sema's compile-time-established MemoryOrder (AtomicOrder) and its source location, with no operands, results or storage; the verifier requires Acquire, Release, AcqRel or SeqCst and no operands/results/successors; the printer writes `atomic.fence order=<Order>`. Sec MLIR schema 11 rejects it as explicit unsupported lowering (internal/ir/semantic/atomic_fence.go; TestAtomicFenceLowersToSemanticIR, TestAtomicFenceEmitRoutes; spelling MD-096 decided 2026-10-18: semantic_ir.md § 123, atomics.md § 40(7); verifier test covers all four orders and rejects Relaxed, a lowercase spelling, operands and results)"
     tests:
       - internal/ir/semantic/atomic_fence_test.go
       - cmd/compiler/atomic_fence_test.go

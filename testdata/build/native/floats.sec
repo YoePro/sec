@@ -1,0 +1,58 @@
+module main
+
+// P20 binary floating subset on the native track: literals rounded once
+// into their format, + - * / %, negation, the six comparisons with IEEE NaN
+// and signed-zero behavior, plain float at the platform width, locals,
+// compound assignment, loops, parameters and returns.
+
+fn Scale(value: float64, factor: float64) float64 {
+    return value * factor
+}
+
+fn Half(value: float32) float32 {
+    return value / 2.0
+}
+
+fn Sum(limit: int) float {
+    let mut total: float := 0.0
+    let mut step: float := 0.5
+    for i in 0..<limit {
+        total += step
+        step = step * 2.0
+    }
+    return total
+}
+
+fn main() int {
+    let zero: float64 := 0.0
+    let nan := zero / zero
+    if nan == nan || !(nan != nan) || nan < 1.0 || nan >= 1.0 {
+        return 1
+    }
+    let negativeZero := -zero
+    if negativeZero != zero || negativeZero < zero {
+        return 2
+    }
+    let infinity := 1.0 / zero
+    if !(infinity > 1.0e308) || -infinity >= -1.0e308 {
+        return 3
+    }
+    let dividend: float64 := 7.5
+    if Scale(1.5, 4.0) != 6.0 || dividend % 2.0 != 1.5 || -dividend % 2.0 != -1.5 {
+        return 4
+    }
+    let tenth: float32 := 0.1
+    if Half(tenth) != 0.05 || Half(3.0) != 1.5 {
+        return 5
+    }
+    if Sum(4) != 7.5 {
+        return 6
+    }
+    let mut value: float64 := 1.0
+    value -= 0.25
+    value *= 4.0
+    if value != 3.0 || +value != 3.0 {
+        return 7
+    }
+    return 0
+}

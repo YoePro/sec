@@ -282,6 +282,23 @@ const (
 	ResolvedBoolNot                  ResolvedOperatorKind = "bool-not"
 	ResolvedNegatedMembershipCompare ResolvedOperatorKind = "negated-membership-compare"
 	ResolvedMatrixMultiply           ResolvedOperatorKind = "matrix-multiply"
+	// Binary floating operators over one built-in float type (float,
+	// float32, float64): nearest-even rounding, IEEE NaN/infinity/signed-zero
+	// behavior, no checked failure; `%` is the truncation remainder and
+	// comparisons are ordered except `!=` (package20.md §§ 20–26).
+	ResolvedFloatUnaryPlus ResolvedOperatorKind = "float-unary-plus"
+	ResolvedFloatNegate    ResolvedOperatorKind = "float-negate"
+	ResolvedFloatAdd       ResolvedOperatorKind = "float-add"
+	ResolvedFloatSubtract  ResolvedOperatorKind = "float-subtract"
+	ResolvedFloatMultiply  ResolvedOperatorKind = "float-multiply"
+	ResolvedFloatDivide    ResolvedOperatorKind = "float-divide"
+	ResolvedFloatRemainder ResolvedOperatorKind = "float-remainder"
+	ResolvedFloatCompareEQ ResolvedOperatorKind = "float-compare-eq"
+	ResolvedFloatCompareNE ResolvedOperatorKind = "float-compare-ne"
+	ResolvedFloatCompareLT ResolvedOperatorKind = "float-compare-lt"
+	ResolvedFloatCompareLE ResolvedOperatorKind = "float-compare-le"
+	ResolvedFloatCompareGT ResolvedOperatorKind = "float-compare-gt"
+	ResolvedFloatCompareGE ResolvedOperatorKind = "float-compare-ge"
 )
 
 type OperatorFailureBehavior string
@@ -647,6 +664,10 @@ type ResolvedEnumConversion struct {
 	EnumType    Type
 	IntegerType Type
 	Fallible    bool
+	// Proof is the exactness contract of an infallible enum-to-integer
+	// conversion (MD-104): closed enums by their declared value classes,
+	// open bit[N] enums by 0..2^N-1, for the selected plan.
+	Proof IntegerConversionProof
 }
 
 type ResolvedUnionVariantKind string
@@ -1628,6 +1649,14 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 			resolved = ResolvedOperator{Kind: ResolvedBoolNot, LeftType: operand, ResultType: result, FailureBehavior: OperatorDoesNotFail}
 			break
 		}
+		if ok && isBuiltinFloatOperatorType(operand) && (expression.Operator == "+" || expression.Operator == "-") {
+			kind := ResolvedFloatUnaryPlus
+			if expression.Operator == "-" {
+				kind = ResolvedFloatNegate
+			}
+			resolved = ResolvedOperator{Kind: kind, LeftType: operand, ResultType: result, FailureBehavior: OperatorDoesNotFail}
+			break
+		}
 		if !ok || !isBuiltinIntegerOperatorType(operand) {
 			return
 		}
@@ -1692,6 +1721,10 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 				return
 			}
 			resolved.Kind = kind
+			break
+		}
+		if floating, ok := resolvedFloatInfixOperator(expression.Operator, left, right, result); ok {
+			resolved = floating
 			break
 		}
 		integer, ok := resolvedIntegerInfixOperator(expression.Operator, left, right, result)
@@ -1846,6 +1879,12 @@ func (a *Analyzer) recordResolvedCompoundAssignment(stmt *ast.AssignmentStatemen
 	if !sameConcreteType(target, value) && isUntypedNumericExpression(stmt.Value) && a.canInitializeUnrecorded(target, value, stmt.Value) {
 		value = target
 	}
+	if floating, ok := resolvedFloatInfixOperator(operator, target, value, target); ok {
+		// `x op= y` on a float is exactly `x op y` (operators.md
+		// "Compound assignment"); floating operators never fail.
+		a.resolvedCompoundAssignments[stmt] = floating
+		return
+	}
 	resolved, ok := resolvedIntegerInfixOperator(operator, target, value, target)
 	if !ok {
 		return
@@ -1897,6 +1936,34 @@ func (a *Analyzer) ResolvedRangeMembershipOf(expr *ast.InfixExpression) (Resolve
 	}
 	plan, ok := a.resolvedRangeMemberships[expr]
 	return plan, ok
+}
+
+// resolvedFloatInfixOperator classifies one binary operator over two
+// operands of the same built-in float type.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 21–26
+//   - rules/foundations/operators.md — floating arithmetic and comparison
+func resolvedFloatInfixOperator(operator string, left Type, right Type, result Type) (ResolvedOperator, bool) {
+	if !isBuiltinFloatOperatorType(left) || !isBuiltinFloatOperatorType(right) || !sameConcreteType(left, right) {
+		return ResolvedOperator{}, false
+	}
+	kind, ok := map[string]ResolvedOperatorKind{
+		"+": ResolvedFloatAdd, "-": ResolvedFloatSubtract, "*": ResolvedFloatMultiply,
+		"/": ResolvedFloatDivide, "%": ResolvedFloatRemainder,
+		"==": ResolvedFloatCompareEQ, "!=": ResolvedFloatCompareNE, "<": ResolvedFloatCompareLT,
+		"<=": ResolvedFloatCompareLE, ">": ResolvedFloatCompareGT, ">=": ResolvedFloatCompareGE,
+	}[operator]
+	if !ok {
+		return ResolvedOperator{}, false
+	}
+	return ResolvedOperator{Kind: kind, LeftType: left, RightType: &right, ResultType: result, FailureBehavior: OperatorDoesNotFail}, true
+}
+
+// isBuiltinFloatOperatorType admits float, float32 and float64 without unit,
+// contract or nominal semantics.
+func isBuiltinFloatOperatorType(typ Type) bool {
+	return typ.Kind == FloatType && !typ.Named && !typ.Declared && typ.Unit == "" && typ.Dimension.IsZero() && len(typ.Contracts) == 0
 }
 
 func isBuiltinIntegerOperatorType(typ Type) bool {

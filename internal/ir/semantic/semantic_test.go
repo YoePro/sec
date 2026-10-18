@@ -440,11 +440,9 @@ fn Calculate() Result[int, Failure] { return Ok(1) }
 `,
 			feature: "try arithmetic",
 		},
-		{
-			name:    "float arithmetic",
-			source:  "module main\nfn Add(a: float32, b: float32) float32 { return a + b }\n",
-			feature: "unresolved or unsupported operator",
-		},
+		// Float arithmetic left this boundary on 2026-10-18: the P20 binary
+		// subset (float.neg/binary/compare) is admitted early
+		// (TestFloatOperationVerifier, native fixture floats.sec).
 		{
 			name:    "decimal arithmetic",
 			source:  "module main\nfn Add(a: decimal, b: decimal) decimal { return a + b }\n",

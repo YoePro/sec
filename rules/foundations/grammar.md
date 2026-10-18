@@ -2323,6 +2323,11 @@ unsafe {
 
 The block does not change the grammar of contained statements.
 
+A statement that starts with `unsafe` followed by `{` is an `UnsafeStatement`;
+`unsafe` followed by `fn` or `extern` is a declaration modifier; any other
+`unsafe` at statement start begins an expression statement with an
+`UnsafeCallExpression`.
+
 ---
 
 # Assembly statement
@@ -2430,6 +2435,7 @@ PrimaryExpression
       | TryExpression
       | SpawnExpression
       | AwaitExpression
+      | UnsafeCallExpression
       | RefExpression
       | MoveExpression
       | RuntimeCallExpression
@@ -2989,6 +2995,35 @@ Example:
 ```sec
 let result := await task
 ```
+
+---
+
+# Unsafe call expression
+
+```text
+UnsafeCallExpression
+    ::= "unsafe" CallExpression
+```
+
+The direct single-call authorization (MD-079, 2026-10-18). The operand is
+parsed at prefix precedence and must be one complete call (function, method,
+associated or indirect callable); the prefix binds to that call, not to a
+following binary expression:
+
+```sec
+let value := unsafe pointer.Read()
+unsafe pointer.Write(value)
+let buffer := unsafe Buffer.FromRawParts(pointer, length)
+let adjusted := unsafe pointer.Read() + SafeAdjustment() // only Read is authorized
+```
+
+By the ordinary expression-statement rule the same form is a statement. It is
+distinct from the declaration modifier (`unsafe fn`, `unsafe extern`) and from
+the block `UnsafeStatement` (`unsafe` followed by `{`). A block-less `unsafe`
+followed by anything other than a call (for example `unsafe value + 1`) or by
+nothing on the same line is a syntax error. The prefix authorizes only that
+call's own unsafe obligations; its receiver, arguments and neighboring
+operands need their own authorization (`rules/memory/unsafe.md` § 4(9)–(13)).
 
 ---
 

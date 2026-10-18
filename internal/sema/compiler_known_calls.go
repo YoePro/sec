@@ -24,6 +24,16 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	}
 	if path, static := typePathFromExpression(memberExpr.Object); static {
 		typ, exists := a.types[a.resolveTypeName(path)]
+		if exists && typ.Kind == StringType && memberExpr.Property.Value == "FromByteArray" {
+			// MD-091: byte-to-string decoding is owned by stdlib/str.
+			a.addErrorAtTokenWithMetadata(memberExpr.Property.Token, "",
+				"decode bytes with str.FromByteArray(ref bytes) or str.FromByteArrayLossy(ref bytes) from stdlib/str (import \"str\")",
+				"string.FromByteArray is not a core API; byte-to-string decoding belongs to stdlib/str")
+			for _, argument := range expr.Arguments {
+				a.inferExpression(argument)
+			}
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if exists {
 			member, memberExists := compilerKnownMember(typ, memberExpr.Property.Value, true)
 			if !memberExists || (member.Kind != CompilerKnownMethod && member.Kind != CompilerKnownAssociatedFunction) {
@@ -31,7 +41,7 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 			}
 			a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
 			switch member.Name {
-			case "FromByteArray", "FromRuneArray":
+			case "FromRuneArray":
 				return a.inferCompilerKnownStringConstructor(expr, member)
 			case "FromBuffer", "WithCapacity", "Growable":
 				return a.inferArenaConstructorCall(expr, member)
@@ -250,4 +260,29 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	default:
 		return Type{}, expressionValue{}, false
 	}
+}
+
+// rejectCompilerKnownPropertyWrite rejects assignment to a compiler-known
+// property such as Len, Ptr, SizeOf, Capacity or decimal Scale: these are
+// read-only facts of the value (get-only in their canonical declarations),
+// never storage. An ordinary struct field of the same name keeps its own
+// rules.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Legacy lowercase member spellings", `Len`, `Ptr`
+//   - rules/library/core-library.md — § 10.1 (MD-082)
+func (a *Analyzer) rejectCompilerKnownPropertyWrite(objectType Type, member *ast.MemberExpression) bool {
+	receiver := dereferenceType(objectType)
+	if receiver.Kind == InvalidType || member.Property == nil {
+		return false
+	}
+	if _, field := lookupStructField(receiver, member.Property.Value); field {
+		return false
+	}
+	known, ok := compilerKnownMember(receiver, member.Property.Value, false)
+	if !ok || known.Kind != CompilerKnownProperty {
+		return false
+	}
+	a.addErrorAtToken(member.Property.Token, "compiler-known property %s of %s is read-only", known.Name, typeDisplayName(receiver))
+	return true
 }

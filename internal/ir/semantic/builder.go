@@ -54,7 +54,7 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	if sites := analyzer.FloatingUnitConversionSites(); len(sites) > 0 {
 		return nil, &UnsupportedFeatureError{Feature: "exact floating unit conversion", Package: options.MaxPackage, Location: location(sites[0])}
 	}
-	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles)}
+	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles), PointerWidthBits: analyzer.ScalarPlanWidthBits()}
 	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}, definedStructs: map[TypeID]bool{}}
 	b.statics.moduleLets = map[*ast.LetStatement]bool{}
 	var moduleLets []*ast.LetStatement
@@ -1610,7 +1610,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, Location: loc}, typeID), nil
 		}
 		if resolvedType.Kind == TypeFloat {
-			return fb.result(Operation{Kind: OpConstFloat, FloatLexeme: e.Token.Lexeme, Location: loc}, typeID), nil
+			return fb.buildFloatConstant(e.Token.Lexeme, typeID, loc)
 		}
 		value, ok := ast.ParseIntegerLiteralLexeme(e.Token.Lexeme)
 		if !ok {
@@ -1638,7 +1638,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	case *ast.FloatLiteral:
 		t, _ := fb.owner.module.Types.Lookup(typeID)
 		if t.Kind == TypeFloat {
-			return fb.result(Operation{Kind: OpConstFloat, FloatLexeme: e.Token.Lexeme, Location: loc}, typeID), nil
+			return fb.buildFloatConstant(e.Token.Lexeme, typeID, loc)
 		}
 		decimal, err := parseDecimal(e.Token.Lexeme)
 		if err != nil {
@@ -2090,10 +2090,17 @@ func (fb *functionBuilder) buildEnumConversion(call *ast.CallExpression, convers
 		return builtValue{}, err
 	}
 	kind := OpEnumFromInteger
+	var proof *ConversionProof
 	if conversion.Kind == sema.ResolvedEnumToInteger {
 		kind = OpEnumToInteger
+		// MD-104: only a Sema-proved exact conversion is lowered; the
+		// builder never rediscovers the enum domain.
+		if !conversion.Proof.Proven() {
+			return builtValue{}, fb.unsupported("enum to integer conversion "+conversion.EnumType.Name+" to "+conversion.IntegerType.Name+" that is not proven exact (needs a checked conversion)", call.Token)
+		}
+		proof = conversionProofOf(conversion.Proof)
 	}
-	return fb.result(Operation{Kind: kind, Operands: []ValueID{operand.id}, Location: location(call.Token)}, resultType), nil
+	return fb.result(Operation{Kind: kind, Operands: []ValueID{operand.id}, ConversionProof: proof, Location: location(call.Token)}, resultType), nil
 }
 
 func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema.ResolvedUnionConstruction, resultType TypeID) (builtValue, error) {
@@ -3241,6 +3248,9 @@ func (fb *functionBuilder) package14DeferredArrayOperator(expr ast.Expression) (
 func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression) (builtValue, error) {
 	resolved, ok := fb.owner.analyzer.ResolvedOperatorOf(expr)
 	if !ok {
+		if value, handled, err := fb.buildShapedFloatSign(expr); handled {
+			return value, err
+		}
 		return builtValue{}, fb.unsupported("unresolved or unsupported operator", expressionToken(expr))
 	}
 	leftType, err := fb.owner.internType(resolved.LeftType)
@@ -3283,6 +3293,11 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 		operands = append(operands, right.id)
 	}
 	loc := locationFromExpression(expr)
+	if resolved.Kind == sema.ResolvedFloatUnaryPlus {
+		// Floating unary plus preserves value, signed zero and NaN, so it is
+		// the SSA identity (package20.md § 20).
+		return left, nil
+	}
 	op := Operation{Operands: operands, Location: loc, Operator: operatorSpelling(expr)}
 	if !semanticOperatorKind(resolved, &op) {
 		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
@@ -3353,6 +3368,30 @@ func semanticOperatorKind(resolved sema.ResolvedOperator, op *Operation) bool {
 		op.Kind, op.IntegerCompare = OpEnumCompare, IntegerCompareEQ
 	case sema.ResolvedEnumCompareNE:
 		op.Kind, op.IntegerCompare = OpEnumCompare, IntegerCompareNE
+	case sema.ResolvedFloatNegate:
+		op.Kind = OpFloatNeg
+	case sema.ResolvedFloatAdd:
+		op.Kind, op.FloatBinary = OpFloatBinary, FloatBinaryAdd
+	case sema.ResolvedFloatSubtract:
+		op.Kind, op.FloatBinary = OpFloatBinary, FloatBinarySub
+	case sema.ResolvedFloatMultiply:
+		op.Kind, op.FloatBinary = OpFloatBinary, FloatBinaryMul
+	case sema.ResolvedFloatDivide:
+		op.Kind, op.FloatBinary = OpFloatBinary, FloatBinaryDiv
+	case sema.ResolvedFloatRemainder:
+		op.Kind, op.FloatBinary = OpFloatBinary, FloatBinaryRem
+	case sema.ResolvedFloatCompareEQ:
+		op.Kind, op.IntegerCompare = OpFloatCompare, IntegerCompareEQ
+	case sema.ResolvedFloatCompareNE:
+		op.Kind, op.IntegerCompare = OpFloatCompare, IntegerCompareNE
+	case sema.ResolvedFloatCompareLT:
+		op.Kind, op.IntegerCompare = OpFloatCompare, IntegerCompareLT
+	case sema.ResolvedFloatCompareLE:
+		op.Kind, op.IntegerCompare = OpFloatCompare, IntegerCompareLE
+	case sema.ResolvedFloatCompareGT:
+		op.Kind, op.IntegerCompare = OpFloatCompare, IntegerCompareGT
+	case sema.ResolvedFloatCompareGE:
+		op.Kind, op.IntegerCompare = OpFloatCompare, IntegerCompareGE
 	default:
 		return false
 	}
@@ -3522,6 +3561,10 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		kind = OpForeignCall
 	}
 	op := Operation{Kind: kind, Callee: functionID(resolved.Function, fb.owner.module.Types), Operands: args, ArgumentActions: actions, Location: location(call.Token)}
+	if call.HasUnsafePrefix() {
+		marker := location(call.Unsafe)
+		op.UnsafeAuthorization = &marker
+	}
 	if resolved.Function.ReturnType.Kind == sema.VoidType {
 		fb.emit(op)
 		return builtValue{typ: ret}, nil

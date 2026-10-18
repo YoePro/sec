@@ -1479,6 +1479,56 @@ this channel never demotes a proven compile-time error into a runtime result
 
 Lossy, wrapping, saturating, or otherwise intentionally non-preserving conversion semantics require separately defined explicit operations.
 
+## Exact integer conversion proof
+
+Decided 2026-10-18 (MD-104). A built-in integer-to-integer conversion is
+*exact* — lowered as Semantic IR `numeric.convert-exact` /
+`sec.numeric.convert_exact` with no runtime error edge
+(`rules/compiler/semantic_ir.md` § 124) — only when Sema has proved and
+retained that every value the source may hold is representable in the target
+under the **selected CompilationPlan**:
+
+- a compile-time-known constant is proved by its exact value; an unrelated
+  literal elsewhere proves nothing about a runtime value;
+- a non-enum source is proved by its complete type domain;
+- an ordinary **closed** integer-backed enum is proved by its set of declared
+  value classes — not the whole carrier range; aliases with duplicate values
+  do not enlarge it (`rules/declarations/enums.md` § 9, § 12.1);
+- an **open** `bit[N]` enum has the domain `0 ..= 2^N - 1`; its named cases
+  never bound it, so `bit[8]` converts exactly to `uint8`, `uint16` or
+  `int16` but not to `int8`;
+- an external C or other ABI-defined open enum uses its complete ABI raw
+  domain for the active target; when that domain is unresolved no exactness
+  proof is manufactured from declared cases. (Sec 0.1 has no such foreign
+  enum surface yet.)
+
+The proof is made for the active plan (Option A), not for an intersection of
+all targets: `int` and `uint` take that plan's resolved width, never the
+host's, an assumed `int64` or an unresolved layout. So `int(value)` with
+`value: uint32` is exact where `int` is 64-bit signed and is not exact where
+it is 32-bit; there the conversion is a checked conversion and failure must be
+handled. The same source may therefore compile on one target and need a
+checked conversion on another; this is target-dependent portability, not
+relaxed safety. Without the needed plan facts the compiler proves only what
+holds at every supported width and otherwise fails closed. Proofs record the
+plan they were made for; a proof made for another plan — including one
+from a cache or incremental reuse — is never reused but recomputed, and
+Semantic IR rejects a proof that does not match the module's plan.
+
+Direct enum-to-carrier conversion is an identity only when the declared
+carrier and target agree; any other width or signedness needs the proof
+above. The closed-enum proof relies on the closed-domain invariant: a raw
+integer is never accepted as an arbitrary closed-enum value, and raw foreign
+values that could violate it are validated or represented by an open/raw
+type.
+
+A conversion that is not proven exact is a checked conversion whose public
+failure family is `ConversionError` (`OutOfRange` for an integer domain,
+MD-012); P20's provisional `NumericConversionError` names no public type.
+Where the track cannot lower checked conversions yet it rejects them with an
+unsupported-lowering diagnostic; it never truncates silently. MD-056's
+remaining frontend `try` consistency question is not decided here.
+
 ## Numeric-to-text conversion (MD-051)
 
 `.ToString()` is the preferred spelling of numeric-to-text materialization. An

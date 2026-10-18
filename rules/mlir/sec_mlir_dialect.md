@@ -2003,3 +2003,36 @@ place escape is rejected
 schema-v10 regression remains valid
 no physical representation is selected
 ```
+
+## v11.40 Exact integer conversion contract transport
+
+The schema-11 integer admission of `sec.numeric.convert_exact` and
+`sec.enum.to_integer` carries the verified Semantic IR exactness contract
+(`rules/compiler/semantic_ir.md` § 124), using the discardable attribute:
+
+```mlir
+{sec.conversion_proof = {
+    basis = "closed-enum-domain",
+    plan_pointer_width = 0 : i32
+}}
+```
+
+The closed basis set is `constant`, `source-domain`,
+`closed-enum-domain`, `open-enum-domain` and `compiler-widening`.
+The dictionary contains exactly these two fields. A zero plan width denotes
+a plan-independent proof. A nonzero width is 32 or 64 and must equal the
+selected module's explicit index data-layout width. Missing, malformed,
+unknown-basis or incompatible-plan contracts are invalid.
+
+The operand and result types remain the conversion's source and target
+contract. This attribute transports the Sema-established proof; it is not
+permission for a later pass to independently classify an unproven conversion
+as exact. Scalar type resolution preserves the contract. Enum representation
+lowering consumes it without recomputing case-domain exactness and preserves
+it on any resulting `sec.numeric.convert_exact`. The contract may be removed
+once its conversion semantics have been discharged.
+
+Schemas 7–10 remain readable without this newly transported enum metadata.
+Binary enum-conversion lowering still requires the explicit contract and
+fails closed without it. Checked conversions remain separate fallible
+operations; absence of a proof never authorizes truncation.

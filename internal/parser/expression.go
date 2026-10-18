@@ -110,6 +110,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.AWAIT:
 		left = p.parseAwaitExpression()
 
+	case lexer.UNSAFE:
+		left = p.parseUnsafeCallExpression()
+
 	case lexer.MATCH:
 		match := p.parseMatchExpression()
 		if match == nil {
@@ -789,6 +792,36 @@ func (p *Parser) parseAwaitExpression() ast.Expression {
 		return nil
 	}
 	return expr
+}
+
+// parseUnsafeCallExpression parses the direct single-call authorization
+// `unsafe Call(...)`. The prefix binds to the following complete call at
+// prefix precedence, so `unsafe p.Read() + Other()` authorizes only
+// `p.Read()`; any other operand is rejected instead of widening the scope.
+//
+// Rules:
+//   - rules/foundations/grammar.md — UnsafeCallExpression (MD-079)
+//   - rules/memory/unsafe.md — § 4 single-operation syntax
+func (p *Parser) parseUnsafeCallExpression() ast.Expression {
+	marker := p.curToken
+	if p.peekToken.Type == lexer.EOF || p.peekToken.Type == lexer.SEMICOLON || p.peekToken.Type == lexer.RBRACE || p.peekToken.Line != marker.Line {
+		message := "`unsafe` must be followed by a block or by the single call it authorizes"
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, marker, nil, nil, "%s", message)
+		return p.invalidExpression(marker, message, compilerdiagnostics.ParserInvalidExpression)
+	}
+	p.nextToken()
+	value := p.parseExpression(PREFIX)
+	if value == nil {
+		return nil
+	}
+	call, ok := value.(*ast.CallExpression)
+	if !ok || call.HasUnsafePrefix() {
+		message := "`unsafe` without a block authorizes exactly one call; write `unsafe Call(...)` or use `unsafe { ... }` for other operations"
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, marker, nil, nil, "%s", message)
+		return p.invalidExpression(marker, message, compilerdiagnostics.ParserInvalidExpression)
+	}
+	call.Unsafe = marker
+	return call
 }
 
 func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {

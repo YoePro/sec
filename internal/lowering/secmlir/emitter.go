@@ -335,7 +335,13 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if err := e.emitResult(operation); err != nil {
 			return err
 		}
-		fmt.Fprintf(&e.out, "\"sec.const.float\"() <{lexeme = %s}> : () -> ", mlirString(operation.FloatLexeme))
+		if operation.Float != nil && operation.Float.Canonical {
+			// The canonical binary payload rounded once by the frontend; the
+			// lowering never reparses the lexeme (package20.md §§ 74, 76).
+			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{bits = %d : i64, lexeme = %s}> : () -> ", int64(operation.Float.Bits), mlirString(operation.FloatLexeme))
+		} else {
+			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{lexeme = %s}> : () -> ", mlirString(operation.FloatLexeme))
+		}
 		return e.finishResultOperation(operation)
 	case semantic.OpConstDecimal:
 		if err := e.emitResult(operation); err != nil {
@@ -548,6 +554,12 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitSemanticIntegerOperation(operation, "sec.int.shift_checked", "kind", string(operation.IntegerShift), values)
 	case semantic.OpIntCompare:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.cmp", "predicate", string(operation.IntegerCompare), values)
+	case semantic.OpFloatNeg:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.neg", "", "", values)
+	case semantic.OpFloatBinary:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.binary", "kind", string(operation.FloatBinary), values)
+	case semantic.OpFloatCompare:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.cmp", "predicate", string(operation.IntegerCompare), values)
 	case semantic.OpArithmeticFailure:
 		if len(operation.Operands) != 1 {
 			return fmt.Errorf("invalid arithmetic failure operand")
@@ -945,7 +957,7 @@ func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
 }
 
 func (e *emitter) emitOperationAttributes(operation semantic.Operation, synthesized bool) {
-	if operation.TryHandlerKind == "" && operation.MatchID == 0 && !synthesized {
+	if operation.TryHandlerKind == "" && operation.MatchID == 0 && operation.ConversionProof == nil && !synthesized {
 		return
 	}
 	e.out.WriteByte('{')
@@ -954,6 +966,12 @@ func (e *emitter) emitOperationAttributes(operation semantic.Operation, synthesi
 		e.out.WriteString(separator)
 		fmt.Fprintf(&e.out, "%s = %s", name, value)
 		separator = ", "
+	}
+	// Preserve Sema's exactness contract through the dialect boundary; lower
+	// passes consume it rather than rediscovering enum or integer domains.
+	// Rules: rules/compiler/semantic_ir.md — § 124(2–3).
+	if proof := operation.ConversionProof; proof != nil {
+		attribute("sec.conversion_proof", fmt.Sprintf("{basis = %s, plan_pointer_width = %d : i32}", mlirString(proof.Basis), proof.PlanPointerWidthBits))
 	}
 	if synthesized {
 		attribute("sec.synthesized", "true")
@@ -1041,7 +1059,7 @@ func (e *emitter) emitSemanticIntegerOperation(operation semantic.Operation, nam
 	if attributeName != "" {
 		fmt.Fprintf(&e.out, " <{%s = %s}>", attributeName, mlirString(attributeValue))
 	}
-	if operation.TryHandlerKind != "" || operation.MatchID != 0 {
+	if operation.TryHandlerKind != "" || operation.MatchID != 0 || operation.ConversionProof != nil {
 		e.out.WriteByte(' ')
 		e.emitOperationAttributes(operation, false)
 	}

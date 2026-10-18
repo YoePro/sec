@@ -523,7 +523,11 @@ other range-representation failure that cannot be represented safely
     -> RangeError.InvalidRange
 ```
 
-Compile-time-provable invalid ranges remain compile-time errors.
+Compile-time-provable invalid ranges remain compile-time errors. They use the
+§ 19 precedence: one invalid range expression gets one primary diagnostic, for
+its first provable failure; a constant start after a constant end is diagnosed
+even when the source length is unknown, and related notes never add primary
+errors (MD-094, 2026-10-18; `rules/collections/collections.md` § 7.5).
 
 ---
 
@@ -540,6 +544,9 @@ When multiple runtime range conditions could fail, use deterministic order:
 This determines the exact `RangeError` value on the fallible path.
 
 Optimization must preserve the same observable error.
+
+The same order selects the single primary compile-time diagnostic of a
+compile-time-provable invalid range (§ 18, MD-094).
 
 ---
 

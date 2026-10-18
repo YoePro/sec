@@ -37,8 +37,8 @@ Source inspection and focused tests establish the following state:
 | P15 Sema | Canonical Place/root/storage/domain/borrow/lifetime identities, arbitrary-precision element indexes, detached reference plans, bounded origins and validity policies exist. | Extend this model; do not recreate a slice-specific borrow checker or generation system. |
 | P15 Semantic IR | Place/reference types, operations and verification exist. Local/parameter/field/array borrows, reference uses, passing, instance receivers and selected union/Option payload borrows are implemented. | Build slices on these actual interfaces; P15 is still partial. |
 | P15 gaps | Static/addressed roots, returned-reference lowering/origin summaries, explicit holder reborrow (MD-061), and some payload/receiver paths remain unsupported. | Track prerequisites separately and retain explicit unsupported boundaries. |
-| Go emitter | `internal/lowering/secmlir/emitter.go` emits schema **10**. | Schema 11 is a predecessor task, not an already available baseline. |
-| C++ dialect | `mlir/lib/Dialect/Sec/SecDialect.cpp` accepts schemas **1–10**; P15 place/reference types and verifier passes are not registered yet. | Complete P15's dialect/verifier bridge before P16 end-to-end acceptance. |
+| Go emitter | `internal/lowering/secmlir/emitter.go` emitted schema **10** at this snapshot; since P15-50/51 (2026-10-16) it emits schema **11**. | Schema 11 is now the baseline; schema 12 (P16-38, P16-44) is the next version in the chain 12–15 (P16–P19). |
+| C++ dialect | `mlir/lib/Dialect/Sec/SecDialect.cpp` accepted schemas **1–10** at this snapshot; it now accepts **1–11** with the P15 place/reference types. Early schema-11 admissions are recorded in `sec_mlir_dialect_v11.md` § 41. | Complete the remaining P15 verifier bridge before P16 end-to-end acceptance. |
 | Builder selection | `BuildOptions.MaxPackage` defaults to **14**; P15 is selected explicitly. Slice expressions and array-to-slice creation are rejected. | Add an explicit P16 path before promoting the default. |
 | Existing slices | Sema uses `ReferenceType` over `SliceType`; slice origins, overlap checks, nested static composition and local-return rejection already exist. | Migrate producers and consumers rather than replace working source semantics wholesale. |
 | Slice precision | `PlaceProjection.SliceStart` / `SliceEnd` and nested slice composition still use `int64`; element indexes already use `big.Int`. | The range migration remains genuine P16 work. |
@@ -221,7 +221,7 @@ sources unless an actual synchronized migration requires them.
   - Normalization is exact: a missing start is 0, an inclusive end is `end + 1` (no MaxInt64 give-up), and a missing end of a fixed array is its exact length, even beyond int64.
   - Exact arithmetic is used throughout: nested slice and index composition (inputs are never mutated), emptiness, disjointness, equality (`sliceBoundsEqual`), index containment, storage overlap, callee demand places and identity comparison. `addInt64` is removed.
   - Persisted parameter-demand summaries are now schema version 2.
-  - Diagnostic presentation prints an unknown start as `*` (MD-089).
+  - Diagnostic presentation prints an unknown start as `*` (MD-089, decided and integrated 2026-10-18: borrowing.md § 12(9), diagnostics.md § 10(7)).
   - Tests: `TestSliceProjectionBoundsAreExactBeyondInt64` and `TestSlicePlaceProjectionNormalizesEndpointsExactly`; the existing overlap, relationship and disjoint-borrow tests are migrated.
   - The signed `len(slice)` gap is logged as MD-088.
 - [x] P16-10 — Add stable `SliceRangeID` for evaluated dynamic ranges using
@@ -271,7 +271,7 @@ sources unless an actual synchronized migration requires them.
     3. a start beyond the length, an exclusive end beyond the length, or an inclusive end at or beyond the length → `OutOfBounds`.
   - Unknown facts never fail. The same function defines the runtime `RangeError` for the same values, so P16-14/P16-31 can reuse it and the observable error stays the same under optimization.
   - `checkSliceBounds` now reports exactly one compile-time error per range: the first failure under that precedence, where it used to report every failing condition. It also diagnoses start after end for sources of unknown length (dynamic arrays, slices), not only fixed arrays. The message texts are unchanged.
-  - Reporting only the precedence-first failure at compile time is logged as MD-094.
+  - Reporting only the precedence-first failure at compile time is MD-094 (decided and integrated 2026-10-18: collections.md § 7.5, package16.md §§ 18–19).
   - Tests: `TestClassifySliceRangePrecedence` (including values beyond int64) and `TestConstantSliceRangeDiagnosticsFollowPrecedence`.
   - Not done here: runtime and fallible lowering of the classification (P16-31/P16-32), and the evaluation-order part of P16-11.
 - [x] P16-14 — Publish `ResolvedSliceCreationPlanOf(*ast.RefExpression)` with
@@ -294,13 +294,43 @@ sources unless an actual synchronized migration requires them.
   Tests: `TestResolvedSliceCreationPlans`, `TestSliceRangeErrorCoreIdentity`,
   `TestSliceCreationRejectsNonIntegerEndpoints`, and
   `TestSliceCreationRejectsRangePastKnownParent`. Source-to-IR slice creation,
-  fallible CFG and broader P16-16 query coverage remain separate TODO items.
-- [ ] P16-15 — Publish `ResolvedSliceIndexPlanOf(*ast.IndexExpression)` with
+  fallible CFG remain separate TODO items; broader query coverage is completed
+  by P16-16 below.
+- [x] P16-15 — Publish `ResolvedSliceIndexPlanOf(*ast.IndexExpression)` with
   source authority, exact index/type/proof facts, use/transfer action and IndexError
   identity (§§50–58). Extend existing resolved index producers; no second proof engine.
-- [ ] P16-16 — Make all plan queries read-only and defensively detached, including
+
+  Completed 2026-10-18. Analysis records source authority/Place, exact known
+  slice extent, original integer type/signedness/constant, shared P14 check,
+  proof/use/transfer enums and the existing canonical IndexError. Fixed-array
+  and slice plans share one exact constant/domain/refinement proof producer;
+  unknown extents remain runtime-checked. Proven local subranges, range-typed
+  indices and dominating branch guards reuse existing proofs. Known invalid,
+  empty-slice and negative indices receive the owning bounds diagnostic.
+  Read, write, shared/mutable borrow and accepted try handling update the same
+  stored plan. Queries deeply detach all types, origins, exact integers and
+  error cases, allocate no identities and reset between analyses. Cohesive
+  index plan/proof/use functions moved from analyzer.go into index_plans.go.
+  Tests: TestResolvedSliceIndexPlans, TestSliceIndexConstantBounds and existing
+  fixed-array/list and slice creation-plan regressions. Slice Semantic IR,
+  schema 12 and reference-validity effects remain separate work; the broader
+  query matrix is completed by P16-16 below.
+- [x] P16-16 — Make all plan queries read-only and defensively detached, including
   big integers, origin alternatives, nested types and ranges. Add mutation and
   repeat-query tests proving no Analyzer changes (§§37,51).
+
+  Completed 2026-10-18. Creation and index queries return detached exact
+  integers, endpoint and element types, source Places/ranges and error cases.
+  Slice-specific snapshot helpers now preserve nested finite origin trees:
+  routing through the general flat P15 Place/reference copier could discard
+  deeper alternatives before cloning. Embedded reference facts retain their
+  complete Place/origin trees and independently copied storage identities.
+  Snapshot helpers live in slice_plan_snapshots.go. The source-backed
+  TestSlicePlanQueriesAreDetachedAndReadOnly repeatedly mutates every exposed
+  subtree, checks that later queries are unchanged, and verifies identity
+  tables, borrow/plan/error counts and empty inference/Place caches stay
+  unchanged. Unknown and nil queries remain side-effect-free. Existing exact
+  range/index and source creation query regressions remain in force.
 - [ ] P16-17 — Carry slice origins/ranges through parameters, shared copy, mutable
   move, reborrow, aggregate fields and returns. Preserve caller-origin legality,
   reject local escape and conservatively widen unknown runtime ranges (§§39–43,63–69).

@@ -12,7 +12,7 @@ import (
 // The single compilation track (MD-101, user decision 2026-10-17):
 //
 //	Sema -> Semantic IR -> Sec dialect MLIR -> standard MLIR -> LLVM dialect
-//	     -> LLVM IR -> clang link
+//	     -> LLVM IR -> llc object (same LLVM build) -> clang link
 //
 // Sec dialect operations are used where Sec semantics need them and standard
 // MLIR where it suffices; sec-mlir-opt --sec-lower-to-llvm lowers both to the

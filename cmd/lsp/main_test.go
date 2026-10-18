@@ -3783,7 +3783,7 @@ func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
 	valueOffset := strings.Index(valueSource, "value.") + len("value.")
 	valueItems := completeSource(uri, valueSource, valueOffset)
 	assertCompletionLabels(t, valueItems, []string{
-		"ByteAt", "Compare", "Contains", "Empty", "EndsWith", "FromByteArray", "FromRuneArray",
+		"ByteAt", "Compare", "Contains", "Empty", "EndsWith", "FromRuneArray",
 		"IndexOf", "LastIndexOf", "Len", "Ptr", "SizeOf", "Slice", "Split", "SplitOnce",
 		"SplitToArray", "StartsWith", "ToByteArray", "ToCharArray", "ToLower", "ToRuneArray",
 		"ToString", "ToUpper", "Trim", "TrimEnd", "TrimStart",
@@ -3828,7 +3828,7 @@ func TestCompletionIncludesStaticCompilerKnownMembers(t *testing.T) {
 
 	source = "module main\n\nfn Use() void {\n\tstring.\n}\n"
 	stringItems := completeSource("", source, strings.Index(source, "string.")+len("string."))
-	assertCompletionLabels(t, stringItems, []string{"FromByteArray", "FromRuneArray", "SizeOf"})
+	assertCompletionLabels(t, stringItems, []string{"FromRuneArray", "SizeOf"})
 
 	source = "module main\n\nfn Use() void {\n\tArena.\n}\n"
 	arenaItems := completeSource("", source, strings.Index(source, "Arena.")+len("Arena."))

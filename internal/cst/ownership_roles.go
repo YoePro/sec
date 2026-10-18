@@ -11,6 +11,12 @@ import (
 // rules/corrections/applied/formatter-ownership-v2-correction-20260826.md — "Correction".
 func (d *Document) applyOwnershipSpacingRoles(node any, indexes map[concreteTokenKey]int, mark func(lexer.Token, Role)) {
 	switch node := node.(type) {
+	case *ast.ReturnStatement:
+		// rules/declarations/functions.md §14; rules/tooling/formatter.md
+		// §21(5): preserve the optional marker and attach it to its operand.
+		if node.Value != nil && node.MoveToken.Type == lexer.MOVE_ASSIGN {
+			mark(node.MoveToken, PrefixOperator)
+		}
 	case *ast.Parameter:
 		if !node.Consuming || node.Name == nil || node.Type == nil || node.Type.Invalid {
 			return

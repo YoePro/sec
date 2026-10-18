@@ -10,6 +10,12 @@
 #include "sec/Dialect/Sec/SecOps.h.inc"
 
 namespace sec {
+/// Verify the transported exactness contract and its module-plan binding,
+/// without independently proving the conversion (semantic_ir.md § 124;
+/// rules/mlir/dialect-versions/sec_mlir_dialect_v11.md § 40).
+mlir::LogicalResult verifyConversionProof(mlir::Operation *operation,
+                                         bool allowLegacyAbsence = false);
+
 /// The one authoritative P5/P15 storage query (sec_mlir_lowering_v11.md
 /// section 18, sec-mlir-dialect_package15.md section 67): storage whose
 /// declaration carries `sec.address_taken = true`, or that a

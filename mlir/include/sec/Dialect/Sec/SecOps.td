@@ -23,9 +23,12 @@ def Sec_ConstBoolOp : Sec_Op<"const.bool", [Pure]> {
   let hasVerifier = 1;
 }
 
+// P20 §§ 18, 74: the frontend's canonical binary payload, rounded once from
+// the exact source value, travels as `bits`; lowering never reparses the
+// lexeme (P20 § 76).
 def Sec_ConstFloatOp : Sec_Op<"const.float", [Pure]> {
   let summary = "Exact source spelling of a Sec floating constant";
-  let arguments = (ins StrAttr:$lexeme);
+  let arguments = (ins StrAttr:$lexeme, OptionalAttr<I64Attr>:$bits);
   let results = (outs AnyType:$result);
   let hasVerifier = 1;
 }
@@ -130,6 +133,31 @@ def Sec_IntShiftCheckedOp : Sec_Op<"int.shift_checked", [Pure]> {
 
 def Sec_IntCmpOp : Sec_Op<"int.cmp", [Pure]> {
   let summary = "Resolved Sec integer comparison";
+  let arguments = (ins StrAttr:$predicate, AnyType:$left, AnyType:$right);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
+// P20 floating operations (sec-mlir-dialect_package20.md §§ 20–26, 63–65,
+// 73, 75, 77), admitted early in schema 11 for float, float32 and float64:
+// nearest-even rounding, no fast-math, no failure edge; `rem` is the
+// truncation remainder.
+def Sec_FloatNegOp : Sec_Op<"float.neg", [Pure]> {
+  let summary = "Sec floating negation (toggles the sign, NaN stays NaN)";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatBinaryOp : Sec_Op<"float.binary", [Pure]> {
+  let summary = "Sec floating arithmetic: add, sub, mul, div or rem";
+  let arguments = (ins StrAttr:$kind, AnyType:$left, AnyType:$right);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatCmpOp : Sec_Op<"float.cmp", [Pure]> {
+  let summary = "Sec floating comparison (ordered except ne, NaN-aware)";
   let arguments = (ins StrAttr:$predicate, AnyType:$left, AnyType:$right);
   let results = (outs I1:$result);
   let hasVerifier = 1;

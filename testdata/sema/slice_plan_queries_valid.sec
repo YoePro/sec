@@ -1,0 +1,12 @@
+module main
+
+type Cell struct { Samples: int[4] }
+
+fn Queries(items: Cell[4], start: int128, finish: uint256, index: int128) void {
+    let view := ref items[uint128(1)..<uint256(4)]
+    let nested := ref view[start..<finish]
+    let element := ref nested[index]
+    discard element
+    discard nested
+    discard view
+}

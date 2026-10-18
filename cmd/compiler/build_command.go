@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	mlirtoolchain "sec/internal/mlir"
 	"sec/internal/project"
 )
 
@@ -127,6 +128,21 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		}
 	}
 
+	// The LLVM IR is compiled by the llc of the same LLVM build that produced
+	// it; textual IR never reaches a differently versioned clang (2026-10-18).
+	objectPath, removeObject, err := createTempOutputPath(".o")
+	if err != nil {
+		reportToolError("temp file", "%v", err)
+		exitCLI(1)
+	}
+	if removeObject {
+		defer os.Remove(objectPath)
+	}
+	if err := mlirtoolchain.NewToolchain(options.MLIRBin).CompileObject(llvmPath, objectPath, targetDefinition.LLVMTriple); err != nil {
+		reportPipelineError("object code generation", err)
+		exitCLI(4)
+	}
+
 	// rules/compiler/linking.md sections 8, 29, and 37: this is the legacy
 	// direct-driver path. The selected executable and argv are not a canonical
 	// LinkEnvironment/LinkPlan and must eventually be materialized from one.
@@ -136,7 +152,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		exitCLI(1)
 	}
 
-	clangArgs := []string{"-target", targetDefinition.LLVMTriple, llvmPath, "-o", options.OutputFile}
+	clangArgs := []string{"-target", targetDefinition.LLVMTriple, objectPath, "-o", options.OutputFile}
 	cmd := exec.Command(clangPath, clangArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

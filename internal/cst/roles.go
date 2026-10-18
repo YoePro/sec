@@ -716,6 +716,12 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			}
 		case *ast.WhileStatement:
 			mark(node.Token, SpacedKeyword)
+		case *ast.CallExpression:
+			// rules/tooling/formatter.md: the direct single-call authorization
+			// `unsafe Call()` keeps exactly one space after `unsafe` (MD-079).
+			if node.HasUnsafePrefix() {
+				mark(node.Unsafe, SpacedKeyword)
+			}
 		case *ast.ForStatement:
 			mark(node.Token, SpacedKeyword)
 			if len(node.Bindings) > 0 && node.Iterable != nil {

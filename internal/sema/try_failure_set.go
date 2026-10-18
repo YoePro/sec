@@ -156,6 +156,9 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 // a fixed-array access without a static proof, any dynamic-array or slice
 // access, and any list access.
 func (a *Analyzer) runtimeCheckedIndex(index *ast.IndexExpression) bool {
+	if plan, ok := a.resolvedSliceIndexPlans[index]; ok {
+		return plan.CheckKind == ArrayIndexRuntimeCheck
+	}
 	if plan, ok := a.resolvedArrayIndexPlans[index]; ok {
 		return plan.CheckKind == ArrayIndexRuntimeCheck
 	}
@@ -385,6 +388,11 @@ func (a *Analyzer) commitTryFailurePoints(points []TryFailurePoint) {
 			a.callGraph.removeEffect(a.currentCallable, EffectMayPanicBounds, expressionToken(index))
 			if plan, ok := a.resolvedArrayIndexPlans[index]; ok {
 				a.commitFallibleBoundsIndex(index, plan, point.ErrorType)
+			}
+			if plan, ok := a.resolvedSliceIndexPlans[index]; ok {
+				plan.FailureMode = ArrayIndexFailureFallible
+				plan.ErrorType = point.ErrorType
+				a.resolvedSliceIndexPlans[index] = cloneSliceIndexPlan(plan)
 			}
 			if plan, ok := a.resolvedListIndexPlans[index]; ok {
 				plan.FailureMode = ArrayIndexFailureFallible

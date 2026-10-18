@@ -34,6 +34,17 @@ func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth Ana
 	analyzer.types["float"] = platformFloat
 	analyzer.types["ProcessID"] = processIDType(plan.PointerWidthBits)
 	analyzer.targetUintWidthBits = plan.PointerWidthBits
+	analyzer.scalarPlanWidthBits = plan.PointerWidthBits
 	analyzer.registerCFundamentalTypes(plan.CABI)
 	return analyzer
+}
+
+// ScalarPlanWidthBits is the selected CompilationPlan's pointer width, or
+// zero when the analyzer was built without a plan. Plan-specific exactness
+// proofs record it (MD-104).
+func (a *Analyzer) ScalarPlanWidthBits() uint16 {
+	if a == nil {
+		return 0
+	}
+	return a.scalarPlanWidthBits
 }

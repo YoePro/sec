@@ -1,0 +1,14 @@
+module main
+
+enum State int16 {
+    Idle = 0
+    Running = 2
+}
+
+fn Code(value: State) uint8 {
+    return uint8(value)
+}
+
+fn Native(value: uint8) int {
+    return int(value)
+}

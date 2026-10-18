@@ -1,0 +1,18 @@
+module main
+
+@noCopy
+type Resource struct { Value: int }
+
+fn Moved(value: Resource) Resource {
+    discard value
+    return <-value
+}
+
+fn LocalReference() ref int {
+    let local := 42
+    return <-ref local
+}
+
+fn Indexed(values: Resource[]) Resource {
+    return <-values[0]
+}

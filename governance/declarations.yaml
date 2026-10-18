@@ -578,6 +578,9 @@ integrations:
       - internal/formatter/formatter.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
+      - internal/parser/return_statement.go
+      - internal/cst/ownership_roles.go
+      - internal/sema/return_ownership.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -585,6 +588,16 @@ integrations:
       - internal/sema/semantic_facts_test.go
       - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
+      - internal/parser/return_statement_test.go
+      - internal/sema/explicit_return_test.go
+      - internal/ir/semantic/explicit_return_test.go
+      - internal/formatter/explicit_return_test.go
+      - cmd/compiler/native_track_test.go
+      - testdata/build/native/explicit_return.sec
+      - testdata/ir/explicit_return.sec
+      - testdata/ownership/explicit_return_valid.sec
+      - testdata/ownership/explicit_return_invalid.sec
+      - testdata/parser/explicit_return_missing_invalid.sec
     implemented:
       - ordinary named fn declarations with mandatory explicit return types and bodies
       - parameter parsing including canonical name colon ref Type and name colon ref mut Type, trailing commas, duplicate diagnostics, resolved parameter and result types, and function-local scopes
@@ -620,8 +633,9 @@ integrations:
       - variadic callable shape retained by inferred function values, callable identity, compatibility, and concrete generic instances
       - "MD-027 contextual arguments (2026-10-12, types.md 'Contextual None and empty-literal arguments', functions.md § 19): overload resolution considers all supplied arguments together; a bare None, an empty array literal [] or the null sentinel whose type the candidates do not agree on is deferred, matches only a parameter of its family (Option, empty-literal-compatible array, RawPtr) and is typed from the single selected overload, for calls, methods, init and new; viable candidates that disagree give S1147 types.ambiguous-contextual-argument naming the candidate types with typed-binding help; return types neither distinguish nor select overloads (TestContextualLiteralArgumentsFollowOverloadResolution, TestReturnTypeAloneDoesNotDistinguishOverloads, TestBareNoneArgumentUsesAgreedParameterContext)"
       - "MD-027 contextual Some and silent mismatch (fixed 2026-10-17, MD-102 open): a bare one-argument Some(...) argument is a contextual Option argument like None (deferred, accepted only by Option parameters, typed from the selected overload, also in methods, initializers and middle positions), so Some(x) as an argument no longer fails with S1157; inferCallExpressionWithExpected hands non-generic calls and calls with contextual arguments to the ordinary call path (return Pick(Some(x))); a contextual argument passed to a non-Option/non-array parameter is now reported (previously Plain(None) was accepted silently); an uninstantiated generic parameter no longer binds a context (Unwrap(Some(1), 0) reports cannot infer generic arguments, as None does); None() is explained under S1157; TestBareSomeArgumentUsesParameterContext"
-    remaining:
       - accept optional `return <-value` with the same result ownership as `return value`
+      - Optional terminal `return <-expression` is retained as ReturnStatement.MoveToken rather than an ordinary prefix move, applies to the complete returned expression, and follows exactly the same Sema ownership, construction, lifetime, Result-forwarding and Semantic IR paths as unmarked return (2026-10-18; functions.md §14; grammar.md ReturnStatement). Fresh values, aggregates and calls are accepted; moved sources, escaping locals and indexed move-only extraction remain rejected. CST formatting preserves and attaches the marker; dangling-marker recovery retains the following declaration. TestNativeTrackBuildsAndRuns/explicit_return builds and executes the program with exactly-once return-operand evaluation.
+    remaining:
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
@@ -637,12 +651,25 @@ integrations:
       - runtime-generic callables or unresolved overload sets as function values
       - native variadic ABI equivalence with C or foreign varargs
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/parser ./internal/cst ./internal/formatter ./internal/sema ./internal/ir/... ./internal/lowering/... ./cmd/compiler ./cmd/lsp -count=1
+        result: Parser, CST, formatter, IR and lowering passed. The two Sema regressions exposed by separating the return marker were fixed and the complete Sema suite then passed (separate command above). The compiler failed only the two existing IO API tests because stdlib/io still calls the removed string.FromByteArray. The full LSP run was interrupted after 158 seconds; no full LSP pass is claimed.
+      - command: go vet ./internal/parser ./internal/cst ./internal/formatter ./internal/sema ./internal/ir/... ./cmd/compiler
+        result: passed
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run 'TestNativeTrack|TestIntegerEnumTrack' -count=1
+        result: passed; includes source-to-binary execution of optional marked returns and the existing single-track regression matrix
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed after return-ownership extraction; all Sema, Semantic IR and lowering packages passed, including whole-self and volatile-storage move restrictions
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run '^TestNativeTrackBuildsAndRuns/explicit_return$' -count=1 -v
+        result: passed; source was built through Semantic IR, Sec MLIR, LLVM dialect, LLVM IR and clang, then executed successfully; literal, compound-expression and call returns retain exactly-once evaluation
+      - command: go test ./internal/sema ./internal/parser ./internal/cst ./internal/formatter ./internal/ir/... -run 'Test(ExplicitReturn|ReturnMoveMarker|FormatExplicitReturn|TerminalReturnForwards|OrdinaryMethodCannotConsumeWholeSelf|ExplicitMoveRejectsAddressedVolatileStorage)' -count=1
+        result: passed; marked and unmarked ownership diagnostics and Semantic IR agree, fresh terminal values are accepted, dangling-marker recovery preserves the next declaration, formatting is idempotent, and explicit whole-self/MMIO moves remain rejected
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters|CanonicalReferenceTypeCallArguments' -count=1
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ParseNativeVariadic|ParseRejectsNonFinalNativeVariadic|NativeVariadic)' -count=1
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
         result: passed
+    revised: "2026-10-18"
 
   - id: frontend.lambda-functions-v2
     area: frontend-analysis-and-lowering

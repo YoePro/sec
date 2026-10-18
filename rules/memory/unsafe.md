@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-09-02
-- Document revision: 2.0
+- Last updated: 2026-10-18
+- Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/memory/unsafe.md`
 - Replaces: previous revision of `rules/memory/unsafe.md`
@@ -147,6 +147,27 @@ let value := unsafe {
 § 4(7) Parent scopes do not become implicitly unsafe.
 
 § 4(8) Nested unsafe contexts are permitted but may be diagnosed as redundant where no additional boundary clarity is gained.
+
+§ 4(9) The direct single-operation form is **recommended best practice when exactly one unsafe call needs authorization** (MD-079, 2026-10-18). A block remains appropriate for a sequence of related unsafe operations or a deliberately scoped unsafe expression. Both forms are accepted.
+
+§ 4(10) The direct form is `unsafe` followed by one complete call (`rules/foundations/grammar.md` "Unsafe call expression"):
+
+```sec
+let value := unsafe pointer.Read()
+unsafe pointer.Write(value)
+let buffer := unsafe Buffer.FromRawParts(pointer, length)
+```
+
+§ 4(11) The direct form authorizes only the immediately prefixed complete call. It does not make the enclosing statement, neighboring operations, the surrounding scope, the call's receiver, or calls inside its arguments unsafe. Nested unsafe operations need their own explicit authorization unless already inside an unsafe block:
+
+```sec
+let value := unsafe pointer.Read() + SafeAdjustment() // only Read is authorized
+let nested := unsafe Danger(unsafe Danger(1))          // each call is marked
+```
+
+§ 4(12) A block-less `unsafe` not followed by a call is invalid. `unsafe` is not an exemption from ordinary type, borrow, ownership, error, visibility, or lifetime checking of the authorized call.
+
+§ 4(13) The formatter writes one space between `unsafe` and the call, keeps the call's ordinary formatting, and never rewrites a single-operation form into a block or vice versa (`rules/tooling/formatter.md`). Semantic IR records the marker's source position on the authorized call (`unsafe-direct@loc(...)`).
 
 ---
 

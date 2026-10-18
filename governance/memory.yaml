@@ -161,7 +161,6 @@ integrations:
   - id: frontend.unsafe
     status: partial
     remaining:
-      - complete both unsafe context forms across parser/AST/Sema/formatter
       - complete unsafe fn/method and unsafe extern callable safety checking
       - centralize unsafe operation classification
       - preserve caller obligations and safe-wrapper boundaries
@@ -184,7 +183,14 @@ integrations:
       - testdata/tooling/unsafe_callable_body_invalid.sec
       - testdata/tooling/unsafe_callable_body_valid.sec
       - testdata/tooling/unsafe_function_asm_valid.sec
+      - cmd/compiler/unsafe_direct_call_test.go
+      - testdata/sema/unsafe_direct_call_valid.sec
+      - testdata/sema/unsafe_direct_call_invalid.sec
+      - testdata/sema/unsafe_direct_call_syntax_invalid.sec
+      - internal/formatter/token_spacing_test.go
     verification:
+      - command: go test ./cmd/compiler -run TestUnsafeDirectCall -count=1 && go test ./internal/formatter -run TestFormatDirectUnsafeCall -count=1
+        result: passed on 2026-10-18; direct unsafe call scope, nested and receiver requirements, parse rejection, Semantic IR provenance and formatting
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -count=1
         result: LSP full suite passed on 2026-10-15 (285.353s); the compiler component initially exposed implicit unsafe in Linux library bodies, which were migrated and verified by the separate passing full compiler rerun
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -count=1
@@ -196,8 +202,9 @@ integrations:
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
         result: passed on 2026-10-15; complete suites cover explicit body contexts, unchanged caller safety and Semantic IR/lowering regressions
     implemented:
+      - "direct single-call form (MD-079 decided 2026-10-18; unsafe.md § 4(9)–(13), grammar.md UnsafeCallExpression, formatter.md § 19(14)): `unsafe Call()` parses at prefix precedence as an expression or statement and records ast.CallExpression.Unsafe; Sema authorizes exactly that call (Analyzer.callUnsafeAuthorized) — its receiver, arguments and neighbors keep their own requirements and ordinary type checking applies; a block-less unsafe without a call is a parse error; the formatter keeps one space and never converts between forms; Semantic IR prints unsafe-direct@loc(...) on the call; the native track builds and runs a prefixed call"
       - "Unsafe callable bodies start outside an unsafe context: unmarked raw-pointer operations and unsafe calls are rejected even inside unsafe fn, explicit unsafe blocks remain valid and do not leak permission, and callable caller requirements remain enforced."
-    revised: "2026-10-15"
+    revised: "2026-10-18"
 
   - id: frontend.references
     area: frontend-reference-provenance-lifetime

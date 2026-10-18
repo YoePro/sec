@@ -28,7 +28,7 @@ func TestInitDocumentsFormattingDefaults(t *testing.T) {
 		}
 		config := string(data)
 		parsed, errors := project.ParseManifestFormat(config)
-		if len(errors) != 0 || !parsed.Present || parsed.FormatVersion == nil || parsed.VerticalStyle == nil || parsed.IndentationWidth == nil || parsed.WidthMode == nil || parsed.LineWidth == nil || parsed.AdaptiveMinWidth == nil || parsed.AdaptiveMaxWidth == nil || parsed.AdaptiveFallbackWidth == nil || parsed.LanguageCorrections == nil {
+		if len(errors) != 0 || !parsed.Present || parsed.FormatVersion == nil || parsed.VerticalStyle == nil || parsed.IndentationWidth == nil || parsed.WidthMode == nil || parsed.LineWidth == nil || parsed.AdaptiveMinWidth == nil || parsed.AdaptiveMaxWidth == nil || parsed.AdaptiveFallbackWidth == nil || parsed.LanguageCorrections == nil || parsed.MaxAlignmentPadding != nil {
 			t.Fatal(parsed, errors)
 		}
 		settings, err := formatconfig.Resolve(path, config, formatconfig.Overrides{})
@@ -38,7 +38,7 @@ func TestInitDocumentsFormattingDefaults(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(settings, defaults) {
 			t.Fatal(settings, defaults, err)
 		}
-		for _, comment := range []string{"Supported version: 1", "\"structured\"", "\"compact\"", "Allowed values: 2, 4, 6", "\"fixed\"", "\"adaptive\"", "not a hard limit", "minimum <= fallback <= maximum", "true enables", "Default: false"} {
+		for _, comment := range []string{"Supported version: 1", "\"structured\"", "\"compact\"", "Allowed values: 2, 4, 6", "\"fixed\"", "\"adaptive\"", "not a hard limit", "minimum <= fallback <= maximum", "true enables", "Default: false", "# max_alignment_padding = 16"} {
 			if !strings.Contains(config, comment) {
 				t.Fatal("missing documented option", comment)
 			}

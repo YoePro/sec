@@ -1,0 +1,17 @@
+module main
+
+fn PastEnd() int {
+    let values := [1, 2, 3, 4]
+    let view := ref values[1..<3]
+    return view[2]
+}
+
+fn Empty() int {
+    let mut values: int[0]
+    let view := ref values[..]
+    return view[0]
+}
+
+fn Negative(values: ref int[]) int {
+    return values[int256(-1)]
+}

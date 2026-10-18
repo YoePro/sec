@@ -1,11 +1,12 @@
 package sema
 
 import (
-	"fmt"
-
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 )
+
+// explicitRefRequiredHelp is the canonical S1169 help text (MD-080).
+const explicitRefRequiredHelp = "Only call arguments may borrow implicitly.\nWrite `ref value` or `ref mut value` to create an explicit reference."
 
 // rejectImplicitBorrow reports an owned value used where a direct reference
 // is required outside a call argument. Marker-free borrowing exists only at
@@ -19,6 +20,7 @@ import (
 // Rules:
 //   - rules/memory/borrowing.md — §§ 5.1, 15.2
 //   - rules/memory/references.md — § 5
+//   - rules/tooling/diagnostics.md — S1169 borrowing.explicit-ref-required (MD-080)
 func (a *Analyzer) rejectImplicitBorrow(target, value Type, expr ast.Expression) bool {
 	if expr == nil || target.Kind != ReferenceType || target.Element == nil || target.Element.Kind == SliceType {
 		return false
@@ -34,8 +36,10 @@ func (a *Analyzer) rejectImplicitBorrow(target, value Type, expr ast.Expression)
 	if target.ReferenceMutable {
 		marker = "ref mut"
 	}
+	// The help is the canonical S1169 text (MD-080); the message names the
+	// required reference type, the source Place and ref versus ref mut.
 	a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.BorrowExplicitRefRequired,
-		fmt.Sprintf("Only a call argument borrows implicitly. Write `%s %s` to borrow explicitly; the borrow is then checked like any other, so a reference to local storage cannot be returned or stored beyond its lifetime.", marker, expr.String()),
+		explicitRefRequiredHelp,
 		"%s is required here, got owned %s; write `%s %s`", typeDisplayName(target), typeDisplayName(value), marker, expr.String())
 	return true
 }

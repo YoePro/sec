@@ -7,7 +7,7 @@ import (
 
 // MD-050/MD-071/MD-072: the trusted core string surface uses rune positions
 // for IndexOf/LastIndexOf/Slice/GetRune and byte positions for GetByte,
-// borrows its input in FromByteArray/FromRuneArray and materializes owning
+// borrows its input in FromRuneArray and materializes owning
 // arrays through Result[..., CollectionError]; infallible uses are rejected.
 //
 // Rules:

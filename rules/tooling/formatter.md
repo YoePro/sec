@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-10-15 (configured continuation indentation for return values and if conditions)
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
 - **Replaces:** Earlier legacy revision at the same canonical path
@@ -162,7 +162,7 @@ compact
 
 § 4(13) Preferred line width is a target, not a source-language limit. An unbreakable or deliberately preserved construct may exceed it.
 
-§ 4(14) The maximum alignment padding is the project setting `max_alignment_padding`, a number of spaces in `1..1024`. When it is omitted the default is four indentation widths; with the default indentation width this is sixteen spaces. A project with wide declaration tables, such as an enum whose member names differ greatly in length, may raise it so the group keeps one aligned column instead of § 9(10) dropping the alignment (MD-098, user decision 2026-10-17). Adding the key does not change the canonical output of a project that omits it, so it requires no new `format_version`.
+§ 4(14) The maximum alignment padding is the project setting `max_alignment_padding`, a number of spaces in `1..1024`. When it is omitted the default is four indentation widths; with the default indentation width this is sixteen spaces. A project whose ordinary, non-exempt declaration groups — for example eligible struct fields or `let` declarations whose names differ greatly in length — need a wider column may raise it so the group keeps one aligned column instead of § 9(10) dropping the alignment. Wide enum member names are not a reason to raise it: enum explicit-value groups are always aligned regardless of the limit (§ 15(4), MD-100). Zero, negative, out-of-range and non-integer values are rejected by manifest validation, never read as disabling alignment; there is no `sec fmt` command-line override, and `sec init` writes the key only as the commented example `# max_alignment_padding = 16`. This setting does not decide whether the trailing-comment column is separately capped (MD-099) (MD-098, decided 2026-10-18). Adding the key does not change the canonical output of a project that omits it, so it requires no new `format_version`.
 
 § 4(15) All configuration that changes canonical source bytes is project-owned. Personal editor preferences must not silently produce a different canonical project source form.
 
@@ -427,7 +427,7 @@ Distance (
 )
 ```
 
-§ 9(8) Blank lines and standalone comments terminate an alignment group. A trailing comment belongs to its source item and does not terminate the group. Documentation comments and other structural group boundaries already defined by this rulebook retain their semantics (MD-013; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 5.7–5.11).
+§ 9(8) Blank lines and standalone comments terminate an alignment group. A trailing comment belongs to its source item and does not terminate the group. Documentation comments and other structural group boundaries already defined by this rulebook retain their semantics (MD-013; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 5.7–5.11). A one-line `/* ... */` that follows code and ends its source line is a trailing comment exactly like `// ...` (§ 12(9a); MD-097).
 
 § 9(8a) In declaration alignment the colon remains attached to the identifier; alignment never introduces whitespace between an identifier and its colon, and padding follows the complete `identifier:` cell.
 
@@ -535,7 +535,7 @@ let ready :=
 
 § 12(3) Consecutive line comments form one comment block unless syntax or an empty line separates them.
 
-§ 12(4) Trailing line comments align in the structural column after the code columns of one contiguous homogeneous declaration group (§ 9(8b)).
+§ 12(4) Trailing line comments, and trailing single-line block comments (§ 12(9a)), align in the structural column after the code columns of one contiguous homogeneous declaration group (§ 9(8b)).
 
 § 12(5) A blank line, standalone comment, or incompatible declaration terminates trailing-comment alignment. A trailing comment itself does not terminate it.
 
@@ -555,6 +555,16 @@ let ready :=
 
 ```sec
 /* text */
+```
+
+§ 12(9a) A one-line `/* ... */` that appears after code on the same source line and ends that line is a **trailing comment**, treated exactly like a trailing `// ...` comment: both spellings share the same structural trailing-comment column and alignment-group behavior, and a trailing block comment does not terminate a compatible declaration or enum explicit-value group (§§ 9(8), 9(8b), 12(4)–12(6), 15(4)). A block comment followed by more code on its line is an **inline comment** and one beginning after a line break is a **standalone comment**; their handling is unchanged. Width limits, padding policy, group boundaries and the enum exemption continue to apply. This clarifies the single structural alignment rule; it is not a second comment-alignment model (MD-097, 2026-10-18):
+
+```sec
+enum Example {
+    Short     = 1  /* first */
+    LongerKey = 20 // second
+    End       = 3  /* third */
+}
 ```
 
 § 12(10) Documentation block comments use the same visual multiline alignment while retaining their semantic documentation form:
@@ -698,7 +708,7 @@ declarations in source order
 
 § 15(3) Struct fields use the ordinary declaration alignment rules of § 9.
 
-§ 15(4) Enum explicit-value assignments align their `=` anchors when they form a homogeneous contiguous group and the grammar uses `=` for that declaration form. An enum value group is always aligned: the § 9(10) maximum alignment padding does not apply to it, so members of very different name lengths still share one value column, and their trailing comments share one comment column after the widest value cell (§ 9(8b)). Only a blank line, a standalone comment, an implicit member or a declaration boundary ends the group (MD-100, user decision 2026-10-17).
+§ 15(4) Enum explicit-value assignments align their `=` anchors when they form a homogeneous contiguous group and the grammar uses `=` for that declaration form. An enum value group is always aligned: the § 9(10) maximum alignment padding does not apply to it, so members of very different name lengths still share one value column, and their trailing comments — `//` and trailing single-line `/* ... */` alike (§ 12(9a)) — share one comment column after the widest value cell (§ 9(8b)). Only a blank line, a standalone comment, an implicit member or a declaration boundary ends the group (MD-100, user decision 2026-10-17).
 
 § 15(5) Documentation comments remain before the member or variant they document and break alignment groups when appropriate.
 
@@ -1081,6 +1091,13 @@ unsafe {
 § 19(12) An `unsafe fn` declaration follows ordinary modifier and function formatting.
 
 § 19(13) The formatter must not widen or narrow an unsafe boundary by moving operations into or out of an `unsafe` block.
+
+§ 19(14) The direct single-call authorization `unsafe Call()` (`rules/memory/unsafe.md` § 4(9)–(13)) has exactly one space between `unsafe` and the call; the call keeps its ordinary member, generic-argument and argument formatting. The formatter never rewrites a single-operation form into a block or a one-call block into the direct form as a stylistic preference (MD-079, 2026-10-18):
+
+```sec
+unsafe pointer.Write(value)
+let value := unsafe pointer.Read() + SafeAdjustment()
+```
 
 ---
 

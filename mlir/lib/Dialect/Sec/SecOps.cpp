@@ -7,6 +7,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/BuiltinOps.h"
 
 #include <cctype>
 
@@ -247,6 +248,44 @@ LogicalResult ConstFloatOp::verify() {
   auto builtin = dyn_cast<mlir::FloatType>(base);
   if (!builtin || (builtin.getWidth() != 32 && builtin.getWidth() != 64))
     return emitOpError("result must be !sec.float, f32, or f64");
+  if (auto bits = getBitsAttr(); bits && builtin.getWidth() == 32 &&
+      (bits.getInt() < 0 || bits.getInt() > 0xFFFFFFFFLL))
+    return emitOpError("binary32 constant bits must fit in 32 bits");
+  return success();
+}
+
+// float, float32 and float64 before or after scalar layout.
+static bool isSecFloatSemanticType(Type type) {
+  Type base = unwrapIdentityType(type);
+  if (isa<sec::FloatType>(base))
+    return true;
+  auto builtin = dyn_cast<mlir::FloatType>(base);
+  return builtin && (builtin.getWidth() == 32 || builtin.getWidth() == 64);
+}
+
+LogicalResult FloatNegOp::verify() {
+  if (!isSecFloatSemanticType(getValue().getType()) ||
+      getValue().getType() != getResult().getType())
+    return emitOpError("operand and result must have the same Sec float type");
+  return success();
+}
+
+LogicalResult FloatBinaryOp::verify() {
+  if (!isOneOf(getKind(), {"add", "sub", "mul", "div", "rem"}))
+    return emitOpError("kind must be add, sub, mul, div, or rem");
+  if (!isSecFloatSemanticType(getLeft().getType()) ||
+      getLeft().getType() != getRight().getType() ||
+      getLeft().getType() != getResult().getType())
+    return emitOpError("operands and result must have the same Sec float type");
+  return success();
+}
+
+LogicalResult FloatCmpOp::verify() {
+  if (!isOneOf(getPredicate(), {"eq", "ne", "lt", "le", "gt", "ge"}))
+    return emitOpError("invalid floating comparison predicate");
+  if (!isSecFloatSemanticType(getLeft().getType()) ||
+      getLeft().getType() != getRight().getType())
+    return emitOpError("operands must have the same Sec float type");
   return success();
 }
 
@@ -337,7 +376,7 @@ LogicalResult NumericConvertExactOp::verify() {
       !isBuiltinIntegerSemanticType(getResult().getType()))
     return emitOpError(
         "schema 11 admits only builtin Sec integer operand and result types");
-  return success();
+  return verifyConversionProof(*this);
 }
 
 LogicalResult IntBitNotOp::verify() {
@@ -537,7 +576,10 @@ LogicalResult EnumToIntegerOp::verify() {
     return emitOpError("operand must have !sec.enum type");
   if (!isBuiltinIntegerSemanticType(getResult().getType()))
     return emitOpError("result must have an integer semantic type");
-  return success();
+  auto module = (*this)->getParentOfType<ModuleOp>();
+  auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr();
+  // Schema 7–10 remain readable, but binary lowering still requires proof.
+  return verifyConversionProof(*this, version && version.getInt() < 11);
 }
 
 LogicalResult EnumCmpOp::verify() {

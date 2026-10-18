@@ -658,6 +658,13 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Results) != 1 || op.FloatLexeme == "" || !typeHasKind(module.Types, resultType, TypeFloat) {
 			return fmt.Errorf("invalid const.float")
 		}
+		if op.Float != nil && (op.Float.Format != 32 && op.Float.Format != 64 || op.Float.Format == 32 && op.Float.Bits > 0xFFFFFFFF) {
+			return fmt.Errorf("invalid const.float payload")
+		}
+	case OpFloatNeg, OpFloatBinary, OpFloatCompare:
+		if err := verifyFloatOperation(module, op, values); err != nil {
+			return err
+		}
 	case OpReturn:
 		void := typeHasKind(module.Types, fn.ReturnType, TypeVoid)
 		if void && len(op.Operands) != 0 {
@@ -762,6 +769,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || !isBuiltinIntegerType(module.Types, op.Results[0].Type) {
 			return fmt.Errorf("invalid numeric.convert-exact")
 		}
+		if err := validConversionProof(module, op.ConversionProof); err != nil {
+			return fmt.Errorf("invalid numeric.convert-exact: %w", err)
+		}
 	case OpIntUnaryPlus, OpIntBitNot:
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || op.Results[0].Type != values[op.Operands[0]].Type {
 			return fmt.Errorf("invalid %s", op.Kind)
@@ -856,6 +866,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpEnumToInteger:
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeEnum) || !isBuiltinIntegerType(module.Types, resultType) {
 			return fmt.Errorf("invalid enum.to-integer")
+		}
+		if err := validConversionProof(module, op.ConversionProof); err != nil {
+			return fmt.Errorf("invalid enum.to-integer: %w", err)
 		}
 	case OpEnumCompare:
 		if len(op.Operands) != 2 || len(op.Results) != 1 || (op.IntegerCompare != IntegerCompareEQ && op.IntegerCompare != IntegerCompareNE) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeEnum) || !typeHasKind(module.Types, resultType, TypeBool) {

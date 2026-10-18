@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-15 (MD-061 explicit reborrow and optimization safety, § 46(10)-(13))
+- Last updated: 2026-10-18 (§ 123 atomic fence, MD-096; earlier: MD-061 explicit reborrow and optimization safety, § 46(10)-(13))
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -2985,3 +2985,36 @@ Lowering consumes these verified facts and the immutable `CompilationPlan` and
 may erase IPC semantics only after ownership, commit/rollback, cleanup, target
 adapter, readiness, lifecycle, synchronization scope, and error mapping are
 concretely preserved.
+
+---
+
+## § 123 Atomic fence operation
+
+§ 123(1) An explicit fence (`atomic.Fence(order)`, `rules/concurrency/atomics.md` §§ 26, 40) is the Semantic IR operation `OpAtomicFence`, printed as:
+
+```text
+atomic.fence order=Acquire
+atomic.fence order=Release
+atomic.fence order=AcqRel
+atomic.fence order=SeqCst
+```
+
+§ 123(2) It has a typed `AtomicOrder` field, **no operands, no results and no successors**. The admitted orders are exactly `Acquire`, `Release`, `AcqRel` and `SeqCst`; `Relaxed`, a missing order or any other spelling is rejected by the verifier. The order stays explicit through verification, printing, serialization and transformations.
+
+§ 123(3) The operation exists in Semantic IR independently of the numbered Sec MLIR package level: this assigns atomics to no package and widens no package inventory. Its presence does not mean the active dialect schema can emit it: until a package specifies and implements fence lowering, emission fails closed with an explicit unsupported-lowering diagnostic and never omits, replaces or weakens a fence. Source-level `MemoryOrder` semantics and platform atomic capability validation (MD-095) remain owned by `atomics.md` (MD-096, 2026-10-18).
+
+---
+
+## § 124 Exact integer conversion
+
+§ 124(1) A built-in integer-to-integer conversion that Sema has **proved exact** is `numeric.convert-exact` (`NumericConvertExactOp`), lowered to Sec MLIR `sec.numeric.convert_exact`; the P20 name is reused and no second integer-only operation exists. It has one operand, one result and no failure edge. Until P20's float scope is implemented, the dialect verifier admits it only for integer-representation operand and result types (MD-104, 2026-10-18).
+
+§ 124(2) The operation may be emitted only from a Sema-resolved, plan-compatible conversion contract (`ResolvedIntegerConversion`, which P20's `ResolvedNumericConversionPlan` may later absorb). The contract retains the source and target semantic types, their integer domains, widths and signedness, the CompilationPlan the proof was made for, the proof basis (compile-time constant or source type domain) and whether exactness is proven. The builder and verifier never rediscover enum domains or target widths from lowered bits, and lowering never weakens the proof (`rules/types/types.md`, "Exact integer conversion proof").
+
+§ 124(3) The proof is made for the **selected CompilationPlan** (Option A): `int`, `uint` and other target-sized types use that plan's widths, never the host's, a universal `int64` or an unresolved layout. A proof made for another plan, or with missing plan facts, is not reused; it is recomputed or the conversion fails closed. A conversion that is not proven exact is a checked conversion with `ConversionError` (MD-012) and is never lowered as `numeric.convert-exact`; where checked conversion is not lowerable yet the track rejects it with an unsupported-lowering diagnostic instead of truncating.
+
+---
+
+## § 125 Character comparison through integer comparison
+
+§ 125(1) Comparison of two `char` or two `rune` operands (`==`, `!=`, `<`, `<=`, `>`, `>=`) reuses `int.compare`. Sema may record character-specific operator kinds for typing and diagnostics; Semantic IR keeps the `char`/`rune` operand types and provenance on `int.compare`, and its verifier admits same-type character operands under this contract while rejecting mismatched character types. Sec MLIR `sec.int.cmp` likewise admits `!sec.char` / `!sec.rune`, and lowering via `char -> ui8` and `rune -> ui32` makes relational predicates unsigned; the result is `bool`. No separate character comparison operation exists, and this adds no character arithmetic (`rules/foundations/operators.md`, "Rune ordering"; MD-105, 2026-10-18).

@@ -1,0 +1,5 @@
+module main
+
+fn NotACall(value: int) int {
+    return unsafe value + 1
+}

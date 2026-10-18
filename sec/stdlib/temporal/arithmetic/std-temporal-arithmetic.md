@@ -2,8 +2,8 @@
 
 - **Status:** Draft API scaffold — incomplete implementation; signatures provisional
 - **Created:** 2026-10-16
-- **Last updated:** 2026-10-16
-- **Document revision:** 0.1
+- **Last updated:** 2026-10-18
+- **Document revision:** 0.2
 - **Sec version:** 0.1
 - **Canonical path:** `stdlib/temporal/arithmetic/std-temporal-arithmetic.md`
 - **Replaces:** None
@@ -146,6 +146,8 @@ fn AddPeriod(value: date, period: CalendarPeriod, system: calendar.CalendarSyste
 **§ 3(1)** Success paths are unimplemented. For now every fallible callable returns its owning module's `NotImplemented` error, never `Ok` with a fabricated default.
 
 **§ 3(2)** Inputs and outputs carry the ownership contracts declared in source comments. Dataset-backed operations must never implicitly fetch data or consult host settings.
+
+**§ 3(3)** `TemporalArithmeticError` (§ 2.1, `arithmetic/period.sec`) is the canonical public error type of `temporal/arithmetic` in Sec 0.1 (MD-083, 2026-10-18). The module must not declare another type named `ArithmeticError`: the compiler-known core `ArithmeticError` keeps its own identity and purpose and is never redeclared, shadowed by a competing public type, or repurposed for temporal-library failures. This decision fixes the name only; the current variants are exactly those declared in § 2.1, and the definition may be extended later through ordinary revision of this book and its source declarations.
 
 ## § 4. Open design and compatibility
 

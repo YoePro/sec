@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-08-29
-- Last updated: 2026-08-29
-- Document revision: 2.0
+- Last updated: 2026-10-18
+- Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/memory/references.md`
 - Replaces: `rules/memory/references.txt`
@@ -165,6 +165,14 @@ if package.Payload is available {
 § 5(8) Reference creation from a mutable reference may create a compatible reborrow according to `borrowing.md`.
 
 § 5(9) Safe derivation must never upgrade shared authority to mutable authority.
+
+§ 5(10) Outside a call argument, an owned value or Place is never implicitly converted to `ref T` or `ref mut T`: a variable or module initializer, assignment, return expression, aggregate/struct field initializer or other non-call-argument context that needs a reference requires an explicit `ref place` / `ref mut place`, subject to the ordinary origin, mutability, borrowing, aliasing and lifetime rules — the explicit spelling never lets a reference outlive its referent. The only exception is the call-bounded implicit borrow of `borrowing.md` § 15.2. Violations are the mandatory error `S1169` / `borrowing.explicit-ref-required` (`rules/tooling/diagnostics.md` § 24(4d); MD-080, 2026-10-18):
+
+```sec
+let count: int := 10
+let countView: ref int := ref count   // valid
+let implicitView: ref int := count    // S1169
+```
 
 ---
 

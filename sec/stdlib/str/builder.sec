@@ -467,10 +467,8 @@ impl Builder {
         for value in storage {
             try bytes.Append(value)
         }
-        let rv := try bytes.ToString() {
-            Err(_) => return Err(CollectionError.AllocationFailed)
-        }
-
-        return Ok(rv)
+        // TODO(MD-109): byte[].ToString() is a type summary, not a decoder
+        // (MD-091), and stdlib has no bytes -> string materialization path yet.
+        panic "Builder.Finish: string materialization is undecided (MD-109)"
     }
 }

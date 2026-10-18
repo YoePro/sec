@@ -2,8 +2,8 @@
 
 - **Status:** Draft — foundational architecture and cross-package semantic contract; not a complete public-API specification
 - **Created:** 2026-10-16
-- **Last updated:** 2026-10-16
-- **Document revision:** 0.1
+- **Last updated:** 2026-10-18
+- **Document revision:** 0.2
 - **Sec language version:** 0.1
 - **Canonical path:** `stdlib/temporal/std-temporal.md`
 - **Repository path:** `sec/stdlib/temporal/std-temporal.md`
@@ -401,6 +401,8 @@ sec/stdlib/temporal/
 **§ 18(2)** Useful semantic error categories to cover in child books include: invalid calendar component; nonexistent civil date; multiple candidate dates; unsupported conversion; range overflow; unresolved historical interpretation; unavailable dataset; out-of-coverage data; ambiguous local time; nonexistent local time; missing solar event; and lossy/inexact timestamp conversion.
 
 **§ 18(3)** The exact public error names, types, payloads and complete variant sets are **Deferred** to owning child books. A child book must never leave its public error family as an open-ended prose list.
+
+**§ 18(3a)** A child module's error type must not reuse the name of a compiler-known core error type. The calendar-relative arithmetic module's public error type is `TemporalArithmeticError` (`arithmetic/std-temporal-arithmetic.md` § 3(3)); core `ArithmeticError` keeps its own identity (MD-083, 2026-10-18).
 
 **§ 18(4)** Compiler and LSP diagnostics should explain the wrong domain or missing context and the valid resolution (e.g. elapsed duration vs calendar period, required timezone, required calendar variant). Reject misleading suggestions that would silently alter semantics.
 

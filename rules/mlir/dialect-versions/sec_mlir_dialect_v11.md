@@ -698,3 +698,57 @@ place escape is rejected
 schema-v10 regression remains valid
 no physical representation is selected
 ```
+
+# 40. Exact integer conversion contract transport
+
+The schema-11 integer admission of `sec.numeric.convert_exact` and
+`sec.enum.to_integer` carries the verified Semantic IR exactness contract
+(`rules/compiler/semantic_ir.md` § 124), using the discardable attribute:
+
+```mlir
+{sec.conversion_proof = {
+    basis = "closed-enum-domain",
+    plan_pointer_width = 0 : i32
+}}
+```
+
+The closed basis set is `constant`, `source-domain`,
+`closed-enum-domain`, `open-enum-domain` and `compiler-widening`.
+The dictionary contains exactly these two fields. A zero plan width denotes
+a plan-independent proof. A nonzero width is 32 or 64 and must equal the
+selected module's explicit index data-layout width. Missing, malformed,
+unknown-basis or incompatible-plan contracts are invalid.
+
+The operand and result types remain the conversion's source and target
+contract. This attribute transports the Sema-established proof; it is not
+permission for a later pass to independently classify an unproven conversion
+as exact. Scalar type resolution preserves the contract. Enum representation
+lowering consumes it without recomputing case-domain exactness and preserves
+it on any resulting `sec.numeric.convert_exact`. The contract may be removed
+once its conversion semantics have been discharged.
+
+Schemas 7–10 remain readable without this newly transported enum metadata.
+Binary enum-conversion lowering still requires the explicit contract and
+fails closed without it. Checked conversions remain separate fallible
+operations; absence of a proof never authorizes truncation.
+
+# 41. Early admissions on the single native track
+
+Schema 11 is the executable schema of the one native track while schemas 12–15
+(P16–P19) are still predecessor work. The following operations were admitted
+into schema 11 ahead of their owning package so the track can build programs.
+Each keeps the owning package's semantics; the owning package's schema
+installation re-homes or confirms them rather than redefining them, and no
+other operation may be used in schema 11 without being recorded here.
+
+| Operation(s) | Owning package / decision | Admitted |
+|---|---|---|
+| `sec.numeric.convert_exact` (integer operands only), `sec.enum.to_integer` proof transport | P20 § 70; MD-104; § 40 above | 2026-10-17/18 |
+| `sec.int.cmp` over `!sec.char` / `!sec.rune` | P7 amendment; MD-105 | 2026-10-17 |
+| `sec.fail.panic` (reason, optional message) | panic.md §§ 8.1, 12(2) | 2026-10-18 |
+| `sec.static.global`, `sec.static.load`, `sec.static.store` | static storage (P15 places, `rules/declarations/static.md`) | 2026-10-18 |
+| `sec.const.float {bits}`, `sec.float.neg`, `sec.float.binary`, `sec.float.cmp` | P20 §§ 20–26, 63–65, 73–77 (`lowering.sec-mlir-package20`) | 2026-10-18 |
+
+Schemas 7–10 remain readable without these operations. Lowering of each one is
+listed in `sec-check-lowering-support`; a module using any of them outside
+schema 11 or later is rejected by the version gate of the installing package.

@@ -15,7 +15,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
-#include "llvm/ADT/APSInt.h"
 
 namespace sec {
 #define GEN_PASS_DEF_SECLOWERINTEGERENUMS
@@ -66,27 +65,16 @@ public:
   }
 };
 
-// enumToIntegerTarget is the resolved integer an explicit enum-to-integer
-// conversion produces, when that conversion is exact: the target is the
-// enum's carrier, or every declared case value fits the target. An enum
-// value is always one of its declared cases (enums.md sections 7, 13), so
-// this decides exactness without a runtime check (MD-104).
+// Consume the verifier-checked Sema exactness contract. This function selects
+// only a supported physical carrier; it never inspects enum case values.
+// Rules: rules/compiler/semantic_ir.md — § 124(2–3).
 IntegerType enumToIntegerTarget(sec::EnumToIntegerOp op) {
   auto type = cast<sec::EnumType>(op.getValue().getType());
   auto target = dyn_cast<IntegerType>(op.getResult().getType());
-  if (!isOrdinaryIntegerEnum(type) || !target ||
+  if (!op->getAttrOfType<DictionaryAttr>("sec.conversion_proof") ||
+      !isOrdinaryIntegerEnum(type) || !target ||
       (!target.isSigned() && !target.isUnsigned()))
     return IntegerType();
-  if (target == type.getUnderlying())
-    return target;
-  for (Attribute attribute : type.getCases()) {
-    llvm::APSInt value(cast<sec::EnumCaseAttr>(attribute).getValue().getValue());
-    llvm::APSInt minimum = llvm::APSInt::getMinValue(target.getWidth(), target.isUnsigned());
-    llvm::APSInt maximum = llvm::APSInt::getMaxValue(target.getWidth(), target.isUnsigned());
-    if (llvm::APSInt::compareValues(value, minimum) < 0 ||
-        llvm::APSInt::compareValues(value, maximum) > 0)
-      return IntegerType();
-  }
   return target;
 }
 
@@ -100,9 +88,12 @@ public:
       return failure();
     if (adaptor.getValue().getType() == target)
       rewriter.replaceOp(op, adaptor.getValue());
-    else
-      rewriter.replaceOpWithNewOp<sec::NumericConvertExactOp>(op, target,
-                                                              adaptor.getValue());
+    else {
+      auto replacement = rewriter.create<sec::NumericConvertExactOp>(
+          op.getLoc(), target, adaptor.getValue());
+      replacement->setAttr("sec.conversion_proof", op->getAttr("sec.conversion_proof"));
+      rewriter.replaceOp(op, replacement.getResult());
+    }
     return success();
   }
 };
@@ -193,8 +184,7 @@ struct LowerIntegerEnumsPass
     target.addDynamicallyLegalOp<sec::EnumConstantOp>([](sec::EnumConstantOp op) {
       return !isOrdinaryIntegerEnum(cast<sec::EnumType>(op.getResult().getType()));
     });
-    // A conversion this erasure cannot prove exact is named, not left to a
-    // generic legalization failure.
+    // Missing proof or unsupported representation is named before conversion.
     bool unsupported = false;
     getOperation().walk([&](sec::EnumToIntegerOp op) {
       if (!enumToIntegerTarget(op) &&
@@ -202,7 +192,7 @@ struct LowerIntegerEnumsPass
         op.emitError() << "the Sec MLIR -> LLVM track does not lower "
                           "'sec.enum.to_integer' to "
                        << op.getResult().getType()
-                       << " (a case value does not fit) yet";
+                       << " (missing exactness contract or unsupported representation) yet";
         unsupported = true;
       }
     });

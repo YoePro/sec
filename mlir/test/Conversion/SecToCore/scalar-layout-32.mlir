@@ -21,9 +21,10 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
 
 // CHECK: func.func private @foreign(si32) -> ui32
 // CHECK: func.func @callee(%arg0: si32) -> si32
-// CHECK: func.func @resolve(%arg0: si32, %arg1: ui32, %arg2: f64, %arg3: ui8, %arg4: ui32) -> si32
+// Plain float follows the platform width like int and uint (MD-014).
+// CHECK: func.func @resolve(%arg0: si32, %arg1: ui32, %arg2: f32, %arg3: ui8, %arg4: ui32) -> si32
 // CHECK: "sec.const.int"() <{value = "1"}> : () -> si32
-// CHECK: "sec.const.float"() <{lexeme = "1.25"}> : () -> f64
+// CHECK: "sec.const.float"() <{lexeme = "1.25"}> : () -> f32
 // CHECK: "sec.call.direct"(%arg0) {{.*}} : (si32) -> si32
 // CHECK: "sec.call.foreign"(%arg0) {{.*}} : (si32) -> ui32
 // CHECK: cf.br ^bb1(%{{.*}} : si32)

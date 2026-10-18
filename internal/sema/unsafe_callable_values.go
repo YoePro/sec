@@ -33,3 +33,15 @@ func (a *Analyzer) rejectUnsafeFunctionValue(ident *ast.Identifier, function Fun
 		"unsafe %s %s cannot be used as a function value; function types are safe callables", kind, ident.Value)
 	return true
 }
+
+// callUnsafeAuthorized reports whether the unsafe obligations of call itself
+// are authorized: inside an explicit unsafe block, or by the call's own direct
+// `unsafe` prefix. The prefix covers only this call; its receiver, arguments
+// and other operands keep the enclosing authorization (a.inUnsafe).
+//
+// Rules:
+//   - rules/memory/unsafe.md — § 4 single-operation syntax (MD-079)
+//   - rules/foundations/grammar.md — UnsafeCallExpression
+func (a *Analyzer) callUnsafeAuthorized(call *ast.CallExpression) bool {
+	return a.inUnsafe || call.HasUnsafePrefix()
+}

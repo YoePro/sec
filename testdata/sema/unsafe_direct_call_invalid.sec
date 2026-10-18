@@ -1,0 +1,26 @@
+module main
+
+unsafe fn Danger(value: int) int {
+    return value + 1
+}
+
+fn Safe(value: int) int {
+    return value
+}
+
+fn ArgumentNotAuthorized() int {
+    return unsafe Safe(Danger(1))
+}
+
+fn NeighborNotAuthorized() int {
+    return unsafe Danger(1) + Danger(2)
+}
+
+fn ReceiverNotAuthorized(pointer: RawPtr[int]) int {
+    let first := unsafe Danger(pointer.Read())
+    return first
+}
+
+fn TypeChecked() int {
+    return unsafe Danger("text")
+}

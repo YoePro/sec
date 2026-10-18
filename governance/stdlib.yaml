@@ -176,3 +176,29 @@ integrations:
         result: passed on 2026-10-10 with fixture parsing of all four files, malformed-input and wrong-version rejection, tampered-file hash rejection, Unicode 18.0.0 data facts, Go unicode 15.0.0 letter preservation and the generated unicode.sec being current
       - command: go run ./cmd/compiler sema sec/stdlib/unicode/unicode.sec
         result: passed with 0 errors and 0 warnings on 2026-10-10
+
+  - id: stdlib.temporal-arithmetic-error
+    area: standard-library
+    status: partial
+    integrated: "2026-10-18"
+    revised: "2026-10-18"
+    summary: >-
+      MD-083 (decided 2026-10-18): TemporalArithmeticError is the canonical
+      public error type of stdlib temporal/arithmetic; core ArithmeticError
+      keeps its own identity and is never redeclared or repurposed.
+    rules:
+      - sec/stdlib/temporal/arithmetic/std-temporal-arithmetic.md
+      - sec/stdlib/temporal/std-temporal.md
+    code:
+      - sec/stdlib/temporal/arithmetic/period.sec
+      - sec/stdlib/temporal/arithmetic/apply.sec
+    implemented:
+      - "TemporalArithmeticError (NotImplemented, InvalidTarget, OutOfRange, UnsupportedSystem) is declared in arithmetic/period.sec and returned by AddMonths and AddPeriod; std-temporal-arithmetic.md § 3(3) and std-temporal.md § 18(3a) fix the name; a temporal declaration named ArithmeticError is rejected by S1028 and core ArithmeticError stays usable beside the temporal type"
+    tests:
+      - cmd/compiler/temporal_arithmetic_error_test.go
+    verification:
+      - command: go test ./cmd/compiler -run TestTemporalArithmeticErrorKeepsCoreIdentity -count=1
+        result: passed on 2026-10-18
+    remaining:
+      - extend the variant set only through revision of the temporal rulebooks as temporal arithmetic is implemented (the success paths are still NotImplemented)
+

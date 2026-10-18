@@ -3,6 +3,8 @@ package formatconfig
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -112,5 +114,28 @@ func TestForSourceUsesTheOwningProject(t *testing.T) {
 	settings, err = ForSource(standalone, Overrides{})
 	if err != nil || settings.Options != Defaults().Options || settings.Manifest != "" {
 		t.Fatalf("stand-alone settings = %+v, %v", settings, err)
+	}
+}
+
+// MD-098: max_alignment_padding accepts exactly 1..1024 spaces; zero,
+// negative, out-of-range and non-integer values are manifest errors.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 4(14)
+//   - rules/projects/projects.md — § 6(11)
+func TestMaxAlignmentPaddingDomain(t *testing.T) {
+	for _, value := range []int{1, 1024} {
+		settings, err := Resolve("sec.toml", "[format]\nmax_alignment_padding = "+strconv.Itoa(value)+"\n", Overrides{})
+		if err != nil || settings.Options.MaxAlignmentPadding != value {
+			t.Fatalf("%d: %+v %v", value, settings.Options, err)
+		}
+	}
+	for _, value := range []string{"0", "-1", "1025", "1.5", "true"} {
+		if _, err := Resolve("sec.toml", "[format]\nmax_alignment_padding = "+value+"\n", Overrides{}); err == nil || !strings.Contains(err.Error(), "max_alignment_padding") {
+			t.Errorf("%s accepted: %v", value, err)
+		}
+	}
+	if _, ok := reflect.TypeOf(Overrides{}).FieldByName("MaxAlignmentPadding"); ok {
+		t.Fatal("max_alignment_padding must have no command-line override")
 	}
 }

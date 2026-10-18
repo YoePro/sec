@@ -166,52 +166,6 @@ func (a *Analyzer) recordSliceCreationPlan(ref *ast.RefExpression) {
 	a.resolvedSliceCreationPlans[ref] = cloneSliceCreationPlan(plan)
 }
 
-// cloneSliceCreationPlan detaches every mutable endpoint/type/origin fact.
-// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 25, 37.
-func cloneSliceCreationPlan(plan ResolvedSliceCreationPlan) ResolvedSliceCreationPlan {
-	plan.ElementType = semanticSnapshotType(plan.ElementType)
-	plan.SourceSliceType = semanticSnapshotType(plan.SourceSliceType)
-	plan.SourcePlace = cloneSlicePlanPlace(plan.SourcePlace)
-	plan.SourceLength = clonePlaceConstantIndex(plan.SourceLength)
-	plan.Start.Type, plan.End.Type = semanticSnapshotType(plan.Start.Type), semanticSnapshotType(plan.End.Type)
-	plan.Start.Constant, plan.End.Constant = clonePlaceConstantIndex(plan.Start.Constant), clonePlaceConstantIndex(plan.End.Constant)
-	if plan.StaticRange != nil {
-		plan.StaticRange = &StaticSliceRange{clonePlaceConstantIndex(plan.StaticRange.Start), clonePlaceConstantIndex(plan.StaticRange.EndExclusive)}
-	}
-	plan.ReferenceFacts = cloneResolvedReferencePlan(plan.ReferenceFacts)
-	plan.ReferenceFacts.Place = cloneSlicePlanPlace(plan.ReferenceFacts.Place)
-	for index := range plan.ReferenceFacts.Facts.OriginPlaces {
-		plan.ReferenceFacts.Facts.OriginPlaces[index] = cloneSlicePlanPlace(plan.ReferenceFacts.Facts.OriginPlaces[index])
-	}
-	errorType := semanticSnapshotType(plan.ErrorType)
-	errorType.EnumConsts = make(map[string]EnumValue, len(plan.ErrorType.EnumConsts))
-	for name, value := range plan.ErrorType.EnumConsts {
-		value.Value = clonePlaceConstantIndex(value.Value)
-		if value.StringValue != nil {
-			text := *value.StringValue
-			value.StringValue = &text
-		}
-		errorType.EnumConsts[name] = value
-	}
-	plan.ErrorType = errorType
-	return plan
-}
-
-// cloneSlicePlanPlace detaches the typed origin tree, including index types;
-// callers cannot change a plan's nested types through a Place returned earlier.
-// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 37.
-func cloneSlicePlanPlace(place Place) Place {
-	place = clonePlace(place)
-	place.Type = semanticSnapshotType(place.Type)
-	for index := range place.Projections {
-		place.Projections[index].IndexType = semanticSnapshotType(place.Projections[index].IndexType)
-	}
-	for index := range place.AlternativeOrigins {
-		place.AlternativeOrigins[index] = cloneSlicePlanPlace(place.AlternativeOrigins[index])
-	}
-	return place
-}
-
 // ResolvedSliceCreationPlanOf reads a recorded plan without evaluating
 // endpoints, resolving Places, proving bounds or registering a new borrow.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 37.

@@ -27,6 +27,17 @@ def SecLowerIntegerEnums : Pass<"sec-lower-integer-enums", "mlir::ModuleOp"> {
   ];
 }
 
+def SecLowerFloats : Pass<"sec-lower-floats", "mlir::ModuleOp"> {
+  let summary = "Lower the P20 binary floating subset to standard Arith";
+  let description = [{
+    After scalar layout, sec.const.float becomes arith.constant from its
+    canonical bit pattern, sec.float.neg/binary/cmp become arith.negf,
+    addf/subf/mulf/divf/remf and cmpf (oeq/une/olt/ole/ogt/oge) with no
+    fast-math flags.
+  }];
+  let dependentDialects = ["mlir::arith::ArithDialect"];
+}
+
 def SecLowerFailureEndpoints : Pass<"sec-lower-failure-endpoints", "mlir::ModuleOp"> {
   let summary = "Lower deterministic Sec failures to the minimal panic endpoint";
   let description = [{

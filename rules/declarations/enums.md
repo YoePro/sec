@@ -589,6 +589,12 @@ If the target integer type cannot represent every possible runtime value and the
 actual value is not statically known, the normal fallible conversion rules
 apply.
 
+The possible runtime values are the enum's semantic domain: the declared value
+classes of a closed enum, and every value `0 ..= 2^N - 1` of an open `bit[N]`
+enum. An exact conversion is proved from that domain for the selected
+CompilationPlan (`rules/types/types.md`, "Exact integer conversion proof";
+MD-104, 2026-10-18).
+
 A string-backed enum converts explicitly to `string`:
 
 ```sec

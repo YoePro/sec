@@ -1,8 +1,8 @@
 module main
 
 fn Use() void {
-    let mut bytes: byte[]
-    let value: string := string.FromByteArray(ref bytes)
+    let mut runes: rune[]
+    let value: string := string.FromRuneArray(ref runes)
 }
 
 fn main() int {

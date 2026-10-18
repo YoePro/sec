@@ -63,7 +63,11 @@ func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedE
 		return ResolvedEnumConversion{Kind: ResolvedIntegerToEnum, EnumType: result, IntegerType: operand}, true
 	}
 	if operand.Kind == EnumType && isIntegerType(result) {
-		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}, true
+		conversion := ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}
+		if isBuiltinConversionInteger(result) {
+			conversion.Proof = a.integerConversionProof(result, operand, nil)
+		}
+		return conversion, true
 	}
 	if operand.Kind == EnumType && result.Kind == ResultType && len(result.TypeArgs) == 2 && isIntegerType(result.TypeArgs[0]) {
 		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result.TypeArgs[0], Fallible: true}, true

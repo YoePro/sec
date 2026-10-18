@@ -401,6 +401,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.peekToken.Type == lexer.FN || p.peekToken.Type == lexer.EXTERN {
 			return p.parseUnsafeFunctionDeclaration()
 		}
+		if p.peekToken.Type != lexer.LBRACE {
+			// MD-079: `unsafe Call()` is an ordinary expression statement.
+			return p.parseExpressionOrAssignmentStatement()
+		}
 		return p.parseUnsafeStatement()
 
 	case lexer.ASM:
@@ -4193,33 +4197,6 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	return block
 }
 
-func (p *Parser) parseReturnStatement() ast.Statement {
-	stmt := &ast.ReturnStatement{Token: p.curToken}
-
-	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || isSwitchClauseStart(p.peekToken) {
-		return stmt
-	}
-	if p.peekToken.Line > p.curToken.Line && p.isReturnTerminatorToken(p.peekToken) {
-		return stmt
-	}
-
-	p.nextToken()
-	stmt.Value = p.parseExpression(LOWEST)
-	if stmt.Value == nil {
-		return nil
-	}
-	if p.peekToken.Type == lexer.COMMA && p.peekToken.Line == p.curToken.Line {
-		// rules/foundations/grammar.md — "Return statement": one optional
-		// Expression. Keep the first value and the statement.
-		comma := p.peekToken
-		p.addDiagnostic(compilerdiagnostics.ParserInvalidStatement, comma, nil, &comma,
-			"return takes one value; to return several values, return one struct or Result value that holds them at %d:%d", comma.Line, comma.Column)
-		p.skipRestOfStatementLine()
-	}
-
-	return stmt
-}
-
 // rejectChainedAssignment reports `a = b = c`: assignment is a statement and
 // produces no value (rules/foundations/grammar.md "Assignment is not
 // expression syntax"). The first assignment is retained and the rest of the
@@ -6577,11 +6554,42 @@ func (p *Parser) nextToken() {
 	p.curToken = p.peekToken
 	p.peekToken = p.l.NextToken()
 	p.recordSourceToken(p.peekToken)
-	for p.skipExpressionComments && p.peekToken.Type == lexer.COMMENT {
+	for p.peekToken.Type == lexer.COMMENT && (p.skipExpressionComments || p.isInlineBlockComment(p.peekToken)) {
 		p.peekToken = p.l.NextToken()
 		p.recordSourceToken(p.peekToken)
 	}
 	p.collectLexerDiagnostics()
+}
+
+// isInlineBlockComment reports a one-line `/* ... */` with code before it and
+// more code after it on the same line, such as `c: int /* note */,` or
+// `a /* note */ + b`. Such a comment is inline trivia inside a construct: it
+// stays in the recorded source tokens (comment attachment and the formatter
+// keep it) but never splits the construct for the grammar. Trailing and
+// standalone comments keep their existing handling.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§5.4–5.5 comments and preservation
+//   - rules/tooling/formatter.md — § 12(9a) inline, trailing and standalone comments
+func (p *Parser) isInlineBlockComment(comment lexer.Token) bool {
+	if !strings.HasPrefix(comment.Lexeme, "/*") || strings.ContainsAny(comment.Lexeme, "\r\n") {
+		return false
+	}
+	previous := p.curToken
+	if previous.Type == "" || previous.Type == lexer.EOF || previous.Type == lexer.COMMENT {
+		return false
+	}
+	previousEnd := previous.EndLine
+	if previousEnd == 0 {
+		previousEnd = previous.Line
+	}
+	if previousEnd != comment.Line {
+		return false
+	}
+	state := p.l.Snapshot()
+	next := p.l.NextToken()
+	p.l.Restore(state)
+	return next.Type != lexer.EOF && next.Line == comment.Line
 }
 
 func (p *Parser) collectLexerDiagnostics() {

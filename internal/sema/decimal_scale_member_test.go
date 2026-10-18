@@ -20,6 +20,7 @@ func TestDecimalScaleIsAUint8ValueProperty(t *testing.T) {
 		"type static": {"fn Use() uint {\n    return decimal.Scale\n}\n", false},
 		"decimal128":  {"fn Use(x: decimal128) uint8 {\n    return x.Scale\n}\n", false},
 		"not int":     {"fn Use(x: decimal) int {\n    let s: int := x.Scale\n    return s\n}\n", false},
+		"read-only":   {"fn Use(x: decimal) void {\n    let mut y := x\n    y.Scale = 2\n}\n", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			errors := analyzeSourceRaw(t, "module main\n"+test.body)
@@ -27,5 +28,15 @@ func TestDecimalScaleIsAUint8ValueProperty(t *testing.T) {
 				t.Fatalf("valid=%t, errors=%v", test.valid, errors)
 			}
 		})
+	}
+}
+
+// MD-082: the lowercase migration spelling is the same registry member as
+// the canonical Scale, not a second property.
+func TestDecimalScaleLegacySpellingSharesMemberID(t *testing.T) {
+	canonical, ok := compilerKnownMember(builtinType("decimal"), "Scale", false)
+	legacy, legacyOK := compilerKnownMember(builtinType("decimal"), "scale", false)
+	if !ok || !legacyOK || canonical.ID != "CKM-DECIMAL-SCALE" || legacy.ID != canonical.ID || canonical.Result.Name != "uint8" {
+		t.Fatalf("canonical %+v (%t), legacy %+v (%t)", canonical, ok, legacy, legacyOK)
 	}
 }

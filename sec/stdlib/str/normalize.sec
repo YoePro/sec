@@ -55,18 +55,108 @@ fn Normalize(value: string, form: NormalizationForm) Result[string, CollectionEr
     return Err(CollectionError.AllocationFailed)
 }
 
+/**
+ * Normalizes a string to Unicode Normalization Form C (NFC).
+ *
+ * Description:
+ * Performs canonical decomposition, canonical ordering,
+ * and canonical composition.
+ *
+ * Canonically equivalent strings produce the same
+ * normalized representation.
+ *
+ * Does not perform compatibility decomposition.
+ *
+ * Parameters:
+ * - value: The string to normalize.
+ *
+ * Returns:
+ * The string normalized to NFC.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate through Normalize().
+ */
 fn NormalizeNFC(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return Normalize(value, NormalizationForm.NFC)
 }
 
+/**
+ * Normalizes a string to Unicode Normalization Form D (NFD).
+ *
+ * Description:
+ * Performs recursive canonical decomposition and
+ * canonical ordering of combining characters.
+ *
+ * Does not perform compatibility decomposition
+ * or canonical composition.
+ *
+ * Parameters:
+ * - value: The string to normalize.
+ *
+ * Returns:
+ * The string normalized to NFD.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate through Normalize().
+ */
 fn NormalizeNFD(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return Normalize(value, NormalizationForm.NFD)
 }
 
+/**
+ * Normalizes a string to Unicode Normalization Form KC (NFKC).
+ *
+ * Description:
+ * Performs recursive compatibility decomposition,
+ * canonical ordering, and canonical composition.
+ *
+ * Compatibility distinctions may be lost.
+ * The transformation is not necessarily reversible.
+ *
+ * Parameters:
+ * - value: The string to normalize.
+ *
+ * Returns:
+ * The string normalized to NFKC.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate through Normalize().
+ */
 fn NormalizeNFKC(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return Normalize(value, NormalizationForm.NFKC)
 }
 
+/**
+ * Normalizes a string to Unicode Normalization Form KD (NFKD).
+ *
+ * Description:
+ * Performs recursive compatibility decomposition
+ * and canonical ordering of combining characters.
+ *
+ * Does not perform canonical composition.
+ * Compatibility distinctions may be lost.
+ *
+ * Parameters:
+ * - value: The string to normalize.
+ *
+ * Returns:
+ * The string normalized to NFKD.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate through Normalize().
+ */
 fn NormalizeNFKD(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    return Normalize(value, NormalizationForm.NFKD)
 }

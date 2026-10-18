@@ -2410,6 +2410,15 @@ No locale or alphabetic collation is applied.
 
 No locale, normalization, or case folding is applied.
 
+`==`, `!=`, `<`, `<=`, `>` and `>=` apply to two operands of the **same**
+character type (`char` with `char`, `rune` with `rune`); there is no implicit
+conversion between `char` and `rune` or between characters and integers, so
+`c < r` is an error. Both comparisons are unsigned: `char` by its 8-bit value,
+`rune` by its scalar value. They lower through the integer comparison IR —
+Semantic IR `int.compare` and Sec MLIR `sec.int.cmp` over `!sec.char` /
+`!sec.rune` (`char -> ui8`, `rune -> ui32`) — with no separate character
+operation (`rules/compiler/semantic_ir.md` § 125; MD-105, 2026-10-18).
+
 ---
 
 # String ordering

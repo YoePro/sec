@@ -1,7 +1,7 @@
 # Collections
 
 **Created:** 2026-08-11  
-**Last updated:** 2026-10-12 (MD-058 capacity reservation, Len/Capacity/SizeOf)  
+**Last updated:** 2026-10-18 (MD-094 one primary diagnostic per constant-invalid slice range)  
 **Document revision:** 1  
 **Language version:** Sec 0.1  
 **Status:** Draft for Sec 0.1
@@ -1048,6 +1048,17 @@ Negative endpoints are invalid.
 ## 7.5 Fallible slicing
 
 Compile-time invalid constant ranges are compile-time errors.
+
+Compile-time-provable invalid bounds follow the same ordered classification as
+the runtime `RangeError` (`sec-mlir-dialect_package16.md` § 19): (1) negative
+or otherwise invalid endpoint, (2) start after end, (3) endpoint beyond the
+source bound. One invalid range expression gets **one primary diagnostic**, for
+the first provable failure in that order; lower-priority failures of the same
+range are not reported as further primary errors. With `fixed: int[4]`,
+`fixed[9..<7]` reports the descending range, not also a bounds overflow. A
+constant start after a constant end is diagnosed even when the source length is
+unknown at compile time. The compiler may attach related notes, but notes are
+not primary errors and do not change the precedence (MD-094, 2026-10-18).
 
 Dynamic checked slicing may use the canonical fallible range path.
 

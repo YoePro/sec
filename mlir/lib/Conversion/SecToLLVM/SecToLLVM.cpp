@@ -90,6 +90,8 @@ bool isLoweredSecOperation(Operation *operation) {
              sec::CallDirectOp, sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
              sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
+             sec::ConstFloatOp, sec::FloatNegOp, sec::FloatBinaryOp,
+             sec::FloatCmpOp,
              sec::ArithmeticFailureReasonConstantOp, sec::FailArithmeticOp,
              sec::FailPanicOp, sec::StaticGlobalOp, sec::StaticLoadOp,
              sec::StaticStoreOp,
@@ -399,6 +401,7 @@ void sec::registerSecToLLVMPipelines() {
         manager.addPass(sec::createSecLowerTrivialCorePass());
         manager.addPass(sec::createSecResolveScalarLayoutPass());
         manager.addPass(sec::createSecLowerIntegerEnums());
+        manager.addPass(sec::createSecLowerFloats());
         manager.addPass(sec::createSecLowerTrivialCorePass());
         manager.addPass(sec::createSecLowerCheckedIntegersPass());
         manager.addPass(sec::createSecLowerStaticStorage());

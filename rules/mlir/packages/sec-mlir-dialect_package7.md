@@ -1068,6 +1068,13 @@ ui128
 ui256
 ```
 
+Amended 2026-10-18 (MD-105): the **comparison** of two `char` or two `rune`
+values reuses `sec.int.cmp`, whose verifier admits `!sec.char` and `!sec.rune`
+operands of the same type; scalar layout maps them to `ui8` / `ui32`, so
+relational predicates are unsigned and the result is `bool`. This does not
+give Package 7 general character arithmetic or other character operators; the
+exclusions above otherwise stand.
+
 `ui8` also represents `byte`.
 
 Excluded:

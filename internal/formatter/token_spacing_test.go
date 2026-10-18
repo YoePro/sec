@@ -53,11 +53,13 @@ func TestFormatCanonicalTokenSpacing(t *testing.T) {
 }
 
 // Spacing is decided only from parser roles and only inside one line: string
-// contents, gaps holding a comment, line continuations, and typed declaration
-// heads keep their source spelling.
+// contents, gaps holding a comment, and typed declaration heads keep their
+// source spelling. An inline block comment is trivia, so the operator after
+// it still gets its canonical spacing, and a line continuation gets the
+// canonical continuation layout (§ 9(13)–(15)).
 //
 // Rules:
-//   - rules/tooling/formatter.md — §6(8), §12 "Comments", §29 "Formatter invariants"
+//   - rules/tooling/formatter.md — §6(8), §9(13)–(15), §12 "Comments", §12(9a), §29 "Formatter invariants"
 func TestFormatTokenSpacingLeavesUnroledAndMultilineGaps(t *testing.T) {
 	input := "module main\n\nfn F(a: int, b: int) int {\n" +
 		"    let s := \"a+b==c\"\n" +
@@ -66,7 +68,15 @@ func TestFormatTokenSpacingLeavesUnroledAndMultilineGaps(t *testing.T) {
 		"    b\n" +
 		"    float: low := 1.0\n" +
 		"    return a\n}\n"
-	assertFormat(t, input, input)
+	want := "module main\n\nfn F(a: int, b: int) int {\n" +
+		"    let s := \"a+b==c\"\n" +
+		"    let c := a /* note */ + b\n" +
+		"    let total :=\n" +
+		"          a\n" +
+		"        + b\n" +
+		"    float: low := 1.0\n" +
+		"    return a\n}\n"
+	assertFormat(t, input, want)
 }
 
 // Decorative blank lines directly inside braces are removed, ordinary
@@ -116,4 +126,15 @@ func TestFormatDetachStatementKeywordSpacing(t *testing.T) {
 	if got != want {
 		t.Fatalf("Format() =\n%s\nwant:\n%s", got, want)
 	}
+}
+
+// MD-079: the direct single-call form keeps one space after `unsafe`, keeps
+// the call's ordinary formatting, and is never rewritten into a block.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 19(14) direct unsafe call spacing (MD-079)
+func TestFormatDirectUnsafeCall(t *testing.T) {
+	assertFormat(t,
+		"module main\n\nfn F(pointer: RawPtr[int]) int {\n    unsafe   pointer.Write(1)\n    let value := unsafe  Danger( pointer.Read() )+1\n    unsafe {\n        Danger(2)\n    }\n    return value\n}\n",
+		"module main\n\nfn F(pointer: RawPtr[int]) int {\n    unsafe pointer.Write(1)\n    let value := unsafe Danger(pointer.Read()) + 1\n    unsafe {\n        Danger(2)\n    }\n    return value\n}\n")
 }

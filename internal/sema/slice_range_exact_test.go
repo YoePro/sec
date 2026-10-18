@@ -118,3 +118,36 @@ fn Take(values: int[4]) int {
 		t.Fatalf("a missing end of a fixed array is its exact length: %v", open.SliceEnd)
 	}
 }
+
+// MD-089: the diagnostic presentation of a slice projection distinguishes a
+// runtime-unknown start (`*`) from a constant start of zero (omitted), prints
+// known bounds exactly and an unknown end as the open `..` form; presentation
+// never changes the Place's exact bounds.
+//
+// Rules:
+//   - rules/memory/borrowing.md — § 12(9) slice Place presentation (MD-089)
+//   - rules/tooling/diagnostics.md — § 10(7) Place rendering (MD-089)
+func TestSlicePlacePresentationDistinguishesUnknownBounds(t *testing.T) {
+	bound := func(value int64) *big.Int { return big.NewInt(value) }
+	tests := []struct {
+		start, end *big.Int
+		want       string
+	}{
+		{bound(0), bound(3), "values[..<3]"},
+		{bound(2), bound(3), "values[2..<3]"},
+		{nil, bound(3), "values[*..<3]"},
+		{bound(2), nil, "values[2..]"},
+		{bound(0), nil, "values[..]"},
+		{nil, nil, "values[*..]"},
+		{bound(0), new(big.Int).Lsh(big.NewInt(1), 70), "values[..<1180591620717411303424]"},
+	}
+	for _, test := range tests {
+		place := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceSlice, SliceStart: test.start, SliceEnd: test.end}}}
+		if got := place.String(); got != test.want {
+			t.Errorf("start=%v end=%v: got %q, want %q", test.start, test.end, got, test.want)
+		}
+		if (place.Projections[0].SliceStart == nil) != (test.start == nil) {
+			t.Errorf("presentation changed the start bound identity of %q", test.want)
+		}
+	}
+}

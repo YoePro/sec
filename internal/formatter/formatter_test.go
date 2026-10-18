@@ -278,7 +278,7 @@ func TestFormatAlignsExplicitEnumValueAssignmentsFromCST(t *testing.T) {
 // Rules:
 //   - rules/tooling/formatter.md — §9(8), §9(8b) trailing comments
 //   - rules/tooling/formatter.md — §15(4) enum explicit-value assignments
-//   - missing-decisions.yaml — MD-097 trailing block comments
+//   - rules/tooling/formatter.md — §12(9a) trailing block comments (MD-097)
 func TestFormatEnumTrailingCommentsKeepValueAndCommentColumns(t *testing.T) {
 	input := "enum T string {\nA = \"A\",\nLONGNAME = \"LONGNAME\", // c1\nB = \"B\",\nCC = \"CC\", /* c2 */\nDDDDDD = \"DDDDDD\",\n/* standalone */\nE = \"E\", // c3\nFF = \"FF\",\n}\n"
 	want := "enum T string {\n" +
@@ -1365,4 +1365,41 @@ func TestFormatNormalizesSingleLineParameterSpacing(t *testing.T) {
 	if again := Format(Source{Text: got}, Options{}).Text; again != got {
 		t.Fatalf("single-line parameter spacing is not idempotent:\n%s", again)
 	}
+}
+
+// MD-097: a one-line block comment that ends a declaration line is a trailing
+// comment exactly like `//`: both spellings share one structural comment
+// column and neither ends the declaration group; a standalone block comment
+// still ends it.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 9(8), § 12(4)–(6), § 12(9a)
+func TestFormatTrailingBlockCommentsAlignWithLineCommentsInDeclarations(t *testing.T) {
+	input := "type P struct {\n    a: int, /* first */\n    longer: uint, // second\n    b: bool, /* third */\n    /* standalone */\n    cc: int, // own group\n    d: int,\n}\n"
+	want := "type P struct {\n" +
+		"    a:      int,  /* first */\n" +
+		"    longer: uint, // second\n" +
+		"    b:      bool, /* third */\n" +
+		"    /* standalone */\n" +
+		"    cc: int, // own group\n" +
+		"    d:  int,\n" +
+		"}\n"
+	assertFormat(t, input, want)
+}
+
+// An inline block comment (before the comma, so not trailing under MD-097)
+// is parsed as trivia and keeps the struct's type column for every field,
+// including the fields after it.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 9(5), § 9(8), § 12(9a)
+func TestFormatInlineBlockCommentKeepsFieldAlignment(t *testing.T) {
+	input := "type Example struct {\n    a: int,\n    longName: uint16,\n    c: int /* inline */,\n    d: int,\n}\n"
+	want := "type Example struct {\n" +
+		"    a:        int,\n" +
+		"    longName: uint16,\n" +
+		"    c:        int /* inline */,\n" +
+		"    d:        int,\n" +
+		"}\n"
+	assertFormat(t, input, want)
 }

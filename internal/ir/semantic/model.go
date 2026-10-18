@@ -265,6 +265,19 @@ type Module struct {
 	// Statics are the module's static-duration storage locations
 	// (semantic_ir.md § 28), in identity order.
 	Statics []Static
+	// PointerWidthBits is the selected CompilationPlan's pointer width the
+	// module was analyzed for, or zero without a plan; plan-specific
+	// conversion proofs must match it (MD-104).
+	PointerWidthBits uint16
+}
+
+// ConversionProof is the Sema-established exactness contract carried by
+// numeric.convert-exact and enum.to-integer (semantic_ir.md § 124, MD-104):
+// its basis, and the plan width when the proof depends on target-sized types
+// (zero: valid on every supported plan).
+type ConversionProof struct {
+	Basis                string
+	PlanPointerWidthBits uint16
 }
 
 type Function struct {
@@ -687,18 +700,28 @@ type BranchTarget struct {
 	Arguments []ValueID
 }
 type Operation struct {
-	Kind                OpKind
-	Location            Location
-	Results             []Value
-	Operands            []ValueID
-	Integer             *big.Int
-	Bool                *bool
-	String              string
-	Decimal             *DecimalConstant
-	FloatLexeme         string
-	Storage             StorageID
-	Static              StaticID
-	Callee              FunctionID
+	Kind        OpKind
+	Location    Location
+	Results     []Value
+	Operands    []ValueID
+	Integer     *big.Int
+	Bool        *bool
+	String      string
+	Decimal     *DecimalConstant
+	FloatLexeme string
+	// Float is const.float's canonical binary payload (package20.md § 18).
+	Float *FloatConstant
+	// FloatBinary is the kind of float.binary.
+	FloatBinary FloatBinaryKind
+	Storage     StorageID
+	Static      StaticID
+	Callee      FunctionID
+	// ConversionProof is required on numeric.convert-exact and
+	// enum.to-integer (MD-104).
+	ConversionProof *ConversionProof
+	// UnsafeAuthorization is the source position of a call's direct
+	// `unsafe` prefix (MD-079); nil when the call carries no prefix.
+	UnsafeAuthorization *Location
 	ArgumentActions     []ArgumentAction
 	Successors          []BranchTarget
 	IntegerBinary       IntegerCheckedBinaryKind

@@ -252,7 +252,6 @@ a compiler-known type.
 Examples:
 
 ```text
-string.FromByteArray(...)
 string.FromRuneArray(...)
 Arena.FromBuffer(...)
 Arena.WithCapacity(...)
@@ -454,6 +453,7 @@ The repository currently contains lowercase intrinsic spellings:
 ```text
 .ptr
 .len
+.scale
 ```
 
 The canonical Sec 0.1 public spellings are:
@@ -461,7 +461,13 @@ The canonical Sec 0.1 public spellings are:
 ```text
 .Ptr
 .Len
+.Scale
 ```
+
+`.scale` / `.Scale` is the `uint8` instance property of a `decimal` value
+(`core-library.md` § 10.1; MD-082, 2026-10-18); both resolve to
+`CKM-DECIMAL-SCALE`. New examples, generated declarations and hover use
+`.Scale`; `decimal128` gets no member until MD-068.
 
 Lowercase spellings are classified as migration spellings.
 
@@ -1854,13 +1860,23 @@ preserves element order;
 does not exist as a general array formatting operation.
 ```
 
-For a byte sequence, `ToString()` decodes exactly the represented bytes in
-order as strict UTF-8, with the same semantics as `string.FromByteArray`: it
-does not append a terminator, does not reinterpret each byte as a separate
-Unicode scalar, and returns `Err(StringError.InvalidUtf8(offset))` for
-malformed input instead of producing a malformed string (MD-050). Its result is
-the universal `Result[string, StringError]`; no separate conversion error
-family exists.
+For a byte sequence the text-materialization list above does **not** apply:
+`ToString()` never interprets byte contents as text (MD-091, 2026-10-18). It is
+the general representational operation. For the dynamic `byte[]` its result is
+the type summary `byte[]`, whether the bytes look like valid UTF-8 or not:
+
+```sec
+// The content is not UTF-8-decoded by ToString().
+let description := try bytes.ToString() // "byte[]"
+```
+
+Fixed byte arrays and borrowed byte views keep their collection/fallback
+formatting contracts and never decode merely because their element type is
+`byte`; no `ToString()` overload advertises itself as a byte-to-text decoder.
+The signature stays the universal `Result[string, StringError]`. Decoding
+bytes is the standard-library operation `str.FromByteArray` /
+`str.FromByteArrayLossy` (`core-library.md` § 5.2). Char and rune sequence
+semantics are unchanged.
 
 ---
 
@@ -2112,10 +2128,11 @@ No mandatory copy-on-write runtime is introduced.
 
 ## Bytes
 
-`string.FromByteArray` accepts the canonical encoded bytes of every string, so
-decoding the array produced by `text.ToByteArray()` (borrowed with `ref`)
-reconstructs equivalent string content; only storage failure can occur
-(`StringError.Allocation`).
+The standard-library `str.FromByteArray` accepts the canonical encoded bytes of
+every string, so decoding the array produced by `text.ToByteArray()` (borrowed
+with `ref`) reconstructs equivalent string content; only storage failure can
+occur (`StringError.Allocation`). The round trip never uses `byte[].ToString()`,
+which is a type summary (MD-091).
 
 ## Runes
 
@@ -2175,12 +2192,14 @@ Such APIs require distinct semantics.
 The compiler-known/core surface includes:
 
 ```sec
-fn FromByteArray(value: ref byte[]) Result[string, StringError]
 fn FromRuneArray(value: ref rune[]) Result[string, StringError]
 ```
 
-Both borrow their input and materialize an independent string (MD-072,
-`core-library.md` § 5.2).
+It borrows its input and materializes an independent string (MD-072,
+`core-library.md` § 5.2). There is no compiler-known or core
+`string.FromByteArray`: byte decoding is the standard-library
+`str.FromByteArray` (MD-091, 2026-10-18), and `string.FromByteArray(...)` is
+diagnosed with a pointer to it.
 
 A `FromCharArray` constructor may be added when the canonical char/string model
 is finalized.
@@ -2200,9 +2219,38 @@ registry and privileged core declaration model.
 
 ---
 
-# `FromByteArray`
+# Internal core string materialization
 
-`FromByteArray` decodes the borrowed input as strict UTF-8, the only
+`str.FromByteArray`'s strict decoding contract below is owned by
+`sec/stdlib/str/stdlib_str.md` (MD-091, 2026-10-18). The compiler provides one
+narrow capability that turns a validated byte sequence into a string:
+
+```text
+canonical name: _stringFromUtf8
+registry ID: CKF-STRING-FROM-UTF8
+operand: one borrowed contiguous byte sequence (ref byte[], ref byte[N], or a byte slice)
+result type: Result[string, StringError]
+unsafe: false (it validates strict UTF-8 itself)
+availability: loader-proven sec/core only (never stdlib; owner decision 2026-10-18)
+public visibility: none (no completion, no public documentation, no core declaration)
+```
+
+Only trusted core knows it; core may allocate only inside `ToString()`, so
+core uses it from `ToString` implementations (the core byte formatters in
+`sec/core/byte.sec`). It borrows its operand and never consumes, adopts,
+mutates or aliases it; it returns `StringError.InvalidUtf8(offset)` for
+malformed input and `StringError.Allocation` for storage failure. Authority is
+loader provenance (`SourceCore`), never path or module spelling. It is not a
+public decode path and is not callable as `string.FromByteArray`,
+`string(bytes)` or an implicit conversion. How standard-library code
+(`str.FromByteArray`, `str.Builder.Finish`, io, url) obtains a string from
+validated bytes is open as MD-109. Semantic IR and lowering of the operation
+belong to the string-materialization work of P23 and are not implemented
+yet.
+
+## Strict decoding contract
+
+`str.FromByteArray` decodes the borrowed input as strict UTF-8, the only
 canonical string encoding (MD-050).
 
 It does not assume zero termination.
@@ -2979,8 +3027,8 @@ ToString
 ToByteArray
 ToCharArray
 ToRuneArray
-string.FromByteArray
 string.FromRuneArray
+_stringFromUtf8 (internal, core only)
 byte-sequence ToString
 char-sequence ToString
 rune-sequence ToString
@@ -3454,7 +3502,7 @@ global len recognition;
 value-form and type-form SizeOf type resolution;
 universal fallback and byte/char/rune-sequence ToString type resolution;
 string ToByteArray, ToCharArray, and ToRuneArray type resolution;
-string.FromByteArray and string.FromRuneArray type resolution;
+string.FromRuneArray type resolution; internal _stringFromUtf8 authority (core only);
 integer Min, Max, and Bits and floating representation property lookup;
 RawPtr Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes, and Difference validation;
 stable CKM-RAWPTR-VOLATILE-READ and CKM-RAWPTR-VOLATILE-WRITE identities;

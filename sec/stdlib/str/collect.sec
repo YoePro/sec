@@ -23,7 +23,7 @@ module str
  * stdlib/str/stdlib_str.md
  */
 
-// TODO: Implement stdlib/str/collect.sec
+// TODO: Verify and test stdlib/str/collect.sec
 
 /**
  * Materializes a UTF-8 string as an owning array of runes.
@@ -181,6 +181,39 @@ fn FromRunes(values: ref rune[]) Result[string, CollectionError] {
 }
 
 /**
+ * Creates a string from an array of Unicode scalar values.
+ *
+ * Description:
+ * Encodes the supplied runes as UTF-8 and constructs
+ * a string containing the resulting text.
+ *
+ * Preserves the order and values of all input runes.
+ * Does not perform Unicode normalization.
+ *
+ * The input array is borrowed and remains unchanged.
+ *
+ * This function delegates to FromRunes() and provides
+ * a symmetrical naming convention with FromByteArray().
+ *
+ * Parameters:
+ * - value: Array of Unicode scalar values to encode.
+ *
+ * Returns:
+ * A string containing the UTF-8 encoded runes.
+ * An empty array produces an empty string.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * May allocate storage for the resulting string.
+ * Does not allocate an intermediate rune array.
+ */
+fn FromRuneArray(value: ref rune[]) Result[string, CollectionError] {
+    return FromRunes(ref value)
+}
+
+/**
  * Creates a string from a UTF-8 encoded byte array.
  *
  * Description:
@@ -296,7 +329,9 @@ fn FromByteArray(value: ref byte[]) Result[string, StringError] {
     }
 
     // The complete array is now known to contain valid UTF-8.
-    return value.ToString()
+    // TODO(MD-109): byte[].ToString() is a type summary, not a decoder
+    // (MD-091), and stdlib has no bytes -> string materialization path yet.
+    panic "FromByteArray: string materialization is undecided (MD-109)"
 }
 
 /**

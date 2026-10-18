@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-10-12 (MD-036/MD-054 [format] table)
+- **Last updated:** 2026-10-18 (MD-098 max_alignment_padding; MD-036/MD-054 [format] table)
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/projects/projects.md`
@@ -344,6 +344,8 @@ ProjectManifest {
 § 6(9) Unknown `[format]` keys, wrongly typed values and duplicate keys are manifest errors. An absent table or an omitted key applies the formatter default for that setting.
 
 § 6(10) Explicit formatter invocation options take precedence over `[format]`, which takes precedence over the formatter defaults (`formatter.md` § 4(20)); an explicit option never rewrites the manifest.
+
+§ 6(11) `[format].max_alignment_padding` is a project-owned integer number of spaces in `1..1024` (`formatter.md` § 4(14)); `0`, negative, out-of-range and non-integer values are manifest errors. When it is omitted the formatter uses four times `indentation_width` (16 by default), so adding the key requires no new `format_version`. It has no `sec fmt` command-line override, and `sec init` writes it only as the commented example `# max_alignment_padding = 16` (MD-098, 2026-10-18).
 
 ---
 

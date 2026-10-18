@@ -48,12 +48,17 @@ func TestAtomicFenceLowersToSemanticIR(t *testing.T) {
 		{Kind: OpAtomicFence, AtomicOrder: "Relaxed"},
 		{Kind: OpAtomicFence},
 		{Kind: OpAtomicFence, AtomicOrder: "SeqCst", Operands: []ValueID{1}},
+		{Kind: OpAtomicFence, AtomicOrder: "Acquire", Results: []Value{{ID: 1}}},
+		{Kind: OpAtomicFence, AtomicOrder: "acquire"},
 	} {
 		if verifyAtomicFence(bad) == nil {
 			t.Errorf("verifier accepted %+v", bad)
 		}
 	}
-	if err := verifyAtomicFence(Operation{Kind: OpAtomicFence, AtomicOrder: "AcqRel"}); err != nil {
-		t.Fatal(err)
+	// MD-096: exactly the four admitted orders, printed as order=<Order>.
+	for _, order := range []string{"Acquire", "Release", "AcqRel", "SeqCst"} {
+		if err := verifyAtomicFence(Operation{Kind: OpAtomicFence, AtomicOrder: order}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

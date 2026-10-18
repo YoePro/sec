@@ -1,0 +1,32 @@
+module main
+
+fn Static() int {
+    let mut values := [1, 2, 3, 4, 5, 6, 7, 8]
+    let view := ref mut values[2..<7]
+    let left := ref mut view[..1]
+    let right := ref mut view[2..]
+    left[0] = 30
+    right[0] = 50
+    return left[0] + right[0]
+}
+
+fn Empty() int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[1..<3]
+    let empty := ref mut view[2..]
+    let alsoEmpty := ref mut values[3..<3]
+    let whole := ref mut values
+    discard empty
+    discard alsoEmpty
+    discard whole
+    return 0
+}
+
+fn Zero() int {
+    let mut values: int[0]
+    let first := ref mut values[..]
+    let second := ref mut values[..]
+    discard first
+    discard second
+    return 0
+}

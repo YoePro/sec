@@ -412,6 +412,26 @@ public:
   }
 };
 
+// Static storage access keeps its symbol and attributes while its value type
+// becomes the signless integer of the resolved representation.
+class StaticAccessTypeLowering final : public ConversionPattern {
+public:
+  StaticAccessTypeLowering(TypeConverter &converter, MLIRContext *context,
+                           StringRef name)
+      : ConversionPattern(converter, name, 1, context) {}
+  LogicalResult
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    SmallVector<Type> results;
+    if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), results)))
+      return failure();
+    OperationState state(op->getLoc(), op->getName(), operands, results,
+                         op->getAttrs());
+    rewriter.replaceOp(op, rewriter.create(state)->getResults());
+    return success();
+  }
+};
+
 class IntegerSemanticOpLowering final : public ConversionPattern {
 public:
   IntegerSemanticOpLowering(TypeConverter &converter, MLIRContext *context,
@@ -779,6 +799,8 @@ public:
                            memref::MemRefDialect>();
     target.addLegalDialect<sec::SecDialect>();
     target.addIllegalOp<sec::NumericConvertExactOp>();
+    target.addDynamicallyLegalOp<sec::StaticLoadOp, sec::StaticStoreOp>(
+        [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addIllegalOp<sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
                         sec::IntBinaryCheckedOp, sec::IntBitNotOp,
                         sec::IntBitwiseOp, sec::IntShiftCheckedOp,
@@ -814,6 +836,9 @@ public:
                  SecCallTypeLowering<sec::CallForeignOp>, SecConstIntLowering,
                  ArithConstantTypeLowering, NumericConvertExactLowering>(
         typeConverter, context);
+    for (StringRef name : {sec::StaticLoadOp::getOperationName(),
+                           sec::StaticStoreOp::getOperationName()})
+      patterns.add<StaticAccessTypeLowering>(typeConverter, context, name);
     for (StringRef operationName : {
              sec::IntUnaryPlusOp::getOperationName(),
              sec::IntNegCheckedOp::getOperationName(),

@@ -40,7 +40,10 @@ type PlaceProjection struct {
 	// depends on host int64 width (package16.md §§ 25, 27-29).
 	SliceStart *big.Int
 	SliceEnd   *big.Int
-	Token      lexer.Token
+	// DynamicRange is a compiler-only evaluated-range identity (P16 §§ 26–28).
+	// It is not portable separate-compilation metadata or a runtime tag.
+	DynamicRange SliceRangeID `json:"-"`
+	Token        lexer.Token
 }
 
 // clonePlaceConstantIndex creates an independently owned exact integer so
@@ -377,7 +380,10 @@ func singleOriginPlaceRelationship(left, right Place) PlaceRelationship {
 				return PlaceDisjoint
 			}
 			if !slicesAreStaticallyEqual(leftProjection, rightProjection) {
-				potential = true
+				// Child ranges are relative to these possibly different dynamic
+				// origins, so they cannot establish disjoint absolute ranges.
+				// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 27–30.
+				return PlacePotentiallyOverlapping
 			}
 		case PlaceDereference:
 			// Equal dereference paths share provenance in this initial model.
@@ -445,7 +451,14 @@ func slicesAreStaticallyDisjoint(left, right PlaceProjection) bool {
 		right.SliceEnd != nil && left.SliceStart != nil && right.SliceEnd.Cmp(left.SliceStart) <= 0
 }
 
+// slicesAreStaticallyEqual proves equality only from complete static bounds;
+// unknown endpoints or dynamic identities supply no runtime equality proof.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 26–30.
 func slicesAreStaticallyEqual(left, right PlaceProjection) bool {
+	if left.DynamicRange != 0 || right.DynamicRange != 0 ||
+		left.SliceStart == nil || left.SliceEnd == nil || right.SliceStart == nil || right.SliceEnd == nil {
+		return false
+	}
 	return sliceBoundsEqual(left.SliceStart, right.SliceStart) && sliceBoundsEqual(left.SliceEnd, right.SliceEnd)
 }
 
@@ -603,7 +616,7 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 		if containerType.Kind != ArrayType && containerType.Kind != SliceType || containerType.Element == nil {
 			return Place{}, false
 		}
-		projection := a.slicePlaceProjection(expr, containerType)
+		projection := a.slicePlaceProjectionWithLength(expr, containerType, staticSliceExtent(base))
 		base.Projections = appendSliceProjection(base.Projections, projection)
 		for index := range base.AlternativeOrigins {
 			base.AlternativeOrigins[index].Projections = appendSliceProjection(base.AlternativeOrigins[index].Projections, projection)
@@ -614,91 +627,6 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 	default:
 		return Place{}, false
 	}
-}
-
-// slicePlaceProjection normalizes a source slice to exact half-open bounds: a
-// missing start is 0, an inclusive end is end+1 computed exactly, and a
-// missing end of a fixed array is its exact length. Non-constant endpoints
-// stay unknown.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 13-19, 25, 27-29
-func (a *Analyzer) slicePlaceProjection(expr *ast.SliceExpression, containerType Type) PlaceProjection {
-	projection := PlaceProjection{Kind: PlaceSlice, SliceStart: new(big.Int), Token: expr.Token}
-	if expr.Start != nil {
-		projection.SliceStart = nil
-		if value, ok := a.integerConstantValue(expr.Start); ok {
-			projection.SliceStart = new(big.Int).Set(value)
-		}
-	}
-	if expr.End != nil {
-		if value, ok := a.integerConstantValue(expr.End); ok {
-			projection.SliceEnd = new(big.Int).Set(value)
-			if !expr.Exclusive {
-				projection.SliceEnd.Add(projection.SliceEnd, big.NewInt(1))
-			}
-		}
-	} else if length, ok := exactFixedArrayLength(containerType); ok {
-		projection.SliceEnd = new(big.Int).Set(length)
-	}
-	return projection
-}
-
-// appendIndexProjection composes a constant index through a static slice
-// using arbitrary-precision arithmetic and no int64 index adapter.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
-func appendIndexProjection(projections []PlaceProjection, index PlaceProjection) []PlaceProjection {
-	index = clonePlaceProjection(index)
-	if len(projections) == 0 || index.DynamicIndex {
-		return append(projections, index)
-	}
-	last := projections[len(projections)-1]
-	if last.Kind != PlaceSlice || last.SliceStart == nil {
-		return append(projections, index)
-	}
-	constant := placeConstantIndexValue(index.ConstantIndex)
-	if constant.Sign() < 0 || (last.SliceEnd != nil && constant.Cmp(new(big.Int).Sub(last.SliceEnd, last.SliceStart)) >= 0) {
-		return append(projections, index)
-	}
-	index.ConstantIndex = new(big.Int).Add(constant, last.SliceStart)
-	return append(projections[:len(projections)-1], index)
-}
-
-// appendSliceProjection composes a nested static slice into absolute exact
-// bounds of its parent; a nested range that is negative or exceeds the
-// parent stays a separate projection.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 27-29
-func appendSliceProjection(projections []PlaceProjection, child PlaceProjection) []PlaceProjection {
-	child = clonePlaceProjection(child)
-	if len(projections) == 0 {
-		return append(projections, child)
-	}
-	parent := projections[len(projections)-1]
-	if parent.Kind != PlaceSlice || parent.SliceStart == nil {
-		return append(projections, child)
-	}
-	if (child.SliceStart != nil && child.SliceStart.Sign() < 0) || (child.SliceEnd != nil && child.SliceEnd.Sign() < 0) {
-		return append(projections, child)
-	}
-	if parent.SliceEnd != nil {
-		length := new(big.Int).Sub(parent.SliceEnd, parent.SliceStart)
-		if (child.SliceStart != nil && child.SliceStart.Cmp(length) > 0) || (child.SliceEnd != nil && child.SliceEnd.Cmp(length) > 0) {
-			return append(projections, child)
-		}
-	}
-	if child.SliceStart != nil {
-		child.SliceStart.Add(child.SliceStart, parent.SliceStart)
-	}
-	if child.SliceEnd != nil {
-		child.SliceEnd.Add(child.SliceEnd, parent.SliceStart)
-	} else if parent.SliceEnd != nil {
-		child.SliceEnd = new(big.Int).Set(parent.SliceEnd)
-	}
-	return append(projections[:len(projections)-1], child)
 }
 
 func (a *Analyzer) canonicalDereferencePlace(expr ast.Expression, fallback Place, referenceType Type) Place {

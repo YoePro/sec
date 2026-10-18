@@ -46,6 +46,13 @@ const (
 // runtime indexes; an identity never compares expression text.
 type DynamicIndexID uint32
 
+// SliceRangeID identifies an evaluated dynamic slice range within one analysis.
+// Zero means absent; equality never follows endpoint spelling or runtime values.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 26–28.
+type SliceRangeID uint32
+
+func (id SliceRangeID) String() string { return identityString("slice-range", uint32(id)) }
+
 func (id DynamicIndexID) String() string { return identityString("index", uint32(id)) }
 
 // BorrowID identifies one direct borrow creation; copies, moves and reborrows
@@ -90,6 +97,7 @@ type placeIdentityAllocator struct {
 	epochs         map[string]EpochDependencyID
 	targetSpaces   map[string]AddressSpaceID
 	dynamicIndexes map[string]DynamicIndexID
+	sliceRanges    map[string]SliceRangeID
 	borrows        map[string]BorrowID
 	lifetimes      map[string]LifetimeID
 }
@@ -129,6 +137,13 @@ func (a *placeIdentityAllocator) dynamicIndex(key string) DynamicIndexID {
 	return allocateIdentity(&a.dynamicIndexes, key, 1)
 }
 
+// sliceRange interns a semantic evaluation site in deterministic first-use
+// order, with zero reserved for absence. No endpoint expression is evaluated.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 26.
+func (a *placeIdentityAllocator) sliceRange(key string) SliceRangeID {
+	return allocateIdentity(&a.sliceRanges, key, 1)
+}
+
 func (a *placeIdentityAllocator) borrow(key string) BorrowID {
 	return allocateIdentity(&a.borrows, key, 1)
 }
@@ -146,6 +161,7 @@ func (a placeIdentityAllocator) clone() placeIdentityAllocator {
 		epochs:         cloneIdentityTable(a.epochs),
 		targetSpaces:   cloneIdentityTable(a.targetSpaces),
 		dynamicIndexes: cloneIdentityTable(a.dynamicIndexes),
+		sliceRanges:    cloneIdentityTable(a.sliceRanges),
 		borrows:        cloneIdentityTable(a.borrows),
 		lifetimes:      cloneIdentityTable(a.lifetimes),
 	}
@@ -207,4 +223,37 @@ func rootAddressSpace(symbol Symbol) AddressSpaceID {
 		return AddressSpaceMMIO
 	}
 	return AddressSpaceOrdinary
+}
+
+// samePlaceIdentity compares legacy Place identity using exact numeric equality
+// for constant projections rather than pointer or host-width equality, and
+// distinguishes dynamic slice evaluation identities.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 26–28
+func samePlaceIdentity(left, right Place) bool {
+	// Root identity follows the declaration, not the spelling (P15-10):
+	// equally named roots of different declarations are different Places.
+	if left.RootID != 0 && right.RootID != 0 {
+		if left.RootID != right.RootID {
+			return false
+		}
+	} else if left.Root != right.Root {
+		return false
+	}
+	if len(left.Projections) != len(right.Projections) {
+		return false
+	}
+	for index := range left.Projections {
+		leftProjection := left.Projections[index]
+		rightProjection := right.Projections[index]
+		if leftProjection.Kind != rightProjection.Kind || leftProjection.Name != rightProjection.Name ||
+			leftProjection.DynamicRange != rightProjection.DynamicRange ||
+			!placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
+			!sliceBoundsEqual(leftProjection.SliceStart, rightProjection.SliceStart) || !sliceBoundsEqual(leftProjection.SliceEnd, rightProjection.SliceEnd) {
+			return false
+		}
+	}
+	return true
 }

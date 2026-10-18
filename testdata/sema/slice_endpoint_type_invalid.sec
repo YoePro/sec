@@ -1,0 +1,6 @@
+module main
+
+fn Bad(values: int[4], bound: bool) void {
+    let invalid := ref values[bound..<3]
+    discard invalid
+}

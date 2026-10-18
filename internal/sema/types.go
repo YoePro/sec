@@ -1040,6 +1040,16 @@ func newBuiltinTypes() map[string]Type {
 			EnumValues: []string{"OutOfBounds"},
 			EnumConsts: builtinEnumConsts([]string{"OutOfBounds"}),
 		},
+		// The canonical range failure shared by core and P16 slice syntax.
+		// Rules: rules/library/core-library.md — core error types;
+		// rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 18, 36.
+		"RangeError": {
+			Name: "RangeError", Module: "core", Named: true, Declared: true,
+			Kind: EnumType, Underlying: "int", ErrorAssignable: true,
+			EnumValues:  []string{"InvalidRange", "StartAfterEnd", "OutOfBounds"},
+			EnumConsts:  builtinEnumConsts([]string{"InvalidRange", "StartAfterEnd", "OutOfBounds"}),
+			EnumDefault: "InvalidRange",
+		},
 		"EnumValueError": {
 			Name:        "EnumValueError",
 			Kind:        EnumType,
@@ -1060,21 +1070,33 @@ func newBuiltinTypes() map[string]Type {
 			},
 		},
 
-		"Vec":          {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
-		"Set":          {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
-		"Map":          {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
-		"list":         {Name: "list", Kind: StructType, EmptyListDefault: true, GenericParameters: []string{"T"}},
-		"map":          {Name: "map", Kind: StructType, GenericParameters: []string{"K", "V"}},
-		"set":          {Name: "set", Kind: StructType, GenericParameters: []string{"T"}},
-		"vector":       {Name: "vector", Kind: StructType, GenericParameters: []string{"T"}},
-		"matrix":       {Name: "matrix", Kind: StructType, GenericParameters: []string{"T"}},
-		"tensor":       {Name: "tensor", Kind: StructType, GenericParameters: []string{"T"}},
-		"tensor_view":  {Name: "tensor_view", Kind: StructType, GenericParameters: []string{"T"}},
-		"Shape":        {Name: "Shape", Kind: StructType},
-		"Strides":      {Name: "Strides", Kind: StructType},
-		"TensorLayout": {Name: "TensorLayout", Kind: StructType},
-		"MemorySpace":  {Name: "MemorySpace", Kind: StructType},
-		"Task":         {Name: "Task", Kind: StructType, GenericParameters: []string{"T"}},
+		"Vec":         {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
+		"Set":         {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
+		"Map":         {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
+		"list":        {Name: "list", Kind: StructType, EmptyListDefault: true, GenericParameters: []string{"T"}},
+		"map":         {Name: "map", Kind: StructType, GenericParameters: []string{"K", "V"}},
+		"set":         {Name: "set", Kind: StructType, GenericParameters: []string{"T"}},
+		"vector":      {Name: "vector", Kind: StructType, GenericParameters: []string{"T"}},
+		"matrix":      {Name: "matrix", Kind: StructType, GenericParameters: []string{"T"}},
+		"tensor":      {Name: "tensor", Kind: StructType, GenericParameters: []string{"T"}},
+		"tensor_view": {Name: "tensor_view", Kind: StructType, GenericParameters: []string{"T"}},
+		"Shape":       {Name: "Shape", Kind: StructType},
+		"Strides":     {Name: "Strides", Kind: StructType},
+		// MD-016 (shaped-types.md § 7.1): a generic nominal enum whose Rank
+		// is part of its identity, with exactly three Sec 0.1 variants.
+		"TensorLayout": {
+			Name:       "TensorLayout",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"DenseRowMajor", "DenseColumnMajor", "Strided"},
+			EnumConsts: builtinEnumConsts([]string{"DenseRowMajor", "DenseColumnMajor", "Strided"}),
+		},
+		// MD-016 part 1 (shaped-types.md § 15.3): compiler-known axis
+		// metadata with a compile-time cardinality argument.
+		"Axes":        {Name: "Axes", Kind: StructType},
+		"AxisList":    {Name: "AxisList", Kind: StructType},
+		"MemorySpace": {Name: "MemorySpace", Kind: StructType},
+		"Task":        {Name: "Task", Kind: StructType, GenericParameters: []string{"T"}},
 		// rules/concurrency/tasks.md sections 11-16 and
 		// rules/concurrency/concurrency.md section 7: awaiting an already-created
 		// task preserves all terminal outcomes around the complete T. These are

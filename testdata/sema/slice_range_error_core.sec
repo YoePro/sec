@@ -1,0 +1,7 @@
+module core
+
+enum RangeError error {
+    InvalidRange
+    StartAfterEnd
+    OutOfBounds
+}

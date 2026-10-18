@@ -1266,6 +1266,28 @@ LogicalResult RefEndBorrowOp::verify() {
   return success();
 }
 
+LogicalResult StaticGlobalOp::verify() {
+  Type type = getType();
+  bool isBool = type.isInteger(1);
+  if (!isBool && !isBuiltinIntegerSemanticType(type))
+    return emitOpError("static storage supports builtin integer and bool types");
+  StringRef initial = getInitial();
+  if (isBool && initial != "true" && initial != "false")
+    return emitOpError("bool static requires initial value true or false");
+  if (!isBool) {
+    StringRef digits = initial.starts_with("-") ? initial.drop_front() : initial;
+    if (digits.empty() || !llvm::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }))
+      return emitOpError("integer static requires a decimal initial value");
+  }
+  return success();
+}
+
+LogicalResult FailPanicOp::verify() {
+  if (getReason().empty())
+    return emitOpError("requires a registered panic reason");
+  return success();
+}
+
 LogicalResult FailReferenceGenerationOp::verify() {
   if (getReason() != "panic.invalid-reference-generation")
     return emitOpError("reason must be panic.invalid-reference-generation");

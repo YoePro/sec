@@ -28,7 +28,9 @@ type switchCaseBody struct {
 // bounds in order before testing membership (flowcontrol_switch.md §§ 4–17,
 // § 39).
 //
-// Enum, string, bool and named-type subjects remain unsupported constructs.
+// Enum subjects test each case with same-enum equality and bool subjects with
+// branch-based bool equality; string and named-type subjects remain
+// unsupported constructs.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_switch.md — §§ 4–17, 31–32, 39
@@ -46,7 +48,8 @@ func (fb *functionBuilder) buildSwitch(stmt *ast.SwitchStatement) error {
 	var subject builtValue
 	if flow.HasSubject {
 		subjectType := flow.SubjectType
-		if subjectType.Kind != sema.IntType && subjectType.Kind != sema.UintType || subjectType.Named {
+		isInteger := (subjectType.Kind == sema.IntType || subjectType.Kind == sema.UintType) && !subjectType.Named
+		if !isInteger && subjectType.Kind != sema.EnumType && subjectType.Kind != sema.BoolType {
 			return fb.unsupported("switch over "+typeName(subjectType), stmt.Token)
 		}
 		typeID, err := fb.owner.internType(subjectType)
@@ -157,11 +160,27 @@ func (fb *functionBuilder) switchItemTest(item ast.SwitchCaseItem, subject built
 		if err != nil {
 			return err
 		}
+		if fb.typeHasKind(subject.typ, TypeBool) {
+			// § 27: a bool alternative matches when it equals the subject.
+			whenTrue, whenFalse := fb.newBlock(), fb.newBlock()
+			branch(subject, item.Token, whenTrue, whenFalse)
+			fb.current = whenTrue
+			branch(value, item.Token, body, next)
+			fb.current = whenFalse
+			branch(value, item.Token, next, body)
+			return nil
+		}
+		if fb.typeHasKind(subject.typ, TypeEnum) {
+			// § 24: an enum case alternative is same-enum value equality.
+			equal := fb.result(Operation{Kind: OpEnumCompare, IntegerCompare: IntegerCompareEQ, Operands: []ValueID{subject.id, value.id}, Location: location(item.Token)}, boolType)
+			branch(equal, item.Token, body, next)
+			return nil
+		}
 		branch(fb.forCompare(IntegerCompareEQ, subject, value, boolType, location(item.Token)), item.Token, body, next)
 		return nil
 	case *ast.SwitchRelationalCase:
 		predicate, ok := map[string]IntegerComparePredicate{"<": IntegerCompareLT, "<=": IntegerCompareLE, ">": IntegerCompareGT, ">=": IntegerCompareGE}[item.Operator]
-		if !ok || !hasSubject {
+		if !ok || !hasSubject || fb.typeHasKind(subject.typ, TypeEnum) || fb.typeHasKind(subject.typ, TypeBool) {
 			return fb.unsupported("relational switch case "+item.Operator, item.Token)
 		}
 		value, err := fb.switchOperand(item.Value, subject, item.Token)
@@ -171,7 +190,7 @@ func (fb *functionBuilder) switchItemTest(item ast.SwitchCaseItem, subject built
 		branch(fb.forCompare(predicate, subject, value, boolType, location(item.Token)), item.Token, body, next)
 		return nil
 	case *ast.SwitchRangeCase:
-		if !hasSubject || item.Range == nil || item.Range.Start == nil && item.Range.End == nil {
+		if !hasSubject || item.Range == nil || item.Range.Start == nil && item.Range.End == nil || fb.typeHasKind(subject.typ, TypeEnum) || fb.typeHasKind(subject.typ, TypeBool) {
 			return fb.unsupported("range switch case", item.Token)
 		}
 		loc := location(item.Token)
@@ -221,6 +240,11 @@ func (fb *functionBuilder) switchOperand(expr ast.Expression, subject builtValue
 		return builtValue{}, fb.unsupported("switch case of a different type", token)
 	}
 	return value, nil
+}
+
+func (fb *functionBuilder) typeHasKind(id TypeID, kind TypeKind) bool {
+	typ, ok := fb.owner.module.Types.Lookup(id)
+	return ok && typ.Kind == kind
 }
 
 func typeName(typ sema.Type) string {

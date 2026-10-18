@@ -18,6 +18,7 @@ add_mlir_conversion_library(SecMLIRSecToLLVM
   MLIRFuncTransforms
   MLIRIR
   MLIRLLVMDialect
+  MLIRDataLayoutInterfaces
   MLIRMemRefToLLVM
   MLIRPass
   MLIRReconcileUnrealizedCasts

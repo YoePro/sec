@@ -13,9 +13,9 @@ integrations:
       predate the correction that assigns this implementation detail to a
       private privileged-core helper. The compatibility entry now carries and
       enforces its exact sec/core/string.sec owner instead of granting access to
-      every trusted core file. The registry and generator cases remain
-      temporary until the referenced direct MLIR/LLVM core-body syntax is
-      defined and implemented in the frontend.
+      every trusted core file. The registry and generator cases remain temporary
+      until the referenced direct MLIR/LLVM core-body syntax is defined and
+      implemented in the frontend.
     rules:
       - rules/compiler/compiler_known_members.md
       - rules/library/core-library.md
@@ -75,8 +75,8 @@ integrations:
     integrated: "2026-09-10"
     summary: >-
       Resolves privileged-core string instance methods and readable properties
-      through a named string type's underlying-type chain without converting
-      the receiver or erasing nominal identity, and exposes the eligible member
+      through a named string type's underlying-type chain without converting the
+      receiver or erasing nominal identity, and exposes the eligible member
       surface through LSP completion.
     rules:
       - rules/compiler/compiler_known_members.md
@@ -115,7 +115,7 @@ integrations:
     area: compiler-known-types-members-interfaces-platform-identities
     status: partial
     repository_baseline: 998d8d1
-    revised: "2026-10-09"
+    revised: "2026-10-18"
     rules:
       - rules/library/core-library.md
       - rules/types/temporal.md
@@ -162,6 +162,7 @@ integrations:
       - internal/sema/compiler_known_members_test.go
       - internal/sema/temporal/analyzer_test.go
       - cmd/lsp/main_test.go
+      - internal/sema/slice_creation_plans_test.go
     implemented:
       - "deterministic and traceable generated helper/resource identities (2026-10-09): GeneratedIdentityIndex freezes declaration-relative lexical origins and keys compiler-only records by artifact kind, source module/owner, lexical occurrence and resolved representation plan where relevant. Detached records are sorted by identity and retain current source locations separately. Arena frontend creation/owner sites replace the process-wide analysis counter with this stable identity while moves retain the original domain; repeated analysis, reversed source-file order and shifted coordinates preserve IDs, and distinct creation sites remain distinct. LLVM lambda helpers and existing legacy LLVM-dialect overload specializations use the same origin service, include target representation in their keys and publish origin comments. Generated helper symbols occupy a separate emitted namespace; fixed rune-length helpers have canonical names/rule provenance, and explicit linkage collisions are rejected. Existing registry IDs and maintained nominal/synthetic-payload symbols remain canonical; local SSA/block numbering is not an exported semantic identity."
       - "prevent arbitrary compiler-known extension (2026-10-09): impl registration preserves registry-owned type authority through trusted core forward declarations and concrete named representations. User and forged core-module/path sources cannot add primary or extended impls, methods, properties or nested types to these identities; invalid members never enter the semantic tables. Legitimate loader-proven core extensions and user-owned nominal derivations retain ordinary behavior and acquire no compiler-known method identity. Raw and analyzed legacy backend entry points validate impls targeting registered builtin identities against the current AST/provenance and selected scalar plan, including revoked authority; failures publish source-located errors and no partial output. Impl-target validation and core support predicates were extracted from analyzer.go into the existing type declaration responsibility file."
@@ -170,8 +171,7 @@ integrations:
       - "canonical compiler-known interface registry/conformance (2026-10-09): CompilerKnownInterfaces supplies Iterator[T], its mutable Next() Option[T] requirement and CKM-ITERATOR-NEXT identity through caller-owned metadata. Builtin installation, ordinary interface/generic-constraint checks and loop dispatch use that one contract; loop method selection reuses the ordinary conformance signature matcher instead of a separate Option/signature check. Registry/analyzer instances have independent mutable interface metadata, and each explicit implements clause gets its own diagnostic anchors rather than mutating a cached specialization. Tests cover concrete loop identity, generic constraints/member lookup, reserved redeclaration, wrong results, multiple missing implementations and isolation."
       - "compiler authority is distinct from ordinary visibility (2026-10-09): private names and core-looking paths never grant registry authority. Internal callable references require the stable compiler-known identity, loader-proven core source and exact temporary owner, just as direct internal calls do; ordinary private helpers retain ordinary source behavior. Raw LLVM and legacy MLIR entry points validate reserved internal uses against the current AST and target scalar plan before output, rejecting forged paths, wrong core owners, invalid arguments and revoked provenance. Valid internal callable references remain source-valid in their owner, but legacy backends explicitly reject their unavailable callable representation rather than exposing a runtime intrinsic symbol. Existing typed registry, declaration reservation, core-member authority and LSP exclusion remain intact."
       - value.SizeOf and TypeName.SizeOf resolve through authoritative read-only compiler-known property entries with uint results
-      - the superseded global SizeOf(TypeName) function is absent from the compiler-known function registry, Sema reservation,
-        and LSP completion; ordinary user module functions named SizeOf remain legal
+      - the superseded global SizeOf(TypeName) function is absent from the compiler-known function registry, Sema reservation, and LSP completion; ordinary user module functions named SizeOf remain legal
       - invalid legacy SizeOf(TypeName) calls receive ordinary unresolved-call diagnostics rather than obsolete intrinsic validation
       - ToString is exposed by the shared compiler-known registry as a universal frontend fallback on concrete value types; an exact user-owned nominal fn ToString() string still wins ordinary method lookup, while differently shaped overloads remain callable without suppressing the no-argument fallback
       - trusted core primitive ToString overloads participate in ordinary method resolution before the compiler-known fallback when their arity is used; byte.ToString(byte.ByteStringFormat) accepts its enum argument while byte.ToString() retains the universal fallback
@@ -179,6 +179,7 @@ integrations:
       - byte, char, and rune arrays/slices resolve to distinct stable sequence-materialization identities; byte sequence ToString returns string and preserves the represented encoded bytes, while rune sequence materialization retains scalar-to-multibyte encoding semantics
       - "string.FromByteArray and string.FromRuneArray (2026-10-13): the compiler-known associated functions return Result[string, StringError], matching the core declarations, the synthetic LSP signatures and the canonical ToString result; previously Sema typed them as plain string, so a handled try over them was rejected as containing no failure (TestStringConstructorsReturnStringErrorResult). The io directory reader now handles the failure (Allocation to OutOfMemory, other to InvalidData)."
       - _now is a stable datetime value intrinsic available only to loader-proven core; it is reserved against source declarations, hidden from ordinary completion, rejected in static initialization, and records one MayUseNondeterministicInput effect per evaluated expression
+      - "P16-14 RangeError identity integration (2026-10-18; lowering.sec-mlir-package16): standalone Sema reserves the same nominal core error enum as the existing core declaration, with InvalidRange/StartAfterEnd/OutOfBounds and int carrier; loader-proven core refines that identity. Slice creation plans expose detached exact error cases. TestSliceRangeErrorCoreIdentity verifies source/fallback compatibility."
     remaining:
       - validate _now's UTCWallClock requirement against the frozen CompilationPlan once the target-capability model reaches Sema
       - preserve _now as an explicit Semantic IR operation and lower it through the selected target/runtime wall-clock service without folding or merging reads
@@ -189,9 +190,11 @@ integrations:
       - "generated identity completion (2026-10-09): closes determinism/provenance for currently produced core helper and abstract resource identities, reducing surfaces remaining 6 to 5 and core total 11 to 10. GeneratedIdentity/GeneratedIdentityIndex are explicitly compiler metadata, not Sec declarations, under compiler_pipeline.md §76. Arena records identify abstract frontend creation sites, not runtime allocation instances or epochs; existing lifetime/invalidation and platform/resource-plan requirements retain their separate owners and open scopes. This changes names/provenance of existing backend helpers and introduces no new MLIR operation or inline body syntax."
       - "arbitrary-extension completion (2026-10-09): registry identity and loader authority govern compiler-owned targets even during forward declaration registration; a named core representation never transfers ownership to user modules. This closes the full arbitrary-extension point: surfaces remaining 7 to 6 and core total 12 to 11. Core-only synthetic value definitions intentionally require authorized navigation again after editor restart; the earlier ID-only recovery claim applies to public interface requirements, not internal value services. Temporal plan/runtime and deferred helper-body requirements remain open."
       - "compiler/LSP sharing completion (2026-10-09): existing fundamental member/global-function registry consumers and the previously absent interface-requirement/value tooling path now share canonical metadata. This closes one full registry-sharing point: compiler-known-surfaces remaining 8 to 7 and core total 13 to 12. The temporal capability-plan and runtime/IR lowering points remain open; presentation of the normative requirement does not implement or validate target capabilities. No clock service, MLIR syntax or new MLIR operation is introduced."
-      - "Iterator registry completion is the compile-time interface/conformance boundary; it introduces no interface object, virtual dispatch or new MLIR operation. Existing iterator dependency, readiness, ownership and maintained lowering integrations retain their scopes. Compiler-known-surfaces remaining decreases from 9 to 8 and core total from 14 to 13. Broader compiler/LSP registry sharing remains separately listed."
+      - Iterator registry completion is the compile-time interface/conformance boundary; it introduces no interface object, virtual dispatch or new MLIR operation. Existing iterator dependency, readiness, ownership and maintained lowering integrations retain their scopes. Compiler-known-surfaces remaining decreases from 9 to 8 and core total from 14 to 13. Broader compiler/LSP registry sharing remains separately listed.
       - "this closes the compiler-authority/visibility boundary only: no new MLIR operation or inline MLIR/LLVM source syntax is introduced. The existing LLVM string-slice descriptor emission remains the compatibility implementation, and core.string-slice-helper keeps its five low-level syntax, migration, compatibility-removal and lifetime requirements; MD-052 remains open. Internal callable representation is separately deferred until the real helper migration supplies a callable body. Compiler-known-surfaces remaining decreases from 10 to 9, and core total from 15 to 14."
     verification:
+      - command: go test ./internal/sema -run 'TestResolvedSliceCreation|TestSliceCreationRejects|TestSliceRangeErrorCoreIdentity' -count=1
+        result: passed on 2026-10-18; source and fallback core RangeError identity and detached slice error facts
       - command: go test ./... -count=1
         result: passed on 2026-10-09 after lexical generated identities, helper namespace/provenance, typed-nil module handling and deterministic allocation-context projections
       - command: go test ./internal/codegen/readiness/authority -run 'TestGeneratedOverloadsVerify' -count=1 and go test ./internal/codegen/... ./internal/sema/... -count=1

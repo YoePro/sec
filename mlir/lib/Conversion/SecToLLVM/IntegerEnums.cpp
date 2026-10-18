@@ -15,6 +15,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
+#include "llvm/ADT/APSInt.h"
 
 namespace sec {
 #define GEN_PASS_DEF_SECLOWERINTEGERENUMS
@@ -61,6 +62,47 @@ public:
     rewriter.replaceOpWithNewOp<sec::IntCmpOp>(
         op, rewriter.getI1Type(), op.getPredicate(), adaptor.getLeft(),
         adaptor.getRight());
+    return success();
+  }
+};
+
+// enumToIntegerTarget is the resolved integer an explicit enum-to-integer
+// conversion produces, when that conversion is exact: the target is the
+// enum's carrier, or every declared case value fits the target. An enum
+// value is always one of its declared cases (enums.md sections 7, 13), so
+// this decides exactness without a runtime check (MD-104).
+IntegerType enumToIntegerTarget(sec::EnumToIntegerOp op) {
+  auto type = cast<sec::EnumType>(op.getValue().getType());
+  auto target = dyn_cast<IntegerType>(op.getResult().getType());
+  if (!isOrdinaryIntegerEnum(type) || !target ||
+      (!target.isSigned() && !target.isUnsigned()))
+    return IntegerType();
+  if (target == type.getUnderlying())
+    return target;
+  for (Attribute attribute : type.getCases()) {
+    llvm::APSInt value(cast<sec::EnumCaseAttr>(attribute).getValue().getValue());
+    llvm::APSInt minimum = llvm::APSInt::getMinValue(target.getWidth(), target.isUnsigned());
+    llvm::APSInt maximum = llvm::APSInt::getMaxValue(target.getWidth(), target.isUnsigned());
+    if (llvm::APSInt::compareValues(value, minimum) < 0 ||
+        llvm::APSInt::compareValues(value, maximum) > 0)
+      return IntegerType();
+  }
+  return target;
+}
+
+class EnumToIntegerLowering : public OpConversionPattern<sec::EnumToIntegerOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(sec::EnumToIntegerOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
+    IntegerType target = enumToIntegerTarget(op);
+    if (!target)
+      return failure();
+    if (adaptor.getValue().getType() == target)
+      rewriter.replaceOp(op, adaptor.getValue());
+    else
+      rewriter.replaceOpWithNewOp<sec::NumericConvertExactOp>(op, target,
+                                                              adaptor.getValue());
     return success();
   }
 };
@@ -151,8 +193,24 @@ struct LowerIntegerEnumsPass
     target.addDynamicallyLegalOp<sec::EnumConstantOp>([](sec::EnumConstantOp op) {
       return !isOrdinaryIntegerEnum(cast<sec::EnumType>(op.getResult().getType()));
     });
+    // A conversion this erasure cannot prove exact is named, not left to a
+    // generic legalization failure.
+    bool unsupported = false;
+    getOperation().walk([&](sec::EnumToIntegerOp op) {
+      if (!enumToIntegerTarget(op) &&
+          isOrdinaryIntegerEnum(cast<sec::EnumType>(op.getValue().getType()))) {
+        op.emitError() << "the Sec MLIR -> LLVM track does not lower "
+                          "'sec.enum.to_integer' to "
+                       << op.getResult().getType()
+                       << " (a case value does not fit) yet";
+        unsupported = true;
+      }
+    });
+    if (unsupported)
+      return signalPassFailure();
     RewritePatternSet patterns(context);
-    patterns.add<EnumConstantLowering, EnumCompareLowering, EnumFunctionLowering>(converter, context);
+    patterns.add<EnumConstantLowering, EnumCompareLowering, EnumFunctionLowering,
+                 EnumToIntegerLowering>(converter, context);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
     for (StringRef name : {sec::StorageDeclareOp::getOperationName(),

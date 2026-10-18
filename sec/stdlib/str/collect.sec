@@ -179,3 +179,254 @@ fn FromRunes(values: ref rune[]) Result[string, CollectionError] {
 
     return builder.Finish()
 }
+
+/**
+ * Creates a string from a UTF-8 encoded byte array.
+ *
+ * Description:
+ * Validates the complete byte sequence as strict UTF-8
+ * before constructing the resulting string.
+ *
+ * Rejects invalid leading bytes, invalid continuation
+ * bytes, incomplete sequences, overlong encodings,
+ * UTF-16 surrogate code points, and values above
+ * U+10FFFF.
+ *
+ * Does not replace invalid sequences or perform
+ * Unicode normalization.
+ *
+ * The input array is borrowed and remains unchanged.
+ *
+ * Parameters:
+ * - value: Byte array containing UTF-8 encoded text.
+ *
+ * Returns:
+ * A string containing the decoded UTF-8 text.
+ * An empty array produces an empty string.
+ *
+ * Errors:
+ * - StringError.InvalidUtf8: Invalid UTF-8 sequence,
+ *     with the byte offset of its leading byte.
+ * - StringError.Allocation: String allocation failed.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ * Validation itself does not allocate.
+ */
+fn FromByteArray(value: ref byte[]) Result[string, StringError] {
+    let mut index: uint := 0
+
+    while index < value.Len {
+        let first := value[index]
+
+        // ASCII bytes represent one Unicode scalar value.
+        if first <= 0x7F {
+            index += 1
+            continue
+        }
+
+        let mut width: uint := 0
+        let mut secondMin: byte := 0x80
+        let mut secondMax: byte := 0xBF
+
+        if first in 0xC2..0xDF {
+            width = 2
+        } else if first in 0xE0..0xEF {
+            width = 3
+
+            // Prevent overlong three-byte encodings.
+            if first == 0xE0 {
+                secondMin = 0xA0
+            }
+
+            // Exclude UTF-16 surrogate code points.
+            if first == 0xED {
+                secondMax = 0x9F
+            }
+        } else if first in 0xF0..0xF4 {
+            width = 4
+
+            // Prevent overlong four-byte encodings.
+            if first == 0xF0 {
+                secondMin = 0x90
+            }
+
+            // Unicode ends at U+10FFFF.
+            if first == 0xF4 {
+                secondMax = 0x8F
+            }
+        } else {
+            return Err(StringError.InvalidUtf8(index))
+        }
+
+        let remaining := try value.Len - index {
+            Err(_) => {
+                panic "FromByteArray: remaining length invariant violated"
+            }
+        }
+
+        // Reject truncated multibyte sequences.
+        if remaining < width {
+            return Err(StringError.InvalidUtf8(index))
+        }
+
+        let second := value[index + 1]
+
+        if second < secondMin || second > secondMax {
+            return Err(StringError.InvalidUtf8(index))
+        }
+
+        if width >= 3 {
+            let third := value[index + 2]
+
+            if !(third in 0x80..0xBF) {
+                return Err(StringError.InvalidUtf8(index))
+            }
+        }
+
+        if width == 4 {
+            let fourth := value[index + 3]
+
+            if !(fourth in 0x80..0xBF) {
+                return Err(StringError.InvalidUtf8(index))
+            }
+        }
+
+        index += width
+    }
+
+    // The complete array is now known to contain valid UTF-8.
+    return value.ToString()
+}
+
+/**
+ * Creates a string from bytes using lossy UTF-8 decoding.
+ *
+ * Description:
+ * Decodes a byte array as UTF-8.
+ *
+ * Valid UTF-8 sequences are preserved as Unicode
+ * scalar values. Malformed sequences are replaced
+ * with U+FFFD (REPLACEMENT CHARACTER).
+ *
+ * Replacement follows Unicode's maximal-subpart
+ * principle: a malformed sequence consumes only
+ * its longest valid UTF-8 prefix.
+ *
+ * Invalid continuation bytes are processed separately
+ * when they do not belong to that prefix.
+ *
+ * The decoder rejects overlong encodings, UTF-16
+ * surrogates, and values above U+10FFFF.
+ *
+ * No Unicode normalization is performed.
+ * The input array is borrowed and remains unchanged.
+ *
+ * Parameters:
+ * - value: Byte array containing potentially invalid UTF-8.
+ *
+ * Returns:
+ * A valid UTF-8 string with malformed sequences replaced.
+ * An empty array produces an empty string.
+ *
+ * Errors:
+ * - CollectionError: Allocation or capacity failure.
+ *
+ * Allocation:
+ * Allocates storage for the resulting string.
+ * Uses constant additional working storage.
+ */
+fn FromByteArrayLossy(value: ref byte[]) Result[string, CollectionError] {
+    let mut builder := try new Builder(value.Len)
+    let mut index: uint := 0
+
+    while index < value.Len {
+        let first := value[index]
+
+        // ASCII is always valid UTF-8.
+        if first <= 0x7F {
+            try builder.Append(rune(int(first)))
+            index += 1
+            continue
+        }
+
+        let mut width: uint := 0
+        let mut secondMin: byte := 0x80
+        let mut secondMax: byte := 0xBF
+        let mut scalar: int := 0
+
+        if first in 0xC2..0xDF {
+            width = 2
+            scalar = int(first) - 0xC0
+        } else if first in 0xE0..0xEF {
+            width = 3
+            scalar = int(first) - 0xE0
+
+            // Prevent overlong encodings.
+            if first == 0xE0 {
+                secondMin = 0xA0
+            }
+
+            // Exclude UTF-16 surrogate values.
+            if first == 0xED {
+                secondMax = 0x9F
+            }
+        } else if first in 0xF0..0xF4 {
+            width = 4
+            scalar = int(first) - 0xF0
+
+            // Prevent overlong encodings.
+            if first == 0xF0 {
+                secondMin = 0x90
+            }
+
+            // Exclude code points above U+10FFFF.
+            if first == 0xF4 {
+                secondMax = 0x8F
+            }
+        } else {
+            // Invalid leading byte.
+            try builder.Append(65533r)
+            index += 1
+            continue
+        }
+
+        let remaining := try value.Len - index {
+            Err(_) => {
+                panic "FromByteArrayLossy: invalid remaining length"
+            }
+        }
+
+        let mut accepted: uint := 1
+
+        // Consume only valid continuation bytes.
+        while accepted < width && accepted < remaining {
+            let following := value[index + accepted]
+
+            if accepted == 1 {
+                if following < secondMin ||
+                    following > secondMax {
+                    break
+                }
+            } else if !(following in 0x80..0xBF) {
+                break
+            }
+
+            scalar = scalar * 64 + (int(following) - 0x80)
+            accepted += 1
+        }
+
+        if accepted != width {
+            // Replace the malformed prefix only.
+            try builder.Append(65533r)
+            index += accepted
+            continue
+        }
+
+        // A complete, valid Unicode scalar value.
+        try builder.Append(rune(scalar))
+        index += width
+    }
+
+    return builder.Finish()
+}

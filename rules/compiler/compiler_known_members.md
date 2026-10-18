@@ -3608,6 +3608,32 @@ Compiler, Sema, completion, hover, definition lookup, overload resolution, and
 diagnostics consume this same registry. No LSP-local shaped member inventory is
 permitted.
 
+## Shaped metadata families (MD-016 part 1)
+
+The five shaped metadata families are compiler-known nominal types whose exact
+declarations are owned by `shaped-types.md` §§ 4.1, 6.0, 7.1 and 15.3
+(`rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md`). Their registry entries are exactly:
+
+| Family | Members | Read-only indexed expression | Construction |
+| --- | --- | --- | --- |
+| `Shape[Rank]` | `Rank: uint` get-only property | `shape[axis: uint] -> uint` | `init(extents: uint[Rank])`, infallible; literal `Shape[Rank] { ... }` |
+| `Strides[Rank]` | `Rank: uint` get-only property | `strides[axis: uint] -> int` | `init(strides: int[Rank])`, infallible; literal `Strides[Rank] { ... }` |
+| `TensorLayout[Rank]` | enum variants `DenseRowMajor`, `DenseColumnMajor`, `Strided` | none | variants only; no `init` |
+| `Axes[Rank]` | `Rank: uint` get-only property | `axes[position: uint] -> uint` | `init(axes: uint[Rank]) ShapeError`; statically valid literal |
+| `AxisList[Count]` | `Count: uint` get-only property | `axisList[position: uint] -> uint` | `init(axes: uint[Count]) ShapeError`; statically valid literal |
+
+Rank and Count are compile-time non-negative integer arguments of these type
+forms only. The indexed expressions are compiler-known read-only operations
+with ordinary bounds semantics, not public methods. No other constructor,
+iterator, mutable accessor, cast, pointer member, public field, `ToString`,
+`.Len` or shaped-payload `.SizeOf` exists on these descriptors. `ShapeError`
+resolves through the ordinary nominal enum registry with exactly the nine
+variants of `shaped-types.md` § 29.3. Hover and signature help show the exact
+declarations, structured comments and, for `Axes`/`AxisList`,
+`constructs: Axes[Rank]` / `construction error: ShapeError` rather than a
+`Result` return type; go-to-definition may open a generated read-only
+definition.
+
 ---
 
 # Final canonical summary

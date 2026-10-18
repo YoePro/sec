@@ -56,6 +56,16 @@ decisions:
       compiler-known metadata in particular) needs that A/B decision; the
       implementation registry already classifies member authority (§ 6) but
       cannot choose a declaration form on the rulebooks' behalf.
+      Part 1 applied 2026-10-18
+      (rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md):
+      Shape[Rank], Strides[Rank], TensorLayout[Rank], Axes[Rank],
+      AxisList[Count] and the closed nine-variant ShapeError now have exact
+      declarations in shaped-types.md §§ 4.1, 6.0, 7.1, 15.3, 29.3 and
+      compiler_known_members.md. Still open (correction § 12.5): the shaped
+      owning families, tensor_view, storage request types
+      (StorageRequest, ShapedStorageRequest[Rank], MemorySpace), errors other
+      than ShapeError and their operations, plus the remaining non-shaped
+      compiler-known declarations.
     classification: constraining
     status: open
   - id: MD-018
@@ -450,33 +460,6 @@ decisions:
       constraint calls unknown for explicit template guarantees; separately,
       concrete specialization effects are tracked as an implementation gap in
       governance/allocation.yaml frontend.allocation.
-    classification: constraining
-    status: open
-
-  - id: MD-057
-    area: iterator-interface-parameter-type
-    rulebooks:
-      - rules/types/types.md
-      - rules/declarations/interfaces.md
-      - rules/control-flow/flowcontrol_for.md
-      - sec/stdlib/str/stdlib_str.md
-    description: >-
-      stdlib_str.md §13.2 and §12 write Iterator[T] directly as a parameter
-      type (fn Join(values: Iterator[string], separator: string), fn
-      FromRunes(values: Iterator[rune])), but types.md calls Iterator[T] a
-      compiler-known interface rather than a storable type, and
-      flowcontrol_for.md §37 and interfaces.md §9.1 forbid interface values,
-      boxing and dynamic dispatch for it; stdlib_str.md §13.6 itself defers the
-      shape "until the generic iterator and mutable-reference API are locked".
-      Decide what such a signature means: shorthand for an implicit generic
-      parameter (fn Join[I: Iterator[string]](values: I, ...)), required
-      explicit generic syntax (and an update of the stdlib design), or a new
-      runtime interface value; and whether the iterator is taken by value
-      (consumed) or as ref mut. The explicit generic forms
-      fn F[I: Iterator[T]](values: I) and fn F[I: Iterator[T]](values: ref
-      mut I) are implemented; a direct Iterator[T] parameter is rejected at
-      call sites with a concrete iterator ("argument must be
-      Iterator[string]") and in for loops ("not iterable").
     classification: constraining
     status: open
 
@@ -1343,6 +1326,12 @@ decisions:
       convert_checked, ConversionError Result lowering and try exist in the
       track. Note: Sema still accepts a may-fail Sec-scalar conversion
       without try (MD-056 gap), so such programs type-check but do not build.
+      Extended 2026-10-18 to enum.to_integer: the conversion is lowered as
+      exact (identity to the carrier, otherwise convert_exact) when the
+      target is the carrier or every declared case value fits the target,
+      decided from the enum's declared cases because an enum value is always
+      one of them; otherwise it is named as not lowered. Confirm that the
+      declared-case argument is acceptable as the exactness proof.
     classification: localized
     status: open
   - id: MD-105
@@ -1363,4 +1352,68 @@ decisions:
       operation was added. Confirm reusing int.compare for character types
       instead of a dedicated character comparison operation.
     classification: localized
+    status: open
+  - id: MD-106
+    area: stdlib-str-iterator-parameter-ownership
+    rulebooks:
+      - sec/stdlib/str/stdlib_str.md
+      - rules/declarations/interfaces.md
+      - rules/control-flow/flowcontrol_for.md
+    description: >-
+      Opened 2026-10-18 when syncing the MD-057 correction, which locks the
+      two legal iterator parameter forms (a named generic parameter
+      [I: Iterator[T]](values: I), statically dispatched, or a borrowed view
+      ref mut Iterator[T], runtime dispatched) but explicitly leaves to the
+      library whether an operation owns/consumes or borrows its iterator
+      (correction §§ 5.2, 6.5). stdlib_str.md §§ 10.2, 13.2 and 13.6 were
+      synced to the explicit generic form already implemented in
+      join.sec/collect.sec (Join, Concat, AppendJoin, FromRunes take the
+      iterator by value as I). Decide per operation whether that ownership
+      is intended, or whether Join/Concat/FromRunes/AppendJoin should borrow
+      through ref mut Iterator[T] (or offer both overloads).
+    classification: localized
+    status: open
+  - id: MD-107
+    area: by-value-interface-parameters
+    rulebooks:
+      - rules/declarations/interfaces.md
+      - rules/memory/ownership.md
+    description: >-
+      Found 2026-10-18 while implementing MD-057. Sema accepts a parameter of
+      an ordinary interface type written by value (fn F(handler: Handler),
+      used throughout sec/stdlib/net/http, and by existing Sema tests such as
+      an owned `value: Resource` passed to a consuming interface method), but
+      no rule defines an owned interface value: interfaces.md § 7.1 (MD-057)
+      says borrowed views do not create a generally owned, unsized, by-value
+      interface object, and the correction (§ 5.4) leaves first-class
+      interface values outside its scope. Only Iterator[T] by value is now
+      rejected (S1172, correction § 8.9). Decide whether a by-value
+      interface parameter is invalid (and the stdlib/tests must move to
+      ref/ref mut views or named generics), an implicit generic, or a new
+      owned interface value with defined ownership, layout and dispatch.
+    classification: localized
+    status: open
+  - id: MD-108
+    area: borrowed-interface-view-representation
+    rulebooks:
+      - rules/declarations/interfaces.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir_lowering.md
+    description: >-
+      Open 2026-10-18. MD-057 requires runtime dispatch through borrowed
+      interface views without heap allocation and leaves the representation
+      implementation-defined ("such as a data reference and dispatch
+      table"), and requires Semantic IR to distinguish a view and its
+      interface method call from a statically resolved call, preserving
+      interface identity, generic arguments, borrow authority and witness.
+      No package owns this lowering (P25 owns callable ABI classification;
+      P24 physical layout). Decide: the view representation (fat
+      reference = data pointer + per-(type, interface) dispatch table, or
+      another form), table layout and member order (declaration order of
+      the interface including inherited requirements?), where tables are
+      emitted (per conformance, in the module of the impl?), the Semantic IR
+      operations (view creation from a concrete reference, interface method
+      call through a view, Next dispatch in for), the Sec MLIR dialect
+      surface, and which package owns it.
+    classification: architectural
     status: open

@@ -208,7 +208,11 @@ type ForIteratorSourceKind string
 
 const (
 	ForIteratorReusableStorage ForIteratorSourceKind = "reusable-storage"
-	ForIteratorFreshTemporary  ForIteratorSourceKind = "fresh-temporary"
+	// ForIteratorBorrowedView is a `ref mut Iterator[T]` borrowed interface
+	// view: Next is dispatched at runtime through the view, never owned
+	// (flowcontrol_for.md § 37.1; MD-057).
+	ForIteratorBorrowedView   ForIteratorSourceKind = "borrowed-interface-view"
+	ForIteratorFreshTemporary ForIteratorSourceKind = "fresh-temporary"
 )
 
 // ForIteratorBindingKind classifies the single Iterator[T] loop binding.

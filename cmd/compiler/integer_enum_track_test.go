@@ -44,7 +44,9 @@ func TestIntegerEnumTrackBoundaries(t *testing.T) {
 func TestIntegerEnumTrackRejectsDeferredOperations(t *testing.T) {
 	testsupport.RequireSecMLIROptPath(t)
 	for _, test := range []struct{ fixture, operation string }{
-		{"unsupported_enum_conversion", "sec.enum.to_integer"},
+		// Exact enum.to_integer is lowered (2026-10-18); validated
+		// integer-to-enum conversion is not yet.
+		{"unsupported_enum_conversion", "sec.enum.from_integer"},
 		{"unsupported_bit_enum", "sec.enum.constant"},
 	} {
 		t.Run(test.fixture, func(t *testing.T) {

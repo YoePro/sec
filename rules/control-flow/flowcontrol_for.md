@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-16
-- **Last updated:** 2026-09-03
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-18 (MD-057 borrowed iterator views)
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_for.md`
 - **Replaces:** `rules/control-flow/flowcontrol_for.txt`
@@ -455,7 +455,8 @@ The canonical categories include:
 - `string`;
 - finite ranges;
 - `vector[T, N]` where the shaped-type rules define sequential iteration.
-- concrete types with explicit compiler-known `Iterator[T]` conformance.
+- concrete types with explicit compiler-known `Iterator[T]` conformance;
+- a borrowed iterator view `ref mut Iterator[T]` (§ 37; MD-057).
 
 A type is not iterable merely because it has members such as:
 
@@ -1232,6 +1233,45 @@ for part in text.Split(";") {
 Lowering must consume Sema's resolved iterator operation. A backend must not
 rediscover the protocol from the spelling `Next`.
 
+### 37.1 Borrowed iterator views
+
+A `for` source may also be a borrowed interface view `ref mut Iterator[T]`
+(`rules/declarations/interfaces.md` § 7.1; MD-057,
+`rules/corrections/applied/md057-interface-iterator-parameters-correction-20261017.md`):
+
+```sec
+fn Count(values: ref mut Iterator[int]) uint {
+    let mut count: uint := 0
+    for value in values {
+        count += 1
+    }
+    return count
+}
+```
+
+The caller supplies a mutable borrow of a concrete type that explicitly
+implements `Iterator[int]`. The loop lowers to successive calls of the view's
+`Next()` through runtime interface dispatch, ending at `None`; each
+`Some(value)` yields an owned `T` exactly as above. The callee may advance the
+borrowed iterator but cannot take ownership of it. This adds no borrowing
+element protocol, implicit moves from collections, second iteration factory
+protocol or additional iterator binding. A shared `ref Iterator[T]` is not a
+mutable iterator source and cannot call `mut fn Next()`.
+
+There are therefore two dispatch paths:
+
+- a concrete `Iterator[T]` implementer, or a named generic parameter
+  constrained by `Iterator[T]`, resolves `Next()` statically and keeps the
+  no-implicit-allocation guarantee and every bullet above;
+- a borrowed `ref mut Iterator[T]` view dispatches `Next()` at runtime through
+  the view, still without mandatory heap allocation (§ 38). The bullets above
+  that exclude an interface object and virtual dispatch apply to the first
+  path only.
+
+A by-value parameter `Iterator[T]` is neither an owned type nor an implicit
+anonymous generic parameter; MD-057 does not make `Iterator[T]` a by-value
+type.
+
 ---
 
 ## 38. No hidden allocation
@@ -1285,8 +1325,12 @@ single-binding map iteration
 general pattern destructuring in for headers
 iterator discovery by member names
 implicit Iterable factory discovery
-runtime-dispatched Iterator interface values
+owned or by-value runtime-dispatched Iterator interface values
 ```
+
+Borrowed `ref mut Iterator[T]` views (§ 37.1) are not covered by this
+exclusion (MD-057); no other owned or unspecified interface value is
+authorized.
 
 A future rule may add a feature from this list only by explicitly defining its syntax, ownership, borrowing, cleanup, and lowering behavior.
 
@@ -1336,7 +1380,11 @@ Before lowering, the compiler must resolve:
 - loop-body scope;
 - `break` and `continue` targets;
 - ownership and cleanup edges;
-- zero-iteration flow where possible.
+- zero-iteration flow where possible;
+- for an `Iterator[T]` source, whether `Next()` is a statically resolved
+  concrete call or a runtime dispatch through a borrowed interface view
+  (§ 37.1), together with the interface identity, generic arguments, borrow
+  authority and witness information lowering needs.
 
 Semantic IR must not leave ownership mode ambiguous for loop bindings.
 

@@ -276,3 +276,37 @@ func (b *builder) moduleStaticNamed(name string) (Static, bool) {
 	}
 	return Static{}, false
 }
+
+// buildStaticCompoundAssignment lowers `target op= value` on a mutable static
+// as one load, the resolved underlying operator, and one store, exactly like
+// a compound assignment to local storage (operators.md "Compound
+// assignment"; static.md).
+func (fb *functionBuilder) buildStaticCompoundAssignment(stmt *ast.AssignmentStatement, resolved sema.ResolvedOperator, static Static) error {
+	if !static.Mutable {
+		return fmt.Errorf("compound assignment to immutable static %s", static.Name)
+	}
+	rightType, err := fb.owner.internType(*resolved.RightType)
+	if err != nil {
+		return err
+	}
+	loc := location(stmt.Token)
+	current := fb.result(Operation{Kind: OpStaticLoad, Static: static.ID, Location: loc}, static.Type)
+	value, err := fb.buildExpr(stmt.Value, rightType)
+	if err != nil {
+		return err
+	}
+	op := Operation{Operands: []ValueID{current.id, value.id}, Location: loc, Operator: strings.TrimSuffix(stmt.Operator, "=")}
+	if !semanticOperatorKind(resolved, &op) {
+		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
+	}
+	updated := builtValue{}
+	if resolved.RuntimeCheck || resolved.ShiftCountProven {
+		if updated, err = fb.emitCheckedOperator(op, static.Type, nil, nil, nil); err != nil {
+			return err
+		}
+	} else {
+		updated = fb.result(op, static.Type)
+	}
+	fb.emit(Operation{Kind: OpStaticStore, Static: static.ID, Operands: []ValueID{updated.id}, Location: loc})
+	return nil
+}

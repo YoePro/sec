@@ -5921,7 +5921,7 @@ func isCollectionShapedTypeName(name string) bool {
 		return true
 	}
 	switch name {
-	case "Shape", "Strides", "TensorLayout":
+	case "Shape", "Strides", "TensorLayout", "Axes", "AxisList":
 		return true
 	default:
 		return false
@@ -5933,7 +5933,7 @@ func collectionShapedTypeArgumentCount(name string) int {
 		return count
 	}
 	switch name {
-	case "Shape", "Strides", "TensorLayout":
+	case "Shape", "Strides", "TensorLayout", "Axes", "AxisList":
 		return 0
 	default:
 		return 1

@@ -41,6 +41,7 @@ integrations:
       - deterministic printer exists
       - Package 13 struct operations and current match/errorhandling operations are implemented
       - "static storage (2026-10-16, semantic_ir.md § 28, static.md §§ 2-4): Module.Statics with stable @N identities, qualified names, type, mutability, enclosing function, address-taken flag and exact compile-time initializer (integer-family or bool literal, or the zero default) and no startup function; static.load, static.store (mutable only) and place.static-root, verified against the static; module-level bindings and function-local `static let` (formerly miscompiled as automatic locals) both lower to it (TestStaticStorageLowersToModuleStatics, TestVerifierChecksStaticStorage)"
+      - "static storage in the compilation track (2026-10-18, user decision: globals for all statics): emit-sec-mlir publishes each module static as sec.static.global (symbol, type, exact initial value, is_mutable) and accesses as sec.static.load/store; scalar layout and integer lowering convert the access types and sec-lower-static-storage emits internal LLVM globals (constant when immutable) accessed through llvm.mlir.addressof; Semantic IR lowers compound assignment to a mutable static as load/operator/store. Address-taken statics (static Place roots) remain unsupported. Tests: TestStaticStorageEmitRoutes, TestNativeTrackBuildsAndRuns/statics, lit Conversion/SecToLLVM/static-storage-and-panic.mlir"
       - "static methods (2026-10-12, impl.md §§ 11, 13; semantic_ir.md §§ 60-61): every `static fn` of a non-generic impl block in the requested module lowers as an ordinary function under its qualified Target.Name identity (Sema ResolvedMethodForDeclaration), and a resolved static-method call is a direct call to it, including calls between methods; Sec MLIR emits them as qualified functions; instance method calls report the explicit `instance method call` boundary and static methods of generic implementations stay unsupported (TestStaticMethodsLowerAsDirectCalls, TestMethodLoweringBoundaries, TestStaticMethodsEmitAsQualifiedFunctions)"
     remaining:
       - "instance methods (since 2026-10-12, package 15): shared and mutable receivers lower as an explicit ref/ref mut `self` parameter with field reads/writes and receiver passing (sec-mlir-package15 P15-47); remaining are consuming receivers (by-value move), `self` used as a value, reborrowing a mutable `self` for nested calls, temporary receivers without a Place (needed by try-chain-intermediate-lowering), and generic implementations through specialization identities"
@@ -737,14 +738,8 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     integrated: "2026-10-17"
-    revised: "2026-10-17"
-    summary: >-
-      Execution started 2026-10-17 with the Sema range model (package16-todo.md
-      section B). Implemented: exact arbitrary-precision half-open slice
-      projection bounds (P16-09). Not implemented: SliceRangeID, resolved slice
-      creation/index plans, effects, Semantic IR slice types and operations,
-      schema 12 and --sec-verify-slice-guards. Schema 12 depends on schema 11,
-      which the compiler emits and verifies since P15-50..P15-60.
+    revised: "2026-10-18"
+    summary: "Execution started 2026-10-17 with the Sema range model (package16-todo.md section B). Implemented: exact arbitrary-precision half-open slice projection bounds (P16-09), stable compiler-only dynamic range identities (P16-10), static subrange composition and empty-slice provenance (P16-12), canonical range-error classification (P16-13), and read-only slice creation plans (P16-14). Not implemented: resolved slice index plans, effects, Semantic IR slice types and operations, schema 12 and --sec-verify-slice-guards. Schema 12 depends on schema 11, which the compiler emits and verifies since P15-50..P15-60."
     predecessors:
       - SEC-MLIR-P15 (partial; schema 11, emitter and verifiers implemented 2026-10-17)
     rules:
@@ -759,9 +754,12 @@ integrations:
     implemented:
       - "exact slice bounds (P16-09, 2026-10-17): sema PlaceProjection.SliceStart/SliceEnd are detached *big.Int half-open bounds (nil = unknown endpoint) replacing int64 plus known flags; source normalization (missing start 0, inclusive end + 1 without overflow, missing end of a fixed array = exact length), nested slice and index composition, emptiness, disjointness, equality, index containment, storage overlap, parameter-usage places and identity comparison use exact arithmetic; persisted parameter-demand summaries move to schema version 2 so int64-era summaries are invalidated (TestSliceProjectionBoundsAreExactBeyondInt64, TestSlicePlaceProjectionNormalizesEndpointsExactly, existing overlap/relationship tests)"
       - "canonical slice-range classification (P16-13, 2026-10-17): ClassifySliceRange applies the package16.md § 19 precedence (negative endpoint -> InvalidRange, start after end -> StartAfterEnd, source bound -> OutOfBounds) with exact arithmetic and defines the runtime RangeError for the same values; constant slice ranges report exactly the precedence-first error, now also start-after-end for sources of unknown length (TestClassifySliceRangePrecedence, TestConstantSliceRangeDiagnosticsFollowPrecedence; MD-094)"
+      - "P16-10 (2026-10-18): SliceRangeID identifies a dynamic range evaluation site, with deterministic first-use allocation, zero absence, per-analysis reset and detached allocator snapshots/ResolvedPlaceOf queries. Static ranges allocate no ID. Nested dynamic slices/indexes preserve symbolic parent projections; dynamic IDs do not prove runtime equality or disjointness, and disjoint relative children cannot establish disjointness through unknown parents. IDs are excluded from persisted parameter summaries. Cohesive slice projection functions moved from place.go to slice_places.go; samePlaceIdentity moved out of analyzer.go."
+      - "P16-12 (2026-10-18, Sema Place scope): known source-slice extents supply omitted ends before projection normalization so static inclusive/open nested subranges compose exactly, remain provably disjoint and allocate no dynamic identity. staticSliceExtent requires complete static ranges and unanimous lengths across origin alternatives. Source tests cover simultaneously live mutable subranges, nested empty borrows, zero-length array slices, retained root/storage/borrow/lifetime facts and rejection of empty local-origin returns. Dynamic overlap and exact wide-range regression coverage remain in force; IR/runtime slice work remains separate."
+      - "P16-14 (2026-10-18): ResolvedSliceCreationPlanOf publishes analysis-time source kind/Place/type, authority and element type, original signed/unsigned endpoint types and exact constants, source length, source-relative normalized range or dynamic identity, canonical conservative range-check/proof facts, existing P15 reference plan/BorrowID/LifetimeID and core RangeError. Queries deeply detach range, origin, endpoint and error-case data without allocating or re-analyzing. Endpoint integer inference occurs in source order; known nested source extents participate in the existing canonical range diagnostic classifier. RangeError standalone/trusted-core identity is synchronized (compiler.compiler-known-surfaces). Slice inference and diagnostics moved out of analyzer monoliths. New IR, fallible CFG and P16-16 broader query coverage remain separate."
     remaining:
       - P16-01..P16-05 baseline snapshot and normative synchronization (slice-sync §§ 1-19, Semantic IR amendment, version-12 snapshots, `.Len` spelling, AddressStability instead of relocation class)
-      - P16-10..P16-19 SliceRangeID, constant-invalid diagnostics and RangeError precedence, resolved slice creation/index plans, origin propagation, effects and Sema source tests
+      - P16-11 and P16-15..P16-19 endpoint evaluation/normalization, resolved slice index plans, broader defensive query coverage, origin propagation, effects and Sema source tests; P16-10, P16-12, P16-13 and P16-14 are implemented
       - P16-20..P16-37 Semantic IR slice types/operations, verifier and source lowering
       - P16-38..P16-45 schema 12, slice operations, --sec-verify-slice-guards and emitter
       - P16-46..P16-58 predecessor integration, determinism, acceptance and report
@@ -769,6 +767,48 @@ integrations:
       - owning dynamic T[] backing representation to P18
       - non-trivial element reads, replacement and destruction to P17
       - physical slice descriptors, FFI ABI, raw pointers, .Ptr, stable/weak handles, slice equality/ordering/iteration and Reverse lowering
+    code:
+      - internal/sema/slice_places.go
+      - internal/sema/place_identities.go
+      - internal/sema/place.go
+      - internal/sema/analyzer.go
+      - internal/sema/slice_creation_plans.go
+      - internal/sema/slice_range_classification.go
+      - internal/sema/types.go
+      - internal/sema/type_declarations.go
+      - internal/sema/analyzer_inference.go
+    tests:
+      - internal/sema/slice_range_id_test.go
+      - testdata/sema/slice_range_id_valid.sec
+      - internal/sema/slice_static_subranges_test.go
+      - testdata/sema/slice_static_subranges_valid.sec
+      - testdata/sema/slice_empty_local_return_invalid.sec
+      - internal/sema/slice_creation_plans_test.go
+      - testdata/sema/slice_creation_plans_valid.sec
+      - testdata/sema/slice_endpoint_type_invalid.sec
+      - testdata/sema/slice_nested_extent_invalid.sec
+      - testdata/sema/slice_range_error_core.sec
+    verification:
+      - command: go vet ./internal/sema ./internal/ir/... ./internal/lowering/... ./cmd/compiler
+        result: passed on 2026-10-18 after P16-14
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... ./cmd/compiler -count=1
+        result: "Sema, Semantic IR and lowering passed on 2026-10-18. Compiler failed only TestIntegerEnumTrackRejectsDeferredOperations/unsupported_enum_conversion: a concurrent enum-to-integer lowering now accepts the conversion while the test still expects unsupported-lowering; not changed by P16-14."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run 'TestEmit|TestReferencePrograms|TestBuildCLI' -count=1
+        result: passed on 2026-10-18; current CLI/core-loading and emission boundaries remain intact
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-18 after P16-14; creation-plan, endpoint, core identity, defensive query and existing package regressions
+      - command: go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-18 after P16-12
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-18 after P16-12; includes static/open nested subranges, empty provenance and local escape, prior dynamic identity/overlap, borrow and configured MLIR regressions
+      - command: go run ./cmd/yamlstatus check
+        result: failed on 2026-10-18 only for pre-existing absent concurrency_events.yaml and concurrency_spawn.yaml listed in the index; P16 has one canonical owner
+      - command: go test ./internal/sema -run 'TestSliceRangeIDsAreStableAndQueriesDetached|TestSliceRangeIdentityCompositionAndAllocation' -count=1
+        result: passed on 2026-10-18; includes source renaming, per-analysis reset, independent evaluation sites, detached queries, snapshots, nested conservatism and persistence exclusion
+      - command: go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-18
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-18; includes existing borrow, overlap, reference, Semantic IR and configured MLIR lowering regressions
 
   - id: lowering.sec-mlir-schema-2
     area: semantic-ir-lowering

@@ -717,6 +717,9 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 }
 
 func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expressionValue) {
+	if typ, handled := a.inferShapedMetadataLiteral(expr); handled {
+		return typ, expressionValue{Display: expr.String()}
+	}
 	if unionType, value, unionOK := a.inferStructLiteralAsUnionVariant(expr); unionOK {
 		return unionType, value
 	}
@@ -1098,6 +1101,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	if reference, unit := expr.Object.(*ast.UnitReferenceExpression); unit {
 		return a.inferUnitMemberExpression(expr, reference)
 	}
+	if layoutType, handled := a.inferTensorLayoutVariant(expr); handled {
+		return layoutType, layoutType.Kind != InvalidType
+	}
 	if enumType, ok := a.inferEnumValueExpression(expr); ok {
 		return enumType, true
 	}
@@ -1211,6 +1217,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	// A legacy lowercase spelling of a CamelCase compiler-known member, such as
 	// `worker.status`, is not canonical; name the member it meant.
 	// Rules: rules/concurrency/threads.md — § 26(4)–(5); rules/compiler/compiler_known_members.md — naming
+	if typ, ok := a.shapedMetadataProperty(objectType, expr.Property.Value); ok {
+		return typ, true
+	}
 	if canonical, ok := caseInsensitiveCompilerKnownMember(objectType, expr.Property.Value); ok {
 		a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
 			"use the canonical CamelCase member `"+canonical+"`; lowercase member spellings are not Sec 0.1 syntax",
@@ -1456,6 +1465,9 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 			}
 			return elementType, expressionValue{Display: expr.String()}
 		}
+		if elementType, handled := a.shapedMetadataIndex(expr, leftType, indexType); handled {
+			return elementType, expressionValue{Display: expr.String()}
+		}
 		a.addErrorAtToken(expr.Token, "type %s is not indexable", typeDisplayName(leftType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1489,35 +1501,6 @@ func (a *Analyzer) inferStringPointerIndex(expr *ast.IndexExpression) (Type, boo
 	return a.types["byte"], true
 }
 
-func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expressionValue) {
-	leftType, _ := a.inferPlaceBase(expr.Left)
-	if leftType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	leftType = dereferenceType(leftType)
-	if leftType.Kind != ArrayType && leftType.Kind != SliceType {
-		a.addErrorAtToken(expr.Token, "type %s cannot be sliced", typeDisplayName(leftType))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	if leftType.Element == nil {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	a.checkSliceBounds(expr, leftType)
-	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Left)
-	return Type{
-		Name:                        typeDisplayName(*leftType.Element) + "[]",
-		Kind:                        SliceType,
-		Element:                     leftType.Element,
-		ReferenceOriginName:         originName,
-		ReferenceOriginToken:        originToken,
-		ReferenceOriginLocal:        originLocal,
-		ReferenceOriginStorage:      originStorage,
-		ReferenceOriginGeneration:   generation,
-		ReferenceOriginMatchScoped:  a.referenceOriginMatchScopedForExpression(expr.Left),
-		ReferenceOriginAlternatives: a.referenceOriginAlternativesForExpression(expr.Left),
-	}, expressionValue{Display: expr.String()}
-}
-
 // inferRefExpression preserves the shared or mutable access mode on indexed
 // element Places after their collection-specific type and bounds resolution.
 //
@@ -1541,6 +1524,7 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Value)
 	if place, placed := a.resolvePlace(expr.Value); placed {
 		a.recordReferencePlan(expr, place, expr.Mutable, false, expr.Token)
+		a.recordSliceCreationPlan(expr)
 	}
 	// MD-061: `ref r`/`ref mut r` over a reference holder is an explicit
 	// reborrow of the holder's referent: ref T (or ref mut T), never a
@@ -1715,6 +1699,10 @@ func (a *Analyzer) inferNewExpression(expr *ast.NewExpression, handled bool) (Ty
 	if target.Kind == InterfaceType {
 		a.addErrorAtToken(expr.Type.Token, "cannot construct interface type %s with new", typeDisplayName(target))
 		return Type{Kind: InvalidType}, result
+	}
+
+	if typ, handledMetadata := a.inferShapedMetadataNew(expr, target, handled); handledMetadata {
+		return typ, result
 	}
 
 	key := initFunctionName(target.Name)

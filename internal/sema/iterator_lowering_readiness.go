@@ -51,6 +51,9 @@ type iteratorLoweringRequirement struct {
 	// genericTemplate marks a loop over a generic parameter constrained by
 	// Iterator[T]; it has no concrete Next until specialization.
 	genericTemplate bool
+	// borrowedView marks a loop over a ref mut Iterator[T] borrowed interface
+	// view, whose Next is dispatched at runtime (MD-057).
+	borrowedView bool
 }
 
 // beginIteratorLoweringRequirement records a final-body obligation before
@@ -93,6 +96,8 @@ func (a *Analyzer) ValidateIteratorLoweringReadiness(program *ast.Program, modul
 		if requirement.invalid || !requirement.conformanceValid {
 			issue.Classification = "Invalid"
 			issue.Reason = "iterator conformance, source, binding or body failed semantic validation"
+		} else if requirement.borrowedView {
+			issue.Reason = "iteration through a borrowed ref mut Iterator[T] view needs runtime interface dispatch, whose view representation is not lowered yet (MD-057)"
 		} else if requirement.genericTemplate {
 			issue.Reason = "iteration over a generic parameter constrained by Iterator[T] is lowered per specialization, and generic specialization lowering is not available yet"
 		} else {

@@ -1,0 +1,91 @@
+module main
+
+fn Up() int {
+    let mut t: int := 0
+    for i in 0..<10 step 3 {
+        t += i
+    }
+    return t
+}
+
+fn UpInclusive() int {
+    let mut t: int := 0
+    for i in 0..9 step 3 {
+        t += i
+    }
+    return t
+}
+
+fn Down() int {
+    let mut t: int := 0
+    for i in 10..1 step -3 {
+        t += i
+    }
+    return t
+}
+
+fn DownExclusive() int {
+    let mut t: int := 0
+    for i in 10..<1 step -3 {
+        t += i
+    }
+    return t
+}
+
+fn Edge() int {
+    let low: int8 := 120
+    let high: int8 := 127
+    let mut count: int := 0
+    for v in low..high step 3 {
+        count += 1
+    }
+    let top: int8 := -120
+    let bottom: int8 := -128
+    for v in top..bottom step -5 {
+        count += 10
+    }
+    return count
+}
+
+fn Bytes() int {
+    let start: uint8 := 5
+    let stop: uint8 := 255
+    let mut count: int := 0
+    for b in start..stop step 100 {
+        count += 1
+    }
+    return count
+}
+
+fn Empty() int {
+    let mut t: int := 0
+    for i in 5..<5 step 2 {
+        t += 1
+    }
+    return t
+}
+
+fn main() int {
+    if Up() != 18 {
+        return 1
+    }
+    if UpInclusive() != 18 {
+        return 2
+    }
+    if Down() != 22 {
+        return 3
+    }
+    if DownExclusive() != 21 {
+        return 4
+    }
+    if Edge() != 23 {
+        return 5
+    }
+    if Bytes() != 3 {
+        return 6
+    }
+    if Empty() != 0 {
+        return 7
+    }
+    return 0
+}

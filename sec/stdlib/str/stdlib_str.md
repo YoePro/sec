@@ -2,7 +2,7 @@
 
 - **Status:** Draft — proposed normative standard-library design
 - **Created:** 2026-10-05
-- **Last updated:** 2026-10-05
+- **Last updated:** 2026-10-18 (MD-057 iterator parameter forms)
 - **Document revision:** 0.1
 - **Sec language version:** 0.1
 - **Canonical path:** `stdlib/str/stdlib_str.md`
@@ -1355,12 +1355,16 @@ Recommended:
 fn ToRuneArray(value: string) Result[rune[], CollectionError]
 fn ToByteArray(value: string) Result[byte[], CollectionError]
 
-fn FromRunes(values: Iterator[rune]) Result[string, CollectionError]
+fn FromRunes[I: Iterator[rune]](values: I) Result[string, CollectionError]
 fn FromRunes(values: ref rune[]) Result[string, CollectionError]
 ```
 
-The exact generic iterator parameter syntax must follow the canonical iterator
-rulebook.
+`Iterator[T]` is an interface, not a by-value type: an iterator parameter is
+either a named generic parameter constrained by `Iterator[T]` (static
+dispatch; the form implemented today) or a borrowed interface view
+`ref mut Iterator[T]` (runtime dispatch) (MD-057; `interfaces.md` § 7.1,
+`flowcontrol_for.md` § 37.1). Whether a library operation owns or borrows its
+iterator is this rulebook's API choice (MD-106).
 
 The array overload is retained because it permits pre-sizing without requiring
 the caller to construct an iterator adapter explicitly.
@@ -1750,15 +1754,18 @@ policy.
 ## 13.2 Required public surface
 
 ```sec
-fn Join(
-    values: Iterator[string],
+fn Join[I: Iterator[string]](
+    values: I,
     separator: string
 ) Result[string, CollectionError]
 
-fn Concat(
-    values: Iterator[string]
+fn Concat[I: Iterator[string]](
+    values: I
 ) Result[string, CollectionError]
 ```
+
+The iterator parameter follows § 10.2: a named generic parameter as written,
+or a borrowed `ref mut Iterator[string]` view (MD-057, MD-106).
 
 Where useful for performance and ergonomics, array overloads are recommended:
 
@@ -1812,15 +1819,16 @@ Do not consume a one-pass iterator twice merely to precompute length.
 A later revision may add:
 
 ```sec
-fn AppendJoin(
+fn AppendJoin[I: Iterator[string]](
     builder: ref mut Builder,
-    values: Iterator[string],
+    values: I,
     separator: string
 ) Result[void, CollectionError]
 ```
 
-This is intentionally **not required** in revision 0.1 until the generic
-iterator and mutable-reference API are locked.
+This is intentionally **not required** in revision 0.1. MD-057 has locked the
+iterator parameter forms; the remaining choice between an owned generic
+iterator and a borrowed `ref mut Iterator[string]` view is MD-106.
 
 ## 13.7 Required tests
 

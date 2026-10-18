@@ -1,0 +1,7 @@
+module main
+
+fn Bad(values: int[8]) void {
+    let view := ref values[2..<4]
+    let invalid := ref view[0..<4]
+    discard invalid
+}

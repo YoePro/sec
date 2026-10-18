@@ -2681,6 +2681,10 @@ type StructLiteralField struct {
 	Name   *Identifier
 	Value  Expression
 	Spread bool
+	// Positional marks a component of a compiler-known shaped metadata
+	// literal (`Shape[3] { 2, 0, 4 }`): it has a Value and no Name
+	// (shaped-types.md §§ 4.1, 6.0, 15.3; MD-016).
+	Positional bool
 }
 
 type SpawnExpression struct {

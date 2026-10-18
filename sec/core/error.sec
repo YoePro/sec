@@ -278,3 +278,41 @@ enum IOErrorLegacy error {
     // Any errno without a dedicated variant. ≈ IOError.NativeFailure.
     Unknown,
 }
+
+/**
+ * Reports a failed runtime shape, axis, or affine validation.
+ *
+ * Description:
+ *   These are the complete source-visible ShapeError cases in Sec 0.1
+ *   (shaped-types.md § 29.3, MD-016). An implementation may preserve more
+ *   detailed internal causes in diagnostics, but must not expose undeclared
+ *   enum variants.
+ */
+enum ShapeError error {
+    // The number of axes is incompatible with the required operation.
+    RankMismatch
+
+    // A required dimension or corresponding extent is incompatible.
+    DimensionMismatch
+
+    // A required total logical element count cannot fit in uint.
+    ElementCountOverflow
+
+    // A reshape cannot preserve the required logical shape and backing.
+    InvalidReshape
+
+    // The requested broadcast mapping is incompatible with its source.
+    InvalidBroadcast
+
+    // Tensor contraction axes or corresponding extents are incompatible.
+    InvalidContraction
+
+    // An axis index is invalid for the required source rank.
+    InvalidAxis
+
+    // An axis selection repeats an index that must be unique.
+    DuplicateAxis
+
+    // A step value or mapping step is invalid (including zero step).
+    InvalidStep
+}

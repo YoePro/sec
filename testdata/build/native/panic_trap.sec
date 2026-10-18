@@ -1,0 +1,12 @@
+module main
+
+fn Check(x: int) int {
+    if x == 3 {
+        panic "boom"
+    }
+    return x
+}
+
+fn main() int {
+    return Check(3)
+}

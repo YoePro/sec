@@ -58,6 +58,16 @@ def SecLowerCommandEntry : Pass<"sec-lower-command-entry", "mlir::ModuleOp"> {
   ];
 }
 
+def SecLowerStaticStorage : Pass<"sec-lower-static-storage", "mlir::ModuleOp"> {
+  let summary = "Lower Sec static storage to LLVM globals";
+  let description = [{
+    After integer lowering, each sec.static.global becomes an internal LLVM
+    global with its exact constant initial value (constant when immutable),
+    and sec.static.load/store become loads and stores through its address.
+  }];
+  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+}
+
 def SecFinalizeForLLVM : Pass<"sec-finalize-for-llvm", "mlir::ModuleOp"> {
   let summary = "Reject unlowered Sec constructs and drop Sec metadata";
   let description = [{

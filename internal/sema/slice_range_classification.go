@@ -1,6 +1,9 @@
 package sema
 
-import "math/big"
+import (
+	"math/big"
+	"sec/internal/ast"
+)
 
 // SliceRangeFailure is the canonical RangeError classification of one slice
 // range (package16.md § 18). The empty value means the range is valid for the
@@ -87,4 +90,53 @@ func ClassifySliceRange(r SliceRangeEndpoints) SliceRangeClassification {
 		}
 	}
 	return SliceRangeClassification{}
+}
+
+// checkSliceBounds reports a compile-time-provable invalid slice range as
+// exactly one error: the first failing condition under the canonical
+// precedence (negative endpoint, then start after end, then source bound),
+// which is also the RangeError the runtime check would produce. The
+// start-after-end check applies to every source, not only fixed arrays.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 18–19
+func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
+	start, startOK := a.integerConstantValue(expr.Start)
+	end, endOK := a.integerConstantValue(expr.End)
+	endpoints := SliceRangeEndpoints{StartOmitted: expr.Start == nil, EndOmitted: expr.End == nil, Inclusive: !expr.Exclusive}
+	if startOK && expr.Start != nil {
+		endpoints.Start = start
+	}
+	if endOK && expr.End != nil {
+		endpoints.End = end
+	}
+	if typ.Kind == ArrayType {
+		if length, fixed := exactFixedArrayLength(typ); fixed {
+			endpoints.Length = length
+		}
+	}
+	if typ.Kind == SliceType {
+		if source, ok := a.sliceSourcePlace(expr.Left, a.expressionTypes[expr.Left]); ok {
+			endpoints.Length = staticSliceExtent(source)
+		}
+	}
+	classification := ClassifySliceRange(endpoints)
+	switch classification.Cause {
+	case SliceRangeCauseNegativeStart:
+		a.addErrorAtToken(expressionToken(expr.Start), "slice lower bound must be non-negative")
+	case SliceRangeCauseNegativeEnd:
+		a.addErrorAtToken(expressionToken(expr.End), "slice upper bound must be non-negative")
+	case SliceRangeCauseStartAfterEnd:
+		op := ".."
+		if expr.Exclusive {
+			op = "..<"
+		}
+		a.addErrorAtToken(expr.Token, "descending slice range %s%s%s is invalid", start.String(), op, end.String())
+	case SliceRangeCauseStartPastLength:
+		a.addErrorAtToken(expr.Token, "slice lower bound %s exceeds length %s", start.String(), endpoints.Length.String())
+	case SliceRangeCauseExclusiveEndPast:
+		a.addErrorAtToken(expr.Token, "exclusive slice upper bound %s exceeds length %s", end.String(), endpoints.Length.String())
+	case SliceRangeCauseInclusiveEndAtLen:
+		a.addErrorAtToken(expr.Token, "inclusive slice upper bound %s exceeds final index %s", end.String(), new(big.Int).Sub(endpoints.Length, big.NewInt(1)).String())
+	}
 }

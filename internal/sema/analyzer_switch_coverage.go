@@ -138,6 +138,15 @@ func (a *Analyzer) switchEnumCaseVariant(expr ast.Expression, subjectType Type) 
 	if !ok || member.Property == nil {
 		return "", "", false
 	}
+	// MD-016: `TensorLayout[Rank].Variant` names its rank-specific enum
+	// through an indexed owner (shaped-types.md § 7.1).
+	if layout, resolved := a.expressionTypes[member]; resolved && layout.Name == "TensorLayout" && layout.Kind == EnumType {
+		if !sameConcreteType(subjectType, layout) {
+			return "", "", false
+		}
+		key, ok := enumValueClassKey(layout.EnumConsts[member.Property.Value])
+		return member.Property.Value, key, ok
+	}
 	typeName, ok := typePathFromExpression(member.Object)
 	if !ok {
 		return "", "", false

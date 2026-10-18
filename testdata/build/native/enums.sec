@@ -1,0 +1,54 @@
+module main
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+enum Level int8 {
+    Cold = -10
+    Warm = 20
+    Hot = 90
+}
+
+fn Name(c: Color) int {
+    switch c {
+    case Color.Red:
+        return 1
+    case Color.Green, Color.Blue:
+        return 2
+    }
+}
+
+fn Degrees(l: Level) int {
+    return int(l)
+}
+
+fn Next(c: Color) Color {
+    switch c {
+    case Color.Red:
+        return Color.Green
+    case Color.Green:
+        return Color.Blue
+    default:
+        return Color.Red
+    }
+}
+
+fn main() int {
+    if Name(Color.Red) != 1 || Name(Color.Blue) != 2 {
+        return 1
+    }
+    if Degrees(Level.Cold) != -10 || Degrees(Level.Hot) != 90 {
+        return 2
+    }
+    let mut c: Color := Color.Red
+    for _ in 0..<4 {
+        c = Next(c)
+    }
+    if c != Color.Green {
+        return 3
+    }
+    return 0
+}

@@ -1,0 +1,31 @@
+module main
+
+let Limit: int := 7
+let Offset: int8 := -3
+static let mut counter: int := 0
+static let mut armed: bool := false
+
+fn Tick() int {
+    counter += 2
+    return counter
+}
+
+fn main() int {
+    discard Tick()
+    discard Tick()
+    if counter != 4 {
+        return 1
+    }
+    counter = Limit
+    if counter != 7 || int(Offset) != -3 {
+        return 2
+    }
+    if armed {
+        return 3
+    }
+    armed = true
+    if !armed {
+        return 4
+    }
+    return 0
+}

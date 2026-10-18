@@ -1,0 +1,10 @@
+module main
+
+fn Check(x: int) int {
+    assert x > 5
+    return x
+}
+
+fn main() int {
+    return Check(1)
+}

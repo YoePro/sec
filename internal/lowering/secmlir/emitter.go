@@ -48,11 +48,6 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 	if err := e.validatePackage14ArrayBoundaries(); err != nil {
 		return nil, err
 	}
-	// Static storage (semantic_ir.md § 28) has no Sec MLIR representation
-	// before the schema that defines it; it must not be dropped.
-	if len(module.Statics) > 0 {
-		return nil, &UnsupportedLoweringError{Feature: "static storage"}
-	}
 	if err := validateTryHandlerSchema(module); err != nil {
 		return nil, err
 	}
@@ -194,6 +189,11 @@ func (e *emitter) emitModule() error {
 		e.out.WriteString(mlirString(source))
 	}
 	e.out.WriteString("]} {\n")
+	for _, static := range e.module.Statics {
+		if err := e.emitStaticGlobal(static); err != nil {
+			return err
+		}
+	}
 	for _, function := range e.module.Functions {
 		if err := e.emitFunction(function); err != nil {
 			return err
@@ -436,6 +436,37 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if err := e.emitResultTypes(operation.Results); err != nil {
 			return err
 		}
+	case semantic.OpStaticLoad:
+		if err := e.emitResults(operation); err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.static.load\"() <{global = @%s}> : () -> ", staticSymbol(operation.Static))
+		if err := e.emitResultTypes(operation.Results); err != nil {
+			return err
+		}
+	case semantic.OpStaticStore:
+		fmt.Fprintf(&e.out, "\"sec.static.store\"(%s) <{global = @%s}> : (", valueName(operation.Operands[0]), staticSymbol(operation.Static))
+		if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+			return err
+		}
+		e.out.WriteString(") -> ()")
+	case semantic.OpPanic:
+		// semantic_ir.md §§ 55–57: the reason and static message survive to
+		// the endpoint; lowering traps (MD-101).
+		fmt.Fprintf(&e.out, "\"sec.fail.panic\"() <{")
+		if operation.PanicHasMessage {
+			fmt.Fprintf(&e.out, "message = %s, ", mlirString(operation.PanicMessage))
+		}
+		fmt.Fprintf(&e.out, "reason = %s}> ", mlirString(operation.PanicReason))
+		e.emitOperationAttributes(operation, false)
+		e.out.WriteString(": () -> ()")
+	case semantic.OpDiscardValue:
+		// discard.md § 3: a trivially destructible value is consumed without
+		// any machine instruction; destruction plans are not lowered yet.
+		if !operation.DiscardTrivial {
+			return &UnsupportedLoweringError{Feature: "discard of a value that needs destruction"}
+		}
+		return nil
 	case semantic.OpUnreachable:
 		fmt.Fprintf(&e.out, "\"sec.unreachable\"() <{reason = %s}> ", mlirString(operation.Reason))
 		e.emitOperationAttributes(operation, true)
@@ -1528,4 +1559,34 @@ func mlirString(value string) string {
 	}
 	out.WriteByte('"')
 	return out.String()
+}
+
+// staticSymbol is the module-level symbol of one static storage location.
+func staticSymbol(id semantic.StaticID) string {
+	return fmt.Sprintf("sec_static_%d", id)
+}
+
+// emitStaticGlobal publishes one static-duration storage location with its
+// exact compile-time initial value (semantic_ir.md § 28; static.md).
+// Address-taken statics stay behind the Place boundary.
+func (e *emitter) emitStaticGlobal(static semantic.Static) error {
+	if static.AddressTaken {
+		return &UnsupportedLoweringError{Feature: "address-taken static storage"}
+	}
+	typ, err := e.typeText(static.Type)
+	if err != nil {
+		return err
+	}
+	var initial string
+	switch {
+	case static.Initializer.Integer != nil:
+		initial = static.Initializer.Integer.String()
+	case static.Initializer.Bool != nil:
+		initial = fmt.Sprintf("%t", *static.Initializer.Bool)
+	default:
+		return &UnsupportedLoweringError{Feature: "static storage without a scalar constant initializer"}
+	}
+	fmt.Fprintf(&e.out, "  \"sec.static.global\"() <{initial = %s, is_mutable = %t, sym_name = %s, type = %s}> {sec.source_name = %s} : () -> ()\n",
+		mlirString(initial), static.Mutable, mlirString(staticSymbol(static.ID)), typ, mlirString(static.Name))
+	return nil
 }

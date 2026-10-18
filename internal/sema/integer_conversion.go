@@ -1,6 +1,10 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"math/big"
+
+	"sec/internal/ast"
+)
 
 // ResolvedIntegerConversion is Sema's plan for an explicit conversion
 // between two built-in integer types (`int(x)`, `int8(x)`, `uint(x)`, ...).
@@ -51,4 +55,31 @@ func (a *Analyzer) ResolvedIntegerConversionOf(call *ast.CallExpression) (Resolv
 // conversion rules.
 func isBuiltinConversionInteger(typ Type) bool {
 	return (typ.Kind == IntType || typ.Kind == UintType) && !typ.Named && len(typ.Contracts) == 0 && !hasUnitSemantics(typ)
+}
+
+// recordForRangeStep publishes the compile-time value of an explicit range
+// step, so lowering can choose the progression direction without
+// re-evaluating it (flowcontrol_for.md §§ 23, 26).
+func (a *Analyzer) recordForRangeStep(stmt *ast.ForStatement) {
+	if stmt == nil || stmt.Step == nil {
+		return
+	}
+	if value, ok := a.integerConstantValue(stmt.Step); ok {
+		a.resolvedForRangeSteps[stmt] = new(big.Int).Set(value)
+	} else {
+		delete(a.resolvedForRangeSteps, stmt)
+	}
+}
+
+// ResolvedForRangeStepOf returns the compile-time value of a for loop's
+// explicit integer step, when it is a compile-time constant.
+func (a *Analyzer) ResolvedForRangeStepOf(stmt *ast.ForStatement) (*big.Int, bool) {
+	if a == nil || stmt == nil {
+		return nil, false
+	}
+	value, ok := a.resolvedForRangeSteps[stmt]
+	if !ok {
+		return nil, false
+	}
+	return new(big.Int).Set(value), true
 }

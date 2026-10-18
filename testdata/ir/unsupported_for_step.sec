@@ -1,2 +1,2 @@
 module main
-fn Loop() void { for value in 0..<10 step 2 { discard value } }
+fn Loop(step: int) void { for value in 0..<10 step step { discard value } }

@@ -13,6 +13,13 @@ func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, boo
 	if concrete.Kind == GenericType {
 		return constrainedIterator(concrete)
 	}
+	if isIteratorInterface(concrete) {
+		// A borrowed view: the element type and Next requirement come from
+		// the interface itself (flowcontrol_for.md § 37.1; MD-057).
+		if required, ok := compilerKnownInterfaceRequirement(concrete, "Next"); ok {
+			return concrete.TypeArgs[0], required, concrete, true
+		}
+	}
 	for _, iface := range concrete.Implements {
 		if !iface.Intrinsic || iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
 			continue
@@ -81,4 +88,10 @@ func isForCollectionFamily(typ Type) bool {
 	default:
 		return false
 	}
+}
+
+// isIteratorInterface reports the compiler-known Iterator[T] interface type
+// itself, as opposed to a concrete type conforming to it.
+func isIteratorInterface(typ Type) bool {
+	return typ.Kind == InterfaceType && typ.Intrinsic && typ.Name == "Iterator" && len(typ.TypeArgs) == 1
 }

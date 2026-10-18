@@ -1,11 +1,11 @@
 # MD-057 — Borrowed interface parameters and `Iterator[T]`
 
-- **Status:** Design decided; normative correction pending integration and implementation verification
+- **Status:** Applied 2026-10-18 — synced into interfaces.md rev 2.2 (§ 7.1, § 9.1), generics.md rev 2.3 (§ 11), flowcontrol_for.md rev 2.2 (§ 13, § 37.1, § 40, § 42) and stdlib_str.md (§§ 10.2, 13.2, 13.6); MD-057 removed from missing-decisions.yaml, library ownership choice opened as MD-106. Implementation not done: Known holes recorded in governance `frontend.interfaces` and `frontend.for-loops-v2` (call-site view acceptance, view iteration, Semantic IR runtime dispatch, lowering).
 - **Created:** 2026-10-17
 - **Updated:** 2026-10-17
 - **Revision:** 1.0
 - **Sec version:** 0.1
-- **Canonical correction path (proposed):** `rules/corrections/MD-057-interface-iterator-parameters.md`
+- **Canonical correction path:** `rules/corrections/applied/md057-interface-iterator-parameters-correction-20261017.md`
 - **Amends:** `rules/declarations/interfaces.md` §7, §9.1; `rules/control-flow/flowcontrol_for.md` §13, §37, §40, §42; `rules/declarations/generics.md` (clarification only)
 - **Motivation:** Resolve MD-057 without special syntax for iterator arguments or introduction of `dyn`.
 - **Replaces:** None. This is an additive correction to the listed rulebooks, not a renumbering of their sections.

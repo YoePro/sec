@@ -513,6 +513,20 @@ const (
 	// source wrote one, and its source location as provenance
 	// (rules/compiler/semantic_ir.md §§ 55–57).
 	OpPanic OpKind = "panic"
+	// OpDiscardValue is the explicit terminal ownership action of a
+	// validated discard: an explicit `discard` of an expression or binding,
+	// or the implicit discard of an ordinary call result used as a statement
+	// (rules/control-flow/discard.md §§ 3, 5, 9–10, 36).
+	OpDiscardValue OpKind = "discard.value"
+)
+
+// DiscardProvenance distinguishes the source of a discard
+// (discard.md § 36).
+type DiscardProvenance string
+
+const (
+	DiscardExplicit           DiscardProvenance = "explicit"
+	DiscardImplicitCallResult DiscardProvenance = "implicit-call-result"
 )
 
 type IntegerCheckedBinaryKind string
@@ -738,10 +752,14 @@ type Operation struct {
 	// PanicReasonID and PanicReason identify the registered panic reason of
 	// an OpPanic; PanicMessage is its static literal message when
 	// PanicHasMessage is set.
-	PanicReasonID   uint16
-	PanicReason     string
-	PanicMessage    string
-	PanicHasMessage bool
+	// DiscardProvenance and DiscardTrivial describe an OpDiscardValue: its
+	// source and whether the consumed value is trivially destructible.
+	DiscardProvenance DiscardProvenance
+	DiscardTrivial    bool
+	PanicReasonID     uint16
+	PanicReason       string
+	PanicMessage      string
+	PanicHasMessage   bool
 	// AssertCheck marks the conditional branch of an unproven assertion.
 	AssertCheck bool
 	// Place and Reference carry the P15 Place/direct-reference facts;

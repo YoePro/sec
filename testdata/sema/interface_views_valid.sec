@@ -1,0 +1,84 @@
+module main
+
+interface Reader {
+    fn Size() int
+}
+
+interface Counter {
+    fn Value() int
+    mut fn Increment() void
+}
+
+type Small struct {
+    n: int,
+}
+
+impl Small implements Reader {
+    fn Size() int {
+        return 1
+    }
+}
+
+type Big struct {
+    n: int,
+}
+
+impl Big implements Reader {
+    fn Size() int {
+        return 100
+    }
+}
+
+type Tally struct {
+    count: int,
+}
+
+impl Tally implements Counter {
+    fn Value() int {
+        return self.count
+    }
+    fn Increment() void {
+        self.count += 1
+    }
+}
+
+type Upto struct {
+    next: int,
+    limit: int,
+}
+
+impl Upto implements Iterator[int] {
+    fn Next() Option[int] {
+        if self.next >= self.limit {
+            return None
+        }
+        let value := self.next
+        self.next += 1
+        return Some(value)
+    }
+}
+
+fn Inspect(value: ref Reader) int {
+    return value.Size()
+}
+
+fn Bump(value: ref mut Counter) void {
+    value.Increment()
+}
+
+fn Count(values: ref mut Iterator[int]) int {
+    let mut total: int := 0
+    for value in values {
+        total += value
+    }
+    return total
+}
+
+fn main() int {
+    let small := Small { n: 0 }
+    let big := Big { n: 0 }
+    let mut tally := Tally { count: 0 }
+    let mut numbers := Upto { next: 0, limit: 4 }
+    Bump(tally)
+    return Inspect(small) + Inspect(big) + Count(numbers) + tally.Value()
+}

@@ -224,15 +224,42 @@ sources unless an actual synchronized migration requires them.
   - Diagnostic presentation prints an unknown start as `*` (MD-089).
   - Tests: `TestSliceProjectionBoundsAreExactBeyondInt64` and `TestSlicePlaceProjectionNormalizesEndpointsExactly`; the existing overlap, relationship and disjoint-borrow tests are migrated.
   - The signed `len(slice)` gap is logged as MD-088.
-- [ ] P16-10 — Add stable `SliceRangeID` for evaluated dynamic ranges using
+- [x] P16-10 — Add stable `SliceRangeID` for evaluated dynamic ranges using
   compiler semantic identity, not endpoint text, spelling or runtime tags.
   Define absent state, deterministic allocation and detached query behavior (§26).
+
+  Completed 2026-10-18. Dynamic source slice projections carry a compiler-only
+  `SliceRangeID`, interned by semantic source site in deterministic first-use
+  order; zero means absent and static ranges do not allocate an identity.
+  Reanalysis resets the range table; allocator snapshots and `ResolvedPlaceOf`
+  queries are detached. Nested dynamic ranges and indexing retain the symbolic
+  parent projection. Identities alone never prove runtime equality or
+  disjointness, and relative child ranges cannot prove disjointness through
+  unknown parents. Analysis-local IDs are excluded from persisted parameter
+  summaries. Slice normalization/composition now lives in `slice_places.go`,
+  and `samePlaceIdentity` moved from `analyzer.go` to `place_identities.go`.
+  Tests: `TestSliceRangeIDsAreStableAndQueriesDetached` and
+  `TestSliceRangeIdentityCompositionAndAllocation`, with source fixture
+  `testdata/sema/slice_range_id_valid.sec`.
 - [ ] P16-11 — Normalize missing start/end and inclusive/exclusive endpoints with
   exact arithmetic; preserve source/start/end evaluation order and one evaluation.
   Inclusive-end normalization must not overflow before validation (§§13–19).
-- [ ] P16-12 — Preserve static disjointness and empty-element-range behavior;
+- [x] P16-12 — Preserve static disjointness and empty-element-range behavior;
   compose nested static ranges exactly. Dynamic/unknown overlap stays conservative;
   an empty slice still retains provenance/lifetime dependencies (§§28–30,59–62).
+
+  Completed 2026-10-18. A source slice's established static extent now supplies
+  an omitted end when slicing it again. Static inclusive/open subranges compose
+  to exact absolute bounds and allocate no dynamic identity. Extent proofs
+  require complete static ranges and unanimous lengths across origin alternatives;
+  unknown/dynamic origins stay conservative. Source tests keep disjoint mutable
+  subranges live together, and verify that nested empty slices and two mutable
+  slices of a zero-length array retain root/storage/borrow/lifetime facts while
+  borrowing no elements. Returning an empty local-origin slice is still rejected.
+  Tests: `TestStaticSliceSubrangesAndEmptyProvenance` and
+  `TestStaticSliceExtentRequiresUnanimousOrigins`; existing dynamic-range and
+  arbitrary-precision composition tests remain in force. This completes the
+  Sema Place scope of P16-12; slice IR and runtime lowering retain their own items.
 - [x] P16-13 — Verify constant-invalid source diagnostics and canonical runtime
   classification: InvalidRange, then StartAfterEnd, then OutOfBounds. Preserve
   precedence where multiple conditions fail (§§18–23).
@@ -247,10 +274,27 @@ sources unless an actual synchronized migration requires them.
   - Reporting only the precedence-first failure at compile time is logged as MD-094.
   - Tests: `TestClassifySliceRangePrecedence` (including values beyond int64) and `TestConstantSliceRangeDiagnosticsFollowPrecedence`.
   - Not done here: runtime and fallible lowering of the classification (P16-31/P16-32), and the evaluation-order part of P16-11.
-- [ ] P16-14 — Publish `ResolvedSliceCreationPlanOf(*ast.RefExpression)` with
+- [x] P16-14 — Publish `ResolvedSliceCreationPlanOf(*ast.RefExpression)` with
   source kind, authority, element type, source Place/slice, original endpoint
   types/signedness/constants, range/proof, BorrowID/LifetimeID, P15 reference facts
   and canonical RangeError type (§§33–38). Querying must not register another borrow.
+
+  Completed 2026-10-18. `slice_creation_plans.go` records creation plans only for
+  explicit ref-of-range expressions: fixed/dynamic array or slice source,
+  original source type/Place, element type and authority, original endpoint
+  types/signedness/exact constants, normalized source-relative static range or
+  dynamic identity, conservative runtime/proven classification and proof kind,
+  and the existing P15 reference plan/BorrowID/LifetimeID. Queries return
+  detached endpoint, range, type, origin and error-case data without analysis
+  or borrow creation. Endpoints now undergo integer type inference in source
+  order, and nested range validation uses an established parent extent. The
+  existing core `RangeError` has a matching standalone builtin identity and
+  trusted-core declaration support. Slice inference and range diagnostics were
+  extracted from the inference/analyzer monoliths into focused slice files.
+  Tests: `TestResolvedSliceCreationPlans`, `TestSliceRangeErrorCoreIdentity`,
+  `TestSliceCreationRejectsNonIntegerEndpoints`, and
+  `TestSliceCreationRejectsRangePastKnownParent`. Source-to-IR slice creation,
+  fallible CFG and broader P16-16 query coverage remain separate TODO items.
 - [ ] P16-15 — Publish `ResolvedSliceIndexPlanOf(*ast.IndexExpression)` with
   source authority, exact index/type/proof facts, use/transfer action and IndexError
   identity (§§50–58). Extend existing resolved index producers; no second proof engine.

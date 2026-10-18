@@ -1,0 +1,6 @@
+module main
+
+fn EscapeEmpty() ref int[] {
+    let values := [1, 2, 3, 4]
+    return ref values[2..<2]
+}

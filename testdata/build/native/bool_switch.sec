@@ -1,0 +1,29 @@
+module main
+
+fn Pick(b: bool) int {
+    switch b {
+    case true:
+        return 1
+    case false:
+        return 2
+    }
+}
+
+fn Dyn(b: bool, c: bool) int {
+    switch b {
+    case c:
+        return 10
+    default:
+        return 20
+    }
+}
+
+fn main() int {
+    if Pick(true) != 1 || Pick(false) != 2 {
+        return 1
+    }
+    if Dyn(true, true) != 10 || Dyn(false, false) != 10 || Dyn(true, false) != 20 {
+        return 2
+    }
+    return 0
+}

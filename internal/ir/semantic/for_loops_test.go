@@ -63,7 +63,7 @@ func TestForRangeExplicitStepIsUnsupported(t *testing.T) {
 		t.Fatal(errs)
 	}
 	_, err = Build(program, analyzer, BuildOptions{RequestedModule: "main"})
-	if err == nil || !strings.Contains(err.Error(), "for range with an explicit step") {
+	if err == nil || !strings.Contains(err.Error(), "for range with a step that is not a compile-time constant") {
 		t.Fatalf("explicit step: %v", err)
 	}
 }

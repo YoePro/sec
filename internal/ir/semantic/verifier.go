@@ -669,6 +669,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if !void && values[op.Operands[0]].Type != fn.ReturnType {
 			return fmt.Errorf("return type mismatch")
 		}
+	case OpDiscardValue:
+		if err := verifyDiscardValue(op, storages); err != nil {
+			return err
+		}
 	case OpUnreachable:
 		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || !op.Synthesized || op.Reason == "" {
 			return fmt.Errorf("invalid synthesized unreachable")

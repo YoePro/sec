@@ -1,15 +1,16 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"sec/internal/testsupport"
 )
 
 // emit-ir prints static storage as module statics with compile-time
-// initializers, and emit-sec-mlir rejects it — leaving existing output
-// untouched — because no Sec MLIR schema represents static storage yet.
+// initializers; emit-sec-mlir publishes them as sec.static.global with
+// symbol loads and stores, and the compilation track lowers them to LLVM
+// globals, constant when immutable (user decision 2026-10-18).
 //
 // Rules:
 //   - rules/compiler/semantic_ir.md — § 28
@@ -20,15 +21,13 @@ func TestStaticStorageEmitRoutes(t *testing.T) {
 	if code != 0 || !strings.Contains(stdout, `"main::Next::calls"`) || !strings.Contains(stdout, "static.load @") {
 		t.Fatal(code, stdout, stderr)
 	}
-	path := filepath.Join(t.TempDir(), "output")
-	if err := os.WriteFile(path, []byte("existing output"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	stdout, stderr, code = runCLIForDiagnostics(t, "emit-sec-mlir", file, "-o", path)
-	if code == 0 || stdout != "" || !strings.Contains(stderr, "static storage") {
+	testsupport.RequireSecMLIROptPath(t)
+	stdout, stderr, code = runCLIForDiagnostics(t, "emit-sec-mlir", file, "-o", "-")
+	if code != 0 || !strings.Contains(stdout, `"sec.static.global"`) || !strings.Contains(stdout, `"sec.static.load"`) {
 		t.Fatal(code, stdout, stderr)
 	}
-	if contents, err := os.ReadFile(path); err != nil || string(contents) != "existing output" {
-		t.Fatal(string(contents), err)
+	stdout, stderr, code = runCLIForDiagnostics(t, "emit-llvm", file, "-o", "-")
+	if code != 0 || !strings.Contains(stdout, "internal constant i64 7") || !strings.Contains(stdout, "internal global i64 0") {
+		t.Fatal(code, stdout, stderr)
 	}
 }

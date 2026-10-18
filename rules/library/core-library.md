@@ -1947,6 +1947,11 @@ additive numerical algorithms, but cannot redefine these semantics. Ordinary
 modules cannot monkey-patch compiler-owned shaped types with privileged global
 `impl` blocks.
 
+The shaped metadata types `Shape`, `Strides`, `TensorLayout`, `Axes` and
+`AxisList` and their `ShapeError` are compiler-known declarations owned by
+`shaped-types.md` (MD-016 part 1); their existence never depends on core stub
+helpers, and `ShapeError` has exactly one canonical declaration.
+
 Legacy lowercase `.len` and `.ptr` examples do not override canonical `.Len`
 and `.Ptr` spellings or the existing compatibility migration.
 

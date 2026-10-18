@@ -316,6 +316,16 @@ const (
 	// AtomicInvalidMemoryOrder rejects an incorrectly typed or disallowed order.
 	// Rules: rules/concurrency/atomics.md — §§12–13,24(1–2),45(5–8).
 	AtomicInvalidMemoryOrder = "S1171"
+	// InterfaceByValueParameter rejects a parameter of type Iterator[T]
+	// written by value: Iterator[T] is not a by-value type; a borrowed view
+	// ref mut Iterator[T] or a named generic parameter is required (MD-057).
+	// Rules: rules/declarations/interfaces.md — § 7.1; flowcontrol_for.md — § 37.1.
+	InterfaceByValueParameter = "S1172"
+	// ShapedMetadataLiteralInvalid rejects a shaped metadata literal whose
+	// arity, component types or statically checked Axes/AxisList invariant
+	// is wrong (MD-016).
+	// Rules: rules/collections/shaped-types.md — §§ 4.1, 6.0, 15.3.
+	ShapedMetadataLiteralInvalid = "S1173"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -358,6 +368,8 @@ var registry = map[string]Definition{
 	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicOrderNotCompileTime:             {ID: AtomicOrderNotCompileTime, Name: "atomic.order-not-compile-time", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
+	InterfaceByValueParameter:             {ID: InterfaceByValueParameter, Name: "interfaces.by-value-parameter", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	ShapedMetadataLiteralInvalid:          {ID: ShapedMetadataLiteralInvalid, Name: "collections.shaped-metadata-literal", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowNonAddressable:                  {ID: BorrowNonAddressable, Name: "borrowing.non-addressable-place", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowSharedConflict:                  {ID: BorrowSharedConflict, Name: "borrowing.shared-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowMutableConflict:                 {ID: BorrowMutableConflict, Name: "borrowing.mutable-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},

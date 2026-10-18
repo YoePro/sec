@@ -1,0 +1,19 @@
+module main
+
+fn F() int {
+    return 3
+}
+
+fn G(x: int) int {
+    return x * 2
+}
+
+fn main() int {
+    discard F()
+    G(4)
+    let unused := 5
+    discard unused
+    let mut m: int := 1
+    discard m
+    return 0
+}

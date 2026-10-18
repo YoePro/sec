@@ -647,6 +647,10 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if err := fb.buildSwitch(stmt); err != nil {
 				return err
 			}
+		case *ast.DiscardStatement:
+			if err := fb.buildDiscard(stmt); err != nil {
+				return err
+			}
 		case *ast.FallthroughStatement:
 			if err := fb.buildFallthrough(stmt.Token); err != nil {
 				return err
@@ -705,7 +709,12 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 				return fb.unsupported("unresolved function call", call.Token)
 			}
 			if resolved.Function.ReturnType.Kind != sema.VoidType {
-				return fb.unsupported("standalone non-void call", call.Token)
+				// discard.md § 10: the returned temporary is implicitly
+				// consumed at the end of the statement.
+				if err := fb.discardExpression(call, DiscardImplicitCallResult, call.Token); err != nil {
+					return err
+				}
+				continue
 			}
 			if _, err := fb.buildCall(call); err != nil {
 				return err
@@ -1245,11 +1254,11 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 	if _, ok := stmt.Value.(*ast.TryExpression); ok {
 		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
 	}
-	if _, isStatic, err := fb.staticOfIdentifier(id); isStatic {
+	if static, isStatic, err := fb.staticOfIdentifier(id); isStatic {
 		if err != nil {
 			return err
 		}
-		return fb.unsupported("compound assignment to static storage", stmt.Token)
+		return fb.buildStaticCompoundAssignment(stmt, resolved, static)
 	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(id)
 	if !ok {

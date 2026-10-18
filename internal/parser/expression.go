@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -860,6 +861,16 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 	if identifier, ok := left.(*ast.Identifier); ok && identifier.Value == "list" {
 		return p.parseListCollectionLiteral(identifier, bracketToken)
 	}
+	if identifier, ok := left.(*ast.Identifier); ok && isShapedMetadataLiteralType(identifier.Value) {
+		// MD-016: `Shape[3] { 2, 0, 4 }` — the bracket carries the
+		// compile-time cardinality, parsed like the type form.
+		ref := p.parseCollectionShapedTypeReferenceArgs(&ast.TypeReference{Token: identifier.Token, Name: identifier.Value}, bracketToken)
+		if ref.Invalid || p.peekToken.Type != lexer.LBRACE {
+			return nil
+		}
+		p.nextToken()
+		return p.parseStructLiteralWithType(ref)
+	}
 	typeArgs := p.parseTypeArgs()
 	if p.curToken.Type != lexer.RBRACKET {
 		// A bracket expression is parsed speculatively because an ordinary
@@ -1567,7 +1578,17 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 		}
 
 		field := &ast.StructLiteralField{Token: expressionToken(value)}
-		if spread, ok := value.(*ast.SpreadExpression); ok {
+		_, namedField := value.(*ast.Identifier)
+		namedField = namedField && p.peekToken.Type == lexer.COLON
+		if isShapedMetadataLiteralType(ref.Name) && !namedField {
+			// MD-016: shaped metadata literals list their components in
+			// order; no other struct gains positional literal syntax.
+			field.Value = value
+			field.Positional = true
+			// A synthetic, never-public component name keeps every analysis
+			// that keys literal fields by name well defined.
+			field.Name = &ast.Identifier{Token: field.Token, Value: "_" + strconv.Itoa(len(lit.Fields))}
+		} else if spread, ok := value.(*ast.SpreadExpression); ok {
 			field.Token = spread.Token
 			field.Value = spread.Value
 			field.Spread = true
@@ -2358,4 +2379,18 @@ func (p *Parser) parseBitExtractionExpression(identifier *ast.Identifier) ast.Ex
 		extraction.UnitToken, extraction.Unit, extraction.UnitExpression, extraction.EndToken = annotation.open, annotation.unit, annotation.expression, annotation.close
 	}
 	return extraction
+}
+
+// isShapedMetadataLiteralType reports the compiler-known shaped metadata types
+// whose literal is a positional component list. TensorLayout is an enum and
+// has no literal.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — §§ 4.1, 6.0, 15.3 (MD-016)
+func isShapedMetadataLiteralType(name string) bool {
+	switch name {
+	case "Shape", "Strides", "Axes", "AxisList":
+		return true
+	}
+	return false
 }

@@ -2,6 +2,7 @@
 #define SEC_DIALECT_SEC_OPS_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "sec/Dialect/Sec/SecDialect.td"
 
@@ -504,6 +505,38 @@ def Sec_RefEndBorrowOp : Sec_Op<"ref.end_borrow"> {
   let summary = "Compile-time semantic end of a borrow";
   let arguments = (ins I32Attr:$borrow_id, I32Attr:$lifetime_id,
                        AnyType:$reference);
+  let hasVerifier = 1;
+}
+
+// Static-duration storage (semantic_ir.md § 28; static.md): one module-level
+// location with an exact compile-time initial value ("true"/"false" for bool,
+// a decimal integer otherwise), read and written by symbol. Lowered to an LLVM
+// global by sec-lower-static-storage (user decision 2026-10-18).
+def Sec_StaticGlobalOp : Sec_Op<"static.global", [Symbol]> {
+  let summary = "Module-level Sec static storage location";
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type,
+                       StrAttr:$initial, BoolAttr:$is_mutable);
+  let hasVerifier = 1;
+}
+
+def Sec_StaticLoadOp : Sec_Op<"static.load"> {
+  let summary = "Read a Sec static storage location";
+  let arguments = (ins FlatSymbolRefAttr:$global);
+  let results = (outs AnyType:$result);
+}
+
+def Sec_StaticStoreOp : Sec_Op<"static.store"> {
+  let summary = "Write a mutable Sec static storage location";
+  let arguments = (ins FlatSymbolRefAttr:$global, AnyType:$value);
+}
+
+// Explicit panic, failed assertion or reached checked unreachable: a
+// deterministic non-returning failure carrying the registered panic reason
+// and the source's static message (semantic_ir.md §§ 55–57). Lowered like the
+// other failures to the minimal panic endpoint (MD-101).
+def Sec_FailPanicOp : Sec_Op<"fail.panic", [Terminator]> {
+  let summary = "Deterministic non-returning explicit Sec panic";
+  let arguments = (ins StrAttr:$reason, OptionalAttr<StrAttr>:$message);
   let hasVerifier = 1;
 }
 

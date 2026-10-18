@@ -750,7 +750,8 @@ integrations:
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
-      - lower enum, bool, string and named-type switch subjects through Semantic IR and the compilation track
+      - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
+      - lower bool, string and named-type switch subjects through Semantic IR and the compilation track
       - extend compile-time coverage to computed string constants beyond direct literals
       - implement full unit-aware and named-semantic-type-aware overlap reasoning
       - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
@@ -1130,7 +1131,7 @@ integrations:
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
       - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
-      - "a direct Iterator[T] parameter type as written by stdlib_str.md (fn Join(values: Iterator[string], ...)) is blocked on MD-057; the explicit generic forms are implemented"
+      - "MD-057 borrowed iterator views (flowcontrol_for.md § 37.1). Sema implemented 2026-10-18: `for value in values` over `values: ref mut Iterator[T]` yields T with a ResolvedForIteration whose Source is borrowed-interface-view, records the Next call as an interface graph call, and rejects a shared ref Iterator[T] source. Known hole (verified 2026-10-18): Semantic IR/lowering of runtime Next dispatch is not implemented; readiness reports it as Unproven with the reason naming the missing view representation (MD-108)"
     excluded:
       - condition-only and C-style for loops
       - consuming for bindings or move-source iteration in Sec 0.1

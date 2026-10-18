@@ -39,6 +39,13 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"switch", 0, false},
 		{"integer_conversions", 0, false},
 		{"characters", 0, false},
+		{"enums", 0, false},
+		{"range_steps", 0, false},
+		{"bool_switch", 0, false},
+		{"discard", 0, false},
+		{"statics", 0, false},
+		{"panic_trap", 0, true},
+		{"assert_trap", 0, true},
 		{"integer_enums", 0, false},
 	} {
 		t.Run(test.fixture, func(t *testing.T) {

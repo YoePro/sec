@@ -1,9 +1,11 @@
 package semantic
 
 import (
+	"fmt"
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/lexer"
 	"sec/internal/sema"
 )
 
@@ -13,7 +15,8 @@ import (
 //   - `for { }` is an infinite loop whose condition is constantly true; it
 //     continues after the loop only through a reachable `break`;
 //   - `for i in a..<b` and `for i in a..b` over a built-in integer type with
-//     the implicit +1 step evaluate both bounds exactly once and keep the
+//     the implicit +1 step or a compile-time constant step evaluate both
+//     bounds exactly once and keep the
 //     progression in compiler-generated storage: a cursor holding the next
 //     value and a flag stating whether one remains. The body entry yields the
 //     cursor, then advances it before user code runs, so `continue` returns
@@ -21,8 +24,11 @@ import (
 //     value exists, so an inclusive range ending at the type's maximum never
 //     needs an overflowing increment (flowcontrol_for.md § 29).
 //
-// Other forms (explicit step, collections, strings, Iterator[T], reference
-// bindings, named numeric types) remain explicit unsupported constructs.
+// With an explicit step the remaining distance to end is computed exactly in
+// a wider integer type (forWideDistance), so the method does not depend on
+// the element type's target-resolved limits. Other forms (runtime steps,
+// collections, strings, Iterator[T], reference bindings, named numeric
+// types) remain explicit unsupported constructs.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_for.md — §§ 2, 9, 22–25, 29–31
@@ -35,8 +41,13 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 	if !ok {
 		return fb.unsupported("for iteration over a collection, string or iterator", stmt.Token)
 	}
+	step := big.NewInt(1)
 	if stmt.Step != nil {
-		return fb.unsupported("for range with an explicit step", stmt.StepToken)
+		value, ok := fb.owner.analyzer.ResolvedForRangeStepOf(stmt)
+		if !ok {
+			return fb.unsupported("for range with a step that is not a compile-time constant", stmt.StepToken)
+		}
+		step = value
 	}
 	if len(stmt.Bindings) != 1 || stmt.Bindings[0].Mode != ast.ForBindingValue {
 		return fb.unsupported("for range binding form", stmt.Token)
@@ -74,9 +85,16 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 	if start.typ != typeID || end.typ != typeID {
 		return fb.unsupported("for range bounds of different representation", rangeExpr.Token)
 	}
-	firstTest := IntegerCompareLE
-	if rangeExpr.Exclusive {
-		firstTest = IntegerCompareLT
+	ascending := step.Sign() > 0
+	firstTest := map[[2]bool]IntegerComparePredicate{
+		{true, false}: IntegerCompareLE, {true, true}: IntegerCompareLT,
+		{false, false}: IntegerCompareGE, {false, true}: IntegerCompareGT,
+	}[[2]bool{ascending, rangeExpr.Exclusive}]
+	var wide *forWideDistance
+	if step.Cmp(big.NewInt(1)) != 0 {
+		if wide, err = fb.forWideDistanceSetup(elementType, end, step, loc); err != nil {
+			return err
+		}
 	}
 	hasFirst := fb.forCompare(firstTest, start, end, boolType, loc)
 	cursor := fb.forStorage(loopBinding.Name+".cursor", typeID, start, loc)
@@ -108,8 +126,29 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 		}
 		fb.bindings[fact.ID] = binding{value: value.id, typ: typeID}
 	}
-	one := fb.result(Operation{Kind: OpConstInt, Integer: big.NewInt(1), Location: loc}, typeID)
-	if rangeExpr.Exclusive {
+	one := fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(step), Location: loc}, typeID)
+	if wide != nil {
+		// § 29 with an explicit step: a further value exists when the
+		// remaining distance to end, computed exactly in a wider type, reaches
+		// |step| (inclusive) or exceeds it (exclusive); only then is the
+		// cursor advanced, so no increment past end is ever performed.
+		hasNext, err := fb.forHasNextWide(wide, value, ascending, rangeExpr.Exclusive, boolType, loc)
+		if err != nil {
+			return err
+		}
+		fb.emit(Operation{Kind: OpStorageStore, Storage: more, Operands: []ValueID{hasNext.id}, Location: loc})
+		advance := fb.newBlock()
+		run := fb.newBlock()
+		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{hasNext.id}, Successors: []BranchTarget{{Block: advance.ID}, {Block: run.ID}}, Location: loc})
+		fb.current = advance
+		next, err := fb.forAdd(value, one, typeID, loc)
+		if err != nil {
+			return err
+		}
+		fb.emit(Operation{Kind: OpStorageStore, Storage: cursor, Operands: []ValueID{next.id}, Location: loc})
+		fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: run.ID}}, Location: loc})
+		fb.current = run
+	} else if rangeExpr.Exclusive {
 		// value < end, so value + 1 cannot overflow.
 		next, err := fb.forAdd(value, one, typeID, loc)
 		if err != nil {
@@ -221,4 +260,62 @@ func (fb *functionBuilder) forStorage(name string, typeID TypeID, initial builtV
 	fb.emit(Operation{Kind: OpStorageDeclare, Storage: id, Location: loc})
 	fb.emit(Operation{Kind: OpStorageInit, Storage: id, Operands: []ValueID{initial.id}, Location: loc})
 	return id
+}
+
+// forWideDistance holds the loop-invariant parts of an explicit-step range:
+// the end bound and |step| in a type wide enough that the distance between
+// any two values of the element type is exact.
+type forWideDistance struct {
+	wideType TypeID
+	wideEnd  builtValue
+	absStep  builtValue
+}
+
+// forWideType is the exact distance domain of a range element type: int128
+// for every integer up to 64 bits (including target-sized int/uint) and
+// int256 for 128-bit integers.
+func forWideType(element sema.Type) (string, bool) {
+	switch element.Name {
+	case "int", "uint", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "byte":
+		return "int128", true
+	case "int128", "uint128":
+		return "int256", true
+	}
+	return "", false
+}
+
+func (fb *functionBuilder) forWideDistanceSetup(element sema.Type, end builtValue, step *big.Int, loc Location) (*forWideDistance, error) {
+	name, ok := forWideType(element)
+	if !ok {
+		return nil, fb.unsupported("for range step over "+element.Name, lexer.Token{})
+	}
+	wideSema, ok := fb.owner.analyzer.Types()[name]
+	if !ok {
+		return nil, fmt.Errorf("missing built-in type %s", name)
+	}
+	wideType, err := fb.owner.internType(wideSema)
+	if err != nil {
+		return nil, err
+	}
+	wideEnd := fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{end.id}, Location: loc}, wideType)
+	absStep := fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Abs(step), Location: loc}, wideType)
+	return &forWideDistance{wideType: wideType, wideEnd: wideEnd, absStep: absStep}, nil
+}
+
+func (fb *functionBuilder) forHasNextWide(wide *forWideDistance, value builtValue, ascending, exclusive bool, boolType TypeID, loc Location) (builtValue, error) {
+	wideValue := fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{value.id}, Location: loc}, wide.wideType)
+	left, right := wide.wideEnd, wideValue
+	if !ascending {
+		left, right = wideValue, wide.wideEnd
+	}
+	op := Operation{Kind: OpIntBinaryChecked, IntegerBinary: IntegerCheckedSubtract, Operator: "-", Operands: []ValueID{left.id, right.id}, Location: loc}
+	distance, err := fb.emitCheckedOperator(op, wide.wideType, nil, nil, nil)
+	if err != nil {
+		return builtValue{}, err
+	}
+	predicate := IntegerCompareGE
+	if exclusive {
+		predicate = IntegerCompareGT
+	}
+	return fb.forCompare(predicate, distance, wide.absStep, boolType, loc), nil
 }

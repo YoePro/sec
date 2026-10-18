@@ -208,6 +208,13 @@ func formatOperation(out *strings.Builder, op Operation) {
 		if len(op.Operands) > 0 {
 			fmt.Fprintf(out, " %%%d", op.Operands[0])
 		}
+	case OpDiscardValue:
+		if op.Storage != 0 {
+			fmt.Fprintf(out, " $%d", op.Storage)
+		} else {
+			fmt.Fprintf(out, " %%%d", op.Operands[0])
+		}
+		fmt.Fprintf(out, " provenance=%s trivial=%t", op.DiscardProvenance, op.DiscardTrivial)
 	case OpUnreachable:
 		fmt.Fprintf(out, " synthesized=%t reason=%q", op.Synthesized, op.Reason)
 	case OpPanic:

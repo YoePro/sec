@@ -22,6 +22,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/PassManager.h"
 #include "sec/Conversion/SecIntegerToArith/Passes.h"
@@ -35,6 +36,7 @@ namespace sec {
 #define GEN_PASS_DEF_SECCHECKLOWERINGSUPPORT
 #define GEN_PASS_DEF_SECLOWERFAILUREENDPOINTS
 #define GEN_PASS_DEF_SECLOWERCOMMANDENTRY
+#define GEN_PASS_DEF_SECLOWERSTATICSTORAGE
 #define GEN_PASS_DEF_SECFINALIZEFORLLVM
 #include "sec/Conversion/SecToLLVM/Passes.h.inc"
 } // namespace sec
@@ -67,7 +69,7 @@ std::optional<int64_t> failureReasonCode(StringRef reason) {
 }
 
 bool isFailureTerminator(Operation *operation) {
-  return isa<sec::FailArithmeticOp, sec::FailBoundsOp,
+  return isa<sec::FailArithmeticOp, sec::FailBoundsOp, sec::FailPanicOp,
              sec::FailReferenceGenerationOp, sec::UnreachableOp>(operation);
 }
 
@@ -76,7 +78,7 @@ bool isFailureTerminator(Operation *operation) {
 bool isLoweredSecOperation(Operation *operation) {
   // Only ordinary integer enums have their representation discharged by this
   // slice (rules/memory/layout.md § 14; lowering v7 sections 1–6).
-  if (isa<sec::EnumConstantOp, sec::EnumCmpOp>(operation)) {
+  if (isa<sec::EnumConstantOp, sec::EnumCmpOp, sec::EnumToIntegerOp>(operation)) {
     Type valueType = isa<sec::EnumConstantOp>(operation)
                          ? operation->getResult(0).getType()
                          : operation->getOperand(0).getType();
@@ -89,6 +91,8 @@ bool isLoweredSecOperation(Operation *operation) {
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
              sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
              sec::ArithmeticFailureReasonConstantOp, sec::FailArithmeticOp,
+             sec::FailPanicOp, sec::StaticGlobalOp, sec::StaticLoadOp,
+             sec::StaticStoreOp,
              sec::UnreachableOp>(operation);
 }
 
@@ -239,6 +243,67 @@ struct LowerCommandEntryPass
   }
 };
 
+// The resolved representation of a static: signless builtin integers keep
+// their width, bool is i1, and target-sized int/uint take the plan's index
+// width (rules/memory/layout.md; the data layout carries the plan).
+Type resolvedStaticType(Type type, unsigned indexBits) {
+  MLIRContext *context = type.getContext();
+  if (auto integer = dyn_cast<IntegerType>(type))
+    return IntegerType::get(context, integer.getWidth());
+  if (isa<sec::IntType, sec::UIntType>(type))
+    return IntegerType::get(context, indexBits);
+  return Type();
+}
+
+struct LowerStaticStoragePass
+    : sec::impl::SecLowerStaticStorageBase<LowerStaticStoragePass> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    MLIRContext *context = module.getContext();
+    unsigned indexBits = DataLayout(module).getTypeSizeInBits(IndexType::get(context));
+    auto pointer = LLVM::LLVMPointerType::get(context);
+    SmallVector<sec::StaticGlobalOp> globals;
+    module.walk([&](sec::StaticGlobalOp op) { globals.push_back(op); });
+    for (sec::StaticGlobalOp global : globals) {
+      Type type = resolvedStaticType(global.getType(), indexBits);
+      if (!type) {
+        global.emitError() << "the Sec MLIR -> LLVM track does not lower static "
+                              "storage of "
+                           << global.getType() << " yet";
+        return signalPassFailure();
+      }
+      unsigned width = cast<IntegerType>(type).getWidth();
+      StringRef initial = global.getInitial();
+      APInt value = initial == "true"    ? APInt(1, 1)
+                    : initial == "false" ? APInt(1, 0)
+                                         : APInt(width, initial, 10);
+      OpBuilder builder(global);
+      builder.create<LLVM::GlobalOp>(global.getLoc(), type, !global.getIsMutable(),
+                                     LLVM::Linkage::Internal, global.getSymName(),
+                                     builder.getIntegerAttr(type, value));
+      global.erase();
+    }
+    SmallVector<Operation *> accesses;
+    module.walk([&](Operation *op) {
+      if (isa<sec::StaticLoadOp, sec::StaticStoreOp>(op))
+        accesses.push_back(op);
+    });
+    for (Operation *op : accesses) {
+      OpBuilder builder(op);
+      if (auto load = dyn_cast<sec::StaticLoadOp>(op)) {
+        Value address = builder.create<LLVM::AddressOfOp>(load.getLoc(), pointer, load.getGlobal());
+        Value value = builder.create<LLVM::LoadOp>(load.getLoc(), load.getResult().getType(), address);
+        load.getResult().replaceAllUsesWith(value);
+      } else {
+        auto store = cast<sec::StaticStoreOp>(op);
+        Value address = builder.create<LLVM::AddressOfOp>(store.getLoc(), pointer, store.getGlobal());
+        builder.create<LLVM::StoreOp>(store.getLoc(), store.getValue(), address);
+      }
+      op->erase();
+    }
+  }
+};
+
 struct FinalizeForLLVMPass
     : sec::impl::SecFinalizeForLLVMBase<FinalizeForLLVMPass> {
   void runOnOperation() override {
@@ -336,6 +401,7 @@ void sec::registerSecToLLVMPipelines() {
         manager.addPass(sec::createSecLowerIntegerEnums());
         manager.addPass(sec::createSecLowerTrivialCorePass());
         manager.addPass(sec::createSecLowerCheckedIntegersPass());
+        manager.addPass(sec::createSecLowerStaticStorage());
         manager.addPass(sec::createSecLowerFailureEndpoints());
         if (!options.entry.getValue().empty())
           manager.addPass(sec::createSecLowerCommandEntry(

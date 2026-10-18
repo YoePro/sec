@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-09-03
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-18 (MD-057 borrowed interface views)
+- **Document revision:** 2.2
 - **Replaces:** `rules/declarations/interfaces.txt`
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/declarations/interfaces.md`
@@ -214,6 +214,71 @@ fn Update(value: ref mut Counter) void {
 
 A mutable borrow may call shared and mutable methods.
 
+### 7.1 Borrowed interface views
+
+A function or method parameter may borrow an implementing object through a
+named interface type using the ordinary reference syntax (MD-057,
+`rules/corrections/applied/md057-interface-iterator-parameters-correction-20261017.md`):
+
+```sec
+fn Inspect(value: ref Reader) void
+fn Update(value: ref mut Counter) void
+fn Consume(values: ref mut Iterator[string]) void
+```
+
+The named interface is the complete behavioral contract the concrete argument
+type must explicitly implement. No `dyn` keyword, anonymous type parameter or
+redundant generic parameter is required to accept different implementing
+types.
+
+Such a parameter is a **borrowed interface view**. Its underlying concrete type
+may differ between invocations, and instance members are dispatched through
+the view at runtime. The view never owns the implementing object.
+
+- `ref Interface` grants shared receiver authority; `ref mut Interface` grants
+  exclusive mutable receiver authority under the ordinary borrowing and
+  reborrowing rules. A `mut fn` member cannot be called through a shared view.
+- The borrow is tied to the lifetime of the underlying implementing object and
+  cannot escape it. Creating or passing a view never transfers ownership and
+  never authorizes implicit copying or destruction of that object.
+- A view carries enough runtime information to invoke the concrete
+  implementation, by an implementation-defined representation such as a data
+  reference and a dispatch table. Creating and invoking a view must not
+  inherently allocate on the heap. The compiler may devirtualize when proven
+  safe.
+- Conformance stays explicit (`impl Concrete implements Interface`, § 4); a
+  matching set of method names without explicit conformance is insufficient.
+- A generic interface must be fully instantiated in the view, for example
+  `Iterator[string]`. Views do not provide runtime dispatch of method-level
+  generic methods (§ 9).
+
+A named generic constraint keeps its static meaning:
+
+```sec
+fn CountStatic[I: Iterator[int]](values: ref mut I) uint {
+    let mut count: uint := 0
+    for value in values {
+        count += 1
+    }
+    return count
+}
+```
+
+`I` is a concrete type parameter resolved at specialization. Prefer it when a
+signature must keep the same concrete type across several positions, expose
+that type in a result, or deliberately specialize operations. The view and the
+constraint differ internally: the view permits runtime dispatch, the
+constraint performs static substitution and concrete specialization. Two
+independent `ref Reader` parameters need not refer to objects of the same
+concrete type; a shared named generic parameter requires the same type.
+
+This section defines borrowed views for function and method parameters and
+their ordinary uses. It does not create a generally owned, unsized, by-value
+interface object, interface-valued stored fields, implicit conversions for
+generic containers, or new rules for type-level and static members. Members
+that depend on a statically known concrete `Self`, including static
+constructors, keep their existing rules.
+
 ## 8. Properties instead of required fields
 
 Interfaces do not declare required stored fields.
@@ -294,9 +359,15 @@ substitution rules as a source-declared interface, but its identity and required
 members are supplied by the compiler and cannot be redeclared by source code.
 
 `Iterator[T]` is the initial compiler-known interface. Its exact loop behavior
-is owned by `rules/control-flow/flowcontrol_for.md`, section 37. Conformance is
-resolved to a concrete method statically and does not imply runtime interface
-values, boxing, virtual dispatch, or runtime generic dispatch.
+is owned by `rules/control-flow/flowcontrol_for.md`, section 37. Its compiler
+knowledge concerns how the compiler *recognizes* iteration, not whether a
+borrowed interface view is permitted: like any other applicable interface it
+may appear as a `ref mut Iterator[T]` parameter (§ 7.1, MD-057). Iteration over
+a concrete implementer or through a named generic parameter resolves `Next()`
+statically, without interface values, boxing or virtual dispatch; only
+iteration through a borrowed view dispatches at runtime
+(`flowcontrol_for.md` § 37). Neither form implies owned interface values or
+runtime generic dispatch.
 
 ## 10. Associated and nested declarations
 

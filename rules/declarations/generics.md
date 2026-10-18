@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-09-04
-- **Document revision:** 2.2
+- **Last updated:** 2026-10-18 (MD-057 clarification)
+- **Document revision:** 2.3
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
 - **Canonical path:** `rules/declarations/generics.md`
@@ -390,6 +390,14 @@ impl User implements Serializable {
 ```
 
 A matching method name without valid explicit conformance is not sufficient.
+
+A constrained generic type parameter is statically specialized: each
+substitution resolves its members to the concrete type's implementation. An
+ordinary borrowed interface parameter such as `ref Reader` or
+`ref mut Iterator[int]` is a distinct runtime interface view that dispatches
+through the view (`rules/declarations/interfaces.md` § 7.1). Neither form is
+shorthand for the other; Sec has no `dyn` keyword and no implicit anonymous
+generic parameter (MD-057).
 
 ## 12. Multiple constraints
 

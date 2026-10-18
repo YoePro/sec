@@ -1,15 +1,15 @@
 # Shaped Types
 
-**Status:** Canonical normative rulebook
-**Language version:** Sec 0.1
-**Document revision:** 2.0
-**Created:** 2026-08-13
-**Last updated:** 2026-08-13
-**Replaces:** the previous `rules/collections/shaped-types.md` revision 1.
-**Collection semantics:** `rules/collections/collections.md`
-**Storage semantics:** `rules/memory/storage.md`, `rules/memory/memory_model.md`
-**Compiler-known members:** `rules/compiler/compiler_known_members.md`
-**MLIR and lowering:** `rules/mlir/`
+- **Status:** Canonical normative rulebook
+- **Language version:** Sec 0.1
+- **Document revision:** 2.1
+- **Created:** 2026-08-13
+- **Last updated:** 2026-10-18 (MD-016 part 1: shaped metadata declarations)
+- **Replaces:** the previous `rules/collections/shaped-types.md` revision 1.
+- **Collection semantics:** `rules/collections/collections.md`
+- **Storage semantics:** `rules/memory/storage.md`, `rules/memory/memory_model.md`
+- **Compiler-known members:** `rules/compiler/compiler_known_members.md`
+- **MLIR and lowering:** `rules/mlir/`
 
 ---
 
@@ -284,6 +284,87 @@ Negative extents are invalid.
 The product of all extents must be checked for overflow whenever it is not
 proven safe at compile time.
 
+## 4.1 Canonical declaration (MD-016)
+
+The complete public source-facing contract of `Shape[Rank]` is (MD-016 part 1,
+`rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` §§ 1–2):
+
+```sec
+/**
+ * Describes the unsigned extents of a shaped value.
+ *
+ * Description:
+ *   Rank is a compiler-known non-negative integer argument. The value
+ *   contains exactly Rank extents in source-axis order; zero is permitted.
+ *   Shape[Rank] has nominal identity and independently owned metadata.
+ */
+type Shape[Rank] struct {
+    // Private compiler-known representation; not a public field.
+    _extents: uint[Rank],
+}
+
+impl Shape[Rank] {
+    /**
+     * Constructs a shape from exactly Rank extents.
+     *
+     * Parameters:
+     *   - extents: Fixed-size unsigned extents, in source-axis order.
+     *
+     * Returns:
+     *   The fully initialized Shape[Rank] value.
+     *
+     * Errors:
+     *   None. Storing extents alone does not materialize storage or compute
+     *   an overflowing total element count.
+     */
+    init(extents: uint[Rank]) {
+        self._extents = extents
+    }
+
+    /**
+     * Gets the number of axes described by this shape.
+     *
+     * Returns:
+     *   The compile-time Rank as uint.
+     */
+    property Rank: uint {
+        get {
+            return Rank
+        }
+    }
+}
+```
+
+The private `_extents` field is the semantic model, not a public member and not
+a mandate to materialize an array. Rank and Count of the shaped metadata types
+(`Shape`, `Strides`, `TensorLayout`, `Axes`, `AxisList`) are compiler-known
+compile-time non-negative integer arguments of these type forms only; they do
+not authorize integer generic parameters in ordinary user types.
+
+All five metadata types are immutable, copyable for a valid cardinality, hold
+no owned backing storage, never allocate on read and expose no public writable
+element access, `.Ptr`, `.Strides`, `.Layout`, `.MemorySpace`,
+`.IsContiguous`, `.Len` or shaped-payload `.SizeOf`; `.Rank`/`.Count` is the
+authoritative cardinality.
+
+`Shape[Rank] { e0, ..., eN }` is the canonical compiler-known literal: exactly
+Rank `uint` (or contextually representable unsigned literal) components. Both
+the literal and `new Shape[Rank](extents)` are infallible, also with runtime
+extents; the product of extents is not computed at construction. A consumer
+that needs a representable total count (`.Len`, backing construction, reshape
+proof, checked materialization) validates the multiplication in its own
+context, with `ShapeError.ElementCountOverflow` where that consumer is
+fallible; static overflow is a compile-time diagnostic.
+
+`shape[axis]` is a compiler-known read-only indexed expression
+`Shape[Rank] × uint -> uint` with `0 <= axis < Rank`; it is indexed expression
+syntax, not a public `.At()` method. A provably invalid constant index is a
+compile-time error; a runtime out-of-range read fails under the ordinary
+indexed-access bounds contract, never as a fabricated `Result`. No implicit
+conversion exists between `Shape[Rank]`, `uint[Rank]`, `list[uint]` or
+`Shape[OtherRank]`. The existing positional literal forms do not introduce
+positional struct literals for ordinary user structs.
+
 ---
 
 # 5. Rank, Shape, and Len
@@ -405,6 +486,64 @@ zero
 
 Zero and negative strides are valid view semantics.
 
+## 6.0 Canonical `Strides` declaration (MD-016)
+
+The complete public contract of `Strides[Rank]` (`rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 3):
+
+```sec
+/**
+ * Describes signed element strides for an affine-shaped mapping.
+ *
+ * Description:
+ *   Each stride counts elements, not bytes. Negative, zero and positive
+ *   strides are valid metadata. A backing range must still be validated
+ *   before safe indexed access through a shaped view.
+ */
+type Strides[Rank] struct {
+    // Private compiler-known representation; not a public field.
+    _strides: int[Rank],
+}
+
+impl Strides[Rank] {
+    /**
+     * Constructs a stride descriptor from exactly Rank element strides.
+     *
+     * Parameters:
+     *   - strides: Fixed-size signed strides, in source-axis order.
+     *
+     * Returns:
+     *   The initialized immutable Strides[Rank] value.
+     *
+     * Errors:
+     *   None. Descriptor creation does not validate a particular backing.
+     */
+    init(strides: int[Rank]) {
+        self._strides = strides
+    }
+
+    /**
+     * Gets the number of axes represented by the descriptor.
+     *
+     * Returns:
+     *   The compile-time Rank as uint.
+     */
+    property Rank: uint {
+        get {
+            return Rank
+        }
+    }
+}
+```
+
+`strides[axis]` is a compiler-known read-only indexed expression
+`Strides[Rank] × uint -> int` with `0 <= axis < Rank`. The positional literal
+`Strides[Rank] { s0, ..., sN }` takes exactly Rank signed element strides.
+`Strides[3] { -1, 0, 4 }` is valid metadata: negative and zero strides are not
+rejected at construction, and creating a descriptor grants no storage
+authority; using strides with concrete backing stays subject to §§ 17–20 and
+`storage.md`. There is no implicit conversion between element and byte
+strides.
+
 ## 6.1 Canonical dense row-major strides
 
 The canonical ordinary owning layout is dense row-major unless an explicit
@@ -484,6 +623,40 @@ contract. Such internal choices do not automatically become public
 `TensorLayout` values.
 
 Changing `.Layout` by property assignment is invalid.
+
+## 7.1 Canonical declaration (MD-016)
+
+`TensorLayout[Rank]` is a generic nominal enum; a concrete Rank is part of its
+identity even though the tag need not store it (`rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 4):
+
+```sec
+/**
+ * Classifies the public affine layout of a Rank-axis shaped value.
+ *
+ * Description:
+ *   This enum describes the source-visible layout contract, not the
+ *   backend's private tiled, sparse, device-specific or fused encoding.
+ */
+enum TensorLayout[Rank] {
+    // Forward contiguous dense traversal with the last axis fastest.
+    DenseRowMajor
+
+    // Forward contiguous dense traversal with the first axis fastest.
+    DenseColumnMajor
+
+    // An affine mapping not classified as either canonical dense order.
+    Strided
+}
+```
+
+Sec 0.1 has exactly these three public variants. The sentence above about
+additional categories is a statement about future additive language
+revisions; it does not permit a compiler to invent public variants in Sec 0.1.
+The source forms are `TensorLayout[Rank].DenseRowMajor`, `.DenseColumnMajor`
+and `.Strided`; there is no `init`, mutation or indexed access. For degenerate
+shapes (zero or unit extents) the compiler selects one deterministic
+classification, identical in Sema and LSP, without allocating to answer
+`.Layout`.
 
 ---
 
@@ -985,6 +1158,162 @@ order is semantically significant
 ```
 
 `AxisList` is not required to contain every axis.
+
+## 15.3 Canonical declarations and construction (MD-016)
+
+The complete public contract of `Axes[Rank]` (`rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 5):
+
+```sec
+/**
+ * Describes a complete permutation of all axes of a Rank-axis value.
+ *
+ * Description:
+ *   The sequence contains every index in 0..<Rank exactly once.
+ *   Order determines the destination-axis order.
+ */
+type Axes[Rank] struct {
+    // Private, invariant-protected representation.
+    _axes: uint[Rank],
+}
+
+impl Axes[Rank] {
+    /**
+     * Validates and constructs a complete axis permutation.
+     *
+     * Parameters:
+     *   - axes: Exactly Rank axis indices, in destination-axis order.
+     *
+     * Errors:
+     *   - ShapeError.InvalidAxis: An index is not in 0..<Rank.
+     *   - ShapeError.DuplicateAxis: An index appears more than once.
+     *
+     * Description:
+     *   This fallible initializer establishes the complete permutation
+     *   invariant before the value becomes observable.
+     */
+    init(axes: uint[Rank]) ShapeError {
+        let mut i: uint := 0
+        while i < Rank {
+            if axes[i] >= Rank {
+                return Err(ShapeError.InvalidAxis)
+            }
+
+            let mut j: uint := 0
+            while j < i {
+                if axes[j] == axes[i] {
+                    return Err(ShapeError.DuplicateAxis)
+                }
+                j += 1
+            }
+            i += 1
+        }
+        self._axes = axes
+    }
+
+    /**
+     * Gets the number of axes in this complete permutation.
+     *
+     * Returns:
+     *   The compile-time Rank as uint.
+     */
+    property Rank: uint {
+        get {
+            return Rank
+        }
+    }
+}
+```
+
+The initializer is the source-facing signature and complete reference
+algorithm: an out-of-range component returns `ShapeError.InvalidAxis`, a
+repeated component `ShapeError.DuplicateAxis`, in the shown order, and the
+value is committed only after all checks; an implementation may optimize the
+loops but must preserve ordering, results and atomicity. A permutation of rank
+zero is the unique empty permutation where a consuming operation admits rank
+zero.
+
+The complete public contract of `AxisList[Count]` (`rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 6):
+
+```sec
+/**
+ * Describes an ordered selection of distinct source-axis indices.
+ *
+ * Description:
+ *   Count fixes the number of selected axes, not the rank of the
+ *   source value. The consuming operation checks indices against its
+ *   source rank. Axis order is semantically significant.
+ */
+type AxisList[Count] struct {
+    // Private, invariant-protected representation.
+    _axes: uint[Count],
+}
+
+impl AxisList[Count] {
+    /**
+     * Validates and constructs an ordered selection of unique axes.
+     *
+     * Parameters:
+     *   - axes: Exactly Count distinct unsigned axis indices.
+     *
+     * Errors:
+     *   - ShapeError.DuplicateAxis: An axis index occurs more than once.
+     *
+     * Description:
+     *   No source rank is supplied here. Domain validation against a
+     *   source tensor is performed by the consuming operation.
+     */
+    init(axes: uint[Count]) ShapeError {
+        let mut i: uint := 0
+        while i < Count {
+            let mut j: uint := 0
+            while j < i {
+                if axes[j] == axes[i] {
+                    return Err(ShapeError.DuplicateAxis)
+                }
+                j += 1
+            }
+            i += 1
+        }
+        self._axes = axes
+    }
+
+    /**
+     * Gets the number of selected axes.
+     *
+     * Returns:
+     *   The compile-time Count as uint.
+     */
+    property Count: uint {
+        get {
+            return Count
+        }
+    }
+}
+```
+
+`AxisList` construction checks uniqueness only; its Count is the number of
+selected axes, not a source rank. `AxisList[2] { 1, 3 }` is a valid standalone
+descriptor; the consuming operation rejects it against a rank-three source as
+`ShapeError.InvalidAxis`, which keeps `Contract` over sources of different
+ranks well defined.
+
+The positional literals `Axes[Rank] { ... }` and `AxisList[Count] { ... }` are
+valid only when arity, component types and the invariant are statically
+proven; an invalid literal is an actionable compile-time diagnostic naming
+the bad or duplicated axis, never a runtime fallback. Runtime values use
+`try new Axes[Rank](axes)` / `try new AxisList[Count](axes)` and handle
+`ShapeError`. The error is the construction error channel of `init`
+(`impl.md` § 15), not a `Result` return type.
+
+`axes[position]` (`Axes[Rank] × uint -> uint`) and `axisList[position]`
+(`AxisList[Count] × uint -> uint`) are compiler-known read-only indexed
+expressions with `0 <= position <` Rank/Count. `Permute(axes: Axes[Rank])`
+does not re-validate a valid `Axes` against its own rank.
+
+The order of checks is: resolve the Rank/Count argument and type identity
+(a compile-time integer in the supported domain) before materialization,
+dependent generic instantiation or lowering; then arity and exact component
+types; then invariants. Private components are never mutable by callers.
 
 ---
 
@@ -1780,22 +2109,55 @@ A zero vector yields `None`.
 
 Runtime-dependent shape validity uses `ShapeError`.
 
-The canonical family must cover at least:
+The canonical family is exactly (MD-016, `rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 7):
 
-```text
-RankMismatch
-DimensionMismatch
-ElementCountOverflow
-InvalidReshape
-InvalidBroadcast
-InvalidContraction
-InvalidAxis
-DuplicateAxis
-InvalidStep
+```sec
+/**
+ * Reports a failed runtime shape, axis, or affine validation.
+ *
+ * Description:
+ *   These are the complete source-visible ShapeError cases in Sec 0.1.
+ *   An implementation may preserve more detailed internal causes in
+ *   diagnostics, but must not expose undeclared enum variants.
+ */
+enum ShapeError error {
+    // The number of axes is incompatible with the required operation.
+    RankMismatch
+
+    // A required dimension or corresponding extent is incompatible.
+    DimensionMismatch
+
+    // A required total logical element count cannot fit in uint.
+    ElementCountOverflow
+
+    // A reshape cannot preserve the required logical shape and backing.
+    InvalidReshape
+
+    // The requested broadcast mapping is incompatible with its source.
+    InvalidBroadcast
+
+    // Tensor contraction axes or corresponding extents are incompatible.
+    InvalidContraction
+
+    // An axis index is invalid for the required source rank.
+    InvalidAxis
+
+    // An axis selection repeats an index that must be unique.
+    DuplicateAxis
+
+    // A step value or mapping step is invalid (including zero step).
+    InvalidStep
+}
 ```
 
-Implementations may use more precise internal reasons while preserving the
-public error contract.
+These nine variants are the exhaustive Sec 0.1 set. `ShapeError` is a
+nominal error enum (the `error` marker makes it valid as a `Result` error and
+`init` construction error channel; user decision 2026-10-18) without
+per-variant payloads, declared once in `sec/core/error.sec`; diagnostics carry context
+(axis index, rank, conflicting dimensions) separately. Implementations may
+keep more precise internal reasons in diagnostics but never expose undeclared
+variants in a public `ShapeError` value. `ShapeError` has exactly one
+canonical declaration.
 
 ## 29.4 Index and range errors
 

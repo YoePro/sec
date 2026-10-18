@@ -132,6 +132,7 @@ type Analyzer struct {
 	inSelectOperation          bool
 	resolvedSwitchFlows        map[*ast.SwitchStatement]ResolvedSwitchFlow
 	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
+	resolvedForRangeSteps      map[*ast.ForStatement]*big.Int
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
 	resolvedExplicitPanics     map[*ast.PanicStatement]ResolvedExplicitPanic
 	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
@@ -258,9 +259,10 @@ type Analyzer struct {
 	// resolvedPlaces, resolvedReferencePlans, resolvedReferenceUses and
 	// referenceLifetimeEnds are the P15 read-only Place/reference facts, and
 	// referencePolicy the CompilationPlan reference policy (reference_plans.go).
-	resolvedPlaces         map[ast.Expression]Place
-	resolvedReferencePlans map[ast.Expression]ResolvedReferencePlan
-	resolvedReferenceUses  map[ast.Expression]ResolvedReferenceUse
+	resolvedPlaces             map[ast.Expression]Place
+	resolvedReferencePlans     map[ast.Expression]ResolvedReferencePlan
+	resolvedSliceCreationPlans map[*ast.RefExpression]ResolvedSliceCreationPlan
+	resolvedReferenceUses      map[ast.Expression]ResolvedReferenceUse
 	// referenceParameterFacts holds the reference facts of each ref/ref mut
 	// parameter, keyed by its declaration location (P15-47).
 	referenceParameterFacts map[sourceTokenKey]ReferenceFacts
@@ -510,6 +512,9 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
+	// P16 range identities belong to this analysis, never an earlier edit.
+	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 26.
+	a.placeIdentities.sliceRanges = nil
 	a.analyzedContractNodes = map[ast.Contract]bool{}
 	a.errors = nil
 	a.analysisSchedule = nil
@@ -574,6 +579,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
+	a.resolvedForRangeSteps = map[*ast.ForStatement]*big.Int{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
@@ -599,6 +605,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	a.resolvedPlaces = map[ast.Expression]Place{}
 	a.resolvedReferencePlans = map[ast.Expression]ResolvedReferencePlan{}
+	a.resolvedSliceCreationPlans = map[*ast.RefExpression]ResolvedSliceCreationPlan{}
 	a.resolvedReferenceUses = map[ast.Expression]ResolvedReferenceUse{}
 	a.referenceParameterFacts = map[sourceTokenKey]ReferenceFacts{}
 	a.receiverFacts = map[sourceTokenKey]ReferenceFacts{}
@@ -3776,6 +3783,8 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			a.addErrorAtToken(param.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(paramType))
 			continue
 		}
+		// The parameter stays declared so its uses report no follow-on errors.
+		a.rejectInterfaceByValueParameter(param.Name.Value, paramType, param.Type.Token)
 		if param.Consuming && paramType.Kind == ReferenceType {
 			if paramType.ReferenceMutable {
 				a.addErrorAtToken(param.Name.Token, "consuming parameter cannot use ref mut type")
@@ -6680,36 +6689,6 @@ func sameReferenceOrigin(left, right localReferenceOrigin) bool {
 	return true
 }
 
-// samePlaceIdentity compares legacy Place identity using exact numeric equality
-// for constant projections rather than pointer or host-width equality.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
-func samePlaceIdentity(left, right Place) bool {
-	// Root identity follows the declaration, not the spelling (P15-10):
-	// equally named roots of different declarations are different Places.
-	if left.RootID != 0 && right.RootID != 0 {
-		if left.RootID != right.RootID {
-			return false
-		}
-	} else if left.Root != right.Root {
-		return false
-	}
-	if len(left.Projections) != len(right.Projections) {
-		return false
-	}
-	for index := range left.Projections {
-		leftProjection := left.Projections[index]
-		rightProjection := right.Projections[index]
-		if leftProjection.Kind != rightProjection.Kind || leftProjection.Name != rightProjection.Name ||
-			!placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
-			!sliceBoundsEqual(leftProjection.SliceStart, rightProjection.SliceStart) || !sliceBoundsEqual(leftProjection.SliceEnd, rightProjection.SliceEnd) {
-			return false
-		}
-	}
-	return true
-}
-
 // checkLoopBackedgeFixedPoint rechecks the next condition/body using reachable
 // header ownership, borrow, origin and Arena-epoch facts. An epoch-only change
 // is sufficient to trigger replay; speculative dependency facts are not published.
@@ -9066,6 +9045,9 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 		return
 	}
 	a.setResolvedIndexUse(index, ArrayIndexWrite)
+	if a.rejectShapedMetadataWrite(index) {
+		return
+	}
 	if packType, _ := a.inferExpression(index.Left); variadicPackValue(packType) {
 		// rules/declarations/functions.md section 31: neither the pack nor
 		// an element reached through it is mutable source-level storage.
@@ -9760,7 +9742,7 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type
 			return true
 		}
 		return a.validateShapedStaticType(token, typ, 1, 1)
-	case "Shape", "Strides", "TensorLayout":
+	case "Shape", "Strides", "TensorLayout", "Axes", "AxisList":
 		if typ.Declared {
 			return true
 		}
@@ -10936,50 +10918,6 @@ func (a *Analyzer) setResolvedIndexUse(expr *ast.IndexExpression, use ArrayIndex
 	}
 }
 
-// checkSliceBounds reports a compile-time-provable invalid slice range as
-// exactly one error: the first failing condition under the canonical
-// precedence (negative endpoint, then start after end, then source bound),
-// which is also the RangeError the runtime check would produce. The
-// start-after-end check applies to every source, not only fixed arrays.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 18–19
-func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
-	start, startOK := a.integerConstantValue(expr.Start)
-	end, endOK := a.integerConstantValue(expr.End)
-	endpoints := SliceRangeEndpoints{StartOmitted: expr.Start == nil, EndOmitted: expr.End == nil, Inclusive: !expr.Exclusive}
-	if startOK && expr.Start != nil {
-		endpoints.Start = start
-	}
-	if endOK && expr.End != nil {
-		endpoints.End = end
-	}
-	if typ.Kind == ArrayType {
-		if length, fixed := exactFixedArrayLength(typ); fixed {
-			endpoints.Length = length
-		}
-	}
-	classification := ClassifySliceRange(endpoints)
-	switch classification.Cause {
-	case SliceRangeCauseNegativeStart:
-		a.addErrorAtToken(expressionToken(expr.Start), "slice lower bound must be non-negative")
-	case SliceRangeCauseNegativeEnd:
-		a.addErrorAtToken(expressionToken(expr.End), "slice upper bound must be non-negative")
-	case SliceRangeCauseStartAfterEnd:
-		op := ".."
-		if expr.Exclusive {
-			op = "..<"
-		}
-		a.addErrorAtToken(expr.Token, "descending slice range %s%s%s is invalid", start.String(), op, end.String())
-	case SliceRangeCauseStartPastLength:
-		a.addErrorAtToken(expr.Token, "slice lower bound %s exceeds length %s", start.String(), endpoints.Length.String())
-	case SliceRangeCauseExclusiveEndPast:
-		a.addErrorAtToken(expr.Token, "exclusive slice upper bound %s exceeds length %s", end.String(), endpoints.Length.String())
-	case SliceRangeCauseInclusiveEndAtLen:
-		a.addErrorAtToken(expr.Token, "inclusive slice upper bound %s exceeds final index %s", end.String(), new(big.Int).Sub(endpoints.Length, big.NewInt(1)).String())
-	}
-}
-
 func (a *Analyzer) integerExpressionInt64(expr ast.Expression) (int64, bool) {
 	if expr == nil {
 		return 0, false
@@ -11565,6 +11503,10 @@ func (a *Analyzer) contextualCallArgumentType(arg ast.Expression, actual Type, e
 	arg = explicitMoveSource(arg)
 	if typ, shaped := a.shapeCharacterLiteral(arg, expected); shaped {
 		return typ
+	}
+	// MD-057: a conforming argument is passed as a borrowed interface view.
+	if a.borrowedInterfaceView(expected, actual) {
+		return expected
 	}
 	return actual
 }

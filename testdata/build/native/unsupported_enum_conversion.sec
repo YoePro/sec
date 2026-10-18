@@ -2,10 +2,10 @@ module main
 
 enum State { Ready = 17 }
 
-fn Read(value: State) int {
-    return int(value)
-}
-
 fn main() int {
-    return Read(State.Ready)
+    let state := State(17)
+    if state == State.Ready {
+        return 0
+    }
+    return 1
 }

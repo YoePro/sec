@@ -98,7 +98,7 @@ func isCoreBuiltinDeclaration(name string) bool {
 		return true
 	}
 	switch name {
-	case "IndexError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
+	case "IndexError", "RangeError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
 		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError":
 		return true
 	default:
@@ -250,6 +250,8 @@ func isCoreBuiltinImplTarget(target string) bool {
 		"Shape",
 		"Strides",
 		"TensorLayout",
+		"Axes",
+		"AxisList",
 		"MemorySpace":
 		return true
 	default:

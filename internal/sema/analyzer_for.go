@@ -313,6 +313,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		if !ok {
 			return nil, false
 		}
+		a.recordForRangeStep(stmt)
 		return []Type{bindingType}, true
 	default:
 		if stmt.Step != nil {
@@ -356,6 +357,26 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 				Conformance:             conformance,
 				Source:                  ForIteratorFreshTemporary,
 				Binding:                 ForIteratorOwnedValueBinding,
+			}
+			if isIteratorInterface(dereferenceType(iterableType)) {
+				// § 37.1: only an exclusive borrowed view may advance the
+				// iterator; the callee never owns it.
+				if iterableType.Kind != ReferenceType || !iterableType.ReferenceMutable {
+					a.addErrorAtToken(expressionToken(iterable), "Iterator[%s] iteration through an interface view requires ref mut Iterator[%s]; a shared ref cannot call mut fn Next", typeDisplayName(elementType), typeDisplayName(elementType))
+					return nil, false
+				}
+				plan.Source = ForIteratorBorrowedView
+				if requirement := a.iteratorLoweringRequirements[stmt]; requirement != nil && !a.summaryPass && !a.iterationDependencyProbe {
+					requirement.borrowedView = true
+				}
+				if stmt.Bindings[0].Discard {
+					plan.Binding = ForIteratorDiscardBinding
+				}
+				if !a.summaryPass && a.callGraphPathReachable {
+					a.recordInterfaceGraphCall(dereferenceType(iterableType), next, stmt.Token, CallExecutionSynchronous)
+				}
+				a.resolvedForIterations[stmt] = plan
+				return []Type{elementType}, true
 			}
 			if place, reusable := a.resolvePlace(iterable); reusable && place.Addressable {
 				if !place.Mutable {

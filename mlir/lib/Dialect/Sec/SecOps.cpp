@@ -939,13 +939,6 @@ LogicalResult ArrayReplaceOp::verify() {
   return verifyArrayBoundsMetadata(*this, getBoundsKind(), getBoundsProof());
 }
 
-LogicalResult FailBoundsOp::verify() {
-  auto operation = (*this)->getAttrOfType<StringAttr>("operation");
-  if (!operation || operation.getValue() != "fixed-array-index")
-    return emitOpError("operation must be fixed-array-index");
-  return success();
-}
-
 LogicalResult UnreachableOp::verify() {
   auto synthesized = (*this)->getAttrOfType<BoolAttr>("sec.synthesized");
   if (!synthesized || !synthesized.getValue())
@@ -1281,13 +1274,6 @@ LogicalResult RefReborrowMutOp::verify() {
   return verifyReferenceMetadata(*this);
 }
 
-LogicalResult RefIsValidOp::verify() {
-  bool mutableReference = false;
-  if (failed(referentOf(getReference().getType(), &mutableReference)))
-    return emitOpError("operand must be !sec.ref or !sec.ref_mut");
-  return success();
-}
-
 LogicalResult RefCompareOp::verify() {
   if (getPredicate() != "eq" && getPredicate() != "ne")
     return emitOpError("predicate must be eq or ne");
@@ -1296,15 +1282,6 @@ LogicalResult RefCompareOp::verify() {
   auto right = referentOf(getRhs().getType(), &rightMutable);
   if (failed(left) || failed(right) || *left != *right)
     return emitOpError("compares direct references to the same referent type");
-  return success();
-}
-
-LogicalResult RefEndBorrowOp::verify() {
-  bool mutableReference = false;
-  if (failed(referentOf(getReference().getType(), &mutableReference)))
-    return emitOpError("operand must be !sec.ref or !sec.ref_mut");
-  if (getBorrowId() == 0 || getLifetimeId() == 0)
-    return emitOpError("borrow_id and lifetime_id must be non-zero");
   return success();
 }
 

@@ -170,4 +170,22 @@ def Sec_RefMutType : Sec_Type<"RefMut", "ref_mut"> {
   let genVerifyDecl = 1;
 }
 
+// Schema 12 (SEC-MLIR-P16): bounded non-owning reference values. Runtime
+// length, origin and epoch are value facts, never type parameters.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md sections 88-90;
+// rules/mlir/dialect-versions/sec_mlir_dialect_v12.md sections 2-4.
+def Sec_SliceType : Sec_Type<"Slice", "slice"> {
+  let summary = "Sec high-level shared bounded slice";
+  let parameters = (ins "::mlir::Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_SliceMutType : Sec_Type<"SliceMut", "slice_mut"> {
+  let summary = "Sec high-level exclusive mutable bounded slice";
+  let parameters = (ins "::mlir::Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
 #endif // SEC_DIALECT_SEC_TYPES_TD

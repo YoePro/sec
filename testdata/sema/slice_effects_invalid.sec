@@ -1,0 +1,39 @@
+module main
+
+@noPanic
+fn Spatial(values: int[4], start: uint) void {
+    let view := ref values[start..]
+    discard view
+}
+
+@noPanic
+fn WrongChannel(values: int[4], start: uint) Result[void, IndexError] {
+    let view := try ref values[start..]
+    discard view
+    return Ok()
+}
+
+@noPanic
+fn Temporal() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    let view := try ref values[1..<3] {
+        Err(_) => { return Ok() }
+    }
+    discard view
+    return Ok()
+}
+
+@interruptSafe
+fn ISRRange(values: int[4], start: uint) void {
+    let view := ref values[start..]
+    discard view
+}
+
+@interruptSafe
+fn ISRSafe(values: int[4], start: uint) void {
+    let view := try ref values[start..] {
+        Err(_) => { return }
+    }
+    discard view
+}

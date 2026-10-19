@@ -519,7 +519,12 @@ equally named roots of different declarations stay distinct alternatives
   rejected. Update ODS/C++ registration, parser/printer, version gates, and
   generated-module tests.
 
-  Completed 2026-10-16. `sec-mlir-opt` accepts schema 11 and rejects 12 (`invalid-schema12-module-metadata.mlir`, formerly the schema-11 rejection test); schemas 1–10 remain accepted regression inputs. A module that declares a schema below 11 but uses a Place or reference type is rejected. The Go emitter declares schema 11 (`dialectSchemaVersion`), and the generated-module tests in `emitter_test.go` and the `cmd/compiler` emit tests expect 11. The full lit suite (93 tests) and the emitter-dependent Go suites pass with `SEC_MLIR_BIN` set.
+  Completed 2026-10-16. At that completion checkpoint, `sec-mlir-opt` accepted schema 11 and rejected 12 (`invalid-schema12-module-metadata.mlir`, formerly the schema-11 rejection test); schemas 1–10 remain accepted regression inputs. A module that declares a schema below 11 but uses a Place or reference type is rejected. The Go emitter declares schema 11 (`dialectSchemaVersion`), and the generated-module tests in `emitter_test.go` and the `cmd/compiler` emit tests expect 11. The full lit suite (93 tests) and the emitter-dependent Go suites pass with `SEC_MLIR_BIN` set.
+  Subsequent P16-38 integration (2026-10-19) accepts schema 12 and rejects
+  unknown schema 13. The existing schema-12 negative fixture now checks missing
+  required metadata. Default emission remains schema 11; explicit P16 schema
+  selection does not yet emit slice types/operations.
+
 - [x] P15-51 — Implement `!sec.place<T,"ro">`, `!sec.place<T,"rw">`,
   `!sec.ref<T>`, and `!sec.ref_mut<T>` with exact type parsing, printing, type
   constraints, authority rules, and no physical address/epoch fields.

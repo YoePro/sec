@@ -19,28 +19,21 @@ func (a *Analyzer) slicePlaceProjection(expr *ast.SliceExpression, containerType
 
 // slicePlaceProjectionWithLength uses an established source extent for an
 // omitted end, including a statically known borrowed subrange. An explicit
-// runtime endpoint remains unknown and keeps its dynamic identity.
+// runtime endpoint remains unknown and keeps its dynamic identity. Canonical
+// failure classification precedes normalization; invalid constants cannot
+// become a normalized static range.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 13–19, 25–30, 59–62.
 func (a *Analyzer) slicePlaceProjectionWithLength(expr *ast.SliceExpression, containerType Type, sourceLength *big.Int) PlaceProjection {
-	projection := PlaceProjection{Kind: PlaceSlice, SliceStart: new(big.Int), Token: expr.Token}
-	if expr.Start != nil {
-		projection.SliceStart = nil
-		if value, ok := a.integerConstantValue(expr.Start); ok {
-			projection.SliceStart = new(big.Int).Set(value)
-		}
+	if sourceLength == nil {
+		sourceLength, _ = exactFixedArrayLength(containerType)
 	}
-	if expr.End != nil {
-		if value, ok := a.integerConstantValue(expr.End); ok {
-			projection.SliceEnd = new(big.Int).Set(value)
-			if !expr.Exclusive {
-				projection.SliceEnd.Add(projection.SliceEnd, big.NewInt(1))
-			}
-		}
-	} else if sourceLength != nil {
-		projection.SliceEnd = new(big.Int).Set(sourceLength)
-	} else if length, ok := exactFixedArrayLength(containerType); ok {
-		projection.SliceEnd = new(big.Int).Set(length)
-	}
+	start, _ := a.integerConstantValue(expr.Start)
+	end, _ := a.integerConstantValue(expr.End)
+	normalizedStart, normalizedEnd, _ := normalizeSliceRange(SliceRangeEndpoints{
+		Start: start, End: end, StartOmitted: expr.Start == nil, EndOmitted: expr.End == nil,
+		Inclusive: !expr.Exclusive, Length: sourceLength,
+	})
+	projection := PlaceProjection{Kind: PlaceSlice, SliceStart: normalizedStart, SliceEnd: normalizedEnd, SliceEndOpen: expr.End == nil, Token: expr.Token}
 	if projection.SliceStart == nil || projection.SliceEnd == nil {
 		location := sourceTokenLocation(expr.Token)
 		if location.Line > 0 && location.Column > 0 {

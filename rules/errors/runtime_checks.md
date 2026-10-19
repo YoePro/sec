@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-10-12 (MD-028 protected try subtree)
+- **Last updated:** 2026-10-19 (P16-04 slice checks synchronization)
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
@@ -708,21 +708,42 @@ Failure produces the canonical concrete error `IndexError.OutOfBounds`.
 
 # Slice checks
 
-Potential checks:
-
-```text
-start lower bound
-end upper bound
-start/end ordering
-inclusive-end representability
-valid storage origin
-```
-
-Fallible:
+Slices require explicit reference construction. Fallible forms include:
 
 ```sec
-let part := try values[start..<end]
+let part := try ref values[start..<end]
+let writable := try ref mut values[start..<end]
 ```
+
+`try (ref values[start..<end])` is equivalent. A bare range expression does
+not create a slice. Source, start and end expressions are evaluated once in
+source order. For an existing dynamically validated slice, reference
+generation/provenance validation follows operand evaluation and precedes
+spatial range/index validation.
+
+Canonical range normalization is `[start, endExclusive)`: omitted start is
+zero, omitted end is source length, and inclusive end is incremented only
+after validation, with exact arithmetic. Compile-time-invalid ranges are
+compile-time errors. Runtime spatial failure follows the ordered core mapping
+in `rules/collections/collections.md` § 7.5:
+
+1. Invalid/negative endpoints → `RangeError.InvalidRange`.
+2. Explicit start after explicit represented end → `RangeError.StartAfterEnd`.
+3. Endpoints beyond the allowed source bounds → `RangeError.OutOfBounds`.
+
+Otherwise unrepresentable normalization is `RangeError.InvalidRange`; valid
+wide values must not be rejected because the compiler host has a narrower
+integer type. Optimization preserves the selected error identity.
+
+Ordinary range failure uses `panic.bounds` with `slice-range` provenance;
+`try` converts the spatial failure to `RangeError`. Slice indexing uses
+`IndexError.OutOfBounds` on its fallible path, or `panic.bounds` with
+`slice-index` provenance otherwise. There is no separate `BoundsError`.
+
+A stale ordinary direct slice takes `panic.invalid-reference-generation`.
+Neither fallible range creation nor `try staleSlice[index]` catches that
+failure as `RangeError` or `IndexError`. `unsafe` does not remove these safe
+slice bounds or validity obligations.
 
 ---
 

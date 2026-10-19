@@ -4,7 +4,7 @@
 
 Normative detailed representation specification.
 
-Current Sec MLIR dialect schema version: `11`
+Current Sec MLIR dialect specification version: `12`
 
 Schema version 7 adds canonical high-level enum and tagged-union semantic value
 representation.
@@ -43,23 +43,32 @@ v8  verified match CFG support and synthesized unreachable
 v9  canonical high-level struct semantic values
 v10 fixed-array semantic values
 v11 places and direct safe references
+v12 borrowed shared/mutable slice semantic values
 ```
 
-Compiler-generated modules carry the newest schema whose package is
-implemented; schema-v11 modules carry:
+Version 12 adds high-level borrowed shared/mutable slice values and their
+range/index operations (SEC-MLIR-P16), without choosing a physical descriptor.
+The complete v12 contract is installed below from
+`rules/mlir/dialect-versions/sec_mlir_dialect_v12.md`; that input remains a
+historical version snapshot, interpreted with the applied corrections.
+
+Specification version and compiler capability are separate. As of 2026-10-19,
+default compiler emission remains schema 11; explicit schema-12 selection and
+partial slice type/local-operation verification exist. Full slice emission and
+package acceptance remain unfinished in `lowering.sec-mlir-package16`.
+A schema-12 module declares:
 
 ```mlir
-sec.dialect_version = 11 : i32
+sec.dialect_version = 12 : i32
 ```
 
-Until SEC-MLIR-P15 completes schema-11 emission the compiler emits schema 10.
-Schema versions 1 through 10 remain valid regression inputs, and every schema
-keeps its compatibility promises.
+Schemas 1–11 remain readable regression inputs with their compatibility
+promises. Schema 12 inherits the schema-11 early admissions listed in v11.41;
+installation neither removes those operations nor completes their owning
+packages. No new compilation route or automatic default promotion is created.
 
-The schema-v10 and schema-v11 sections below were installed from
-`rules/mlir/dialect-versions/sec_mlir_dialect_v10.md` and
-`sec_mlir_dialect_v11.md` on 2026-10-11; those files remain the version-history
-snapshots.
+The schema-v10/v11 parts below were installed on 2026-10-11; v12 was installed
+on 2026-10-19. Version snapshots preserve their original numbering and history.
 
 ---
 
@@ -2036,3 +2045,579 @@ Schemas 7–10 remain readable without this newly transported enum metadata.
 Binary enum-conversion lowering still requires the explicit contract and
 fails closed without it. Checked conversions remain separate fallible
 operations; absence of a proof never authorizes truncation.
+
+
+## v11.41 Early admissions on the single native track
+
+
+Schema 11 is the executable schema of the one native track while schemas 12–15
+(P16–P19) are still predecessor work. The following operations were admitted
+into schema 11 ahead of their owning package so the track can build programs.
+Each keeps the owning package's semantics; the owning package's schema
+installation re-homes or confirms them rather than redefining them, and no
+other operation may be used in schema 11 without being recorded here.
+
+| Operation(s) | Owning package / decision | Admitted |
+|---|---|---|
+| `sec.numeric.convert_exact` (integer operands only), `sec.enum.to_integer` proof transport | P20 § 70; MD-104; § 40 above | 2026-10-17/18 |
+| `sec.int.cmp` over `!sec.char` / `!sec.rune` | P7 amendment; MD-105 | 2026-10-17 |
+| `sec.fail.panic` (reason, optional message) | panic.md §§ 8.1, 12(2) | 2026-10-18 |
+| `sec.static.global`, `sec.static.load`, `sec.static.store` | static storage (P15 places, `rules/declarations/static.md`) | 2026-10-18 |
+| `sec.const.float {bits}`, `sec.float.neg`, `sec.float.binary`, `sec.float.cmp` | P20 §§ 20–26, 63–65, 73–77 (`lowering.sec-mlir-package20`) | 2026-10-18 |
+
+Schemas 7–10 remain readable without these operations. Lowering of each one is
+listed in `sec-check-lowering-support`; a module using any of them outside
+schema 11 or later is rejected by the version gate of the installing package.
+
+
+---
+
+# Schema version 12 — borrowed slices
+
+## v12.1 Version history
+
+```text
+v1   dialect foundation
+v2   Semantic IR bridge
+v3   scalar/target coverage
+v4   checked integer operations
+v5   typed arithmetic failure and Result construction
+v6   Result branching/local try handlers
+v7   enum and union values
+v8   verified match CFG
+v9   struct semantic values
+v10  fixed-array semantic values
+v11  places and direct references
+v12  slice semantic values
+```
+
+Compiler-generated v12 modules carry:
+
+```mlir
+sec.dialect_version = 12 : i32
+```
+
+---
+
+## v12.2 `!sec.slice<T>`
+
+Shared safe slice.
+
+High-level semantics:
+
+```text
+bounded
+runtime-length
+non-owning
+shared
+copyable
+trivially destructible
+```
+
+No length/origin/epoch type parameter.
+
+---
+
+## v12.3 `!sec.slice_mut<T>`
+
+Mutable safe slice.
+
+High-level semantics:
+
+```text
+bounded
+runtime-length
+non-owning
+exclusive mutable
+move-only
+trivially destructible
+```
+
+No length/origin/epoch type parameter.
+
+---
+
+## v12.4 No owning sequence conflation
+
+Neither slice type represents:
+
+```text
+T[]
+```
+
+owning dynamic sequence values.
+
+---
+
+## v12.5 Reference metadata
+
+Slice-producing operations retain the same semantic metadata family as direct
+references (existing names below identify facts, not new serialization choices):
+
+```text
+sec.borrow_id
+sec.lifetime_id
+sec.validity_policy
+sec.validity_proof
+sec.storage_identity
+sec.epoch_dependency
+address stability (storage.md § 14)
+separate pin dependency (storage.md § 24)
+sec.address_space
+sec.reference_origin
+```
+
+Address stability uses `Movable`, `Stable`, `Fixed` or `Unknown`; pinning is
+separate, as required by P15 § 28 (revised 2026-10-03). These are semantic facts,
+not prescribed physical fields. The legacy snapshot's `sec.relocation_class`
+is withdrawn. Concrete schema-11 metadata spellings for parameters, calls,
+returned origins and optional facts remain subject to MD-084; this installation
+does not approve an unresolved serialization choice. Slices reuse the same P15
+metadata family rather than defining a parallel one.
+
+---
+
+## v12.6 Range provenance metadata
+
+Optional canonical metadata:
+
+```text
+sec.slice_range_id
+sec.slice_static_start
+sec.slice_static_end_exclusive
+```
+
+Static values use canonical arbitrary-precision decimal representation.
+
+---
+
+## v12.7 `sec.slice.range_normalize`
+
+Operands:
+
+```text
+source_length
+optional start
+optional end
+```
+
+Results:
+
+```text
+start: uint
+length: uint
+```
+
+Required attrs identify:
+
+```text
+start present
+end present
+endpoint signedness
+upper-bound kind
+proof kind
+```
+
+Valid only for Sema-proven-safe range.
+
+---
+
+## v12.8 `sec.slice.range_check`
+
+Operands:
+
+```text
+source_length
+optional start
+optional end
+```
+
+Results:
+
+```text
+normalized_start: uint
+normalized_length: uint
+failed: i1
+error: canonical RangeError enum
+```
+
+Total high-level checked range operation.
+
+---
+
+## v12.9 Range error mapping
+
+Canonical runtime mapping:
+
+```text
+InvalidRange
+StartAfterEnd
+OutOfBounds
+```
+
+according to the synchronized P16 range rules.
+
+---
+
+## v12.10 Range check branch convention
+
+Compiler-generated runtime form:
+
+```text
+failed == true  -> failure path
+failed == false -> success path
+```
+
+Same convention as other checked Sec operations.
+
+---
+
+## v12.11 `sec.slice.borrow_shared`
+
+Operands:
+
+```text
+compatible contiguous source Place
+normalized start
+normalized length
+```
+
+Result:
+
+```text
+!sec.slice<T>
+```
+
+No allocation.
+
+---
+
+## v12.12 `sec.slice.borrow_mut`
+
+Requires writable compatible contiguous source Place.
+
+Result:
+
+```text
+!sec.slice_mut<T>
+```
+
+---
+
+## v12.13 `sec.slice.reborrow_shared`
+
+Source:
+
+```text
+!sec.slice<T>
+or
+!sec.slice_mut<T>
+```
+
+plus normalized subrange.
+
+Result:
+
+```text
+!sec.slice<T>
+```
+
+No range/lifetime/authority widening.
+
+---
+
+## v12.14 `sec.slice.reborrow_mut`
+
+Source:
+
+```text
+!sec.slice_mut<T>
+```
+
+Result:
+
+```text
+!sec.slice_mut<T>
+```
+
+No mutable reborrow from shared slice.
+
+---
+
+## v12.15 `sec.slice.copy_shared`
+
+```text
+!sec.slice<T> -> !sec.slice<T>
+```
+
+Copies descriptor/reference semantics only.
+
+---
+
+## v12.16 `sec.slice.move_mut`
+
+```text
+!sec.slice_mut<T> -> !sec.slice_mut<T>
+```
+
+Move-only holder transfer.
+
+---
+
+## v12.17 `sec.slice.len`
+
+Operand:
+
+```text
+shared or mutable slice
+```
+
+Result:
+
+```text
+!sec.uint
+```
+
+before P6 target scalar resolution.
+
+---
+
+## v12.18 Unsigned length compatibility
+
+Source `.Len` and `len(slice)` both use `sec.slice.len` with result `!sec.uint`.
+The historical `sec.slice.len_int` proposal is superseded by MD-074/MD-088
+(`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`
+§§ 1–3). It is not an admitted schema-12 operation. No signed representability
+proof, truncation, wrapping, saturation or implicit conversion is introduced.
+A signed offset uses a separate explicit checked conversion.
+
+---
+
+## v12.19 `sec.slice.index_in_bounds`
+
+Operands:
+
+```text
+slice
+integer index
+```
+
+Result:
+
+```text
+i1
+```
+
+Required:
+
+```text
+index_signed
+```
+
+Total spatial bounds predicate.
+
+---
+
+## v12.20 `sec.slice.element_place`
+
+Operands:
+
+```text
+slice
+index
+```
+
+Result:
+
+```text
+!sec.place<T,"ro">
+```
+
+for shared source or:
+
+```text
+!sec.place<T,"rw">
+```
+
+for mutable source.
+
+Required:
+
+```text
+bounds_kind
+bounds_proof
+```
+
+---
+
+## v12.21 `sec.ref.is_valid` extension
+
+Schema v12 extends direct-reference validity operand support to:
+
+```text
+!sec.slice<T>
+!sec.slice_mut<T>
+```
+
+No new slice generation-check operation is introduced.
+
+---
+
+## v12.22 `sec.ref.end_borrow` extension
+
+Borrow IDs associated with direct slices may use the same canonical borrow-end
+marker.
+
+No slice-specific duplicate lifetime op.
+
+---
+
+## v12.23 `sec.fail.bounds` extension
+
+Allowed operation provenance includes:
+
+```text
+fixed-array-index
+slice-index
+slice-range
+```
+
+Semantic panic reason remains:
+
+```text
+panic.bounds
+```
+
+---
+
+## v12.24 Slice guard verifier
+
+Register:
+
+```text
+--sec-verify-slice-guards
+```
+
+It validates:
+
+```text
+range checked CFG
+range normalized output use
+RangeError failure use
+reborrow narrowing
+index guard
+element-place guard
+slice identity
+mutable authority
+dynamic reference-validity dominance
+```
+
+---
+
+## v12.25 Reference verifier integration
+
+Existing:
+
+```text
+--sec-verify-reference-guards
+--sec-verify-borrow-semantics
+--sec-verify-places
+```
+
+are extended for slice direct-reference values and slice element Places.
+
+---
+
+## v12.26 No slice equality
+
+Schema v12 defines no:
+
+```text
+sec.slice.cmp
+```
+
+Source slice equality remains unsupported.
+
+---
+
+## v12.27 No physical descriptor
+
+Schema v12 does not define:
+
+```text
+base pointer
+physical length field
+epoch field
+capability bounds
+handle representation
+FFI layout
+```
+
+---
+
+## v12.28 No default slice op
+
+There is no:
+
+```text
+sec.slice.default
+```
+
+Safe slices require a valid explicit origin.
+
+---
+
+## v12.29 Empty slice
+
+An empty slice is represented by the same semantic slice type and runtime length
+zero.
+
+No special nullable slice type exists.
+
+---
+
+## v12.30 P6 compatibility
+
+Target scalar resolution may recurse into element types while preserving slice
+wrappers and metadata.
+
+It also resolves:
+
+```text
+sec.slice.len -> uint width
+```
+
+---
+
+## v12.31 P8 compatibility
+
+Signless normalization does not recurse through slice wrappers.
+
+---
+
+## v12.32 Place integration
+
+`sec.slice.element_place` creates canonical P15 Place values.
+
+Value read/write/reference borrowing uses P15 operations rather than duplicate
+slice memory ops.
+
+---
+
+## v12.33 Schema-v12 completion
+
+Schema v12 is complete when:
+
+```text
+slice types parse/print/verify
+range ops parse/print/verify
+borrow/reborrow ops verify
+copy/move classification is enforced
+length ops verify
+index/place ops verify
+reference guard integration works
+empty slices are valid
+owning T[] is not represented as slice
+schema-v11 regressions remain valid
+no physical descriptor layout is selected
+```

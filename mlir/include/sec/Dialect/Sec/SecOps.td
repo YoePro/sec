@@ -381,8 +381,10 @@ def Sec_ArrayReplaceOp : Sec_Op<"array.replace", [Pure]> {
   let hasVerifier = 1;
 }
 
+// Canonical panic.bounds; schema 12 adds slice-index/slice-range provenance.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md section 23.
 def Sec_FailBoundsOp : Sec_Op<"fail.bounds", [Terminator]> {
-  let summary = "Deterministic non-returning Sec fixed-array bounds failure";
+  let summary = "Deterministic non-returning Sec array or slice bounds failure";
   let hasVerifier = 1;
 }
 
@@ -515,6 +517,8 @@ def Sec_RefReborrowMutOp : Sec_Op<"ref.reborrow_mut"> {
   let hasVerifier = 1;
 }
 
+// Schema 12 reuses the direct-reference predicate for shared/mutable slices.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md section 21.
 def Sec_RefIsValidOp : Sec_Op<"ref.is_valid"> {
   let summary = "Total abstract runtime-validity predicate of a dynamic-epoch reference";
   let arguments = (ins AnyType:$reference);
@@ -529,6 +533,8 @@ def Sec_RefCompareOp : Sec_Op<"ref.compare", [Pure]> {
   let hasVerifier = 1;
 }
 
+// Schema 12 reuses the borrow-end marker for shared/mutable slice holders.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md section 22.
 def Sec_RefEndBorrowOp : Sec_Op<"ref.end_borrow"> {
   let summary = "Compile-time semantic end of a borrow";
   let arguments = (ins I32Attr:$borrow_id, I32Attr:$lifetime_id,

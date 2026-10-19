@@ -1,0 +1,21 @@
+module main
+
+fn Property(view: ref int[]) uint {
+    let count := view.Len
+    return count
+}
+
+fn Global(view: ref int[]) uint {
+    let count := len(view)
+    return count
+}
+
+fn MutableProperty(view: ref mut int[]) uint {
+    let count := view.Len
+    return count
+}
+
+fn MutableGlobal(view: ref mut int[]) uint {
+    let count := len(view)
+    return count
+}

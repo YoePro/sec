@@ -115,9 +115,9 @@ func TestResolvedSliceCreationPlans(t *testing.T) {
 		wide.Start.Type.Name != "int128" || !wide.Start.Signed || wide.End.Type.Name != "uint256" || wide.End.Signed {
 		t.Fatalf("wide dynamic endpoints = %+v", wide)
 	}
-	if seen["unknown"].CheckKind != SliceRangeRuntimeCheck || seen["unknown"].SourceKind != SliceSourceSlice ||
+	if seen["unknown"].CheckKind != SliceRangeProvenSafe || seen["unknown"].ProofKind != "source-open-bound" || seen["unknown"].SourceLength != nil || seen["unknown"].StaticRange != nil || seen["unknown"].SourceKind != SliceSourceSlice ||
 		seen["ownedView"].CheckKind != SliceRangeRuntimeCheck || seen["ownedView"].SourceKind != SliceSourceDynamicArray {
-		t.Fatal("unknown source extent acquired a safety proof")
+		t.Fatal("full open-range proof invented an extent, or a bounded owner range lost its runtime check")
 	}
 	if after := len(a.placeIdentities.sliceRanges) + len(a.placeIdentities.borrows) + len(a.borrows) + len(a.resolvedSliceCreationPlans); after != before {
 		t.Fatal("queries changed analyzer state")

@@ -771,6 +771,8 @@ decisions:
       - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
       - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md
       - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
     description: >-
       Implementation choice awaiting confirmation (2026-10-17, P15-57). The
       v11 dialect defines reference metadata only on reference operations
@@ -802,7 +804,11 @@ decisions:
       operand carries. Target-defined address spaces ("target:...") have no
       schema-11 form and are rejected as unsupported lowering. Confirm the
       spellings or choose others (for example structured attributes instead
-      of origin strings).
+      of origin strings). P16-05 (2026-10-19) installs the slice contracts in
+      the consolidated dialect/lowering v12 sections, retaining canonical
+      AddressStability and separate pin facts. Slices inherit this same open
+      metadata-serialization decision; that installation confirms no new
+      spelling and does not close MD-084.
     classification: localized
     status: open
   - id: MD-085

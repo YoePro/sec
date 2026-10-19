@@ -2,6 +2,12 @@
 
 ## Status
 
+Applied 2026-10-19 (P16-04) to the canonical source rulebooks; the section audit
+is recorded in
+`rules/corrections/applied/p16-slice-source-rules-synchronization-20261019.md`.
+Representation contracts were installed separately by P16-05. This records
+specification synchronization, not complete source-to-binary slice support.
+
 Normative synchronization for:
 
 ```text
@@ -296,12 +302,12 @@ future operations.
 
 ---
 
-# 15. `.len` remains `uint`
+# 15. `.Len` remains `uint`
 
 Intrinsic:
 
 ```sec
-slice.len
+slice.Len
 ```
 
 returns:

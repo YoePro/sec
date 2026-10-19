@@ -40,6 +40,9 @@ type PlaceProjection struct {
 	// depends on host int64 width (package16.md §§ 25, 27-29).
 	SliceStart *big.Int
 	SliceEnd   *big.Int
+	// SliceEndOpen retains an omitted end relative to the source extent, even
+	// when that extent is unknown in a function summary (P16 §§15,66–67).
+	SliceEndOpen bool `json:"-"`
 	// DynamicRange is a compiler-only evaluated-range identity (P16 §§ 26–28).
 	// It is not portable separate-compilation metadata or a runtime tag.
 	DynamicRange SliceRangeID `json:"-"`
@@ -597,7 +600,7 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 		base.PartialMoveSafe = false
 		return base, true
 	case *ast.SliceExpression:
-		base, ok := a.resolvePlace(expr.Left)
+		base, ok := a.sliceSourcePlace(expr.Left, a.expressionTypes[expr.Left])
 		if !ok {
 			return Place{}, false
 		}

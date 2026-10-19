@@ -9,6 +9,7 @@ package:
   - SEC-MLIR-P13
   - SEC-MLIR-P14
   - SEC-MLIR-P15
+  # Executable schema version, distinct from canonical document revision 2.0.
   semantic_ir_version_before: 1
   semantic_ir_version_after: 1
   sec_mlir_schema_before: 11
@@ -67,19 +68,18 @@ rule_sync:
   slice_equality: false
 len_rule:
   member:
-    syntax: slice.len
+    syntax: slice.Len
     result: uint
-    p16_status: complete
+    p16_status: defined; implementation acceptance tracked separately
   compiler_known:
     syntax: len(slice)
-    result: int
-    p16_status: requires proven int representability
-  unresolved_normative_case: runtime slice length fits uint but not int
+    result: uint
+    p16_status: defined; implementation acceptance tracked separately
+  signed_offset_conversion: separate explicit checked conversion
   forbidden_implicit_resolution:
   - truncate
   - wrap
   - saturate
-  - change return type
   - silently cap slice length
 slice_types:
   shared:
@@ -158,7 +158,6 @@ semantic_ir:
   - SliceCopySharedOp
   - SliceMoveMutableOp
   - SliceLengthOp
-  - SliceLengthIntOp
   - SliceIndexInBoundsOp
   - SliceElementPlaceOp
   reused_p15_ops:
@@ -185,7 +184,6 @@ dialect:
   - sec.slice.copy_shared
   - sec.slice.move_mut
   - sec.slice.len
-  - sec.slice.len_int
   - sec.slice.index_in_bounds
   - sec.slice.element_place
   extended_ops:

@@ -2,8 +2,8 @@
 
 // Schema 11 (SEC-MLIR-P15) Place and direct reference types round-trip and
 // are accepted in function signatures; schemas 9 and 10 stay accepted
-// (schema9-structs.mlir, schema10-module-metadata.mlir) and 12 is rejected
-// (invalid-schema12-module-metadata.mlir).
+// (schema9-structs.mlir, schema10-module-metadata.mlir). Schema 12 is now
+// accepted by P16-38; unknown schema 13 is rejected.
 // CHECK: sec.dialect_version = 11 : i32
 module attributes {
   sec.dialect_version = 11 : i32,

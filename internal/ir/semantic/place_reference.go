@@ -135,7 +135,7 @@ func isPlaceReferenceOperation(kind OpKind) bool {
 // use would make a Place escape as a language value.
 func placeConsumer(kind OpKind) bool {
 	switch kind {
-	case OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
+	case OpSliceElementPlace, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
 		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable,
 		// A reborrow may derive from a dereferenced sub-Place (§ 78);
 		// verifySubplaceReborrowSource checks where that Place comes from.
@@ -480,7 +480,7 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 			return fmt.Errorf("%s derives a new borrow from its source borrow", op.Kind)
 		}
 	case OpReferenceIsValid:
-		if _, ok := referenceType(types, firstOperandType(op, values)); len(op.Operands) != 1 || !ok || len(op.Results) != 1 || !typeHasKind(types, op.Results[0].Type, TypeBool) {
+		if len(op.Operands) != 1 || !directSafeReferenceType(types, firstOperandType(op, values)) || len(op.Results) != 1 || !typeHasKind(types, op.Results[0].Type, TypeBool) {
 			return fmt.Errorf("invalid ref.is-valid")
 		}
 		if op.Reference == nil || op.Reference.Validity != ReferenceDynamicEpoch {
@@ -492,7 +492,7 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 			return fmt.Errorf("invalid fail.reference-generation: it terminates with panic.invalid-reference-generation")
 		}
 	case OpReferenceEndBorrow:
-		if _, ok := referenceType(types, firstOperandType(op, values)); len(op.Operands) != 1 || !ok || len(op.Results) != 0 {
+		if len(op.Operands) != 1 || !directSafeReferenceType(types, firstOperandType(op, values)) || len(op.Results) != 0 {
 			return fmt.Errorf("invalid ref.end-borrow")
 		}
 		return verifyReferenceMetadata(op)
@@ -522,7 +522,11 @@ func firstOperandType(op Operation, values map[ValueID]Value) TypeID {
 // reference is guarded by its validity predicate whose false edge ends in
 // fail.reference-generation; and no use of a reference is reachable after
 // its resolved borrow end.
-func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
+// Slice length/index observations share this temporal gate and preserve
+// complete source facts on element Places.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package15.md — §§59–63;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§44–58,81–84.
+func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, dom map[BlockID]map[BlockID]bool) error {
 	types := module.Types
 	isPlace := func(id ValueID) bool {
 		_, ok := placeType(types, values[id].Type)
@@ -536,6 +540,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 		}
 	}
 	definitions := map[ValueID]Operation{}
+	definitionBlocks := map[ValueID]BlockID{}
 	sources := map[ValueID]*ReferenceMetadata{}
 	for _, parameter := range fn.Parameters {
 		sources[parameter.Value.ID] = parameter.Reference
@@ -544,12 +549,19 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 		for _, op := range b.Operations {
 			for _, result := range op.Results {
 				definitions[result.ID] = op
+				definitionBlocks[result.ID] = b.ID
 				sources[result.ID] = op.Reference
 			}
 		}
 	}
 	for _, b := range fn.Blocks {
 		for _, op := range b.Operations {
+			sliceSource, _ := types.Lookup(firstOperandType(op, values))
+			if op.Kind == OpSliceElementPlace || op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable || op.Kind == OpReferenceEndBorrow && (sliceSource.Kind == TypeSharedSlice || sliceSource.Kind == TypeMutableSlice) {
+				if err := verifySliceHolderFacts(op, sources[op.Operands[0]]); err != nil {
+					return err
+				}
+			}
 			if (op.Kind == OpReferenceReborrowShared || op.Kind == OpReferenceReborrowMutable) && len(op.Operands) == 1 && isPlace(op.Operands[0]) {
 				if err := verifySubplaceReborrowSource(op, definitions, sources); err != nil {
 					return err
@@ -569,7 +581,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 				}
 			}
 			if op.Reference != nil && op.Reference.Validity == ReferenceDynamicEpoch && len(op.Results) == 1 {
-				if _, ok := referenceType(types, op.Results[0].Type); ok {
+				if directSafeReferenceType(types, op.Results[0].Type) {
 					dynamic[op.Results[0].ID] = true
 				}
 			}
@@ -580,7 +592,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	}
 	for _, b := range fn.Blocks {
 		for _, op := range b.Operations {
-			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare {
+			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && op.Kind != OpSliceLength && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace {
 				continue
 			}
 			for _, operand := range op.Operands {
@@ -594,9 +606,14 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 					return fmt.Errorf("the false edge of validity guard %%%d must terminate with fail.reference-generation", op.ReferenceGuard)
 				}
 			}
+			if op.Kind == OpSliceLength || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace {
+				if err := verifySliceObservationValidity(op, b.ID, blocks, dom, definitions, definitionBlocks, sources); err != nil {
+					return err
+				}
+			}
 		}
 	}
-	return verifyNoUseAfterEndBorrow(fn, blocks)
+	return verifyNoUseAfterEndBorrow(fn, blocks, values, types)
 }
 
 // verifySubplaceReborrowSource requires the Place a reborrow derives from to
@@ -641,81 +658,6 @@ func guardFailsToGenerationEndpoint(fn *Function, blocks map[BlockID]*Block, gua
 		}
 	}
 	return false
-}
-
-// verifyNoUseAfterEndBorrow rejects any use of a reference reachable after
-// its ref.end-borrow, in the same block or along any CFG path. A path that
-// reaches the reference's definition again (a loop re-entering the borrow)
-// starts a new borrow instance and is not followed further. The marker must
-// name the BorrowID and LifetimeID of the reference it ends.
-func verifyNoUseAfterEndBorrow(fn *Function, blocks map[BlockID]*Block) error {
-	definitions := map[ValueID]*ReferenceMetadata{}
-	for _, b := range fn.Blocks {
-		for _, op := range b.Operations {
-			for _, result := range op.Results {
-				definitions[result.ID] = op.Reference
-			}
-		}
-	}
-	for _, b := range fn.Blocks {
-		for index, op := range b.Operations {
-			if op.Kind != OpReferenceEndBorrow {
-				continue
-			}
-			ended := op.Operands[0]
-			if defined := definitions[ended]; defined != nil && op.Reference != nil && (defined.Borrow != op.Reference.Borrow || defined.Lifetime != op.Reference.Lifetime) {
-				return fmt.Errorf("ref.end-borrow of %%%d names borrow #%d lifetime #%d, not the reference's borrow #%d lifetime #%d", ended, op.Reference.Borrow, op.Reference.Lifetime, defined.Borrow, defined.Lifetime)
-			}
-			redefines := func(operation Operation) bool {
-				for _, result := range operation.Results {
-					if result.ID == ended {
-						return true
-					}
-				}
-				return false
-			}
-			uses := func(operation Operation) bool {
-				for _, operand := range operationOperands(operation) {
-					if operand == ended {
-						return true
-					}
-				}
-				return false
-			}
-			for _, later := range b.Operations[index+1:] {
-				if uses(later) {
-					return fmt.Errorf("reference %%%d is used after its resolved borrow end", ended)
-				}
-			}
-			visited := map[BlockID]bool{}
-			queue := []BlockID{}
-			for _, successor := range b.Operations[len(b.Operations)-1].Successors {
-				queue = append(queue, successor.Block)
-			}
-			for len(queue) > 0 {
-				id := queue[0]
-				queue = queue[1:]
-				if visited[id] || blocks[id] == nil {
-					continue
-				}
-				visited[id] = true
-				for _, operation := range blocks[id].Operations {
-					if redefines(operation) {
-						break
-					}
-					if uses(operation) {
-						return fmt.Errorf("reference %%%d is used after its resolved borrow end", ended)
-					}
-					if operation.IsTerminator() {
-						for _, successor := range operation.Successors {
-							queue = append(queue, successor.Block)
-						}
-					}
-				}
-			}
-		}
-	}
-	return nil
 }
 
 func clonePlaceMetadata(place *PlaceMetadata) *PlaceMetadata {

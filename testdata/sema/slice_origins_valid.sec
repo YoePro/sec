@@ -1,0 +1,95 @@
+module main
+
+type Views struct {
+    Data: ref int[]
+}
+
+impl Views {
+    fn DataSlice() ref int[] { return self.Data }
+}
+
+fn Window(values: ref int[]) ref int[] {
+    return ref values[1..<3]
+}
+
+fn Tail(values: ref int[]) ref int[] {
+    return ref values[1..]
+}
+
+fn Runtime(values: ref int[], start: uint, finish: uint) ref int[] {
+    return ref values[start..<finish]
+}
+
+fn Wrapped(values: ref int[]) Views {
+    return Views { Data: ref values[1..<3] }
+}
+
+fn Unwrap(values: Views) ref int[] {
+    return values.Data
+}
+
+fn UnwrapRef(values: ref Views) ref int[] { return values.Data }
+
+fn ExternalField(values: ref int[]) ref int[] {
+    let holder := Views { Data: values }
+    return holder.DataSlice()
+}
+
+fn Identity(values: ref int[]) ref int[] {
+    return values
+}
+
+fn Observe(values: int[8], start: uint, finish: uint) uint {
+    let source := ref values[2..<7]
+    let copied := source
+    let returned := Window(copied)
+    let nested := ref returned[..]
+    let tail := Tail(source)
+    let tailRange := ref tail[..]
+    let wrapped := Wrapped(source)
+    let field := wrapped.Data
+    let fieldRange := ref field[..]
+    let wrappedCopy := wrapped
+    let copiedField := wrappedCopy.Data
+    let copiedFieldRange := ref copiedField[..]
+    let unwrapped := Unwrap(wrappedCopy)
+    let unwrappedRange := ref unwrapped[..]
+    let methodField := wrappedCopy.DataSlice()
+    let methodRange := ref methodField[..]
+    let referencedField := UnwrapRef(ref wrappedCopy)
+    let referencedFieldRange := ref referencedField[..]
+    let externalField := ExternalField(source)
+    let externalFieldRange := ref externalField[..]
+    let dynamic := Runtime(source, start, finish)
+    let dynamicRange := ref dynamic[..]
+    let dynamicAgain := Runtime(source, start, finish)
+    let dynamicAgainRange := ref dynamicAgain[..]
+    let identity := Identity(source)
+    let identityRange := ref identity[..]
+    return nested.Len + tail.Len + fieldRange.Len + copiedFieldRange.Len + dynamicRange.Len + dynamicAgainRange.Len + identityRange.Len + unwrappedRange.Len + tailRange.Len + methodRange.Len + referencedFieldRange.Len + externalFieldRange.Len
+}
+
+fn Mutable(values: ref mut int[]) ref mut int[] {
+    let moved :<- values
+    return ref mut moved[1..<3]
+}
+
+fn ObserveMutable() int {
+    let mut values: int[8]
+    let source := ref mut values[2..<7]
+    let moved :<- source
+    let returned := Mutable(moved)
+    let mutableRange := ref mut returned[..]
+    mutableRange[0] = 7
+    return mutableRange[0]
+}
+
+fn ArenaTransfers() Result[uint, AllocationError] {
+    let mut memory: Arena := Arena {}
+    let values := try memory.Alloc[int](8u)
+    let arenaSource := ref values[1..<7]
+    let arenaCopy := arenaSource
+    let arenaReturned := Window(arenaCopy)
+    let arenaForwarded := ref arenaReturned[..]
+    return Ok(arenaForwarded.Len)
+}

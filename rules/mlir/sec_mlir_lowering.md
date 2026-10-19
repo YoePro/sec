@@ -4,7 +4,7 @@
 
 Normative lowering specification.
 
-Current lowering specification version: `11`
+Current lowering specification version: `12`
 
 Version 8 retains the high-level enum/union representation boundary and adds
 resolved variant-oriented match lowering as explicit verified CFG.
@@ -23,10 +23,18 @@ Version 11 defines lowering from canonical Semantic IR places/direct
 references to high-level schema-v11 Sec MLIR (SEC-MLIR-P15). It deliberately
 stops before physical pointer/reference representation.
 
-The version-10 and version-11 parts below were installed from
-`rules/mlir/lowering-versions/sec_mlir_lowering_v10.md` and
-`sec_mlir_lowering_v11.md` on 2026-10-11; those files remain the
-version-history snapshots.
+Version 12 defines high-level slice lowering, installed below on 2026-10-19
+from `rules/mlir/lowering-versions/sec_mlir_lowering_v12.md`, with current
+unsigned length and P15 address-stability decisions applied. Versions 10 and
+11 were installed on 2026-10-11. The versioned inputs remain historical
+snapshots; the corrected consolidated sections govern current integration.
+
+This specification does not assert implementation completion. Default emission
+remains schema 11; explicit schema-12 selection does not imply complete slice
+operation emission, physical lowering or P16 acceptance. Follow
+`lowering.sec-mlir-package16` for implemented boundaries. All supported work
+uses the one Semantic IR → Sec MLIR → standard MLIR → LLVM dialect → LLVM IR
+→ clang track; unsupported operations fail explicitly.
 
 ---
 
@@ -1222,4 +1230,491 @@ reference equality remains semantic
 borrow ends remain visible
 address-taken storage remains high-level
 no physical pointer/reference representation is chosen
+```
+
+
+---
+
+# Lowering version 12 — borrowed slices
+
+## v12.1 Type mapping
+
+Shared slice semantic type:
+
+```text
+ref T[]
+```
+
+maps to:
+
+```text
+!sec.slice<T>
+```
+
+Mutable:
+
+```text
+ref mut T[]
+```
+
+maps to:
+
+```text
+!sec.slice_mut<T>
+```
+
+Do not map either to owning `T[]`.
+
+---
+
+## v12.2 Slice creation from fixed array
+
+Lower:
+
+```text
+fixed-array Place
+normalized start
+normalized length
+```
+
+to:
+
+```text
+sec.slice.borrow_shared
+or
+sec.slice.borrow_mut
+```
+
+No array load/copy.
+
+---
+
+## v12.3 Slice reborrow
+
+Existing slice source lowers through:
+
+```text
+source validity guard when required
+range normalization/check
+sec.slice.reborrow_shared / reborrow_mut
+```
+
+No element copy.
+
+---
+
+## v12.4 Range operand evaluation
+
+Preserve:
+
+```text
+source
+start
+end
+```
+
+evaluation order.
+
+Each expression evaluates once.
+
+---
+
+## v12.5 Proven range
+
+Use:
+
+```text
+sec.slice.range_normalize
+```
+
+with proof provenance.
+
+No runtime range branch.
+
+---
+
+## v12.6 Runtime range
+
+Use:
+
+```text
+sec.slice.range_check
+cf.cond_br failed
+```
+
+True is failure.
+
+False is success.
+
+---
+
+## v12.7 Ordinary range failure
+
+Failure:
+
+```text
+sec.fail.bounds
+operation = slice-range
+```
+
+No backend trap chosen.
+
+---
+
+## v12.8 Fallible range failure
+
+Failure uses the produced:
+
+```text
+RangeError
+```
+
+in existing Result/local-handler lowering.
+
+No slice-specific Result representation.
+
+---
+
+## v12.9 Dynamic source validity
+
+When the source is a dynamically validated existing slice:
+
+```text
+sec.ref.is_valid
+cf.cond_br
+false -> sec.fail.reference_generation
+true  -> slice range/index/len operation
+```
+
+This validity branch precedes fallible range/index failure.
+
+---
+
+## v12.10 Shared slice copy
+
+Lower resolved shared slice copy to:
+
+```text
+sec.slice.copy_shared
+```
+
+when a distinct semantic copy is represented.
+
+Do not copy elements.
+
+---
+
+## v12.11 Mutable slice move
+
+Lower resolved mutable slice transfer to:
+
+```text
+sec.slice.move_mut
+```
+
+when a distinct moved SSA value is represented.
+
+Do not copy descriptor semantics.
+
+---
+
+## v12.12 Slice length
+
+Both source `.Len` and `len(slice)` lower through `sec.slice.len -> !sec.uint`.
+Preserve one operand evaluation, the exact unsigned count, non-consuming use,
+no allocation and any required temporal-validity guard. There is no
+`sec.slice.len_int` or signed representability gate. An explicit checked
+conversion to a signed offset remains a separate operation
+(MD-074/MD-088, the applied 2026-10-17 length correction §§ 1–3).
+
+---
+
+## v12.13 Slice index
+
+Preserve:
+
+```text
+slice expression once
+index expression once
+validity guard when required
+bounds guard when required
+element Place
+```
+
+---
+
+## v12.14 Proven slice index
+
+Emit:
+
+```text
+sec.slice.element_place
+bounds_kind = proven-safe
+```
+
+with proof provenance.
+
+No runtime bounds branch.
+
+---
+
+## v12.15 Runtime slice index
+
+Emit:
+
+```text
+sec.slice.index_in_bounds
+cf.cond_br
+```
+
+Failure:
+
+```text
+ordinary -> sec.fail.bounds(slice-index)
+fallible -> IndexError.OutOfBounds flow
+```
+
+Success:
+
+```text
+sec.slice.element_place
+```
+
+---
+
+## v12.16 Element read
+
+Use:
+
+```text
+sec.place.read
+```
+
+on the element Place.
+
+P16 complete value-read subset remains copy-trivial.
+
+---
+
+## v12.17 Element write
+
+Use:
+
+```text
+sec.place.write
+```
+
+on a writable mutable-slice element Place.
+
+Do not add array-style whole-aggregate replacement because the slice does not
+own the sequence.
+
+---
+
+## v12.18 Element borrow
+
+Use:
+
+```text
+sec.ref.borrow_shared
+sec.ref.borrow_mut
+```
+
+on the slice element Place.
+
+No whole-sequence copy.
+
+---
+
+## v12.19 Slice borrow end
+
+Use/generalize:
+
+```text
+sec.ref.end_borrow
+```
+
+for slice BorrowID/LifetimeID.
+
+No runtime destructor.
+
+---
+
+## v12.20 Returning slices
+
+Keep high-level slice type in function result.
+
+Preserve returned-reference origin/range metadata.
+
+No ABI descriptor choice.
+
+---
+
+## v12.21 Function parameters
+
+Keep:
+
+```text
+!sec.slice<T>
+!sec.slice_mut<T>
+```
+
+in high-level signatures.
+
+Explicit fixed-array-to-slice source construction remains visible at the caller.
+
+---
+
+## v12.22 P13 integration
+
+Struct fields containing slices remain high-level.
+
+No descriptor field expansion.
+
+---
+
+## v12.23 P14 integration
+
+Fixed-array source stays as high-level Place.
+
+No fixed-array value copy is needed to create a slice.
+
+---
+
+## v12.24 P15 integration
+
+Reuse:
+
+```text
+reference validity
+place authority
+storage identity
+borrow/lifetime
+epoch dependency
+address stability and separate pin dependency
+reference generation failure
+```
+
+No duplicate logic.
+
+---
+
+## v12.25 Dynamic owning array boundary
+
+If the source slice plan identifies:
+
+```text
+owning dynamic T[]
+```
+
+and canonical owning-array Semantic IR is unavailable:
+
+```text
+return explicit UnsupportedFeatureError
+```
+
+Do not fake the owner as a slice.
+
+---
+
+## v12.26 Effect semantics
+
+Ordinary runtime range/index failure:
+
+```text
+panic.bounds
+```
+
+Fallible range:
+
+```text
+RangeError
+```
+
+Fallible index:
+
+```text
+IndexError
+```
+
+Dynamic stale slice:
+
+```text
+panic.invalid-reference-generation
+```
+
+These effects remain distinct.
+
+---
+
+## v12.27 Unsafe
+
+No P16 lowering path removes bounds or validity checks because the source is
+inside `unsafe`.
+
+Unchecked access remains RawPtr-only.
+
+---
+
+## v12.28 No equality lowering
+
+Do not lower slice `==`/`!=`.
+
+They are source-invalid in Sec 0.1.
+
+---
+
+## v12.29 No physical lowering
+
+Do not lower to:
+
+```text
+LLVM ptr
+LLVM struct
+MemRef
+address+length tuple
+address+length+epoch tuple
+capability
+foreign span
+```
+
+in lowering version 12.
+
+---
+
+## v12.30 Optimization independence
+
+Correctness does not depend on:
+
+```text
+range-check elimination
+bounds-check elimination
+generation-check elimination
+CSE
+SROA
+mem2reg
+inlining
+```
+
+Proof classification exists before optional optimization.
+
+---
+
+## v12.31 Completion
+
+Lowering version 12 is complete when:
+
+```text
+explicit slice creation remains explicit
+ranges normalize correctly
+source/endpoints evaluate once
+RangeError/panic paths are distinct
+shared/mutable authority is preserved
+slice reborrow narrows
+slice indexing produces Places
+P15 read/write/ref operations are reused
+dynamic source validity precedes spatial failure
+returned origin metadata survives
+owning T[] remains distinct
+no physical slice descriptor is chosen
 ```

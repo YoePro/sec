@@ -18,6 +18,36 @@ Sec MLIR dialect schema after package: `12`
 Sec MLIR lowering specification before package: `11`  
 Sec MLIR lowering specification after package: `12`
 
+## Current authority reconciliation — 2026-10-19 (P16-03)
+
+The sync commit/date above identify the original package input, not current
+`main` or an execution snapshot. Current gates and remaining acceptance work
+are recorded in `package16-todo.md` and `lowering.sec-mlir-package16`.
+
+| Historical assumption | Current governing contract |
+|---|---|
+| `.len` / signed `len(slice)` and representability gap | collections § 3.1 and core-library § 1.4: `.Len` and `len(slice)` are the same `uint`; the applied MD-074/MD-088 correction supersedes the old signed operation, with no narrowing or new failure policy |
+| `RelocationClass` | storage §§ 14, 24 and P15 § 28: `AddressStability` plus separate pin dependency; reuse P15 reference facts |
+| Semantic IR "version 1" | semantic_ir § 106(5): executable schema 1, separate from document revision 2.0 and MLIR dialect/lowering version 12 |
+| Supplied representation inputs | installed canonical semantic_ir § 126 and dialect/lowering v12 sections (P16-05), preserving historical snapshots |
+| Source synchronization proposal | all 19 sections audited into canonical source rules (P16-04), including explicit fallible borrow and temporal-before-spatial ordering |
+| Legacy paths / physical descriptors | the one native compilation track; physical descriptor work remains P24 and unsupported lowering remains explicit |
+
+The review includes borrowing §§ 11.4, 12, 14; reference_model §§ 14, 25–26,
+76; storage §§ 14, 20, 24; copy_move § 4.4; collections §§ 3.1, 6–7;
+runtime_checks slice/try rules; core-library §§ 1.4, 13, 20.1; current Semantic
+IR and consolidated MLIR contracts. Applied MD-028 subtree, MD-061 reborrow,
+MD-074/MD-088 unsigned length, MD-089 Place presentation and MD-094 constant
+range-diagnostic decisions remain authoritative in their owning books.
+
+This resolves semantic spelling/model drift, not still-open serialization
+choices. MD-084 concrete P15 metadata spellings and MD-085 returned-origin
+verification obligations retain their existing decision gates and ownership.
+No declaration, attribute spelling, runtime layout or new length policy is
+inferred to close them.
+
+---
+
 Package 16 introduces canonical Semantic IR and high-level Sec MLIR
 representation for safe borrowed slices:
 
@@ -108,7 +138,7 @@ No new source syntax is introduced.
 
 # 2. Repository and local predecessor rule
 
-GitHub `main` remains:
+The original package input recorded GitHub `main` as:
 
 ```text
 152c772
@@ -132,7 +162,7 @@ P15:
     BorrowID/LifetimeID
     validity policy
     epoch dependency
-    relocation class
+    address stability and separate pin dependency
     reference guards
 ```
 
@@ -796,7 +826,8 @@ type SliceFacts struct {
 
     Validity           ReferenceValidityPolicy
     EpochDependency    EpochDependencyID
-    Relocation         RelocationClass
+    AddressStability   AddressStability
+    Pinned             bool // separate P15 pin dependency
 
     RuntimeLength      ValueID
 
@@ -1191,7 +1222,7 @@ occurs before the fallible spatial operation produces RangeError/IndexError.
 Source:
 
 ```sec
-view.len
+view.Len
 ```
 
 returns:
@@ -1217,70 +1248,20 @@ guard purposes.
 
 # 48. Compiler-known `len(slice)`
 
-Source:
-
-```sec
-len(view)
-```
-
-returns:
-
-```text
-int
-```
-
-according to the existing core rule.
-
-P16 represents this separately as:
-
-```text
-SliceLengthIntOp
-```
-
-Do not silently reinterpret it as `.len`.
-
-Do not silently truncate `uint` length to `int`.
+`len(view)` and `view.Len` both produce the same `uint` runtime element
+count through `SliceLengthOp` / `sec.slice.len`. They are non-consuming,
+evaluate the source once and retain dynamic reference-validity obligations.
+No separate signed-length operation is admitted (MD-074/MD-088).
 
 ---
 
-# 49. Existing `len` representability gap
+# 49. Resolved `len` representability policy
 
-**Amended 2026-10-17 (MD-074/MD-088, `rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`):** `len(...)` returns `uint`, the same type and value as `.Len`; there is no signed length, no representability proof and no conversion inside `len`. Text in this package that assumes `len(...) -> int` or an unresolved representability rule is superseded.
-
-Current normative files define:
-
-```text
-slice.len -> uint
-len(slice) -> int
-```
-
-but do not define what happens when a runtime slice length is representable by
-`uint` and not by `int`.
-
-P16 does not invent:
-
-```text
-saturation
-wrapping
-implicit panic
-new maximum slice length
-changed return type
-```
-
-Until the normative rule is synchronized, the new P16 pipeline may emit
-`SliceLengthIntOp` only when Sema/plan facts prove the result representable by
-`int`.
-
-Otherwise:
-
-```text
-UnsupportedFeatureError:
-    sequence len(...) int representability rule is unresolved
-```
-
-This is an implementation guard, not a source-language semantic decision.
-
-`.len -> uint` remains fully supported.
+The applied 2026-10-17 MD-074/MD-088 correction defines both length forms as
+`uint`. A legitimate `uint` count needs no signed representability proof,
+implicit conversion, wrapping, truncation, saturation or artificial length
+cap. A programmer requesting a signed offset uses a separate explicit checked
+conversion. This supersedes the former unresolved signed-length gate.
 
 ---
 
@@ -1347,7 +1328,7 @@ Do not create synonymous duplicate enums.
 A valid index satisfies:
 
 ```text
-0 <= index < slice.len
+0 <= index < slice.Len
 ```
 
 Signed negative index is invalid.
@@ -1653,7 +1634,7 @@ source parameter/storage identity class
 normalized known range when expressible
 runtime range relation when representable
 epoch dependency
-relocation class
+address stability and separate pin dependency
 ```
 
 Returning a local-array slice remains invalid.
@@ -1708,7 +1689,7 @@ or another semantics-preserving mechanism exists
 
 Generation matching alone is insufficient.
 
-P16 preserves P15 relocation class.
+P16 preserves canonical P15 address stability and the separate pin dependency.
 
 ---
 
@@ -1855,7 +1836,6 @@ SliceCopySharedOp
 SliceMoveMutableOp
 
 SliceLengthOp
-SliceLengthIntOp
 
 SliceIndexInBoundsOp
 SliceElementPlaceOp
@@ -2055,7 +2035,6 @@ Dynamic-validity slice operations protected by it include:
 
 ```text
 slice.len
-slice.len_int
 slice reborrow
 slice range on existing slice
 slice index
@@ -2137,8 +2116,6 @@ sec.slice.copy_shared
 sec.slice.move_mut
 
 sec.slice.len
-sec.slice.len_int
-
 sec.slice.index_in_bounds
 sec.slice.element_place
 ```
@@ -2222,7 +2199,7 @@ sec.validity_policy
 sec.validity_proof
 sec.storage_identity
 sec.epoch_dependency
-sec.relocation_class
+address stability and separate pin dependency (P15 facts)
 sec.address_space
 sec.reference_origin
 ```
@@ -2409,25 +2386,12 @@ It returns runtime element length.
 
 ---
 
-# 101. `sec.slice.len_int`
+# 101. Unsigned length compatibility
 
-```text
-!sec.slice<T> or !sec.slice_mut<T>
-    -> !sec.int
-```
-
-It represents the distinct compiler-known:
-
-```sec
-len(slice)
-```
-
-surface.
-
-Compiler generation currently requires a proven representability fact as
-described in this package.
-
-No silent narrowing.
+The historical signed length operation is withdrawn. Both source `.Len` and
+`len(slice)` use § 100 `sec.slice.len -> !sec.uint`. A checked explicit signed
+conversion is separate. No signed representability proof is required for a
+length observation (MD-074/MD-088).
 
 ---
 
@@ -2589,9 +2553,9 @@ Only spatial range/index checks remain when not independently proven.
 
 ---
 
-# 110. `.len` and dynamic validity
+# 110. `.Len` and dynamic validity
 
-P16 treats `.len`/`len(slice)` as semantic observation of a direct safe slice.
+P16 treats `.Len`/`len(slice)` as semantic observation of a direct safe slice.
 
 For a dynamically validated slice:
 
@@ -2627,8 +2591,7 @@ reference facts
 It also resolves:
 
 ```text
-slice.len result !sec.uint
-slice.len_int result !sec.int
+slice.Len / len(slice) result !sec.uint
 ```
 
 to plan widths.
@@ -2687,7 +2650,7 @@ EpochDependency
 BorrowID
 LifetimeID
 ReferenceValidityPolicy
-RelocationClass
+AddressStability and separate pin dependency
 AddressSpace
 reference failure endpoint
 borrow end
@@ -2846,7 +2809,7 @@ fallible direct slice syntax requires explicit ref/ref mut
 RangeError mapping is stable
 panic.bounds remains ordinary range/index panic reason
 stale direct slice is not converted by try
-len(slice) unresolved representability is never silently truncated
+len(slice) and .Len retain the same exact uint count
 ```
 
 ---
@@ -3072,7 +3035,6 @@ reborrow_mut
 copy_shared
 move_mut
 len
-len_int
 index_in_bounds
 element_place
 
@@ -3141,7 +3103,7 @@ ref array[1..3]
 empty slice
 slice reborrow
 mutable slice reborrow
-slice .len
+slice .Len
 supported len(slice)
 slice index read
 slice index write
@@ -3173,7 +3135,6 @@ semantic-copy element read when not yet represented
 non-trivial element write/replacement
 stable/weak handle-backed slice source API
 RawPtr-to-slice conversion
-unproven len(slice) int representability
 ```
 
 Do not emit placeholder semantics.
@@ -3232,7 +3193,7 @@ Slice equality remains undefined.
 
 Dynamic owning T[] remains distinct and deferred.
 
-len(slice) int representability must never silently truncate.
+len(slice) and .Len preserve the same uint count with no implicit narrowing.
 
 No physical pointer+length representation is selected.
 
@@ -3280,7 +3241,7 @@ Package 16 is complete only when:
 [ ] fallible RangeError CFG implemented
 [ ] local/naked try range integration works
 [ ] SliceLengthOp implemented
-[ ] SliceLengthIntOp preserves no-truncation guard
+[ ] len(slice) and .Len share unsigned length lowering without narrowing
 [ ] ResolvedSliceIndexPlan implemented
 [ ] slice index bounds proof/runtime classification works
 [ ] SliceIndexInBoundsOp implemented
@@ -3318,7 +3279,7 @@ Codex must report:
 2. local/merged P13/P14/P15 status
 3. previous package status
 4. slice syntax/range/error synchronization
-5. len(slice) representability limitation status
+5. unsigned len(slice)/.Len agreement and explicit signed-conversion boundary
 6. files added
 7. files modified
 8. PlaceSlice arbitrary-precision migration

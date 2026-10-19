@@ -5077,51 +5077,6 @@ func typeContainsReference(typ Type, visiting map[string]bool) bool {
 	return false
 }
 
-func (a *Analyzer) symbolizeFunctionReturnOrigin(origin localReferenceOrigin) localReferenceOrigin {
-	origin = cloneLocalReferenceOrigin(origin)
-	places := localOriginPlaces(origin)
-	symbolic := make([]Place, 0, len(places))
-	unknown := origin.Unknown
-	for _, place := range places {
-		root, ok := a.symbolicFunctionOriginRoot(place.Root)
-		if !ok {
-			unknown = true
-			continue
-		}
-		place.Root = root
-		symbolic = append(symbolic, place)
-	}
-	origin = localOriginWithPlaces(origin, symbolic)
-	origin.Local = false
-	origin.MatchScoped = false
-	origin.Unknown = origin.Unknown || unknown
-	origin.Ambiguous = origin.Ambiguous || origin.Unknown
-	for path, child := range origin.Contained {
-		origin.Contained[path] = a.symbolizeFunctionReturnOrigin(child)
-		if origin.Contained[path].Unknown {
-			origin.Unknown = true
-			origin.Ambiguous = true
-		}
-	}
-	return origin
-}
-
-func (a *Analyzer) symbolicFunctionOriginRoot(root string) (string, bool) {
-	function := a.currentFunctionMetadata
-	for index, param := range function.Parameters {
-		if param.Name == root {
-			return "$param:" + strconv.Itoa(index), true
-		}
-	}
-	if root == "self" && function.ImplTarget != "" {
-		return "$receiver", true
-	}
-	if symbol, exists := a.symbols[root]; exists && !symbol.Local {
-		return "$static:" + root, true
-	}
-	return "", false
-}
-
 func (a *Analyzer) setFunctionReferenceSummary(function Function) {
 	overloads := a.functions[function.Name]
 	for index := range overloads {
@@ -5539,27 +5494,6 @@ func placeFromReferenceOrigin(origin localReferenceOrigin, holder string) (Place
 func mustBorrowRootName(expr ast.Expression) string {
 	root, _ := borrowRootName(expr)
 	return root
-}
-
-func (a *Analyzer) containedOriginForAccess(expr ast.Expression) (localReferenceOrigin, bool) {
-	root, path, ok := a.aggregateAccessPath(expr)
-	if !ok || path == "" {
-		return localReferenceOrigin{}, false
-	}
-	container, ok := a.localRefContainers[root]
-	if !ok || len(container.Contained) == 0 {
-		return localReferenceOrigin{}, false
-	}
-	origins := make([]localReferenceOrigin, 0, 1)
-	for candidate, origin := range container.Contained {
-		if containedPathMatches(path, candidate) {
-			origins = append(origins, origin)
-		}
-	}
-	if len(origins) == 0 {
-		return localReferenceOrigin{}, false
-	}
-	return mergeLocalReferenceOrigins(origins, false), true
 }
 
 func (a *Analyzer) aggregateAccessPath(expr ast.Expression) (string, string, bool) {
@@ -8792,66 +8726,6 @@ func compilerKnownNonCopyable(typ Type) bool {
 	}
 }
 
-// analyzeIndexAssignmentStatement validates replacement through any resolved
-// linear collection element Place, including compiler-known list[T].
-//
-// Rules:
-//   - rules/collections/collections.md — §8.4 "Replacement"
-func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression) {
-	targetType, _ := a.inferIndexExpression(index)
-	if targetType.Kind == InvalidType {
-		return
-	}
-	a.setResolvedIndexUse(index, ArrayIndexWrite)
-	if a.rejectShapedMetadataWrite(index) {
-		return
-	}
-	if packType, _ := a.inferExpression(index.Left); variadicPackValue(packType) {
-		// rules/declarations/functions.md section 31: neither the pack nor
-		// an element reached through it is mutable source-level storage.
-		a.addErrorAtToken(expressionToken(index.Left), "cannot mutate variadic parameter pack")
-		return
-	}
-	if !a.indexAssignmentTargetIsMutable(index.Left) {
-		a.addErrorAtToken(expressionToken(index.Left), "cannot assign through immutable index target")
-		return
-	}
-	if place, ok := a.resolvePlace(index); ok && a.checkBorrowedMutationPlace(place, expressionToken(index)) {
-		return
-	}
-	exprType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
-	if exprType.Kind == InvalidType {
-		return
-	}
-	assignmentType := exprType
-	if stmt.Operator != "=" {
-		var valid bool
-		assignmentType, valid = a.inferCompoundAssignmentType(stmt.Operator, targetType, exprType, stmt.Value)
-		if !valid {
-			return
-		}
-		a.recordResolvedCompoundAssignment(stmt, targetType, exprType)
-	}
-	if a.checkStorageDomainStore(stmt.Target, targetType, stmt.Value, exprType) {
-		return
-	}
-	if a.checkAssignmentEscapesLocalReference(stmt.Target, stmt.Value) {
-		return
-	}
-	if !a.validateMoveAssignmentTarget(stmt) {
-		return
-	}
-	if a.checkInitializerType(targetType, assignmentType, stmt.Value) {
-		if !a.validateAssignmentOwnership(stmt) {
-			return
-		}
-		a.applyAssignmentOwnership(stmt)
-		if stmt.Operator == "=" {
-			a.updateContainedOriginsForAssignment(index, stmt.Value)
-		}
-	}
-}
-
 func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -10742,92 +10616,6 @@ func numericCarrierConversionResult(target, source Type) (Type, bool) {
 	result.Dimension = source.Dimension
 	result.UnitSemantics = source.UnitSemantics
 	return result, true
-}
-
-func (a *Analyzer) instantiateFunctionReturnOrigin(summary localReferenceOrigin, args []ast.Expression, receiver ast.Expression) localReferenceOrigin {
-	summary = cloneLocalReferenceOrigin(summary)
-	places := localOriginPlaces(summary)
-	instantiatedPlaces := []Place{}
-	actualOrigins := []localReferenceOrigin{}
-	unknown := summary.Unknown
-	for _, symbolic := range places {
-		actual, ok := a.actualOriginForSummaryRoot(symbolic.Root, args, receiver)
-		if !ok || actual.Unknown {
-			unknown = true
-			continue
-		}
-		actualOrigins = append(actualOrigins, actual)
-		for _, base := range localOriginPlaces(actual) {
-			for _, projection := range symbolic.Projections {
-				base = appendPlaceProjection(base, projection)
-			}
-			instantiatedPlaces = append(instantiatedPlaces, base)
-		}
-	}
-	result := localReferenceOrigin{Unknown: unknown, Ambiguous: unknown, Mutable: summary.Mutable}
-	for _, actual := range actualOrigins {
-		if actual.Local && !result.Local {
-			result.Local, result.Name, result.Token = true, actual.Name, actual.Token
-		}
-		if actual.MatchScoped && !result.MatchScoped {
-			result.MatchScoped = true
-			if result.Name == "" {
-				result.Name, result.Token = actual.Name, actual.Token
-			}
-		}
-	}
-	result = localOriginWithPlaces(result, instantiatedPlaces)
-	result.Unknown = result.Unknown || unknown
-	result.Ambiguous = result.Ambiguous || result.Unknown
-	if len(summary.Contained) > 0 {
-		result.Contained = make(map[string]localReferenceOrigin, len(summary.Contained))
-		for path, child := range summary.Contained {
-			result.Contained[path] = a.instantiateFunctionReturnOrigin(child, args, receiver)
-		}
-		if len(places) == 0 {
-			recomputeContainedOriginSummary(&result)
-			for _, child := range result.Contained {
-				if child.Unknown {
-					result.Unknown = true
-					result.Ambiguous = true
-				}
-			}
-		}
-	}
-	return result
-}
-
-func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression, receiver ast.Expression) (localReferenceOrigin, bool) {
-	if strings.HasPrefix(root, "$param:") {
-		index, err := strconv.Atoi(strings.TrimPrefix(root, "$param:"))
-		if err != nil || index < 0 || index >= len(args) {
-			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
-		}
-		return a.directReferenceOrigin(args[index])
-	}
-	if root == "$receiver" {
-		if receiver == nil {
-			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
-		}
-		if origin, ok := a.directReferenceOrigin(receiver); ok {
-			return origin, true
-		}
-		place, ok := a.resolvePlace(receiver)
-		if !ok {
-			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
-		}
-		name, token, local, _, _ := a.referenceOriginForExpression(receiver)
-		return localOriginWithPlaces(localReferenceOrigin{Name: name, Token: token, Local: local}, placeOriginAlternatives(place)), true
-	}
-	if strings.HasPrefix(root, "$static:") {
-		name := strings.TrimPrefix(root, "$static:")
-		place, ok := a.rootPlace(name)
-		if !ok {
-			place = Place{Root: name, Addressable: true}
-		}
-		return localOriginWithPlaces(localReferenceOrigin{Name: name}, []Place{place}), true
-	}
-	return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
 }
 
 // validateTestingEquality applies the same literal shaping, unit comparison,

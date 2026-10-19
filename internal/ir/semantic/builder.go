@@ -56,6 +56,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	}
 	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles), PointerWidthBits: analyzer.ScalarPlanWidthBits()}
 	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}, definedStructs: map[TypeID]bool{}}
+	if err := b.prepareSliceLowering(program); err != nil {
+		return nil, err
+	}
 	b.statics.moduleLets = map[*ast.LetStatement]bool{}
 	var moduleLets []*ast.LetStatement
 	declaringModule := ""
@@ -125,6 +128,7 @@ type builder struct {
 	definedUnions  map[TypeID]bool
 	definedStructs map[TypeID]bool
 	statics        staticRegistry
+	slicePlans     *sliceLoweringPlans
 }
 type functionBuilder struct {
 	// variantGuard is the union.is-variant predicate of the match arm being
@@ -274,6 +278,9 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 			return 0, &UnsupportedFeatureError{Feature: "array type " + t.Name, Package: b.maxPackage}
 		}
 		return b.internArrayType(t)
+	}
+	if b.maxPackage >= sliceLoweringPackage && sourceSliceType(t) {
+		return 0, &UnsupportedFeatureError{Feature: "slice value/signature source lowering (P16-36)", Package: b.maxPackage}
 	}
 	if t.Kind == sema.ReferenceType {
 		return b.internReferenceType(t)
@@ -1522,6 +1529,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	}
 	if errExpr, ok := expr.(*ast.ErrExpression); ok {
 		return fb.buildResultConstructor(errExpr.Value, expected, false, location(errExpr.Token))
+	}
+	if value, handled, err := fb.p16SliceExpression(expr); handled {
+		return value, err
 	}
 	if fb.owner.maxPackage >= referenceLoweringPackage {
 		if value, err := fb.p15Reference(expr); err != errNotReference {

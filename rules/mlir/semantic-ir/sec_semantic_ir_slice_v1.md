@@ -2,6 +2,12 @@
 
 ## Status
 
+> Installed 2026-10-19 in `rules/compiler/semantic_ir.md` (§ 126). This input preserves
+> its original package text for history. Current integration follows that
+> consolidated rulebook and `rules/corrections/applied/p16-slice-ir-schema12-synchronization-20261019.md`: unsigned `.Len`/`len`, address
+> stability plus separate pin dependency, and specification/implementation
+> version separation supersede the corresponding historical assumptions here.
+
 Normative amendment for:
 
 ```text

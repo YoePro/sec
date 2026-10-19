@@ -93,6 +93,9 @@ func formatType(t Type) string {
 	if t.Kind == TypeArray {
 		return fmt.Sprintf("array<!%d, %q>", t.Element, t.Length)
 	}
+	if t.Kind == TypeSharedSlice || t.Kind == TypeMutableSlice {
+		return fmt.Sprintf("%s<!%d>", t.Kind, t.Element)
+	}
 	if t.Kind == TypePlace || t.Kind == TypeReference {
 		return formatPlaceReferenceType(t)
 	}
@@ -184,6 +187,25 @@ func formatOperation(out *strings.Builder, op Operation) {
 	}
 	out.WriteString(string(op.Kind))
 	switch op.Kind {
+	case OpSliceIndexInBounds, OpSliceElementPlace:
+		fmt.Fprintf(out, " %%%d, %%%d signed=%t", op.Operands[0], op.Operands[1], op.ArrayIndexSigned)
+		if op.Kind == OpSliceElementPlace {
+			fmt.Fprintf(out, " bounds=%s proof=%s guard=%%%d", op.ArrayCheckKind, op.ArrayProofKind, op.ArrayGuard)
+		}
+		if op.ReferenceGuard != 0 {
+			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
+		}
+		formatReferenceMetadata(out, op.Reference)
+	case OpSliceCopyShared, OpSliceMoveMutable:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+		formatReferenceMetadata(out, op.Reference)
+	case OpSliceLength:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+		if op.ReferenceGuard != 0 {
+			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
+		}
+	case OpSliceRangeNormalize, OpSliceRangeCheck:
+		formatSliceRangeOperation(out, op)
 	case OpConstInt:
 		fmt.Fprintf(out, " %s", op.Integer.String())
 	case OpConstBool:

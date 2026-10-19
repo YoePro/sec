@@ -27,6 +27,14 @@ void SecDialect::registerOperations() {
 }
 
 namespace {
+// isReferenceValueType recognizes bounded slices as safe reference values
+// for the existing P15 metadata family without treating them as element refs.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md sections 5,21-22;
+// rules/mlir/packages/sec-mlir-dialect_package16.md sections 44,91.
+bool isReferenceValueType(Type type) {
+  return isa<RefType, RefMutType, SliceType, SliceMutType>(type);
+}
+
 // Reference facts of a value no schema-11 operation defines: a reference
 // function parameter or call result (`sec.reference`, implementation choice
 // MD-084). The keys mirror the reference operation properties of
@@ -106,18 +114,19 @@ LogicalResult SecDialect::verifyRegionArgAttribute(Operation *operation,
     return success();
   auto function = dyn_cast<func::FuncOp>(operation);
   if (!function || argIndex >= function.getNumArguments() ||
-      !isa<RefType, RefMutType>(function.getArgumentTypes()[argIndex]))
+      !isReferenceValueType(function.getArgumentTypes()[argIndex]))
     return operation->emitError(
-        "sec.reference annotates a !sec.ref or !sec.ref_mut function parameter");
+        "sec.reference annotates a !sec.ref or !sec.ref_mut function parameter, or a schema-12 slice parameter");
   return verifyReferenceDictionary(operation, attribute.getValue());
 }
 
 // SecDialect::verifyOperationAttribute validates versioned module and operation
-// metadata while retaining schemas 1-9 as compatibility inputs.
+// metadata while retaining schemas 1-11 as compatibility inputs for P16.
 //
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md section 58
 //   - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md section 1
+//   - rules/mlir/dialect-versions/sec_mlir_dialect_v12.md section 1
 LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
                                                    NamedAttribute attribute) {
   StringRef name = attribute.getName().getValue();
@@ -144,8 +153,36 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
         number != 5 && number != 6 && number != 7 && number != 8 &&
-        number != 9 && number != 10 && number != 11)
+        number != 9 && number != 10 && number != 11 && number != 12)
       return operation->emitError("unsupported Sec dialect schema version");
+    // Slice types (including nested type attributes, signatures and block
+    // parameters) belong to schema 12. An older header cannot hide a P16 value
+    // inside an aggregate or nominal wrapper.
+    // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md sections 87-90;
+    // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md sections 1-4.
+    if (number < 12) {
+      bool hasSlice = false;
+      auto checkType = [&](Type type) {
+        type.walk([&](Type nested) {
+          hasSlice |= isa<SliceType, SliceMutType>(nested);
+        });
+      };
+      module.walk([&](Operation *nested) {
+        nested->getAttrDictionary().walk(checkType);
+        for (Type type : nested->getResultTypes())
+          checkType(type);
+        for (Type type : nested->getOperandTypes())
+          checkType(type);
+        for (Region &region : nested->getRegions())
+          for (Block &block : region)
+            for (BlockArgument argument : block.getArguments())
+              checkType(argument.getType());
+      });
+      if (hasSlice)
+        return operation->emitError()
+               << "slice types require schema 12, module declares schema "
+               << number;
+    }
     // Places and direct references exist from schema 11 (SEC-MLIR-P15).
     if (number < 11) {
       auto usesSchema11Type = [](Type type) {
@@ -316,7 +353,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
   // Schema-11 discardable facts (implementation choice MD-084).
   auto definesReference = [&]() {
     return operation->getNumResults() == 1 &&
-           isa<RefType, RefMutType>(operation->getResult(0).getType());
+           isReferenceValueType(operation->getResult(0).getType());
   };
   if (name == "sec.address_taken") {
     if (!isa<StorageDeclareOp>(operation))
@@ -328,14 +365,14 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
        name == "sec.reference_address_space") &&
       !definesReference())
     return operation->emitError()
-           << name << " annotates an operation defining one !sec.ref or !sec.ref_mut";
+           << name << " annotates an operation defining one !sec.ref or !sec.ref_mut, or a schema-12 slice";
   if (name == "sec.pinned")
     return requireBool();
   if (name == "sec.reference") {
     if (operation->getNumResults() != 1 ||
-        !isa<RefType, RefMutType>(operation->getResult(0).getType()))
+        !isReferenceValueType(operation->getResult(0).getType()))
       return operation->emitError(
-          "sec.reference annotates an operation with one !sec.ref or !sec.ref_mut result");
+          "sec.reference annotates an operation with one !sec.ref or !sec.ref_mut result, or a schema-12 slice result");
     return verifyReferenceDictionary(operation, value);
   }
   if (name == "sec.reference_address_space") {

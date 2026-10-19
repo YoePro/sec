@@ -1,0 +1,7 @@
+module main
+
+fn Wide(values: int[18446744073709551615]) uint {
+    let wide := ref values[uint128(9223372036854775807)..uint128(9223372036854775807)]
+    return wide.Len
+}
+

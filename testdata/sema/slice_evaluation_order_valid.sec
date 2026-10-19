@@ -1,0 +1,46 @@
+module main
+
+fn Source(values: ref int[4]) ref int[4] {
+    return values
+}
+
+fn Start(value: uint) uint {
+    return value
+}
+
+fn Finish(value: uint) uint {
+    return value
+}
+
+fn Once(values: int[4], start: uint, finish: uint) void {
+    let view := ref Source(ref values)[Start(start)..Finish(finish)]
+    discard view
+}
+
+fn Handled(values: int[4], start: uint, finish: uint) void {
+    let view := try ref Source(ref values)[Start(start)..<Finish(finish)] {
+        Err(_) => { return }
+    }
+    discard view
+}
+
+fn Open(values: int[4]) void {
+    let all := ref values[..]
+    discard all
+    let head := ref values[..<2]
+    discard head
+    let inclusive := ref values[..2]
+    discard inclusive
+    let tail := ref values[1..]
+    discard tail
+}
+
+fn MutableSource(values: ref mut int[4]) ref mut int[4] {
+    return values
+}
+
+fn MutableOnce(start: uint, finish: uint) void {
+    let mut values: int[4]
+    let view := ref mut MutableSource(ref mut values)[Start(start)..<Finish(finish)]
+    discard view
+}

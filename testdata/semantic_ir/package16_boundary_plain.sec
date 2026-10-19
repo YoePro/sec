@@ -1,0 +1,12 @@
+module main
+
+fn Add(left: int, right: int) int {
+    return left + right
+}
+
+fn Borrow() int {
+    let value := 3
+    let shared := ref value
+    discard shared
+    return value
+}

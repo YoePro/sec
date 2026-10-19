@@ -1,0 +1,118 @@
+module main
+
+fn Ordinary(values: int[4], start: uint) void {
+    let view := ref values[start..]
+    discard view
+}
+
+fn Handled(values: int[4], start: uint) void {
+    let view := try ref values[start..] {
+        Err(_) => { return }
+    }
+    discard view
+}
+
+@noPanic
+@noAlloc
+@noBlock
+fn Proven(values: int[4]) uint {
+    let view := ref values[1..<3]
+    let count := view.Len
+    discard view
+    return count
+}
+
+@noPanic
+@noAlloc
+@noBlock
+fn Open(values: ref int[]) void {
+    let view := ref values[..]
+    discard view
+}
+
+fn Dynamic() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    let view := ref values[1..<3]
+    discard view
+    return Ok()
+}
+
+fn DynamicHandled() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    let view := try ref values[1..<3] {
+        Err(_) => { return Ok() }
+    }
+    discard view
+    return Ok()
+}
+
+fn UnsafeRange(values: int[4], start: uint) void {
+    unsafe {
+        let view := ref values[start..]
+        discard view
+    }
+}
+
+fn DynamicLength() Result[uint, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    return Ok(values.Len)
+}
+
+fn DynamicGlobalLength() Result[uint, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    return Ok(len(values))
+}
+
+@noAlloc
+@noBlock
+fn Fallible(values: int[4], start: uint) Result[void, RangeError] {
+    let view := try ref values[start..]
+    discard view
+    return Ok()
+}
+
+fn Start() uint { panic "start" }
+
+fn Operand(values: int[4]) void {
+    let view := try ref values[Start()..] {
+        Err(_) => { return }
+    }
+    discard view
+}
+
+fn Mixed(values: int[4], start: uint, amount: uint) void {
+    let view := try ref values[start + amount..] {
+        Err(_) => { return }
+    }
+    discard view
+}
+
+@noPanic
+@noAlloc
+@noBlock
+fn Copy(view: ref int[]) void {
+    let copy := view
+    discard copy
+}
+
+@noPanic
+@noAlloc
+@noBlock
+fn Move(view: ref mut int[]) void {
+    let moved :<- view
+    discard moved
+}
+
+fn DynamicIndex() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    let element := try values[0] {
+        Err(_) => { return Ok() }
+    }
+    discard element
+    return Ok()
+}

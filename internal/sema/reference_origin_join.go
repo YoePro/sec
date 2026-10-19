@@ -27,6 +27,15 @@ type ReferenceOriginAlternative struct {
 // Rules: rules/memory/arena.md — §§38,44;
 // rules/memory/lifetime_analysis.md — §8.1, §11.2.
 func (a *Analyzer) referenceOriginAlternativesForExpression(expr ast.Expression) []ReferenceOriginAlternative {
+	switch value := expr.(type) {
+	case *ast.SliceExpression:
+		return a.referenceOriginAlternativesForExpression(value.Left)
+	case *ast.RefExpression:
+		return a.referenceOriginAlternativesForExpression(value.Value)
+	}
+	if origin, ok := a.knownReturnedReferenceOrigin(expr); ok {
+		return a.returnedReferenceDependencies(origin)
+	}
 	root, ok := borrowRootName(expr)
 	if !ok {
 		return nil
@@ -284,6 +293,15 @@ func (a *Analyzer) referenceTypeWithOriginFromExpression(target Type, expr ast.E
 // referenceOriginMatchScopedForExpression identifies represented match-local borrows.
 // Rules: rules/memory/lifetime_analysis.md — §8.1.
 func (a *Analyzer) referenceOriginMatchScopedForExpression(expr ast.Expression) bool {
+	switch value := expr.(type) {
+	case *ast.SliceExpression:
+		return a.referenceOriginMatchScopedForExpression(value.Left)
+	case *ast.RefExpression:
+		return a.referenceOriginMatchScopedForExpression(value.Value)
+	}
+	if origin, ok := a.knownReturnedReferenceOrigin(expr); ok {
+		return origin.MatchScoped
+	}
 	root, ok := borrowRootName(expr)
 	if !ok {
 		return false
@@ -296,6 +314,19 @@ func (a *Analyzer) referenceOriginMatchScopedForExpression(expr ast.Expression) 
 // Arena validity checks separately consume referenceOriginAlternatives.
 // Rules: rules/memory/reference_model.md — Provenance; rules/memory/arena.md — §§38,44.
 func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, lexer.Token, bool, StorageOrigin, int) {
+	switch value := expr.(type) {
+	case *ast.SliceExpression:
+		return a.referenceOriginForExpression(value.Left)
+	case *ast.RefExpression:
+		return a.referenceOriginForExpression(value.Value)
+	}
+	if origin, ok := a.knownReturnedReferenceOrigin(expr); ok {
+		dependencies := a.returnedReferenceDependencies(origin)
+		if len(dependencies) > 0 {
+			d := dependencies[0]
+			return d.Name, d.Token, origin.Local, d.Storage, d.Generation
+		}
+	}
 	root, ok := borrowRootName(expr)
 	if !ok {
 		return "", lexer.Token{}, false, StorageOriginUnknown, 0

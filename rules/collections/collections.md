@@ -1,7 +1,7 @@
 # Collections
 
 **Created:** 2026-08-11  
-**Last updated:** 2026-10-18 (MD-094 one primary diagnostic per constant-invalid slice range)  
+**Last updated:** 2026-10-19 (P16-04 canonical slice normalization, failure and classification synchronization)
 **Document revision:** 1  
 **Language version:** Sec 0.1  
 **Status:** Draft for Sec 0.1
@@ -948,6 +948,14 @@ does not implicitly copy elements
 Its physical representation is compiler-defined and is not an FFI-stable
 struct layout.
 
+`ref T[]` is a copyable shared bounded reference (CopyTrivial); `ref mut T[]`
+is an exclusive bounded reference (MoveOnly). Copy and move transfer only the
+reference value, never elements. Both are trivially destructible: ending a
+slice borrow destroys neither elements nor backing storage. Owning `T[]`
+remains a different semantic category. Slice `==` and `!=` are invalid in
+Sec 0.1; neither content equality nor descriptor/range identity is introduced.
+
+
 ## 7.2 Slice sources
 
 A slice may borrow any source that guarantees a contiguous, unit-stride,
@@ -1045,6 +1053,22 @@ for borrow and bounds reasoning.
 
 Negative endpoints are invalid.
 
+
+Missing start means zero; missing end means the source length. An inclusive
+end becomes `endExclusive = end + 1` only after range validation. Static
+endpoints and nested static range composition use arbitrary-precision integers,
+never compiler-host `int64` limits. Original signedness and exact values remain
+available to validation; normalization must not overflow before selecting the
+canonical error. Source, explicit start and explicit end are evaluated once
+in that order.
+
+A range with exclusive equal endpoints is a valid empty slice, including a
+full borrow of a zero-length source. Empty slices retain their storage origin,
+borrow and lifetime dependencies; they permit no element access. Nested static
+ranges compose exactly. Dynamic or unknown ranges conservatively overlap
+unless compiler proof establishes disjointness; no runtime borrow checker is
+introduced. Borrow relationships remain owned by `rules/memory/borrowing.md`.
+
 ## 7.5 Fallible slicing
 
 Compile-time invalid constant ranges are compile-time errors.
@@ -1060,9 +1084,39 @@ constant start after a constant end is diagnosed even when the source length is
 unknown at compile time. The compiler may attach related notes, but notes are
 not primary errors and do not change the precedence (MD-094, 2026-10-18).
 
-Dynamic checked slicing may use the canonical fallible range path.
+Ordinary unproven slice construction can panic with `panic.bounds` and
+`slice-range` operation provenance. The explicit fallible forms are:
 
-The owning range/index rule defines the exact `RangeError` cases.
+```sec
+let part := try ref values[start..<end]
+let writable := try ref mut values[start..<end]
+```
+
+Parenthesizing the reference expression is equivalent. A bare
+`try values[start..<end]` does not create a slice.
+
+The canonical core `RangeError` is selected in this order:
+
+1. A negative/invalid endpoint, or otherwise unrepresentable normalization,
+   produces `RangeError.InvalidRange`.
+2. An explicit start greater than the explicit represented end produces
+   `RangeError.StartAfterEnd`.
+3. Start beyond source length, exclusive end beyond source length, or
+   inclusive end at or beyond source length produces `RangeError.OutOfBounds`.
+
+These checks retain their precedence under optimization; valid inclusive
+normalization must not introduce an intermediate target-width overflow.
+
+Evaluate the source and endpoints before validation. If the source slice
+requires dynamic direct-reference validation, validate generation/provenance
+before checking spatial bounds. A stale slice takes
+`panic.invalid-reference-generation`; `try` converts only the spatial
+`RangeError`, never stale-reference failure.
+
+Slice element indexing follows `0 <= index < slice.Len`. A fallible spatial
+failure is `IndexError.OutOfBounds`; ordinary failure is `panic.bounds` with
+`slice-index` provenance. Reference validity likewise precedes the spatial
+check. No separate `BoundsError` is introduced.
 
 Safe bounds checking remains required inside `unsafe`.
 

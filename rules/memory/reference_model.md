@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-10-11 (SEC-MLIR-P15 reference synchronization, § 76(2))
+- Last updated: 2026-10-19 (P16-04 slice facts, § 14(8)–(12))
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/reference_model.md`
@@ -374,6 +374,35 @@ address-space compatibility.
 § 14(6) An empty slice may use a hidden null/sentinel physical base only when length is zero, the base is never dereferenced, no scalar safe reference is fabricated from it, and all operations respect zero length.
 
 § 14(7) This representation detail does not make safe references nullable.
+
+§ 14(8) `ref T[]` is a copyable shared bounded reference; `ref mut T[]` is a
+move-only exclusive bounded reference. Both are trivially destructible and
+non-owning. Copy/move transfers reference-value facts without copying/moving
+elements; ending the borrow does not destroy elements or backing storage.
+
+§ 14(9) A normalized slice extent is the half-open range
+`[start, endExclusive)`. Static endpoints and nested composition retain
+arbitrary precision. Dynamic/symbolic ranges remain conservatively overlapping
+unless proven disjoint. An empty slice retains origin, borrow, lifetime and
+storage dependencies; emptiness does not create permission to outlive storage.
+
+§ 14(10) Reborrowing preserves compatible storage identity, address space,
+epoch dependency, address stability and separate pin dependency, and cannot
+widen source range, lifetime or authority. These facts reuse the direct
+reference model; a slice introduces no parallel generation or runtime borrow
+system. `rules/collections/collections.md` §§ 7.3–7.6 owns source construction
+and range-error rules.
+
+§ 14(11) After source/endpoints/index evaluation, required dynamic
+reference-generation/provenance validation precedes spatial range/index
+checking. `try` converts spatial `RangeError` / `IndexError` only. A stale
+ordinary direct slice takes the § 76(2)
+`panic.invalid-reference-generation` path, including inside `try` or `unsafe`.
+
+§ 14(12) `slice.Len` and `len(slice)` observe the same exact non-consuming
+`uint` element count. Slice `==`/`!=` are invalid in Sec 0.1; ordinary scalar
+reference equality is not extended to slices.
+
 
 ---
 

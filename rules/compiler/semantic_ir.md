@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-18 (§ 123 atomic fence, MD-096; earlier: MD-061 explicit reborrow and optimization safety, § 46(10)-(13))
+- Last updated: 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -465,6 +465,8 @@ lifetime/storage dependency
 § 16(4) Range values preserve inclusive/exclusive bound semantics until canonical iteration/index lowering has made them explicit.
 
 § 16(5) Slice/view creation does not imply ownership of backing storage.
+
+§ 16(6) The detailed borrowed-slice value, range, validity, Place and verifier contract is § 126. Owning dynamic `T[]` remains a separate semantic category.
 
 ---
 
@@ -2619,6 +2621,8 @@ target-plan-specific derived facts
 
 § 106(4) No long-term external compatibility guarantee is required before the format is declared stable.
 
+§ 106(5) This rulebook's document revision (2.0) is distinct from the executable Semantic IR schema version (currently 1). Installing the P16 slice amendment does not itself require an executable schema bump. Sec MLIR dialect/lowering version 12 is a third, independent version; it neither changes the document revision nor promotes the compiler's default emission schema.
+
 ---
 
 ## § 107 Determinism
@@ -3018,3 +3022,362 @@ atomic.fence order=SeqCst
 ## § 125 Character comparison through integer comparison
 
 § 125(1) Comparison of two `char` or two `rune` operands (`==`, `!=`, `<`, `<=`, `>`, `>=`) reuses `int.compare`. Sema may record character-specific operator kinds for typing and diagnostics; Semantic IR keeps the `char`/`rune` operand types and provenance on `int.compare`, and its verifier admits same-type character operands under this contract while rejecting mismatched character types. Sec MLIR `sec.int.cmp` likewise admits `!sec.char` / `!sec.rune`, and lowering via `char -> ui8` and `rune -> ui32` makes relational predicates unsigned; the result is `bool`. No separate character comparison operation exists, and this adds no character arithmetic (`rules/foundations/operators.md`, "Rune ordering"; MD-105, 2026-10-18).
+
+
+---
+
+## § 126 Slice semantic values (SEC-MLIR-P16)
+
+Installed 2026-10-19 from all 26 sections of
+`rules/mlir/semantic-ir/sec_semantic_ir_slice_v1.md`, with the current unsigned
+length and P15 address-stability decisions applied. This is a normative
+representation contract, not a claim of complete implementation. Existing
+§§ 45–48 continue to own Place/reference semantics.
+
+### § 126.1 Slice semantic category
+
+A slice is a bounded direct safe reference over a contiguous sequence.
+
+Canonical source categories:
+
+```text
+shared slice:  ref T[]
+mutable slice: ref mut T[]
+```
+
+They are distinct from owning dynamic `T[]`.
+
+---
+
+### § 126.2 Slice value facts
+
+A slice value retains:
+
+```text
+element TypeID
+shared/mutable authority
+runtime length
+normalized spatial range
+origin Places
+storage identities
+BorrowID
+LifetimeID
+validity policy
+epoch dependency
+address stability and separate pin dependency
+address space
+```
+
+These facts may be attached to the value or stored in an analysis side table.
+
+---
+
+### § 126.3 Runtime length
+
+Slice runtime length is semantic value data.
+
+It is not part of type identity.
+
+Two slices of the same element type and authority but different lengths have
+the same source type.
+
+---
+
+### § 126.4 Normalized range
+
+Every valid slice range uses canonical half-open form:
+
+```text
+[start, endExclusive)
+```
+
+Static endpoints use arbitrary precision.
+
+Dynamic endpoints use stable compiler analysis identity.
+
+---
+
+### § 126.5 Empty slices
+
+Length-zero slices are valid.
+
+They retain origin/borrow facts even though no element can be accessed.
+
+No element Place may be produced without a successful bounds proof/check.
+
+---
+
+### § 126.6 Explicit construction
+
+Semantic IR produces a source slice only from an explicit source borrow or
+reborrow plan.
+
+A bare source SliceExpression is not enough.
+
+---
+
+### § 126.7 Fixed-array slice borrow
+
+Slice borrow from a fixed-array Place records:
+
+```text
+source Place
+normalized start
+normalized length
+BorrowID/LifetimeID
+shared/mutable authority
+reference validity facts
+```
+
+It does not copy the array.
+
+---
+
+### § 126.8 Slice reborrow
+
+Reborrow from another slice:
+
+```text
+preserves storage identity
+narrows/equal spatial extent
+narrows/equal lifetime
+preserves or weakens authority
+preserves compatible epoch/address-stability/pin/address-space facts
+```
+
+Shared cannot become mutable.
+
+---
+
+### § 126.9 Shared slice copy
+
+Shared slice copy is explicit semantic reference-value copy.
+
+It does not copy elements.
+
+---
+
+### § 126.10 Mutable slice move
+
+Mutable slice transfer is move-only.
+
+It transfers holder/exclusive-reference value semantics.
+
+It does not move elements.
+
+---
+
+### § 126.11 Range normalization
+
+Semantic IR distinguishes:
+
+```text
+proven range normalization
+runtime range check
+```
+
+A proven range produces normalized start/length with proof provenance.
+
+A runtime check additionally produces:
+
+```text
+failed
+RangeError
+```
+
+---
+
+### § 126.12 Range error identity
+
+Fallible slice range uses the canonical core `RangeError`.
+
+No slice-specific error representation is introduced.
+
+---
+
+### § 126.13 Ordinary range failure
+
+Ordinary unhandled range failure reaches the canonical bounds panic path with
+slice-range provenance.
+
+---
+
+### § 126.14 Slice length
+
+`SliceLength -> uint` represents both source `.Len` and compiler-known
+`len(slice)`. Both observe the same non-consuming element count. Length
+observation evaluates its operand once, does not allocate and retains the
+reference-validity obligations of that operand.
+
+There is no signed `SliceLengthInt` operation, implicit narrowing or signed
+representability gate. A signed offset requires a separate explicit checked
+conversion under the ordinary conversion rules
+(`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`
+§§ 1–3).
+
+---
+
+### § 126.15 Element indexing
+
+Slice indexing produces a semantic Place.
+
+It does not inherently copy/move/borrow the element.
+
+Element use context consumes the Place through the P15 place/reference model.
+
+---
+
+### § 126.16 Index bounds
+
+Slice index validity:
+
+```text
+0 <= index < runtime slice length
+```
+
+Semantic IR distinguishes proven-safe and runtime-checked access.
+
+Runtime-checked element Place formation is control-flow guarded.
+
+---
+
+### § 126.17 Index error identity
+
+Fallible slice index uses:
+
+```text
+IndexError.OutOfBounds
+```
+
+Ordinary failure uses:
+
+```text
+panic.bounds
+```
+
+No parallel BoundsError type.
+
+---
+
+### § 126.18 Temporal before spatial validity
+
+When a source slice requires dynamic reference validation, that validation
+dominates the spatial range/index operation.
+
+`try` converts only the spatial failure.
+
+---
+
+### § 126.19 Element read/write/borrow
+
+Semantic IR does not add separate ownership operations for slice elements.
+
+Use existing P15:
+
+```text
+PlaceRead
+PlaceWrite
+ReferenceBorrowShared
+ReferenceBorrowMutable
+```
+
+on the slice element Place.
+
+---
+
+### § 126.20 Ownership boundary
+
+P16 complete whole-value element reads/replacements support the existing trivial
+subset only.
+
+Moving an element out of a slice is not introduced.
+
+---
+
+### § 126.21 Borrow end
+
+Slice lifetime end reuses the canonical direct-reference borrow-end marker.
+
+Slice destruction does not destroy elements or backing storage.
+
+---
+
+### § 126.22 Returned slices
+
+Function return metadata extends direct-reference origin summary with:
+
+```text
+slice element type
+authority
+origin storage class
+known normalized range where available
+conservative unknown range where not
+epoch/address-stability/pin dependencies
+```
+
+Returning local-origin slices remains invalid.
+
+---
+
+### § 126.23 Dynamic owning sequence boundary
+
+Owning `T[]` is not represented as a slice.
+
+P16 new IR may reject a dynamic-owner-to-slice source until owning dynamic-array
+Semantic IR exists.
+
+---
+
+### § 126.24 Physical layout separation
+
+Semantic IR does not define:
+
+```text
+base pointer field
+length field storage type
+epoch field
+fat-pointer struct
+FFI layout
+```
+
+Profile lowering decides the descriptor representation later.
+
+---
+
+### § 126.25 Verifier
+
+Semantic IR verifier must validate:
+
+```text
+shared/mutable slice kind
+range normalization/proof
+range failure/error CFG
+range narrowing on reborrow
+shared/mutable authority
+shared copy / mutable move
+runtime length type
+slice index guard
+element Place type/authority
+reference validity ordering
+BorrowID/LifetimeID
+returned-origin legality
+no owning dynamic array conflation
+```
+
+---
+
+### § 126.26 Deterministic printer
+
+Print:
+
+```text
+slice kind
+element type
+BorrowID/LifetimeID
+validity policy
+storage identity
+known normalized range
+dynamic SliceRangeID
+```
+
+Do not print physical address assumptions.

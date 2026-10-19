@@ -149,6 +149,7 @@ integrations:
       - internal/sema/analyzer_temporal.go
       - internal/sema/static.go
       - cmd/lsp/main.go
+      - internal/sema/compiler_known_functions.go
     tests:
       - internal/sema/corehelpers/generated_identity_test.go
       - testdata/core/generated_identity
@@ -195,7 +196,9 @@ integrations:
       - Iterator registry completion is the compile-time interface/conformance boundary; it introduces no interface object, virtual dispatch or new MLIR operation. Existing iterator dependency, readiness, ownership and maintained lowering integrations retain their scopes. Compiler-known-surfaces remaining decreases from 9 to 8 and core total from 14 to 13. Broader compiler/LSP registry sharing remains separately listed.
       - "this closes the compiler-authority/visibility boundary only: no new MLIR operation or inline MLIR/LLVM source syntax is introduced. The existing LLVM string-slice descriptor emission remains the compatibility implementation, and core.string-slice-helper keeps its five low-level syntax, migration, compatibility-removal and lifetime requirements; MD-052 remains open. Internal callable representation is separately deferred until the real helper migration supplies a callable body. Compiler-known-surfaces remaining decreases from 10 to 9, and core total from 15 to 14."
     verification:
-      - command: go test ./cmd/compiler -run 'TestByteStringDecodingBelongsToStdlibStr|TestStringUTF8Positions' -count=1 && go test ./internal/sema -run 'TestRegistryHasNoPublicByteDecoder|TestStringConstructors' -count=1 
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-19 after extracting global compiler-known/internal function inference into compiler_known_functions.go and routing slice len observations through canonical P15 use facts for P16-18
+      - command: go test ./cmd/compiler -run 'TestByteStringDecodingBelongsToStdlibStr|TestStringUTF8Positions' -count=1 && go test ./internal/sema -run 'TestRegistryHasNoPublicByteDecoder|TestStringConstructors' -count=1
         result: passed on 2026-10-18; MD-091 Sema boundary (core-only capability)
       - command: go test ./internal/sema -run 'TestResolvedSliceCreation|TestSliceCreationRejects|TestSliceRangeErrorCoreIdentity' -count=1
         result: passed on 2026-10-18; source and fallback core RangeError identity and detached slice error facts

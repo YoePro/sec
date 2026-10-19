@@ -79,6 +79,47 @@ LogicalResult RefMutType::verify(function_ref<InFlightDiagnostic()> emitError,
   return verifyReferentType(emitError, "sec.ref_mut", elementType);
 }
 
+// verifySliceElementType validates a non-void semantic value element without
+// choosing layout or copy/move support. Shared/mutable reference and nested
+// slice values retain their own identities; compiler-only Places/storage and
+// function signatures are not slice elements, including through nominal bases.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md sections 31-32,88-90;
+// rules/mlir/dialect-versions/sec_mlir_dialect_v12.md sections 2-4.
+static LogicalResult verifySliceElementType(
+    function_ref<InFlightDiagnostic()> emitError, StringRef kind,
+    Type elementType) {
+  Type value = elementType;
+  while (value) {
+    if (auto named = dyn_cast<NamedType>(value)) {
+      value = named.getBase();
+      continue;
+    }
+    if (auto distinct = dyn_cast<DistinctType>(value)) {
+      value = distinct.getBase();
+      continue;
+    }
+    break;
+  }
+  if (!value || isa<NoneType, NeverType, FunctionType, StorageType, PlaceType>(value))
+    return emitError() << kind << " element must be a non-void semantic value, not a Place, storage, never or function signature";
+  return success();
+}
+
+// SliceType::verify preserves shared slice identity by element type alone.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md section 2.
+LogicalResult SliceType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                Type elementType) {
+  return verifySliceElementType(emitError, "sec.slice", elementType);
+}
+
+// SliceMutType::verify retains exclusive move-only slice authority as a
+// distinct type, without embedding bounds, storage or physical representation.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md section 3.
+LogicalResult SliceMutType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                   Type elementType) {
+  return verifySliceElementType(emitError, "sec.slice_mut", elementType);
+}
+
 LogicalResult CoreErrorType::verify(
     function_ref<InFlightDiagnostic()> emitError, StringAttr identity) {
   if (!identity || identity.getValue().empty())

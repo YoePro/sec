@@ -224,6 +224,9 @@ integrations:
       - internal/sema/place.go
       - internal/sema/types.go
       - internal/sema/escape_analysis.go
+      - internal/sema/reference_inference.go
+      - internal/sema/reference_return_origins.go
+      - internal/sema/reference_contained_origins.go
     implemented:
       - semantic reference types carry origin metadata including source symbol/token, local-storage indication and known storage origin
       - ref creation attaches origin metadata and local reference variables preserve it
@@ -260,6 +263,11 @@ integrations:
       - mutable-reference move transfers holder and granting borrow
       - arena reset invalidates prior reference
       - reference equality uses live storage identity plus location
+    verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-19 after focused return/contained-origin extraction from analyzer.go; scalar/direct-reference predecessors retained. P16 slice transfer/range/matrix changes remain owned by lowering.sec-mlir-package16; this closes no broader P15 or reference-v2 acceptance gap
+      - command: go test ./internal/sema ./internal/ir/semantic -count=1
+        result: "passed on 2026-10-19 after P16-11: cohesive inferRefExpression extracted into reference_inference.go; current direct-reference regressions retained. Slice-specific ordered operands and post-operand borrow checks stay owned by lowering.sec-mlir-package16"
 
   - id: frontend.reference-model
     area: reference-validity-and-category-model

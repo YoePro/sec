@@ -1,0 +1,6 @@
+module other
+
+fn Borrow(values: int[4]) void {
+    let view := ref values[..]
+    discard view
+}

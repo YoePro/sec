@@ -2,6 +2,12 @@
 
 ## Status
 
+> Installed 2026-10-19 in `rules/mlir/sec_mlir_dialect.md` (v12.1–v12.33). This input preserves
+> its original package text for history. Current integration follows that
+> consolidated rulebook and `rules/corrections/applied/p16-slice-ir-schema12-synchronization-20261019.md`: unsigned `.Len`/`len`, address
+> stability plus separate pin dependency, and specification/implementation
+> version separation supersede the corresponding historical assumptions here.
+
 Normative detailed representation specification.
 
 Current Sec MLIR dialect schema version: `12`

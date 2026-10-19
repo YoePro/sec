@@ -1,0 +1,59 @@
+module main
+
+fn Forms(values: int[8]) uint {
+    let full := ref values[..]
+    let tail := ref values[2..]
+    let inclusiveHead := ref values[..2]
+    let exclusiveHead := ref values[..<2]
+    let inclusive := ref values[1..2]
+    let exclusive := ref values[1..<3]
+    let empty := ref values[8..<8]
+    let singleton := ref values[7..7]
+    return full.Len + tail.Len + inclusiveHead.Len + exclusiveHead.Len + inclusive.Len + exclusive.Len + empty.Len + singleton.Len
+}
+
+fn Dynamic(values: int[8], start: int128, finish: uint256) uint {
+    let dynamic := ref values[start..<finish]
+    return dynamic.Len
+}
+
+fn Disjoint() int {
+    let mut values: int[8]
+    let parent := ref mut values[1..<7]
+    let left := ref mut parent[..<2]
+    let right := ref mut parent[3..<5]
+    left[0] = 1
+    right[0] = 2
+    return left[0] + right[0]
+}
+
+fn Empty() uint {
+    let mut values: int[0]
+    let first := ref mut values[..]
+    let second := ref mut values[..]
+    return first.Len + second.Len
+}
+
+fn Outside() int {
+    let mut values: int[8]
+    let slice := ref mut values[..<2]
+    values[7] = 9
+    return slice[0] + values[7]
+}
+
+fn SharedFromMutable() uint {
+    let mut values: int[4]
+    let source := ref mut values[..]
+    let shared := ref source[1..<3]
+    return shared.Len
+}
+
+@noCopy
+type Resource struct { Value: int }
+
+fn NonCopyElements() uint {
+    let mut values: Resource[2]
+    let shared := ref values[..]
+    let copied := shared
+    return shared.Len + copied.Len
+}

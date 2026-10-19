@@ -39,6 +39,7 @@ type ResolvedSliceEndpoint struct {
 }
 
 type ResolvedSliceCreationPlan struct {
+	EvaluationOrder []SliceOperand
 	Mode            ResolvedSliceMode
 	SourceKind      ResolvedSliceSourceKind
 	ElementType     Type
@@ -76,6 +77,17 @@ func (a *Analyzer) resolvedSliceEndpoint(expr ast.Expression) ResolvedSliceEndpo
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 32, 36, 59–62.
 func (a *Analyzer) sliceSourcePlace(expr ast.Expression, typ Type) (Place, bool) {
 	place, ok := a.resolvePlace(expr)
+	if !ok && typ.Kind == ReferenceType && typ.Element != nil {
+		// A returned reference is a value with existing P15 origin facts, not
+		// a fresh temporary storage root. Reuse those facts without re-calling
+		// or re-inferring its source expression.
+		// Rules: rules/memory/borrowing.md §§12,15;
+		// rules/mlir/packages/sec-mlir-dialect_package16.md §§17,32,39–43.
+		place, ok = a.referencePlaceOrigin(expr)
+		if ok {
+			place.Type = typ
+		}
+	}
 	if !ok {
 		return Place{}, false
 	}
@@ -114,7 +126,8 @@ func (a *Analyzer) recordSliceCreationPlan(ref *ast.RefExpression) {
 	if !ok {
 		return
 	}
-	plan := ResolvedSliceCreationPlan{Mode: SliceShared, ElementType: *container.Element,
+	plan := ResolvedSliceCreationPlan{EvaluationOrder: sliceEvaluationOrder(rangeExpr.Start != nil, rangeExpr.End != nil),
+		Mode: SliceShared, ElementType: *container.Element,
 		SourcePlace: source, SourceSliceType: sourceType, Start: a.resolvedSliceEndpoint(rangeExpr.Start),
 		End: a.resolvedSliceEndpoint(rangeExpr.End), EndExclusive: rangeExpr.Exclusive,
 		CheckKind: SliceRangeRuntimeCheck, ReferenceFacts: reference,
@@ -139,17 +152,9 @@ func (a *Analyzer) recordSliceCreationPlan(ref *ast.RefExpression) {
 	facts := SliceRangeEndpoints{Start: plan.Start.Constant, End: plan.End.Constant,
 		StartOmitted: !plan.Start.Present, EndOmitted: !plan.End.Present,
 		Inclusive: !plan.EndExclusive, Length: plan.SourceLength}
-	if ClassifySliceRange(facts).Failure != SliceRangeValid {
+	start, end, classification := normalizeSliceRange(facts)
+	if classification.Failure != SliceRangeValid {
 		return
-	}
-	start, end := clonePlaceConstantIndex(facts.Start), clonePlaceConstantIndex(facts.End)
-	if !plan.Start.Present {
-		start = new(big.Int)
-	}
-	if !plan.End.Present {
-		end = clonePlaceConstantIndex(plan.SourceLength)
-	} else if end != nil && !plan.EndExclusive {
-		end.Add(end, big.NewInt(1))
 	}
 	if start != nil && end != nil {
 		plan.StaticRange = &StaticSliceRange{start, end}
@@ -163,7 +168,14 @@ func (a *Analyzer) recordSliceCreationPlan(ref *ast.RefExpression) {
 	if raw := a.resolvedPlaces[rangeExpr]; len(raw.Projections) > 0 {
 		plan.DynamicRange = raw.Projections[len(raw.Projections)-1].DynamicRange
 	}
+	// The complete open range is valid for every extent, including zero;
+	// this proof does not invent a numeric source length or static range.
+	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§16,78,119.
+	if !plan.Start.Present && !plan.End.Present {
+		plan.CheckKind, plan.ProofKind = SliceRangeProvenSafe, "source-open-bound"
+	}
 	a.resolvedSliceCreationPlans[ref] = cloneSliceCreationPlan(plan)
+	a.recordSliceRangeEffect(ref, plan)
 }
 
 // ResolvedSliceCreationPlanOf reads a recorded plan without evaluating
@@ -200,7 +212,11 @@ func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expres
 	// Resolve the original endpoint types in source order. The slice plan
 	// retains these facts rather than re-inferring them from a later query.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 17, 35–37.
-	for _, endpoint := range []ast.Expression{expr.Start, expr.End} {
+	for _, operand := range sliceEvaluationOrder(expr.Start != nil, expr.End != nil)[1:] {
+		endpoint := expr.Start
+		if operand == SliceOperandEnd {
+			endpoint = expr.End
+		}
 		if endpoint != nil {
 			endpointType, _ := a.inferExpression(endpoint)
 			if endpointType.Kind == InvalidType {

@@ -67,6 +67,7 @@ func TestSlicePlanQueriesAreDetachedAndReadOnly(t *testing.T) {
 		}
 		for repeat := 0; repeat < 3; repeat++ {
 			changed, _ := a.ResolvedSliceCreationPlanOf(expr)
+			changed.EvaluationOrder[0] = SliceOperandEnd
 			mutateSliceQueryType(&changed.ElementType)
 			mutateSliceQueryType(&changed.SourceSliceType)
 			mutateSliceQueryType(&changed.Start.Type)

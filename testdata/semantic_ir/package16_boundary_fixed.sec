@@ -1,0 +1,10 @@
+module main
+
+fn Ready() int {
+    return 1
+}
+
+fn Borrow(values: int[4]) void {
+    let view := ref values[1..<3]
+    discard view
+}

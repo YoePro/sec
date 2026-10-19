@@ -1141,6 +1141,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	if member, ok := compilerKnownMember(objectType, expr.Property.Value, false); ok && member.Kind == CompilerKnownProperty {
 		a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
+		if member.Name == "Len" && objectType.Kind == SliceType {
+			a.recordSliceLengthUse(expr, expr.Object)
+		}
 		if member.Name == "OkRef" || member.Name == "ErrRef" {
 			return a.inferBorrowedResultProjection(expr, objectType, member)
 		}
@@ -1507,53 +1510,6 @@ func (a *Analyzer) inferStringPointerIndex(expr *ast.IndexExpression) (Type, boo
 		return Type{Kind: InvalidType}, true
 	}
 	return a.types["byte"], true
-}
-
-// inferRefExpression preserves the shared or mutable access mode on indexed
-// element Places after their collection-specific type and bounds resolution.
-//
-// Rules:
-//   - rules/collections/collections.md — §8.1 "General rule" and §19 "Borrowing and structural mutation"
-func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expressionValue) {
-	if a.checkBorrowCreation(expr.Value, expr.Mutable, expr.Token) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	valueType, _ := a.inferExpression(expr.Value)
-	if valueType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	if index, ok := expr.Value.(*ast.IndexExpression); ok {
-		use := ArrayIndexBorrow
-		if expr.Mutable {
-			use = ArrayIndexMutBorrow
-		}
-		a.setResolvedIndexUse(index, use)
-	}
-	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Value)
-	if place, placed := a.resolvePlace(expr.Value); placed {
-		a.recordReferencePlan(expr, place, expr.Mutable, false, expr.Token)
-		a.recordSliceCreationPlan(expr)
-	}
-	// MD-061: `ref r`/`ref mut r` over a reference holder is an explicit
-	// reborrow of the holder's referent: ref T (or ref mut T), never a
-	// reference to the holder (ref ref T).
-	if valueType.Kind == ReferenceType && valueType.Element != nil {
-		valueType = *valueType.Element
-		a.reportExplicitReborrow(expr, originName, valueType)
-	}
-	return Type{
-		Name:                        referenceTypeName(valueType, expr.Mutable),
-		Kind:                        ReferenceType,
-		Element:                     &valueType,
-		ReferenceMutable:            expr.Mutable,
-		ReferenceOriginName:         originName,
-		ReferenceOriginToken:        originToken,
-		ReferenceOriginLocal:        originLocal,
-		ReferenceOriginStorage:      originStorage,
-		ReferenceOriginGeneration:   generation,
-		ReferenceOriginMatchScoped:  a.referenceOriginMatchScopedForExpression(expr.Value),
-		ReferenceOriginAlternatives: a.referenceOriginAlternativesForExpression(expr.Value),
-	}, expressionValue{Display: expr.String()}
 }
 
 // inferEnumValueExpression resolves a qualified enum member against either its
@@ -2413,78 +2369,6 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-}
-
-func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	name := callExpressionName(expr)
-	knownFunction, known := compilerKnownFunction(name)
-	if !known {
-		return Type{}, expressionValue{}, false
-	}
-	if knownFunction.Internal {
-		return a.inferCompilerInternalFunction(expr, knownFunction)
-	}
-	if name == "fill" {
-		expected, hasExpected := a.expectedExpressionTypes[expr]
-		return a.inferCompilerKnownFill(expr, expected, hasExpected)
-	}
-	if len(expr.GenericArguments) > 0 {
-		a.addErrorAtToken(expr.Token, "len infers its element type from its argument")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Token, "len expects 1 argument, got %d", len(expr.Arguments))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	argumentType, _ := a.inferExpression(expr.Arguments[0])
-	if argumentType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if compilerKnownSequenceType(argumentType) {
-		// The registry result: uint, the same count as .Len (MD-074/MD-088).
-		return knownFunction.Result, expressionValue{Display: expr.String()}, true
-	}
-
-	a.addErrorAtToken(expressionToken(expr.Arguments[0]), "len requires a compiler-known sequence or collection, got %s", typeDisplayName(argumentType))
-	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-}
-
-func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known CompilerKnownFunction) (Type, expressionValue, bool) {
-	result := expressionValue{Display: expr.String()}
-	if !a.isTrustedCoreSourceToken(expr.Token) {
-		a.addErrorAtToken(expr.Token, "%s is a compiler-internal operation available only to privileged core source", known.Name)
-		return Type{Kind: InvalidType}, result, true
-	}
-	if known.OwnerFile != "" && !sourceFileMatchesOwner(expr.Token.File, known.OwnerFile) {
-		a.addErrorAtToken(expr.Token, "%s is private to %s", known.Name, known.OwnerFile)
-		return Type{Kind: InvalidType}, result, true
-	}
-	if len(expr.GenericArguments) > 0 {
-		a.addErrorAtToken(expr.Token, "%s does not accept generic arguments", known.Name)
-		return Type{Kind: InvalidType}, result, true
-	}
-	if len(expr.Arguments) != len(known.Parameters) {
-		a.addErrorAtToken(expr.Token, "%s expects %d arguments, got %d", known.Name, len(known.Parameters), len(expr.Arguments))
-		return Type{Kind: InvalidType}, result, true
-	}
-
-	if known.ID == "CKF-STRING-FROM-UTF8" {
-		return a.inferStringFromUtf8Intrinsic(expr, known)
-	}
-
-	valid := true
-	for index, parameter := range known.Parameters {
-		actual, _ := a.inferExpressionWithExpected(expr.Arguments[index], parameter.Type)
-		if !a.canInitialize(parameter.Type, actual, expr.Arguments[index]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[index]), "argument %d to %s must be %s, got %s", index+1, known.Name, typeDisplayName(parameter.Type), typeDisplayName(actual))
-			valid = false
-		}
-	}
-	if !valid {
-		return Type{Kind: InvalidType}, result, true
-	}
-	return a.refinedCompilerKnownType(known.Result), result, true
 }
 
 func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression, member CompilerKnownMember) (Type, expressionValue, bool) {

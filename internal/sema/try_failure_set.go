@@ -20,6 +20,8 @@ const (
 	TryFailureArithmetic TryFailureKind = "arithmetic"
 	// TryFailureBounds is a runtime-checked index (IndexError).
 	TryFailureBounds TryFailureKind = "bounds"
+	// TryFailureSliceRange is an explicit slice borrow range (RangeError).
+	TryFailureSliceRange TryFailureKind = "slice-range"
 	// TryFailureContract is a runtime conversion into a constrained named
 	// type (canonical ConversionError for strings; other families still use the
 	// legacy ContractError channel pending MD-012 runtime integration).
@@ -125,6 +127,9 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			}
 		case *ast.RefExpression:
 			visit(node.Value)
+			if plan, ok := a.resolvedSliceCreationPlans[node]; ok && plan.CheckKind == SliceRangeRuntimeCheck {
+				points = append(points, TryFailurePoint{Kind: TryFailureSliceRange, ErrorType: plan.ErrorType, Expression: node, Token: node.Token})
+			}
 		case *ast.ArrayLiteral:
 			for _, element := range node.Elements {
 				visit(element)
@@ -383,6 +388,8 @@ func (a *Analyzer) commitTryFailurePoints(points []TryFailurePoint) {
 			a.resolveArithmeticFailureEffect(point.Expression)
 		case TryFailureContract:
 			a.resolveContractFailureEffect(point.Expression.(*ast.CallExpression))
+		case TryFailureSliceRange:
+			a.callGraph.removeEffect(a.currentCallable, EffectMayPanicBounds, point.Token)
 		case TryFailureBounds:
 			index := point.Expression.(*ast.IndexExpression)
 			a.callGraph.removeEffect(a.currentCallable, EffectMayPanicBounds, expressionToken(index))

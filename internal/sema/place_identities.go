@@ -250,6 +250,7 @@ func samePlaceIdentity(left, right Place) bool {
 		rightProjection := right.Projections[index]
 		if leftProjection.Kind != rightProjection.Kind || leftProjection.Name != rightProjection.Name ||
 			leftProjection.DynamicRange != rightProjection.DynamicRange ||
+			(leftProjection.SliceEnd == nil && rightProjection.SliceEnd == nil && leftProjection.SliceEndOpen != rightProjection.SliceEndOpen) ||
 			!placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
 			!sliceBoundsEqual(leftProjection.SliceStart, rightProjection.SliceStart) || !sliceBoundsEqual(leftProjection.SliceEnd, rightProjection.SliceEnd) {
 			return false

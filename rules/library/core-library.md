@@ -80,7 +80,7 @@ Examples:
 value.ptr
 text.len
 array.len
-slice.len
+slice.Len
 len(text)
 len(array)
 len(slice)
@@ -1165,6 +1165,15 @@ property SizeOf: uint {
 }
 ```
 
+The `.Len` property and global `len(slice)` are the same exact, non-consuming
+`uint` element count (§ 1.4). No signed-length observation or implicit narrowing
+is introduced. Shared slices are copyable, mutable slices move-only; both are
+trivially destructible and own no elements. Their explicit range construction,
+canonical `RangeError` precedence and `IndexError.OutOfBounds` element checks
+are specified in `rules/collections/collections.md` §§ 7.1–7.6. Dynamic
+reference validity is checked first; spatial `try` handling never catches
+`panic.invalid-reference-generation`. Slice `==`/`!=` remain invalid.
+
 ## 13.2 Required shared-slice methods
 
 ```sec
@@ -1847,9 +1856,9 @@ Implemented:
 - Core impl bodies on built-in targets are semantically analyzed.
 - Compiler-known core function `len(...)` is semantically available without
   imports for strings, owning arrays/sequences and `ref`/`ref mut` slices. It
-  returns `int`, is shown by LSP global completion and rejects user
+  returns `uint`, is shown by LSP global completion and rejects user
   redeclaration.
-- `string.len`, array `.len` and slice `.len` are intrinsic members returning
+- `string.Len`, array `.Len` and slice `.Len` are intrinsic members returning
   `uint`.
 - `byte`, `char`, and `rune` arrays and slice views provide compiler-known
   `ToString()` text materialization, including fixed arrays such as `rune[2]`.

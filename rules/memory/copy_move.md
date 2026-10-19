@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-15
+- **Last updated:** 2026-10-19 (P16-04 bounded slice classification, § 4.4(4))
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/copy_move.md`
@@ -156,6 +156,15 @@ let moved :<- first           // valid: explicit transfer
 **§ 4.4(2)** `ref mut T` is move-only unless a separate reborrow operation is used. Copying a mutable reference would violate exclusivity.
 
 **§ 4.4(3)** `RawPtr[T]` is trivially copyable as an address value. Copying or moving a raw pointer does not imply ownership of pointed storage.
+
+**§ 4.4(4)** The bounded shared slice `ref T[]` is CopyTrivial; the exclusive
+bounded slice `ref mut T[]` is MoveOnly. Both are non-owning and trivially
+destructible. Copying/moving transfers reference-value semantics and retains
+the required origin, borrow, lifetime and validity facts; it never copies or
+moves elements. Ending a slice borrow destroys neither elements nor backing.
+These classifications do not depend on element copyability: element reads,
+writes and borrows retain their own operation requirements.
+
 
 ### § 4.5 `string`
 

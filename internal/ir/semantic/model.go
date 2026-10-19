@@ -427,8 +427,9 @@ type Parameter struct {
 	Name     string
 	Value    Value
 	Location Location
-	// Reference is the callee-side reference facts of a ref or ref mut
-	// parameter (sec-mlir-dialect package 15 § 59); nil for other parameters.
+	// Reference is the callee-side safe-reference facts of a direct ref or
+	// slice parameter (package15.md §59; package16.md §§31,44,64).
+	// It is nil for other parameters.
 	Reference *ReferenceMetadata
 }
 type Value struct {
@@ -719,6 +720,9 @@ type Operation struct {
 	// ConversionProof is required on numeric.convert-exact and
 	// enum.to-integer (MD-104).
 	ConversionProof *ConversionProof
+	// SliceRange retains original endpoint types and range proof provenance.
+	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§35,78–79.
+	SliceRange *SliceRangeMetadata
 	// UnsafeAuthorization is the source position of a call's direct
 	// `unsafe` prefix (MD-079); nil when the call carries no prefix.
 	UnsafeAuthorization *Location

@@ -15,12 +15,13 @@ import (
 const dialectSchemaVersion = 11
 
 type emitter struct {
-	module    *semantic.Module
-	types     map[semantic.TypeID]string
-	visiting  map[semantic.TypeID]bool
-	functions map[semantic.FunctionID]string
-	plan      layout.ResolvedScalarPlan
-	out       strings.Builder
+	schemaVersion uint32
+	module        *semantic.Module
+	types         map[semantic.TypeID]string
+	visiting      map[semantic.TypeID]bool
+	functions     map[semantic.FunctionID]string
+	plan          layout.ResolvedScalarPlan
+	out           strings.Builder
 }
 
 // Emit verifies Semantic IR version 1 and emits deterministic Sec MLIR schema
@@ -32,32 +33,7 @@ type emitter struct {
 //   - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md — sections 1-28
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 58-85
 func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, error) {
-	if err := semantic.Verify(module); err != nil {
-		return nil, fmt.Errorf("verify Semantic IR: %w", err)
-	}
-	if err := plan.Validate(); err != nil {
-		return nil, fmt.Errorf("validate scalar plan: %w", err)
-	}
-	if module.Version != semantic.Version {
-		return nil, fmt.Errorf("Semantic IR version %d is not supported", module.Version)
-	}
-	e := &emitter{
-		module: module, types: map[semantic.TypeID]string{},
-		visiting: map[semantic.TypeID]bool{}, functions: map[semantic.FunctionID]string{}, plan: plan,
-	}
-	if err := e.validatePackage14ArrayBoundaries(); err != nil {
-		return nil, err
-	}
-	if err := validateTryHandlerSchema(module); err != nil {
-		return nil, err
-	}
-	for index, function := range module.Functions {
-		e.functions[function.ID] = fmt.Sprintf("sec_fn_%d", index)
-	}
-	if err := e.emitModule(); err != nil {
-		return nil, err
-	}
-	return []byte(e.out.String()), nil
+	return EmitWithOptions(module, plan, EmitOptions{})
 }
 
 // validateTryHandlerSchema rejects Semantic IR handler plans the Sec MLIR
@@ -175,7 +151,7 @@ func (e *emitter) typeContainsFixedArray(id semantic.TypeID, visiting map[semant
 
 func (e *emitter) emitModule() error {
 	e.out.WriteString("module attributes {")
-	fmt.Fprintf(&e.out, "sec.dialect_version = %d : i32, ", dialectSchemaVersion)
+	fmt.Fprintf(&e.out, "sec.dialect_version = %d : i32, ", e.schemaVersion)
 	fmt.Fprintf(&e.out, "sec.semantic_ir_version = %d : i32, ", semantic.Version)
 	fmt.Fprintf(&e.out, "sec.module_id = %s, ", mlirString(e.module.Identity))
 	fmt.Fprintf(&e.out, "sec.target_os = %s, sec.target_arch = %s, ", mlirString(e.plan.TargetOS), mlirString(e.plan.TargetArch))

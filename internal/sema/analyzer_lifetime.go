@@ -279,6 +279,9 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 //   - rules/control-flow/discard.md — §§5, 19, 37
 //   - rules/tooling/diagnostics.md — §25
 func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) bool {
+	if handled, invalid := a.checkBorrowThroughTransferredParameter(place, token); handled {
+		return invalid
+	}
 	if assigned, tracked := a.assigned[place.Root]; tracked && !assigned {
 		a.addErrorAtToken(token, "cannot borrow uninitialized place %s", place.String())
 		return true

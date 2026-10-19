@@ -1,0 +1,6 @@
+module main
+
+fn Ready() int {
+    return 1
+}
+

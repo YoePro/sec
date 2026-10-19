@@ -1,0 +1,39 @@
+module main
+
+@noCopy
+type Ticket struct {
+    Number: uint
+}
+
+fn Source(values: ref int[4]) ref int[4] {
+    return values
+}
+
+fn Consume(-> ticket: Ticket) uint {
+    return ticket.Number
+}
+
+fn Observe(ticket: ref Ticket) uint {
+    return ticket.Number
+}
+
+fn SourceConsumes(values: ref int[4], -> ticket: Ticket) ref int[4] {
+    return values
+}
+
+fn MutableFromShared(values: int[4]) void {
+    let view := ref mut Source(ref values)[1..<2]
+    discard view
+}
+
+fn StartBeforeEnd(values: int[4]) void {
+    let ticket := Ticket { Number: 1u }
+    let view := ref values[Consume(<-ticket)..<Observe(ref ticket)]
+    discard view
+}
+
+fn SourceBeforeStart(values: int[4]) void {
+    let ticket := Ticket { Number: 1u }
+    let view := ref SourceConsumes(ref values, <-ticket)[Observe(ref ticket)..<3]
+    discard view
+}

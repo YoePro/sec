@@ -128,6 +128,9 @@ func verifyTypes(table *TypeTable) error {
 		if err := verifyRawPointerType(table, id, t); err != nil {
 			return err
 		}
+		if err := verifySliceType(table, id, t); err != nil {
+			return err
+		}
 		switch t.Kind {
 		case TypeArithmeticFailureReason:
 			if t.Base != 0 || t.Success != 0 || t.Error != 0 {
@@ -415,7 +418,7 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 			return err
 		}
 		paramDefs[p.Value.ID] = true
-		if _, isReference := referenceType(module.Types, p.Value.Type); isReference {
+		if directSafeReferenceType(module.Types, p.Value.Type) {
 			if p.Reference == nil {
 				return fmt.Errorf("reference parameter %s has no reference facts", p.Name)
 			}
@@ -515,6 +518,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
 		return err
 	}
+	if err := verifySliceRangeGuards(fn, blocks, dom); err != nil {
+		return err
+	}
 	if err := verifyResultGuards(module.Types, fn, blocks, values); err != nil {
 		return err
 	}
@@ -536,10 +542,13 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyUnionPayloadPlaces(fn, blocks, values, dom); err != nil {
 		return err
 	}
+	if err := verifySliceIndexGuards(module, fn, blocks, values, dom); err != nil {
+		return err
+	}
 	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
-	if err := verifyPlaceReferenceFunction(module, fn, blocks, values); err != nil {
+	if err := verifyPlaceReferenceFunction(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
 	return verifyReturnOrigins(module, fn)
@@ -634,6 +643,22 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	}
 	switch op.Kind {
+	case OpSliceIndexInBounds, OpSliceElementPlace:
+		if err := verifySliceIndexOperation(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpSliceCopyShared, OpSliceMoveMutable:
+		if err := verifySliceTransferOperation(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpSliceLength:
+		if err := verifySliceLengthOperation(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpSliceRangeNormalize, OpSliceRangeCheck:
+		if err := verifySliceRangeOperation(module, op, values); err != nil {
+			return err
+		}
 	case OpConstInt:
 		if len(op.Results) != 1 || op.Integer == nil {
 			return fmt.Errorf("invalid const.int")
@@ -679,6 +704,14 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpDiscardValue:
 		if err := verifyDiscardValue(op, storages); err != nil {
 			return err
+		}
+		// Slice destruction ends the holder through the canonical P15 marker;
+		// generic value discard cannot omit its borrow/lifetime facts.
+		// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §63.
+		if len(op.Operands) == 1 {
+			if typ, ok := module.Types.Lookup(values[op.Operands[0]].Type); ok && (typ.Kind == TypeSharedSlice || typ.Kind == TypeMutableSlice) {
+				return fmt.Errorf("slice discard requires ref.end-borrow with canonical holder facts")
+			}
 		}
 	case OpUnreachable:
 		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || !op.Synthesized || op.Reason == "" {
@@ -1008,7 +1041,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid bool.not")
 		}
 	case OpBoundsFailure:
-		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || op.ArrayOperation != "fixed-array-index" {
+		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || (op.ArrayOperation != "fixed-array-index" && op.ArrayOperation != "slice-index") {
 			return fmt.Errorf("invalid fail.bounds")
 		}
 	case OpAtomicFence:
@@ -1198,6 +1231,10 @@ func validArrayProof(proof ArrayIndexProofKind) bool {
 	}
 }
 
+// semanticIntegerSigned retains signedness through named integer types;
+// byte is an unsigned integer carrier, including in range endpoints.
+// Rules: rules/types/types.md — "Integer types";
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§15,35,78–79.
 func semanticIntegerSigned(types *TypeTable, id TypeID) (bool, bool) {
 	typ, ok := types.Lookup(id)
 	if !ok {
@@ -1209,7 +1246,7 @@ func semanticIntegerSigned(types *TypeTable, id TypeID) (bool, bool) {
 	switch typ.Kind {
 	case TypeInt:
 		return true, true
-	case TypeUint:
+	case TypeUint, TypeByte:
 		return false, true
 	default:
 		return false, false
@@ -1777,7 +1814,7 @@ func verifyArrayIndexGuards(module *Module, fn *Function, blocks map[BlockID]*Bl
 				trueBlock:  branch.Successors[0].Block,
 				falseBlock: branch.Successors[1].Block,
 			}
-			if failure := blocks[branch.Successors[1].Block]; !validArrayBoundsFailureBlock(module, failure, values) {
+			if failure := blocks[branch.Successors[1].Block]; !validSequenceBoundsFailureBlock(module, failure, values, "fixed-array-index") {
 				return fmt.Errorf("array bounds predicate %%%d has invalid failure endpoint", predicate)
 			}
 		}
@@ -1797,49 +1834,6 @@ func verifyArrayIndexGuards(module *Module, fn *Function, blocks map[BlockID]*Bl
 		}
 	}
 	return nil
-}
-
-// validArrayBoundsFailureBlock accepts either the ordinary terminating bounds
-// endpoint or typed IndexError.OutOfBounds propagation/handler flow. Rules:
-// rules/mlir/packages/sec-mlir-dialect_package14.md sections 48-54.
-func validArrayBoundsFailureBlock(module *Module, block *Block, values map[ValueID]Value) bool {
-	if block == nil || len(block.Operations) == 0 {
-		return false
-	}
-	if len(block.Operations) == 1 {
-		failure := block.Operations[0]
-		return failure.Kind == OpBoundsFailure && failure.ArrayOperation == "fixed-array-index"
-	}
-	constant := block.Operations[0]
-	if constant.Kind != OpEnumConstant || len(constant.Results) != 1 {
-		return false
-	}
-	definition, ok := enumDefinition(module, constant.Results[0].Type)
-	if !ok || definition.SymbolID != "core::IndexError" || int(constant.EnumCase) >= len(definition.Cases) || definition.Cases[constant.EnumCase].Name != "OutOfBounds" {
-		return false
-	}
-	errorValue := constant.Results[0].ID
-	construct := block.Operations[1]
-	if construct.Kind != OpResultErr {
-		// A locally handled fallible bounds edge may execute the selected handler
-		// directly after materializing the sole concrete IndexError variant. The
-		// shared try-handler verifier validates its dispatch/merge metadata.
-		for _, operation := range block.Operations[1:] {
-			if operation.Kind == OpBoundsFailure {
-				return false
-			}
-		}
-		return block.Operations[len(block.Operations)-1].IsTerminator()
-	}
-	if len(construct.Operands) != 1 || construct.Operands[0] != errorValue || len(construct.Results) != 1 {
-		return false
-	}
-	result, ok := module.Types.Lookup(construct.Results[0].Type)
-	if !ok || result.Kind != TypeResult || result.Error != values[errorValue].Type {
-		return false
-	}
-	last := block.Operations[len(block.Operations)-1]
-	return len(block.Operations) == 3 && last.Kind == OpReturn && len(last.Operands) == 1 && last.Operands[0] == construct.Results[0].ID
 }
 
 // reachableAvoiding reports whether target is reachable from from without

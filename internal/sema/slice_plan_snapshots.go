@@ -3,6 +3,7 @@ package sema
 // cloneSliceCreationPlan detaches every mutable endpoint/type/origin fact.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 25, 37.
 func cloneSliceCreationPlan(plan ResolvedSliceCreationPlan) ResolvedSliceCreationPlan {
+	plan.EvaluationOrder = append([]SliceOperand(nil), plan.EvaluationOrder...)
 	plan.ElementType = semanticSnapshotType(plan.ElementType)
 	plan.SourceSliceType = semanticSnapshotType(plan.SourceSliceType)
 	plan.SourcePlace = cloneSlicePlanPlace(plan.SourcePlace)

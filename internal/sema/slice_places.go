@@ -40,6 +40,7 @@ func (a *Analyzer) slicePlaceProjectionWithLength(expr *ast.SliceExpression, con
 			projection.DynamicRange = a.placeIdentities.sliceRange(fmt.Sprintf("slice:%s:%d:%d", location.File, location.Line, location.Column))
 		}
 	}
+	a.recordSequenceProjection(expr, projection)
 	return projection
 }
 

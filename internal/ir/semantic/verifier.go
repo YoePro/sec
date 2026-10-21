@@ -643,6 +643,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	}
 	switch op.Kind {
+	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable:
+		if err := verifySliceBorrowOperation(module.Types, op, values); err != nil {
+			return err
+		}
 	case OpSliceIndexInBounds, OpSliceElementPlace:
 		if err := verifySliceIndexOperation(module.Types, op, values); err != nil {
 			return err
@@ -1041,7 +1045,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid bool.not")
 		}
 	case OpBoundsFailure:
-		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || (op.ArrayOperation != "fixed-array-index" && op.ArrayOperation != "slice-index") {
+		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || (op.ArrayOperation != "fixed-array-index" && op.ArrayOperation != "slice-index" && op.ArrayOperation != "slice-range") {
 			return fmt.Errorf("invalid fail.bounds")
 		}
 	case OpAtomicFence:

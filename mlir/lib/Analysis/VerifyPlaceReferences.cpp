@@ -4,6 +4,7 @@
 //   - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 29, 34-37
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md sections 82-85, 131
 #include "sec/Analysis/Passes.h"
+#include "ReferenceFacts.h"
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -25,6 +26,7 @@ namespace sec {
 } // namespace sec
 
 using namespace mlir;
+using namespace sec::detail;
 
 namespace {
 
@@ -110,25 +112,6 @@ Chain valueChain(Value value) {
   }
 }
 
-// guardedBy reports whether `operation` is dominated by the selected edge
-// of a conditional branch on `predicate`, made exclusive by a dedicated
-// successor block (no other path enters it).
-bool guardedBy(DominanceInfo &dominance, Value predicate, bool trueEdge,
-               Operation *operation) {
-  for (Operation *user : predicate.getUsers()) {
-    auto branch = dyn_cast<cf::CondBranchOp>(user);
-    if (!branch || branch.getCondition() != predicate ||
-        branch.getTrueDest() == branch.getFalseDest())
-      continue;
-    Block *edge = trueEdge ? branch.getTrueDest() : branch.getFalseDest();
-    if (edge->getSinglePredecessor() != branch->getBlock())
-      continue;
-    if (dominance.dominates(edge, operation->getBlock()))
-      return true;
-  }
-  return false;
-}
-
 // reachableUses reports a use of `value` reachable after `from` in its own
 // block or in any successor block (cycles included).
 Operation *reachableUse(Operation *from, Value value) {
@@ -149,62 +132,6 @@ Operation *reachableUse(Operation *from, Value value) {
       worklist.push_back(successor);
   }
   return nullptr;
-}
-
-// Reference metadata of the operation defining a reference value.
-struct ReferenceFacts {
-  bool known = false;
-  uint32_t borrow = 0;
-  uint32_t lifetime = 0;
-  bool dynamic = false;
-};
-
-template <typename OpT>
-ReferenceFacts factsOf(OpT op) {
-  return ReferenceFacts{true, op.getBorrowId(), op.getLifetimeId(),
-                        op.getValidityPolicy() == "dynamic-epoch"};
-}
-
-// Facts recorded as a `sec.reference` dictionary on a reference function
-// parameter or call result (implementation choice MD-084).
-ReferenceFacts dictionaryFacts(DictionaryAttr facts) {
-  if (!facts)
-    return ReferenceFacts{};
-  auto borrow = facts.getAs<IntegerAttr>("borrow_id");
-  auto lifetime = facts.getAs<IntegerAttr>("lifetime_id");
-  auto policy = facts.getAs<StringAttr>("validity_policy");
-  if (!borrow || !lifetime || !policy)
-    return ReferenceFacts{};
-  return ReferenceFacts{true, static_cast<uint32_t>(borrow.getInt()),
-                        static_cast<uint32_t>(lifetime.getInt()),
-                        policy.getValue() == "dynamic-epoch"};
-}
-
-ReferenceFacts referenceFacts(Value reference) {
-  if (auto argument = dyn_cast<BlockArgument>(reference)) {
-    Block *owner = argument.getOwner();
-    auto function = dyn_cast_or_null<func::FuncOp>(owner->getParentOp());
-    if (function && owner->isEntryBlock())
-      return dictionaryFacts(function.getArgAttrOfType<DictionaryAttr>(
-          argument.getArgNumber(), "sec.reference"));
-    return ReferenceFacts{};
-  }
-  Operation *definition = reference.getDefiningOp();
-  if (auto facts = definition->getAttrOfType<DictionaryAttr>("sec.reference"))
-    return dictionaryFacts(facts);
-  if (auto op = dyn_cast_or_null<sec::RefBorrowSharedOp>(definition))
-    return factsOf(op);
-  if (auto op = dyn_cast_or_null<sec::RefBorrowMutOp>(definition))
-    return factsOf(op);
-  if (auto op = dyn_cast_or_null<sec::RefCopySharedOp>(definition))
-    return factsOf(op);
-  if (auto op = dyn_cast_or_null<sec::RefMoveOp>(definition))
-    return factsOf(op);
-  if (auto op = dyn_cast_or_null<sec::RefReborrowSharedOp>(definition))
-    return factsOf(op);
-  if (auto op = dyn_cast_or_null<sec::RefReborrowMutOp>(definition))
-    return factsOf(op);
-  return ReferenceFacts{};
 }
 
 // The reference a reborrow or move derives from: the source reference, or

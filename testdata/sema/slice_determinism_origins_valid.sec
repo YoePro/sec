@@ -1,0 +1,14 @@
+module main
+
+fn Choose(first: bool, left: ref int[], right: ref int[]) ref int[] {
+    if first { return left }
+    return right
+}
+
+fn Observe(first: bool, left: int[8], right: int[8]) uint {
+    let leftView := ref left[1..<7]
+    let rightView := ref right[2..<8]
+    let selected := Choose(first, leftView, rightView)
+    let view := ref selected[1..<3]
+    return view.Len
+}

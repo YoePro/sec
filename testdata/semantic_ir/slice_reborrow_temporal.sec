@@ -1,0 +1,16 @@
+module main
+
+fn First() int { return 1 }
+fn Last() int { return 3 }
+
+fn Temporal(view: ref int[]) void {
+    let child := ref view[First()..<Last()]
+    discard child
+}
+
+fn TemporalFallible(view: ref int[]) void {
+    let child := try ref view[First()..<Last()] {
+        Err(_) => { return }
+    }
+    discard child
+}

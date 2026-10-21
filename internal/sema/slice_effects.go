@@ -31,6 +31,7 @@ func (a *Analyzer) recordSliceLengthUse(expr, source ast.Expression) {
 	if a.summaryPass {
 		return
 	}
+	a.recordSliceLengthPlan(expr, source)
 	if place, ok := a.resolvePlace(source); ok {
 		a.recordReferenceUse(expr, ReferenceUseRead, place, false, expressionToken(expr))
 	}

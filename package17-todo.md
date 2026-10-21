@@ -159,9 +159,14 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   current ownership, copy/move, destruction, defer, discard and Semantic IR
   rules. Merge only missing/conflicting paragraphs through the normal correction
   workflow; preserve newer rules and update `language-rulebook-status.md`.
-- [ ] P17-04 — Reconcile MD-025 and the stale custom-free acceptance gate;
+- [x] P17-04 — Reconcile MD-025 and the stale custom-free acceptance gate;
   document the exact resolved scope and remaining restrictions. Update the
   existing decision entry rather than creating a competing decision or policy.
+
+  Done 2026-10-20: MD-025 was applied 2026-10-15 (custom `free` accepted, MoveOnly, runs before
+  remaining field destruction, no field move-out of `self`); P17 § 22's rejection gate is marked
+  superseded in the package book. Remaining MD-025 work belongs to its own owners.
+
 - [ ] P17-05 — Synchronize schema/lowering v13 after the v11/v12 predecessor
   contracts, resolving historical path/attribute spelling and MD-031/MD-061
   intersections. A supplied document's existence is not synchronization evidence.
@@ -175,28 +180,58 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 
 ## B. Publish complete immutable transfer and destruction plans
 
-- [ ] P17-08 — Audit concrete copy classification and map existing CopyTrivial,
+- [x] P17-08 — Audit concrete copy classification and map existing CopyTrivial,
   CopySemantic, MoveOnly, Conditional and NonCopyable facts into valid transfer
   actions. Do not treat conditional/unresolved classification as trivial copy.
+
+  Done 2026-10-20: `ResolveTransferAction` (`internal/sema/destruction_plans.go`) maps the five
+  classifications to copy-trivial / copy-semantic / move / rejected; MoveOnly and @noCopy need an
+  explicit move, conditional is never a trivial copy (`TestTransferActionsFollowCopyClassification`).
+
 - [ ] P17-09 — Permit implicit semantic copy only with a resolved infallible
   copy plan. Fallible duplication remains an ordinary explicit Result-returning
   call; pure move adds no copy/allocator failure channel (P17 §§5–7).
-- [ ] P17-10 — Resolve destruction plans for every supported non-trivial
+- [x] P17-10 — Resolve destruction plans for every supported non-trivial
   concrete type. Cover stored struct fields, compact fixed arrays, active union/
   Result/Option payloads, compiler-known resources and the resolved custom-free
   hook. Keep generic-template and unsupported representation boundaries explicit.
-- [ ] P17-11 — Allocate deterministic `DestructionPlanID` identities, including
+
+  Done 2026-10-20 for the supported kinds: `ResolveDestructionPlans` covers derived structs
+  (custom `free` first, then non-trivial fields in reverse declaration order), compact fixed
+  arrays, active union/Option/Result payloads (`VariantFamily`) and compiler-known resources;
+  owning dynamic arrays (P18), generic templates and `any` are named unsupported boundaries.
+
+- [x] P17-11 — Allocate deterministic `DestructionPlanID` identities, including
   recursive plan references where legal. Preserve concrete type identity,
   release authority and source provenance without field offsets or physical ABI.
+
+  Done 2026-10-20: `DestructionPlanID` = `destroy:` + canonical type identity; nested and
+  recursive references share IDs in a self-contained `DestructionPlanSet`; no offsets or ABI.
+
 - [ ] P17-12 — Implement `ResolvedTransferPlan` or an equivalent consolidated
   model containing action, source value/Place, destination, partial path and
   before/after ownership state. Retain the existing canonical Place identities.
+
+  Partial 2026-10-20: `ResolvedTransferPlan` (`internal/sema/transfer_plans.go`) records site,
+  action, cloned source Place and partial flag for every transfer accepted by
+  `validateNamedOwnershipSource`. Missing: destination Place and before/after ownership state.
+
 - [ ] P17-13 — Publish transfer plans for initialization, assignment, argument,
   return, constructor field/element/payload, match binding and branch use sites.
   Distinguish non-consuming observation and borrowing from ownership transfer.
-- [ ] P17-14 — Provide detached read-only transfer/destruction queries. Prove
+
+  Partial 2026-10-20: initialization, assignment, explicit-move argument, return, construction
+  (`<-` in aggregate/payload) and lambda move captures publish plans. Missing: implicit argument
+  copies, match bindings and branch uses.
+
+- [x] P17-14 — Provide detached read-only transfer/destruction queries. Prove
   repeated queries neither infer types nor mutate borrow/move state; clone nested
   lists, masks, exact lengths and Places so consumers cannot corrupt facts.
+
+  Done 2026-10-20: `ResolveDestructionPlans` is pure and returns detached sets; transfer plans
+  are cloned on every query (`TestDestructionPlanQueriesAreDetached`,
+  `TestTransferPlansRecordSiteActionAndSource`).
+
 - [ ] P17-15 — Preserve uninitialized/initialized/moved/destroyed/partial state
   per path and per supported field/active payload. Reinitialization restores only
   the assigned state; whole-value use requires valid state. Reject deferred array
@@ -206,9 +241,18 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   fixed arrays use reverse index order; active variants destroy only initialized,
   unmoved payloads. Failed construction cleans successful obligations without
   invoking completed-value custom free or manufacturing a completed outer value.
+
+  Partial 2026-10-20: reverse field and reverse index order and active-payload-only
+  destruction are in the plans; failed/partial construction cleanup is not.
+
 - [ ] P17-17 — Add Sema tests for classifications, detached queries, consuming
   calls/returns, whole and partial move/reinit, copyable/move-only references and
   slices, destruction completeness, custom-free decisions and forbidden actions.
+
+
+  Partial 2026-10-20: `destruction_plans_test.go` and `transfer_plans_test.go` cover
+  classifications, detached queries, struct/array/variant/resource plans, the P18 boundary and
+  whole/partial moves; consuming-call returns, reinit and forbidden actions remain.
 
 ## C. Resolve one cleanup registration and exit model in Sema
 

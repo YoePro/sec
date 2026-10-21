@@ -227,6 +227,13 @@ integrations:
       - internal/sema/reference_inference.go
       - internal/sema/reference_return_origins.go
       - internal/sema/reference_contained_origins.go
+      - internal/sema/borrow_ancestry.go
+      - internal/sema/analyzer_borrow_access.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/reference_place_origins.go
+      - internal/sema/slice_try_origins_test.go
+      - testdata/sema/slice_try_origin_paths.sec
+      - testdata/sema/slice_try_local_escape_invalid.sec
     implemented:
       - semantic reference types carry origin metadata including source symbol/token, local-storage indication and known storage origin
       - ref creation attaches origin metadata and local reference variables preserve it
@@ -240,6 +247,8 @@ integrations:
       - finite path-disjunctive origin sets are maintained with conservative unknown fallback beyond supported limits
       - functions infer deterministic returned-reference summaries over supported parameters, receiver projections, finite multi-source sets and aggregate result paths
       - arena-backed references/slices carry generation dependencies and stale use after Arena.Reset is rejected
+      - "2026-10-20: borrow creation/read/mutation/move checks follow unanimous recorded granting-borrow ancestry within the same canonical storage root, allowing legal nested mutable-to-shared reborrows while preserving sibling and suspended-parent conflicts. Missing, ambiguous, cyclic or loop-carried links cannot supply a transitive proof; P16 source production and its matrix remain owned by lowering.sec-mlir-package16."
+      - "2026-10-20 (P16-49, lowering.sec-mlir-package16): canonical referencePlaceOrigin now retains the protected slice Place after resolved try ref when every handler returns/terminates, or propagation is naked. This fixes lost storage/provenance/validity facts on a subsequent reborrow without copying facts in the IR builder. Recovery-value/missing plans do not prove a sole origin and local escape stays invalid. The cohesive producer moved from analyzer.go to reference_place_origins.go; slice_try_origins_test.go and source fixtures cover handled/naked origins, unresolved/recovery exclusions, local escape and wide source-to-IR composition."
     remaining:
       - complete canonical references-v2 integration with lifetime-analysis-v2 and borrowing-v2 facts instead of legacy parallel checks
       - complete reference creation/refinement from ownership-v2 ConditionallyAvailable Places while keeping is available distinct from borrow/generation/platform validity
@@ -264,6 +273,12 @@ integrations:
       - arena reset invalidates prior reference
       - reference equality uses live storage identity plus location
     verification:
+      - command: go test ./cmd/lsp -run 'TestBorrowAuthorityDiagnosticsLSP|TestAdditionalBorrowDiagnosticIDsLSP|TestRecursiveReferenceSummariesLSP|TestDynamicArrayMutationBorrowsLSP' -count=1
+        result: passed on 2026-10-20 after P16-49 origin fix
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-20 after P16-49 origin fix; success-only try origins, local escape/recovery exclusions, wide payload source IR and existing reference/borrow regressions
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-20 after granting-borrow ancestry correction, including explicit source nested reborrow chains and negative sibling/parent/unknown-origin regressions; broader reference-v2 remaining work is unchanged
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
         result: passed on 2026-10-19 after focused return/contained-origin extraction from analyzer.go; scalar/direct-reference predecessors retained. P16 slice transfer/range/matrix changes remain owned by lowering.sec-mlir-package16; this closes no broader P15 or reference-v2 acceptance gap
       - command: go test ./internal/sema ./internal/ir/semantic -count=1
@@ -941,6 +956,8 @@ integrations:
     area: profile-selected-reference-lowering
     status: partial
     repository_baseline: 814a584
+    notes:
+      - "SEC-MLIR-P26 (validated physical reference and descriptor lowering, schema 22) installed 2026-10-20: rules/mlir/packages/sec-mlir-dialect_package26.md and plan package26-todo.md (validated; P26-01..31). Not implemented; P24 ResolvedLayout, P25 CallABIPlan and P17-P19 storage transitions are prerequisites, while the plan records, epoch rule and existing stale-reference path (P26-05/06/09/11/28) can start first."
     remaining:
       - lower proven direct refs to address-only where valid
       - lower dynamic epoch/generation checks where required

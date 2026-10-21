@@ -30,6 +30,11 @@ func (fb *functionBuilder) buildDiscard(stmt *ast.DiscardStatement) error {
 		if !ok {
 			return fb.unsupported("discard of a binding without semantic storage", stmt.Token)
 		}
+		if bind.storage == 0 {
+			if handled, err := fb.discardSliceHolder(builtValue{id: bind.value, typ: bind.typ}, stmt.Token); handled {
+				return err
+			}
+		}
 		op := Operation{Kind: OpDiscardValue, DiscardProvenance: DiscardExplicit, DiscardTrivial: true, Location: loc}
 		if bind.storage != 0 {
 			op.Storage = bind.storage
@@ -58,8 +63,28 @@ func (fb *functionBuilder) discardExpression(expr ast.Expression, provenance Dis
 	if err != nil {
 		return err
 	}
+	if handled, err := fb.discardSliceHolder(value, token); handled {
+		return err
+	}
 	fb.emit(Operation{Kind: OpDiscardValue, Operands: []ValueID{value.id}, DiscardProvenance: provenance, DiscardTrivial: true, Location: location(token)})
 	return nil
+}
+
+// discardSliceHolder ends a constructed non-owning slice holder through P15's
+// marker. It does not copy/destroy elements or discard the backing storage.
+// Rules: rules/compiler/semantic_ir.md — §126.5,21;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§42,63.
+func (fb *functionBuilder) discardSliceHolder(value builtValue, token lexer.Token) (bool, error) {
+	typ, _ := fb.owner.module.Types.Lookup(value.typ)
+	if typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice {
+		return false, nil
+	}
+	facts := fb.references[value.id]
+	if facts == nil {
+		return true, fmt.Errorf("discarded slice holder has no reference facts")
+	}
+	fb.emit(Operation{Kind: OpReferenceEndBorrow, Operands: []ValueID{value.id}, Reference: cloneReferenceMetadata(facts), Location: location(token)})
+	return true, nil
 }
 
 func verifyDiscardValue(op Operation, storages map[StorageID]Storage) error {

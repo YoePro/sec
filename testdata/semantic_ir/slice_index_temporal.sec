@@ -1,0 +1,20 @@
+module main
+
+fn Index() int128 { return 1 }
+fn Replacement() int { return 8 }
+
+fn Read(view: ref int[]) void {
+    let value := view[Index()]
+    discard value
+}
+
+fn Write(view: ref mut int[]) void {
+    view[Index()] = Replacement()
+}
+
+fn Fallible(view: ref int[]) void {
+    let value := try view[Index()] {
+        Err(_) => 0
+    }
+    discard value
+}

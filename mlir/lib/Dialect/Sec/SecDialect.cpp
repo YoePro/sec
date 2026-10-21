@@ -353,7 +353,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
   // Schema-11 discardable facts (implementation choice MD-084).
   auto definesReference = [&]() {
     return operation->getNumResults() == 1 &&
-           isReferenceValueType(operation->getResult(0).getType());
+           (isReferenceValueType(operation->getResult(0).getType()) ||
+            isa<SliceElementPlaceOp>(operation));
   };
   if (name == "sec.address_taken") {
     if (!isa<StorageDeclareOp>(operation))

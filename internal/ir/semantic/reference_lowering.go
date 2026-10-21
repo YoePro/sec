@@ -163,6 +163,19 @@ func onlyFieldProjections(place sema.Place) bool {
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — §§ 32-36 (bounds plans and failure)
 //   - rules/compiler/semantic_ir.md — §§ 10(8), 10(11)
 func (fb *functionBuilder) lowerPlaceBorrow(reference *ast.RefExpression, plan sema.ResolvedReferencePlan) (builtValue, error) {
+	place, err := fb.lowerBorrowPlace(reference, plan)
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.emitBorrow(reference, plan, place)
+}
+
+// lowerBorrowPlace evaluates the canonical source path without loading its
+// aggregate. Direct-reference and slice borrows share this Place producer.
+// Rules: rules/compiler/semantic_ir.md — §96(5), §126.7;
+// rules/mlir/packages/sec-mlir-dialect_package15.md — §§39–43;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §42.
+func (fb *functionBuilder) lowerBorrowPlace(reference *ast.RefExpression, plan sema.ResolvedReferencePlan) (builtValue, error) {
 	var steps []ast.Expression
 	current := reference.Value
 	for {
@@ -217,7 +230,7 @@ func (fb *functionBuilder) lowerPlaceBorrow(reference *ast.RefExpression, plan s
 	if reference.Mutable && !mutablePlace {
 		return builtValue{}, fb.unsupported("mutable borrow of a read-only Place", reference.Token)
 	}
-	return fb.emitBorrow(reference, plan, place)
+	return place, nil
 }
 
 // projectPlace applies already validated field and fixed-array element steps

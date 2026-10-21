@@ -187,6 +187,12 @@ func formatOperation(out *strings.Builder, op Operation) {
 	}
 	out.WriteString(string(op.Kind))
 	switch op.Kind {
+	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable:
+		fmt.Fprintf(out, " %%%d, %%%d, %%%d", op.Operands[0], op.Operands[1], op.Operands[2])
+		if op.ReferenceGuard != 0 {
+			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
+		}
+		formatReferenceMetadata(out, op.Reference)
 	case OpSliceIndexInBounds, OpSliceElementPlace:
 		fmt.Fprintf(out, " %%%d, %%%d signed=%t", op.Operands[0], op.Operands[1], op.ArrayIndexSigned)
 		if op.Kind == OpSliceElementPlace {

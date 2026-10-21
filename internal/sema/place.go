@@ -908,5 +908,6 @@ func (a *Analyzer) indexPlaceProjection(expr *ast.IndexExpression) PlaceProjecti
 		projection.ArrayLength = clonePlaceConstantIndex(plan.ArrayLength)
 		projection.IndexProof = plan.ProofKind
 	}
+	a.recordSequenceProjection(expr, projection)
 	return projection
 }

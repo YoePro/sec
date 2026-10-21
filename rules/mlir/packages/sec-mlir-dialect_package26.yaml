@@ -1,0 +1,140 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P26
+  title: Validated Physical Reference and Descriptor Lowering
+  status: planned
+  created: '2026-10-19'
+  updated: '2026-10-19'
+  revision: '1.0'
+  sec_version: '0.1'
+  proposed_mlir_schema: 22
+  proposed_lowering_version: 22
+  checked_public_executable_schema: 11
+  synced_reference_inventory:
+    document: package25-todo.md
+    audited_head: 831f6e1
+    audited_date: '2026-10-18'
+    head_currently_verified: false
+    worktree_entries_reported: 145
+  note: P25-06..10 checked in TODO; rest require independent current-checkout acceptance;
+    corrected P18 and other local package plans must be preserved.
+normative_sources:
+- rules/memory/reference_model.md
+- rules/memory/references.md
+- rules/memory/borrowing.md
+- rules/memory/lifetime_analysis.md
+- rules/memory/storage.md
+- rules/memory/layout.md
+- rules/memory/raw_pointers.md
+- rules/platform/abi.md
+- rules/platform/ffi.md
+- rules/compiler/semantic_ir.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+dependencies:
+  P15: Place/direct safe reference
+  P16: slices and bounded views
+  P17: ownership/destruction
+  P18: backing invalidation
+  P19: Arena context and epochs
+  P23: string descriptors/materialization
+  P24: canonical resolved layout/selected physical policy
+  P25: call ABI transport and foreign legal adaptation
+planned_semantic_ir:
+  new_plan_refs:
+  - ResolvedReferencePhysicalPlanRef
+  - ResolvedDescriptorMaterializationPlanRef
+  proof_discharges:
+  - StaticProof
+  - DynamicCheck
+  - TargetGuarantee
+  reuse:
+  - P15 Place/reference
+  - P16 slice
+  - P18 Storage*
+  - P19 Arena*
+  - P24 Repr*
+dialect:
+  version: 22
+  planned_ops:
+  - sec.ref_repr.check_epoch
+  - sec.ref_repr.check_spatial
+  - sec.ref_repr.guarded_access
+  - sec.descriptor.materialize_selected
+  - sec.descriptor.project_selected
+  reuse_equivalent_existing_ops: true
+  verifiers:
+  - --sec-verify-physical-references
+  - --sec-verify-physical-descriptors
+  - --sec-verify-reference-discharges
+lowering:
+  version: 22
+  passes:
+  - --sec-resolve-reference-representation
+  - --sec-verify-reference-physical-plans
+  - --sec-lower-reference-validity
+  - --sec-lower-selected-descriptors
+  standard_mlir_only: true
+  llvm_dialect_included: false
+reference_guarantees:
+- lifetime
+- bounds
+- provenance
+- initialization
+- typed validity
+- alignment
+- authority
+- borrow compatibility
+- relocation
+- address space
+- epoch
+- concurrency
+- trust
+core_invariants:
+- no mandatory fat pointer
+- no mandatory runtime generation manager
+- default logical epoch 64 bits independent of pointer width
+- no silent epoch wrap
+- checked stale direct ref -> panic.invalid-reference-generation
+- no safe ref from arbitrary RawPtr
+- proof-specific check removal
+- no new owner from descriptor splitting
+- no ABI classification in P26
+decision_index:
+  new_decisions: []
+  existing_gates:
+  - MD-019
+  - MD-070
+  - MD-073
+  - MD-109
+  applied:
+  - MD-061
+  - MD-050
+  - MD-071
+  - MD-072
+  public_registry_may_lag_uncommitted: true
+phase_order:
+- audit
+- proof plans
+- direct references
+- epochs/invalidation
+- slices/descriptors
+- P25 ABI handoff when ready
+- tests/governance
+deliverables:
+- path: sec-mlir-dialect_package26.md
+  role: main package
+- path: sec_reference_physical_sync_package26.md
+  role: normative sync
+- path: sec_semantic_ir_reference_physical_package26.md
+  role: Semantic IR
+- path: sec_mlir_dialect_package26.md
+  role: dialect v22
+- path: sec_mlir_lowering_package26.md
+  role: lowering v22
+- path: sec-mlir-dialect_package26_decision-index.md
+  role: decision index
+- path: package26-todo-proposal.md
+  role: one-at-a-time implementation checklist
+next: P27 reference-aware LLVM dialect convergence, conditional on actual predecessor
+  completion

@@ -1,0 +1,8 @@
+module main
+
+fn Copy(values: int[4]) void {
+    let source := ref values[..]
+    let copied := source
+    discard copied
+    discard source
+}

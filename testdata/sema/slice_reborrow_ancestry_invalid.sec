@@ -1,0 +1,22 @@
+module main
+
+fn Sibling() void {
+    let mut values := [1, 2, 3, 4]
+    let parent := ref mut values[..]
+    let child := ref mut parent[1..<3]
+    let sibling := ref parent[1..<3]
+    discard child
+    discard sibling
+    discard parent
+}
+
+fn ParentWrite() void {
+    let mut values := [1, 2, 3, 4]
+    let parent := ref mut values[..]
+    let child := ref mut parent[1..<3]
+    let shared := ref child[..]
+    parent[1] = 9
+    discard shared
+    discard child
+    discard parent
+}

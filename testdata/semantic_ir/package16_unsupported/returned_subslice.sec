@@ -1,0 +1,5 @@
+module main
+
+fn Window(values: ref int[4]) ref int[] {
+    return ref values[1..<3]
+}

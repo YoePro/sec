@@ -264,10 +264,12 @@ type Analyzer struct {
 	// resolvedPlaces, resolvedReferencePlans, resolvedReferenceUses and
 	// referenceLifetimeEnds are the P15 read-only Place/reference facts, and
 	// referencePolicy the CompilationPlan reference policy (reference_plans.go).
-	resolvedPlaces             map[ast.Expression]Place
-	resolvedReferencePlans     map[ast.Expression]ResolvedReferencePlan
-	resolvedSliceCreationPlans map[*ast.RefExpression]ResolvedSliceCreationPlan
-	resolvedReferenceUses      map[ast.Expression]ResolvedReferenceUse
+	resolvedPlaces              map[ast.Expression]Place
+	resolvedSequenceProjections map[ast.Expression]PlaceProjection
+	resolvedReferencePlans      map[ast.Expression]ResolvedReferencePlan
+	resolvedSliceCreationPlans  map[*ast.RefExpression]ResolvedSliceCreationPlan
+	resolvedSliceLengthPlans    map[ast.Expression]ResolvedSliceLengthPlan
+	resolvedReferenceUses       map[ast.Expression]ResolvedReferenceUse
 	// referenceParameterFacts holds the reference facts of each ref/ref mut
 	// parameter, keyed by its declaration location (P15-47).
 	referenceParameterFacts map[sourceTokenKey]ReferenceFacts
@@ -349,6 +351,9 @@ type Analyzer struct {
 	errors                     []Error
 	errorKeys                  map[string]bool
 	warnings                   []Error
+	// resolvedTransferPlans holds the P17 ownership transfer plan of each
+	// validated source expression (transfer_plans.go).
+	resolvedTransferPlans map[ast.Expression]ResolvedTransferPlan
 }
 
 type borrowKind string
@@ -584,6 +589,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
+	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
 	a.resolvedForRangeSteps = map[*ast.ForStatement]*big.Int{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
@@ -609,8 +615,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	a.resolvedPlaces = map[ast.Expression]Place{}
+	a.resolvedSequenceProjections = map[ast.Expression]PlaceProjection{}
 	a.resolvedReferencePlans = map[ast.Expression]ResolvedReferencePlan{}
 	a.resolvedSliceCreationPlans = map[*ast.RefExpression]ResolvedSliceCreationPlan{}
+	a.resolvedSliceLengthPlans = map[ast.Expression]ResolvedSliceLengthPlan{}
 	a.resolvedReferenceUses = map[ast.Expression]ResolvedReferenceUse{}
 	a.referenceParameterFacts = map[sourceTokenKey]ReferenceFacts{}
 	a.receiverFacts = map[sourceTokenKey]ReferenceFacts{}
@@ -5401,69 +5409,6 @@ func (a *Analyzer) localReferenceOriginForTransfer(value ast.Expression) (localR
 	return localReferenceOrigin{}, false
 }
 
-func (a *Analyzer) referencePlaceOrigin(expr ast.Expression) (Place, bool) {
-	switch expr := expr.(type) {
-	case *ast.RefExpression:
-		place, ok := a.resolvePlace(expr.Value)
-		if !ok {
-			return Place{}, false
-		}
-		place.ReferenceHolder = ""
-		for index := range place.AlternativeOrigins {
-			place.AlternativeOrigins[index].ReferenceHolder = ""
-		}
-		return place, true
-	case *ast.SliceExpression:
-		place, ok := a.resolvePlace(expr)
-		if !ok {
-			return Place{}, false
-		}
-		place.ReferenceHolder = ""
-		return place, true
-	case *ast.Identifier:
-		origin, ok := a.localRefContainers[expr.Value]
-		if !ok || origin.Unknown {
-			return Place{}, false
-		}
-		places := localOriginPlaces(origin)
-		if len(places) == 0 {
-			return Place{}, false
-		}
-		place := clonePlace(places[0])
-		place.ReferenceHolder = expr.Value
-		for _, alternative := range places[1:] {
-			alternative = clonePlace(alternative)
-			alternative.ReferenceHolder = expr.Value
-			place.AlternativeOrigins = append(place.AlternativeOrigins, alternative)
-		}
-		return place, true
-	case *ast.CallExpression:
-		origin, ok := a.expressionReferenceOrigins[expr]
-		if !ok || origin.Unknown {
-			return Place{}, false
-		}
-		return placeFromReferenceOrigin(origin, "")
-	case *ast.MemberExpression:
-		origin, ok := a.containedOriginForAccess(expr)
-		if !ok || origin.Unknown {
-			return Place{}, false
-		}
-		return placeFromReferenceOrigin(origin, mustBorrowRootName(expr))
-	case *ast.IndexExpression:
-		origin, ok := a.containedOriginForAccess(expr)
-		if !ok || origin.Unknown {
-			return Place{}, false
-		}
-		return placeFromReferenceOrigin(origin, mustBorrowRootName(expr))
-	case *ast.BitExtractionExpression:
-		return a.referencePlaceOrigin(expr.Value)
-	case *ast.ConversionExpression:
-		return a.referencePlaceOrigin(expr.Value)
-	default:
-		return Place{}, false
-	}
-}
-
 func (a *Analyzer) referencePlaceOriginIsAmbiguous(expr ast.Expression) bool {
 	if origin, ok := a.containedOriginForAccess(expr); ok {
 		return origin.Unknown
@@ -8622,7 +8567,7 @@ func (a *Analyzer) validateLetOwnership(stmt *ast.LetStatement) bool {
 	if stmt == nil {
 		return false
 	}
-	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil)
+	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil, TransferSiteInitialization)
 }
 
 // applyLetOwnership retains arena and mutex-guard provenance before committing
@@ -8645,7 +8590,7 @@ func (a *Analyzer) validateAssignmentOwnership(stmt *ast.AssignmentStatement) bo
 	if stmt == nil {
 		return false
 	}
-	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Token, false, false)
+	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Token, false, false, TransferSiteAssignment)
 }
 
 func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) bool {

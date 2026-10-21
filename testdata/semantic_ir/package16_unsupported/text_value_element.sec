@@ -1,0 +1,8 @@
+module main
+
+fn ReadText(values: string[4]) void {
+    let source := ref values[..]
+    let value := source[0]
+    discard value
+    discard source
+}

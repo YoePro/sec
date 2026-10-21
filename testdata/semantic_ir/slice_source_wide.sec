@@ -1,0 +1,162 @@
+module main
+
+@noPanic
+fn Signed128(values: int128[4], start: int128, finish: uint128, index: int256) uint {
+    let full := ref values[..]
+    let first := full[0]
+    discard full
+    let empty := ref values[4..<4]
+    let emptyCount := empty.Len
+    discard empty
+    let dynamic := try ref values[start..finish] {
+        Err(_) => return emptyCount
+    }
+    let child := ref dynamic[..]
+    let picked := try child[index] {
+        Err(_) => first
+    }
+    discard picked
+    discard first
+    let count := len(child)
+    discard child
+    discard dynamic
+    return count
+}
+
+@noPanic
+fn Signed256(values: int256[4], start: int256, finish: uint256, index: uint128) uint {
+    let mut storage := values
+    let full := ref mut storage[..]
+    let first := full[0]
+    full[0] = first
+    discard full
+    let empty := ref storage[4..<4]
+    let emptyCount := empty.Len
+    discard empty
+    let dynamic := try ref storage[start..finish] {
+        Err(_) => return emptyCount
+    }
+    let child := ref dynamic[..]
+    let picked := try child[index] {
+        Err(_) => first
+    }
+    discard picked
+    discard first
+    let count := len(child)
+    discard child
+    discard dynamic
+    return count
+}
+
+@noPanic
+fn Unsigned128(values: uint128[4], start: uint128, finish: int256, index: uint256) uint {
+    let full := ref values[..]
+    let first := full[0]
+    discard full
+    let empty := ref values[4..<4]
+    let emptyCount := empty.Len
+    discard empty
+    let dynamic := try ref values[start..finish] {
+        Err(_) => return emptyCount
+    }
+    let child := ref dynamic[..]
+    let picked := try child[index] {
+        Err(_) => first
+    }
+    discard picked
+    discard first
+    let count := len(child)
+    discard child
+    discard dynamic
+    return count
+}
+
+@noPanic
+fn Unsigned256(values: uint256[4], start: uint256, finish: int128, index: int128) uint {
+    let mut storage := values
+    let full := ref mut storage[..]
+    let first := full[0]
+    full[0] = first
+    discard full
+    let empty := ref storage[4..<4]
+    let emptyCount := empty.Len
+    discard empty
+    let dynamic := try ref storage[start..finish] {
+        Err(_) => return emptyCount
+    }
+    let child := ref dynamic[..]
+    let picked := try child[index] {
+        Err(_) => first
+    }
+    discard picked
+    discard first
+    let count := len(child)
+    discard child
+    discard dynamic
+    return count
+}
+
+@noPanic
+fn Decimal(values: decimal128[4], start: int256, finish: uint128, index: int256) uint {
+    let mut storage := values
+    let full := ref mut storage[..]
+    let first := full[0]
+    full[0] = first
+    discard full
+    let empty := ref storage[4..<4]
+    let emptyCount := empty.Len
+    discard empty
+    let dynamic := try ref storage[start..finish] {
+        Err(_) => return emptyCount
+    }
+    let child := ref dynamic[..]
+    let picked := try child[index] {
+        Err(_) => first
+    }
+    discard picked
+    discard first
+    let count := len(child)
+    discard child
+    discard dynamic
+    return count
+}
+
+@noPanic
+fn EmptySigned128(values: int128[0]) uint {
+    let view := ref values[..]
+    let count := view.Len
+    discard view
+    return count
+}
+
+@noPanic
+fn EmptySigned256(values: int256[0]) uint {
+    let view := ref values[..]
+    let count := view.Len
+    discard view
+    return count
+}
+
+@noPanic
+fn EmptyUnsigned128(values: uint128[0]) uint {
+    let view := ref values[..]
+    let count := view.Len
+    discard view
+    return count
+}
+
+@noPanic
+fn EmptyUnsigned256(values: uint256[0]) uint {
+    let view := ref values[..]
+    let count := view.Len
+    discard view
+    return count
+}
+
+@noPanic
+fn EmptyDecimal(values: decimal128[0]) uint {
+    let view := ref values[..]
+    let count := view.Len
+    discard view
+    return count
+}

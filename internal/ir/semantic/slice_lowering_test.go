@@ -33,7 +33,7 @@ func TestPackage16BuilderPreservesPredecessorRoutes(t *testing.T) {
 		previous = Format(module)
 	}
 	program, a = sliceBoundaryInput(t, "semantic_ir/package16_boundary_fixed.sec")
-	for _, pkg := range []uint8{0, 14, 15, 16} {
+	for _, pkg := range []uint8{0, 14, 15} {
 		module, err := Build(program, a, BuildOptions{RequestedModule: "main", MaxPackage: pkg})
 		var unsupported *UnsupportedFeatureError
 		if module != nil || !errors.As(err, &unsupported) {
@@ -42,11 +42,7 @@ func TestPackage16BuilderPreservesPredecessorRoutes(t *testing.T) {
 		if pkg == 0 && unsupported.Package != 14 || pkg != 0 && unsupported.Package != pkg {
 			t.Fatalf("wrong package boundary: %v", err)
 		}
-		if pkg == 16 {
-			if !strings.Contains(unsupported.Feature, "P16-22/P16-30") {
-				t.Fatalf("P16 fell back to old array/ref route: %v", err)
-			}
-		} else if strings.Contains(unsupported.Feature, "P16-") {
+		if strings.Contains(unsupported.Feature, "P16-") {
 			t.Fatalf("changed predecessor diagnostic: %v", err)
 		}
 	}
@@ -65,7 +61,6 @@ func TestPackage16SnapshotsResolvedSlicePlans(t *testing.T) {
 	if len(b.slicePlans.creations) != 2 || len(b.slicePlans.indexes) != 1 {
 		t.Fatal("missing prepared slice creation/index/use facts")
 	}
-	fb := &functionBuilder{owner: b}
 	for expr, plan := range b.slicePlans.creations {
 		original, _ := a.ResolvedSliceCreationPlanOf(expr)
 		if !plan.HasValidEvaluationOrder() {
@@ -74,18 +69,7 @@ func TestPackage16SnapshotsResolvedSlicePlans(t *testing.T) {
 		if plan.BorrowID != original.BorrowID || plan.LifetimeID != original.LifetimeID || plan.ReferenceFacts.Facts.Validity != original.ReferenceFacts.Facts.Validity {
 			t.Fatal("snapshot changed reference facts")
 		}
-		value, handled, err := fb.p16SliceExpression(expr)
-		var unsupported *UnsupportedFeatureError
-		if value != (builtValue{}) || !handled || !errors.As(err, &unsupported) || unsupported.Package != 16 {
-			t.Fatalf("creation route: %v", err)
-		}
-		want := "P16-22/P16-30"
-		if plan.SourceKind == sema.SliceSourceSlice {
-			want = "P16-22/P16-33"
-		}
-		if !strings.Contains(unsupported.Feature, want) {
-			t.Fatal(err)
-		}
+
 		plan.EvaluationOrder[0] = sema.SliceOperandEnd
 		freshOrder, _ := a.ResolvedSliceCreationPlanOf(expr)
 		if !freshOrder.HasValidEvaluationOrder() {
@@ -104,10 +88,6 @@ func TestPackage16SnapshotsResolvedSlicePlans(t *testing.T) {
 		if plan.UseKind != original.UseKind || plan.Action != original.Action || plan.IndexType.Name != original.IndexType.Name {
 			t.Fatal("snapshot lost resolved element use")
 		}
-		_, handled, err := fb.p16SliceExpression(expr)
-		if !handled || err == nil || !strings.Contains(err.Error(), "P16-35") {
-			t.Fatalf("index route: %v", err)
-		}
 	}
 	// A fresh preparation discards mutated local snapshots and consumes only
 	// canonical facts; it neither changes the analyzer nor selects a backend.
@@ -115,8 +95,11 @@ func TestPackage16SnapshotsResolvedSlicePlans(t *testing.T) {
 		t.Fatal(err)
 	}
 	module, err := Build(program, a, BuildOptions{RequestedModule: "main", MaxPackage: 16})
-	if module != nil || err == nil {
-		t.Fatal("unsupported dependency leaked a module")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -208,9 +191,10 @@ func TestPackage16DependencyAndModuleBoundaries(t *testing.T) {
 	}
 }
 
-// Parse and analyze real source fixtures before exercising the IR boundary.
+// Parse real source fixtures without choosing a scalar plan or running Sema,
+// allowing the same source matrix to exercise independent target plans.
 // Rules: rules/compiler/compiler_pipeline.md — §§32–34.
-func sliceBoundaryInput(t *testing.T, files ...string) (*ast.Program, *sema.Analyzer) {
+func sliceBoundaryProgram(t *testing.T, files ...string) *ast.Program {
 	t.Helper()
 	program := &ast.Program{}
 	for _, file := range files {
@@ -225,6 +209,14 @@ func sliceBoundaryInput(t *testing.T, files ...string) (*ast.Program, *sema.Anal
 		}
 		program.Statements = append(program.Statements, parsed.Statements...)
 	}
+	return program
+}
+
+// Analyze fixture source with the default plan for existing boundary tests.
+// Rules: rules/compiler/compiler_pipeline.md — §§32–34.
+func sliceBoundaryInput(t *testing.T, files ...string) (*ast.Program, *sema.Analyzer) {
+	t.Helper()
+	program := sliceBoundaryProgram(t, files...)
 	a := sema.NewAnalyzer()
 	if errs := a.Analyze(program); len(errs) != 0 {
 		t.Fatal(errs)

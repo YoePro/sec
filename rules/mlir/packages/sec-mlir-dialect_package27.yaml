@@ -1,0 +1,107 @@
+schema_version: 1
+package:
+  id: SEC-MLIR-P27
+  title: LLVM Dialect Handoff and Executable Vertical Slices
+  status: specification-not-implementation
+  created: '2026-10-20'
+  sec_version: '0.1'
+  repository: https://github.com/YoePro/sec
+  branch: main
+  verified_head_sha: not independently available; implementer must run git rev-parse
+    HEAD
+  basis: public rules/mlir specs checked 2026-10-20
+  predecessor_planned: SEC-MLIR-P26
+  target_lowering_spec_version: 23
+  target_sec_dialect_schema_bump: none by default; v23 conditional only on actual
+    serialized schema addition
+schema_status_at_authoring:
+  dialect_specification_version: 12
+  lowering_specification_version: 12
+  schema_12_accepted_explicitly_since: '2026-10-19'
+  compiler_default_emission_schema: 11
+  p16_full_slice_emission_complete: false
+  p17_to_p26_implementation_assumed: false
+architecture:
+  single_track: true
+  decision: MD-101
+  pipeline:
+  - Semantic IR
+  - Sec/standard MLIR
+  - LLVM dialect
+  - LLVM IR
+  - matching LLVM-build llc
+  - target object
+  - system C driver link only
+  legacy_direct_llvm_fallback: false
+  toolchain_mixing_allowed: false
+  gates:
+  - sec-check-lowering-support
+  - sec-finalize-for-llvm
+  - sec-verify-llvm-handoff (reuse equivalent if installed)
+  - LLVM IR verifier
+feature_admission:
+  S0:
+  - resolved integer scalar constants
+  - checked integer arithmetic
+  - bool comparisons
+  - CFG
+  - verified internal scalar call
+  - selected deterministic failure endpoint
+  conditional:
+  - aggregates P17/P24
+  - references P15/P16/P24/P26
+  - dynamic owner/Arena P18/P19/P26
+  - strings P23/P24/P26
+  - ABI/FFI P25
+  - float/decimal P20/P21
+  invariant: evidence per target/profile/output stage, not package number
+authoritative_paths:
+- rules/compiler/compiler_pipeline.md
+- rules/compiler/semantic_ir.md
+- rules/mlir/sec_mlir.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
+- rules/memory/layout.md
+- rules/memory/reference_model.md
+- rules/platform/abi.md
+- rules/errors/panic.md
+- rules/compiler/initialization.md
+- package25-todo.md
+- missing-decisions.yaml
+files:
+  implementation: sec-mlir-dialect_package27.md
+  manifest: sec-mlir-dialect_package27.yaml
+  normative_sync: sec_llvm_track_sync_package27.md
+  semantic_ir: sec_semantic_ir_llvm_handoff_package27.md
+  dialect: sec_mlir_dialect_package27.md
+  lowering: sec_mlir_lowering_v23.md
+  decision_index: sec-mlir-dialect_package27_decision-index.md
+  todo: ../../../package27-todo.md
+implementation:
+  todo_steps: 31
+  one_item_one_test: true
+  source_code_modified: false
+  acceptance_scope: S0 plus capability/verification and object/link tests; not full
+    language
+  toolchain: matching MLIR/LLVM build including llc
+  no_new_decisions: true
+  existing_decision_gates:
+  - MD-101
+  - MD-070
+  - MD-019
+  - MD-021
+  - MD-045
+verification:
+  check_schema_v12_acceptance: true
+  check_default_v11: true
+  negative_malformed_ir: true
+  unsupported_capability_diagnostics: true
+  no_legacy_backend: true
+  no_undischarged_sec_ops: true
+  no_unproved_llvm_attrs: true
+  cold_incremental_equivalence: true
+  native_host_object_and_link: true
+  cross_target_object_when_available: true
+next_package:
+  suggested: P28 — LLVM Convergence Expansion for Verified Aggregates and Error Paths
+  condition: Select only actually implemented and verified predecessor feature families

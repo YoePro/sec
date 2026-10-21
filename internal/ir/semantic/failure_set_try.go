@@ -76,8 +76,8 @@ func (fb *functionBuilder) outOfBoundsError(errorType sema.Type, token lexer.Tok
 
 // buildFailureSetTry lowers a try whose protected expression contains an
 // ordered compiler-internal failure set. The expression is built once in
-// evaluation order with every recorded checked operator and fixed-array index
-// routed to a typed failure edge, and a Result carrier root tested last; the
+// evaluation order with every recorded checked operator, fixed-array index
+// and slice range routed to a typed failure edge, and a Result carrier root tested last; the
 // success value continues. Each failure edge then propagates through the
 // enclosing Result or dispatches the local handlers. A point the builder
 // cannot route (dynamic or list indexing, contract conversion, string
@@ -87,6 +87,7 @@ func (fb *functionBuilder) outOfBoundsError(errorType sema.Type, token lexer.Tok
 // Rules:
 //   - rules/errors/errorhandling.md — §11 "Compiler-internal failure sets", §§15-16, §35
 //   - rules/errors/runtime_checks.md — "What try converts", "Propagation rule"
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§21–23,79–80
 func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved sema.ResolvedTry) (builtValue, error) {
 	if resolved.TestBoundary {
 		return builtValue{}, fb.unsupported("try propagation to a test boundary", expr.Token)
@@ -106,7 +107,7 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 	var carrier *sema.TryFailurePoint
 	for index, point := range resolved.Failures {
 		switch point.Kind {
-		case sema.TryFailureArithmetic, sema.TryFailureBounds:
+		case sema.TryFailureArithmetic, sema.TryFailureBounds, sema.TryFailureSliceRange:
 			router.points[point.Expression] = point
 		case sema.TryFailureCarrier:
 			if point.Expression != expr.Expression {
@@ -119,7 +120,7 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 			return builtValue{}, fb.unsupported("failure-set try over a "+string(point.Kind)+" failure", point.Token)
 		}
 	}
-	successType, err := fb.owner.internType(resolved.SuccessType)
+	successType, err := fb.trySuccessType(resolved.SuccessType)
 	if err != nil {
 		return builtValue{}, err
 	}

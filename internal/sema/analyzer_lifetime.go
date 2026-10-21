@@ -55,7 +55,7 @@ func (a *Analyzer) rejectOrdinaryMethodWholeSelfConsumption(place Place, token l
 //   - rules/memory/ownership.md — §§10–14 "Explicit move syntax" and call transfer
 //   - rules/memory/copy_move.md — §§5–9 copy and move boundaries
 //   - rules/declarations/functions.md — §22 "Instance methods"
-func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value ast.Expression, token lexer.Token, declaration bool, inferredDeclaration bool) bool {
+func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value ast.Expression, token lexer.Token, declaration bool, inferredDeclaration bool, site TransferSiteKind) bool {
 	place, ok := a.resolvePlace(value)
 	if !ok {
 		if mode == ast.OwnershipMove {
@@ -97,10 +97,19 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 			a.addErrorAtToken(token, "partial move requires independently tracked local struct storage")
 			return false
 		}
-		return !a.checkBorrowedMovePlace(place, expressionToken(value))
+		if a.checkBorrowedMovePlace(place, expressionToken(value)) {
+			return false
+		}
+		a.recordTransferPlan(value, place, site, TransferMove)
+		return true
 	}
 	classification := CopyClassificationOf(place.Type)
 	if classification == CopyTrivial || classification == CopySemantic {
+		action := TransferCopyTrivial
+		if classification == CopySemantic {
+			action = TransferCopySemantic
+		}
+		a.recordTransferPlan(value, place, site, action)
 		return true
 	}
 	moveSyntax := "<-"
@@ -240,7 +249,7 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 			if isDeferredUseKind(record.Kind) {
 				continue
 			}
-			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+			if a.grantingBorrowAncestor(candidate, record) {
 				continue
 			}
 			if !borrowRecordMayOverlap(candidate, record) {
@@ -616,7 +625,7 @@ func (a *Analyzer) validateLambdaCaptureOwnership(expr *ast.LambdaExpression) {
 		}
 
 		if capture.Mode == ast.LambdaCaptureMove {
-			if a.validateNamedOwnershipSource(ast.OwnershipMove, capture.Name, capture.Token, false, false) {
+			if a.validateNamedOwnershipSource(ast.OwnershipMove, capture.Name, capture.Token, false, false, TransferSiteCapture) {
 				a.markExplicitMoveSource(capture.Name)
 			}
 			continue

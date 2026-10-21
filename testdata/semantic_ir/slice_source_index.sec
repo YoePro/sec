@@ -1,0 +1,103 @@
+module main
+
+@noPanic
+fn Proven(values: int[4]) int {
+    let view := ref values[1..<3]
+    let result := view[0]
+    discard view
+    return result
+}
+
+fn Read(values: int[4], index: int128) int {
+    let view := ref values[..]
+    let result := view[index]
+    discard view
+    return result
+}
+
+fn Mutable(index: uint256) int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    view[index] = Replacement()
+    let result := view[1]
+    discard view
+    return result
+}
+
+fn Replacement() int { return 8 }
+fn Index() int { return 1 }
+
+fn Borrow(values: int[4]) void {
+    let view := ref values[..]
+    let item := ref view[Index()]
+    discard item
+    discard view
+}
+
+fn BorrowMutable(index: int) void {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    let item := ref mut view[index]
+    discard item
+    discard view
+}
+
+fn Handled(values: int[4], index: int) int {
+    let view := ref values[..]
+    let result := try view[index] {
+        Err(_) => 42
+    }
+    discard view
+    return result
+}
+
+fn Propagate(values: int[4], index: uint) Result[int, IndexError] {
+    let view := ref values[..]
+    let result := try view[index]
+    discard view
+    return Ok(result)
+}
+
+fn Reborrow(values: int[4], index: int) int {
+    let view := ref values[..]
+    let child := ref view[1..<3]
+    let result := child[index]
+    discard child
+    discard view
+    return result
+}
+
+fn Empty(values: int[0], index: int) int {
+    let view := ref values[..]
+    let result := try view[index] {
+        Err(_) => 0
+    }
+    discard view
+    return result
+}
+
+fn Ordered() void {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    view[Index()] = Replacement()
+    discard view
+}
+
+fn Specific(values: int[4], index: int) int {
+    let view := ref values[..]
+    let result := try view[index] {
+        Err(IndexError.OutOfBounds) => 0
+    }
+    discard view
+    return result
+}
+
+fn HandledMutable(index: int) int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    let result := try view[index] {
+        Err(_) => 0
+    }
+    discard view
+    return result
+}

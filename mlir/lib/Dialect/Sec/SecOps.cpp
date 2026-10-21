@@ -1,4 +1,5 @@
 #include "sec/Dialect/Sec/SecOps.h"
+#include "OperationContracts.h"
 
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "llvm/ADT/APInt.h"
@@ -13,6 +14,7 @@
 
 using namespace mlir;
 using namespace sec;
+using namespace sec::detail;
 
 #define GET_OP_CLASSES
 #include "sec/Dialect/Sec/SecOps.cpp.inc"
@@ -65,32 +67,6 @@ bool fitsUnsigned(const ParsedInteger &value, unsigned width) {
   return !value.negative && value.magnitude.getActiveBits() <= width;
 }
 
-bool isBuiltinIntegerSemanticType(Type type) {
-  if (isa<IntType, UIntType>(type))
-    return true;
-  auto integer = dyn_cast<IntegerType>(type);
-  if (!integer || integer.getWidth() == 1 || integer.isSignless())
-    return false;
-  switch (integer.getWidth()) {
-  case 8:
-  case 16:
-  case 32:
-  case 64:
-  case 128:
-  case 256:
-    return true;
-  default:
-    return false;
-  }
-}
-
-bool isSignedIntegerSemanticType(Type type) {
-  if (isa<IntType>(type))
-    return true;
-  auto integer = dyn_cast<IntegerType>(type);
-  return integer && integer.isSigned() && isBuiltinIntegerSemanticType(type);
-}
-
 LogicalResult verifyUnaryInteger(Operation *operation, Value operand,
                                  Value result) {
   if (!isBuiltinIntegerSemanticType(operand.getType()))
@@ -107,10 +83,6 @@ LogicalResult verifyBinaryInteger(Operation *operation, Value left, Value right,
   if (left.getType() != right.getType() || left.getType() != result.getType())
     return operation->emitOpError("operand and result types must match exactly");
   return success();
-}
-
-bool isOneOf(StringRef value, std::initializer_list<StringRef> allowed) {
-  return llvm::is_contained(allowed, value);
 }
 
 int64_t schemaVersion(Operation *operation) {
@@ -888,24 +860,6 @@ LogicalResult verifyArrayIndex(Operation *operation, Value array, Value index,
   return success();
 }
 
-LogicalResult verifyArrayBoundsMetadata(Operation *operation,
-                                        StringRef boundsKind,
-                                        StringRef boundsProof) {
-  if (boundsKind == "runtime-check") {
-    if (boundsProof != "guarded")
-      return operation->emitOpError(
-          "runtime-check bounds proof must be guarded");
-    return success();
-  }
-  if (boundsKind != "proven-safe")
-    return operation->emitOpError(
-        "bounds_kind must be proven-safe or runtime-check");
-  if (!isOneOf(boundsProof,
-               {"constant", "range", "branch", "contract", "analysis"}))
-    return operation->emitOpError(
-        "proven-safe bounds proof must be constant, range, branch, contract, or analysis");
-  return success();
-}
 } // namespace
 
 LogicalResult ArrayIndexInBoundsOp::verify() {
@@ -979,32 +933,6 @@ LogicalResult verifyPlaceRootMetadata(Operation *operation,
   return success();
 }
 
-// Reference facts are complete and policy-consistent: a proven reference
-// names its closed proof and has no epoch dependency; a dynamic-epoch
-// reference names its invalidation domain and epoch dependency.
-template <typename OpT>
-LogicalResult verifyReferenceMetadata(OpT op) {
-  if (op.getBorrowId() == 0 || op.getLifetimeId() == 0)
-    return op.emitOpError("borrow_id and lifetime_id must be non-zero");
-  if (op.getAddressStability().empty() || op.getProvenance().empty())
-    return op.emitOpError("address_stability and provenance must be non-empty");
-  StringRef policy = op.getValidityPolicy();
-  if (policy == "proven") {
-    if (!op.getValidityProof() || op.getValidityProof()->empty())
-      return op.emitOpError("a proven reference requires validity_proof");
-    if (op.getEpochDependency())
-      return op.emitOpError("a proven reference has no epoch_dependency");
-    return success();
-  }
-  if (policy == "dynamic-epoch") {
-    if (!op.getInvalidationDomain() || *op.getInvalidationDomain() == 0 ||
-        !op.getEpochDependency() || *op.getEpochDependency() == 0)
-      return op.emitOpError(
-          "a dynamic-epoch reference requires invalidation_domain and epoch_dependency");
-    return success();
-  }
-  return op.emitOpError("validity_policy must be proven or dynamic-epoch");
-}
 
 // A derived reference names a source borrow distinct from its own borrow.
 template <typename OpT>

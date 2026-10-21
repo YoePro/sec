@@ -1,0 +1,13 @@
+module main
+
+fn Ready(values: int[4]) void {
+    let view := ref values[..]
+    discard view
+}
+
+fn Mixed(values: int[4], start: int) void {
+    let view := try ref values[start + 1..] {
+        Err(_) => { return }
+    }
+    discard view
+}

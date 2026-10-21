@@ -1,0 +1,8 @@
+module main
+
+fn Escaping(start: uint) Result[ref int[], RangeError] {
+    let values := [1, 2, 3, 4]
+    let dynamic := try ref values[start..]
+    let child := ref dynamic[..]
+    return Ok(child)
+}

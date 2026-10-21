@@ -31,7 +31,7 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 				valid = false
 				continue
 			}
-			if !a.validateNamedOwnershipSource(ast.OwnershipMove, source, move.Token, false, false) {
+			if !a.validateNamedOwnershipSource(ast.OwnershipMove, source, move.Token, false, false, TransferSiteArgument) {
 				valid = false
 			}
 			continue

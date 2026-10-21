@@ -1,0 +1,7 @@
+module main
+
+type Views struct { Data: ref int[] }
+
+fn Observe(values: Views) uint {
+    return values.Data.Len
+}

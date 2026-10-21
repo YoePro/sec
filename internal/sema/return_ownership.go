@@ -226,7 +226,7 @@ func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool 
 	if !reusable || !requiresOwnershipTransfer(place.Type) {
 		return false
 	}
-	return !a.validateNamedOwnershipSource(ast.OwnershipMove, expr, expressionToken(expr), false, false)
+	return !a.validateNamedOwnershipSource(ast.OwnershipMove, expr, expressionToken(expr), false, false, TransferSiteReturn)
 }
 
 // rejectVariadicPackElementReturn preserves the invocation-lifetime pack

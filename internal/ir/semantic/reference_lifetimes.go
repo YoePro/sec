@@ -5,55 +5,77 @@ import "fmt"
 // sliceHolderAliasIDs follows CFG parameter forwarding of the same slice
 // holder. Copy/move results start another holder; loop parameters may be
 // redefined by a later iteration. Direct P15 references retain their existing
-// exact-SSA boundary rules. Derived slice element/sub-Places also become
-// unavailable when their source holder ends or moves.
-// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§39–41,50–58,63;
+// exact-SSA boundary rules except for explicit slice derivations. Reborrowed
+// slices, their transferred holders and derived element/sub-Places cannot
+// remain available after the parent holder ends or moves.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§39–43,50–58,63;
 // rules/compiler/semantic_ir.md — §66.
 func sliceHolderAliasIDs(ended ValueID, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, types *TypeTable) map[ValueID]bool {
 	aliases := map[ValueID]bool{ended: true}
 	typ, ok := types.Lookup(values[ended].Type)
-	if !ok || typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice {
+	if !ok || typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice && typ.Kind != TypeReference {
 		return aliases
 	}
-	graph := map[ValueID][]ValueID{}
+	type edge struct {
+		value             ValueID
+		derived, transfer bool
+	}
+	graph := map[ValueID][]edge{}
 	holders := map[ValueID]bool{}
 	for _, block := range fn.Blocks {
 		for _, op := range block.Operations {
 			// A Place is a derived access path, not another slice holder.
 			// Invalidation flows from the holder to the Place, never back.
 			switch op.Kind {
-			case OpSliceElementPlace, OpPlaceField, OpPlaceArrayElement, OpPlaceUnionPayload:
+			case OpReferenceBorrowShared, OpReferenceBorrowMutable:
+				if len(op.Operands) == 1 && len(op.Results) == 1 {
+					graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID, derived: true})
+				}
+			case OpSliceElementPlace, OpReferenceDerefPlace, OpPlaceField, OpPlaceArrayElement, OpPlaceUnionPayload:
 				if len(op.Operands) != 0 && len(op.Results) == 1 {
-					graph[op.Operands[0]] = append(graph[op.Operands[0]], op.Results[0].ID)
+					graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID})
 				}
 			}
-			if op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable {
+			if construction, _, _ := sliceConstructionKind(op.Kind); construction {
+				graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID, derived: true})
+			}
+			if op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable || op.Kind == OpReferenceCopyShared || op.Kind == OpReferenceMove {
 				for _, result := range op.Results {
 					holders[result.ID] = true
+					graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: result.ID, transfer: true})
 				}
 			}
 			for _, successor := range op.Successors {
 				target := blocks[successor.Block]
 				for index, argument := range successor.Arguments {
 					parameter := target.Parameters[index]
-					if parameter.Type == values[ended].Type && values[argument].Type == parameter.Type {
-						graph[argument] = append(graph[argument], parameter.ID)
-						graph[parameter.ID] = append(graph[parameter.ID], argument)
+					if directSafeReferenceType(types, parameter.Type) && values[argument].Type == parameter.Type {
+						graph[argument] = append(graph[argument], edge{value: parameter.ID})
+						graph[parameter.ID] = append(graph[parameter.ID], edge{value: argument})
 					}
 				}
 			}
 		}
 	}
-	queue := []ValueID{ended}
+	type state struct {
+		value   ValueID
+		derived bool
+	}
+	queue := []state{{value: ended}}
+	visited := map[state]bool{}
 	for len(queue) != 0 {
 		current := queue[0]
 		queue = queue[1:]
-		for _, next := range graph[current] {
-			if aliases[next] || holders[next] && next != ended {
+		if visited[current] {
+			continue
+		}
+		visited[current] = true
+		for _, next := range graph[current.value] {
+			if !current.derived && !next.derived && (next.transfer || holders[next.value] && next.value != ended) {
 				continue
 			}
-			aliases[next] = true
-			queue = append(queue, next)
+			aliases[next.value] = true
+			queue = append(queue, state{value: next.value, derived: current.derived || next.derived})
 		}
 	}
 	return aliases

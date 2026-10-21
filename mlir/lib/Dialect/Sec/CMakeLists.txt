@@ -4,6 +4,7 @@ add_mlir_dialect_library(SecMLIRDialect
   SecTypes.cpp
   SecOps.cpp
   ReferenceBoundaries.cpp
+  SliceOps.cpp
   ConversionProof.cpp
 
   ADDITIONAL_HEADER_DIRS

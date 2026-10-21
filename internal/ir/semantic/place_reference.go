@@ -133,9 +133,11 @@ func isPlaceReferenceOperation(kind OpKind) bool {
 // placeConsumer reports the operations that may take a Place operand: only
 // Place projections, reads, writes, bounds predicates and borrows. Every other
 // use would make a Place escape as a language value.
+// Rules: rules/compiler/semantic_ir.md — §96(5), §126.7;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §42.
 func placeConsumer(kind OpKind) bool {
 	switch kind {
-	case OpSliceElementPlace, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
+	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceElementPlace, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
 		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable,
 		// A reborrow may derive from a dereferenced sub-Place (§ 78);
 		// verifySubplaceReborrowSource checks where that Place comes from.
@@ -522,10 +524,10 @@ func firstOperandType(op Operation, values map[ValueID]Value) TypeID {
 // reference is guarded by its validity predicate whose false edge ends in
 // fail.reference-generation; and no use of a reference is reachable after
 // its resolved borrow end.
-// Slice length/index observations share this temporal gate and preserve
-// complete source facts on element Places.
+// Slice length/index/reborrow observations share this temporal gate. Slice
+// construction also retains its exact source extent and reference facts.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package15.md — §§59–63;
-// rules/mlir/packages/sec-mlir-dialect_package16.md — §§44–58,81–84.
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§42–58,78–84.
 func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, dom map[BlockID]map[BlockID]bool) error {
 	types := module.Types
 	isPlace := func(id ValueID) bool {
@@ -556,6 +558,11 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	}
 	for _, b := range fn.Blocks {
 		for _, op := range b.Operations {
+			if construction, _, _ := sliceConstructionKind(op.Kind); construction {
+				if err := verifySliceBorrowSource(types, op, values, definitions, sources); err != nil {
+					return err
+				}
+			}
 			sliceSource, _ := types.Lookup(firstOperandType(op, values))
 			if op.Kind == OpSliceElementPlace || op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable || op.Kind == OpReferenceEndBorrow && (sliceSource.Kind == TypeSharedSlice || sliceSource.Kind == TypeMutableSlice) {
 				if err := verifySliceHolderFacts(op, sources[op.Operands[0]]); err != nil {
@@ -592,7 +599,8 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	}
 	for _, b := range fn.Blocks {
 		for _, op := range b.Operations {
-			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && op.Kind != OpSliceLength && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace {
+			_, reborrow, _ := sliceConstructionKind(op.Kind)
+			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && op.Kind != OpSliceLength && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace && !reborrow {
 				continue
 			}
 			for _, operand := range op.Operands {
@@ -606,7 +614,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 					return fmt.Errorf("the false edge of validity guard %%%d must terminate with fail.reference-generation", op.ReferenceGuard)
 				}
 			}
-			if op.Kind == OpSliceLength || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace {
+			if op.Kind == OpSliceLength || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace || reborrow {
 				if err := verifySliceObservationValidity(op, b.ID, blocks, dom, definitions, definitionBlocks, sources); err != nil {
 					return err
 				}

@@ -1,0 +1,19 @@
+module main
+
+fn Handled(values: int[8], start: uint) void {
+    let dynamic := try ref values[start..] {
+        Err(_) => { return }
+    }
+    let child := ref dynamic[..]
+    discard child
+    discard dynamic
+}
+
+fn Naked(values: int[8], start: uint) Result[uint, RangeError] {
+    let dynamic := try ref values[start..]
+    let child := ref dynamic[..]
+    let count := child.Len
+    discard child
+    discard dynamic
+    return Ok(count)
+}

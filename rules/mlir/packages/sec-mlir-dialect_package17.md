@@ -556,6 +556,14 @@ does not broaden source acceptance of custom free declarations
 
 Compiler-known or future resolved types may use the same hook.
 
+**Synchronization note (2026-10-20):** this source gate is superseded. MD-025
+was applied 2026-10-15 (`rules/corrections/applied/md025-custom-free-correction-20261015.md`;
+`impl.md` § 19, `destruction.md` §§ 10.3, 15.4–15.7, `copy_move.md` § 3.5(6)):
+custom `free` is accepted source, makes its type MoveOnly, runs before the
+remaining owned fields are destroyed in reverse declaration order, and cannot
+move owned fields out of `self`. P17 implements the destruction-plan hook for
+these accepted declarations (`package17-todo.md` P17-04, P17-10).
+
 ---
 
 # 23. Derived struct destruction

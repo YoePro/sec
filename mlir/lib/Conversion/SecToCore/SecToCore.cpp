@@ -1,4 +1,5 @@
 #include "sec/Conversion/SecToCore/Passes.h"
+#include "ScalarContainers.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -581,166 +582,7 @@ public:
       return IntegerType::get(context, 32,
                               IntegerType::SignednessSemantics::Unsigned);
     });
-    typeConverter.addConversion(
-        [&](sec::NamedType type) -> std::optional<Type> {
-          Type base = typeConverter.convertType(type.getBase());
-          if (!base)
-            return std::nullopt;
-          return sec::NamedType::get(context, type.getIdentity(), base);
-        });
-    typeConverter.addConversion(
-        [&](sec::DistinctType type) -> std::optional<Type> {
-          Type base = typeConverter.convertType(type.getBase());
-          if (!base)
-            return std::nullopt;
-          return sec::DistinctType::get(context, type.getIdentity(), base);
-        });
-    // SEC-MLIR Package 14 section 102 and P14-61 require Package 6 scalar
-    // resolution to recurse through fixed arrays without changing their exact
-    // length or introducing a physical array representation.
-    typeConverter.addConversion(
-        [&](sec::ArrayType type) -> std::optional<Type> {
-          Type element = typeConverter.convertType(type.getElementType());
-          if (!element)
-            return std::nullopt;
-          if (element == type.getElementType())
-            return type;
-          return sec::ArrayType::get(context, element, type.getLength());
-        });
-    // rules/mlir/packages/sec-mlir-dialect_package14.md, section 51:
-    // Result[U, IndexError] must retain exactly the converted component types
-    // used by the existing Result construction and return flow.
-    typeConverter.addConversion(
-        [&](sec::ResultType type) -> std::optional<Type> {
-          Type success = typeConverter.convertType(type.getSuccessType());
-          Type error = typeConverter.convertType(type.getErrorType());
-          if (!success || !error)
-            return std::nullopt;
-          return sec::ResultType::get(context, success, error);
-        });
-    typeConverter.addConversion(
-        [&](sec::EnumType type) -> std::optional<Type> {
-          Type underlying = typeConverter.convertType(type.getUnderlying());
-          if (!underlying)
-            return std::nullopt;
-          if (underlying == type.getUnderlying())
-            return type;
-          return sec::EnumType::get(
-              context, type.getIdentity(), underlying,
-              type.getRepresentation(), type.getBitWidth(), type.getCases());
-        });
-    typeConverter.addConversion(
-        [&](sec::UnionType type) -> std::optional<Type> {
-          SmallVector<Attribute> arguments;
-          SmallVector<Attribute> variants;
-          bool changed = false;
-          for (Attribute attribute : type.getTypeArguments()) {
-            auto typeAttribute = dyn_cast<TypeAttr>(attribute);
-            if (!typeAttribute)
-              return std::nullopt;
-            Type converted = typeConverter.convertType(typeAttribute.getValue());
-            if (!converted)
-              return std::nullopt;
-            changed |= converted != typeAttribute.getValue();
-            arguments.push_back(TypeAttr::get(converted));
-          }
-          for (Attribute attribute : type.getVariants()) {
-            auto variant = dyn_cast<sec::UnionVariantAttr>(attribute);
-            if (!variant)
-              return std::nullopt;
-            Type payload = variant.getPayload();
-            if (payload) {
-              Type converted = typeConverter.convertType(payload);
-              if (!converted)
-                return std::nullopt;
-              changed |= converted != payload;
-              payload = converted;
-            }
-            SmallVector<Attribute> fields;
-            for (Attribute fieldAttribute : variant.getFields()) {
-              auto field = dyn_cast<sec::UnionFieldAttr>(fieldAttribute);
-              if (!field)
-                return std::nullopt;
-              Type converted = typeConverter.convertType(field.getType());
-              if (!converted)
-                return std::nullopt;
-              changed |= converted != field.getType();
-              fields.push_back(sec::UnionFieldAttr::get(
-                  context, field.getName(), converted));
-            }
-            variants.push_back(sec::UnionVariantAttr::get(
-                context, variant.getIndex(), variant.getName(),
-                variant.getKind(), payload, ArrayAttr::get(context, fields)));
-          }
-          if (!changed)
-            return type;
-          return sec::UnionType::get(
-              context, type.getIdentity(), ArrayAttr::get(context, arguments),
-              ArrayAttr::get(context, variants));
-        });
-    typeConverter.addConversion(
-        [&](sec::StructType type) -> std::optional<Type> {
-          SmallVector<Attribute> arguments;
-          SmallVector<Attribute> fields;
-          bool changed = false;
-          for (Attribute attribute : type.getTypeArguments()) {
-            auto typeAttribute = dyn_cast<TypeAttr>(attribute);
-            if (!typeAttribute)
-              return std::nullopt;
-            Type converted = typeConverter.convertType(typeAttribute.getValue());
-            if (!converted)
-              return std::nullopt;
-            changed |= converted != typeAttribute.getValue();
-            arguments.push_back(TypeAttr::get(converted));
-          }
-          for (Attribute attribute : type.getFields()) {
-            auto field = dyn_cast<sec::StructFieldAttr>(attribute);
-            if (!field)
-              return std::nullopt;
-            Type converted = typeConverter.convertType(field.getType());
-            if (!converted)
-              return std::nullopt;
-            changed |= converted != field.getType();
-            fields.push_back(sec::StructFieldAttr::get(
-                context, field.getOrdinal(), field.getName(), converted,
-                field.getTags()));
-          }
-          if (!changed)
-            return type;
-          return sec::StructType::get(
-              context, type.getIdentity(), ArrayAttr::get(context, arguments),
-              ArrayAttr::get(context, fields));
-        });
-    // SEC-MLIR Package 15 section 32 and lowering v11 section 19: scalar
-    // resolution recurses through referent types and keeps the Place and
-    // reference wrappers, their authority and their metadata.
-    typeConverter.addConversion(
-        [&](sec::PlaceType type) -> std::optional<Type> {
-          Type element = typeConverter.convertType(type.getElementType());
-          if (!element)
-            return std::nullopt;
-          if (element == type.getElementType())
-            return type;
-          return sec::PlaceType::get(context, element, type.getAuthority());
-        });
-    typeConverter.addConversion(
-        [&](sec::RefType type) -> std::optional<Type> {
-          Type element = typeConverter.convertType(type.getElementType());
-          if (!element)
-            return std::nullopt;
-          if (element == type.getElementType())
-            return type;
-          return sec::RefType::get(context, element);
-        });
-    typeConverter.addConversion(
-        [&](sec::RefMutType type) -> std::optional<Type> {
-          Type element = typeConverter.convertType(type.getElementType());
-          if (!element)
-            return std::nullopt;
-          if (element == type.getElementType())
-            return type;
-          return sec::RefMutType::get(context, element);
-        });
+    sec::addScalarContainerConversions(typeConverter, context);
     typeConverter.addConversion(
         [&](sec::StorageType type) -> std::optional<Type> {
           Type element = type.getElementType();
@@ -812,7 +654,12 @@ public:
         sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
         sec::RefBorrowMutOp, sec::RefCopySharedOp, sec::RefMoveOp,
         sec::RefReborrowSharedOp, sec::RefReborrowMutOp, sec::RefIsValidOp,
-        sec::RefCompareOp, sec::RefEndBorrowOp>(
+        sec::RefCompareOp, sec::RefEndBorrowOp,
+        sec::SliceRangeNormalizeOp, sec::SliceRangeCheckOp,
+        sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
+        sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
+        sec::SliceCopySharedOp, sec::SliceMoveMutOp, sec::SliceLenOp,
+        sec::SliceIndexInBoundsOp, sec::SliceElementPlaceOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addDynamicallyLegalOp<
         sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
@@ -900,7 +747,18 @@ public:
              sec::RefReborrowMutOp::getOperationName(),
              sec::RefIsValidOp::getOperationName(),
              sec::RefCompareOp::getOperationName(),
-             sec::RefEndBorrowOp::getOperationName()})
+             sec::RefEndBorrowOp::getOperationName(),
+             sec::SliceRangeNormalizeOp::getOperationName(),
+             sec::SliceRangeCheckOp::getOperationName(),
+             sec::SliceBorrowSharedOp::getOperationName(),
+             sec::SliceBorrowMutOp::getOperationName(),
+             sec::SliceReborrowSharedOp::getOperationName(),
+             sec::SliceReborrowMutOp::getOperationName(),
+             sec::SliceCopySharedOp::getOperationName(),
+             sec::SliceMoveMutOp::getOperationName(),
+             sec::SliceLenOp::getOperationName(),
+             sec::SliceIndexInBoundsOp::getOperationName(),
+             sec::SliceElementPlaceOp::getOperationName()})
       patterns.add<ScalarSemanticIntegerLowering>(typeConverter, context,
                                                   operationName);
     populateCallOpTypeConversionPattern(patterns, typeConverter);

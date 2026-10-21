@@ -1,5 +1,6 @@
 add_mlir_conversion_library(SecMLIRSecToCore
   SecToCore.cpp
+  ScalarContainers.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${SEC_MLIR_SOURCE_DIR}/include/sec/Conversion/SecToCore

@@ -1,0 +1,49 @@
+module main
+
+fn Both(values: int[8]) uint {
+    let source := ref values[1..<7]
+    let child := ref source[1..<3]
+    let a := source.Len
+    let b := len(source)
+    let c := child.Len
+    let d := len(child)
+    discard child
+    discard source
+    return a + b + c + d
+}
+
+@noPanic
+fn Property(values: int[8]) uint {
+    let source := ref values[1..<7]
+    let count := source.Len
+    discard source
+    return count
+}
+
+@noPanic
+fn Global(values: int[8]) uint {
+    let source := ref values[1..<7]
+    let count := len(source)
+    discard source
+    return count
+}
+
+fn Mutable() uint {
+    let mut values := [1, 2, 3, 4]
+    let source := ref mut values[..]
+    let a := source.Len
+    let b := len(source)
+    discard source
+    return a + b
+}
+
+fn Empty(values: int[0]) uint {
+    let source := ref values[..]
+    let count := len(source)
+    discard source
+    return count
+}
+
+fn Inline(values: int[4]) uint {
+    return len(ref values[1..<3])
+}

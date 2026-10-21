@@ -18,6 +18,7 @@ const sliceLoweringPackage = 16
 type sliceLoweringPlans struct {
 	creations map[*ast.RefExpression]sema.ResolvedSliceCreationPlan
 	indexes   map[*ast.IndexExpression]sema.ResolvedSliceIndexPlan
+	lengths   map[ast.Expression]sema.ResolvedSliceLengthPlan
 }
 
 // prepareSliceLowering snapshots the requested module's creation/index/use
@@ -30,7 +31,7 @@ func (b *builder) prepareSliceLowering(program *ast.Program) error {
 	if b.maxPackage < sliceLoweringPackage {
 		return nil
 	}
-	plans := &sliceLoweringPlans{creations: map[*ast.RefExpression]sema.ResolvedSliceCreationPlan{}, indexes: map[*ast.IndexExpression]sema.ResolvedSliceIndexPlan{}}
+	plans := &sliceLoweringPlans{creations: map[*ast.RefExpression]sema.ResolvedSliceCreationPlan{}, indexes: map[*ast.IndexExpression]sema.ResolvedSliceIndexPlan{}, lengths: map[ast.Expression]sema.ResolvedSliceLengthPlan{}}
 	current := ""
 	for _, statement := range program.Statements {
 		if module, ok := statement.(*ast.ModuleStatement); ok {
@@ -41,6 +42,14 @@ func (b *builder) prepareSliceLowering(program *ast.Program) error {
 			continue
 		}
 		if err := walk.Inspect(statement, func(node any) error {
+			if expr, expression := node.(ast.Expression); expression {
+				if plan, ok := b.analyzer.ResolvedSliceLengthPlanOf(expr); ok {
+					if !sourceSliceType(plan.SourceType) || plan.ResultType.Kind != sema.UintType || plan.ResultType.Name != "uint" || (plan.CompilerKnownID != "CKM-LEN-SLICE" && plan.CompilerKnownID != "CKF-LEN") {
+						return fmt.Errorf("incomplete resolved slice length plan at %s", formatLocation(location(expressionToken(expr))))
+					}
+					plans.lengths[expr] = plan
+				}
+			}
 			switch expr := node.(type) {
 			case *ast.RefExpression:
 				if _, sliced := expr.Value.(*ast.SliceExpression); !sliced {
@@ -102,10 +111,25 @@ func (fb *functionBuilder) p16SliceExpression(expr ast.Expression) (builtValue, 
 	if fb.owner.slicePlans == nil {
 		return builtValue{}, true, fmt.Errorf("missing package-16 slice lowering preflight")
 	}
+	if plan, ok := fb.owner.slicePlans.lengths[expr]; ok {
+		value, err := fb.lowerSliceLength(expr, plan)
+		return value, true, err
+	}
 	switch expr := expr.(type) {
+	case *ast.TryExpression:
+		if resolved, ok := fb.owner.analyzer.ResolvedTryOf(expr); ok && sourceSliceType(resolved.SuccessType) {
+			value, err := fb.buildTryExpression(expr)
+			return value, true, err
+		}
 	case *ast.RefExpression:
+		if index, ok := expr.Value.(*ast.IndexExpression); ok {
+			if plan, ok := fb.owner.slicePlans.indexes[index]; ok {
+				value, err := fb.lowerSliceElementBorrow(expr, index, plan)
+				return value, true, err
+			}
+		}
 		if _, sliced := expr.Value.(*ast.SliceExpression); !sliced {
-			return builtValue{}, false, nil
+			break
 		}
 		plan, ok := fb.owner.slicePlans.creations[expr]
 		if !ok {
@@ -113,27 +137,26 @@ func (fb *functionBuilder) p16SliceExpression(expr ast.Expression) (builtValue, 
 		}
 		feature := "slice source kind without supported lowering"
 		switch plan.SourceKind {
-		case sema.SliceSourceFixedArray:
-			feature = "fixed-array slice borrow source lowering (P16-22/P16-30)"
-		case sema.SliceSourceSlice:
-			feature = "slice reborrow source lowering (P16-22/P16-33)"
+		case sema.SliceSourceFixedArray, sema.SliceSourceSlice:
+			value, err := fb.lowerSliceCreation(expr, plan)
+			return value, true, err
 		case sema.SliceSourceDynamicArray:
 			feature = "owning dynamic-array to slice lowering (P18)"
 		}
 		return builtValue{}, true, fb.unsupported(feature, expr.Token)
 	case *ast.IndexExpression:
 		if plan, ok := fb.owner.slicePlans.indexes[expr]; ok {
-			feature := "slice element source lowering (P16-35)"
-			if plan.Action == sema.ArrayTransferMove || plan.Action == sema.ArrayTransferCopySemantic {
-				feature = "non-trivial slice element transfer (P17)"
-			}
-			return builtValue{}, true, fb.unsupported(feature, expr.Token)
+			value, err := fb.lowerSliceIndexRead(expr, plan)
+			return value, true, err
 		}
 		if source, resolved := fb.owner.analyzer.ResolvedTypeOf(expr.Left); resolved && sourceSliceType(source) {
 			return builtValue{}, true, fmt.Errorf("missing prepared slice index/use plan at %s", formatLocation(location(expr.Token)))
 		}
 	case *ast.SliceExpression:
 		return builtValue{}, true, fb.unsupported("slice expression without a prepared explicit borrow", expr.Token)
+	}
+	if source, resolved := fb.owner.analyzer.ResolvedTypeOf(expr); resolved && sourceSliceType(source) {
+		return builtValue{}, true, fb.unsupported("slice holder value transfer or projected origin (P16-36)", expressionToken(expr))
 	}
 	return builtValue{}, false, nil
 }

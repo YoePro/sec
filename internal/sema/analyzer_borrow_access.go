@@ -20,7 +20,7 @@ func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
 func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind != mutableBorrow || record.Holder == candidate.Root || record.Holder == candidate.ReferenceHolder || !borrowRecordMayOverlap(candidate, record) {
+			if record.Kind != mutableBorrow || record.Holder == candidate.Root || a.grantingBorrowAncestor(candidate, record) || !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			if record.LoopCarried {
@@ -60,7 +60,7 @@ func (a *Analyzer) checkBorrowedMutationPlaceForAction(place Place, token lexer.
 			if isDeferredUseKind(record.Kind) {
 				continue
 			}
-			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+			if a.grantingBorrowAncestor(candidate, record) {
 				continue
 			}
 			if !borrowRecordMayOverlap(candidate, record) {
@@ -111,7 +111,7 @@ func (a *Analyzer) checkBorrowedMovePlaceForAction(place Place, token lexer.Toke
 			if isDeferredUseKind(record.Kind) {
 				continue
 			}
-			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+			if a.grantingBorrowAncestor(candidate, record) {
 				continue
 			}
 			if !borrowRecordMayOverlap(candidate, record) {

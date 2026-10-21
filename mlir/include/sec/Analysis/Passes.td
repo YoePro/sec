@@ -46,6 +46,12 @@ def SecVerifyArrayIndexGuards : Pass<"sec-verify-array-index-guards", "mlir::fun
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+// Rules: rules/mlir/sec_mlir_dialect.md — v12.24.
+def SecVerifySliceGuards : Pass<"sec-verify-slice-guards", "mlir::func::FuncOp"> {
+  let summary = "Verify Sec slice range/index and temporal guard control flow";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 // Schema 11 (SEC-MLIR-P15). Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
 // sections 34-37.
 def SecVerifyPlaces : Pass<"sec-verify-places", "mlir::func::FuncOp"> {

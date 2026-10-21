@@ -1,0 +1,63 @@
+module main
+
+fn Forms(values: int[4]) void {
+    let full := ref values[..]
+    discard full
+    let prefix := ref values[..1]
+    discard prefix
+    let halfOpen := ref values[..<2]
+    discard halfOpen
+    let tail := ref values[1..]
+    discard tail
+    let inclusive := ref values[1..2]
+    discard inclusive
+    let exclusive := ref values[1..<3]
+    discard exclusive
+    let empty := ref values[4..<4]
+    discard empty
+}
+
+fn Empty(values: int[0]) void {
+    let view := ref values[..]
+    discard view
+}
+
+fn Mutable() void {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[1..<3]
+    discard view
+}
+
+fn Dynamic(values: int[4], start: int128, finish: uint256) void {
+    let view := ref values[start..finish]
+    discard view
+}
+
+fn First() int { return 1 }
+fn Last() int { return 3 }
+fn Row() int { return 0 }
+fn Order(values: int[2][4]) void {
+    let view := ref values[Row()][First()..<Last()]
+    discard view
+}
+
+fn Borrowed(values: ref int[4]) void {
+    let view := ref values[1..<3]
+    discard view
+}
+
+fn MutableBorrowed(values: ref mut int[4]) void {
+    let view := ref mut values[1..<3]
+    discard view
+}
+
+type Grid struct { Values: int[4] }
+fn Field(grid: Grid) void {
+    let view := ref grid.Values[..]
+    discard view
+}
+
+fn DynamicExclusive(values: int[4], finish: uint) void {
+    let view := ref values[..<finish]
+    discard view
+}

@@ -1,0 +1,65 @@
+module main
+
+fn Ready(values: int[4]) void {
+    let view := ref values[..]
+    discard view
+}
+
+fn Fallible(values: int[4], start: uint) void {
+    let view := try ref values[start..] {
+        Err(_) => { return }
+    }
+    discard view
+}
+
+fn Mutable(start: int128, finish: uint256) void {
+    let mut values := [1, 2, 3, 4]
+    let view := try ref mut values[start..<finish] {
+        Err(_) => { return }
+    }
+    discard view
+}
+
+fn Specific(values: int[4], start: int, finish: int) void {
+    let view := try ref values[start..finish] {
+        Err(RangeError.StartAfterEnd) => { return }
+        Err(RangeError.OutOfBounds) => { return }
+        Err(RangeError.InvalidRange) => { return }
+    }
+    discard view
+}
+
+fn Propagate(values: int[4], start: int) Result[uint, RangeError] {
+    let view := try ref values[start..]
+    let count := view.Len
+    discard view
+    return Ok(count)
+}
+
+fn PropagateMutable(start: uint) Result[uint, RangeError] {
+    let mut values := [1, 2, 3, 4]
+    let view := try ref mut values[..<start]
+    let count := len(view)
+    discard view
+    return Ok(count)
+}
+
+fn Partial(values: int[4], start: int, enabled: bool) Result[uint, RangeError] {
+    let view := try ref values[start..] {
+        Err(RangeError.InvalidRange) where enabled => return Err(RangeError.InvalidRange)
+    }
+    let count := view.Len
+    discard view
+    return Ok(count)
+}
+
+fn First() int { return 1 }
+fn Last() int { return 3 }
+fn Order(values: int[4]) void {
+    let source := ref values[..]
+    let child := try ref source[First()..<Last()] {
+        Err(_) => { return }
+    }
+    discard child
+    discard source
+}

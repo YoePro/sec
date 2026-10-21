@@ -315,22 +315,41 @@ sources unless an actual synchronized migration requires them.
 
 ## B. Modernize the existing Sema range model
 
-- [ ] P16-08 — Audit slice projections, aliases, reference origins, nested range
+- [x] P16-08 — Audit slice projections, aliases, reference origins, nested range
   composition, borrowing, escape/return summaries, analysis and tooling consumers.
   Use the existing canonical Place model as the single migration target (§§24–30).
 
-  Partial audit 2026-10-17 (range representation only). P16-17/P16-19
-  subsequently cover the represented transfer/return paths and source test
-  matrix; the complete cross-consumer inventory remains P16-08.
-  - Slice projections live in `internal/sema/place.go`: `PlaceSlice`, `slicePlaceProjection`, `appendSliceProjection`/`appendIndexProjection`, the printer, `placeIsStaticallyEmpty`, `slicesAreStaticallyDisjoint`/`Equal` and `indexOutsideSlice`.
-  - Every bound consumer was migrated in P16-09:
-    - `storage_overlap.go` (`singleStorageOverlap`);
-    - `parameter_usage_place.go` (callee demand places);
-    - `parameter_usage_persistence.go` (persisted projections; schema version bumped to 2);
-    - `analyzer.go` (`samePlaceIdentity`).
-  - `CanonicalProjectionSlice` stays the deferred P15 category.
-  - Semantic IR has no slice projection: `builder.go` rejects ref-of-slice at package 14/15.
-  - Still to audit: about 68 `SliceType` consumers in Sema, among them escape analysis, reference-origin joins, FFI legality, known members (`.Len`), iterator dependencies and try failure sets. Also LSP/tooling presentation.
+  Completed 2026-10-20. The inventory below follows current consumers of
+  `SliceType`, `PlaceSlice`, range endpoints/identities and their shared
+  Place/reference APIs, including consumers without a direct slice-kind switch.
+  File names in Sema rows are relative to `internal/sema/`.
+
+  | Consumer | Current authority and migration result |
+  |---|---|
+  | Source types, identity and traits | `type_references.go`, `type_compatibility.go`, `types.go`, `analyzer_let_bindings.go` and declaration checks in `analyzer.go` distinguish owning arrays from bounded references, reject bare slice declarations and keep element type/authority in identity. Shared-reference copying does not copy elements; mutable references remain move-only. Slices do not destroy elements. |
+  | Projections, aliases and overlap | `place.go` owns `PlaceSlice`, printing, origin alternatives and relationships. `slice_normalization.go` and `slice_places.go` own exact half-open bounds, omitted ends and static composition. `place_identities.go` owns equality and evaluated dynamic identities. `storage_overlap.go` delegates structural relationships conservatively; unknown bounds and provenance never prove physical disjointness. No endpoint consumer narrows `SliceStart`/`SliceEnd` to host integers. |
+  | Borrowing, availability and transfers | `reference_inference.go`, `analyzer_borrow_access.go`, `analyzer_lifetime.go`, `reference_holder_origins.go`, `explicit_reborrow.go` and `reference_plans.go` reuse canonical Places and the existing P15 borrow/lifetime/storage facts. `index_assignment.go` checks projected writes. Empty ranges retain origin/lifetime while borrowing no elements. P16-17/P16-19 cover copying, moving, ending holders and reborrowing transferred ranges. |
+  | Return origins and escape summaries | `reference_origin_join.go`, `reference_return_origins.go`, `reference_contained_origins.go`, `slice_return_origins.go`, `slice_origin_dependencies.go` and `reference_summary_round.go` preserve finite origins, field paths, open ends and rebased dynamic identities. `escape_analysis.go`, `escape_call_boundary.go`, `escape_storage_domain.go` and `return_reference_summary.go` consume those origins rather than deriving a second alias model; local-storage escapes remain invalid. Imported returned-origin verification is still the P15/MD-085 gate. |
+  | Arena and temporal dependencies | `analyzer_arena.go` supplies borrowed allocation results; transferred/reference-carried slices retain storage, epoch and address-space facts through the same origin producers. `slice_effects.go` and `reference_plans.go` keep generation failure separate from range failure. P16-17/P16-19 exercise Arena return chains and reset rejection. |
+  | Range creation, indexing and length | `slice_creation_plans.go`, `slice_index_plans.go`, `slice_range_classification.go`, `index_bounds_diagnostics.go`, `compiler_known_functions.go` and `analyzer_inference.go` use canonical exact extent/range facts. `.Len` and `len` return `uint`; observing a length retains temporal-use checks. Detached snapshots live in `slice_plan_snapshots.go`. |
+  | Try and effects | `try_failure_set.go` consumes resolved creation/index plans over the protected subtree. `slice_effects.go` records ordinary bounds effects and removes only handled spatial failures; generation failure remains independent. No slice allocation/blocking effect is invented. |
+  | Iteration | `analyzer_for.go` recognizes slice sequences separately from user iterator protocols. `iterator_dependencies.go` consumes canonical source/contained origins and live borrow records, preserving unknown backing. `iterator_tooling.go` exposes resolved protocol targets; it does not construct another slice/iterator model. |
+  | FFI and buffer provenance | `ffi_legality.go` rejects native slices at C ABI boundaries. `foreign_extent_provenance.go` and `foreign_extent_quantity.go` use resolved compiler-known members and canonical storage origins for pointer/extent advice, retaining unknown provenance when no referent is established. No native slice descriptor ABI is inferred. |
+  | Compiler-known members and strings | `compiler_known_members.go`, `compiler_known_presentation.go`, `explicit_ref_required.go` and `string_from_utf8_intrinsic.go` distinguish borrowed byte/rune sequences from owning arrays, preserve explicit borrowing and present the existing member surface. This recognition does not supply source-to-IR slice lowering. |
+  | Contracts and callable identity | `contracts.go`, `unique_contracts.go` and `call_graph_identity.go` classify sequence elements and recursively preserve type identity. They consume established length/value facts; a slice-kind match alone is not a range or uniqueness proof. |
+  | Parameter analysis and persistence | `parameter_usage_place.go` now consumes detached, analysis-time source-relative projections retained by `sequence_projections.go`, then uses the same slice/index composition helpers as Places. Its separate endpoint arithmetic is removed. This also prevents reevaluation in another callable's constant environment and new identity allocation during analysis consumption. `parameter_usage_persistence.go` remains schema 2: exact bounds persist, analysis-local identities/open-end relationships do not become imported proofs. `parameter_usage_operations.go`, `parameter_usage_contracts.go`, `parameter_usage_budget.go` and `parameter_usage_recommendations.go` consume sequence/reference capabilities conservatively. The size estimate in `parameter_usage.go` is an advisory cost heuristic, not a slice ABI/layout contract. |
+  | LSP and diagnostic presentation | `cmd/lsp/sema_diagnostic.go`, `diagnostic_provenance.go`, `iterator_hover.go`, `signature_help.go` and compiler-known presentation consume Sema diagnostics/resolutions. Borrow diagnostics use canonical Place printing, including unknown starts; LSP does not normalize ranges or infer aliases. `internal/lsp/features/defaults` consumes Sema type/default facts without creating slices. |
+  | Semantic IR | `internal/ir/semantic/slice_types.go`, `slice_ranges.go`, `slice_borrows.go`, `slice_length.go`, `slice_transfer.go` and `slice_index.go` implement the completed C-section contracts using P15 metadata and exact operand types. `slice_lowering.go` snapshots resolved plans only for explicit P16 builds and rejects unimplemented source producers by name. P16-26..28/P16-30..37 retain their separate verification and source-production work. |
+  | MLIR and emission | `internal/lowering/secmlir/emitter_options.go` explicitly selects schema 12; default emission remains 11. `mlir/lib/Dialect/Sec/SecTypes.cpp` and `ReferenceBoundaries.cpp` admit the completed type/local-reference boundaries. `CanonicalProjectionSlice` remains the P15 compatibility category `deferred-slice`; it does not mean Semantic IR has no slice model. P16-40 registers the local slice operation contracts in `SecSliceOps.td`/`SliceOps.cpp`; P16-42..45 own whole-function verification and emission; P24 owns physical ABI representation. |
+
+  Regression evidence: `TestParameterSlicePlacesUseCanonicalRanges` reads
+  `testdata/sema/parameter_slice_places_valid.sec` for 32/64-bit target plans.
+  It checks fixed/open/nested/CTE ranges, composed indices, dynamic parent
+  identity, detached results and zero identity allocation even after the
+  analyzer's constant environment changes. Existing slice, borrow, escape,
+  iterator, foreign-buffer, persistence, IR and LSP tests cover the other rows.
+  All section B audit/modernization points are complete; runtime acceptance
+  remains in the explicitly open sections C–G.
 - [x] P16-09 — Replace canonical `int64` slice bounds with detached immutable
   arbitrary-precision half-open ranges. Migrate comparisons, printing, cloning,
   empty-range checks and nested slice/index composition; remove host-width
@@ -575,9 +594,32 @@ sources unless an actual synchronized migration requires them.
   These are semantic operations and verification contracts; source CFG
   production, dynamic-source validity, remaining P16-26 checks, schema 12 and
   physical lowering remain separate.
-- [ ] P16-22 — Add fixed-array shared/mutable borrows and shared/mutable slice
+- [x] P16-22 — Add fixed-array shared/mutable borrows and shared/mutable slice
   reborrows. Enforce writable source, no authority/range/lifetime expansion, and
   preservation of storage/epoch facts without copying elements (§§42–46).
+
+  Completed 2026-10-20 (Semantic IR operations). `slice.borrow-shared`,
+  `slice.borrow-mut`, `slice.reborrow-shared` and `slice.reborrow-mut` consume
+  the source Place/slice and one normalized uint start/length tuple. Verification
+  requires matching element/holder authority and a writable source for mutable
+  results. Both normalized operands must come from the same range operation;
+  its source extent is the exact fixed-array length or a length observation of
+  the exact source slice SSA. Checked tuples stay on their successful edge.
+  Construction preserves canonical storage/address-space and inherited
+  validity/epoch/stability/pin facts, including fixed arrays reached through
+  reference-derived sub-Places. Reborrows have a distinct borrow tied to the
+  parent; dynamic sources require the existing P15 source validity guard.
+  Borrow-end verification follows derived slices and their copied/moved
+  holders so the child cannot outlive its parent, while independent shared
+  copies and fresh loop holders retain their existing behavior.
+  Deterministic printing carries all operands, guard and reference metadata.
+  Tests cover 32/64-bit plans, both authorities and validity policies,
+  weakening authority, zero/host-wide extents, referenced arrays, checked
+  success/failure edges and malformed SSA, extent, epoch, pin, provenance,
+  ownership and parent-lifetime contracts. No array read/copy/allocation is
+  introduced. Fixed-array source production was added in P16-30; slice-source
+  reborrow source production was added in P16-33. Complete CFG fact joins,
+  conflict/return verification and MLIR operations remain their separate points.
 - [x] P16-23 — Add explicit shared slice copy/mutable slice move, preserving
   holder/borrow facts without element transfer. Extend borrow-end verification;
   neither ending a slice nor discarding it destroys backing storage (§§39–41,63).
@@ -611,7 +653,7 @@ sources unless an actual synchronized migration requires them.
   Source tests confirm `.Len` and `len(...)` infer `uint` for both authorities.
   IR tests cover proven/dynamic values on 32/64 plans, deterministic printing,
   signed/fixed-width result rejection, false-edge and guard-bypass failures.
-  Source-to-operation production remains P16-34; schema 12 and physical
+  Source-to-operation production was added in P16-34; schema 12 and physical
   lowering remain separate. No slice-int-length operation was introduced.
 - [x] P16-25 — Add slice index predicate and element Place, then reuse P15
   PlaceRead/PlaceWrite/reference-borrow operations for trivial reads, replacement
@@ -641,9 +683,35 @@ sources unless an actual synchronized migration requires them.
 - [ ] P16-27 — Extend returned-origin/range verification using the represented P15
   return contracts. Add deterministic printing and defensive clones of slice
   metadata, with no physical descriptor vocabulary (amendment §§22,25–26).
-- [ ] P16-28 — Add positive/negative white-box IR tests, including mismatched SSA,
+- [x] P16-28 — Add positive/negative white-box IR tests, including mismatched SSA,
   misplaced guards, stale validation caught as a spatial error, missing proofs,
   widened reborrows, mutable copies and uses after borrow end (§§129,136).
+
+  Completed 2026-10-20 (white-box Semantic IR scope). The composed matrix in
+  `internal/ir/semantic/slice_guard_matrix_test.go` connects parent validity,
+  range normalization, reborrow, separate child validity, runtime bounds,
+  element Place/read and child/parent borrow ends. Fresh builds print
+  deterministically for shared/mutable slices on 32/64-bit plans. Negative
+  mutations first verify their baseline, then require the owning diagnostic
+  reason: parent/child guard substitution, wrong source SSA, missing parent
+  guard/proof, rewritten epoch, stale-to-spatial failure substitution,
+  mismatched normalized tuple and derived Place use after parent end.
+
+  | Required white-box coverage | Tests in `internal/ir/semantic/` |
+  |---|---|
+  | Shared/mutable types, exact/detached facts | `slice_types_test.go` |
+  | Fixed-array borrows, all reborrow authorities, narrowing/source extent, empty/wide ranges | `slice_borrows_test.go` |
+  | Shared copy, mutable copy rejection/move, borrow-end and forwarded-holder lifetime | `slice_transfer_test.go` |
+  | Normalize/check, original wide endpoint SSA, canonical failure tuples and success/failure dominance | `slice_ranges_test.go` |
+  | Unsigned length, wrong/missing/misplaced temporal guards and stale failure endpoints | `slice_length_test.go` |
+  | Bounds predicate/element Place, source/index SSA, missing proofs, guard bypass, stale versus bounds failure and ended holders | `slice_index_test.go` |
+  | Composed parent/child and temporal/spatial identities across the operation families | `slice_guard_matrix_test.go` |
+
+  The corrected unsigned length contract supersedes the historical signed
+  length test in §129. Epoch dependencies here are symbolic P15 identities;
+  these tests do not choose a runtime epoch representation or claim physical
+  64-bit epoch execution. Full verifier CFG/returned-origin work remains
+  P16-26/P16-27, source tests P16-37 and executable MLIR integration P16-50.
 
 ## D. Connect source lowering exclusively through resolved plans
 
@@ -662,31 +730,176 @@ sources unless an actual synchronized migration requires them.
   module-selection and predecessor tests pass. Slice-free P15 programs build
   identically at P16, and the default P14 boundary remains unchanged.
   This completes the builder route and prerequisites only; source operations
-  remain P16-30..P16-36, schema 12 and physical lowering remain separate, and
+  now remain P16-36 after P16-30..P16-35;
+  schema 12 and physical lowering remain separate, and
   no CLI/default package capability is promoted.
-- [ ] P16-30 — Lower explicit fixed-array borrows from the source Place plus
+- [x] P16-30 — Lower explicit fixed-array borrows from the source Place plus
   normalized range. Evaluate root/start/end once, in order, without array load,
   copy or allocation; support valid empty sources/ranges (§§42,78–80).
-- [ ] P16-31 — Lower ordinary runtime range CFG to bounds panic with slice-range
+
+  Completed 2026-10-20. `slice_source_borrows.go` consumes the detached Sema
+  creation plan and original operand schedule. P15 Place production is shared
+  through `lowerBorrowPlace`, including stored-field/index projections and
+  fixed arrays reached through direct reference holders. The source Place
+  precedes present endpoints, evaluated once with their original integer
+  types/signedness. Omitted bounds have no synthetic source expression.
+  Proven ranges produce normalization without a redundant range check;
+  shared/mutable construction uses resolved authority and retains source
+  storage/reference facts. Empty fixed arrays and zero-length subranges keep
+  valid origins. Fresh local slice holders can be explicitly discarded with
+  `ref.end-borrow`, without releasing backing storage. General holder
+  copy/move/signature/return and automatic end production remains P16-36.
+  Source tests in `slice_source_borrows_test.go` cover 32/64-bit plans, all
+  range forms, mutable/reference sources, fields and nested array Places,
+  source-index/start/end call order and absence of aggregate loads/extracts.
+  Default/P14/P15 routes remain unchanged. Slice-source reborrow was added in
+  P16-33; fallible range, element use and MLIR emission remain capability gates.
+- [x] P16-31 — Lower ordinary runtime range CFG to bounds panic with slice-range
   provenance, forming the slice only after success (§§20,80).
-- [ ] P16-32 — Lower `try ref` / `try ref mut` range CFG to canonical RangeError,
+
+  Completed 2026-10-20. An unproven fixed-array range emits the existing total
+  `slice.range-check` with original endpoint SSA and canonical core RangeError.
+  Failed=true terminates through `fail.bounds operation="slice-range"`;
+  failed=false alone consumes normalized start/length to construct the slice.
+  The verifier admits this bounds provenance and rejects index provenance on
+  an ordinary range-failure edge. Source tests retain int128/uint256 endpoints,
+  inclusive/exclusive and omitted bounds, check successful verified IR, and
+  reject reversed guard edges and incorrect panic provenance. P16-32
+  subsequently adds fallible ranges without substituting panic; unsupported
+  recovery-holder joins and heterogeneous failure sets still return no module
+  after earlier supported functions. Schema-12 emission and binary
+  acceptance remain separate.
+- [x] P16-32 — Lower `try ref` / `try ref mut` range CFG to canonical RangeError,
   including local handlers and naked propagation. Preserve failure precedence
   and existing try metadata boundaries; no new handler schema (§§21–23,131).
-- [ ] P16-33 — Lower slice reborrow with source validity before spatial checks.
+
+  Completed 2026-10-20 for the existing source/metadata boundaries. The shared
+  range producer routes its check's exact P11 RangeError result through the
+  existing failure-set router instead of emitting bounds panic. Local
+  catch-all, exhaustive variant and guarded/partial handlers use the ordinary
+  try dispatcher; naked failures propagate through the exact enclosing
+  Result error channel. Terminating/propagating handlers retain the original
+  successful slice SSA and its borrow facts without a new holder or phi.
+  The local handler dispatcher moved from builder.go to try_local_handlers.go.
+  Tests cover shared/mutable construction, fixed-array sources and reborrows,
+  wide signed/unsigned endpoints and evaluation order on 32/64-bit plans.
+  Epoch-injected producer tests confirm temporal failure remains a separate
+  reference-generation panic before fallible spatial checking; this is not
+  Arena source or physical runtime evidence. Wrong range edges are rejected.
+  Recovery-value holder joins remain explicitly gated by P16-26/P16-36,
+  slice-valued Result signatures/returns remain P16-36, and heterogeneous
+  error widening retains its existing failure-set boundary. These cases
+  return no partial module. Schema-12 try metadata extensions (MD-031), slice
+  emission and binary acceptance retain their separate owners.
+- [x] P16-33 — Lower slice reborrow with source validity before spatial checks.
   Shared source yields shared only; mutable source can yield shared or mutable,
   preserving normalized range/origin facts (§§43–46,60–62).
-- [ ] P16-34 — Lower `.Len` and proven `len(slice)` from resolved core operations,
-  with dynamic validity and no element read. Reject unresolved signed-length
-  representability with no partial IR (§§47–49).
-- [ ] P16-35 — Lower ordinary/proven/fallible indexes to element Places with
+
+  Completed 2026-10-20. The common `lowerSliceCreation` source producer now
+  consumes slice creation plans for fixed arrays and slice reborrows. A named
+  slice source retains its existing SSA holder and reference facts without a
+  copy or move. Endpoints are evaluated once before any dynamic validity
+  guard; guarded `slice.length` then supplies the exact source extent to the
+  shared normalization/check producer. `slice.reborrow-shared` or
+  `slice.reborrow-mut` consumes the successful tuple, retains the source borrow
+  and canonical storage/epoch/address facts, and cannot expand authority.
+  Proven ranges avoid redundant spatial checks. Source tests cover shared and
+  mutable nested chains, mutable-to-shared weakening, empty slices, static and
+  wide runtime ranges and endpoint call order on 32/64-bit plans.
+  A Sema defect exposed by mutable -> mutable -> shared chains is fixed:
+  access/creation follows unanimous registered granting-borrow ancestry within
+  a canonical root. Unknown/cyclic/loop-carried links do not supply transitive
+  proof, and sibling/parent conflicts remain errors (dedicated regressions).
+  A separate producer-level white-box test injects dynamic epoch facts into a
+  parameter, verifies calls -> validity -> length/range -> reborrow order and
+  rejects replacing stale failure with bounds panic. This is not Arena source
+  allocation or signature-production evidence. General projected/returned
+  holders and signatures remain P16-36; P16-32 subsequently adds `try` source
+  CFG within the existing metadata boundaries, and MLIR emission
+  remains separate. Fresh child holders use the existing explicit end marker.
+- [x] P16-34 — Lower `.Len` and proven `len(slice)` from resolved core operations,
+  with dynamic validity and no element read. Both forms return `uint`; reject
+  missing/incompatible resolved core facts with no partial IR (§§47–49,
+  MD-074/MD-088).
+
+  Completed 2026-10-20. Sema records detached `ResolvedSliceLengthPlan` facts
+  at validated core `Len`/`len` resolution, including core identity and source/
+  result types. Querying performs no lookup, inference or identity allocation,
+  and analyzer reuse clears old decisions. P16 preflight snapshots these
+  plans; `slice_source_length.go` consumes the actual source value once,
+  validates it when required and emits the existing unsigned `slice.length`.
+  No source holder copy/move or element read is introduced. An inline explicit
+  borrow's temporary holder ends after the observation through the existing
+  marker. Proven length observations remain @noPanic-compatible.
+  Source tests cover both core forms, shared/mutable, nested/empty and inline
+  operands on 32/64-bit plans, plus missing resolution returning no module
+  after preceding supported functions. Separate producer-level white-box
+  tests install epoch-qualified parameters for all four spelling/authority
+  combinations and verify source guards; this does not implement P16-36
+  signatures or Arena source allocation. The historical signed-length clause
+  is superseded by the accepted unsigned length correction (2026-10-17);
+  there is no signed length operation or representability gate. General
+  projected/returned holders and signatures remain P16-36, and MLIR emission
+  and physical lowering retain their separate ownership.
+- [x] P16-35 — Lower ordinary/proven/fallible indexes to element Places with
   IndexError.OutOfBounds or slice-index bounds panic as appropriate. Evaluate
   source/index once, temporal validity first, and Place before write RHS (§§50–58).
+
+  Completed 2026-10-20 within P15's existing trivial-value and source-holder
+  boundaries. `slice_source_index.go` consumes detached index/use plans to
+  form `slice.element-place`, then uses P15 reads, writes and explicit shared/
+  mutable element borrows. Runtime predicates consume the original signed or
+  unsigned index, including int128/uint256, and the successful Place reuses
+  exactly those source/index SSA values. Proven indexes need no bounds branch.
+  Ordinary failure retains slice-index bounds-panic provenance; fallible
+  reads route IndexError.OutOfBounds through the existing failure-set router
+  and handler/Result machinery, including recovery values. A write establishes
+  its guarded destination Place before evaluating the RHS and commits once.
+  Slice-derived element references and their direct-reference copies/moves
+  cannot survive the parent holder's end; existing independent shared-copy
+  boundaries remain intact. Source tests cover both authorities, trivial
+  reads/writes and element borrows, empty slices, reborrowed sources, specific
+  and catch-all handlers, naked propagation and @noPanic proven reads on
+  32/64-bit plans. Wrong bounds edges and early parent ends are rejected.
+  Separate epoch-injected parameter tests exercise the real producer's
+  index -> validity -> bounds -> Place -> RHS order and retain stale-reference
+  failure outside try. This does not implement source signatures, Arena
+  allocation or physical runtime execution. Nontrivial transfers/replacement,
+  reference-valued element reads outside P15's value surface, general slice
+  holders/signatures, automatic ends and remaining try/metadata dependencies
+  keep their named P17/P16-36/P15 boundaries; unsupported builds return no
+  partial module. Slice emission and binary acceptance remain separate.
 - [ ] P16-36 — Lower copy/move, parameters, permitted returned slices, projected
   origins and borrow ends from Sema plans. Retain exact static subranges and
   conservative runtime origins; reject local escape (§§39–41,63–67).
-- [ ] P16-37 — Add source-to-IR tests for every supported path and every deferred
+- [x] P16-37 — Add source-to-IR tests for every supported path and every deferred
   dependency. Prove operand order, SSA reuse, no redundant proven checks, no
   aggregate copies, no partial modules and unchanged predecessor paths (§§129–137).
+
+  Completed 2026-10-20 for the current source capability boundary. The
+  source matrix in `slice_source_matrix_test.go` analyzes six fixture groups
+  with actual 32/64-bit scalar plans and builds verified IR directly, without
+  hand-editing IR or injecting epoch facts. Its operation inventory covers
+  shared/mutable construction and reborrow, proven/runtime/fallible ranges,
+  both uint length forms, proven/runtime/fallible indexes, P15 element reads,
+  writes/borrows and explicit holder ends. Counts are checked against detached
+  Sema plans so omitted or redundant source checks/observations cannot silently
+  reduce coverage. Repeat builds retain printed IR and semantic identities;
+  target widths and slice source locations survive lowering, and backing
+  element/aggregate copies and implicit holder transfers remain absent.
+  Existing focused source tests prove operand/RHS order, exact SSA reuse and
+  wrong-edge/borrow-end rejection; separate epoch-injected producer tests
+  remain identified as white-box evidence, not source allocation evidence.
+  The 32/64 dependency matrix includes a supported preceding function and
+  checks nil modules with named capability errors for dynamic owners,
+  signatures, returns, projections, holder copy/move/reborrow, recovery joins,
+  heterogeneous errors, unsupported element values and custom-free lifecycle
+  replacement. Deferred holder expressions now stop at a named P16-36 gate
+  instead of falling into direct-reference P15 lowering. Existing missing-plan,
+  module-selection, Sema invalid-source and predecessor/default tests remain
+  green. P16-36 source producers, complete P16-26/P16-27 verification and
+  schema-12 source-to-tool/binary acceptance retain their separate items;
+  those capabilities are tested as unsupported here, not marked implemented.
 
 ## E. Implement schema 12 and the slice verifier
 
@@ -705,9 +918,9 @@ sources unless an actual synchronized migration requires them.
   Real-tool tests cover 32/64 plans, deterministic round trips, predecessor
   schema acceptance, unknown-version rejection and the unsupported slice
   boundary. Full MLIR regression suite passed 118/118 at P16-38 completion.
-  P16-39/P16-41 subsequently add slice types and reference/bounds local
-  contracts; slice operations, guard verifiers and emission remain P16-40
-  and P16-42..P16-45; schema registration
+  P16-39/P16-40/P16-41 subsequently add slice types, operations and local
+  reference/bounds contracts; whole-function guard/borrow verifiers and
+  emission remain P16-42..P16-45; schema registration
   does not claim executable slices or physical representation support.
 - [x] P16-39 — Add `!sec.slice<T>` / `!sec.slice_mut<T>` ODS types and exact
   parsing/printing. No length, address, origin or epoch type parameter (§§88–90).
@@ -723,9 +936,23 @@ sources unless an actual synchronized migration requires them.
   malformed-element, extra-parameter, authority and old-schema tests pass;
   the full MLIR suite passes 122/122. No Go slice emission, slice operations,
   physical representation or default schema promotion is introduced.
-- [ ] P16-40 — Add range_normalize/range_check, borrow_shared/borrow_mut,
-  reborrow_shared/reborrow_mut, copy_shared/move_mut, len/len_int,
+- [x] P16-40 — Add range_normalize/range_check, borrow_shared/borrow_mut,
+  reborrow_shared/reborrow_mut, copy_shared/move_mut, len,
   index_in_bounds/element_place with synchronized P15 metadata (§§91–103).
+
+  Completed 2026-10-20. All eleven schema-12 slice operations have registered
+  ODS forms and local verifiers for endpoint arity/signedness, target-sized
+  unsigned counts, proof kinds, canonical core RangeError, element identity,
+  shared/mutable authority, borrow identities and canonical exact range facts.
+  P15 reference/bounds/integer helpers are shared through OperationContracts.h;
+  SliceOps.cpp owns the slice contracts. Scalar layout resolves count/result
+  carriers on 32/64-bit plans while retaining original wide endpoint/index
+  carriers. Round-trip and negative tests cover every operation and preserve
+  explicit unsupported-lowering rejection with no output artifact. The full
+  MLIR suite passes 129/129. Len remains unsigned under MD-074/MD-088; no
+  signed len_int operation is introduced. Whole-function guards/borrow checks
+  remain P16-42/P16-43, source emission P16-44/P16-45, and physical
+  representation P24. Default emission remains schema 11.
 - [x] P16-41 — Extend sec.ref.is_valid and sec.ref.end_borrow to slices;
   extend sec.fail.bounds with slice-range/slice-index provenance and the
   canonical panic identity (§§104,110–111; schema-v12 §§21–23).
@@ -746,9 +973,32 @@ sources unless an actual synchronized migration requires them.
   or older schemas. Full MLIR suite passes 125/125, including predecessor
   reference/array tests. Whole-function slice guard/borrow verification remains
   P16-42/P16-43, with dedicated slice operations and emission separate.
-- [ ] P16-42 — Register `--sec-verify-slice-guards`. Verify same-source guard
+- [x] P16-42 — Register `--sec-verify-slice-guards`. Verify same-source guard
   dominance, range normalization/error precedence, index bounds and element
   Place formation; require dynamic validity before spatial guards (§§105–110).
+
+  Completed 2026-10-20. The registered function pass verifies canonical
+  dedicated-edge range CFGs, confines normalized start/length to success and
+  RangeError to failure (including forwarded block arguments), and checks
+  canonical bounds-failure provenance. Construction must consume one exact
+  normalization tuple bound to its fixed-array extent or the same source
+  slice's length; reborrows cannot substitute another source's bounds.
+  Runtime element Places require a matching slice/index bounds-true edge;
+  index failure paths must reach slice-index panic or canonical IndexError
+  flow. Proven forms retain the local operation verifier's proof vocabulary.
+  Dynamic length, range, index and reborrow observations require same-source
+  validity dominance with an independent stale-reference endpoint.
+  Unambiguous SSA forwarding is retained; distinct unknown phi origins cannot
+  establish equality. P15 reference facts and edge-dominance helpers are
+  shared via ReferenceFacts.h, extracted from VerifyPlaceReferences.cpp.
+  Tests cover shared/mutable operations, ordinary/fallible paths, forwarded
+  values, indirect failure paths, temporal ordering, malformed joins and
+  rejection without an output artifact on 32/64-bit plans, including P6.
+  Canonical RangeError classes/order remain owned by the operation verifier;
+  this pass consumes represented proof rather than repeating Sema analysis.
+  Full MLIR suite passes 132/132 and focused Go IR/lowering/compiler tests
+  pass. P16-43's complete P15 verifier integration, P16-44 emission and
+  P16-45's complete integrated matrix remain separate.
 - [ ] P16-43 — Extend P15's place, reference-guard and borrow verifiers for slice
   operands, narrowing, shared copy/mutable transfer and returned-range facts.
   Do not duplicate source borrow analysis (§§83–86,116).
@@ -762,18 +1012,53 @@ sources unless an actual synchronized migration requires them.
 
 ## F. Prove predecessor integration and architecture boundaries
 
-- [ ] P16-46 — P6/P8: test 32/64 target scalar resolution of slice elements and
+- [x] P16-46 — P6/P8: test 32/64 target scalar resolution of slice elements and
   length results while preserving wrappers; integer normalization must not
   recursively rewrite slice elements or lower slice semantics (§§112–113).
+
+  Completed 2026-10-20. P6 now resolves target-sized scalar leaves through
+  shared/mutable slice wrappers, retaining nested nominal/array identities
+  and arbitrary-precision array extents. Recursive semantic container
+  conversions moved from SecToCore.cpp into ScalarContainers.cpp; callbacks
+  capture the context by value and retain the owning converter by reference.
+  Real-tool 32/64 lit tests prove P6 preserves wrappers, authority and existing
+  reference metadata/end markers, and P8 retains signed/unsigned semantic
+  element types rather than recursively converting them to signless types.
+  The canonical uint count carrier resolves to ui32/ui64 under P6; its
+  standalone scalar path may normalize under P8 while slice elements remain
+  wrapped. Full MLIR tests pass 126/126 and focused Go compiler/lowering
+  predecessor tests pass. P16-40 subsequently registers the local length
+  operation contract; actual slice emission remains P16-44; this is type/metadata and scalar-carrier evidence, not physical
+  slice lowering or source-to-binary acceptance.
 - [ ] P16-47 — P13/P14: test shared slice fields/contained origins and mutable
   slice aggregate move-only classification; fixed-array Place sources, exact
   lengths and no array/aggregate copies (§§114–115,140).
 - [ ] P16-48 — P15/P12: test parameter/return origins, nested element refs,
   matching lifetimes/epochs, dynamic guard ordering and ordinary slice values
   in existing value paths without adding slice patterns (§§116–117,140).
-- [ ] P16-49 — Exercise int128/int256/uint128/uint256/decimal128 elements and
+- [x] P16-49 — Exercise int128/int256/uint128/uint256/decimal128 elements and
   wide endpoints/indexes where source rules allow, with target-aware length
   proofs, empty sources and conservative dynamic ranges (§§3,126–128,140).
+
+  Completed 2026-10-20. Ten source functions exercise all five element
+  carriers on actual 32/64-bit scalar plans: proven element reads, mutable
+  writes, fallible wide ranges/indexes, recovery values, shared reborrow,
+  boundary-empty ranges and zero-length backing arrays. All four wide integer
+  families occur as original endpoints and indexes; their SSA values are
+  consumed directly without a target-width cast. Dynamic ranges keep symbolic
+  identities and unknown extents rather than inventing exact provenance.
+  Length remains target-sized uint independently of the element carrier,
+  proven accesses add no redundant spatial check, and the source guarantees
+  remain @noPanic. Real P6/P8 lit tests retain every wide integer and decimal128
+  element under shared/mutable wrappers on both plans (MLIR suite 127/127).
+  The composed source tests exposed and fixed a Sema origin loss after
+  `try ref`: only a resolved success-only continuation may forward its
+  protected slice Place. Recovery-value and unresolved plans do not establish
+  that proof; local-origin escape remains rejected. The cohesive origin
+  producer moved out of analyzer.go into reference_place_origins.go. Dedicated
+  Sema and IR regressions cover the fix. Actual slice-operation emission,
+  physical representation, decimal arithmetic and binary acceptance retain
+  their existing owners; this does not claim those deferred capabilities.
 - [ ] P16-50 — Add source → target-aware Sema → verified Semantic IR → schema-12
   → real sec-mlir-opt tests on both 32/64 plans using absolute tooling and all
   slice/P15 verifier passes. Keep dynamic-epoch white-box evidence distinct
@@ -782,18 +1067,66 @@ sources unless an actual synchronized migration requires them.
   descriptors, handles, equality, iteration/membership/Reverse, non-trivial
   element operations and unresolved signed len, each with no partial artifact
   (§§70–75,121–124,142). Do not claim P17/P18 lowering from legacy support.
-- [ ] P16-52 — Assert successful P16 modules contain no physical pointer/length
+- [x] P16-52 — Assert successful P16 modules contain no physical pointer/length
   aggregate, GEP/stride arithmetic, hidden ABI arguments, runtime borrow counters,
   new generation manager, hidden allocation, undef or poison (§143).
-- [ ] P16-53 — Rebuild plans/modules with fresh analyzers and reordered metadata.
+
+  Completed 2026-10-20. `slice_architecture_test.go` audits verified Semantic
+  IR from six source fixtures on actual 32/64-bit Sema plans: fixed-array
+  borrows, empty ranges, nested shared/mutable reborrows, lengths, ordinary and
+  fallible range/index access, element references and wide numeric elements.
+  Closed semantic type/operation inventories reject physical/runtime additions;
+  source declarations independently constrain function/parameter counts,
+  aggregate fields and direct-call targets/counts. Only semantic array storage
+  is admitted in these fixtures, so borrow/generation counters cannot acquire
+  storage. Separate white-box dynamic-epoch modules cover guarded access,
+  length and holder transfer for both authorities without a runtime object,
+  helper call or hidden argument. These are not Arena source-allocation tests.
+  `schema12-slice-architecture.mlir` audits all eleven handwritten local slice
+  operation contracts after P6 on 32/64 plans, preserving exact signatures
+  while forbidding physical descriptors, LLVM/memref operations, address
+  arithmetic, allocation/helper calls, atomics, undef and poison throughout
+  the output. P8 must reject unresolved reference representation without an
+  output artifact. Full MLIR suite passes 130/130. Source-to-schema emission,
+  complete guard/borrow verification and physical execution remain separate.
+- [x] P16-53 — Rebuild plans/modules with fresh analyzers and reordered metadata.
   Verify deterministic identities, origin ordering, exact range printing, source
   diagnostics, and independent 32/64 outputs without mutating shared input.
 
+  Completed 2026-10-20. `slice_determinism_test.go` builds six supported source
+  fixtures with fresh analyzers on interleaved 64/32/64/32 plans, comparing
+  complete IR and detached creation/index/length facts. Reversed syntax-order
+  queries and metadata-map insertion retain the same verified IR and ordered
+  facts. Independent reparsing also reproduces the output, excluding syntax
+  addresses as semantic identities. JSON snapshots check that these fixtures'
+  shared ASTs are unchanged; prior modules retain their text and target facts
+  after later analyses/builds. Abstract printed IR may legitimately match
+  across plans; the modules retain their independent PointerWidthBits.
+  A separate Sema fixture checks two possible backing roots in stable order
+  with exact composed ranges left[2..<4] and right[3..<5]; slice-valued
+  signatures still retain their P16-36 source-to-IR gate. Four invalid fixtures
+  reproduce complete diagnostics, locations, help and related-cause ordering,
+  including negative/empty indices and an exact upper bound above 128 bits.
+  Explicit initializers keep this shared-input check separate from existing
+  default-initializer AST synthesis. Full Semantic IR/lowering tests and
+  targeted vet pass. This completes determinism coverage for the represented
+  source/IR scope, not schema emission or final package acceptance.
+
 ## G. Final acceptance and handoff
 
-- [ ] P16-54 — Expand the matrix below to one row per P16 §144 criterion, with
+- [x] P16-54 — Expand the matrix below to one row per P16 §144 criterion, with
   exact implementation and test references. Keep unsupported cases and missing
   normative decisions visible; aggregate success proves only the stated scope.
+
+  Completed 2026-10-20. The matrix below has one numbered row for each of all
+  55 current §144 criteria, retaining the exact criterion text and linking
+  concrete implementation/specification and test evidence. Stage-specific
+  status distinguishes Sema, Semantic IR, handwritten MLIR, source emission
+  and recorded gates. Open implementation, MD-031/MD-084/MD-085, P17/P18/P24
+  exclusions, final snapshot/full-Go gates and the retired legacy-route wording
+  remain explicit. Completing the matrix does not complete those criteria or
+  change P16's partial governance status. Row count/order, referenced paths
+  and named Go tests are checked against the current repository.
 - [ ] P16-55 — On the isolated execution snapshot, run full Go/vet, configured
   P13/P14/P15/P16 source pipelines, check-sec-mlir, diff checks and governance
   checks. Record exact commands, results, environment, commit/tree and failures.
@@ -808,26 +1141,90 @@ sources unless an actual synchronized migration requires them.
 
 ## Acceptance coverage map
 
-This maps every family of §144 criteria to planned work; it is not a completed
-acceptance matrix. P16-54 must split families into individual evidence rows.
+P16-54 audit, 2026-10-20: each numbered row corresponds, in order and without
+omissions, to one criterion in the current P16 §144 list. This is a coverage
+matrix, not a declaration that all criteria pass. Normative authority remains
+`rules/mlir/packages/sec-mlir-dialect_package16.md`, its current-authority table,
+and the installed consolidated rulebooks.
 
-| §144 criterion family | TODO ownership |
-|---|---|
-| Exact newer baseline; previous package regressions | P16-01–02, 07, 55 |
-| Slice sync, Semantic IR amendment, dialect/lowering v12, explicit fallible syntax | P16-03–05, 32, 38 |
-| Exact/static/dynamic ranges, PlaceSlice migration, nested normalization/disjointness | P16-08–13, 19 |
-| Read-only creation/index plans and index proof/runtime classification | P16-14–16, 19 |
-| Shared/mutable types, SliceFacts and P15 reference facts | P16-20, 26–28 |
-| Fixed-array borrows, slice reborrows, copy/move and empty slices | P16-22–23, 30, 33, 36–37 |
-| Range normalize/check, ordinary panic, RangeError and local/naked try | P16-21, 31–32, 37 |
-| Unsigned/signed length with no truncation | P16-24, 34, 49, 51 |
-| Index predicate/Place, read/write/element refs, IndexError and ordinary panic | P16-25–26, 35, 37 |
-| Dynamic validity ordering; ref.is_valid/end_borrow and fail.bounds extensions | P16-18, 26, 33–35, 41–43 |
-| Slice guard verifier and P15 verifier extensions | P16-26, 28, 42–45 |
-| Returned-slice origins/ranges | P16-07, 17, 27, 36, 48 |
-| P13/P14/P15 integration | P16-46–50 |
-| Dynamic owner distinct, no equality/FFI/physical descriptor/mandatory runtime | P16-20, 51–52 |
-| Complete check-sec-mlir / Go gates and operational legacy paths | P16-02, 37, 45, 55, 58 |
+**Recorded** means a specification, snapshot or dated gate has evidence.
+**Implemented: scope** names the stage whose contract is covered.
+**Partial** and **Pending** retain the unimplemented work listed in the last
+column. A source→IR test does not prove source→schema→binary support; a
+handwritten MLIR test does not prove Go emitter support. Completion of this
+matrix closes P16-54 only. P16-56 stays open, and the sole governance owner
+`lowering.sec-mlir-package16` remains partial.
+
+Evidence references use repository-relative paths. `file::TestName` identifies
+an existing Go test in that exact file. Gate results below are dated records
+from prior implementation steps, not new executions performed for this audit.
+Open MD-084 and MD-085 in `missing-decisions.yaml` retain their recorded gaps; MD-031
+separately limits guarded/residual try metadata. P17/P18 and P24 retain their
+non-trivial-element, owning-array and physical-representation responsibilities.
+
+| §144 row | Criterion (verbatim) | Current scope/status | Implementation/specification anchor | Concrete evidence | Remaining work / limit |
+|---|---|---|---|---|---|
+| 1 | baseline documents repo 152c772 + local P13/P14/P15 or newer equivalent | Recorded | `package16-todo.md` — Execution baseline refresh; local snapshot tree and archive digest. | P16-01/P16-02 isolated extraction and recorded focused/full gates. | Recapture the final execution tree under P16-55; the 2026-10-19 snapshot predates later completions. |
+| 2 | previous package regressions remain green | Partial | `internal/ir/semantic/builder.go`; `internal/lowering/secmlir/emitter_options.go`. | `internal/ir/semantic/slice_lowering_test.go::TestPackage16BuilderPreservesPredecessorRoutes`; focused P42 Go gate recorded in `governance/lowering.yaml`. | P16-07/P16-55/P16-58: full predecessor acceptance is not established by focused regressions. |
+| 3 | slice normative synchronization applied | Recorded | `rules/corrections/applied/p16-slice-source-rules-synchronization-20261019.md`; `rules/mlir/normative-sync/sec_slice_sync_v1.md`. | P16-04 completion note and the source matrix in `internal/sema/slice_matrix_test.go`. | Source-rule installation is complete; representation and executable acceptance are separate. |
+| 4 | Semantic IR slice amendment applied | Recorded | `rules/compiler/semantic_ir.md` §126; `rules/corrections/applied/p16-slice-ir-schema12-synchronization-20261019.md`. | P16-05 installation record; `internal/ir/semantic/slice_types_test.go`. | The executable IR version remains 1; P16-26/P16-27 remain open. |
+| 5 | schema-v12 dialect rulebook installed | Recorded | `rules/mlir/sec_mlir_dialect.md` v12.1–33; `mlir/lib/Dialect/Sec/SecDialect.cpp`. | `internal/lowering/secmlir/emitter_options_test.go::TestEmitSchema12RoundTripWithRealTool`; `mlir/test/Dialect/Sec/schema12-slice-types.mlir`. | Installed schema/registration is not source slice emission; default output remains schema 11. |
+| 6 | lowering-v12 rulebook installed | Recorded | `rules/mlir/sec_mlir_lowering.md` v12.1–31; P16-05 correction. | P16-05 completion record; `internal/lowering/secmlir/emitter_options_test.go`. | Specification installation is complete; actual slice emission remains P16-44. |
+| 7 | explicit fallible ref/ref-mut slice syntax synchronized | Implemented: source rules | `rules/collections/collections.md` §7.5; `internal/ir/semantic/slice_source_try.go`. | `internal/ir/semantic/slice_source_try_test.go::TestPackage16SliceSourceTry`. | P16-44/P16-50 must carry this explicit syntax through emitted schema 12. |
+| 8 | RangeError mapping implemented | Partial: Sema/IR/local MLIR | `internal/sema/slice_range_classification.go`; `internal/ir/semantic/slice_ranges.go`; `mlir/lib/Dialect/Sec/SliceOps.cpp`. | `internal/sema/slice_creation_plans_test.go::TestSliceRangeErrorCoreIdentity`; `mlir/test/Dialect/Sec/invalid-schema12-slice-ops.mlir`. | P16-44/P16-50: no emitted slice RangeError pipeline yet. |
+| 9 | static range bounds use arbitrary precision | Implemented: exact facts | `internal/sema/slice_places.go`; `internal/ir/semantic/slice_types.go`. | `internal/sema/slice_range_exact_test.go::TestSliceProjectionBoundsAreExactBeyondInt64`; `internal/ir/semantic/slice_borrows_test.go::TestSliceBorrowExactFixedExtents`. | No host-width cap is chosen; physical extent representation remains P24. |
+| 10 | dynamic SliceRangeID implemented | Implemented: Sema identity | `internal/sema/place_identities.go`; `internal/sema/slice_creation_plans.go`. | `internal/sema/slice_range_id_test.go::TestSliceRangeIDsAreStableAndQueriesDetached`; `TestSliceRangeIdentityCompositionAndAllocation` in that file. | P16-26/P16-27/P16-44: complete fact transport/verification is not inferred from the allocator. |
+| 11 | PlaceSlice migrated from canonical int64 bounds | Implemented: migration | `internal/sema/place.go` — PlaceProjection exact bounds; `internal/sema/slice_places.go`; `internal/sema/sequence_projections.go`. | `internal/sema/slice_range_exact_test.go`; `internal/sema/parameter_usage_slice_test.go::TestParameterSlicePlacesUseCanonicalRanges`. | Persistence uses the revised exact-bound schema; this does not select runtime layout. |
+| 12 | static nested slice normalization implemented | Implemented: Sema/source IR | `internal/sema/slice_places.go`; `internal/ir/semantic/slice_source_borrows.go`. | `internal/sema/slice_static_subranges_test.go::TestStaticSliceSubrangesAndEmptyProvenance`; `internal/ir/semantic/slice_source_reborrow_test.go`. | Complete cross-block/returned-slice facts remain P16-26/P16-27/P16-36. |
+| 13 | disjoint static range reasoning preserved | Partial: Sema reasoning | `internal/sema/place.go` — Relationship; `internal/sema/slice_places.go`. | `internal/sema/slice_static_subranges_test.go`; `internal/sema/slice_range_exact_test.go`. | P16-26/P16-43: complete IR/MLIR borrow-flow integration remains open. |
+| 14 | ResolvedSliceCreationPlan implemented | Implemented: public Sema plan | `internal/sema/slice_creation_plans.go` — ResolvedSliceCreationPlanOf. | `internal/sema/slice_creation_plans_test.go::TestResolvedSliceCreationPlans`. | No query-time inference or new borrow allocation; remaining consumers retain their own gates. |
+| 15 | plan query is read-only | Implemented: query contract | `internal/sema/slice_plan_snapshots.go`; `internal/sema/slice_creation_plans.go`. | `internal/sema/slice_plan_snapshots_test.go::TestSlicePlanQueriesAreDetachedAndReadOnly`; `internal/ir/semantic/slice_determinism_test.go`. | Defensive/query evidence does not complete all source value-flow producers. |
+| 16 | shared/mutable slice Semantic IR types implemented | Implemented: abstract types | `internal/ir/semantic/slice_types.go`; `mlir/include/sec/Dialect/Sec/SecTypes.td`. | `internal/ir/semantic/slice_types_test.go::TestSliceTypesPreserveElementAndAuthority`; `mlir/test/Dialect/Sec/schema12-slice-types.mlir`. | P16-36/P16-44: arbitrary slice-valued signatures and source-to-schema production remain separate. |
+| 17 | SliceFacts reuse P15 reference facts | Partial: facts model | `internal/ir/semantic/slice_types.go` — SliceFacts; `mlir/lib/Analysis/ReferenceFacts.h`. | `internal/ir/semantic/slice_types_test.go::TestSliceFactsClonePreservesReferenceContract`. | P16-26/P16-27/P16-43/P16-44; MD-084 serialization remains open. |
+| 18 | fixed-array shared slice borrow implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_source_borrows.go`; `mlir/include/sec/Dialect/Sec/SecSliceOps.td`. | `internal/ir/semantic/slice_source_borrows_test.go::TestPackage16FixedSliceSource`; `mlir/test/Dialect/Sec/schema12-slice-ops.mlir`. | P16-44 source emission and P16-50 integrated real-tool acceptance. |
+| 19 | fixed-array mutable slice borrow implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_borrows.go`; `internal/ir/semantic/slice_source_borrows.go`; `mlir/lib/Dialect/Sec/SliceOps.cpp`. | `internal/ir/semantic/slice_source_borrows_test.go`; `mlir/test/Dialect/Sec/invalid-schema12-slice-authority.mlir`. | P16-26/P16-43 ownership integration and P16-44 emission remain. |
+| 20 | shared slice reborrow implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_source_borrows.go`; `mlir/lib/Analysis/VerifySliceGuards.cpp`. | `internal/ir/semantic/slice_source_reborrow_test.go::TestPackage16SliceSourceReborrow`; `mlir/test/Analysis/schema12-slice-guards.mlir`. | P16-43/P16-44/P16-50 complete the later-stage bridge. |
+| 21 | mutable slice reborrow implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_borrows.go`; `mlir/lib/Dialect/Sec/SliceOps.cpp`. | `internal/ir/semantic/slice_source_reborrow_test.go`; `mlir/test/Analysis/schema12-slice-guards.mlir` — mutable_reborrow. | P16-26/P16-43 ownership/lifetime completion and P16-44 emission remain. |
+| 22 | shared slice copy implemented | Partial: white-box IR/local MLIR | `internal/ir/semantic/slice_transfer.go`; `mlir/include/sec/Dialect/Sec/SecSliceOps.td`. | `internal/ir/semantic/slice_transfer_test.go::TestSharedSliceCopyHasIndependentHolderEnd`; `mlir/test/Dialect/Sec/schema12-slice-ops.mlir`. | P16-36 source holder copy; P16-43/P16-44 later stages. |
+| 23 | mutable slice move implemented | Partial: white-box IR/local MLIR | `internal/ir/semantic/slice_transfer.go`; `internal/ir/semantic/reference_lifetimes.go`. | `internal/ir/semantic/slice_transfer_test.go::TestMutableSliceMoveRejectsForwardedOldHolder`; `mlir/test/Dialect/Sec/schema12-slice-ops.mlir`. | P16-36 source holder move; P16-43/P16-44 later stages. |
+| 24 | empty slices implemented | Partial: source→IR | `internal/sema/slice_places.go`; `internal/ir/semantic/slice_source_borrows.go`. | `internal/sema/slice_static_subranges_test.go`; `internal/ir/semantic/slice_source_wide_test.go::TestPackage16WideSliceSource`. | Zero-length/empty provenance has evidence; P16-44/P16-50 must retain it through emitted MLIR. |
+| 25 | SliceRangeNormalizeOp implemented | Partial: IR/local MLIR | `internal/ir/semantic/slice_ranges.go`; `mlir/lib/Dialect/Sec/SliceOps.cpp`. | `internal/ir/semantic/slice_ranges_test.go::TestSliceRangeOperations`; `mlir/test/Dialect/Sec/schema12-slice-ops.mlir`. | P16-44 operation emission is open. |
+| 26 | SliceRangeCheckOp implemented | Partial: IR/local MLIR | `internal/ir/semantic/slice_ranges.go`; `mlir/lib/Analysis/VerifySliceGuards.cpp`. | `internal/ir/semantic/slice_ranges_test.go::TestSliceRangeCheckRetainsExactExtremeEndpoints`; `mlir/test/Analysis/invalid-schema12-slice-guards.mlir`. | P16-44/P16-50 integrated emission/guard checks remain. |
+| 27 | ordinary range panic CFG implemented | Partial: source→IR | `internal/ir/semantic/slice_source_borrows.go`; `internal/ir/semantic/sequence_bounds.go`. | `internal/ir/semantic/slice_source_borrows_test.go::TestPackage16FixedSliceSource`; `mlir/test/Analysis/schema12-slice-guards.mlir` — range. | P16-44 source-to-schema emission remains open. |
+| 28 | fallible RangeError CFG implemented | Partial: source→IR | `internal/ir/semantic/slice_source_try.go`; `internal/ir/semantic/failure_set_try.go`. | `internal/ir/semantic/slice_source_try_test.go::TestPackage16SliceSourceTry`; `mlir/test/Analysis/schema12-slice-guards.mlir` — fallible. | Source-produced MLIR remains P16-44; handwritten MLIR is separate evidence. |
+| 29 | local/naked try range integration works | Partial: represented try forms | `internal/ir/semantic/slice_source_try.go`; `internal/ir/semantic/try_local_handlers.go`. | `internal/ir/semantic/slice_source_try_test.go::TestPackage16SliceTryDependencyBoundaries`; `internal/ir/semantic/slice_source_matrix_test.go::TestPackage16SourceDependencyMatrix`. | P16-26/P16-36 holder recovery joins; MD-031 guarded/residual MLIR handler metadata; P16-44 emission. |
+| 30 | SliceLengthOp implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_length.go`; `internal/ir/semantic/slice_source_length.go`; `mlir/lib/Dialect/Sec/SliceOps.cpp`. | `internal/ir/semantic/slice_length_test.go::TestSliceLengthOperation`; `mlir/test/Analysis/schema12-slice-guards.mlir` — length. | P16-44 source-to-schema emission remains open. |
+| 31 | len(slice) and .Len share unsigned length lowering without narrowing | Implemented: source/IR unsigned contract | `internal/sema/slice_length_plans.go`; `internal/ir/semantic/slice_source_length.go`. | `internal/ir/semantic/slice_source_length_test.go::TestPackage16SliceSourceLength`; `internal/ir/semantic/slice_source_wide_test.go`. | MD-074/MD-088 remove signed len; explicit signed conversion is separate. P16-44 emission remains. |
+| 32 | ResolvedSliceIndexPlan implemented | Implemented: public Sema plan | `internal/sema/slice_index_plans.go` — ResolvedSliceIndexPlanOf. | `internal/sema/slice_index_plans_test.go::TestResolvedSliceIndexPlans`; `internal/sema/slice_plan_snapshots_test.go`. | P16-26/P16-43 complete downstream verification; plan availability alone is not acceptance. |
+| 33 | slice index bounds proof/runtime classification works | Implemented: Sema classification | `internal/sema/index_plans.go`; `internal/sema/slice_index_plans.go`. | `internal/sema/slice_index_plans_test.go::TestSliceIndexConstantBounds`; `internal/ir/semantic/slice_source_matrix_test.go::TestPackage16SourceMatrix`. | P16-26/P16-43 complete downstream verification. |
+| 34 | SliceIndexInBoundsOp implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_index.go`; `internal/ir/semantic/slice_source_index.go`. | `internal/ir/semantic/slice_index_test.go::TestSliceIndexOriginalIntegerCarriers`; `mlir/test/Analysis/schema12-slice-guards.mlir`. | P16-44/P16-50 emitted-MLIR coverage remains. |
+| 35 | SliceElementPlaceOp implemented | Partial: source→IR/local MLIR | `internal/ir/semantic/slice_index.go`; `mlir/lib/Analysis/VerifySliceGuards.cpp`. | `internal/ir/semantic/slice_index_test.go::TestSliceIndexRejectsInvalidContracts`; `mlir/test/Analysis/invalid-schema12-slice-guards.mlir`. | P16-43 P15 Place integration and P16-44 emission remain. |
+| 36 | slice reads/writes reuse P15 places | Partial: trivial elements | `internal/ir/semantic/slice_source_index.go`; `internal/ir/semantic/place_reference.go`. | `internal/ir/semantic/slice_source_index_test.go::TestPackage16SliceSourceIndex`. | P17 owns non-trivial reads/replacement; P16-43/P16-44 later-stage integration remains. |
+| 37 | slice element ref/ref-mut borrowing works | Partial: source→IR | `internal/ir/semantic/slice_source_index.go`; `internal/ir/semantic/reference_use.go`. | `internal/ir/semantic/slice_source_matrix_test.go::TestPackage16SourceMatrix`; `internal/ir/semantic/slice_index_temporal_test.go`. | P16-43/P16-44/P16-48 complete nested reference integration; P15 value carrier boundaries remain. |
+| 38 | ordinary slice index panic CFG implemented | Partial: source→IR | `internal/ir/semantic/slice_source_index.go`; `internal/ir/semantic/sequence_bounds.go`. | `internal/ir/semantic/slice_source_index_test.go`; `mlir/test/Analysis/schema12-slice-guards.mlir` — index. | P16-44 operation emission remains. |
+| 39 | fallible IndexError CFG implemented | Partial: source→IR | `internal/ir/semantic/slice_source_index.go`; `internal/ir/semantic/failure_set_try.go`. | `internal/ir/semantic/slice_index_test.go::TestSliceIndexFallibleFailure`; `mlir/test/Analysis/schema12-slice-guards.mlir` — fallible_index. | P16-44/P16-50 source-emitted IndexError flow remains. |
+| 40 | dynamic slice validity ordering implemented | Partial: source/white-box IR/local MLIR | `internal/sema/slice_effects.go`; `internal/ir/semantic/slice_source_index.go`; `mlir/lib/Analysis/VerifySliceGuards.cpp`. | `internal/ir/semantic/slice_reborrow_temporal_test.go`; `internal/ir/semantic/slice_index_temporal_test.go`; `mlir/test/Analysis/invalid-schema12-slice-guards.mlir`. | Epoch-injected producer tests are white-box evidence, not Arena source allocation. P16-26/P16-43/P16-50 remain. |
+| 41 | sec.ref.is_valid accepts direct slices | Implemented: local MLIR extension | `mlir/lib/Dialect/Sec/ReferenceBoundaries.cpp`. | `mlir/test/Dialect/Sec/schema12-slice-reference-boundaries.mlir`; `mlir/test/Dialect/Sec/invalid-schema12-slice-reference-boundaries.mlir`. | P16-43 complete reference-verifier integration remains. |
+| 42 | sec.ref.end_borrow handles slice borrows | Partial: IR/local MLIR marker | `internal/ir/semantic/reference_lifetimes.go`; `mlir/lib/Dialect/Sec/ReferenceBoundaries.cpp`. | `internal/ir/semantic/slice_transfer_test.go`; `mlir/test/Dialect/Sec/schema12-slice-reference-boundaries.mlir`. | P16-36 automatic/source holder ends and P16-43 full MLIR lifetime flow remain. |
+| 43 | sec.fail.bounds accepts slice-index/slice-range | Implemented: local MLIR provenance | `mlir/lib/Dialect/Sec/ReferenceBoundaries.cpp`. | `mlir/test/Dialect/Sec/invalid-schema12-slice-reference-boundaries.mlir`; `mlir/test/Analysis/schema12-slice-guards.mlir`. | Source emission remains P16-44; no physical trap or runtime representation is chosen. |
+| 44 | --sec-verify-slice-guards registered | Implemented: registered guard pass | `mlir/include/sec/Analysis/Passes.td`; `mlir/lib/Analysis/VerifySliceGuards.cpp`. | `mlir/test/Analysis/schema12-slice-guards.mlir`; `mlir/test/Analysis/invalid-schema12-slice-guards.mlir` (P42: full lit 132/132). | This is the represented CFG/SSA guard boundary; P16-43 ownership/returned-fact integration remains separate. |
+| 45 | place/reference/borrow verifiers extended | Pending: full integration | `mlir/lib/Analysis/VerifyPlaceReferences.cpp`; `mlir/lib/Analysis/ReferenceFacts.h`. | Existing direct-reference baseline: `mlir/test/Analysis/verify-place-references.mlir`; slice guards have separate P42 tests. | P16-43; recognizing local slice operands/facts does not close P15 borrow/return verification. |
+| 46 | returned-slice origin summaries implemented | Partial: Sema facts | `internal/sema/slice_return_origins.go`; `internal/sema/reference_return_origins.go`. | `internal/sema/slice_origins_test.go::TestSliceOriginTransferMatrix`; `internal/ir/semantic/slice_determinism_test.go::TestPackage16OriginOrderDeterminism` (Sema-only). | P16-07/P16-27/P16-36/P16-48; MD-084/MD-085 keep metadata/return-proof obligations visible. |
+| 47 | P13/P14/P15 integration passes | Partial: predecessor subsets | `mlir/lib/Conversion/SecToCore/ScalarContainers.cpp`; `internal/ir/semantic/slice_source_index.go`. | `mlir/test/Conversion/SecToCore/schema12-slice-scalar-layout.mlir`; `internal/ir/semantic/slice_source_wide_test.go`; P42 focused Go gate. | P16-47/P16-48/P16-50/P16-55: complete aggregate/return/source→schema integration still open. |
+| 48 | owning dynamic T[] remains distinct/unsupported in new IR | Implemented exclusion; matrix partial | `internal/ir/semantic/slice_lowering.go`; `internal/ir/semantic/slice_types.go`. | `internal/ir/semantic/slice_source_matrix_test.go::TestPackage16SourceDependencyMatrix`; `testdata/semantic_ir/package16_boundary_owner.sec`. | P18 owns owning-array backing/capacity/ownership; P16-51 must finish the complete unsupported matrix. |
+| 49 | no slice equality lowering | Implemented exclusion; matrix partial | `mlir/include/sec/Dialect/Sec/SecSliceOps.td` — no slice comparison operation; `internal/sema/slice_matrix_test.go`. | `internal/sema/slice_matrix_test.go::TestSliceSourceMatrixInvalid`; `internal/ir/semantic/slice_architecture_test.go`. | P16-51 must complete source-to-artifact rejection coverage for equality/ordering/membership/iteration. |
+| 50 | no FFI slice ABI | Excluded ABI; coverage pending | `rules/mlir/sec_mlir_lowering.md` v12.26; `internal/sema/ffi_legality.go`. | `internal/lowering/secmlir/raw_pointer_boundary_test.go` is adjacent raw-pointer rejection evidence, not a slice-ABI test. | P16-51/P16-55: dedicated slice FFI/no-artifact evidence remains; no FFI descriptor is inferred. |
+| 51 | no physical slice descriptor selected | Implemented abstraction invariant | `internal/ir/semantic/slice_types.go`; `mlir/include/sec/Dialect/Sec/SecTypes.td`. | `internal/ir/semantic/slice_architecture_test.go`; `mlir/test/Conversion/SecToCore/schema12-slice-architecture.mlir`. | P24 owns physical descriptors; current P6 succeeds abstractly and P8 rejects unresolved reference representation without output. |
+| 52 | no mandatory runtime | Implemented abstraction invariant | `internal/ir/semantic/slice_transfer.go`; `mlir/lib/Analysis/ReferenceFacts.h`. | `internal/ir/semantic/slice_architecture_test.go::TestPackage16EpochArchitecture`; `mlir/test/Conversion/SecToCore/schema12-slice-architecture.mlir`. | Symbolic epoch facts do not imply an allocated generation manager or runtime borrow counter; binary support is separate. |
+| 53 | check-sec-mlir passes | Recorded focused/current tool gate | `mlir/lib/Analysis/CMakeLists.txt`; `mlir/test/lit.cfg.py`. | P16-42 recorded `cmake --build build/sec-mlir --target check-sec-mlir -j2`: 132/132. | P16-45/P16-55: repeat the complete gate against the final isolated snapshot, including future integrated tests. |
+| 54 | go test ./... passes | Pending full gate | `package16-todo.md` — Execution baseline refresh and seven individually owned failures; `governance/lowering.yaml` verification records. | P16-53 complete Sema/IR/lowering suites and P16-42 focused compiler gates passed; the last recorded full Go run had seven failures. | P16-55 must run a fresh full Go gate; historical failures are not asserted to remain current, and focused success is not full-Go success. |
+| 55 | legacy paths remain operational | Superseded: single track | `rules/compiler/compiler_pipeline.md` §45(6); `cmd/compiler/native_pipeline.go`. | P42 recorded native/enum/emit/reference regression command; `internal/ir/semantic/slice_lowering_test.go::TestPackage16BuilderPreservesPredecessorRoutes`. | The historical criterion does not authorize restoring legacy backends. P16-55/P16-58 validate build/emit-mlir/emit-llvm boundaries of the single track. |
+
+The signed-length wording in older inventories is superseded by MD-074/MD-088:
+`.Len` and `len(slice)` share unsigned count semantics (row 31). Row 55 retains
+the criterion's historical wording verbatim for traceability, but its current
+interpretation is the single track in compiler_pipeline.md §45(6), not an
+additional compiler route.
 
 ## Recommended execution order and reproducible gates
 

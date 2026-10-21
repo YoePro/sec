@@ -1,0 +1,11 @@
+module main
+
+type Resource struct { Value: int }
+impl Resource { free {} }
+
+fn Replace(values: Resource[4]) void {
+    let mut storage :<- values
+    let source := ref mut storage[..]
+    source[0] = Resource { Value: 1 }
+    discard source
+}

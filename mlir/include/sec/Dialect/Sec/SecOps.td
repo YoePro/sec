@@ -580,4 +580,6 @@ def Sec_FailReferenceGenerationOp : Sec_Op<"fail.reference_generation", [Termina
   let hasVerifier = 1;
 }
 
+include "sec/Dialect/Sec/SecSliceOps.td"
+
 #endif // SEC_DIALECT_SEC_OPS_TD

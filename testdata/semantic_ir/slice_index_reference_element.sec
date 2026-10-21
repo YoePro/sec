@@ -1,0 +1,13 @@
+module main
+
+fn Ready(values: int[4]) void {
+    let view := ref values[..]
+    discard view
+}
+
+fn Read(values: (ref int)[4]) void {
+    let view := ref values[..]
+    let value := view[0]
+    discard value
+    discard view
+}

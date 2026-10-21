@@ -1,0 +1,10 @@
+module main
+
+fn Full(values: ref int[8]) ref int[] { return ref values[..] }
+fn Nested(values: ref int[8]) ref int[] { return ref values[2..<7][1..] }
+fn Indexed(values: ref int[8]) int { return values[2..<7][1] }
+fn Computed(values: ref int[8]) ref int[] { return ref values[1 + 1..<3 + 2] }
+fn Dynamic(values: ref int[8], start: uint, finish: uint) ref int[] {
+    return ref values[start..<finish][1..<2]
+}
+fn Open(values: ref int[]) ref int[] { return ref values[1..] }

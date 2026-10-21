@@ -169,6 +169,14 @@ func verifySliceRangeGuards(fn *Function, blocks map[BlockID]*Block, dom map[Blo
 			if failure == success {
 				return fmt.Errorf("slice.range-check failure and success edges must remain distinct")
 			}
+			// Ordinary range failure uses the existing bounds panic endpoint
+			// with range provenance; index/stale failure is a different edge.
+			// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§20,80.
+			for _, endpoint := range blocks[failure].Operations {
+				if endpoint.Kind == OpBoundsFailure && (endpoint.ArrayOperation != "slice-range" || len(blocks[failure].Operations) != 1) {
+					return fmt.Errorf("slice.range-check ordinary failure requires slice-range bounds provenance")
+				}
+			}
 			for _, checked := range []struct {
 				id                 ValueID
 				allowed, forbidden BlockID

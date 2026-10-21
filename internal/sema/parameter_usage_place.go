@@ -1,8 +1,6 @@
 package sema
 
 import (
-	"math/big"
-
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
@@ -16,6 +14,7 @@ import (
 //   - rules/memory/references.md — §28(4) provenance/projection tests
 //   - rules/analysis/parameter_usage_analysis.md — "Inputs from other analyses"
 //   - rules/analysis/closure_analysis.md — "Abstract closure identity"
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md — §§24–30 (shared range normalization)
 func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*ParameterUsageParameterSummary, Place, bool) {
 	switch expression := expression.(type) {
 	case *ast.Identifier:
@@ -47,25 +46,23 @@ func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*Para
 		if !ok {
 			return nil, Place{}, false
 		}
-		return parameter, appendPlaceProjection(place, b.analyzer.indexPlaceProjection(expression)), true
+		projection, recorded := b.analyzer.resolvedSequenceProjections[expression]
+		if !recorded {
+			projection = PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expression.Token}
+		}
+		place.Projections = appendIndexProjection(place.Projections, projection)
+		return parameter, place, true
 	case *ast.SliceExpression:
 		parameter, place, ok := b.parameterPlace(expression.Left)
 		if !ok {
 			return nil, Place{}, false
 		}
-		projection := PlaceProjection{Kind: PlaceSlice, Token: expression.Token}
-		if expression.Start == nil {
-			projection.SliceStart = new(big.Int)
-		} else if value, constant := constantIntegerValue(expression.Start); constant {
-			projection.SliceStart = new(big.Int).Set(value)
+		projection, recorded := b.analyzer.resolvedSequenceProjections[expression]
+		if !recorded {
+			projection = PlaceProjection{Kind: PlaceSlice, Token: expression.Token}
 		}
-		if value, constant := constantIntegerValue(expression.End); constant {
-			projection.SliceEnd = new(big.Int).Set(value)
-			if !expression.Exclusive {
-				projection.SliceEnd.Add(projection.SliceEnd, big.NewInt(1))
-			}
-		}
-		return parameter, appendPlaceProjection(place, projection), true
+		place.Projections = appendSliceProjection(place.Projections, projection)
+		return parameter, place, true
 	case *ast.RefExpression:
 		return b.parameterPlace(expression.Value)
 	default:

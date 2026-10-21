@@ -4009,7 +4009,11 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		rightType, rightValue := a.inferExpression(expr.Right)
-		if rightType.Kind == InvalidType || !a.validateNamedOwnershipSource(ast.OwnershipMove, expr.Right, expr.Token, false, false) {
+		site := TransferSiteConstruction
+		if a.terminalReturnDepth > 0 && a.constructionOwnershipDepth == 0 {
+			site = TransferSiteReturn
+		}
+		if rightType.Kind == InvalidType || !a.validateNamedOwnershipSource(ast.OwnershipMove, expr.Right, expr.Token, false, false, site) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return rightType, rightValue

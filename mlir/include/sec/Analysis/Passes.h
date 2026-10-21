@@ -21,6 +21,8 @@ std::unique_ptr<mlir::Pass> createSecVerifyMatchCFGPass();
 mlir::LogicalResult verifyMatchCFG(mlir::func::FuncOp function);
 std::unique_ptr<mlir::Pass> createSecVerifyArrayIndexGuardsPass();
 mlir::LogicalResult verifyArrayIndexGuards(mlir::func::FuncOp function);
+std::unique_ptr<mlir::Pass> createSecVerifySliceGuardsPass();
+mlir::LogicalResult verifySliceGuards(mlir::func::FuncOp function);
 std::unique_ptr<mlir::Pass> createSecVerifyPlacesPass();
 mlir::LogicalResult verifyPlaces(mlir::func::FuncOp function);
 std::unique_ptr<mlir::Pass> createSecVerifyReferenceGuardsPass();

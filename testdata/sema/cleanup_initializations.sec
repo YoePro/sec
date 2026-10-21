@@ -1,0 +1,45 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type Owner struct { first: Handle, second: Handle }
+type Failure enum error { Broken }
+
+fn Inferred() void {
+    let owned := Handle { id: 1 }
+    let borrowed := ref owned
+    let scalar := 1
+}
+
+fn Typed() void {
+    let owned: Handle := Handle { id: 2 }
+}
+
+fn Array() void {
+    let owned: Handle[2] := [Handle { id: 1 }, Handle { id: 2 }]
+}
+
+fn Aggregate() void {
+    let owned := Owner { first: Handle { id: 1 }, second: Handle { id: 2 } }
+}
+
+fn Make(fail: bool) Result[Handle, Failure] {
+    if fail {
+        return Err(Failure.Broken)
+    }
+    return Ok(Handle { id: 3 })
+}
+
+fn Fallible(fail: bool) Result[int, Failure] {
+    let owned := try Make(fail)
+    return Ok(1)
+}
+
+fn Moved() void {
+    let source := Handle { id: 4 }
+    let owned :<- source
+}
+
+fn Dynamic(values: byte[]) void {
+    let owned :<- values
+}

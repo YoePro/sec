@@ -495,6 +495,10 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.SELF:
 		return p.parseExpressionOrAssignmentStatement()
 
+	case lexer.ASTERISK:
+		// MD-063: `*r = value` and `*r += value` replace the whole referent.
+		return p.parseExpressionOrAssignmentStatement()
+
 	case lexer.LBRACKET:
 		return p.parseTypedVariableDeclaration()
 

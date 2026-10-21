@@ -48,7 +48,18 @@ func TestAnalyseReportUsesCanonicalSnapshot(t *testing.T) {
 		}
 		selected := map[string]bool{file: true}
 		report := buildAnalyseReport(a, selected, hostCompilerTarget(), "", nil)
-		if report.depth != depth || report.counts[analyseClassAdvisory] != info || report.counts[analyseClassWarning] != warning {
+		// The forwarding call also exercises independent final-use move
+		// advice. Count canonical optional findings alongside owner warnings.
+		pitfallInfo := 0
+		for _, finding := range a.PitfallAnalysis().Findings() {
+			if selected[finding.Subject.Source.File] && finding.DiagnosticID == "" && finding.Classification != sema.PitfallProvenInvalid {
+				pitfallInfo++
+			}
+		}
+		if pitfallInfo == 0 {
+			t.Fatal("fixture did not exercise independent pitfall advice")
+		}
+		if report.depth != depth || report.counts[analyseClassAdvisory] != info+pitfallInfo || report.counts[analyseClassWarning] != warning {
 			t.Fatal(depth, warnings, report)
 		}
 		var output bytes.Buffer
@@ -98,7 +109,9 @@ func TestAnalyseCLIAdvisoryCountsMatchOccurrences(t *testing.T) {
 	if doc.Summary.Information == 0 || doc.Summary.Warnings != 0 || !strings.Contains(stdout, "0 warnings, ") {
 		t.Fatal(stdout, doc)
 	}
-	if !strings.Contains(stdout, fmt.Sprintf("%d advisory", doc.Summary.Information)) {
+	// Owning diagnostics and optional findings have distinct transports. This
+	// fixture adds one final-use move finding to its informational occurrences.
+	if strings.Count(stdout, "advisory pitfall.ownership.last-use-argument-copy at ") != 1 || !strings.Contains(stdout, fmt.Sprintf("%d advisory", doc.Summary.Information+1)) {
 		t.Fatal("report disagrees with occurrence owners", stdout, doc)
 	}
 }

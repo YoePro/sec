@@ -1,0 +1,8 @@
+module main
+
+type Views struct { Data: ref int[] }
+
+fn Escape() Views {
+    let values := [1, 2, 3]
+    return Views { Data: ref values[..] }
+}

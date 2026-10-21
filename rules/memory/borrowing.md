@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-10-18
-- **Document revision:** 2.2
+- **Last updated:** 2026-10-21
+- **Document revision:** 2.4
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/borrowing.md`
 - **Replaces:** `rules/memory/borrowing.txt`
@@ -147,7 +147,7 @@ let view := ref mut value
 
 **§ 5.2(3)** Sec 0.1 does not make arbitrary temporary-expression lifetime extension part of general explicit borrow syntax.
 
-**§ 5.2(4)** A specialized rulebook may define a compiler-materialized call-lifetime or operation-lifetime Place only when that behavior is explicit in that rulebook and preserves all borrowing guarantees.
+**§ 5.2(4)** A specialized rulebook may define a compiler-materialized call-lifetime or operation-lifetime Place only when that behavior is explicit in that rulebook and preserves all borrowing guarantees. § 5.4 defines the call-lifetime Place of a fresh owned temporary passed as a borrowed argument or receiver (MD-076).
 
 **§ 5.2(5)** A property is not an addressable stored field merely because it is written with member syntax. A getter that produces a value does not grant a reference to its backing implementation state; the same holds for every other computed, non-Place expression. `ref counter.Total` of a computed property is rejected with `S1168` / `borrowing.non-addressable-place` (`rules/tooling/diagnostics.md` § 24(4b)).
 
@@ -162,6 +162,32 @@ let view := ref mut value
 **§ 5.3(2)** Borrow creation from an `Unavailable` Place is invalid.
 
 **§ 5.3(3)** Borrow creation from a `ConditionallyAvailable` Place is invalid unless current-path control-flow refinement proves the Place `Available`.
+
+### § 5.4 Call-lifetime borrows of owned temporaries (MD-076)
+
+**§ 5.4(1)** A freshly produced owned temporary may be borrowed for a function argument or an instance-method receiver when the already selected callable requires `ref T` or `ref mut T` for it. This includes nested calls and function or method chaining:
+
+```sec
+Read(CreateCounter())
+Bump(CreateCounter())
+CreateCounter().GetCount()
+CreateCounter().Increment()
+let row := QuerySingle().GetRow()
+```
+
+The names are illustrative application APIs. The rule is identical for free-function parameters, explicit method receivers, the implicit `self` receiver and receivers forwarded through ordinary instance-method dispatch, subject to the existing receiver authority rules.
+
+**§ 5.4(2)** Sema designates the temporary as a compiler-materialized temporary Place solely for that borrow. It is an owned semantic object with a stable identity for the evaluation; it introduces no user-visible binding, no heap allocation and no runtime borrow tracking. Every temporary that needs borrowed addressability has its own owner, Place identity and lifetime bound, and no producing expression is evaluated twice.
+
+**§ 5.4(3)** A temporary passed to `ref T` provides shared authority. A fresh, exclusively owned temporary passed to `ref mut T`, or used as the receiver of a mutating method, provides exclusive mutable authority, even when the mutation is not observable afterwards. This never confers ownership on the callee, never permits moving a value out through the borrow, and never elevates the authority of an existing immutable Place or shared reference (§ 5.1; an existing named binding keeps its ordinary mutability requirement).
+
+**§ 5.4(4)** Each such borrow ends at its last required use on each path (§ 8.1(9)–(14), MD-065) and is bounded by the validity of the temporary. Borrow end and the temporary's cleanup are distinct events.
+
+**§ 5.4(5)** The temporary itself remains owned through its enclosing full expression and is cleaned there in reverse successful creation order unless its ownership was transferred (`destruction.md` § 8; `lifetime_analysis.md` § 10.2). No dependent reference, view, capture, `defer` or returned reference may require it to live longer: a call result whose returned-reference origin is the temporary may be used within the same full expression, but retaining it beyond that full expression is a reference-lifetime error. A returned borrow proven to denote independent, longer-lived storage is governed by that storage's own origin.
+
+**§ 5.4(6)** Explicit borrow syntax is unchanged: `ref CreateCounter()`, `ref mut CreateCounter()`, `ref (left + right)` and computed properties remain non-addressable (`S1168`, § 5.2(1)–(5)). `S1168` is not issued for a compatible call or receiver borrow of a fresh temporary; escapes, missing authority and conflicts use their own diagnostics.
+
+**§ 5.4(7)** Sema publishes, and Semantic IR preserves, the temporary's creation and Place, the borrow and its kind, the argument or receiver pass, dependent results, the borrow end, any ownership transfer and the remaining-owner cleanup (`semantic_ir.md`; `rules/corrections/applied/md076-call-lifetime-temporary-borrows-correction-20261021.md` § 9).
 
 ---
 
@@ -227,9 +253,21 @@ proves ownership availability only. It does not prove that no conflicting borrow
 
 **§ 8.1(7b)** A distinct live local carrying the same borrow origin and authority dependency without its own represented borrow record still counts as a surviving dependent holder. The *origin root itself* — for example the `ref mut` parameter `outer` through which `ref mut outer.Count` is created — is not counted as an additional child-borrow holder merely because it shares the origin. The root stays bound by its own borrowing, validity and exclusivity rules, so it cannot bypass a child borrow that is genuinely still live; when the child has no remaining use or dependent holder, the root's suspended compatible access becomes usable again. That recovers existing authority; it neither creates a borrow right nor consumes a resource. Equality of origin alone does not prove that holders are aliases with identical liveness or permission (MD-069, 2026-10-16, `rules/corrections/applied/md064-md069-borrow-diagnostics-origin-liveness-correction-20261016.md` §§ 5–7).
 
-**§ 8.1(7c)** Ending a borrow does not destroy, move, discard or reclaim the referent and discharges no future linear obligation. Lowering and optimization neither manufacture overlapping mutable authority nor prolong a source-level borrow because bookkeeping markers remain in a larger physical scope; where Semantic IR places `ref.end-borrow` markers is MD-065 (MD-069 correction § 8).
+**§ 8.1(7c)** Ending a borrow does not destroy, move, discard or reclaim the referent and discharges no future linear obligation. Lowering and optimization neither manufacture overlapping mutable authority nor prolong a source-level borrow because bookkeeping markers remain in a larger physical scope; where Semantic IR places `ref.end-borrow` markers is decided by § 8.1(9)–(14) (MD-065).
 
 **§ 8.1(8)** Borrow conflicts remain mandatory compile-time errors. Ergonomics never weakens exclusivity; unnecessary conflicts are avoided only through last-use, disjoint-Place, finite-origin and reborrow rules. A conservative implementation may keep a borrow live longer than this section requires only where § 8.1(6) permits; such retention is tracked as an implementation limitation in governance.
+
+**§ 8.1(9)** *Last required use (MD-065, 2026-10-21).* On each reachable path a borrow's live range extends through its **last required use** — including uses by surviving dependent holders, derived and copied shared references, aggregate holders, captures, `defer` uses, call retention contracts and legal returned-reference dependencies — and ends immediately thereafter. The last required use is not necessarily the last textual use of the original variable. A borrow that is created but never used or retained ends at the first point after creation where no dependency remains; it is never kept live artificially until scope exit.
+
+**§ 8.1(10)** For an authority bounded by a local scope, including a non-escaping union/Option/Result payload borrow in a `match` arm, the live range ends **no later than** the scope or arm exit. That exit is a maximum bound, not the normal end point when the last required use occurs earlier. A dependency legally returned or transferred to a surviving holder follows the escape/retention rules, and a local end never falsely terminates it; an illegal escape remains a source error.
+
+**§ 8.1(11)** End points are path-specific: a borrow may end at different positions in the branches of `if`, `switch`, `match`, `try`, `select`, short-circuit expressions and loops. A returning, propagating, terminating, breaking or continuing path ends or transfers each live borrow on that path. A join keeps a borrow live only when at least one continuing path still requires it; iteration-local borrows end before the next iteration after their last required use, while genuinely loop-carried holders stay accounted for.
+
+**§ 8.1(12)** A child reborrow ends under its own `BorrowID`/`LifetimeID` at its last required use. Ending it restores only the parent's previously valid access; neither a parent reference nor shared origin keeps an otherwise dead child alive (§ 8.1(7b)).
+
+**§ 8.1(13)** Ownership availability and borrow liveness are independent: a `ConditionallyAvailable` Place (`ownership.md` § 5) never keeps an unrelated borrow live after all its dependencies end, an `Available` Place never authorizes access conflicting with a live borrow, and a borrow end never repairs availability after a move.
+
+**§ 8.1(14)** Sema is the sole authority for these end points and publishes them per path with `BorrowID`, `LifetimeID` and a resolved control-flow position or edge; Semantic IR emits `ref.end-borrow` there (`sec-mlir-dialect_package15.md` §§ 49–50). An arm- or scope-exit marker conforms only where it is the semantic end. When Sema cannot establish the facts, compilation or emission fails clearly instead of emitting a guessed schedule (MD-065, `rules/corrections/applied/md065-path-exact-borrow-end-correction-20261021.md`).
 
 ### § 8.2 Holder termination
 

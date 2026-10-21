@@ -37,7 +37,7 @@ func TestOwnershipMentorCLI(t *testing.T) {
 						t.Fatal(got)
 					}
 					if i == 2 {
-						if !strings.Contains(help, "Redesign the API") || !strings.Contains(got.Message.Text, "copies its argument") {
+						if !strings.Contains(help, "`<-resource`") || !strings.Contains(help, "To require transfer at every call") || !strings.Contains(got.Message.Text, "copies its argument") {
 							t.Fatal(got)
 						}
 					} else if !strings.Contains(help, "Write `<-") {

@@ -123,6 +123,7 @@ The parser currently supports:
 - unary `-`;
 - logical negation `!`;
 - bitwise complement `~`;
+- prefix dereference `*` of a safe reference (MD-063);
 - arithmetic infix expressions;
 - bitwise infix expressions;
 - shift expressions;
@@ -511,7 +512,7 @@ The following table is ordered from highest precedence to lowest precedence.
 |---:|---|---|---|
 | 1 | Member | `.` | left chaining |
 | 2 | Postfix | call `()`, index or slice `[]`, struct literal `{}`, spread `...` | left chaining |
-| 3 | Prefix | unary `+`, unary `-`, `!`, `~`, and parser-defined prefix forms | right |
+| 3 | Prefix | unary `+`, unary `-`, `!`, `~`, dereference `*`, and parser-defined prefix forms | right |
 | 4 | Multiplicative | `*`, `/`, `%`, contextual `x` | left |
 | 5 | Additive | `+`, `-` | left |
 | 6 | Shift | `<<`, `>>` | left |
@@ -1144,6 +1145,71 @@ Result type is the operand type.
 The operation flips every value bit in the fixed-width representation.
 
 For a signed integer, interpretation of the result uses the same signed type.
+
+## Dereference
+
+```sec
+*reference
+```
+
+The operand must be a safe `ref T` or `ref mut T`. The expression names the
+referent Place of type `T` (`rules/memory/references.md` § 3.4; MD-063).
+
+A value use reads the referent by value and requires `T` to be copyable. The
+operator never moves out of a referent, and `:<- *r` / `<- *r` are invalid.
+
+`*r` is a valid assignment and compound-assignment target when `r` is
+`ref mut T`; a `ref T` grants no write authority.
+
+`*` in prefix position is dereference; in infix position it is
+multiplication. Postfix forms bind tighter than prefix forms, so:
+
+```text
+*r.Field    means *(r.Field)
+*r * 2      means (*r) * 2
+(*r).Field  projects Field from the explicit referent
+```
+
+`Option[ref T]`, `RawPtr[T]`, slices and plain values are not valid operands.
+
+No operator dereferences a reference implicitly. `r + 1`, `r += 1` and
+`r = value` act on the holder `r` and are rejected when they need the
+referent; the diagnostic suggests `*r`.
+
+`r == s` compares reference identity; `*r == *s` compares referent values.
+
+### Line-start dereference statements
+
+Statements are not separated by newlines, and the canonical layout of a
+multiline product puts `*` at the start of a continuation line (formatter
+§ 9(13)). The parser decides between the two readings of a `*` that begins a
+later line syntactically, never from types:
+
+1. The `*` is a dereference that begins a new statement when it introduces a
+   syntactically valid assignment target and that target is directly
+   followed by an assignment operator, or by the statement alias `++` / `--`.
+   A target is one or more `*` followed by an identifier, `self` or a
+   parenthesized expression, then any member (`.Name`), index (`[...]`) and
+   call (`(...)`) steps.
+2. The search for the assignment operator may cross lines inside the
+   target's own brackets, but never continues past the end of the target
+   into another standalone statement.
+3. In every other case the `*` keeps its existing meaning as a
+   multiplication on a continuation line.
+
+```sec
+let total :=
+      base
+    * factor          // multiplication continuation
+*r = total            // new dereference assignment statement
+*grid[
+    index
+] = 5                 // target brackets span lines
+```
+
+Rule 1 only reinterprets source in which the multiplication reading would be
+an assignment chained onto the previous statement, which is always invalid,
+so it changes the meaning of no valid program.
 
 ---
 
@@ -2903,7 +2969,7 @@ mutable local
 mutable field
 mutable property with setter
 mutable indexed place
-mutable dereferenced reference
+mutable dereferenced reference (`*r` for `r: ref mut T`)
 compiler-known writable location
 ```
 

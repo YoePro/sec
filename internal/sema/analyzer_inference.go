@@ -2551,6 +2551,8 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return a.types["int"], expressionValue{Display: expr.String()}, true
+	case "AsRef", "AsRefMut":
+		return a.inferRawPointerReferenceConversion(expr, member, receiverType)
 	default:
 		return Type{}, expressionValue{}, false
 	}
@@ -3597,7 +3599,11 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 	}
 
 	if !isNumericType(leftType) || !isNumericType(rightType) {
-		if help := numericCarrierOperandHelp(leftType, rightType, expr.Left, expr.Right); help != "" {
+		help := numericCarrierOperandHelp(leftType, rightType, expr.Left, expr.Right)
+		if help == "" {
+			help = referenceOperandHelp(leftType, rightType, expr.Left, expr.Right)
+		}
+		if help != "" {
 			a.addErrorAtTokenWithMetadata(expr.Token, "", help, "operator %s requires numeric operands", expr.Operator)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -4017,6 +4023,9 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return rightType, rightValue
+	}
+	if expr.Operator == "*" {
+		return a.inferDereferenceExpression(expr)
 	}
 	rightType, rightValue := a.inferExpression(expr.Right)
 	if rightType.Kind == InvalidType {

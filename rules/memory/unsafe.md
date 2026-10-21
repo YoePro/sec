@@ -517,6 +517,8 @@ address-space/platform compatibility
 
 § 22(4) Compiler-proven contradictions are rejected even in unsafe.
 
+§ 22(5) The source spelling is `unsafe pointer.AsRef()` / `unsafe pointer.AsRefMut()` on a typed `RawPtr[T]` (`raw_pointers.md` § 18A; MD-070). They are single calls, so the call form of `unsafe` suffices; `.Ptr` is a property and needs an `unsafe { }` block.
+
 ---
 
 ## § 23 Slice from raw parts

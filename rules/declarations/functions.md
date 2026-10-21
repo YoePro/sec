@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-10-12 (MD-027 contextual None and [] arguments)
+- **Last updated:** 2026-10-21 (MD-076 call-lifetime temporary borrows)
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions.txt`
@@ -536,6 +536,8 @@ Caller-owned temporaries created by earlier argument expressions are cleaned acc
 This rule does not roll back effects or ownership transfers that occurred *inside the evaluation of an argument expression itself*. For example, if the first argument expression calls another consuming function, that inner call has its own completed semantics. What is delayed is the outer call's transfer from prepared argument values into the outer callee parameters.
 
 This rule prevents partial ownership transfer caused only by failure while evaluating later arguments for the same outer call.
+
+Preparing a borrow in step 3 includes the call-lifetime borrow of a fresh owned temporary passed to a `ref T` or `ref mut T` parameter (`rules/memory/borrowing.md` § 5.4, MD-076). The temporary stays caller-owned, is cleaned at the end of the enclosing full expression, and must not be retained through the call's returned reference beyond that full expression.
 
 ## 19. Ordinary overloads
 

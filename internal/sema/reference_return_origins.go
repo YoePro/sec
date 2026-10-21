@@ -156,6 +156,10 @@ func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression
 		if len(contained) > 0 {
 			return localReferenceOrigin{Contained: contained}, true
 		}
+		if a.freshTemporaryBorrowSource(args[index]) {
+			// MD-076: the borrow of a fresh temporary argument.
+			return a.temporaryArgumentOrigin(args[index]), true
+		}
 		return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
 	}
 	if root == "$receiver" {
@@ -168,6 +172,10 @@ func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression
 		}
 		place, ok := a.resolvePlace(receiver)
 		if !ok {
+			if a.freshTemporaryBorrowSource(receiver) {
+				// MD-076: the borrow of a fresh temporary receiver.
+				return a.temporaryArgumentOrigin(receiver), true
+			}
 			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
 		}
 		name, token, local, _, _ := a.referenceOriginForExpression(receiver)

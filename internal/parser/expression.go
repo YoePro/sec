@@ -98,6 +98,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.PLUS, lexer.MINUS, lexer.NOT, lexer.BIT_NOT, lexer.MOVE_ASSIGN:
 		left = p.parsePrefixExpression()
 
+	case lexer.ASTERISK:
+		// MD-063: prefix `*` dereferences a safe reference to its referent
+		// Place; infix `*` stays multiplication. Postfix member, index and
+		// call operators bind tighter, so `*r.Field` is `*(r.Field)`.
+		left = p.parsePrefixExpression()
+
 	case lexer.TRY:
 		left = p.parseTryExpression()
 
@@ -189,6 +195,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 
 	for p.peekToken.Type != lexer.EOF && currentPrecedence < p.peekPrecedence() {
 		if p.stopBeforeBrace && p.peekToken.Type == lexer.LBRACE {
+			return left
+		}
+		if p.dereferenceAssignmentLineAhead() {
 			return left
 		}
 		if p.peekToken.Type == lexer.SPREAD {
@@ -2232,6 +2241,81 @@ func (p *Parser) parseRangeOrExpression() ast.Expression {
 		rangeExpr.End = p.parseExpression(COMPARE)
 	}
 	return rangeExpr
+}
+
+// dereferenceAssignmentLineAhead reports whether a `*` that begins a later
+// line starts a new `*target = value` or `*target op= value` statement rather
+// than continuing a leading-operator multiplication. The decision is purely
+// syntactic: after the `*` (and any further prefix `*`) there must be one
+// complete postfix assignment target — an identifier, `self` or parenthesized
+// expression followed by member, index and call steps, whose brackets may
+// span lines — and the token directly after it must be an assignment
+// operator or `++`/`--`. Anything else, including a following standalone
+// statement, keeps the multiplication.
+//
+// Rules: rules/foundations/operators.md — "Line-start dereference statements"
+// (MD-063); rules/tooling/formatter.md — § 9(13) leading operators.
+func (p *Parser) dereferenceAssignmentLineAhead() bool {
+	if p.peekToken.Type != lexer.ASTERISK || p.peekToken.Line <= p.curToken.Line {
+		return false
+	}
+	state := p.l.Snapshot()
+	defer p.l.Restore(state)
+	token := p.l.NextToken()
+	for token.Type == lexer.ASTERISK {
+		token = p.l.NextToken()
+	}
+	switch token.Type {
+	case lexer.IDENT, lexer.SELF:
+	case lexer.LPAREN:
+		if !p.skipBalancedAhead(lexer.LPAREN, lexer.RPAREN) {
+			return false
+		}
+	default:
+		return false
+	}
+	for {
+		token = p.l.NextToken()
+		switch token.Type {
+		case lexer.DOT:
+			if next := p.l.NextToken(); next.Type != lexer.IDENT {
+				return false
+			}
+		case lexer.LBRACKET:
+			if !p.skipBalancedAhead(lexer.LBRACKET, lexer.RBRACKET) {
+				return false
+			}
+		case lexer.LPAREN:
+			if !p.skipBalancedAhead(lexer.LPAREN, lexer.RPAREN) {
+				return false
+			}
+		case lexer.INCREMENT, lexer.DECREMENT:
+			return true
+		default:
+			return p.isAssignmentOperator(token.Type)
+		}
+	}
+}
+
+// skipBalancedAhead consumes lookahead tokens through the close that matches
+// an already consumed open token, across lines, and reports whether it was
+// found before end of input.
+func (p *Parser) skipBalancedAhead(open, close lexer.TokenType) bool {
+	depth := 1
+	for {
+		token := p.l.NextToken()
+		switch token.Type {
+		case lexer.EOF:
+			return false
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return true
+			}
+		}
+	}
 }
 
 func (p *Parser) peekPrecedence() precedence {

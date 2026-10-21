@@ -224,6 +224,14 @@ func singleResourcePlaceRelationship(left, right Place) SynchronizationResourceR
 // rules/concurrency/mutex.md — §§1(2), 2(1), 5(3–4);
 // rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md — §14 "Place dereference".
 func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
+	if dereference, ok := dereferenceExpression(expr); ok {
+		// MD-063: `*r` names the referent Place of the holder's reference.
+		place, ok := a.resolveDereferencePlace(dereference)
+		if ok {
+			a.recordResolvedPlace(expr, place)
+		}
+		return place, ok
+	}
 	place, ok := a.resolvePlacePath(expr)
 	if ok {
 		a.recordResolvedPlace(expr, place)

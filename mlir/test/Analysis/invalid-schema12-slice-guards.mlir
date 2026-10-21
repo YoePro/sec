@@ -1,3 +1,5 @@
+// RUN: sec-mlir-opt %s -split-input-file --sec-verify-reference-guards -verify-diagnostics -o /dev/null
+// RUN: sec-mlir-opt %s -split-input-file --sec-verify-places -verify-diagnostics -o /dev/null
 // RUN: sec-mlir-opt %s --sec-verify-slice-guards -split-input-file -verify-diagnostics -o /dev/null
 // P16-42: malformed CFGs retain the owning slice guard diagnostic.
 

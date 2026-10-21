@@ -100,6 +100,7 @@ func verifyNoUseAfterEndBorrow(fn *Function, blocks map[BlockID]*Block, values m
 			}
 		}
 	}
+	resolveForwardedSliceFacts(types, fn, blocks, definitions)
 	for _, b := range fn.Blocks {
 		for index, op := range b.Operations {
 			if op.Kind != OpReferenceEndBorrow && op.Kind != OpSliceMoveMutable {

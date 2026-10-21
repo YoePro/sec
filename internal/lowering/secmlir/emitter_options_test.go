@@ -56,8 +56,8 @@ func TestEmitSchemaSelectionRejectsUnknownAndDowngradeVersions(t *testing.T) {
 	}
 }
 
-// Selecting the P16 schema does not bypass IR verification or imply that
-// slice types/operations, physical descriptors or ABI support are implemented.
+// Schema 11 retains its slice gate; explicit schema 12 admits abstract slices
+// while preserving IR verification and leaving physical descriptors/ABI separate.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§87,121–122;
 // rules/compiler/compiler_pipeline.md — §§32–34.
 func TestEmitSchemaSelectionKeepsUnsupportedSliceBoundary(t *testing.T) {
@@ -73,6 +73,12 @@ func TestEmitSchemaSelectionKeepsUnsupportedSliceBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		output, err := EmitWithOptions(m, testPlan(64), EmitOptions{DialectVersion: version})
+		if version == 12 {
+			if err != nil || !strings.Contains(string(output), "!sec.slice<si32>") {
+				t.Fatalf("schema 12 lost abstract slice type: %q %v", output, err)
+			}
+			continue
+		}
 		var unsupported *UnsupportedLoweringError
 		if len(output) != 0 || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "slice") {
 			t.Fatalf("schema %d bypassed slice gate: %q %v", version, output, err)

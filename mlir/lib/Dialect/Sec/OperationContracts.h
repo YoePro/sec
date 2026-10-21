@@ -9,6 +9,53 @@
 namespace sec::detail {
 using namespace mlir;
 
+// Shared canonical struct/type/field and metadata vocabulary checks.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–39.
+inline FailureOr<StructType> requireStructType(Type type, Operation *operation) {
+  auto structType = dyn_cast<StructType>(type);
+  if (!structType)
+    return operation->emitOpError("value must have !sec.struct type");
+  return structType;
+}
+
+// Validate resolved per-field action/origin vocabulary without reclassifying source.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–36.
+inline LogicalResult verifyStringArrayValues(Operation *operation, ArrayAttr values,
+                                      ArrayRef<StringRef> allowed,
+                                      StringRef description) {
+  for (Attribute attribute : values) {
+    auto value = dyn_cast<StringAttr>(attribute);
+    if (!value || !llvm::is_contained(allowed, value.getValue()))
+      return operation->emitOpError()
+             << description << " contains an invalid value";
+  }
+  return success();
+}
+
+// Resolve exactly one canonical declaration-order stored field.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§18,39.
+inline FailureOr<StructFieldAttr> lookupStructField(StructType type,
+                                             IntegerAttr ordinal,
+                                             Operation *operation) {
+  int64_t index = ordinal.getInt();
+  if (index < 0 || static_cast<uint64_t>(index) >= type.getFields().size())
+    return operation->emitOpError("struct field ordinal is out of range");
+  auto field = dyn_cast<StructFieldAttr>(type.getFields()[index]);
+  if (!field || field.getOrdinal() != static_cast<uint32_t>(index))
+    return operation->emitOpError("struct field table is not canonical");
+  return field;
+}
+
+// Inspect an integer's semantic carrier without erasing its nominal SSA type.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — sections 35,102;
+inline Type semanticIntegerCarrier(Type type) {
+  while (true) {
+    if (auto named = dyn_cast<NamedType>(type)) type = named.getBase();
+    else if (auto distinct = dyn_cast<DistinctType>(type)) type = distinct.getBase();
+    else return type;
+  }
+}
+
 // Classify builtin semantic integer carriers without admitting signless values.
 // Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v4.md — integer types.
 inline bool isBuiltinIntegerSemanticType(Type type) {

@@ -58,36 +58,6 @@ func Verify(module *Module) error {
 	return nil
 }
 
-func verifyStructDefinitions(module *Module) error {
-	seen := map[TypeID]bool{}
-	for _, definition := range module.Structs {
-		typ, ok := module.Types.Lookup(definition.TypeID)
-		if !ok || typ.Kind != TypeStruct || typ.Identity == "" || definition.SymbolID != SymbolID(typ.Identity) || definition.Name != typ.Name || seen[definition.TypeID] {
-			return fmt.Errorf("invalid struct definition !%d", definition.TypeID)
-		}
-		seen[definition.TypeID] = true
-		if !sameTypeIDs(definition.TypeArguments, typ.TypeArgs) || !validCopyClassification(definition.CopyClassification) {
-			return fmt.Errorf("invalid struct metadata !%d", definition.TypeID)
-		}
-		names := map[string]bool{}
-		for index, field := range definition.Fields {
-			if field.ID != StructFieldID(index) || field.Name == "" || names[field.Name] {
-				return fmt.Errorf("invalid struct field in !%d", definition.TypeID)
-			}
-			if _, ok := module.Types.Lookup(field.Type); !ok {
-				return fmt.Errorf("struct field %s has invalid type", field.Name)
-			}
-			names[field.Name] = true
-		}
-	}
-	for index, typ := range module.Types.types {
-		if typ.Kind == TypeStruct && !seen[TypeID(index+1)] {
-			return fmt.Errorf("struct type !%d has no definition", index+1)
-		}
-	}
-	return nil
-}
-
 func verifyTypes(table *TypeTable) error {
 	for i, t := range table.types {
 		id := TypeID(i + 1)
@@ -518,7 +488,8 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
 		return err
 	}
-	if err := verifySliceRangeGuards(fn, blocks, dom); err != nil {
+	sliceFn, sliceBlocks, _ := sliceVerificationView(module.Types, fn, blocks)
+	if err := verifySliceRangeGuards(sliceFn, sliceBlocks, dom); err != nil {
 		return err
 	}
 	if err := verifyResultGuards(module.Types, fn, blocks, values); err != nil {
@@ -542,7 +513,7 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyUnionPayloadPlaces(fn, blocks, values, dom); err != nil {
 		return err
 	}
-	if err := verifySliceIndexGuards(module, fn, blocks, values, dom); err != nil {
+	if err := verifySliceIndexGuards(module, sliceFn, sliceBlocks, values, dom); err != nil {
 		return err
 	}
 	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
@@ -622,7 +593,13 @@ func addValue(types *TypeTable, values map[ValueID]Value, v Value) error {
 	return nil
 }
 
+// verifyOperation enforces typed operation contracts and rejects contradictory
+// slice value provenance before downstream representation consumes it.
+// Rules: rules/compiler/semantic_ir.md — §§20,126.2–4,126.6–20.
 func verifyOperation(module *Module, fn *Function, op Operation, values map[ValueID]Value, storages map[StorageID]Storage, functions map[FunctionID]*Function, blocks map[BlockID]*Block) error {
+	if err := verifySliceValueFacts(module.Types, op); err != nil {
+		return err
+	}
 	for _, result := range op.Results {
 		if isRawPointerType(module.Types, result.Type) && op.Reference != nil {
 			return fmt.Errorf("raw-pointer result %%%d carries safe-reference facts", result.ID)
@@ -974,6 +951,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("union.unwrap-field field mismatch")
 		}
 	case OpStructConstruct:
+		if containsOwnedMutableSlice(module, resultType) {
+			return fmt.Errorf("struct.construct containing a mutable slice requires move-aware aggregate lowering (P17)")
+		}
 		definition, ok := structDefinition(module, resultType)
 		if !ok || len(op.Results) != 1 || len(op.Operands) != len(definition.Fields) || len(op.StructOrigins) != len(op.Operands) || len(op.StructActions) != len(op.Operands) {
 			return fmt.Errorf("invalid struct.construct")
@@ -984,6 +964,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			}
 		}
 	case OpStructSpreadFields:
+		if len(op.Operands) == 1 && containsOwnedMutableSlice(module, values[op.Operands[0]].Type) {
+			return fmt.Errorf("struct.spread-fields cannot copy a mutable slice")
+		}
 		if len(op.Operands) != 1 {
 			return fmt.Errorf("invalid struct.spread-fields")
 		}
@@ -997,6 +980,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			}
 		}
 	case OpStructExtractField:
+		if containsOwnedMutableSlice(module, resultType) {
+			return fmt.Errorf("struct.extract-field cannot copy a mutable slice")
+		}
 		if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.StructActions) != 1 || op.StructActions[0] != StructActionCopyTrivial {
 			return fmt.Errorf("invalid struct.extract-field")
 		}
@@ -1005,6 +991,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("struct extract field mismatch")
 		}
 	case OpStructReplaceField:
+		if containsOwnedMutableSlice(module, resultType) {
+			return fmt.Errorf("struct.replace-field cannot copy a mutable slice")
+		}
 		if len(op.Operands) != 2 || len(op.Results) != 1 || resultType != values[op.Operands[0]].Type {
 			return fmt.Errorf("invalid struct.replace-field")
 		}

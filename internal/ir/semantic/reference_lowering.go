@@ -44,9 +44,28 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 	if value, err := fb.lowerReceiverRead(expr); err != errNotReference {
 		return value, err
 	}
+	if prefix, ok := dereferenceOfValue(expr, analyzer); ok {
+		return fb.lowerValueDereference(prefix)
+	}
+	if call, ok := expr.(*ast.CallExpression); ok {
+		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil && (member.Property.Value == "AsRef" || member.Property.Value == "AsRefMut") {
+			if receiver, typed := analyzer.TypeOf(member.Object); typed && receiver.Kind == sema.RawPtrType {
+				// MD-070 § 6: a distinct raw-to-safe operation whose
+				// serialized form is still MD-084's to spell.
+				return builtValue{}, fb.unsupported("raw-to-safe reference conversion RawPtr."+member.Property.Value+" (MD-070 § 6; operation spelling awaits MD-084)", member.Property.Token)
+			}
+		}
+	}
 	if plan, ok := analyzer.ResolvedReferencePlanOf(expr); ok {
 		if !plan.Facts.Checkable() {
 			return builtValue{}, fb.unsupported("uncheckable safe reference (neither proven nor dynamically checkable)", token)
+		}
+		if plan.Temporary {
+			if expr == fb.temporarySource {
+				// Producing the owned value itself: no borrow applies yet.
+				return builtValue{}, errNotReference
+			}
+			return fb.lowerTemporaryBorrow(expr, plan)
 		}
 		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit {
 			if plans, steps, rooted, ok := fb.receiverFieldPath(reference.Value); rooted && (ok || fb.isReceiverSelf(reference.Value)) {
@@ -494,4 +513,54 @@ func (fb *functionBuilder) placeResult(op Operation, typ TypeID) builtValue {
 	op.Results = []Value{value}
 	fb.emit(op)
 	return builtValue{id: value.ID, typ: typ}
+}
+
+// lowerTemporaryBorrow materializes the call-lifetime Place of a fresh owned
+// argument or receiver and borrows it (MD-076; borrowing.md § 5.4): the
+// producing expression is evaluated once, a shared borrow addresses a
+// read-only value root over its result and a mutable borrow an address-taken
+// compiler storage initialized with it. Only trivially destructible
+// temporaries lower here; full-expression cleanup of others belongs to P17.
+//
+// Rules:
+//   - rules/memory/borrowing.md — § 5.4
+//   - rules/memory/destruction.md — § 8(7)
+//   - rules/corrections/applied/md076-call-lifetime-temporary-borrows-correction-20261021.md — § 9
+func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.ResolvedReferencePlan) (builtValue, error) {
+	token := expressionToken(expr)
+	if !sema.TriviallyDestructible(plan.Place.Type) {
+		return builtValue{}, fb.unsupported("borrowed temporary that needs full-expression cleanup", token)
+	}
+	element, err := fb.owner.internType(plan.Place.Type)
+	if err != nil {
+		return builtValue{}, err
+	}
+	previous := fb.temporarySource
+	fb.temporarySource = expr
+	value, err := fb.buildExpr(expr, element)
+	fb.temporarySource = previous
+	if err != nil {
+		return builtValue{}, err
+	}
+	if value.typ != element || !fb.storageAllowed(value.typ) {
+		return builtValue{}, fb.unsupported("borrowed temporary of a non-trivial type", token)
+	}
+	loc := location(token)
+	mutable := plan.Facts.MutableAuthority
+	placeFacts := placeMetadataOf(plan.Place)
+	var place builtValue
+	if mutable {
+		id := fb.nextStorage
+		fb.nextStorage++
+		fb.fn.Storages = append(fb.fn.Storages, Storage{ID: id, Name: "temporary", Type: element, Mutable: true, Class: StorageLocalAutomatic, Location: loc, AddressTaken: true})
+		fb.emit(Operation{Kind: OpStorageDeclare, Storage: id, Location: loc})
+		fb.emit(Operation{Kind: OpStorageInit, Storage: id, Operands: []ValueID{value.id}, Location: loc})
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element, Mutable: true})
+		place = fb.placeResult(Operation{Kind: OpPlaceStorageRoot, Storage: id, Place: placeFacts, Location: loc}, placeType)
+	} else {
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element})
+		place = fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{value.id}, Place: placeFacts, Location: loc}, placeType)
+	}
+	borrow := &ast.RefExpression{Token: token, Mutable: mutable, Value: expr}
+	return fb.emitBorrow(borrow, plan, place)
 }

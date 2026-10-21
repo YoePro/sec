@@ -7,22 +7,13 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-17"
-    document_revision: "2.0"
+    updated: "2026-10-21"
+    document_revision: "2.1"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
       - rules/corrections/applied/pitfall-analysis-rev2-sync-20261004.md
-    summary: >-
-      Adds structured high-confidence pitfall analysis that correlates canonical
-      bounds, range, control-flow, Place/provenance, collection, API usage,
-      effect, and FFI contract facts to detect common human mistakes without
-      redefining the normative semantics owned by those analyses. Direct-Len and
-      reachable inclusive-endpoint proofs now belong to mandatory bounds
-      validation and enrich one coalesced diagnostic, with optional insight
-      reusing the facts. State-sensitive Result uses correlate canonical
-      Option/variant checks with the exact required binding and enrich the
-      discardability owner when a different checked subject explains the
-      mistake.
+      - rules/corrections/applied/pitfall-last-use-argument-move-20261021.md
+    summary: Adds structured high-confidence pitfall analysis that correlates canonical bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI contract facts to detect common human mistakes without redefining the normative semantics owned by those analyses. Direct-Len and reachable inclusive-endpoint proofs now belong to mandatory bounds validation and enrich one coalesced diagnostic, with optional insight reusing the facts. State-sensitive Result uses correlate canonical Option/variant checks with the exact required binding and enrich the discardability owner when a different checked subject explains the mistake. Final-use large aggregate argument copies now receive manual explicit-move advice through canonical binding, call/construction and transfer facts.
     rules:
       - rules/compiler/incremental_compilation.md
       - rules/compiler/compiler_known_members.md
@@ -41,6 +32,7 @@ integrations:
       - rules/platform/ffi.md
       - rules/errors/errorhandling.md
       - rules/declarations/unions.md
+      - rules/memory/copy_move.md
     code:
       - internal/sema/pitfall_cache.go
       - internal/sema/state_requirement_facts.go
@@ -83,6 +75,8 @@ integrations:
       - internal/sema/pitfall_capacity_expression.go
       - internal/sema/pitfall_wrong_bound_source.go
       - internal/sema/pitfall_zero_element_flow.go
+      - internal/sema/pitfall_last_use_move.go
+      - internal/sema/call_ownership.go
     tests:
       - internal/sema/pitfall_cache_test.go
       - testdata/sema/pitfall_cache_valid.sec
@@ -160,6 +154,14 @@ integrations:
       - testdata/sema/pitfall_zero_element_flow.sec
       - cmd/compiler/pitfall_zero_element_flow_test.go
       - cmd/lsp/pitfall_zero_element_flow_test.go
+      - internal/sema/pitfall_last_use_move_test.go
+      - cmd/compiler/analyse_last_use_move_test.go
+      - cmd/lsp/pitfall_last_use_move_test.go
+      - testdata/sema/pitfall_move/arguments.sec
+      - testdata/sema/pitfall_move/move_only_invalid.sec
+      - cmd/compiler/analyse_facts_test.go
+      - cmd/compiler/ownership_mentor_test.go
+      - cmd/lsp/ownership_mentor_test.go
     implemented:
       - canonical idiom suggestions are a shared value-only action contract distinguishing range membership with in and half-open traversal with ..<; publication prefers supported canonical replacements over explanation-only actions without changing confidence, severity, validity, analysis depth or automatic-fix proof requirements, and suppressed findings carry no preferred idiom
       - interval membership, inclusive-length endpoint, fragile inclusive Len-1 and omitted-last-element producers publish their canonical suggestions through the same preference gate; omitted-last-element suggestions now include the complete half-open replacement, while behavior-changing intent edits remain SuggestedEdit and certified equivalent rewrites remain ProvenFix
@@ -247,6 +249,8 @@ integrations:
       - dominating element-zero intent witnesses are searched backward from start-at-one traversals and revoked by canonical collection/parent replacement, structural mutation and mutable/opaque call effects; reads and element writes preserve the witness, and a fresh unconditional zero access can re-establish it after mutation. Conditional logical RHS, match arms, callable/spawn and deferred bodies do not establish same-block dominance; unconditional logical LHS accesses can. This remains optional Standard/Deep advice with Interactive exclusion, shared CLI/LSP presentation and cache contract v10, consuming expression-type, operation-contract and operator-semantics prerequisite revisions.
       - skipped-first-element intent witnesses join over every continuing if/else path, including nested branches, canonical constant-true reachability and return-only siblings. Each continuing branch must establish fresh element-zero handling; branch-local mutation revokes stale witnesses, fresh handling after mutation can restore them, and exiting-branch mutation cannot erase proof of the continuing path. Every contributing access retains its own suppression evidence/source token. Missing, wrong-collection or deferred branch witnesses and mutations after the join retain advisory results; shared CLI/LSP and body cache contract v11 preserve this evidence.
       - "len(x) - 1 final-element form (MD-074/MD-088, 2026-10-17): lengthReceiver recognizes the compiler-known len(x) as the same uint length observation as x.Len, so the final-element, omitted-last-element and inclusive-length families apply to both spellings; the compiler-known len call never invalidates non-empty or guard proofs (callMayChangeLength). Tests: TestPitfallAnalysisRequiresNonEmptyProofForFinalElement (len missing proof, len exiting empty guard)"
+      - pitfall.ownership.last-use-argument-copy recommends <-name for final-use whole local/parameter aggregate arguments whose selected ordinary value parameter performs a trivial copy and whose estimated value size reaches the existing 64-byte large-value policy; exact parameter types, canonical binding identity and transfer plans, complete body uses and conservative borrow/dependency checks are required, including new initializers and try handlers; later uses, reference/member dependencies, delayed execution, nested candidates, cheap views, mandatory transfers and invalid copies withhold duplicate advice
+      - ordinary value argument ownership checks publish selected trivial/semantic copies through ResolvedTransferPlanOf; copy_move.md revision 2.2 clarifies caller-selected explicit moves to ordinary owning value parameters without signature changes, while -> parameters require transfer; noncopyable argument help now explains the existing explicit-move alternative; findings remain SuggestedEdit with no automatic fix and share registry, whole-body budget, dependency-qualified cache, CLI and LSP publication
     remaining:
       - "MD-074/MD-088 pitfall extension (rules/analysis/pitfall_analysis.md \"Final-element access requires non-empty proof\", 2026-10-17): predecessor access values[i - 1] with i possibly 0 and reverse loops, and explaining whether the hazard is checked unsigned underflow or a bounds violation, are not implemented yet"
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
@@ -258,6 +262,16 @@ integrations:
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
       - "define and implement a dedicated pitfall for callback contracts with an infallible owning string return, such as fn A(v: fn(T) string), that may conceal an allocation-failure propagation requirement; recommend fn(T) Result[string, E] when recoverable allocation failure must reach the caller, with E covering the relevant allocation error; define evidence, confidence and suppression using canonical callable target/effect/error-flow facts, distinguishing unknown allocation behavior from proven allocation and suppressing callbacks proven allocation-free or already handling failure under their contract; a string return alone must not imply allocation or a mandatory Result conversion; cover positive, negative, opaque-callback, CLI and LSP cases and avoid automatic signature rewrites without a complete proven caller/callee edit set"
     verification:
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestPitfallLastUse|TestAnalyseLastUse' -count=1
+        result: passed on 2026-10-21 for the new final-use move rule, cached publication and CLI/LSP integration
+      - command: go run ./cmd/yamlstatus check
+        result: "2026-10-21: only the two existing missing fragment files concurrency_events.yaml and concurrency_spawn.yaml are reported; the edited analysis fragment has no validation errors"
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler ./cmd/lsp -count=1
+        result: "2026-10-21: Sema, Semantic IR and Sec MLIR lowering packages passed; full compiler suite also reported existing stdlib/io RangeError propagation and removed string.FromByteArray API failures. Expected new-advice counts and ownership-help assertions were updated and pass in the focused regression run; the long-running full LSP suite was stopped after its old-help assertion was observed, so no full-suite pass is claimed"
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestPitfall|TestAnalyse|TestOwnershipMentor' -count=1
+        result: "passed on 2026-10-21: final-use argument copies at all depths, selected initializers including try new, later-use and dependency suppression, zero budgets, warm/cold cache parity and body invalidation, move-only mandatory error ownership, valid explicit ordinary-argument moves, structured CLI counts and manual LSP advice; existing ownership mentor regressions use the clarified caller move alternative"
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-21 after final-use move advice and explicit ordinary-argument move clarification
       - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-15 after zero-element branch-join integration
       - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'SkippedFirst|ZeroElementFlow|PitfallCache' -count=1

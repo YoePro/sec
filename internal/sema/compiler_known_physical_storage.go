@@ -28,6 +28,10 @@ func compilerKnownRawPointerMembers(typ Type) []CompilerKnownMember {
 			Signature: "unsafe fn Offset(count: int) RawPtr[T]", Documentation: "Pointer moved by count elements. The caller must ensure valid address arithmetic; this operation does not establish a safe reference.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §14"},
 		{ID: "CKM-RAWPTR-DIFFERENCE", Name: "Difference", Result: builtinType("int"),
 			Signature: "unsafe fn Difference(other: RawPtr[T]) int", Documentation: "Distance in elements between compatible pointers into the same allocation/address domain.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §14"},
+		{ID: "CKM-RAWPTR-AS-REF", Name: "AsRef", Result: Type{Name: referenceTypeName(element, false), Kind: ReferenceType, Element: &element},
+			Signature: "unsafe fn AsRef() ref T", Documentation: "Constructs a shared safe reference from this raw pointer. The reference does not own or extend the pointed-to storage and follows ordinary Sec reference rules.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §18A (MD-070)"},
+		{ID: "CKM-RAWPTR-AS-REF-MUT", Name: "AsRefMut", Result: Type{Name: referenceTypeName(element, true), Kind: ReferenceType, Element: &element, ReferenceMutable: true},
+			Signature: "unsafe fn AsRefMut() ref mut T", Documentation: "Constructs an exclusive mutable safe reference from this raw pointer. The reference does not own or extend the storage and follows ordinary Sec reference rules.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §18A (MD-070)"},
 	}
 	if isRawBytePointer(typ) {
 		members = append(members, CompilerKnownMember{
@@ -78,6 +82,15 @@ func rawPointerCallerContract(member CompilerKnownMember, pointer, element Type)
 		member.CallerObligations = []string{
 			"Ensure both compatible `RawPtr[T]` values refer to the same allocation/address domain with valid element positions.",
 			"Ensure the selected target/address domain supports element differences; obey its pointer-width and range rules without invalid address overflow or wraparound.",
+		}
+	case "CKM-RAWPTR-AS-REF", "CKM-RAWPTR-AS-REF-MUT":
+		member.CallerObligations = []string{
+			"Ensure the pointer is non-null, aligned for `T` and addresses an initialized valid `T` in live readable storage with correct provenance and a compatible address space.",
+			"Keep that storage live and free of conflicting mutation for the reference's whole live range; the reference neither owns, pins nor extends the storage.",
+		}
+		if member.ID == "CKM-RAWPTR-AS-REF-MUT" {
+			member.CallerObligations = append(member.CallerObligations,
+				"Ensure the storage is writable and that no other live safe reference or unmodeled foreign access overlaps it for the whole live range of the exclusive reference.")
 		}
 	}
 	if len(member.Effects) > 0 {

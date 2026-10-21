@@ -21,6 +21,12 @@ import (
 )
 
 type Analyzer struct {
+	cleanupIdentities           cleanupIdentityAllocator
+	currentCleanupScope         CleanupScopeID
+	cleanupScopes               map[*ast.BlockStatement]CleanupScopeID
+	cleanupDefers               map[*ast.DeferStatement]ResolvedDeferIdentity
+	resolvedDeferPlans          map[*ast.DeferStatement]ResolvedDeferPlan
+	ownedCleanupInitializations map[*ast.LetStatement]ResolvedOwnedCleanupRegistration
 	// analyzedContractNodes tracks exact declarations consumed during this analysis.
 	// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites.
 	analyzedContractNodes  map[ast.Contract]bool
@@ -522,6 +528,12 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
+	a.cleanupIdentities = cleanupIdentityAllocator{}
+	a.currentCleanupScope = 0
+	a.cleanupScopes = nil
+	a.cleanupDefers = nil
+	a.resolvedDeferPlans = nil
+	a.ownedCleanupInitializations = nil
 	// P16 range identities belong to this analysis, never an earlier edit.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 26.
 	a.placeIdentities.sliceRanges = nil
@@ -2561,11 +2573,13 @@ func (a *Analyzer) analyzeTestReturnStatement(statement *ast.ReturnStatement) {
 // statement that cannot execute after a preceding terminating statement.
 //
 // Rules: rules/tooling/diagnostics.md — §21(3)–(5) (S3001);
-// rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code".
+// rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code";
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §§36,39 (lexical cleanup identity).
 func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	if block == nil {
 		return
 	}
+	defer a.enterCleanupScope(block)()
 
 	symbolsBefore := map[string]bool{}
 	for name := range a.symbols {
@@ -5373,6 +5387,10 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 	case *ast.ConversionExpression:
 		return a.matchScopedReferenceOriginInExpression(expr.Value)
 	case *ast.PrefixExpression:
+		if expr.Operator == "*" {
+			// MD-063: `*r` reads the referent value, not the reference.
+			return "", lexer.Token{}, false
+		}
 		return a.matchScopedReferenceOriginInExpression(expr.Right)
 	case *ast.InfixExpression:
 		if name, token, ok := a.matchScopedReferenceOriginInExpression(expr.Left); ok {
@@ -5669,6 +5687,10 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 	case *ast.ConversionExpression:
 		return a.localReferenceOriginInExpression(expr.Value)
 	case *ast.PrefixExpression:
+		if expr.Operator == "*" {
+			// MD-063: `*r` reads the referent value, not the reference.
+			return "", lexer.Token{}, false
+		}
 		return a.localReferenceOriginInExpression(expr.Right)
 	case *ast.InfixExpression:
 		if name, token, ok := a.localReferenceOriginInExpression(expr.Left); ok {
@@ -8424,6 +8446,10 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	if a.assignmentReplacesIteratedCollection(stmt) {
 		return
 	}
+	if dereference, ok := dereferenceExpression(stmt.Target); ok {
+		a.analyzeDereferenceAssignmentStatement(stmt, dereference, allowFallible)
+		return
+	}
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
 		a.analyzeMemberAssignmentStatement(stmt, member, allowFallible)
 		return
@@ -8462,6 +8488,12 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		if !a.validateRegisterFieldWrite(field, stmt.Operator, target.Token) {
 			return
 		}
+	}
+	if symbol.Type.Kind == ReferenceType && stmt.Operator != "=" && stmt.Ownership != ast.OwnershipMove {
+		// MD-063 § 6(2): a compound operator on a holder targets the
+		// reference, not its referent.
+		a.addErrorAtToken(target.Token, "compound assignment %s targets reference holder %s of type %s, not its referent; %s", stmt.Operator, target.Value, typeDisplayName(symbol.Type), referenceHolderAssignmentHelp(target.Value))
+		return
 	}
 	if !symbol.Mutable {
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
@@ -8514,6 +8546,12 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 
+	if rebindingReference && exprType.Kind != ReferenceType && symbol.Type.Element != nil && sameConcreteType(*symbol.Type.Element, exprType) {
+		// MD-063 § 15(1): `r = value` rebinds the holder and never writes
+		// through it.
+		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to reference holder %s of type %s; %s", typeDisplayName(exprType), target.Value, typeDisplayName(symbol.Type), referenceHolderAssignmentHelp(target.Value))
+		return
+	}
 	assignmentType := exprType
 	if stmt.Operator != "=" {
 		var valid bool
@@ -8567,6 +8605,9 @@ func (a *Analyzer) validateLetOwnership(stmt *ast.LetStatement) bool {
 	if stmt == nil {
 		return false
 	}
+	if a.rejectTemporaryReferenceRetention(stmt.Value) {
+		return false
+	}
 	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil, TransferSiteInitialization)
 }
 
@@ -8588,6 +8629,9 @@ func (a *Analyzer) applyLetOwnership(stmt *ast.LetStatement) {
 
 func (a *Analyzer) validateAssignmentOwnership(stmt *ast.AssignmentStatement) bool {
 	if stmt == nil {
+		return false
+	}
+	if a.rejectTemporaryReferenceRetention(stmt.Value) {
 		return false
 	}
 	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Token, false, false, TransferSiteAssignment)
@@ -9939,6 +9983,11 @@ func caseInsensitiveCompilerKnownMember(typ Type, name string) (string, bool) {
 }
 
 func isAddressablePointerSource(expr ast.Expression) bool {
+	// `(*r).Ptr` names the referent's storage exactly like `r.Ptr` (MD-063,
+	// MD-070 § 3(2)).
+	if _, ok := dereferenceExpression(expr); ok {
+		return true
+	}
 	switch expr.(type) {
 	case *ast.Identifier,
 		*ast.MemberExpression,
@@ -10947,6 +10996,9 @@ func (a *Analyzer) relatedUnderlyingTypes(typ Type) []Type {
 type methodReceiverInfo struct {
 	Type   Type
 	Symbol *Symbol
+	// Expr is the explicit receiver expression; a fresh owned temporary may
+	// be borrowed as the receiver for the call (MD-076).
+	Expr ast.Expression
 }
 
 func (a *Analyzer) callArgumentTypesForFunction(_ Function, sourceArgTypes []Type, _ methodReceiverInfo, _ bool) []Type {
@@ -10968,7 +11020,7 @@ func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverI
 		return methodReceiverInfo{}, false
 	}
 	receiverType, _ := a.inferExpression(member.Object)
-	info := methodReceiverInfo{Type: receiverType}
+	info := methodReceiverInfo{Type: receiverType, Expr: member.Object}
 	if symbol, ok := a.symbolForMemberObject(member.Object); ok {
 		info.Symbol = &symbol
 	}

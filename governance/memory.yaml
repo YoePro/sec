@@ -232,9 +232,14 @@ integrations:
       - internal/sema/analyzer_lifetime.go
       - internal/sema/reference_place_origins.go
       - internal/sema/slice_try_origins_test.go
+      - internal/sema/reference_dereference.go
+      - internal/sema/reference_dereference_test.go
+      - internal/parser/dereference_test.go
+      - internal/ir/semantic/reference_dereference_test.go
       - testdata/sema/slice_try_origin_paths.sec
       - testdata/sema/slice_try_local_escape_invalid.sec
     implemented:
+      - "2026-10-21 (MD-063, rules/corrections/applied/md063-explicit-whole-value-dereference-20261021.md): prefix `*r` names the referent Place of a safe reference. Reads follow T's copy classification, and moves out of a referent are rejected. `*r = v` and `*r op= v` require ref mut, and the holder need not be mutable. Holder forms (`r = value`, `r += 1`, `r + 1`, by-value `r`) are rejected with an `add *` hint. `*` on Option[ref T], RawPtr, slice views and plain values is rejected. A line-start `*` begins a statement only when it syntactically introduces a complete assignment target directly followed by an assignment operator or `++`/`--`; the target brackets may span lines. Uses are recorded as reference read/write uses, and Semantic IR lowers them through ref.deref-place + place.read/place.write, with a single-Place compound write after the checks pass."
       - semantic reference types carry origin metadata including source symbol/token, local-storage indication and known storage origin
       - ref creation attaches origin metadata and local reference variables preserve it
       - returned references to local function storage are rejected in direct, local-reference, Result payload, aggregate and selected lambda escape paths
@@ -258,6 +263,7 @@ integrations:
       - complete fixed-address, runtime mapping, register-view, remap and platform-lifetime integration
       - complete ISR/local/deferred-work reference escape checks using interrupts.md execution contexts
       - complete FFI retain/no-retain and raw-to-safe reference proof integration
+      - "MD-063 known hole (verified 2026-10-21): whole-referent `*r` reaches Semantic IR only through package-15 builds (the native track stops at P14), non-trivial replacement or non-copy-trivial reads through `*r` stay an explicit P15 lowering boundary, and the holder and operand rejections have no diagnostic ID yet"
       - complete mentor diagnostics and LSP parity for all reference failures
     required_tests:
       - shared ref creation does not consume owner
@@ -393,6 +399,7 @@ integrations:
     implemented:
       - Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification.
     remaining:
+      - "MD-065 (decided 2026-10-21, borrowing.md § 8.1(9)-(14)): Sema must publish path-exact last-required-use end points with BorrowID/LifetimeID and Semantic IR must emit ref.end-borrow there; today payload borrows end at every arm exit (P15-63) and ordinary borrows emit no end markers (P15-49). Known hole (verified 2026-10-21)."
       - represent BorrowShared, BorrowMutable, ReborrowShared, ReborrowMutable or equivalent resolved operations/facts
       - preserve source Place/provenance set, holder identity, mutable authority, range/extent, borrow begin/end live range, and parent-child reborrow relationship
       - distinguish borrowed call arguments/method receivers from copy/move ownership transfers
@@ -1081,11 +1088,13 @@ integrations:
       - LSP completion and hover consume compiler-known raw-pointer member definitions for represented operations
       - basic explicit conversions between uint, RawPtr and compatible RawPtr forms are recognized under unsafe gating in the represented frontend
       - RawPtr[void] is rejected for typed Read, Write, VolatileRead, VolatileWrite, element Offset, AddBytes, and element Difference even inside unsafe
+      - "2026-10-21 (MD-070, rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md): compiler-known unsafe `RawPtr[T].AsRef() ref T` and `AsRefMut() ref mut T` (CKM-RAWPTR-AS-REF[-MUT]) are registered with caller obligations, LSP documentation and Sema typing. They are rejected outside unsafe, on RawPtr[void], on a proven-null pointer and on non-RawPtr receivers, and an implicit RawPtr-to-ref initialization suggests them. `.Ptr` through a safe reference (`r.Ptr`, `(*r).Ptr`) addresses the referent (internal/sema/raw_pointer_references.go, raw_pointer_references_test.go)."
     remaining:
       - implement canonical null source syntax and rules end to end
       - implement ordinary Read and Write frontend semantics completely where compiler-known member classification is incomplete
       - implement complete target-pointer-width and address-space validation for integer/raw conversions
       - implement complete RawPtr arithmetic target layout and range validation
+      - "MD-070 known hole (verified 2026-10-21): conflicting-authority proof for AsRef/AsRefMut against live safe borrows of the pointer's known origin (raw_pointers.md § 18(5), § 18A(6))"
       - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2 and references-v2 proof facts into raw-to-safe conversion validation
       - reject compiler-known null, dangling, unaligned, uninitialized and conflicting raw-to-safe operations even inside unsafe
       - lock and implement exact source spelling for ref/ref mut to and from RawPtr in a dedicated conversion decision
@@ -1148,7 +1157,7 @@ integrations:
       - represent raw Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes and Difference operation identity
       - preserve unsafe and trust provenance plus known null, range, alignment and origin facts where needed
       - preserve target and platform access contracts and effects
-      - represent raw-to-safe conversion as explicit establishment of safe-reference facts
+      - represent raw-to-safe conversion as explicit establishment of safe-reference facts (MD-070 AsRef/AsRefMut stop at an explicit Semantic IR capability boundary; the operation's spelling awaits MD-084)
       - verify contradictory raw-pointer facts before lowering
     required_tests:
       - RawPtr IR carries no implicit ownership, non-null or lifetime guarantee

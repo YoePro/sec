@@ -17,6 +17,8 @@ import (
 //   - rules/control-flow/defer.md — §§8–11 and §29
 //   - rules/memory/lifetime_analysis.md — §17 "Defer and delayed lifetime dependencies"
 //   - rules/memory/borrowing.md — §21 "Defer and delayed use"
+//   - rules/mlir/packages/sec-mlir-dialect_package17.md — §§36,42–44 (semantic site identities)
+//   - rules/mlir/packages/sec-mlir-dialect_package17.md — §79 (detached capture plans)
 func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	if !a.inFunctionBody {
 		a.addErrorAtToken(stmt.Token, "defer is only valid inside functions")
@@ -87,7 +89,22 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 		a.deferCaptures = previousDeferCaptures
 	}()
 
+	errorsBefore := len(a.errors)
+	scope := a.currentCleanupScope
 	a.analyzeBlockStatements(stmt.Body)
+	if len(a.errors) == errorsBefore {
+		// Publish site identity only; execution and registration plans are
+		// separate P17 producers. Rules:
+		// rules/mlir/packages/sec-mlir-dialect_package17.md — §§36,42–44.
+		if a.cleanupDefers == nil {
+			a.cleanupDefers = map[*ast.DeferStatement]ResolvedDeferIdentity{}
+		}
+		identity := a.cleanupIdentities.deferred(scope, stmt.Token)
+		if identity.Defer != 0 {
+			a.cleanupDefers[stmt] = identity
+			a.recordResolvedDeferPlan(stmt, identity, previousCallable, a.currentCallable)
+		}
+	}
 }
 
 // recordDeferCapture retains a direct outer-binding dependency. Nested Place

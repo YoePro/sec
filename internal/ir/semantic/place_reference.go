@@ -530,6 +530,7 @@ func firstOperandType(op Operation, values map[ValueID]Value) TypeID {
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§42–58,78–84.
 func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, dom map[BlockID]map[BlockID]bool) error {
 	types := module.Types
+	sliceFn, sliceBlocks, aliases := sliceVerificationView(types, fn, blocks)
 	isPlace := func(id ValueID) bool {
 		_, ok := placeType(types, values[id].Type)
 		return ok
@@ -544,6 +545,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	definitions := map[ValueID]Operation{}
 	definitionBlocks := map[ValueID]BlockID{}
 	sources := map[ValueID]*ReferenceMetadata{}
+	sliceDefinitions := map[ValueID]Operation{}
 	for _, parameter := range fn.Parameters {
 		sources[parameter.Value.ID] = parameter.Reference
 	}
@@ -556,10 +558,26 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 			}
 		}
 	}
+	for _, block := range sliceFn.Blocks {
+		for _, op := range block.Operations {
+			for _, result := range op.Results {
+				sliceDefinitions[result.ID] = op
+			}
+		}
+	}
+	resolveForwardedSliceFacts(types, fn, blocks, sources)
+	for id, facts := range sources {
+		if facts != nil && facts.Validity == ReferenceDynamicEpoch && directSafeReferenceType(types, values[id].Type) {
+			dynamic[id] = true
+		}
+	}
 	for _, b := range fn.Blocks {
-		for _, op := range b.Operations {
+		for index, op := range b.Operations {
+			if err := verifySliceElementReferenceFacts(op, definitions); err != nil {
+				return err
+			}
 			if construction, _, _ := sliceConstructionKind(op.Kind); construction {
-				if err := verifySliceBorrowSource(types, op, values, definitions, sources); err != nil {
+				if err := verifySliceBorrowSource(types, sliceBlocks[b.ID].Operations[index], values, sliceDefinitions, sources); err != nil {
 					return err
 				}
 			}
@@ -598,24 +616,36 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 		}
 	}
 	for _, b := range fn.Blocks {
-		for _, op := range b.Operations {
+		for index, op := range b.Operations {
 			_, reborrow, _ := sliceConstructionKind(op.Kind)
 			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && op.Kind != OpSliceLength && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace && !reborrow {
 				continue
+			}
+			sliceObservation := op.Kind == OpSliceLength || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace || reborrow
+			if sliceObservation {
+				op = sliceBlocks[b.ID].Operations[index]
 			}
 			for _, operand := range op.Operands {
 				if !dynamic[operand] {
 					continue
 				}
-				if op.ReferenceGuard == 0 || validity[op.ReferenceGuard] != operand {
+				guarded := validity[op.ReferenceGuard]
+				if sliceObservation {
+					guarded = forwardedValue(guarded, aliases)
+				}
+				if op.ReferenceGuard == 0 || guarded != operand {
 					return fmt.Errorf("%s of dynamic-epoch reference %%%d requires its ref.is-valid guard", op.Kind, operand)
 				}
-				if !guardFailsToGenerationEndpoint(fn, blocks, op.ReferenceGuard) {
+				guardFn, guardBlocks := fn, blocks
+				if sliceObservation {
+					guardFn, guardBlocks = sliceFn, sliceBlocks
+				}
+				if !guardFailsToGenerationEndpoint(guardFn, guardBlocks, op.ReferenceGuard) {
 					return fmt.Errorf("the false edge of validity guard %%%d must terminate with fail.reference-generation", op.ReferenceGuard)
 				}
 			}
-			if op.Kind == OpSliceLength || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace || reborrow {
-				if err := verifySliceObservationValidity(op, b.ID, blocks, dom, definitions, definitionBlocks, sources); err != nil {
+			if sliceObservation {
+				if err := verifySliceObservationValidity(op, b.ID, sliceBlocks, dom, sliceDefinitions, definitionBlocks, sources); err != nil {
 					return err
 				}
 			}

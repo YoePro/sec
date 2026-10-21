@@ -723,6 +723,9 @@ type Operation struct {
 	// SliceRange retains original endpoint types and range proof provenance.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§35,78–79.
 	SliceRange *SliceRangeMetadata
+	// Slice retains resolved value provenance without selecting a descriptor.
+	// Rules: rules/compiler/semantic_ir.md — §126.2–4,26.
+	Slice *SliceFacts
 	// UnsafeAuthorization is the source position of a call's direct
 	// `unsafe` prefix (MD-079); nil when the call carries no prefix.
 	UnsafeAuthorization *Location

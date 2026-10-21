@@ -106,6 +106,7 @@ func (a *Analyzer) recordReceiverReferencePlan(callee Function, receiver ast.Exp
 	}
 	place, ok := a.resolvePlace(receiver)
 	if !ok {
+		a.recordTemporaryBorrowPlan(receiver, callee.ReceiverMutable)
 		return
 	}
 	if receiverType, typed := a.expressionTypes[receiver]; typed && typeCarriesReferenceOrigin(receiverType) {

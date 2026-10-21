@@ -1,0 +1,7 @@
+module main
+
+fn Iterate(values: int[4]) void {
+    let view := ref values[..]
+    for value in view { discard value }
+    discard view
+}

@@ -65,6 +65,7 @@ inline ReferenceFacts dictionaryFacts(DictionaryAttr facts) {
 // Resolve canonical facts of a reference/slice SSA definition or parameter.
 // Rules: rules/mlir/sec_mlir_dialect.md — v11.7, v12.5, v12.24.
 inline ReferenceFacts referenceFacts(Value reference) {
+  if (!reference) return ReferenceFacts{};
   if (auto argument = dyn_cast<BlockArgument>(reference)) {
     Block *owner = argument.getOwner();
     auto function = dyn_cast_or_null<func::FuncOp>(owner->getParentOp());
@@ -99,6 +100,8 @@ inline ReferenceFacts referenceFacts(Value reference) {
   if (auto op = dyn_cast_or_null<sec::SliceReborrowMutOp>(definition))
     return factsOf(op);
   if (auto op = dyn_cast_or_null<sec::SliceCopySharedOp>(definition))
+    return factsOf(op);
+  if (auto op = dyn_cast_or_null<sec::SliceElementPlaceOp>(definition))
     return factsOf(op);
   if (auto op = dyn_cast_or_null<sec::SliceMoveMutOp>(definition))
     return factsOf(op);

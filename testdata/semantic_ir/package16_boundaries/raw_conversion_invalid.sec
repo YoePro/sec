@@ -1,0 +1,6 @@
+module main
+
+fn Raw(pointer: RawPtr[int]) void {
+    let view := ref pointer[..]
+    discard view
+}

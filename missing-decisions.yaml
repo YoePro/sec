@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-17"
+updated: "2026-10-21"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -61,11 +61,16 @@ decisions:
       Shape[Rank], Strides[Rank], TensorLayout[Rank], Axes[Rank],
       AxisList[Count] and the closed nine-variant ShapeError now have exact
       declarations in shaped-types.md §§ 4.1, 6.0, 7.1, 15.3, 29.3 and
-      compiler_known_members.md. Still open (correction § 12.5): the shaped
-      owning families, tensor_view, storage request types
-      (StorageRequest, ShapedStorageRequest[Rank], MemorySpace), errors other
-      than ShapeError and their operations, plus the remaining non-shaped
-      compiler-known declarations.
+      compiler_known_members.md. Shaped portion applied 2026-10-21
+      (rules/corrections/applied/md016-shaped-public-surface-closure-20261021.md):
+      shaped families, init overloads, static ToShape, MemorySpace identity,
+      StorageRequest/ShapedStorageRequest, StorageError and the ShapeError
+      error union are decided and in shaped-types.md, storage.md and
+      compiler_known_members.md. Still open (closure § 18): the independent
+      A/B audit of the non-shaped compiler-known declarations
+      (Ptr/SizeOf/Len/IsEmpty/len, ToString and text conversions, numeric
+      associated properties, collection members, RawPtr, Arena/allocation
+      members, Iterator/Next).
     classification: constraining
     status: open
   - id: MD-018
@@ -483,58 +488,6 @@ decisions:
       with an explanatory error instead of inventing a type.
     classification: localized
     status: open
-  - id: MD-063
-    area: whole-value-access-through-references
-    rulebooks:
-      - rules/memory/references.md
-      - rules/memory/reference_model.md
-      - rules/foundations/operators.md
-      - rules/compiler/semantic_ir.md
-    description: >-
-      No rulebook gives the source syntax for reading or replacing the whole
-      referent through a reference holder. semantic_ir.md § 45(9) says a
-      whole-value read through a reference "is explicit" and a write through
-      `ref mut T` "is replacement"; operators.md lists a "mutable dereferenced
-      reference" as an assignment target and says content equality compares
-      "dereferenced values explicitly" — but none of them names the spelling.
-      Today, with `let count := ref mut n` (n: int), `count = 5` is rejected
-      as an assignment to the immutable holder, and `count + 1` is rejected
-      because a reference is not numeric; only member access (`p.x`,
-      `p.x = 1`) reaches the referent. Decide: (1) the explicit read form
-      (for example a dereference operator, a compiler-known member such as
-      `.value`, or implicit read in value contexts); (2) the whole-referent
-      write form and how it differs from rebinding a `let mut` holder;
-      (3) whether arithmetic/comparison/call arguments read implicitly; (4)
-      how content equality is spelled versus reference equality (`==` on two
-      references compares location per reference_model.md); and (5) the
-      interaction with compound assignment. Until decided the frontend keeps
-      rejecting whole-value access and Semantic IR lowers only field and
-      element paths through references (P15-46); P15 tests use struct
-      referents (found 2026-10-16 while writing P15-61/P15-62 tests).
-    classification: constraining
-    status: open
-  - id: MD-065
-    area: semantic-ir-payload-borrow-end-placement
-    rulebooks:
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-      - rules/memory/borrowing.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-16, P15-63).
-      Package 15 §§ 49-50 require ref.end-borrow markers and say Sema is
-      authoritative for resolved liveness, while Semantic IR "may emit
-      multiple path-specific end markers". For arm-scoped union/Option/Result
-      payload borrows the builder places the marker on every edge leaving
-      the arm (return, fall-through to the match merge, break/continue, and
-      the false edge of a guard reading the payload, on its own edge block),
-      not at the binding's last use as computed by non-lexical liveness
-      (MD-061 § 4). The arm exit is an upper bound of that liveness and
-      never ends a borrow too early, but it can be later than Sema's end.
-      Decide whether Semantic IR markers must sit at Sema's exact
-      liveness end (then Sema must publish per-path end points for payload
-      bindings) or whether a conservative scope-exit placement is
-      conforming; the same choice will apply to ordinary borrows in P15-49.
-    classification: localized
-    status: open
   - id: MD-066
     area: decimal-operator-result-scale
     rulebooks:
@@ -600,25 +553,6 @@ decisions:
       are not affected.
     classification: constraining
     status: open
-  - id: MD-070
-    area: rawptr-safe-reference-conversion-spelling
-    rulebooks:
-      - rules/memory/raw_pointers.md
-      - rules/compiler/compiler_known_members.md
-    description: >-
-      raw_pointers.md § 5.2(1) lists "constructing ref T from RawPtr[T]" and
-      "constructing ref mut T from RawPtr[T]" as unsafe operations and § 18
-      gives their obligations, but no rulebook names the source spelling
-      (a compiler-known member such as `RawPtr[T].AsRef()`, a conversion
-      `ref T(pointer)`, or another form), nor the reverse spelling for
-      obtaining a RawPtr[T] from a safe reference, nor which reference facts
-      (validity policy, provenance, BorrowID/LifetimeID) such a reference
-      receives. Today `RawPtr[int](r)` is an unresolved call. Decide the
-      spellings in both directions and the facts of the resulting reference.
-      Found 2026-10-16 while writing the P15-67 rejection tests, which cannot
-      exercise RawPtr conversions until then.
-    classification: localized
-    status: open
   - id: MD-073
     area: char-array-conversion-outside-char-domain
     rulebooks:
@@ -669,34 +603,6 @@ decisions:
       (4) how imports/exports map to the FFI boundary; (5) whether wasm64
       (memory64) is in scope for Sec 0.1.
     classification: localized
-    status: open
-  - id: MD-076
-    area: call-lifetime-temporary-borrows
-    rulebooks:
-      - rules/memory/borrowing.md
-      - rules/memory/lifetime_analysis.md
-      - rules/declarations/functions.md
-      - rules/declarations/impl.md
-    description: >-
-      borrowing.md § 5.2(1)-(4) requires a reusable addressable Place for a
-      borrow and allows a compiler-materialized call-lifetime or
-      operation-lifetime Place only "when that behavior is explicit in" a
-      specialized rulebook; lifetime_analysis.md § 10 says a temporary lives
-      for the region its containing expression needs, and functions.md's call
-      order says "prepare borrows/owned temporaries", but no rulebook
-      explicitly defines such a Place. Sema nevertheless accepts, without
-      diagnostics, a temporary receiver of an instance method
-      (`Start().Get()`, and of a mutating method `Start().Inc()`) and a
-      temporary argument to `ref` and `ref mut` parameters (`Read(Start())`,
-      `Bump(Start())`), while rejecting an explicit `ref Start()` (S1168).
-      Decide whether call-lifetime temporaries are borrowable for receivers
-      and ref/ref mut parameters (and whether a mutation of a temporary
-      through `ref mut` is meaningful or should be rejected), their exact
-      lifetime and cleanup point, and record it in the owning rulebook.
-      Semantic IR keeps rejecting temporary receivers ("receiver argument
-      without a resolved borrow or reference pass") until decided (found
-      2026-10-16 while closing P15-47).
-    classification: constraining
     status: open
   - id: MD-077
     area: semantic-ir-register-operations
@@ -831,6 +737,13 @@ decisions:
       call result is attributed to all of its reference arguments rather than
       the callee's own summary. Confirm this depth or require path- or
       callee-summary-level checking.
+      P16-43 (2026-10-21) reuses that same provisional parameter-root
+      verification for represented direct slice results and slice element
+      references, following slice construction, reborrow, transfer and CFG
+      forwarding. Slice range narrowing consumes the represented source and
+      normalized tuple; it does not choose a new returned-range metadata
+      spelling or settle path/callee-summary verification depth. Those open
+      obligations remain P16-07/P16-27/P16-36.
     classification: localized
     status: open
   - id: MD-086

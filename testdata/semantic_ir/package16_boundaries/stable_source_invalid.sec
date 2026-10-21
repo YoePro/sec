@@ -1,0 +1,7 @@
+module main
+
+type StableHandle struct { Address: RawPtr[int] }
+fn Stable(handle: StableHandle) void {
+    let view := ref handle[..]
+    discard view
+}

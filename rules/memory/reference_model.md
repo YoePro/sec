@@ -1062,7 +1062,7 @@ mapping/storage lifetime.
 
 § 50(3) The resulting raw pointer is raw and must not be assumed to preserve safe-reference guarantees after arbitrary manipulation.
 
-§ 50(4) Exact source spelling belongs to the canonical conversion/raw-pointer rules.
+§ 50(4) The source spelling is the unsafe compiler-known property `.Ptr`, which addresses the referent when applied through a reference (`raw_pointers.md` § 17(7)–(9); MD-070).
 
 ---
 
@@ -1091,6 +1091,8 @@ mapping/domain validity.
 § 51(3) Generation/provenance may be established through a trusted storage owner/platform mechanism.
 
 § 51(4) Known contradictory facts cause compile-time rejection even inside unsafe.
+
+§ 51(5) The source spelling is the unsafe compiler-known `RawPtr[T].AsRef()` / `AsRefMut()`. The result receives this model's ordinary facts; no lifetime parameter is introduced (`raw_pointers.md` § 18A; MD-070).
 
 ---
 

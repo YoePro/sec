@@ -1,0 +1,13 @@
+module main
+
+fn Disjoint() int {
+    let mut values := [1, 2, 3, 4]
+    let left := ref mut values[0..<2]
+    let right := ref mut values[2..<4]
+    left[0] = 7
+    right[0] = 9
+    let result := left[0] + right[0]
+    discard left
+    discard right
+    return result
+}

@@ -218,6 +218,7 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.MOVE_ASSIGN,
 		lexer.PLUS,
 		lexer.MINUS,
+		lexer.ASTERISK,
 		lexer.NOT,
 		lexer.BIT_NOT,
 		lexer.TRY,

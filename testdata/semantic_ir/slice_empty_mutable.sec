@@ -1,0 +1,11 @@
+module main
+
+fn EmptyMutable() uint {
+    let mut values: int[0] := []
+    let full := ref mut values[..]
+    let empty := ref mut full[0..<0]
+    let length := empty.Len
+    discard empty
+    discard full
+    return length
+}

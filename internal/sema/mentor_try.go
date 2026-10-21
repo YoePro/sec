@@ -72,6 +72,10 @@ func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual
 		a.addErrorAtTokenWithMetadata(token, "", help, format, args...)
 		return
 	}
+	if help := referenceValueHelp(expected, actual, expr); help != "" {
+		a.addErrorAtTokenWithMetadata(token, "", help, format, args...)
+		return
+	}
 	a.addErrorAtToken(token, format, args...)
 }
 

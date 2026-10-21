@@ -1,10 +1,11 @@
-// Schema-11 (SEC-MLIR-P15) Place and direct-reference verifiers.
+// P15 Place/direct-reference verification with P16 bounded slice integration.
 //
 // Rules:
 //   - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 29, 34-37
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md sections 82-85, 131
+//   - rules/mlir/packages/sec-mlir-dialect_package16.md sections 83-86, 116
 #include "sec/Analysis/Passes.h"
-#include "ReferenceFacts.h"
+#include "ReferenceFlow.h"
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -32,8 +33,10 @@ namespace {
 
 bool isPlace(Type type) { return isa<sec::PlaceType>(type); }
 
+// Recognize scalar and bounded direct safe-reference values.
+// Rules: rules/mlir/sec_mlir_dialect.md — v12.5,v12.25.
 bool isReference(Type type) {
-  return isa<sec::RefType, sec::RefMutType>(type);
+  return isa<sec::RefType, sec::RefMutType, sec::SliceType, sec::SliceMutType>(type);
 }
 
 // The operations that may consume a Place: projections, the bounds
@@ -43,7 +46,8 @@ bool isPlaceConsumer(Operation *operation) {
              sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp,
              sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
              sec::RefBorrowMutOp, sec::RefReborrowSharedOp,
-             sec::RefReborrowMutOp>(operation);
+             sec::RefReborrowMutOp, sec::SliceBorrowSharedOp,
+             sec::SliceBorrowMutOp>(operation);
 }
 
 // A canonical Place chain: the root (an SSA value, a storage value or a
@@ -145,6 +149,8 @@ Value derivationSource(Value source) {
   while (Operation *definition = place.getDefiningOp()) {
     if (auto deref = dyn_cast<sec::PlaceDerefOp>(definition))
       return deref.getReference();
+    if (auto element = dyn_cast<sec::SliceElementPlaceOp>(definition))
+      return element.getSource();
     if (!isa<sec::PlaceFieldOp, sec::PlaceArrayElementOp,
              sec::PlaceUnionPayloadOp>(definition))
       break;
@@ -175,8 +181,11 @@ std::optional<unsigned> originParameter(StringRef origin, bool *isStatic) {
 // reborrows, dereferences, Place projections, block arguments and calls whose
 // reference arguments derive from them. A Place rooted at local storage or a
 // local value is never an allowed origin (package15.md sections 61-62, 85).
-// The projection paths of the summary are Sema facts and are not
-// re-derived here.
+// Bounded slices and element references follow their same source operands;
+// normalized ranges are checked by the shared slice guard verifier. Summary
+// paths/callee precision remain the provisional P15 depth (MD-084/MD-085).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§63–69,86,116.
+// The projection paths of the summary are Sema facts and are not re-derived here.
 LogicalResult verifyReturnOrigins(func::FuncOp function) {
   ArrayRef<Type> results = function.getFunctionType().getResults();
   if (function.isExternal() || !llvm::any_of(results, isReference))
@@ -245,7 +254,11 @@ LogicalResult verifyReturnOrigins(func::FuncOp function) {
       if (isa<sec::RefBorrowSharedOp, sec::RefBorrowMutOp,
               sec::RefCopySharedOp, sec::RefMoveOp, sec::RefReborrowSharedOp,
               sec::RefReborrowMutOp, sec::PlaceDerefOp, sec::PlaceFieldOp,
-              sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp>(definition)) {
+              sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp,
+              sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
+              sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
+              sec::SliceCopySharedOp, sec::SliceMoveMutOp,
+              sec::SliceElementPlaceOp>(definition)) {
         worklist.push_back(definition->getOperand(0));
         continue;
       }
@@ -275,6 +288,9 @@ LogicalResult verifyReturnOrigins(func::FuncOp function) {
 // are dominated by their bounds predicate, and payload Places by an
 // active-variant test of the same Place (sec_mlir_dialect_v11.md section 35).
 LogicalResult sec::verifyPlaces(func::FuncOp function) {
+  // P16 uses the same normalized-range and element guard contracts.
+  // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §85.
+  if (failed(verifySliceGuards(function))) return failure();
   for (Type type : function.getFunctionType().getInputs())
     if (isPlace(type))
       return function.emitOpError("a !sec.place cannot be a function parameter");
@@ -355,6 +371,9 @@ LogicalResult sec::verifyPlaces(func::FuncOp function) {
 // on the same SSA reference, whose false edge terminates in
 // sec.fail.reference_generation (sec_mlir_dialect_v11.md section 36).
 LogicalResult sec::verifyReferenceGuards(func::FuncOp function) {
+  // The shared slice verifier owns exact-source temporal/spatial ordering.
+  // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §84.
+  if (failed(verifySliceGuards(function))) return failure();
   DominanceInfo dominance(function);
   auto validated = [&](Value reference, Operation *use) {
     for (Operation *user : reference.getUsers()) {
@@ -409,13 +428,14 @@ LogicalResult sec::verifyReferenceGuards(func::FuncOp function) {
 // references derive only from the origins their function's summary names
 // (sec_mlir_dialect_v11.md section 37).
 LogicalResult sec::verifyBorrowSemantics(func::FuncOp function) {
+  if (failed(verifySliceReferences(function))) return failure();
   auto checkDerivation = [](Operation *operation, Value source,
                             std::optional<uint32_t> sourceBorrow) -> LogicalResult {
     Value reference = derivationSource(source);
     if (!reference)
       return operation->emitOpError(
           "a reborrow derives from a reference or a sub-Place of its dereference");
-    ReferenceFacts facts = referenceFacts(reference);
+    ReferenceFacts facts = referenceFacts(sourceValue(reference));
     if (facts.known && (!sourceBorrow || *sourceBorrow != facts.borrow))
       return operation->emitOpError(
           "source_borrow must name the borrow_id of the reference it derives from");
@@ -435,9 +455,12 @@ LogicalResult sec::verifyBorrowSemantics(func::FuncOp function) {
         return operation->emitOpError(
                    "end_borrow must name the ended reference's borrow_id and lifetime_id"),
                WalkResult::interrupt();
-      if (Operation *later = reachableUse(operation, end.getReference()))
-        return later->emitOpError("reference used after its sec.ref.end_borrow"),
-               WalkResult::interrupt();
+      // Slice holder/derived/CFG lifetimes are checked by verifySliceReferences.
+      // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§63,86.
+      if (!isa<sec::SliceType, sec::SliceMutType>(end.getReference().getType()))
+        if (Operation *later = reachableUse(operation, end.getReference()))
+          return later->emitOpError("reference used after its sec.ref.end_borrow"),
+                 WalkResult::interrupt();
     }
     if (auto move = dyn_cast<sec::RefMoveOp>(operation)) {
       if (Operation *later = reachableUse(operation, move.getSource()))

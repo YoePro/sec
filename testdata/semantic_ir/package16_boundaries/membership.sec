@@ -1,0 +1,8 @@
+module main
+
+fn Member(values: int[4]) void {
+    let view := ref values[..]
+    let present := 1 in view
+    discard present
+    discard view
+}

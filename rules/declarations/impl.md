@@ -4,7 +4,7 @@
 **Document revision:** 2.2
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-10-15
+**Last updated:** 2026-10-21
 
 **Supersedes:** `rules/declarations/impl.txt`
 
@@ -322,6 +322,12 @@ fn Update(ref mut self, value: int) void
 Receiver borrowing and mutation requirements are derived and validated by the
 compiler from the method body, calls, ownership rules, and borrowing rules.
 They are not written as receiver bureaucracy in the source signature.
+
+A fresh owned temporary may be the receiver of a borrowing or mutating method,
+including in a chain such as `CreateCounter().Increment()` or
+`QuerySingle().GetRow()`. It is borrowed for the call and cleaned at the end of
+its full expression exactly as a temporary argument
+(`rules/memory/borrowing.md` § 5.4, MD-076); methods get no separate rule.
 
 An ordinary instance method may use `self` because the implementation target is
 known from its enclosing `impl`.

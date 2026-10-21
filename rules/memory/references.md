@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-08-29
-- Last updated: 2026-10-18
-- Document revision: 2.1
+- Last updated: 2026-10-21
+- Document revision: 2.2
 - Sec language version: 0.1
 - Canonical path: `rules/memory/references.md`
 - Replaces: `rules/memory/references.txt`
@@ -101,9 +101,11 @@ Example:
 
 ```sec
 fn Increment(value: ref mut int) void {
-    value += 1
+    *value += 1
 }
 ```
+
+`value += 1` is invalid here: it targets the reference holder, not an integer Place (§ 3.4(5); MD-063).
 
 ### § 3.3 Slice and bounded views
 
@@ -114,6 +116,34 @@ fn Increment(value: ref mut int) void {
 § 3.3(3) An empty slice may use a target-specific null or sentinel physical base representation only as a hidden implementation detail when its length is zero and no safe scalar reference is fabricated from that base.
 
 § 3.3(4) Hidden empty-slice representation does not make ordinary safe references nullable.
+
+### § 3.4 Explicit whole-value dereference
+
+§ 3.4(1) For an expression `r` of type `ref T` or `ref mut T`, the prefix expression `*r` names the **referent Place** of `r`. The bare holder `r` keeps reference type in every context; Sec has no implicit whole-value dereference (MD-063, applied 2026-10-21).
+
+§ 3.4(2) A value use of `*r` is an ordinary by-value read of the referent and follows the copy classification of `T` (`copy_move.md`): it is valid only when `T` may be copied. A borrow never transfers ownership, so `let x := *r` is rejected for a move-only `T`, and `let x :<- *r` / `<- *r` are always rejected (§ 3.1, § 3.2(4)).
+
+§ 3.4(3) `*r = value` replaces the whole referent and `*r op= value` is a compound assignment to it. Both require the mutable authority of `ref mut T`; a `ref T` never grants it. The holder binding itself need not be mutable:
+
+```sec
+let mut number := 10
+let r := ref mut number
+*r = 25
+*r += 1
+let copy := *r
+```
+
+§ 3.4(4) Replacement and compound assignment through `*r` follow the canonical assignment, contract, fallibility, ownership and destruction ordering of any other writable Place (`operators.md` "Compound assignment"). The target Place is formed once; no hidden copy or move out of the referent occurs.
+
+§ 3.4(5) Without `*`, an operation acts on the holder: `r = otherRef` rebinds a mutable holder (`borrowing.md`), while `r = value` with a `T` value, `r += 1`, `r + 1` and passing `r` to a by-value `T` parameter are rejected. Diagnostics name the holder and suggest `*r` when the referent could satisfy the operation.
+
+§ 3.4(6) Field and element projection through a reference stays `r.Field` and `r[index]` (Place projection, no whole-value read). `(*r).Field` is the same projection spelled through the explicit referent and confers no other authority or effect; the formatter does not rewrite between the forms. As the base of such a projection, `*r` performs no whole-value read, so it is valid for a move-only `T`.
+
+§ 3.4(7) `*` is defined only for safe `ref T` / `ref mut T`. `Option[ref T]` must first yield its reference through ordinary Option handling, and `RawPtr[T]` has no dereference operator (§ 21; `raw_pointers.md`, MD-070).
+
+§ 3.4(8) `ref r` / `ref mut r` over a holder remains a reborrow of the referent (MD-061), never a borrow of the holder and never a whole-value read. `return *r` returns a value; `return ref r` returns a reborrow subject to § 9.
+
+§ 3.4(9) Before Semantic IR generation, `*r` resolves to the referent Place of `semantic_ir.md` § 45(8). A read is a separate `place.read`, a replacement a separate `place.write`; a compound assignment reads and writes the one formed Place, writing only after the operator's checks pass. Known hole (verified 2026-10-21): the native track stops at package 14, so whole-referent lowering is exercised at the Semantic IR level only, and non-trivial replacement through `*r` remains an explicit P15 lowering boundary (§ 3.4(4) still holds in Sema).
 
 ---
 
@@ -243,6 +273,8 @@ let implicitView: ref int := count    // S1169
 § 8(6) A callable must not retain a passed reference beyond the proven contract.
 
 § 8(7) A bodyless, foreign, indirect, or separately compiled callable whose retention behavior is not sufficiently known must be treated conservatively.
+
+§ 8(8) Within the body, `*value` names the referent of a reference parameter exactly as for a local holder (§ 3.4). Conversely, a by-value `T` parameter is never satisfied by a bare `ref T`; the caller writes `*r` for a permitted copy. Signature-directed call-site borrowing (`borrowing.md` § 15.2) is unchanged and is not generalized to other expressions.
 
 ---
 
@@ -497,6 +529,8 @@ let next :<- current
 
 § 20(5) Raw-pointer equality remains raw-address equality according to raw-pointer and target rules and does not imply safe-reference equality.
 
+§ 20(6) `r == s` compares reference identity; `*r == *s` compares the referent values under the equality rules of `T` (§ 3.4). A reference is never silently dereferenced to compare it with a plain `T`.
+
 ---
 
 ## § 21 Raw-pointer boundary
@@ -524,6 +558,8 @@ let next :<- current
 - relocation safety.
 
 § 21(6) Raw-pointer storage, copy, move, comparison, or passing is not itself proof that dereference is valid.
+
+§ 21(7) The source spellings are `.Ptr` for reference/Place to raw (addressing the referent through a reference) and the unsafe `RawPtr[T].AsRef()` / `AsRefMut()` for raw to safe (`raw_pointers.md` §§ 17(7)–(9), 18A; MD-070). The resulting reference is an ordinary safe reference under this rulebook.
 
 ---
 
@@ -660,7 +696,8 @@ let next :<- current
 - explicit `Option[ref T]`;
 - shared-reference copy;
 - mutable-reference move;
-- no ownership transfer through reference creation.
+- no ownership transfer through reference creation;
+- explicit `*r` read, replacement and compound assignment, and rejection of the holder forms `r = value`, `r += 1`, `r + 1`, a by-value `r` argument, `*` through `ref T` for writes, `*` on `Option[ref T]` or a non-reference, `:<- *r`, and copying a move-only referent (§ 3.4).
 
 § 28(3) Required lifetime/escape tests include:
 
@@ -752,3 +789,5 @@ let next :<- current
 § 30(7) Fixed address, MMIO, volatile access, ISR execution, and raw pointers do not bypass ordinary reference safety.
 
 § 30(8) Ordinary programmers should not need explicit lifetime or provenance syntax; the compiler carries that proof burden and explains failures in mentor-oriented language.
+
+§ 30(9) A reference holder is never implicitly dereferenced; `*r` is the only spelling that reads or replaces a whole referent (§ 3.4).

@@ -45,6 +45,15 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 		}
 		needsTransfer := param.Consuming || requiresOwnershipTransfer(place.Type)
 		if !needsTransfer {
+			// Publish the already selected ordinary copy for canonical
+			// consumers, including final-use advice; do not perform a move.
+			// Rules: rules/memory/copy_move.md — §§5,8.1;
+			// rules/analysis/pitfall_analysis.md — "Large by-value argument at its final use".
+			action := TransferCopyTrivial
+			if CopyClassificationOf(place.Type) == CopySemantic {
+				action = TransferCopySemantic
+			}
+			a.recordTransferPlan(source, place, TransferSiteArgument, action)
 			continue
 		}
 		if param.Consuming {
@@ -115,9 +124,9 @@ func (a *Analyzer) reportMissingConsumingArgument(function Function, parameter F
 }
 
 // reportOrdinaryArgumentCopy explains why an ordinary value parameter cannot
-// accept a reusable non-copyable source. It does not promise that adding <-
-// alone changes the declared API ownership contract.
-// Rules: rules/memory/copy_move.md — §§8.1(1–3),22(2–3),28.1.
+// accept an implicitly copied non-copyable source. An explicit <- may instead
+// transfer it without changing the default by-value API contract.
+// Rules: rules/memory/copy_move.md — §§8.1(1–5),22(2–3),28.1.
 func (a *Analyzer) reportOrdinaryArgumentCopy(function Function, parameter FunctionParameter, source ast.Expression, place Place) {
 	cause := nonCopyableCause(place.Type)
 	if CopyClassificationOf(place.Type) == CopyConditional {
@@ -127,7 +136,7 @@ func (a *Analyzer) reportOrdinaryArgumentCopy(function Function, parameter Funct
 		cause = "the type is move-only"
 	}
 	message := fmt.Sprintf("cannot copy reusable source %s to ordinary by-value parameter %s of %s because %s; this parameter copies its argument", place.String(), parameter.Name, function.Name, cause)
-	help := fmt.Sprintf("Redesign the API to borrow through `ref` or `ref mut`, or accept a suitable slice/view when no independent value is needed. If the API should take ownership, explicitly declare `->%s` and call it with `<-%s`. Changing the parameter contract requires reviewing its callers and body.", parameter.Name, place.String())
+	help := fmt.Sprintf("If this source is no longer needed and has no conflicting borrow, pass `<-%[2]s` to explicitly move it into this value parameter. To require transfer at every call, declare `->%[1]s`. If the API needs only borrowed access, use `ref`, `ref mut` or a suitable slice/view. Changing the parameter contract requires reviewing its callers and body.", parameter.Name, place.String())
 	a.appendError(ownershipArgumentDiagnostic(source, place, parameter, function, message, help))
 }
 

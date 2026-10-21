@@ -156,11 +156,11 @@ module attributes {sec.dialect_version = 12 : i32, sec.semantic_ir_version = 1 :
 
 // -----
 
-// fresh borrow with source identity
+// a new slice borrow cannot grant itself
 module attributes {sec.dialect_version = 12 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "invalid-slice-op", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "amd64", sec.target_triple = "x86_64-pc-linux-gnu", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>} {
   func.func @bad(%source: !sec.place<!sec.array<si128, "4">, "ro">, %n: !sec.uint) {
-    // expected-error@+1 {{fresh slice borrow has no source_borrow}}
-    %s = "sec.slice.borrow_shared"(%source, %n, %n) <{borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 2 : i32}>  : (!sec.place<!sec.array<si128, "4">, "ro">, !sec.uint, !sec.uint) -> !sec.slice<si128>
+    // expected-error@+1 {{granting source_borrow must be distinct and non-zero}}
+    %s = "sec.slice.borrow_shared"(%source, %n, %n) <{borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}>  : (!sec.place<!sec.array<si128, "4">, "ro">, !sec.uint, !sec.uint) -> !sec.slice<si128>
     return
   }
 }

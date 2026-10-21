@@ -1702,6 +1702,10 @@ It does not produce a value.
 
 Chained assignment is invalid.
 
+A `PlaceExpression` is a writable Place: an identifier, a member, index or
+slice projection, or the explicit dereference `*r` of a `ref mut T` (MD-063).
+`*r = value` replaces the referent; `r = value` targets the holder.
+
 The target is evaluated exactly once.
 
 ---
@@ -2864,10 +2868,24 @@ PrefixOperator
       | "-"
       | "!"
       | "~"
+      | "*"
 ```
 
 Unary `+` is parsed and validated for numeric operands. Constant integer
 expressions fold it without changing the operand value.
+
+Prefix `*` is the explicit dereference of a safe reference (MD-063;
+`rules/foundations/operators.md` "Dereference"). Postfix forms bind tighter,
+so `*r.Field` is `*(r.Field)`. A dereference may begin a statement as the
+`PlaceExpression` of an assignment or compound assignment ("Assignment
+statements").
+
+Because newlines do not terminate statements, a `*` at the start of a later
+line continues the previous expression as multiplication unless it introduces
+a syntactically complete assignment target directly followed by an assignment
+operator (or `++` / `--`), in which case it starts a new dereference
+assignment statement. The target's brackets may span lines; the decision is
+syntactic (`operators.md` "Line-start dereference statements").
 
 ---
 

@@ -9,7 +9,7 @@ import (
 
 // EmitOptions selects a high-level schema within the single compilation
 // track. Zero retains schema 11 until P16 source production is usable.
-// Selection does not enable unimplemented slice types, operations or layout.
+// Explicit schema 12 admits represented slice operations, never physical layout.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §87;
 // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md — §1.
 type EmitOptions struct {
@@ -55,6 +55,9 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 		visiting: map[semantic.TypeID]bool{}, functions: map[semantic.FunctionID]string{}, plan: plan,
 	}
 	if err := e.validatePackage14ArrayBoundaries(); err != nil {
+		return nil, err
+	}
+	if err := e.validateSliceBoundaries(); err != nil {
 		return nil, err
 	}
 	if err := validateTryHandlerSchema(module); err != nil {

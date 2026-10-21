@@ -35,4 +35,8 @@ module attributes {
   func.func private @nested(!sec.slice<!sec.slice<!sec.int>>) -> !sec.slice<!sec.slice<!sec.int>>
   // CHECK-LABEL: func.func private @references(!sec.slice<!sec.ref<si128>>) -> !sec.slice<!sec.ref<si128>>
   func.func private @references(!sec.slice<!sec.ref<si128>>) -> !sec.slice<!sec.ref<si128>>
+  // CHECK-LABEL: func.func private @structure(
+  // CHECK-SAME: !sec.slice<!sec.struct<identity = "main::Cell", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "Value", type = si128, tags = []>]>>
+  func.func private @structure(!sec.slice<!sec.struct<identity = "main::Cell", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "Value", type = si128, tags = []>]>>) -> !sec.slice<!sec.struct<identity = "main::Cell", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "Value", type = si128, tags = []>]>>
+
 }

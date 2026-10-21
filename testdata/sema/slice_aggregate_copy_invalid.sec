@@ -1,0 +1,9 @@
+module main
+
+type Exclusive struct { Data: ref mut int[] }
+type Nested struct { View: Exclusive }
+
+fn Copy(value: Nested) void {
+    let copied := value
+    discard copied
+}

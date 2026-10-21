@@ -1252,6 +1252,17 @@ required.
 The verifier rejects reference use after the corresponding borrow has ended on a
 reachable path.
 
+**MD-065 (decided 2026-10-21):** end markers sit at Sema's path-exact **last
+required use** (`borrowing.md` § 8.1(9)–(14)), not routinely at arm or scope
+exit; the exit is only an upper bound and conforms where it is the semantic end.
+Sema publishes per-path end points with `BorrowID`/`LifetimeID` and a resolved
+position or edge; the builder never infers them from lexical boundaries, and a
+missing fact fails compilation instead of producing a guessed schedule. The
+verifier checks identity correspondence, path coverage and the absence of
+premature ends, double ends and use after end, without becoming a second borrow
+checker. The current P15-63 arm-exit markers are an implementation stage to be
+migrated (`package15-todo.md`; `rules/corrections/applied/md065-path-exact-borrow-end-correction-20261021.md`).
+
 ---
 
 # 51. Reference validity check

@@ -1,0 +1,10 @@
+module main
+
+@noCopy
+type Resource struct { Value: int }
+fn Read(values: Resource[4]) void {
+    let view := ref values[..]
+    let value := view[0]
+    discard value
+    discard view
+}

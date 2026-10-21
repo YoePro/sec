@@ -2346,7 +2346,11 @@ unsafe pointer.VolatileWrite(value)
 unsafe pointer.Offset(elements)
 unsafe pointer.AddBytes(bytes)
 unsafe pointer.Difference(other)
+unsafe pointer.AsRef()
+unsafe pointer.AsRefMut()
 ```
+
+`AsRef() ref T` and `AsRefMut() ref mut T` (`CKM-RAWPTR-AS-REF`, `CKM-RAWPTR-AS-REF-MUT`) are the only raw-to-safe reference spellings (MD-070; `raw_pointers.md` § 18A). They exist only on a typed `RawPtr[T]`, never on `RawPtr[void]`, `T`, `ref T` or `ref mut T`, and they carry the caller obligations of `raw_pointers.md` § 18(2)–(3). The reverse direction is the existing unsafe property `.Ptr`. Applied through a safe reference (`r.Ptr`, or `(*r).Ptr` per MD-063) it addresses the referent's storage (`raw_pointers.md` § 17(7)–(9)).
 
 Ordinary raw access and pointer arithmetic are owned by `unsafe.md` and
 `reference_model.md`. `VolatileRead` and `VolatileWrite` are distinct observable
@@ -3625,8 +3629,16 @@ ref mut tensor_view[T, Rank]
 ```
 
 It also recognizes `Shape[Rank]`, `Strides[Rank]`, `TensorLayout[Rank]`,
-`Axes[Rank]`, `AxisList[Count]`, `MemorySpace`, `StorageRequest`, and
-`ShapedStorageRequest[Rank]` as compiler-known supporting identities.
+`Axes[Rank]`, `AxisList[Count]`, `MemorySpace`, `StorageRequest`,
+`ShapedStorageRequest[Rank]`, `StorageError` and `ShapeError` as
+compiler-known supporting identities. Under the § 21 A/B rule (MD-016 closure,
+2026-10-21) the metadata types, `StorageRequest`, `ShapedStorageRequest`,
+`StorageError` and `ShapeError` are **A** (real declarations in
+`shaped-types.md` §§ 4.1, 6.0, 7.1, 11, 15.3, 29.3, 29.5); `MemorySpace` is
+public but its compiler-private representation is **B**; the shaped families
+are compiler-known type forms (**B** for their representation) with the exact
+`init` overloads of `shaped-types.md` § 12; `MemorySpaceKind`, storage origin,
+invalidation domains and layout metadata are **B** and not public types.
 
 Where meaningful for the receiver, the read-only properties are `Rank`,
 `Shape`, `Len`, `Strides`, `Layout`, `MemorySpace`, `IsContiguous`, and
@@ -3647,6 +3659,16 @@ operator remains compiler-known shaped algebraic multiplication.
 Ownership and effect facts distinguish borrowed non-allocating `Reshape`,
 consuming non-allocating `ToShape`, new-owner `Materialize`, source-preserving
 `TransferTo`, and potentially storage-producing `Relayout`.
+
+`ToShape` is a **static** method of each owning family whose first parameter is
+the consuming `-> source` (`tensor[T, Shape[Rank]].ToShape(<-source,
+newShape)`); the instance form is rejected. `Materialize`, `TransferTo` and
+`Relayout` fail with `StorageError` and require a legal duplication of `T`.
+For each concrete receiver the registry records stable IDs, receiver
+patterns, rank/type substitutions, argument names and ownership modes, result
+and rank conditions, error channels, effects, addressability, borrow
+provenance and target availability, and LSP synthesizes the exact specialized
+signature from them (MD-016 closure § 14).
 
 Associated `Rank`, `Shape`, and `Len` exist only when the complete value is a
 static type fact. Runtime-shaped tensors and tensor views do not synthesize
@@ -3675,8 +3697,10 @@ forms only. The indexed expressions are compiler-known read-only operations
 with ordinary bounds semantics, not public methods. No other constructor,
 iterator, mutable accessor, cast, pointer member, public field, `ToString`,
 `.Len` or shaped-payload `.SizeOf` exists on these descriptors. `ShapeError`
-resolves through the ordinary nominal enum registry with exactly the nine
-variants of `shaped-types.md` § 29.3. Hover and signature help show the exact
+resolves through the ordinary nominal registry with exactly the nine
+cases of `shaped-types.md` § 29.3 — since the MD-016 closure (2026-10-21)
+an error **union** whose ninth case is `InitError(StorageError)`; `InvalidStep`
+was removed (step validity uses `RangeError`). Hover and signature help show the exact
 declarations, structured comments and, for `Axes`/`AxisList`,
 `constructs: Axes[Rank]` / `construction error: ShapeError` rather than a
 `Result` return type; go-to-definition may open a generated read-only

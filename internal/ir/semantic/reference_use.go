@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"fmt"
+	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/sema"
@@ -73,11 +74,17 @@ func (fb *functionBuilder) validateReference(reference builtValue, metadata *Ref
 }
 
 // referencePath splits a use expression into the reference holder it starts
-// from and the field and element steps applied through the reference.
+// from and the field and element steps applied through the reference. An
+// explicit `*holder` (MD-063) names the whole referent and adds no step.
 func referencePath(expr ast.Expression) (*ast.Identifier, []ast.Expression) {
 	var steps []ast.Expression
 	for {
 		switch step := expr.(type) {
+		case *ast.PrefixExpression:
+			if holder, ok := step.Right.(*ast.Identifier); ok && step.Operator == "*" {
+				return holder, steps
+			}
+			return nil, nil
 		case *ast.MemberExpression:
 			steps = append([]ast.Expression{step}, steps...)
 			expr = step.Object
@@ -106,7 +113,7 @@ func (fb *functionBuilder) derefUsePlace(expr ast.Expression, use sema.ResolvedR
 // and the holder's reference facts.
 func (fb *functionBuilder) derefHolderPlace(expr ast.Expression, validity sema.ReferenceValidityPolicy, resolved sema.Place, wholeReferent string) (builtValue, bool, *ReferenceMetadata, error) {
 	holder, steps := referencePath(expr)
-	if holder == nil || len(steps) == 0 {
+	if holder == nil || len(steps) == 0 && !explicitWholeReferent(expr) {
 		return builtValue{}, false, nil, fb.unsupported(wholeReferent, expressionToken(expr))
 	}
 	reference, metadata, err := fb.referenceHolder(holder)
@@ -143,6 +150,24 @@ func (fb *functionBuilder) lowerSubplaceReborrow(reference *ast.RefExpression, p
 		return builtValue{}, err
 	}
 	return fb.emitSubplaceReborrow(reference, plan, place, mutable, metadata)
+}
+
+// explicitWholeReferent reports a path rooted at an explicit `*holder`, the
+// only spelling that reads or replaces a whole referent (MD-063); a bare
+// holder never does.
+func explicitWholeReferent(expr ast.Expression) bool {
+	for {
+		switch step := expr.(type) {
+		case *ast.MemberExpression:
+			expr = step.Object
+		case *ast.IndexExpression:
+			expr = step.Left
+		case *ast.PrefixExpression:
+			return step.Operator == "*"
+		default:
+			return false
+		}
+	}
 }
 
 // lowerReceiverFieldReborrow lowers `ref self.f` / `ref mut f` inside an
@@ -238,10 +263,15 @@ func (fb *functionBuilder) lowerReferenceUse(expr ast.Expression, use sema.Resol
 
 // lowerReferenceWrite lowers an assignment whose target is reached through a
 // mutable reference: the destination Place is formed first (one validation),
-// then the source is evaluated and written with place.write.
+// then the source is evaluated and written with place.write. A compound
+// assignment reads that same Place once, applies the Sema-resolved operator
+// with its checks and writes the result only after they pass.
+//
+// Rules: rules/foundations/operators.md — "Compound assignment";
+// rules/memory/references.md — "Explicit whole-value dereference" (MD-063).
 func (fb *functionBuilder) lowerReferenceWrite(stmt *ast.AssignmentStatement, use sema.ResolvedReferenceUse) error {
 	if stmt.Operator != "=" {
-		return fb.unsupported("compound assignment through a reference", stmt.Token)
+		return fb.lowerReferenceCompoundWrite(stmt, use)
 	}
 	if !use.TrivialReplacement {
 		return fb.unsupported("non-trivial replacement through a reference", stmt.Token)
@@ -259,6 +289,55 @@ func (fb *functionBuilder) lowerReferenceWrite(stmt *ast.AssignmentStatement, us
 		return err
 	}
 	fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{place.id, value.id}, Location: location(stmt.Token)})
+	return nil
+}
+
+func (fb *functionBuilder) lowerReferenceCompoundWrite(stmt *ast.AssignmentStatement, use sema.ResolvedReferenceUse) error {
+	resolved, ok := fb.owner.analyzer.ResolvedCompoundAssignmentOf(stmt)
+	if !ok || !use.TrivialReplacement {
+		return fb.unsupported("compound assignment "+stmt.Operator+" through a reference", stmt.Token)
+	}
+	if _, ok := stmt.Value.(*ast.TryExpression); ok {
+		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
+	}
+	place, mutable, err := fb.derefUsePlace(stmt.Target, use)
+	if err != nil {
+		return err
+	}
+	if !mutable {
+		return fb.unsupported("write through a shared reference", stmt.Token)
+	}
+	placeType, _ := fb.owner.module.Types.Lookup(place.typ)
+	rightType, err := fb.owner.internType(*resolved.RightType)
+	if err != nil {
+		return err
+	}
+	resultType, err := fb.owner.internType(resolved.ResultType)
+	if err != nil {
+		return err
+	}
+	if resultType != placeType.Element {
+		return fmt.Errorf("compound assignment type does not match its referent")
+	}
+	loc := location(stmt.Token)
+	current := fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: loc}, placeType.Element)
+	value, err := fb.buildExpr(stmt.Value, rightType)
+	if err != nil {
+		return err
+	}
+	op := Operation{Operands: []ValueID{current.id, value.id}, Location: loc, Operator: strings.TrimSuffix(stmt.Operator, "=")}
+	if !semanticOperatorKind(resolved, &op) {
+		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
+	}
+	updated := builtValue{}
+	if resolved.RuntimeCheck || resolved.ShiftCountProven {
+		if updated, err = fb.emitCheckedOperator(op, resultType, nil, nil, nil); err != nil {
+			return err
+		}
+	} else {
+		updated = fb.result(op, resultType)
+	}
+	fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{place.id, updated.id}, Location: loc})
 	return nil
 }
 
@@ -396,4 +475,47 @@ func (fb *functionBuilder) lowerExplicitReborrow(reference *ast.RefExpression, h
 	fb.emit(Operation{Kind: kind, Operands: []ValueID{source.id}, Results: []Value{value}, Reference: derived, Location: loc})
 	fb.recordReference(value.ID, derived)
 	return builtValue{id: value.ID, typ: referenceType}, nil
+}
+
+// dereferenceOfValue reports `*operand` whose operand is a reference value
+// rather than a named holder, such as a call returning a reference; Sema
+// records no holder use for it.
+func dereferenceOfValue(expr ast.Expression, analyzer *sema.Analyzer) (*ast.PrefixExpression, bool) {
+	prefix, ok := expr.(*ast.PrefixExpression)
+	if !ok || prefix.Operator != "*" {
+		return nil, false
+	}
+	if _, holder := prefix.Right.(*ast.Identifier); holder {
+		return nil, false
+	}
+	if _, used := analyzer.ResolvedReferenceUseOf(expr); used {
+		return nil, false
+	}
+	return prefix, true
+}
+
+// lowerValueDereference reads the whole referent of a reference value (MD-063)
+// using the facts recorded with that value: one validation, ref.deref-place
+// and place.read. Only copy-trivial referents are read here.
+func (fb *functionBuilder) lowerValueDereference(prefix *ast.PrefixExpression) (builtValue, error) {
+	reference, err := fb.buildExpr(prefix.Right, 0)
+	if err != nil {
+		return builtValue{}, err
+	}
+	refType, ok := fb.owner.module.Types.Lookup(reference.typ)
+	metadata, known := fb.references[reference.id]
+	if !ok || refType.Kind != TypeReference || !known {
+		return builtValue{}, fb.unsupported("dereference of a reference value without lowered reference facts", prefix.Token)
+	}
+	if !fb.storageAllowed(refType.Element) {
+		return builtValue{}, fb.unsupported("non-copy-trivial read through a reference", prefix.Token)
+	}
+	loc := location(prefix.Token)
+	guard, err := fb.validateReference(reference, metadata, loc)
+	if err != nil {
+		return builtValue{}, err
+	}
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
+	place := fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{reference.id}, Reference: metadata, ReferenceGuard: guard, Location: loc}, placeType)
+	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: loc}, refType.Element), nil
 }

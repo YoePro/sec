@@ -1,0 +1,7 @@
+module main
+
+fn Invalid() void {
+    defer {
+        return
+    }
+}

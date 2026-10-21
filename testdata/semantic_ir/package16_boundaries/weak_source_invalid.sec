@@ -1,0 +1,7 @@
+module main
+
+type WeakHandle struct { Address: RawPtr[int] }
+fn Weak(handle: WeakHandle) void {
+    let view := ref handle[..]
+    discard view
+}

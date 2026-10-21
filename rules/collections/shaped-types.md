@@ -2,9 +2,9 @@
 
 - **Status:** Canonical normative rulebook
 - **Language version:** Sec 0.1
-- **Document revision:** 2.1
+- **Document revision:** 2.2
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-18 (MD-016 part 1: shaped metadata declarations)
+- **Last updated:** 2026-10-21 (MD-016 shaped closure: init construction, static ToShape, physical contiguity, MemorySpace identity, storage request/error declarations, ShapeError union)
 - **Replaces:** the previous `rules/collections/shaped-types.md` revision 1.
 - **Collection semantics:** `rules/collections/collections.md`
 - **Storage semantics:** `rules/memory/storage.md`, `rules/memory/memory_model.md`
@@ -218,6 +218,12 @@ Len
 
 The older rule that deferred runtime-shaped owning tensors is superseded.
 
+Rank ≥ 1 is required for shaped *values*: `tensor[T, Shape[0]]` and
+`tensor_view[T, 0]` are invalid type forms in Sec 0.1, and an operation whose
+result rank is zero yields the scalar `T`. `Shape[0]` and `AxisList[0]` remain
+valid metadata. Extents may be zero: `vector[T, 0]` and `matrix[T, 0, M]` are
+valid empty values (MD-016 closure § 6(3)–(4), `rules/corrections/applied/md016-shaped-public-surface-closure-20261021.md`).
+
 Runtime-shaped owning tensors are part of the Sec language model. A particular
 compiler release may report an explicit unsupported-feature diagnostic until
 implementation is complete; it must not reinterpret the type as a view or an
@@ -368,6 +374,26 @@ positional struct literals for ordinary user structs.
 ---
 
 # 5. Rank, Shape, and Len
+
+The complete common member surface of every owning shaped family and of
+`ref`/`ref mut tensor_view` is exactly these read-only properties (MD-016
+closure § 7(1)); metadata types do not inherit them:
+
+```sec
+property Rank: uint { get }
+property Shape: Shape[Rank] { get }
+property Len: uint { get }
+property Strides: Strides[Rank] { get }
+property Layout: TensorLayout[Rank] { get }
+property MemorySpace: MemorySpace { get }
+property IsContiguous: bool { get }
+property SizeOf: uint { get }
+unsafe property Ptr: RawPtr[T] { get }
+```
+
+`Ptr` exists only on addressable instances. Type-associated `Rank`, `Shape`
+and `Len` exist only where the whole value is a compile-time fact; on
+`tensor_view` and runtime-shaped `tensor` only the rank is type-associated.
 
 All shaped values and shaped views expose the semantic read-only properties:
 
@@ -674,6 +700,30 @@ answer is statically always `true` for a canonical dense owning value.
 This symmetry allows generic shaped code to ask the same meaningful question
 without branching on the concrete shaped family.
 
+**Superseded definition (MD-016 closure § 7(4)–(6), accepted provisionally
+2026-10-21):** a shaped mapping is contiguous when its logical elements occupy
+**one physically unbroken, non-overlapping representation**; this is *not*
+necessarily row-major logical traversal order. Consequences:
+
+```text
+canonical dense row-major or column-major owner   true
+ordinary transpose of a dense matrix              true (physically contiguous)
+Strided layout that happens to be gapless         true
+step greater than 1                               false
+negative-stride reversal                          false (with the .Ptr origin convention)
+broadcast with zero stride (real overlap)         false
+Len == 0                                          true, vacuously
+```
+
+`Ptr` is the view's logical origin, not a guarantee that the following
+logical elements are consecutive: a contiguous bulk buffer additionally
+requires that origin to be the start of the physical range and a compatible
+element order. Contiguity never implies row-major layout, and an empty value's
+`Ptr` must not be dereferenced. The provisional status is recorded so a later
+revision can revisit it (closure § 19(2)).
+
+The earlier definition below is historical:
+
 A shaped mapping is contiguous when its logical elements are represented by one
 forward, dense, non-overlapping storage range in logical traversal order.
 
@@ -747,6 +797,18 @@ A view cannot independently assign or change its memory space.
 Changing memory space is an explicit storage-producing operation and is never a
 property assignment.
 
+`MemorySpace` is a public, nominal, **opaque** compiler-known value identity for
+one memory domain, not a category enumeration (MD-016 closure § 4). Equality
+is identity equality; integer casts, user-defined values and a public
+`MemorySpaceKind` are forbidden. `MemorySpace.Ordinary` is universally
+available; additional named identities are owned by the selected target
+definition, which states for each its stable identity, availability, legal
+accesses, alignment/width, addressability, coherence/atomicity/volatility,
+storage origins, transfer capabilities and diagnostics. Distinct devices or
+MMIO spaces stay distinct values even when they share an internal kind. The
+representation is compiler-private; generated definitions label it so and
+never present non-Sec syntax as compilable code.
+
 ---
 
 # 10. Ptr and SizeOf
@@ -816,14 +878,17 @@ under the compiler-known-member and layout rules. Sec 0.1 has no global
 The general memory/storage rulebook owns:
 
 ```sec
-struct StorageRequest {
+type StorageRequest struct {
+    /** Requested destination memory identity; None imposes no extra restriction. */
     MemorySpace: Option[MemorySpace]
+
+    /** Minimum byte alignment; None uses natural required alignment. */
     MinAlignment: Option[uint]
 }
 ```
 
-The exact declaration may be compiler-known rather than ordinary source, but
-these fields and semantics are normative.
+This is the canonical public declaration with exactly these fields (MD-016
+closure § 5(1)); `storage.md` owns its general semantics.
 
 An explicitly supplied field is a requirement, not a hint.
 
@@ -848,13 +913,20 @@ MinAlignment: Some(n)
 Shaped storage adds layout requirements by composition:
 
 ```sec
-struct ShapedStorageRequest[Rank] {
+type ShapedStorageRequest[Rank] struct {
+    /** General memory-domain and alignment requirements. */
     Storage: StorageRequest
+
+    /** Required destination layout; None selects the operation's canonical layout. */
     Layout: Option[TensorLayout[Rank]]
 }
 ```
 
-An explicitly supplied `Layout` is a hard destination requirement.
+An explicitly supplied `Layout` is a hard destination requirement. For **new
+owning storage** it must be `DenseRowMajor` or `DenseColumnMajor`: `Strided`
+still describes existing backing and views, but `Some(Strided)` cannot select
+unspecified strides and fails with `StorageError.UnsupportedLayout` (or is
+statically rejected when proven) (MD-016 closure § 5(3)).
 
 An omitted layout uses the operation's canonical valid layout. For ordinary
 owned dense shaped construction that canonical layout is `DenseRowMajor`.
@@ -868,6 +940,58 @@ argument/capability with its own ownership and borrowing semantics.
 ---
 
 # 12. Ordinary construction and explicit creation
+
+**Superseded by MD-016 closure §§ 8–9 (2026-10-21):** shaped construction is
+`new Type(args...)` selecting an `init(...)` overload; there is no `Create`
+factory. `init` declarations have no `fn` and no success type; a fallible one
+names only its error type (`ShapeError`). The compiler-provided overload
+families are:
+
+```sec
+impl vector[T, N] {
+    init(request: ShapedStorageRequest[1]) ShapeError
+    init(-> elements: T[]) ShapeError
+    init(-> elements: T[], request: ShapedStorageRequest[1]) ShapeError
+    init(ref mut arena: Arena, request: ShapedStorageRequest[1]) ShapeError
+    init(ref mut arena: Arena, -> elements: T[]) ShapeError
+    init(ref mut arena: Arena, -> elements: T[], request: ShapedStorageRequest[1]) ShapeError
+}
+
+impl tensor[T, Shape[Rank]] {
+    init(shape: Shape[Rank]) ShapeError
+    init(shape: Shape[Rank], request: ShapedStorageRequest[Rank]) ShapeError
+    init(shape: Shape[Rank], -> elements: T[]) ShapeError
+    init(shape: Shape[Rank], -> elements: T[], request: ShapedStorageRequest[Rank]) ShapeError
+    init(shape: Shape[Rank], ref mut arena: Arena) ShapeError
+    init(shape: Shape[Rank], ref mut arena: Arena, request: ShapedStorageRequest[Rank]) ShapeError
+    init(shape: Shape[Rank], ref mut arena: Arena, -> elements: T[]) ShapeError
+    init(shape: Shape[Rank], ref mut arena: Arena, -> elements: T[], request: ShapedStorageRequest[Rank]) ShapeError
+}
+```
+
+`matrix[T, Rows, Columns]` has the `vector` set with `ShapedStorageRequest[2]`,
+and static `tensor[T, D0, D1, ...]` the same set with
+`ShapedStorageRequest[Rank]`, `Rank = count(Dims)` (a compiler-known form, not
+user variadic generics). Two algorithms are selected: default-initialize every
+element (valid only when `T` has a semantic default, or a statically proven
+zero-element shape), or consume an owning `T[]` in logical order with an exact
+`elements.Len == shape.Len` check (move-only `T` allowed; no implicit deep
+copy). A runtime-shaped tensor always receives `shape` explicitly. An `Arena`
+is borrowed, never consumed. A consumed `T[]` is not revived on a later
+failure; the initializer cleans it up. A statically shaped defaultable type
+may use an implicit infallible construction path only when storage is
+provably infallible; otherwise `try new` with a fallible `init`.
+`tensor_view` has no `init`; views come from borrowing and affine mapping.
+
+```sec
+let shape := Shape[2] { 2, 3 }
+let owner := try new tensor[int, Shape[2]](shape)
+let moved := try new tensor[File, Shape[2]](shape, <-files)
+let placed := try new tensor[int, Shape[2]](shape, ref mut arena, request)
+```
+
+The text below predates the closure and is kept for history; its `Create`
+spellings are not Sec 0.1 syntax.
 
 Ordinary canonical value construction does not require or imply a source-level
 parameterless `Create()` call.
@@ -905,6 +1029,17 @@ fallibility must be explicit at that storage-producing boundary.
 ---
 
 # 13. Storage-producing operations
+
+`Materialize`, `TransferTo` and `Relayout` are ordinary named, non-consuming
+methods (not `init`) that return a new owner or fail with `StorageError`. They
+require a legal non-destructive duplication of `T`: a move-only element such as
+`File` cannot be materialized, transferred or relaid out without a separate
+legitimate duplication operation, and an explicit fallible clone is never
+invoked implicitly (MD-016 closure §§ 11, 14). The complete named shaped
+operation inventory is `Reshape`, `ToShape`, `Materialize`, `TransferTo`,
+`Relayout`, `Permute`, `Transpose`, `BroadcastTo`, `Dot`, `Outer`,
+`Magnitude`, `Normalize`, `Cross`, `Contract` and the infix `x`; no other
+public aliases exist.
 
 ## 13.1 `Materialize`
 
@@ -1040,6 +1175,20 @@ uses `ShapeError`.
 `Reshape` never hides a copy to make a non-contiguous input acceptable.
 
 ## 14.2 `ToShape`
+
+**Superseded spelling (MD-016 closure § 12(2)):** `ToShape` is a **static**
+compiler-known method of each owning family whose first parameter is the
+consuming `-> source`; a named source is passed with `<-`. It never consumes
+an implicit `self`:
+
+```sec
+let flatShape := Shape[1] { image.Len }
+let flat := try tensor[float32, Shape[3]].ToShape(<-image, flatShape)
+```
+
+A failed check after call entry does not restore `image`. A static source
+keeps its family and extents in `TransferTo`/`Relayout` results; `NewRank` is
+deduced from `newShape`. The instance form below is historical.
 
 ```sec
 let reshaped := try value.ToShape(newShape)
@@ -1504,6 +1653,9 @@ step == 0
 Zero stride remains reserved for broadcast semantics and is not created by
 `step 0`.
 
+A constant `step 0` is a compile-time error; a runtime zero or otherwise
+invalid step uses `RangeError`, never `ShapeError` (MD-016 closure § 10(3)).
+
 For a selected axis:
 
 ```text
@@ -1906,7 +2058,13 @@ Option[vector[...]]
 
 A zero-magnitude vector returns `None`.
 
-This is a normal domain case, not a `Result` error.
+This is a normal domain case, not a `Result` error. `Normalize` divides by
+`Magnitude` (product, sum and square-root scalar semantics, keeping the
+physical dimension), never injects implicit integer-to-float or decimal
+rounding, and treats an empty vector by the same zero/`None` rule. An
+algebraic reduction over zero elements returns the result type's additive
+identity; if that type has none and an empty reduction is possible, the
+operation is rejected (MD-016 closure § 12(8)–(9)).
 
 ## 24.5 `Cross`
 
@@ -2042,7 +2200,12 @@ A move transfers ownership according to the ordinary ownership model.
 `ToShape` is explicitly consuming even though it performs no element copy.
 
 Each initialized element owned by an owning shaped value must be destroyed
-exactly once.
+exactly once, in **reverse logical index order** independent of physical
+layout (a `[2,3]` matrix destroys `[1,2]`, `[1,1]`, `[1,0]`, `[0,2]`, `[0,1]`,
+`[0,0]`). A partially initialized value cleans up only its successfully
+initialized elements, in reverse successful-initialization order, plus
+acquired backing; it never becomes readable and never runs a completed-value
+`free` (MD-016 closure § 13).
 
 Views never destroy backing elements.
 
@@ -2109,7 +2272,47 @@ A zero vector yields `None`.
 
 Runtime-dependent shape validity uses `ShapeError`.
 
-The canonical family is exactly (MD-016, `rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 7):
+The canonical family is exactly (MD-016 closure § 10, superseding the
+part-1 nine-variant enum of `rules/corrections/applied/md016-shaped-metadata-declarations-correction-20261018.md` § 7):
+
+```sec
+type ShapeError union error {
+    // The supplied rank does not match the required rank.
+    RankMismatch
+
+    // Two extents or the number of supplied elements are incompatible.
+    DimensionMismatch
+
+    // An element-count product overflows the allowed count domain.
+    ElementCountOverflow
+
+    // A no-copy reshape cannot preserve the logical value mapping.
+    InvalidReshape
+
+    // Explicit broadcasting cannot be represented for these shapes.
+    InvalidBroadcast
+
+    // Contracted axes or their extents are invalid or incompatible.
+    InvalidContraction
+
+    // A referenced axis is outside the legal source rank.
+    InvalidAxis
+
+    // An axis that must be unique appears more than once.
+    DuplicateAxis
+
+    // Storage or placement failed during shaped initialization.
+    InitError(StorageError)
+}
+```
+
+These nine cases are exhaustive. `ShapeError` is one nominal identity that
+evolved from an enum to an error union because `InitError` carries a
+`StorageError` payload; construction code creates that variant explicitly (no
+implicit conversion). `InvalidStep` is removed: step validity uses
+`RangeError`. `ShapedInitError` and `ShapedStorageError` do not exist.
+
+The part-1 enum below is historical:
 
 ```sec
 /**
@@ -2150,7 +2353,7 @@ enum ShapeError error {
 }
 ```
 
-These nine variants are the exhaustive Sec 0.1 set. `ShapeError` is a
+(Historical, part 1 — superseded by the union above.) These nine variants were the exhaustive Sec 0.1 set. `ShapeError` was a
 nominal error enum (the `error` marker makes it valid as a `Result` error and
 `init` construction error channel; user decision 2026-10-18) without
 per-variant payloads, declared once in `sec/core/error.sec`; diagnostics carry context
@@ -2170,16 +2373,33 @@ Range/slicing validity uses `RangeError` where runtime checking is required.
 Explicit shaped storage-producing operations use `StorageError` when the
 requested destination contract or physical operation can fail.
 
-The public family must be able to represent at least:
+The canonical shared storage error domain is exactly (MD-016 closure § 5(4)):
 
-```text
-AllocationFailed
-UnsupportedMemorySpace
-UnsupportedLayout
-AlignmentUnsatisfied
-TransferFailed
-SizeOverflow
+```sec
+enum StorageError error {
+    // Required storage could not be acquired.
+    AllocationFailed
+
+    // The selected target/provider cannot satisfy the requested memory identity.
+    UnsupportedMemorySpace
+
+    // The requested destination layout cannot be produced.
+    UnsupportedLayout
+
+    // The requested alignment cannot be met.
+    AlignmentUnsatisfied
+
+    // An explicit storage transfer failed.
+    TransferFailed
+
+    // Required size or address arithmetic overflowed its supported domain.
+    SizeOverflow
+}
 ```
+
+It is the direct error of `Materialize`, `TransferTo` and `Relayout`; shaped
+initialization carries it as `ShapeError.InitError(StorageError.<case>)`. An
+`AllocationError` maps to `AllocationFailed` at the shaped-storage boundary.
 
 The underlying allocator may use `AllocationError`; shaped/storage APIs map
 provider-specific failures to the public storage-facing contract where required.

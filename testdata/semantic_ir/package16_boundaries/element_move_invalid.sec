@@ -1,0 +1,8 @@
+module main
+
+@noCopy
+type Resource struct { Value: int }
+fn Move(values: Resource[4]) Resource {
+    let view := ref values[..]
+    return <-view[0]
+}

@@ -134,15 +134,19 @@ type functionBuilder struct {
 	// variantGuard is the union.is-variant predicate of the match arm being
 	// lowered, consumed by a borrowed payload binding (P15-45).
 	variantGuard ValueID
-	owner        *builder
-	fn           *Function
-	current      *Block
-	nextValue    ValueID
-	nextBlock    BlockID
-	nextStorage  StorageID
-	nextMatch    MatchID
-	nextLoop     LoopID
-	loops        []*activeLoop
+	// temporarySource is the fresh argument or receiver whose owned value is
+	// being produced for a call-lifetime borrow (MD-076); its own borrow plan
+	// does not apply while the value itself is built.
+	temporarySource ast.Expression
+	owner           *builder
+	fn              *Function
+	current         *Block
+	nextValue       ValueID
+	nextBlock       BlockID
+	nextStorage     StorageID
+	nextMatch       MatchID
+	nextLoop        LoopID
+	loops           []*activeLoop
 	// fallthroughTargets is the innermost-last stack of next clause bodies
 	// of the switches being built; nil marks a final clause.
 	fallthroughTargets []*Block

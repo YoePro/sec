@@ -1,0 +1,26 @@
+module main
+
+fn Observe(value: int) void {
+}
+
+fn First(flag: bool) void {
+    let value := 1
+    if flag {
+        defer {
+            Observe(value)
+        }
+    }
+    while flag {
+        defer {
+            Observe(value)
+        }
+        break
+    }
+}
+
+fn Second() void {
+    let value := 2
+    defer {
+        Observe(value)
+    }
+}

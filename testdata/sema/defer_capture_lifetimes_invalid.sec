@@ -1,0 +1,24 @@
+module main
+
+type Pair struct { first: int, second: int }
+
+fn InvalidMove() void {
+    let pair := Pair { first: 1, second: 2 }
+    defer {
+        let observed := pair.first
+        discard observed
+    }
+    let moved :<- pair.first
+    discard moved
+}
+
+fn InvalidHolderReplacement() void {
+    let first := Pair { first: 1, second: 2 }
+    let second := Pair { first: 3, second: 4 }
+    let mut view := ref first
+    defer {
+        let observed := view.first
+        discard observed
+    }
+    view = ref second
+}

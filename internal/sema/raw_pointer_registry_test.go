@@ -48,6 +48,12 @@ func TestRawPointerRegistrySurface(t *testing.T) {
 				if member.Result.Name != "int" {
 					t.Fatalf("difference result: %+v", member)
 				}
+			case "AsRef", "AsRefMut":
+				// MD-070: the only raw-to-safe spellings; ordinary references
+				// of the bound pointee with the method's authority.
+				if member.Result.Kind != ReferenceType || member.Result.Element == nil || !sameConcreteType(*member.Result.Element, element) || member.Result.ReferenceMutable != (member.Name == "AsRefMut") {
+					t.Fatalf("raw-to-reference result: %+v", member)
+				}
 			default:
 				t.Fatalf("unspecified operation: %+v", member)
 			}
@@ -62,9 +68,9 @@ func TestRawPointerRegistrySurface(t *testing.T) {
 				t.Fatal("API documentation has diverged from the registry")
 			}
 		}
-		want := 6
+		want := 8
 		if element.Name == "byte" {
-			want = 7
+			want = 9
 		}
 		if element.Kind == VoidType {
 			want = 0
@@ -151,7 +157,7 @@ func TestRawPointerRegistryThroughReferences(t *testing.T) {
 				t.Fatalf("reference invented a raw-pointer operation: %+v", member)
 			}
 		}
-		if count != 7 {
+		if count != 9 {
 			t.Fatalf("reference lost raw-pointer operations: %d", count)
 		}
 	}
@@ -175,7 +181,7 @@ func TestRawPointerCallerContracts(t *testing.T) {
 			t.Fatalf("missing caller obligations: %+v", member)
 		}
 		wantParameters := 1
-		if member.Name == "Read" || member.Name == "VolatileRead" {
+		if member.Name == "Read" || member.Name == "VolatileRead" || member.Name == "AsRef" || member.Name == "AsRefMut" {
 			wantParameters = 0
 		}
 		if len(member.Parameters) != wantParameters {
@@ -213,7 +219,7 @@ func TestRawPointerCallerContracts(t *testing.T) {
 			t.Fatalf("volatile obligations incomplete: %+v", member)
 		}
 	}
-	if count != 6 {
+	if count != 8 {
 		t.Fatalf("typed raw-pointer contracts: %d", count)
 	}
 	pointer.TypeArgs = []Type{builtinType("byte")}

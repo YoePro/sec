@@ -1,0 +1,18 @@
+module core
+
+/**
+ * Requests destination storage properties for an explicit storage-producing
+ * operation.
+ *
+ * Description:
+ * An explicit field is a requirement, never a hint; an unsatisfied request
+ * fails with StorageError. Allocation authority (an allocator or Arena) is
+ * a separate argument, never a field (storage.md § 16.4, MD-016 closure).
+ */
+type StorageRequest struct {
+    /** Requested destination memory identity; None imposes no extra restriction. */
+    MemorySpace: Option[MemorySpace],
+
+    /** Minimum byte alignment; None uses natural required alignment. */
+    MinAlignment: Option[uint],
+}

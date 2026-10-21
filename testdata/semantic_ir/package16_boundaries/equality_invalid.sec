@@ -1,0 +1,6 @@
+module main
+
+fn Equal(values: int[4]) bool {
+    let view := ref values[..]
+    return view == view
+}

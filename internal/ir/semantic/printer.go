@@ -175,6 +175,10 @@ func formatFunction(out *strings.Builder, fn *Function) {
 	}
 	out.WriteString("  }\n")
 }
+
+// formatOperation prints SSA, proof and provenance facts deterministically,
+// including exact slice intervals and symbolic range identity without layout.
+// Rules: rules/compiler/semantic_ir.md — §§107–108,126.26.
 func formatOperation(out *strings.Builder, op Operation) {
 	if len(op.Results) > 0 {
 		for index, result := range op.Results {
@@ -406,6 +410,14 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	}
 	out.WriteByte(' ')
+	if op.Slice != nil {
+		if r := op.Slice.StaticRange; r != nil {
+			fmt.Fprintf(out, "range=[%s..<%s] ", r.Start, r.EndExclusive)
+		}
+		if op.Slice.DynamicRange != 0 {
+			fmt.Fprintf(out, "range-id=#%d ", op.Slice.DynamicRange)
+		}
+	}
 	out.WriteString(formatLocation(op.Location))
 }
 func formatTarget(out *strings.Builder, t BranchTarget) {

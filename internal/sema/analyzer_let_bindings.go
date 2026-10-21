@@ -10,7 +10,9 @@ import (
 // default synthesis, ownership and immutable scalar evidence.
 // Rules: rules/types/types.md — Variable declarations; rules/types/default_values.md — Mutable declarations;
 // rules/types/units.md — Exact fixed conversions; rules/memory/ownership.md — Ownership transfer.
+// rules/memory/destruction.md — §6.1(1) (success-only destruction responsibility).
 func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
+	errorsBefore := len(a.errors)
 	if stmt != nil && stmt.Static && a.inFunctionBody {
 		a.validateStaticInitializerExpression(stmt.Name.Value, stmt.Value, stmt.Name.Token)
 	}
@@ -139,6 +141,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
 			a.recordAtomicOrderBinding(stmt.Name.Value, stmt.Value)
 			a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
+			a.recordOwnedCleanupInitialization(stmt, errorsBefore)
 		}
 		return
 	}
@@ -196,5 +199,6 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
 		a.recordAtomicOrderBinding(stmt.Name.Value, stmt.Value)
 		a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
+		a.recordOwnedCleanupInitialization(stmt, errorsBefore)
 	}
 }

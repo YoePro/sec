@@ -487,6 +487,26 @@ TargetDefined
 
 § 16.3(3) Cross-space transfers must be explicit and may be fallible.
 
+### § 16.4 Public `MemorySpace` identity (MD-016, 2026-10-21)
+
+§ 16.4(1) `MemorySpaceKind` is an internal classification and is not a public Sec type. The public type is the opaque nominal `MemorySpace`: a compiler-known value identity for one memory domain, compared by identity. It has no integer cast, no user-defined values and no public representation.
+
+§ 16.4(2) `MemorySpace.Ordinary` is universally available. Each selected target definition owns its additional named `MemorySpace` identities and, for each, the § 16.3(2) contract. Two devices or MMIO spaces of the same internal kind are distinct `MemorySpace` values.
+
+§ 16.4(3) The public `StorageRequest` is exactly:
+
+```sec
+type StorageRequest struct {
+    /** Requested destination memory identity; None imposes no extra restriction. */
+    MemorySpace: Option[MemorySpace]
+
+    /** Minimum byte alignment; None uses natural required alignment. */
+    MinAlignment: Option[uint]
+}
+```
+
+`None` imposes no extra restriction (it does not demand ordinary memory); an explicit field is a requirement, never a hint, and an unsatisfied one is an error. Allocator and `Arena` authority are separate arguments, not fields. The shared `StorageError` domain (`AllocationFailed`, `UnsupportedMemorySpace`, `UnsupportedLayout`, `AlignmentUnsatisfied`, `TransferFailed`, `SizeOverflow`) and the shaped extension `ShapedStorageRequest[Rank]` are declared in `rules/collections/shaped-types.md` §§ 11, 29.5 (`rules/corrections/applied/md016-shaped-public-surface-closure-20261021.md` §§ 4–5).
+
 ---
 
 ## § 17 Object lifetime and storage lifetime

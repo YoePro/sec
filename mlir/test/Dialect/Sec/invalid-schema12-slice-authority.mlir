@@ -1,4 +1,4 @@
-// RUN: not sec-mlir-opt %s -o /dev/null 2>&1 | FileCheck %s
+// RUN: sec-mlir-opt %s -verify-diagnostics -o /dev/null
 
 // Shared and mutable slices cannot be interchanged by changing their types.
 module attributes {
@@ -15,7 +15,7 @@ module attributes {
   dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>
 } {
   func.func @bad(%value: !sec.slice_mut<i32>) -> !sec.slice<i32> {
+    // expected-error@+1 {{type of return operand 0 ('!sec.slice_mut<i32>') doesn't match function result type ('!sec.slice<i32>')}}
     return %value : !sec.slice_mut<i32>
   }
 }
-// CHECK: type of return operand 0 ('!sec.slice_mut<i32>') doesn't match function result type ('!sec.slice<i32>')

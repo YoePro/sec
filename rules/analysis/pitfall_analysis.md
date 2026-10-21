@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-08
-- **Last updated:** 2026-10-04
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-21
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/analysis/pitfall_analysis.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
@@ -620,6 +620,54 @@ canonical facts. The architectural ownership rule remains unchanged.
 ---
 
 # API-usage pitfalls
+
+## Large by-value argument at its final use
+
+The stable rule identity is `pitfall.ownership.last-use-argument-copy`.
+A successfully resolved ordinary owning value argument may receive a
+high-confidence `LikelyMistake` advisory recommending `<-name` when:
+
+- canonical transfer facts establish a copy of an available, whole, addressable
+  local or parameter binding, with the exact selected parameter type;
+- aggregate copy-cost evidence reaches the implementation's large-value threshold;
+- complete binding-use and ownership/dependency evidence supports no use after
+  that argument, including later argument evaluation and failure handlers;
+- moving is compatible with the source's storage and borrowing obligations.
+
+The same rule applies to arguments of `new` through its selected initializer.
+The default policy reuses the parameter-usage large-value estimate (currently
+64 bytes); this is advisory cost policy, not a source-language layout or
+liveness rule. The cost of copying the value matters: the size of text behind
+an inexpensive string view alone is not large-copy evidence. Unknown costs
+cannot establish a recommendation.
+
+The analysis must not infer move from the last occurrence of an identifier's
+spelling. Binding identity, subsequent branches, loop backedges, receiver or
+alias dependencies, deferred uses, captures and fallible control flow matter.
+An implementation may conservatively restrict candidates to straight-line
+invocations, whole trivially copyable/destructible aggregates and fully known
+sources. Unknown borrows/captures or incomplete analysis suppress the advice.
+Already moved arguments, borrowing parameters, mandatory consuming arguments,
+small values, projected sources and invalid implicit copies receive no duplicate
+advisory from this rule. Normative ownership errors retain their own diagnostic.
+
+Example:
+
+```sec
+let files := ReadFileRecords()
+UseRecords(files)
+// If files is a large copied value with no remaining use/dependency:
+// consider UseRecords(<-files).
+```
+
+This is a `SuggestedEdit`, not a `ProvenFix`: ownership, identity, cleanup and
+failure behavior can change. Never insert a move automatically or silently
+change a parameter contract. `copy_move.md` §§ 6.3, 7 and 8.1–8.3 own legality.
+The rule participates in Interactive/Standard/Deep optional budgets, structured
+finding presentation and dependency-qualified incremental invalidation. Its
+prerequisites include selected call/construction and transfer facts, resolved
+binding uses, borrowing dependencies and copy-cost policy.
+
 
 ## Explicit `self` passed to its own method
 

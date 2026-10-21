@@ -89,7 +89,11 @@ type ResolvedReferencePlan struct {
 	// reference; Implicit when the borrow is a marker-free call-site borrow.
 	Reborrow bool
 	Implicit bool
-	Source   lexer.Token
+	// Temporary is set when the borrowed Place is the compiler-materialized
+	// Place of a fresh owned argument or receiver, owned until the end of its
+	// full expression (MD-076; borrowing.md § 5.4).
+	Temporary bool
+	Source    lexer.Token
 }
 
 // ResolvedReferenceUseKind is one reference-mediated access (package15.md § 36).
@@ -323,16 +327,20 @@ func (a *Analyzer) recordReferenceReadUse(expr ast.Expression, typ Type) {
 	if a.summaryPass || typ.Kind == InvalidType {
 		return
 	}
+	_, dereference := dereferenceExpression(expr)
 	switch expr.(type) {
 	case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression:
 	default:
-		return
+		if !dereference {
+			return
+		}
 	}
 	place, ok := a.resolvedPlaces[expr]
 	if !ok {
 		place, ok = a.resolvePlace(expr)
 	}
-	if !ok || !a.placeReachedThroughReference(place) {
+	// MD-063: `*r` is by definition a use through its holder's reference.
+	if !ok || !dereference && !a.placeReachedThroughReference(place) {
 		return
 	}
 	if existing, recorded := a.resolvedReferenceUses[expr]; recorded && existing.Kind != ReferenceUseRead {
@@ -351,7 +359,8 @@ func (a *Analyzer) recordReferenceReadUse(expr ast.Expression, typ Type) {
 // mutable reference as a write use.
 func (a *Analyzer) recordReferenceWriteUse(target ast.Expression) {
 	place, ok := a.resolvePlace(target)
-	if !ok || !a.placeReachedThroughReference(place) {
+	_, dereference := dereferenceExpression(target)
+	if !ok || !dereference && !a.placeReachedThroughReference(place) {
 		return
 	}
 	a.recordReferenceUse(target, ReferenceUseWrite, place, true, expressionToken(target))
@@ -395,6 +404,7 @@ func (a *Analyzer) recordCallReferencePlans(callee Function, args []ast.Expressi
 		}
 		place, ok := a.resolvePlace(arg)
 		if !ok {
+			a.recordTemporaryBorrowPlan(arg, mutable)
 			continue
 		}
 		if argType, typed := a.expressionTypes[arg]; typed && typeCarriesReferenceOrigin(argType) {

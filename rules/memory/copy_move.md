@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-19 (P16-04 bounded slice classification, § 4.4(4))
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-21 (explicit move at ordinary value arguments, §§ 8.1(4–5))
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/copy_move.md`
 - **Replaces:** pre-v2 `rules/memory/copy_move.md` and legacy `rules/memory/copy_move.txt`
@@ -317,6 +317,20 @@ fn Inspect(value: Buffer) void
 **§ 8.1(2)** Passing an existing reusable argument to an ordinary by-value parameter requires an implicit copy. If the argument cannot be copied, the call is invalid.
 
 **§ 8.1(3)** The compiler must not upgrade § 8.1(1) into ownership transfer based solely on the type.
+
+**§ 8.1(4)** At an ordinary owning by-value parameter, the caller may explicitly
+choose `Function(<-value)` instead of the default copy. This transfers the
+source into the argument value, including when the source is copyable or
+move-only. It does not require changing the parameter declaration to `->`.
+All ordinary move obligations still apply: the source must be available and
+movable, conflicting borrows or deferred uses forbid the move, and the source
+becomes unavailable when the call-entry transfer commits (§ 8.3).
+
+**§ 8.1(5)** `->` makes transfer mandatory for a reusable source at every call;
+`<-` at an ordinary value argument expresses the caller's local choice. A
+reference parameter cannot receive an explicit owning move. The compiler never
+infers this choice from a final use, value size, or copyability.
+
 
 ### § 8.2 Consuming parameters
 

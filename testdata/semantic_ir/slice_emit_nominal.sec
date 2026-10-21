@@ -1,0 +1,13 @@
+module main
+
+type Token int128
+type Offset int128
+
+fn Named(values: Token[4], start: Offset, index: Offset) Result[Token, RangeError] {
+    let full := ref values[..]
+    let child := try ref full[start..]
+    let value := child[index]
+    discard child
+    discard full
+    return Ok(value)
+}

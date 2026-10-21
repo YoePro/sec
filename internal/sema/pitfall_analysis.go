@@ -37,6 +37,7 @@ const (
 	PitfallMeaninglessComparison      PitfallRuleID = "pitfall.range.meaningless-comparison"
 	PitfallForeignExtentUnit          PitfallRuleID = "pitfall.ffi.extent-unit-mismatch"
 	PitfallForeignExtentOrigin        PitfallRuleID = "pitfall.ffi.pointer-extent-origin-mismatch"
+	PitfallLastUseArgumentCopy        PitfallRuleID = "pitfall.ownership.last-use-argument-copy"
 	PitfallWrongStateSubject          PitfallRuleID = "pitfall.state.wrong-checked-subject"
 )
 
@@ -262,6 +263,7 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 	{ID: PitfallWrongStateSubject, Family: PitfallOptionResultFlow, RequiredFacts: []string{"resolved-bindings", "state-requirements", "control-flow", "option-result-projections"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
 	{ID: PitfallForeignExtentOrigin, Family: PitfallForeignContracts, RequiredFacts: []string{"foreign-buffer-extent-contracts", "place-provenance", "compiler-known-members"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
 	{ID: PitfallForeignExtentUnit, Family: PitfallForeignContracts, RequiredFacts: []string{"foreign-buffer-extent-contracts", "extent-quantities", "resolved-element-layout"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
+	{ID: PitfallLastUseArgumentCopy, Family: PitfallAPIUsage, RequiredFacts: []string{"resolved-bindings", "resolved-calls", "resolved-construction", "transfer-plans", "binding-uses", "borrow-dependencies", "copy-cost-policy"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
 }
 
 // PitfallRules returns a defensive, deterministic snapshot of the canonical

@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-09-01
-- Document revision: 2.0
+- Last updated: 2026-10-21
+- Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/memory/raw_pointers.md`
 - Implementation governance: `governance/memory.yaml`
@@ -267,9 +267,9 @@ another compatible RawPtr conversion
 
 § 8(2) A raw pointer must never be created implicitly from a safe reference, integer, owning container, string, slice, or unrelated pointer representation.
 
-§ 8(3) Exact source spelling for safe-reference-to-raw and raw-to-safe reference conversion is not newly defined by this v2 rewrite.
+§ 8(3) The source spellings are locked by MD-070 (2026-10-21): the unsafe compiler-known property `.Ptr` forms a raw pointer from an addressable Place or through a safe reference (§ 17(7)–(9)), and the unsafe compiler-known methods `RawPtr[T].AsRef()` and `RawPtr[T].AsRefMut()` form safe references (§ 18A).
 
-§ 8(4) Until a dedicated conversion spelling is canonically locked, implementations must not treat illustrative conversion syntax as normative language grammar.
+§ 8(4) No other conversion spelling is normative; illustrative syntax elsewhere must not be treated as language grammar.
 
 § 8(5) Existing compiler-known raw operations and already canonical unsafe syntax remain normative where explicitly defined by this and `unsafe.md`.
 
@@ -490,7 +490,20 @@ pointer.Difference(other)
 
 § 17(5) A raw pointer derived from a safe reference does not keep the referent alive.
 
-§ 17(6) The exact source spelling of this conversion remains owned by the future canonical conversion rule; this rewrite fixes the semantics, not a new conversion token/form.
+§ 17(6) The source spelling of this conversion is the existing compiler-known unsafe property `.Ptr` (§ 17(7); MD-070). No second reference-to-raw operator or method exists.
+
+§ 17(7) `.Ptr` applies to an addressable Place in an unsafe context. As a property it is not a call, so it needs an `unsafe { }` block (`unsafe.md`; MD-079):
+
+```sec
+let mut number := 42
+unsafe {
+    let pointer: RawPtr[int] := number.Ptr
+}
+```
+
+§ 17(8) Applied through a safe reference, `.Ptr` addresses the **referent's** storage, never storage that represents the reference itself. `r.Ptr` and `(*r).Ptr` (MD-063) are the same operation and yield `RawPtr[T]` for `r: ref T` / `ref mut T`.
+
+§ 17(9) `.Ptr` allocates nothing, extends no lifetime, pins nothing and carries no borrow authority in the pointer value (§ 17(3)–(5)).
 
 ---
 
@@ -527,7 +540,33 @@ valid destruction/replacement semantics for mutation performed through the refer
 
 § 18(5) A compiler-proven null, dead, unaligned, invalidly represented, or conflicting conversion must be rejected even inside unsafe.
 
-§ 18(6) The exact Sec 0.1 source spelling for these conversions is not newly locked by this rulebook revision.
+§ 18(6) The Sec 0.1 source spelling of these conversions is `RawPtr[T].AsRef()` and `RawPtr[T].AsRefMut()` (§ 18A; MD-070).
+
+### § 18A Forming safe references (MD-070)
+
+§ 18A(1) `RawPtr[T]` has exactly two compiler-known unsafe methods that form safe references. They are compiler-provided operations, not user-implementable methods, and a source declaration may not shadow or redefine them:
+
+```sec
+impl RawPtr[T] {
+    unsafe fn AsRef() ref T
+    unsafe fn AsRefMut() ref mut T
+}
+```
+
+```sec
+let observer := unsafe pointer.AsRef()
+let editor := unsafe otherPointer.AsRefMut()
+```
+
+§ 18A(2) Both methods exist only on `RawPtr[T]`. They do not create general conversion traits and give no method to `ref T`, `ref mut T` or `T`. There is no implicit raw-to-safe conversion, no automatic `Option` conversion and no failure fallback; `let r: ref T := pointer` is rejected with a suggestion to call `AsRef()` / `AsRefMut()`.
+
+§ 18A(3) `RawPtr[void]` has neither method. A concrete typed interpretation is required first (§ 10).
+
+§ 18A(4) `AsRef()` requires the obligations of § 18(2); `AsRefMut()` additionally requires those of § 18(3). Obligations the compiler cannot prove are the caller's unsafe responsibility. Obligations it can disprove are compile-time errors even inside `unsafe` (§ 18(5)): today this covers a proven-null pointer.
+
+§ 18A(5) No lifetime parameters, annotations or lifetime syntax participate. The result is an ordinary Sec reference with the existing provenance, BorrowID, LifetimeID, validity policy, invalidation domain/epoch and storage-live-range model. Where the storage origin is known it constrains the reference. Otherwise the caller's contract bounds it, and a bare address never yields a static or unconstrained lifetime. Copying, reborrowing, escape analysis and borrow ends (MD-065) follow the ordinary rules. The reference neither owns, pins nor extends the storage, nor does it prevent an Arena reset.
+
+§ 18A(6) Known hole (verified 2026-10-21): Sema has no origin for a reference formed from an arbitrary raw pointer, so returning or retaining it relies on the caller's unsafe contract. Proving conflicting authority against live safe borrows of the pointer's origin, which § 18(5) requires where provable, is not yet implemented.
 
 ---
 
@@ -836,6 +875,8 @@ target/platform access contract
 § 32(5) Raw-to-safe conversion must explicitly establish the safe-reference facts required by `references.md`.
 
 § 32(6) Semantic IR verification must reject contradictory raw-pointer facts.
+
+§ 32(7) `AsRef()` / `AsRefMut()` lower to a distinct unsafe raw-to-safe operation. It keeps the raw operand and the target reference kind, establishes the canonical reference facts of § 32(5), and is neither an ownership transfer nor an allocation. MLIR attribute spelling belongs to the dialect schema and MD-084. Known hole (verified 2026-10-21): the operation does not exist in Semantic IR yet; lowering stops at an explicit capability boundary naming MD-070/MD-084.
 
 ---
 

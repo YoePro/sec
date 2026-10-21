@@ -56,6 +56,9 @@ func (a *Analyzer) rejectOrdinaryMethodWholeSelfConsumption(place Place, token l
 //   - rules/memory/copy_move.md — §§5–9 copy and move boundaries
 //   - rules/declarations/functions.md — §22 "Instance methods"
 func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value ast.Expression, token lexer.Token, declaration bool, inferredDeclaration bool, site TransferSiteKind) bool {
+	if a.rejectDereferenceMove(mode, value) {
+		return false
+	}
 	place, ok := a.resolvePlace(value)
 	if !ok {
 		if mode == ast.OwnershipMove {

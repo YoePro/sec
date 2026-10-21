@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-29
-- **Last updated:** 2026-08-29
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-21
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/lifetime_analysis.md`
 - **Replaces:** `rules/memory/lifetime_analysis.txt`
@@ -303,6 +303,8 @@ Consume(<-value)
 **§ 10.2(1)** A reference to a temporary is invalid when the reference would outlive the temporary expression lifetime.
 
 **§ 10.2(2)** Specialized rulebooks may reject explicit borrowing of non-addressable temporaries entirely even when a narrow physical lifetime could exist.
+
+**§ 10.2(3)** A fresh owned temporary borrowed as a call argument or method receiver (`borrowing.md` § 5.4, MD-076) is a compiler-materialized Place owned until the end of its enclosing full expression. Its borrow ends at its last required use on each path; a reference, view or capture derived from it, including a call result whose instantiated returned-reference origin is the temporary, is valid only within that full expression and is rejected as an escaping dependency when retained beyond it.
 
 ### § 10.3 Fresh returned values
 
@@ -687,6 +689,8 @@ does not end it when the generation remains stable.
 **§ 23.1(2)** Copying a RawPtr does not extend the lifetime of pointed-to storage.
 
 **§ 23.1(3)** Converting RawPtr to a safe reference requires proof of the complete safe-reference lifetime and authority obligations defined by raw-pointer/reference rules.
+
+**§ 23.1(4)** `RawPtr[T].AsRef()` / `AsRefMut()` (MD-070) introduce no lifetime parameter or annotation. The resulting reference uses the ordinary lifetime model and is never given a static or unconstrained lifetime merely because it came from an address (`raw_pointers.md` § 18A(5)).
 
 ### § 23.2 FFI contracts
 

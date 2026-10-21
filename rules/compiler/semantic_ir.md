@@ -1127,6 +1127,10 @@ source location
 
 § 45(9) A whole-value read through a reference is explicit and never silently moves from a shared reference. A write through `ref mut T` is replacement. Package-scoped executable support may restrict reads to copy-trivial and writes to trivially replaceable types until later packages define non-trivial replacement and destruction.
 
+§ 45(9a) The source spelling of that explicit whole-value access is prefix `*r` (MD-063; `rules/memory/references.md` § 3.4). Sema resolves `*r` to the referent Place before Semantic IR generation; `read(*r)` lowers to `ref.deref-place` + `place.read`, `*r = v` to `ref.deref-place` + `place.write`, and `*r op= v` reads and writes the single formed Place, writing only after the operator's checks pass. A bare holder never lowers as a whole-referent access.
+
+§ 45(9b) A call-lifetime borrow of a fresh owned argument or receiver (MD-076; `rules/memory/borrowing.md` § 5.4) uses this vocabulary unchanged. The producer is evaluated once into its own compiler-materialized Place, which has its own root and storage identity: a read-only value root for a shared borrow, or address-taken local storage for a mutable borrow. That Place is borrowed with `ref.borrow-shared` / `ref.borrow-mut`, and a reference returned through the borrow carries that storage identity among its origins. Cleanup of a temporary that is not trivially destructible follows `destruction.md` § 8 and is an explicit lowering boundary until the package that owns non-trivial destruction.
+
 § 45(10) Reference equality compares the same live storage identity and the same referenced location, not raw addresses; dynamic references must satisfy their required validity before comparison.
 
 § 45(11) After a CFG merge a reference may carry a finite compile-time set of possible origins, which implies no runtime provenance tag. A reborrow that needs precise provenance may be rejected when the origin set becomes unknown.

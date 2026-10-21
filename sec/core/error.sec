@@ -280,39 +280,69 @@ enum IOErrorLegacy error {
 }
 
 /**
- * Reports a failed runtime shape, axis, or affine validation.
+ * Reports a failed shaped storage request or storage-producing operation.
  *
  * Description:
- *   These are the complete source-visible ShapeError cases in Sec 0.1
- *   (shaped-types.md § 29.3, MD-016). An implementation may preserve more
- *   detailed internal causes in diagnostics, but must not expose undeclared
- *   enum variants.
+ * The shared storage error domain of Materialize, TransferTo, Relayout and
+ * other explicit storage-producing operations (shaped-types.md § 29.5,
+ * storage.md § 16.4; MD-016 closure). It is never duplicated as a
+ * shaped-specific storage error.
  */
-enum ShapeError error {
-    // The number of axes is incompatible with the required operation.
-    RankMismatch
+enum StorageError error {
+    // Required storage could not be acquired.
+    AllocationFailed
 
-    // A required dimension or corresponding extent is incompatible.
-    DimensionMismatch
+    // The selected target/provider cannot satisfy the requested memory identity.
+    UnsupportedMemorySpace
 
-    // A required total logical element count cannot fit in uint.
-    ElementCountOverflow
+    // The requested destination layout cannot be produced.
+    UnsupportedLayout
 
-    // A reshape cannot preserve the required logical shape and backing.
-    InvalidReshape
+    // The requested alignment cannot be met.
+    AlignmentUnsatisfied
 
-    // The requested broadcast mapping is incompatible with its source.
-    InvalidBroadcast
+    // An explicit storage transfer failed.
+    TransferFailed
 
-    // Tensor contraction axes or corresponding extents are incompatible.
-    InvalidContraction
+    // Required size or address arithmetic overflowed its supported domain.
+    SizeOverflow
+}
 
-    // An axis index is invalid for the required source rank.
-    InvalidAxis
+/**
+ * Reports a failed runtime shape, axis, or affine validation, or a storage
+ * failure during shaped initialization.
+ *
+ * Description:
+ * These are the complete source-visible ShapeError cases in Sec 0.1
+ * (shaped-types.md § 29.3, MD-016 closure). ShapeError evolved from the
+ * part-1 enum into an error union so that InitError can carry the
+ * StorageError of a failed shaped `init`; step validity uses RangeError.
+ */
+type ShapeError union error {
+    // The supplied rank does not match the required rank.
+    RankMismatch,
 
-    // An axis selection repeats an index that must be unique.
-    DuplicateAxis
+    // Two extents or the number of supplied elements are incompatible.
+    DimensionMismatch,
 
-    // A step value or mapping step is invalid (including zero step).
-    InvalidStep
+    // An element-count product overflows the allowed count domain.
+    ElementCountOverflow,
+
+    // A no-copy reshape cannot preserve the logical value mapping.
+    InvalidReshape,
+
+    // Explicit broadcasting cannot be represented for these shapes.
+    InvalidBroadcast,
+
+    // Contracted axes or their extents are invalid or incompatible.
+    InvalidContraction,
+
+    // A referenced axis is outside the legal source rank.
+    InvalidAxis,
+
+    // An axis that must be unique appears more than once.
+    DuplicateAxis,
+
+    // Storage or placement failed during shaped initialization.
+    InitError(StorageError),
 }

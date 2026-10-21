@@ -101,10 +101,10 @@ func (a *Analyzer) checkTrackedReturnedReferenceOrigin(functionName string, expr
 		originName = "local value"
 	}
 	if functionName == "lambda" {
-		a.reportEscapeExpressionDiagnostic(expr, origin.Token, diagnostics.EscapeLocalStorage, "lambda cannot return reference to local variable %s", originName)
+		a.reportEscapeExpressionDiagnostic(expr, origin.Token, diagnostics.EscapeLocalStorage, "lambda cannot return reference to %s", localOriginNoun(originName))
 		return true
 	}
-	a.reportEscapeExpressionDiagnostic(expr, origin.Token, diagnostics.EscapeLocalStorage, "function %s cannot return reference to local variable %s", functionName, originName)
+	a.reportEscapeExpressionDiagnostic(expr, origin.Token, diagnostics.EscapeLocalStorage, "function %s cannot return reference to %s", functionName, localOriginNoun(originName))
 	return true
 }
 
@@ -120,10 +120,10 @@ func (a *Analyzer) checkExpressionEscapesLocalReference(functionName string, exp
 		originName = "local value"
 	}
 	if functionName == "lambda" {
-		a.reportEscapeExpressionDiagnostic(expr, originToken, diagnostics.EscapeLocalStorage, "lambda cannot return value containing reference to local variable %s", originName)
+		a.reportEscapeExpressionDiagnostic(expr, originToken, diagnostics.EscapeLocalStorage, "lambda cannot return value containing reference to %s", localOriginNoun(originName))
 		return true
 	}
-	a.reportEscapeExpressionDiagnostic(expr, originToken, diagnostics.EscapeLocalStorage, "function %s cannot return value containing reference to local variable %s", functionName, originName)
+	a.reportEscapeExpressionDiagnostic(expr, originToken, diagnostics.EscapeLocalStorage, "function %s cannot return value containing reference to %s", functionName, localOriginNoun(originName))
 	return true
 }
 
@@ -247,4 +247,13 @@ func (a *Analyzer) referenceOriginDisplayName(name string) string {
 	}
 	sort.Strings(owners)
 	return "storage of arena " + owners[0]
+}
+
+// localOriginNoun names a local escape origin: a local variable, or a
+// call-lifetime temporary (MD-076) that is already named as such.
+func localOriginNoun(originName string) string {
+	if strings.HasPrefix(originName, "temporary ") {
+		return originName
+	}
+	return "local variable " + originName
 }

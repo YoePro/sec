@@ -1,0 +1,8 @@
+module main
+
+fn Pointer(values: int[4]) void {
+    let view := ref values[..]
+    unsafe { let pointer := view.Ptr
+        discard pointer }
+    discard view
+}

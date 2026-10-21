@@ -43,6 +43,9 @@ func (b *builder) prepareSliceLowering(program *ast.Program) error {
 		}
 		if err := walk.Inspect(statement, func(node any) error {
 			if expr, expression := node.(ast.Expression); expression {
+				if feature, deferred := b.deferredSliceCapability(expr); deferred {
+					return &UnsupportedFeatureError{Feature: feature, Package: b.maxPackage, Location: location(expressionToken(expr))}
+				}
 				if plan, ok := b.analyzer.ResolvedSliceLengthPlanOf(expr); ok {
 					if !sourceSliceType(plan.SourceType) || plan.ResultType.Kind != sema.UintType || plan.ResultType.Name != "uint" || (plan.CompilerKnownID != "CKM-LEN-SLICE" && plan.CompilerKnownID != "CKF-LEN") {
 						return fmt.Errorf("incomplete resolved slice length plan at %s", formatLocation(location(expressionToken(expr))))

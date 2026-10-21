@@ -413,19 +413,19 @@ func (cache *PitfallCache) invalidateLocked(scope *PitfallCacheScope, kind, iden
 func (b *pitfallBuilder) walkPitfallBody(body *ast.BlockStatement) {
 	run := b.analyzer.pitfallCacheRun
 	if run == nil {
-		b.walkBlock(body)
+		b.walkMoveAwarePitfallBody(body)
 		return
 	}
 	revision, known := run.Bodies[PitfallBodyIdentity(body)]
 	if !known || len(b.analyzer.errors) != 0 {
 		run.Usage.Unavailable++
-		b.walkBlock(body)
+		b.walkMoveAwarePitfallBody(body)
 		return
 	}
 	fingerprint, compatible := b.bodyFingerprint(body, revision)
 	if !compatible {
 		run.Usage.Unavailable++
-		b.walkBlock(body)
+		b.walkMoveAwarePitfallBody(body)
 		return
 	}
 	key := pitfallCacheKey{run.Scope, revision.Body}
@@ -440,7 +440,7 @@ func (b *pitfallBuilder) walkPitfallBody(body *ast.BlockStatement) {
 	}
 	run.Usage.Misses++
 	findingsStart, foreignStart := len(b.result.results), len(b.result.foreignExtentInputs)
-	b.walkBlock(body)
+	b.walkMoveAwarePitfallBody(body)
 	payload = pitfallBodyPayload{Findings: b.result.results[findingsStart:], Foreign: b.result.foreignExtentInputs[foreignStart:]}
 	// Owner-enrichment occurrences may carry a distinct canonical diagnostic
 	// root. Recompute those explanations instead of persisting an owner link.

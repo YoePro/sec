@@ -39,7 +39,7 @@ func TestOwnershipMentorLSP(t *testing.T) {
 					t.Fatal(got)
 				}
 				if i == 2 {
-					if !strings.Contains(got.Message, "copies its argument") || !strings.Contains(got.Message, "Redesign the API") {
+					if !strings.Contains(got.Message, "copies its argument") || !strings.Contains(got.Message, "`<-resource`") || !strings.Contains(got.Message, "To require transfer at every call") {
 						t.Fatal(got)
 					}
 				} else if !strings.Contains(got.Message, "Write `<-") {

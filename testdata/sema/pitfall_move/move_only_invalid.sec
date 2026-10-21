@@ -1,0 +1,8 @@
+module main
+@noCopy
+type Owned struct { Data: int[16] }
+fn Accept(value: Owned) void {}
+fn Invalid() void {
+    let files := Owned {}
+    Accept(files)
+}

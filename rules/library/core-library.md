@@ -1987,7 +1987,10 @@ modules cannot monkey-patch compiler-owned shaped types with privileged global
 The shaped metadata types `Shape`, `Strides`, `TensorLayout`, `Axes` and
 `AxisList` and their `ShapeError` are compiler-known declarations owned by
 `shaped-types.md` (MD-016 part 1); their existence never depends on core stub
-helpers, and `ShapeError` has exactly one canonical declaration.
+helpers, and `ShapeError` has exactly one canonical declaration — an error
+union with `InitError(StorageError)` since the MD-016 closure (2026-10-21),
+next to the shared `StorageError` enum and the `StorageRequest` /
+`ShapedStorageRequest[Rank]` structs of `shaped-types.md` §§ 11, 29.
 
 Legacy lowercase `.len` and `.ptr` examples do not override canonical `.Len`
 and `.Ptr` spellings or the existing compatibility migration.

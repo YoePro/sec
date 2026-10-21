@@ -1,0 +1,26 @@
+module main
+
+type Row struct { Values: int128[4] }
+type Grid struct { Row: Row, Empty: uint256[0] }
+
+fn Nested(grid: Grid) uint {
+    let view := ref grid.Row.Values[1..<3]
+    let length := view.Len
+    discard view
+    return length
+}
+
+fn NestedMutable(grid: ref mut Grid) uint {
+    let view := ref mut grid.Row.Values[1..<3]
+    view[0] = 7
+    let length := view.Len
+    discard view
+    return length
+}
+
+fn Empty(grid: Grid) uint {
+    let view := ref grid.Empty[..]
+    let length := view.Len
+    discard view
+    return length
+}

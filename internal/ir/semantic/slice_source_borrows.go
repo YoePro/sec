@@ -132,7 +132,15 @@ func (fb *functionBuilder) lowerSliceCreation(expr *ast.RefExpression, plan sema
 	if parent != nil {
 		facts.SourceBorrow = parent.Borrow
 	}
-	fb.emit(Operation{Kind: kind, Operands: []ValueID{place.id, start.ID, length.ID}, Results: []Value{value}, Reference: facts, ReferenceGuard: guard, Location: loc})
+	origin := SliceFacts{Element: element, Mutable: mutable, Reference: *facts, RuntimeLength: length.ID, DynamicRange: SliceRangeID(plan.DynamicRange)}
+	if !reborrow {
+		origin.OriginPlaces = []ValueID{place.id}
+	}
+	if plan.StaticRange != nil {
+		origin.StaticRange = &StaticSliceRange{Start: cloneBigInt(plan.StaticRange.Start), EndExclusive: cloneBigInt(plan.StaticRange.EndExclusive)}
+	}
+	detached := origin.Clone()
+	fb.emit(Operation{Kind: kind, Operands: []ValueID{place.id, start.ID, length.ID}, Results: []Value{value}, Reference: facts, Slice: &detached, ReferenceGuard: guard, Location: loc})
 	fb.recordReference(value.ID, facts)
 	return builtValue{id: value.ID, typ: typ}, nil
 }

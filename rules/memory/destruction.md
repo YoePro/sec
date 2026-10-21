@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-10-15
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-21
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/destruction.md`
 - **Replaces:** `rules/memory/destruction.txt`
@@ -276,6 +276,8 @@ destroy remaining first temporary
 **§ 8(5)** A temporary forwarded into its first owner is not also destroyed by the forwarding context.
 
 **§ 8(6)** Lifetime shortening of temporaries must not change observable destruction order, reference validity, defer behavior, volatile effects, or expression evaluation order.
+
+**§ 8(7)** A call-lifetime borrow of a temporary argument or receiver (`borrowing.md` § 5.4, MD-076) neither destroys the temporary when the call returns nor extends it past the full expression; the borrow ending earlier does not move its cleanup. On a failure or other abnormal edge, exactly the still-owned successfully created temporaries whose lifetime ends on that edge are cleaned.
 
 ---
 

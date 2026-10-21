@@ -1,0 +1,7 @@
+module main
+
+type Shared struct { Data: ref int[] }
+type NestedShared struct { Views: Shared[2] }
+type Exclusive struct { Data: ref mut int[] }
+type NestedExclusive struct { Views: Exclusive[2] }
+type SharedExclusiveElements struct { Data: ref Exclusive[] }

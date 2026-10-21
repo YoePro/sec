@@ -100,7 +100,7 @@ template <typename Op> LogicalResult verifyRange(Op op) {
         return op.emitOpError("an omitted endpoint has no signedness");
       continue;
     }
-    Type type = op.getBounds()[next++].getType();
+    Type type = semanticIntegerCarrier(op.getBounds()[next++].getType());
     if (!isBuiltinIntegerSemanticType(type) || isSignedIntegerSemanticType(type) != signedValue)
       return op.emitOpError("endpoint signedness must match its original semantic integer type");
   }
@@ -147,8 +147,13 @@ LogicalResult verifyBorrow(Op op, bool mutableResult, bool reborrow) {
       return op.emitOpError("slice borrow source must be a fixed-array Place");
     element = array.getElementType();
     writable = place.getAuthority().getValue() == "rw";
-    if (op.getSourceBorrow())
-      return op.emitOpError("a fresh slice borrow has no source_borrow");
+    // A fixed-array Place may itself be rooted in a P15 reference. Preserve
+    // that granting borrow rather than dropping it at the slice boundary.
+    // Rules: rules/compiler/semantic_ir.md — section 126.7;
+    // rules/mlir/packages/sec-mlir-dialect_package16.md — sections 44,91,94-95.
+    if (op.getSourceBorrow() && (*op.getSourceBorrow() == 0 ||
+                                *op.getSourceBorrow() == op.getBorrowId()))
+      return op.emitOpError("a granting source_borrow must be distinct and non-zero");
   }
   Type result = op.getSlice().getType();
   if (sliceElement(result) != element ||
@@ -182,7 +187,7 @@ template <typename Op> LogicalResult verifyIndex(Op op) {
     return failure();
   if (!sliceElement(op.getSource().getType()))
     return op.emitOpError("index source must be a bounded slice");
-  Type index = op.getIndex().getType();
+  Type index = semanticIntegerCarrier(op.getIndex().getType());
   if (!isBuiltinIntegerSemanticType(index) || op.getIndexSigned() != isSignedIntegerSemanticType(index))
     return op.emitOpError("index_signed must match the original semantic integer type");
   return success();

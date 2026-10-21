@@ -175,7 +175,16 @@ func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver met
 		if receiver.Symbol != nil {
 			return a.canWriteThroughSymbol(*receiver.Symbol)
 		}
-		return false
+		// A projected receiver (`self.Channel`, `outer.inner`) is writable
+		// when its resolved Place carries mutable authority.
+		if receiver.Expr != nil {
+			if place, ok := a.resolvePlace(receiver.Expr); ok {
+				return place.Mutable
+			}
+		}
+		// MD-076 (borrowing.md § 5.4(3)): a fresh, exclusively owned
+		// temporary may be borrowed mutably as the receiver for the call.
+		return a.freshTemporaryBorrowSource(receiver.Expr)
 	}
 	return true
 }
@@ -193,6 +202,16 @@ func (a *Analyzer) implicitMethodReceiverError(function Function, receiver metho
 			return fmt.Sprintf("method %s requires writable receiver storage", displayName)
 		}
 		return fmt.Sprintf("method %s requires mutable receiver", displayName)
+	}
+	if function.ReceiverConsuming {
+		return fmt.Sprintf("consuming method %s requires an owned named receiver", displayName)
+	}
+	if function.ReceiverMutable {
+		receiverText := "the receiver"
+		if receiver.Expr != nil {
+			receiverText = receiver.Expr.String()
+		}
+		return fmt.Sprintf("method %s requires a mutable receiver; %s is neither a writable Place nor a fresh temporary", displayName, receiverText)
 	}
 	return ""
 }

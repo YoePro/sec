@@ -613,6 +613,12 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitArrayReplace(operation, values)
 	case semantic.OpBoundsFailure:
 		fmt.Fprintf(&e.out, "\"sec.fail.bounds\"() {operation = %s} : () -> ()", mlirString(operation.ArrayOperation))
+	case semantic.OpSliceRangeNormalize, semantic.OpSliceRangeCheck,
+		semantic.OpSliceBorrowShared, semantic.OpSliceBorrowMutable,
+		semantic.OpSliceReborrowShared, semantic.OpSliceReborrowMutable,
+		semantic.OpSliceCopyShared, semantic.OpSliceMoveMutable,
+		semantic.OpSliceLength, semantic.OpSliceIndexInBounds, semantic.OpSliceElementPlace:
+		return e.emitSlice(function, operation, values)
 	case semantic.OpPlaceValueRoot, semantic.OpPlaceStorageRoot, semantic.OpPlaceStaticRoot, semantic.OpPlaceField,
 		semantic.OpPlaceArrayIndexInBounds, semantic.OpPlaceArrayElement, semantic.OpPlaceUnionPayload,
 		semantic.OpReferenceDerefPlace, semantic.OpPlaceRead, semantic.OpPlaceWrite, semantic.OpReferenceBorrowShared,
@@ -932,45 +938,6 @@ func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
 	e.out.WriteString("} ")
 }
 
-func (e *emitter) emitOperationAttributes(operation semantic.Operation, synthesized bool) {
-	if operation.TryHandlerKind == "" && operation.MatchID == 0 && operation.ConversionProof == nil && !synthesized {
-		return
-	}
-	e.out.WriteByte('{')
-	separator := ""
-	attribute := func(name, value string) {
-		e.out.WriteString(separator)
-		fmt.Fprintf(&e.out, "%s = %s", name, value)
-		separator = ", "
-	}
-	// Preserve Sema's exactness contract through the dialect boundary; lower
-	// passes consume it rather than rediscovering enum or integer domains.
-	// Rules: rules/compiler/semantic_ir.md — § 124(2–3).
-	if proof := operation.ConversionProof; proof != nil {
-		attribute("sec.conversion_proof", fmt.Sprintf("{basis = %s, plan_pointer_width = %d : i32}", mlirString(proof.Basis), proof.PlanPointerWidthBits))
-	}
-	if synthesized {
-		attribute("sec.synthesized", "true")
-	}
-	if operation.TryHandlerKind != "" {
-		attribute("sec.try_handler_kind", mlirString(string(operation.TryHandlerKind)))
-		attribute("sec.try_handler_index", fmt.Sprintf("%d : i32", operation.TryHandlerIndex))
-		if operation.TryHandlerExhaustive {
-			attribute("sec.try_handler_exhaustive", "true")
-		}
-		if operation.Variant != "" {
-			attribute("sec.try_handler_variant", mlirString(operation.Variant))
-		}
-	}
-	if operation.MatchID != 0 {
-		attribute("sec.match_id", fmt.Sprintf("%d : i32", operation.MatchID))
-		attribute("sec.match_arm_index", fmt.Sprintf("%d : i32", operation.MatchArmIndex))
-		attribute("sec.match_stage", mlirString(operation.MatchStage))
-		attribute("sec.match_pattern_kind", mlirString(operation.MatchPatternKind))
-	}
-	e.out.WriteString("} ")
-}
-
 func (e *emitter) emitUnarySemanticOperation(operation semantic.Operation, name string, values map[semantic.ValueID]semantic.Value) error {
 	if len(operation.Operands) != 1 || len(operation.Results) != 1 {
 		return fmt.Errorf("invalid %s", operation.Kind)
@@ -1138,26 +1105,6 @@ func (e *emitter) emitResultTypes(results []semantic.Value) error {
 	return nil
 }
 
-func (e *emitter) emitTarget(target semantic.BranchTarget, values map[semantic.ValueID]semantic.Value) error {
-	fmt.Fprintf(&e.out, "^bb%d", target.Block)
-	if len(target.Arguments) == 0 {
-		return nil
-	}
-	e.out.WriteByte('(')
-	for index, argument := range target.Arguments {
-		if index > 0 {
-			e.out.WriteString(", ")
-		}
-		typeText, err := e.valueTypeText(argument, values)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(&e.out, "%s : %s", valueName(argument), typeText)
-	}
-	e.out.WriteByte(')')
-	return nil
-}
-
 func (e *emitter) valueTypeText(id semantic.ValueID, values map[semantic.ValueID]semantic.Value) (string, error) {
 	value, ok := values[id]
 	if !ok {
@@ -1166,6 +1113,10 @@ func (e *emitter) valueTypeText(id semantic.ValueID, values map[semantic.ValueID
 	return e.typeText(value.Type)
 }
 
+// typeText preserves canonical semantic type identity in high-level MLIR;
+// schema-12 slices retain their element/authority wrapper, never a descriptor.
+// Rules: rules/mlir/sec_mlir_lowering.md — v12.1,22–24,29;
+// rules/compiler/semantic_ir.md — §20.
 func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 	if text, ok := e.types[id]; ok {
 		return text, nil
@@ -1306,6 +1257,19 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = placeReference
+	case semantic.TypeSharedSlice, semantic.TypeMutableSlice:
+		if e.schemaVersion < 12 {
+			return "", &UnsupportedLoweringError{Feature: "slice types require schema 12"}
+		}
+		element, err := e.typeText(typeValue.Element)
+		if err != nil {
+			return "", err
+		}
+		name := "slice"
+		if typeValue.Kind == semantic.TypeMutableSlice {
+			name = "slice_mut"
+		}
+		text = fmt.Sprintf("!sec.%s<%s>", name, element)
 	case semantic.TypeVoid:
 		return "", fmt.Errorf("void has no MLIR value type")
 	}

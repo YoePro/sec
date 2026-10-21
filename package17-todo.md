@@ -256,14 +256,57 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 
 ## C. Resolve one cleanup registration and exit model in Sema
 
-- [ ] P17-18 — Add deterministic `CleanupActionID`, `CleanupScopeID` and
+- [x] P17-18 — Add deterministic `CleanupActionID`, `CleanupScopeID` and
   `DeferID`, tied to semantic binding incarnations rather than source names.
+
+  Done 2026-10-21: `internal/sema/cleanup_identities.go` interns typed identities
+  per analysis, reserving zero for absence. Owned-action keys contain the canonical
+  BindingID and initialization site; reinitialization gets a different action.
+  Defer actions share that action namespace and retain their lexical scope.
+  Source block/defer analysis publishes read-only scope and validated defer-site
+  queries. `cleanup_identities_test.go` covers incarnation/site separation,
+  deterministic reanalysis, unknown queries and rejected defer bodies, using
+  `testdata/sema/cleanup_identities.sec` and its invalid companion.
+  These are semantic site identities: repeated executions in a loop remain distinct
+  dynamic registrations. Owned-action registration/cancellation, exit plans
+  and runtime instance multiplicity remain P17-19/P17-21..24; capture plans are
+  completed under P17-20 below. No cleanup IR or execution
+  support is claimed here.
 - [ ] P17-19 — Record destruction registration only after successful non-trivial
   initialization. Transfer/discard/early destruction cancels the old obligation;
   reinitialization and replacement create a new registration at their own point.
-- [ ] P17-20 — Resolve defer capture Places/binding identities and required
+
+  Partial 2026-10-21: `internal/sema/cleanup_registrations.go` publishes detached
+  `ResolvedOwnedCleanupInitializationOf` facts after accepted local declaration
+  initialization, with canonical binding/Place identity, scope, invocation,
+  cleanup action and the complete destruction plan graph. Activation is explicitly
+  after successful initialization, including the success continuation of `try`;
+  failed type/ownership checks publish no completed-value obligation. Trivial and
+  borrowed locals are excluded, and unsupported destruction (including nested P18
+  boundaries) remains represented explicitly in the plan graph. Tests cover
+  inferred/typed declarations, custom free, fixed arrays, reverse-field aggregate
+  destruction, fallible initialization, fresh destinations of explicit moves,
+  rejected initializers, detached queries and analysis reset. These are source-site
+  facts, not a runtime cleanup log or an active-owner map. Cancellation, partial
+  transfer/discard, reinitialization/replacement and path-sensitive continuation
+  through exit plans remain open; no cleanup IR or native execution is claimed.
+- [x] P17-20 — Resolve defer capture Places/binding identities and required
   lifetime extension. Registration does not copy a value; execution observes the
   current value of the captured binding instance (P17 §§42–43).
+
+  Done 2026-10-21: `internal/sema/defer_plans.go` publishes detached
+  `ResolvedDeferPlanOf` facts from the existing canonical dependency producer:
+  invocation/body identities, captured BindingIDs and precise Places, separate
+  retained-reference-holder dependencies, and the cleanup action through whose
+  execution each capture must remain valid. No value/index/range is snapshotted
+  at registration. Nested types, exact indices and origin alternatives are
+  detached at publication and query boundaries. Tests in `defer_plans_test.go`
+  cover late assignment, field/index/parameter captures, same-spelled bindings
+  in different invocations, local-only bodies, retained holder authority,
+  overlapping invalidation versus disjoint sibling moves, rejected bodies,
+  reproducible reanalysis and query purity. P17-19/P17-21..24 still own cleanup
+  registration, dynamic multiplicity, exit plans and the consolidated cleanup API;
+  this completion does not claim source-to-IR cleanup or native defer execution.
 - [ ] P17-21 — Preserve conditional registration and one registration per
   executed loop defer, including distinct iteration bindings. A site ID or
   registration ordinal is not a replacement for dynamic instance multiplicity.

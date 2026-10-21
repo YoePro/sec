@@ -1,0 +1,80 @@
+module main
+
+type Big struct { Data: int[16] }
+type Tiny struct { Data: int[2] }
+type Archive struct {}
+impl Archive { init(data: Big) {} }
+type Fallible struct {}
+enum InitError error { Failed }
+impl Fallible { init(data: Big) InitError {} }
+fn Accept(value: Big) void {}
+fn Pair(first: Big, second: Big) void {}
+fn Read(value: ref Big) void {}
+fn Small(value: Tiny) void {}
+fn Strings(value: string[8]) void {}
+fn Require(-> value: Big) void {}
+
+fn Final() void { let files := Big {}
+    Accept(files) }
+fn PreviousRead() void { let files := Big {}
+    Accept(files)
+    Accept(files) }
+fn Construct() void { let files := Big {}
+    let object := new Archive(files) }
+fn FallibleConstruct() void {
+    let files := Big {}
+    let object := try new Fallible(files) { Err(_) => return }
+}
+fn StringArray() void { let files: string[8] := ["a", "b", "c", "d", "e", "f", "g", "h"]
+    Strings(files) }
+fn AlreadyMoved() void { let files := Big {}
+    Accept(<-files) }
+fn SmallValue() void { let shape := Tiny {}
+    Small(shape) }
+fn Borrowed() void { let files := Big {}
+    Read(files) }
+fn LaterUse() Big { let files := Big {}
+    Accept(files)
+    return files }
+fn LaterArgument() void { let files := Big {}
+    Pair(files, files) }
+fn LaterBranch(flag: bool) void {
+    let files := Big {}
+    Accept(files)
+    if flag { Read(files) }
+}
+fn Loop() void { let files := Big {}
+    for i in 0..<2 { Accept(files) } }
+fn BorrowAlias() void {
+    let files := Big {}
+    let borrowed := ref files
+    Accept(files)
+    Read(borrowed)
+}
+fn HandlerUse() void {
+    let files := Big {}
+    let object := try new Fallible(files) { Err(_) => { Read(files)
+    return } }
+}
+fn Deferred() void { let files := Big {}
+    defer { Read(files) }
+    Accept(files) }
+fn Consuming() void { let files := Big {}
+    Require(<-files) }
+fn DistinctBindings() void {
+    let files := Big {}
+    Accept(files)
+    if true { let other := Big {}
+    Read(other) }
+}
+
+fn Text(value: string) void {}
+fn CheapView() void {
+    let files := "a string view does not copy its text when passed as a value"
+    Text(files)
+}
+fn Projected() void {
+    let files := Big {}
+    let object := new Archive(Big {})
+    Accept(Big { Data: files.Data })
+}

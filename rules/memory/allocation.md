@@ -204,6 +204,8 @@ let values := try Type.Create(arguments)
 
 § 8(5) Explicit Arena selection does not transfer ownership of the Arena unless the API separately declares a consuming contract.
 
+§ 8(6) `Type.Create(...)` above is an illustrative factory spelling for allocation-capable APIs in general. Compiler-known shaped types do not use it: they are constructed with `new Type(...)` selecting an `init` overload that may borrow `ref mut arena` (`rules/collections/shaped-types.md` § 12; MD-016, 2026-10-21). Unrelated APIs keep their own factory names.
+
 § 8(6) Sec 0.1 introduces no general allocation keyword and no new scoped Arena syntax through this rulebook.
 
 ---

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -46,5 +48,37 @@ func TestShapedMetadataSurface(t *testing.T) {
 	}
 	if count := strings.Count(stderr, "sema error"); count != 13 {
 		t.Errorf("want exactly 13 diagnostics, got %d:\n%s", count, stderr)
+	}
+}
+
+// MD-016 closure: ShapeError is the nine-case error union whose InitError
+// carries the shared six-variant StorageError; InvalidStep is gone (step
+// validity uses RangeError); StorageRequest is the public core struct with
+// exactly MemorySpace and MinAlignment.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — §§ 11, 29.3, 29.5
+//   - rules/memory/storage.md — § 16.4
+//   - rules/corrections/applied/md016-shaped-public-surface-closure-20261021.md — §§ 5, 10
+func TestShapedClosureErrorAndRequestDeclarations(t *testing.T) {
+	dir := t.TempDir()
+	valid := filepath.Join(dir, "valid.sec")
+	source := "module main\n\nfn Request() StorageRequest {\n    return StorageRequest { MemorySpace: None, MinAlignment: Some(64u) }\n}\n\n" +
+		"fn Wrap() ShapeError {\n    return ShapeError.InitError(StorageError.TransferFailed)\n}\n\n" +
+		"fn IsAllocation(e: ShapeError) bool {\n    return match e {\n        ShapeError.InitError(cause) => cause == StorageError.AllocationFailed\n        _ => false\n    }\n}\n\n" +
+		"fn Storage() StorageError {\n    return StorageError.SizeOverflow\n}\n\nfn main() int {\n    return 0\n}\n"
+	if err := os.WriteFile(valid, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if stdout, stderr, code := runCLIForDiagnostics(t, "check", valid); code != 0 {
+		t.Fatalf("closure declarations rejected: %d %s %s", code, stdout, stderr)
+	}
+	invalid := filepath.Join(dir, "invalid.sec")
+	if err := os.WriteFile(invalid, []byte("module main\n\nfn Step() ShapeError {\n    return ShapeError.InvalidStep\n}\n\nfn Field() StorageRequest {\n    return StorageRequest { MemorySpace: None, MinAlignment: None, Layout: None }\n}\n\nfn main() int {\n    return 0\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code := runCLIForDiagnostics(t, "check", invalid)
+	if code == 0 || !strings.Contains(stderr, "InvalidStep") || !strings.Contains(stderr, "Layout") {
+		t.Fatalf("removed InvalidStep or unknown request field accepted: %d %s", code, stderr)
 	}
 }

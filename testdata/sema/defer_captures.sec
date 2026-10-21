@@ -1,0 +1,62 @@
+module main
+
+type Pair struct { first: int, second: int }
+
+fn Late() void {
+    let mut value := 1
+    defer {
+        let observed := value
+        discard observed
+    }
+    value = 2
+}
+
+fn Fields() void {
+    let pair := Pair { first: 1, second: 2 }
+    defer {
+        let observed := pair.first
+        discard observed
+    }
+    let second :<- pair.second
+    discard second
+}
+
+fn Index() void {
+    let values: int[3] := [1, 2, 3]
+    defer {
+        let observed := values[2]
+        discard observed
+    }
+}
+
+fn Holder() void {
+    let pair := Pair { first: 1, second: 2 }
+    let view := ref pair
+    defer {
+        let observed := view.first
+        discard observed
+    }
+}
+
+fn Empty() void {
+    defer {
+        let inner := 1
+        discard inner
+    }
+}
+
+fn Other() void {
+    let mut value := 7
+    defer {
+        let observed := value
+        discard observed
+    }
+    value = 8
+}
+
+fn Parameter(value: int) void {
+    defer {
+        let observed := value
+        discard observed
+    }
+}

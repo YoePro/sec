@@ -1,0 +1,7 @@
+module main
+
+fn Signed(values: int[4]) int {
+    let view := ref values[..]
+    let count: int := len(view)
+    return count
+}

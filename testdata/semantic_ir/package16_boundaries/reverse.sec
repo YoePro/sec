@@ -1,0 +1,8 @@
+module main
+
+fn Reverse() void {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    view.Reverse()
+    discard view
+}

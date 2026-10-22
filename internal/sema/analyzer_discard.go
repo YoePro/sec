@@ -11,6 +11,7 @@ import (
 // Rules:
 //   - rules/control-flow/discard.md — §§3, 5, 7, 9, 26, 35
 //   - rules/memory/ownership.md — §23
+//   - rules/memory/destruction.md — §6.1(3), §12 (cleanup cancellation)
 func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if stmt.Value == nil {
 		a.addErrorAtToken(stmt.Token, "discard requires expression")
@@ -55,6 +56,9 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 				}
 			}
 			a.recordRedundantDiscard(stmt, place, movedKey, endedAt)
+			if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+				a.recordOwnedCleanupCancellation(place, expressionToken(stmt.Value), "discarded")
+			}
 			return
 		}
 	}
@@ -106,6 +110,9 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	}
 	a.moved[ident.Value] = ident.Token
 	a.moveReasons[ident.Value] = "discarded"
+	if placeOK {
+		a.recordOwnedCleanupCancellation(place, ident.Token, "discarded")
+	}
 	delete(a.constInts, ident.Value)
 	a.endBorrowsHeldBy(ident.Value)
 	if symbol.Type.Kind == ReferenceType {

@@ -934,6 +934,8 @@ using Sema-resolved reference facts.
 
 No physical address extraction.
 
+**Amendment MD-084 (2026-10-21).** Reference facts travel in the canonical `sec.reference` dictionary, operation properties, `sec.return_origins` and `sec.address_taken` spellings of `sec_mlir_dialect.md` v11.7 (amendment); lowering and optimization may remove a fact only after its obligation is discharged and verified, and every pass that keeps high-level references preserves them.
+
 ---
 
 ## v11.8 Reborrow
@@ -1095,6 +1097,8 @@ or participates in place/reference semantics.
 
 P15 should provide one authoritative query/attribute for this decision.
 
+**Amendment MD-087 (2026-10-21).** The authoritative query is `sec::isReferenceDependentStorage` (P15-59); see `sec_mlir_dialect.md` v11.31 amendment.
+
 ---
 
 ## v11.19 P6 interaction
@@ -1102,12 +1106,16 @@ P15 should provide one authoritative query/attribute for this decision.
 Scalar target resolution may recurse through referent type arguments while
 preserving place/reference wrappers.
 
+**Amendment MD-087 (2026-10-21).** Reference-bearing `sec.call.direct` stays a Sec call until lossless representation-aware call lowering exists (`sec_mlir_dialect.md` v11.32 amendment).
+
 ---
 
 ## v11.20 P8 interaction
 
 Do not recursively signless-normalize semantic referent types inside place/ref
 wrappers before dedicated representation lowering.
+
+**Amendment MD-087 (2026-10-21).** P8 is selective, not module-rejecting: it lowers representable integer computation in mixed modules, preserves wrappers and metadata, and materializes legal verified `siN`/`uiN` ↔ `iN` transitions at Place, call, storage and CFG boundaries, never via `arith.bitcast` on signed types (`sec_mlir_dialect.md` v11.33 amendment). Implemented 2026-10-22 with exact-width `builtin.unrealized_conversion_cast` bridges that remain until physical reference-representation lowering reconciles them.
 
 ---
 

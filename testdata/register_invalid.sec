@@ -100,20 +100,34 @@ type MotorRegister register[8] {
     _: bit[3],
 }
 
+// Hardware fields are reached only inside the type-owned impl (MD-077), so
+// the field-semantics errors below are triggered there.
+impl MotorRegister {
+    fn ReadWithWrongUnit() void {
+        // ERROR: rpm is not assignable to m.
+        let distance: m := self.Speed
+    }
+
+    fn WriteWithWrongUnit(distance: m) void {
+        // ERROR: m is not assignable to rpm.
+        self.Speed = distance
+    }
+}
+
 @address(0x40025000)
 let motorStatus: MotorRegister
 
 @address(0x40025004)
 let mut motorControl: MotorRegister
 
-fn ReadWithWrongUnit() void {
-    // ERROR: rpm is not assignable to m.
-    let distance: m := motorStatus.Speed
+fn PublicFieldAccess() void {
+    // ERROR (MD-077): a hardware field is not public outside impl MotorRegister.
+    motorControl.Enabled = true
 }
 
-fn WriteWithWrongUnit(distance: m) void {
-    // ERROR: m is not assignable to rpm.
-    motorControl.Speed = distance
+fn PhysicalBorrow() void {
+    // ERROR (MD-077): physical register bits are not an ordinary memory Place.
+    let bits := ref mut motorControl.Enabled
 }
 
 // =============================================================================
@@ -126,13 +140,15 @@ type ReservedAccessRegister register[8] {
     _: bit[6],
 }
 
+impl ReservedAccessRegister {
+    fn ReadReservedField() void {
+        // ERROR: Reserved fields participate in layout but are not members.
+        let value := self._
+    }
+}
+
 @address(0x40026000)
 let reservedStatus: ReservedAccessRegister
-
-fn ReadReservedField() void {
-    // ERROR: Reserved fields participate in layout but are not members.
-    let value := reservedStatus._
-}
 
 // =============================================================================
 // Invalid @address bindings
@@ -144,6 +160,22 @@ type AddressRegister register[8] {
     Ready: bit,
     _: bit[7],
 }
+
+impl AddressRegister {
+    static fn WriteReadOnlyBit() void {
+        // ERROR: The addressed binding was not declared with mut.
+        readOnlyAddressRegister.Ready = true
+    }
+}
+
+// ERROR (MD-077): a hardware-bound register type needs a type-owned impl.
+type NoImplRegister register[8] {
+    Ready: bit,
+    _: bit[7],
+}
+
+@address(0x40027020)
+let noImplRegister: NoImplRegister
 
 @address(0x40027000)
 let sourceAddressRegister: AddressRegister
@@ -180,11 +212,6 @@ let inferredAddressRegister := sourceAddressRegister
 @address(0x40028000)
 let readOnlyAddressRegister: AddressRegister
 
-fn WriteReadOnlyBit() void {
-    // ERROR: The addressed binding was not declared with mut.
-    readOnlyAddressRegister.Ready = true
-}
-
 // =============================================================================
 // Constant field values outside the field range
 // =============================================================================
@@ -194,21 +221,23 @@ type BoundedRegister register[8] {
     Count: bit[5],
 }
 
+impl BoundedRegister {
+    fn WriteTooLargeConstants() void {
+        // ERROR: Eight does not fit in an unsigned three-bit field.
+        self.Mode = 8
+
+        // ERROR: Thirty-two does not fit in an unsigned five-bit field.
+        self.Count = 32
+    }
+
+    fn WriteNegativeConstant() void {
+        // ERROR: Negative one does not fit in an unsigned three-bit field.
+        self.Mode = -1
+    }
+}
+
 @address(0x40029000)
 let mut boundedRegister: BoundedRegister
-
-fn WriteTooLargeConstants() void {
-    // ERROR: Eight does not fit in an unsigned three-bit field.
-    boundedRegister.Mode = 8
-
-    // ERROR: Thirty-two does not fit in an unsigned five-bit field.
-    boundedRegister.Count = 32
-}
-
-fn WriteNegativeConstant() void {
-    // ERROR: Negative one does not fit in an unsigned three-bit field.
-    boundedRegister.Mode = -1
-}
 
 // =============================================================================
 // Invalid register impl receiver use

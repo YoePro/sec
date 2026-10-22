@@ -70,6 +70,46 @@ type PowerRegister register[16] {
     _: bit[3],
 }
 
+// A hardware-bound register type exposes its hardware only through its
+// type-owned impl (MD-077); field semantics are checked inside it.
+impl MotorRegister {
+    property CurrentSpeed: uint8<rpm> {
+        get {
+            return self.Speed
+        }
+    }
+
+    fn Enable() void {
+        self.Enabled = true
+    }
+
+    // A unit-aware field write needs the same unit and a proven N-bit range;
+    // bit[N](value)<U> narrows explicitly while keeping the unit (MD-046).
+    fn SetSpeed(speed: uint16<rpm>) void {
+        self.Speed = bit[4](speed)<rpm>
+    }
+}
+
+impl ControlRegister {
+    fn Disable() void {
+        self.Enabled = false
+    }
+
+    // Constant values inside the unsigned field range are valid.
+    fn SetModeBounds() void {
+        self.Mode = 0
+        self.Mode = 7
+    }
+}
+
+impl PowerRegister {
+    property CurrentVoltage: uint16<volt> {
+        get {
+            return self.Voltage
+        }
+    }
+}
+
 // =============================================================================
 // Register impl blocks
 //
@@ -93,6 +133,10 @@ impl StatusRegister {
 
     fn ClearError() void {
         self.Error = false
+    }
+
+    fn MarkReady() void {
+        self.Ready = true
     }
 
     // This property must not add storage to the eight-bit register.
@@ -142,21 +186,21 @@ let decimalAddressStatus: StatusRegister
 // =============================================================================
 
 fn ReadStatusFields() void {
-    let ready: bool := readOnlyStatus.Ready
-    let hasError: bool := readOnlyStatus.Error
-    let inferredReady := readOnlyStatus.Ready
+    let ready: bool := readOnlyStatus.IsReady()
+    let hasError: bool := readOnlyStatus.HasError()
+    let inferredReady := readOnlyStatus.IsReady()
 }
 
 fn ReadUnitFields() void {
-    let speed: uint8<rpm> := readOnlyMotor.Speed
-    let voltage: uint16<volt> := readOnlyPower.Voltage
-    let inferredSpeed := readOnlyMotor.Speed
+    let speed: uint8<rpm> := readOnlyMotor.CurrentSpeed
+    let voltage: uint16<volt> := readOnlyPower.CurrentVoltage
+    let inferredSpeed := readOnlyMotor.CurrentSpeed
 }
 
 // Every addressed read remains a separate volatile access.
 fn ReadSameFieldTwice() void {
-    let first := readOnlyStatus.Ready
-    let second := readOnlyStatus.Ready
+    let first := readOnlyStatus.IsReady()
+    let second := readOnlyStatus.IsReady()
 }
 
 // =============================================================================
@@ -164,22 +208,18 @@ fn ReadSameFieldTwice() void {
 // =============================================================================
 
 fn WriteBooleanFields() void {
-    writableStatus.Ready = true
-    writableStatus.Error = false
-    writableMotor.Enabled = true
-    writableControl.Enabled = false
+    writableStatus.MarkReady()
+    writableStatus.ClearError()
+    writableMotor.Enable()
+    writableControl.Disable()
 }
 
-// Constant values inside the unsigned field range are valid.
 fn WriteBoundedConstants() void {
-    writableControl.Mode = 0
-    writableControl.Mode = 7
+    writableControl.SetModeBounds()
 }
 
-// A unit-aware field write needs the same unit and a proven N-bit range;
-// bit[N](value)<U> narrows explicitly while keeping the unit (MD-046).
 fn WriteUnitFields(speed: uint16<rpm>) void {
-    writableMotor.Speed = bit[4](speed)<rpm>
+    writableMotor.SetSpeed(speed)
 }
 
 // =============================================================================

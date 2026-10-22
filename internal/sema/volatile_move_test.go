@@ -15,25 +15,33 @@ type Status register[8] {
 	Value: bit[8],
 }
 
+impl Status {
+	fn Snapshot() Status {
+		return self
+	}
+
+	static fn InvalidProjectedMove() void {
+		let moved :<- status.Value
+		discard moved
+	}
+}
+
 @address(0x40021000)
 let status: Status
 
-fn InvalidDeclarationMove() Status {
+fn InvalidDeclarationMove() void {
 	let moved :<- status
-	return moved
-}
-
-fn InvalidReturnMove() Status {
-	return <-status
-}
-
-fn InvalidProjectedMove() void {
-	let moved :<- status.Value
 	discard moved
 }
 
+fn InvalidReturnMove() HardwareInstance[Status] {
+	return <-status
+}
+
+// MD-077: a detached snapshot comes from the type-owned impl; it is an
+// ordinary value and may be moved.
 fn ValidSnapshotMove() Status {
-	let snapshot := status
+	let snapshot := status.Snapshot()
 	let moved :<- snapshot
 	return moved
 }

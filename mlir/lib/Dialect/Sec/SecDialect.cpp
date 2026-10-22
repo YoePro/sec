@@ -2,6 +2,7 @@
 #include "sec/Dialect/Sec/SecAttributes.h"
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "sec/Dialect/Sec/SecOps.h"
+#include "sec/Dialect/Sec/ReturnOrigins.h"
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -402,6 +403,21 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
         }))
       return operation->emitError(
           "sec.return_origins must be a non-empty array of origin strings on func.func");
+    // MD-084 § 4: every entry follows the canonical origin grammar and the
+    // array is a finite set without duplicate entries.
+    llvm::StringSet<> seen;
+    for (Attribute origin : array) {
+      StringRef text = cast<StringAttr>(origin).getValue();
+      if (!sec::parseReturnOrigin(text))
+        return operation->emitError()
+               << "sec.return_origins entry \"" << text
+               << "\" is not a canonical origin (param#N, receiver or "
+                  "static@N followed by .field#N, [N] or [*] projections)";
+      if (!seen.insert(text).second)
+        return operation->emitError()
+               << "sec.return_origins contains duplicate entry \"" << text
+               << "\"";
+    }
     return success();
   }
   if (name == "sec.match_id" || name == "sec.match_arm_index") {

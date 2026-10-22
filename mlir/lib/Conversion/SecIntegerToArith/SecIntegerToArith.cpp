@@ -729,30 +729,14 @@ public:
     if (unresolvedTypes.wasInterrupted())
       return signalPassFailure();
 
-    // Signless normalization never recurses into Place/reference referents
-    // and never lowers P15 operations (sec_mlir_lowering_v11.md section 20,
-    // sec-mlir-dialect_package15.md section 33): a module that still has
-    // Place/reference semantics is rejected before any rewrite (MD-087).
-    WalkResult references = module.walk([&](Operation *operation) {
-      bool placeOrReference = sec::hasPlaceOrReferenceType(operation) ||
-                              isa<sec::FailReferenceGenerationOp>(operation);
-      auto isPlaceOrReference = [](Type type) {
-        return isa<sec::PlaceType, sec::RefType, sec::RefMutType>(type);
-      };
-      if (auto function = dyn_cast<func::FuncOp>(operation))
-        placeOrReference |=
-            llvm::any_of(function.getArgumentTypes(), isPlaceOrReference) ||
-            llvm::any_of(function.getResultTypes(), isPlaceOrReference);
-      if (!placeOrReference)
-        return WalkResult::advance();
-      operation->emitOpError(
-          "Place/reference semantics must be discharged by reference "
-          "representation lowering before checked integer lowering");
-      return WalkResult::interrupt();
-    });
-    if (references.wasInterrupted())
-      return signalPassFailure();
-
+    // Places and references coexist with this lowering (MD-087): the type
+    // converter rewrites only top-level semantic integers, so it never
+    // recurses into !sec.place / !sec.ref / !sec.ref_mut referents, and their
+    // operations stay high-level with every fact. Where an SSA value crosses
+    // between a lowered signless computation and such a Sec operation, the
+    // conversion materializes an exact-width bridge (verified below).
+    // Rules: rules/mlir/sec_mlir_dialect.md — v11.33 amendment (MD-087);
+    // rules/mlir/sec_mlir_lowering.md — v11.20 amendment.
     WalkResult preconditions = module.walk([&](func::FuncOp function) {
       if (failed(sec::verifyCheckedIntegerGuards(function)))
         return WalkResult::interrupt();
@@ -792,6 +776,25 @@ public:
         return type;
       return IntegerType::get(context, type.getWidth());
     });
+    // MD-087 § 5(3): the only bridge is a temporary same-width
+    // builtin.unrealized_conversion_cast between a semantic siN/uiN and the
+    // signless iN; it carries no conversion semantics and is reconciled or
+    // rejected before any physical lowering (never arith.bitcast on signed
+    // integer types, which is not legal Arith).
+    auto bridge = [](OpBuilder &builder, Type resultType, ValueRange inputs,
+                     Location location) -> Value {
+      if (inputs.size() != 1)
+        return Value();
+      auto from = dyn_cast<IntegerType>(inputs.front().getType());
+      auto to = dyn_cast<IntegerType>(resultType);
+      if (!from || !to || from.getWidth() != to.getWidth())
+        return Value();
+      return builder
+          .create<UnrealizedConversionCastOp>(location, resultType, inputs)
+          .getResult(0);
+    };
+    typeConverter.addSourceMaterialization(bridge);
+    typeConverter.addTargetMaterialization(bridge);
 
     ConversionTarget target(*context);
     target.addLegalDialect<BuiltinDialect, arith::ArithDialect,
@@ -855,6 +858,28 @@ public:
     if (failed(applyPartialConversion(module, target, std::move(patterns))))
       return signalPassFailure();
     foldRoundTripCasts(module);
+
+    // A bridge that survives the round-trip folding must be an exact-width
+    // signed/unsigned <-> signless integer cast at a Place, reference or
+    // high-level storage boundary; anything else is a lowering defect
+    // (MD-087 §§ 4(6), 5(4)).
+    WalkResult bridges = module.walk([&](UnrealizedConversionCastOp cast) {
+      auto from = cast->getNumOperands() == 1
+                      ? dyn_cast<IntegerType>(cast->getOperand(0).getType())
+                      : IntegerType{};
+      auto to = cast->getNumResults() == 1
+                    ? dyn_cast<IntegerType>(cast->getResult(0).getType())
+                    : IntegerType{};
+      if (from && to && from.getWidth() == to.getWidth() &&
+          from.isSignless() != to.isSignless())
+        return WalkResult::advance();
+      cast.emitOpError(
+          "checked integer lowering left a bridge that is not an exact-width "
+          "semantic/signless integer representation transition");
+      return WalkResult::interrupt();
+    });
+    if (bridges.wasInterrupted())
+      return signalPassFailure();
 
     WalkResult remaining = module.walk([&](Operation *operation) {
       if (!isCheckedIntegerOperation(operation))

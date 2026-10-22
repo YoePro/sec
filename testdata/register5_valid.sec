@@ -68,6 +68,15 @@ type SpiDataBuffer register[32] {
     _: bit[24]
 }
 
+// Hardware-bound registers require a type-owned impl (MD-077).
+impl SpiDataBuffer {
+    property Byte: uint8 {
+        get {
+            return self.Data
+        }
+    }
+}
+
 // =====================================================================
 // REGISTER IMPLEMENTATIONS
 // =====================================================================

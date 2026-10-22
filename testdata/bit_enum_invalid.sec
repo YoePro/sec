@@ -27,11 +27,17 @@ type ClockConfig register[2] {
     Source: ClockSource,
 }
 
+impl ClockConfig {
+    fn InvalidWrite() void {
+        self.Source = 5
+    }
+}
+
 @address(0x40021000)
 let mut clockConfig: ClockConfig
 
 fn InvalidWrites() void {
-    clockConfig.Source = 5
+    clockConfig.Source = ClockSource(0)
     let invalid := ClockSource(5)
 }
 

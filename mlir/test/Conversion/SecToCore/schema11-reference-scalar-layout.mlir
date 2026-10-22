@@ -1,16 +1,18 @@
 // RUN: split-file %s %t
 // RUN: sec-mlir-opt %t/64.mlir --sec-resolve-scalar-layout --sec-verify-places --sec-verify-reference-guards --sec-verify-borrow-semantics | FileCheck %s --check-prefix=P64
 // RUN: sec-mlir-opt %t/32.mlir --sec-resolve-scalar-layout --sec-verify-places --sec-verify-reference-guards --sec-verify-borrow-semantics | FileCheck %s --check-prefix=P32
-// RUN: not sec-mlir-opt %t/64.mlir --sec-lower-integer-core 2>&1 | FileCheck %s --check-prefix=P8
-// RUN: sec-mlir-opt %t/64.mlir --sec-resolve-scalar-layout | not sec-mlir-opt --sec-lower-checked-integers 2>&1 | FileCheck %s --check-prefix=P8
+// RUN: sec-mlir-opt %t/64.mlir --sec-lower-integer-core --sec-verify-places --sec-verify-reference-guards --sec-verify-borrow-semantics | FileCheck %s --check-prefix=P8
+// RUN: sec-mlir-opt %t/32.mlir --sec-resolve-scalar-layout --sec-lower-checked-integers --sec-verify-places --sec-verify-reference-guards --sec-verify-borrow-semantics | FileCheck %s --check-prefix=P8
 
 // P15-60: P6 target scalar resolution recursively converts only the referents
 // under !sec.place, !sec.ref and !sec.ref_mut on 32- and 64-bit plans and keeps
 // the wrappers, authority, operations and reference metadata. P8 signless
 // normalization neither recurses through the wrappers nor lowers P15
-// operations: a module with Place/reference semantics is rejected before any
-// rewrite (sec_mlir_dialect_v11.md sections 32-33, sec_mlir_lowering_v11.md
-// sections 19-20; MD-087).
+// operations. Since MD-087 it is selective rather than module-rejecting: the
+// function signature and return lower to signless integers, every Place and
+// reference operation keeps its semantic siN/uiN contract and facts, and the
+// value crossing between them gets an exact-width bridge
+// (sec_mlir_dialect.md v11.33 and sec_mlir_lowering.md v11.20 amendments).
 
 // P64-LABEL: func.func @resolve
 // P64-SAME: %arg0: !sec.ref_mut<!sec.struct<identity = "main::Cell", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "count", type = si64, tags = []>, #sec.struct_field<ordinal = 1, name = "sizes", type = !sec.array<ui64, "2">, tags = []>]>> {sec.reference = {address_stability = "Stable", borrow_id = 1 : i32
@@ -40,7 +42,16 @@
 // P32-NOT: !sec.int
 // P32-NOT: !sec.uint
 
-// P8: Place/reference semantics must be discharged by reference representation lowering before checked integer lowering
+// P8-LABEL: func.func @resolve
+// P8-SAME: %arg1: i{{32|64}}
+// P8-SAME: -> i{{32|64}}
+// P8: %[[INDEX:.*]] = builtin.unrealized_conversion_cast %arg1 : i[[W:32|64]] to si[[W]]
+// P8: "sec.place.array_index_in_bounds"({{.*}}, %[[INDEX]]) <{index_signed = true}> : (!sec.place<!sec.array<ui[[W]], "2">, "rw">, si[[W]]) -> i1
+// P8: "sec.ref.reborrow_shared"({{.*}}) <{address_stability = "Stable", borrow_id = 2 : i32
+// P8: %[[READ:.*]] = "sec.place.read"({{.*}}) <{action = "copy-trivial"}> : (!sec.place<si[[W]], "rw">) -> si[[W]]
+// P8: %[[OUT:.*]] = builtin.unrealized_conversion_cast %[[READ]] : si[[W]] to i[[W]]
+// P8: "sec.place.write"({{.*}}, %[[INDEX]]) : (!sec.place<si[[W]], "rw">, si[[W]]) -> ()
+// P8: return %[[OUT]] : i[[W]]
 
 //--- 64.mlir
 module attributes {sec.dialect_version = 11 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "resolve-64", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "amd64", sec.target_triple = "x86_64-pc-linux-gnu", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>} {

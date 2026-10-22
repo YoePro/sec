@@ -106,7 +106,7 @@ sec.validity_policy
 sec.validity_proof
 sec.storage_identity
 sec.epoch_dependency
-sec.relocation_class
+sec.address_stability  (sec.relocation_class superseded, MD-084)
 sec.address_space
 sec.reference_origin
 ```

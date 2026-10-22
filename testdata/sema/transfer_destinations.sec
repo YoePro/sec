@@ -1,0 +1,32 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type Pair struct { left: Handle, right: Handle }
+
+fn Transfer(-> value: Handle) Handle {
+    return <-value
+}
+
+fn Observe(value: int) void {}
+
+fn Use() void {
+    let source := Handle { id: 1 }
+    let initialized :<- source
+    let mut target := Handle { id: 2 }
+    let replacement := Handle { id: 3 }
+    target <- replacement
+    let returned := Transfer(<-initialized)
+    let count := 4
+    Observe(count)
+
+    let mut pair := Pair { left: Handle { id: 1 }, right: Handle { id: 2 } }
+    let fieldValue := Handle { id: 3 }
+    pair.left <- fieldValue
+    let part :<- pair.right
+
+    let constructionSource := Handle { id: 5 }
+    let aggregate := Pair { left: <-constructionSource, right: Handle { id: 6 } }
+    let captureSource := Handle { id: 7 }
+    let closure := capture(<-captureSource) fn() int { return captureSource.id }
+}

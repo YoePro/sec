@@ -4,7 +4,7 @@
 **Document revision:** 2.2
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-10-21
+**Last updated:** 2026-10-22
 
 **Supersedes:** `rules/declarations/impl.txt`
 
@@ -78,6 +78,8 @@ impl Vehicle {
 
 The bare field syntax above is invalid in `impl`. An instance binding must use
 `let engine: Engine := value` and follow instance initialization rules.
+
+Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 15(1)): ownership of an `impl` by a type never changes. A hardware-bound register type requires a type-owned primary `impl`, there are no instance-specific implementations, and register types that need different type-level access implementations are distinct nominal types even when their bit layouts coincide.
 
 ---
 
@@ -291,6 +293,8 @@ variants, and executable statements outside member bodies remain forbidden.
 This distinction also applies across same-module `impl extends` fragments.
 Nested type definitions remain separate types and do not by themselves add
 storage to the outer target.
+
+**Hardware-bound register implementations (MD-077, 2026-10-22).** An `impl` belongs to the nominal register type and is never defined separately for individual hardware bindings. The `impl` of a hardware-bound `register[N]` may declare ordinary per-instance software state using `let` and `let mut`. Such state belongs to the implementation-instance representation, which is distinct from the physical register and from the detached `register[N]` bit layout. It contributes to normal software initialization, ownership, borrowing and destruction, but neither widens the hardware register nor authorizes direct ordinary memory access to its external endpoint. Its declarations do not create an implicit implementation for any hardware-bound register type lacking a valid type-owned `impl`. The software implementation instance has the compiler-known type `HardwareInstance[T]` (`rules/platform/hardware-register-access.md` § 2 amendment).
 
 ---
 

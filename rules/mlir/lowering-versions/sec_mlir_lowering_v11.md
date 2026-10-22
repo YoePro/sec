@@ -418,3 +418,12 @@ borrow ends remain visible
 address-taken storage remains high-level
 no physical pointer/reference representation is chosen
 ```
+
+---
+
+## Amendments (2026-10-21)
+
+Historical numbering is preserved. The consolidated `rules/mlir/sec_mlir_lowering.md` amendments take precedence where they conflict:
+
+- **MD-084** (v11.7): metadata transport and preservation.
+- **MD-087** (v11.18–v11.20): the authoritative storage query, reference-bearing calls, and selective P8 lowering with legal, verified integer-representation transitions.

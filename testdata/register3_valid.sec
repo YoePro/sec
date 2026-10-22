@@ -61,12 +61,24 @@ type GpioOutputSet register[32] {
     _: bit[30]
 }
 
+impl GpioOutputSet {
+    fn SetPin4High() void {
+        self.SetPin4 = 1
+    }
+}
+
 // GPIO Output Clear Register (32-bit width)
 // Pin 4 and 5 take 1 bit each. Remaining: 30 bits.
 type GpioOutputClear register[32] {
     ClearPin4: bit[1]
     ClearPin5: bit[1]
     _: bit[30]
+}
+
+impl GpioOutputClear {
+    fn ClearPin4Low() void {
+        self.ClearPin4 = 1
+    }
 }
 
 // Matter Hat Custom Status Register (32-bit width)
@@ -132,8 +144,8 @@ fn HardwareSetup() void {
 }
 
 fn ResetMatterHat() void {
-    GPSET0.SetPin4 = 1
-    GPCLR0.ClearPin4 = 1
+    GPSET0.SetPin4High()
+    GPCLR0.ClearPin4Low()
 }
 
 fn MonitorNetwork() void {

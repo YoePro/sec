@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-08-28
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-22
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `6a63b37`
 - **Canonical path:** `rules/platform/hardware-register-access.md`
@@ -121,6 +121,21 @@ nominal type identity
 ```
 
 An `impl` block on a register type likewise does not add hardware-register storage.
+
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 1–4).** There are two kinds of register use:
+
+- **Detached `register[N]` values.** Protocol headers, packets, snapshots and ordinary computation, with pure field operations.
+- **Hardware-bound instances.** `@address(endpoint) let mut device: T` names the bound register layout `T`, while the declaration denotes the software implementation instance, of compiler-known type `HardwareInstance[T]`.
+
+Rules for `HardwareInstance[T]` and its type:
+
+- `HardwareInstance[T]` has no public constructors, no public stored fields and no source-owned `impl`. Its member surface is exactly the permitted members of the type-owned `impl T`, which is mandatory: a binding whose type lacks it is a compile-time error.
+- `HardwareInstance[T]` is not universally copyable. Copy, move or borrow never duplicate hardware authority.
+- `ref device` and `ref mut device` have types `ref HardwareInstance[T]` and `ref mut HardwareInstance[T]`. They borrow the software instance and never `T` or the physical bits. `HardwareInstance[T]` never coerces to `T`, `RawPtr[T]`, `ref T` or `ref mut T`.
+- `ref` and `ref mut` to the physical register or endpoint are forbidden.
+- `impl` members that need hardware access require a hardware-instance receiver. The compiler and LSP report both the declared register type and the resolved instance type.
+
+The compiler-internal identities `RegisterTypeID`, `HardwareResourceID`, `HardwareEndpointID`, `HardwareBindingID`, `ImplInstanceID`, `ImplStorageID` and `RegisterFieldID` stay distinct. Only detached values and implementation software storage may be ordinary memory Places.
 
 ---
 
@@ -391,6 +406,8 @@ Explicit hardware reads operate at register/endpoint granularity.
 
 This avoids implying a physical field-read capability that the hardware may not possess.
 
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 2(2)–(3), 2(6)).** The safe implicit observation described here is an internal operation of the owning `impl T`, not an unrestricted user-access permission. Outside the owning `impl`, direct field access on a hardware-bound instance receives a focused diagnostic that names the permitted public property or method. The examples in this section illustrate operations inside the owning `impl`.
+
 ---
 
 ## 7. Explicit register `Read()`
@@ -442,6 +459,8 @@ Explicitness does not authorize arbitrary unrelated device behavior.
 
 A sequence that can combine values from incompatible moments without a defined coherence contract must not be presented as one coherent snapshot.
 
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 14).** `Read()` remains one logical hardware observation yielding a detached snapshot where permitted. Inside the owning `impl` it uses the same resolved hardware operation machinery as field getters. Its public exposure is controlled by the `impl` API instead of an automatically public member.
+
 ---
 
 ## 8. Explicit register `Write()`
@@ -491,6 +510,8 @@ hardware-owned fields
 ```
 
 The compiler must reject the operation rather than silently reinterpret it as a different sequence.
+
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 8(3), 14).** `Write()` commits the pending logical shadow intents through a verified plan. With no pending intent it performs no physical write. It never writes a raw cached register image. Its public exposure is controlled by the `impl` API.
 
 ---
 
@@ -668,6 +689,11 @@ runtime borrow tracking
 ```
 
 The compiler may use ordinary stack, static, owned-object, or other explicitly valid storage when persistent shadow state is actually required.
+
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 8).**
+- Shadow knowledge (`Unknown` / `Known(value)`) is never current-hardware truth, and pending logical write intents are distinct from it.
+- No zero/default knowledge is fabricated, nothing is refreshed spontaneously, and nothing is written back implicitly at scope exit, destruction or borrow end.
+- Semantic IR represents shadow observe, intent, invalidate and commit as explicit events, verified only against Sema's path-sensitive facts.
 
 ---
 
@@ -1645,6 +1671,13 @@ LLVM IR must not decide whether a register field update is W1C, safe RMW, alias 
 
 Those decisions must already be resolved or represented by explicit target intrinsics before ordinary LLVM optimization can erase the semantic distinction.
 
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 9–11).** The canonical Semantic IR operations are:
+- `register.value.extract` and `register.value.update`, which are pure;
+- `register.hw.bind`, which establishes authority and performs no I/O;
+- `register.hw.observe`, `register.hw.request_write`, `register.hw.shadow_observe`, `register.hw.shadow_intent`, `register.hw.shadow_invalidate` and `register.hw.commit`.
+
+Hardware operations carry their full identity, field, request, transfer, safety, effect, shadow, authority, failure and trace payload (`rules/compiler/semantic_ir.md` §§ 21, 85). They are effectful even when their value is unused. Destructive observations are never eliminated, duplicated, speculated or reordered.
+
 ---
 
 ## 31. Target lowering
@@ -1677,6 +1710,8 @@ If the selected target cannot materialize the required operation semantics, comp
 ### 31.4 Host independence
 
 Cross-compilation uses target facts, not compiler-host address spaces, endianness, privilege, bus behavior, or alignment defaults.
+
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 9(4)).** Each hardware operation is checked against the target and the `CompilationPlan`. When no plan preserves the semantics, compilation fails with a diagnostic naming the operation, the resource and the missing capability. An ordinary read-modify-write is never substituted.
 
 ---
 
@@ -1734,6 +1769,8 @@ The exact configuration syntax belongs to project/platform rulebooks.
 ### 32.4 Provenance
 
 Resolved hardware facts retain provenance so diagnostics and fingerprints can explain whether a fact came from target, platform, device, project, generated knowledge, or runtime-acquired authority.
+
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 10(3)).** Later passes may choose a physical realization, but they never infer missing access semantics from an address, an LLVM integer type, a field name or an earlier bit mask.
 
 ---
 
@@ -1800,6 +1837,8 @@ access-context requirements
 ```
 
 The LSP must not guess hardware semantics from numeric address shape or naming conventions.
+
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 4(7), 16(10)).** Compiler and LSP output report the declared register type together with the resolved `HardwareInstance[T]`. Diagnostics and Semantic IR inspection identify the field, the access behavior, the instance and resource, the relevant `CompilationPlan` and the exact missing target capability. Diagnostics also distinguish forbidden public field access from forbidden physical borrowing.
 
 ---
 
@@ -2124,6 +2163,8 @@ special field effects survive lowering
 ordering/completion edges survive until target materialization
 LLVM does not re-decide hardware semantics
 ```
+
+**Amendment MD-077 (2026-10-22).** The positive and negative families of `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 16–17 are required, in the implementation order of § 18 of that correction.
 
 ---
 

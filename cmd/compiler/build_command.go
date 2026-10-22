@@ -96,7 +96,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 			exitCLI(1)
 		}
 	}
-	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target)
+	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target, nativeTrackMaxPackage)
 	if entry == "" {
 		reportToolError("build", "the entry module of %s defines no `fn main() int`", options.InputFile)
 		exitCLI(3)

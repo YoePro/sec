@@ -9,13 +9,16 @@
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md sections 7,112-113,143;
 // rules/mlir/sec_mlir_dialect.md v12.3-5,27-31;
 // rules/mlir/sec_mlir_lowering.md v12.27-30.
-// Integer lowering must stop before unresolved reference representation,
-// without producing a partial output artifact.
-// RUN: not sec-mlir-opt %t/32.mlir --sec-resolve-scalar-layout --sec-lower-checked-integers -o %t/rejected32.mlir 2>&1 | FileCheck %s --check-prefix=GATE
-// RUN: test ! -e %t/rejected32.mlir
-// RUN: not sec-mlir-opt %t/64.mlir --sec-resolve-scalar-layout --sec-lower-checked-integers -o %t/rejected64.mlir 2>&1 | FileCheck %s --check-prefix=GATE
-// RUN: test ! -e %t/rejected64.mlir
-// GATE: Place/reference semantics must be discharged by reference representation lowering before checked integer lowering
+// Checked integer lowering coexists with slice and reference semantics
+// (MD-087): it lowers the module's representable integer computation while
+// every slice/Place/reference operation stays high-level with its facts. The
+// physical gates remain --sec-check-lowering-support and --sec-lower-to-llvm.
+// These handwritten contracts are not verifier evidence (below), so the
+// post-P8 verifier run is covered by the source-emitted Go tests.
+// RUN: sec-mlir-opt %t/32.mlir --sec-resolve-scalar-layout --sec-lower-checked-integers | FileCheck %s --check-prefix=P8
+// RUN: sec-mlir-opt %t/64.mlir --sec-resolve-scalar-layout --sec-lower-checked-integers | FileCheck %s --check-prefix=P8
+// P8: "sec.slice.borrow_shared"
+// P8: "sec.slice.element_place"
 // These are handwritten local-operation contracts, not source-emitter or
 // complete guard/borrow verification evidence (P16-42..P16-45 remain separate).
 

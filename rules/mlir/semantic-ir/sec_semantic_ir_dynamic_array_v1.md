@@ -102,7 +102,7 @@ reclamation plan
 invalidation domain
 epoch
 address stability
-relocation class
+(relocation class withdrawn; address stability above, MD-084)
 memory space
 ```
 

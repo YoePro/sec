@@ -172,7 +172,7 @@ func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 
 // releaseDeadReferenceHolders ends the borrows of plain reference holders
 // that have no further required use.
-func (a *Analyzer) releaseDeadReferenceHolders() {
+func (a *Analyzer) releaseDeadReferenceHolders(next lexer.Token) {
 	if a.summaryPass || len(a.borrows) == 0 {
 		return
 	}
@@ -192,7 +192,8 @@ func (a *Analyzer) releaseDeadReferenceHolders() {
 		if a.holderUsedLater(holder, symbol.ScopeDepth) || a.originSharedWithUntrackedHolder(holder, symbol) {
 			continue
 		}
-		a.endBorrowsHeldBy(holder)
+		a.recordReferenceLifetimeEndBefore(holder, a.currentStatementToken, next)
+		a.dropBorrowsHeldBy(holder)
 	}
 }
 

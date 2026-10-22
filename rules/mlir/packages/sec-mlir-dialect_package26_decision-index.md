@@ -16,7 +16,7 @@ Consult current checkout `missing-decisions.yaml` plus locally uncommitted corre
 
 ## § 2. MD-070 already open
 
-Existing decision on source-level `RawPtr` ↔ `ref` conversion spelling and proof facts. Do not create P26-D1 for it; block only exposed conversion API, not P25-proven internal foreign call adapters.
+Existing decision on source-level `RawPtr` ↔ `ref` conversion spelling and proof facts. (Note 2026-10-22: MD-070 has since been decided and applied: `RawPtr[T].AsRef()` / `AsRefMut()`, `raw_pointers.md` § 18A. Its Semantic IR operation remains a capability boundary.) Do not create P26-D1 for it; block only exposed conversion API, not P25-proven internal foreign call adapters.
 
 ## § 3. MD-019 already open
 

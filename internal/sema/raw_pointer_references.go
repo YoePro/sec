@@ -42,5 +42,56 @@ func (a *Analyzer) inferRawPointerReferenceConversion(expr *ast.CallExpression, 
 	if a.rejectProvenNullDereference(member, member.Property.Value) {
 		return Type{Kind: InvalidType}, invalid, true
 	}
+	if a.rejectKnownRawOriginConflict(member, mutable) {
+		return Type{Kind: InvalidType}, invalid, true
+	}
 	return Type{Name: referenceTypeName(element, mutable), Kind: ReferenceType, Element: &element, ReferenceMutable: mutable}, invalid, true
+}
+
+// recordRawPointerOriginBinding remembers the Place an immutable RawPtr[T]
+// binding takes its address from (`place.Ptr`, `r.Ptr` or `(*r).Ptr`; the
+// latter two address the referent).
+func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expression) {
+	symbol, ok := a.symbols[name]
+	member, isMember := value.(*ast.MemberExpression)
+	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType || !isMember || member.Property == nil || member.Property.Value != "Ptr" {
+		return
+	}
+	place, ok := a.resolvePlace(member.Object)
+	if !ok {
+		return
+	}
+	if place.Type.Kind == ReferenceType && place.Type.Element != nil {
+		place = a.canonicalDereferencePlace(member.Object, place, place.Type)
+	}
+	origin := clonePlace(place)
+	symbol.RawPointerOrigin = &origin
+	a.symbols[name] = symbol
+}
+
+// rejectKnownRawOriginConflict applies MD-070 § 5(3) where Sema knows the
+// pointer's origin: forming `ref mut T` while any live borrow overlaps the
+// origin, or `ref T` while a mutable one does, is a proven authority
+// conflict, and an origin whose owner no longer holds a value is a proven
+// dangling address. Both are errors even inside unsafe.
+func (a *Analyzer) rejectKnownRawOriginConflict(member *ast.MemberExpression, mutable bool) bool {
+	ident, ok := member.Object.(*ast.Identifier)
+	if !ok {
+		return false
+	}
+	symbol, ok := a.symbols[ident.Value]
+	if !ok || symbol.Mutable || symbol.RawPointerOrigin == nil {
+		return false
+	}
+	origin := *symbol.RawPointerOrigin
+	if _, _, _, unavailable := a.unavailablePlace(origin); unavailable {
+		a.addErrorAtToken(member.Property.Token, "RawPtr.%s through %s would form a reference to %s, which no longer holds a value; unsafe does not make a known dangling address valid", member.Property.Value, ident.Value, origin.String())
+		return true
+	}
+	action := "form a shared reference through RawPtr.AsRef to"
+	if mutable {
+		action = "form a mutable reference through RawPtr.AsRefMut to"
+		return a.checkBorrowedMutationPlaceForAction(origin, member.Property.Token, action)
+	}
+	return a.checkBorrowedReadPlaceForAction(origin, member.Property.Token, action)
 }

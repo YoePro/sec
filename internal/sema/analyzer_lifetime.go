@@ -540,6 +540,7 @@ func callReservationArgumentIndex(record borrowRecord) int {
 // Rules:
 //   - rules/memory/ownership.md — §9 "Methods and self"
 //   - rules/memory/copy_move.md — §18 "Methods and self"
+//   - rules/memory/destruction.md — §6.1(3) (consumed receiver cleanup)
 func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
 	identifier, ok := expression.(*ast.Identifier)
 	if !ok {
@@ -551,6 +552,9 @@ func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
 	}
 	a.moved[identifier.Value] = identifier.Token
 	a.moveReasons[identifier.Value] = "consumed by method call"
+	if place, ok := a.rootPlace(identifier.Value); ok {
+		a.recordOwnedCleanupCancellation(place, identifier.Token, "consumed by method call")
+	}
 	a.endBorrowsHeldBy(identifier.Value)
 }
 

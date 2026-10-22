@@ -202,5 +202,5 @@ let pointer := unsafe number.Ptr
 
 **Known holes (verified 2026-10-21):**
 - The Semantic IR raw-to-safe operation (§ 6) is not implemented. Lowering stops at an explicit capability boundary until MD-084 spells it.
-- Sema proves only a null pointer false. Misalignment, dead epoch and conflicting authority against the pointer's known origin are not yet diagnosed.
+- Sema proves a null pointer false, and since 2026-10-22 also a known origin. For an immutable binding initialized from `place.Ptr`, `r.Ptr` or `(*r).Ptr`, it rejects `AsRefMut` over any live borrow, `AsRef` over a live mutable borrow, and either over an origin that no longer holds a value (`TestRawPointerReferenceConversionsCheckKnownOrigins`). Misalignment and dead Arena epochs are not yet diagnosed, and neither are origins that pass through arithmetic, mutable pointer bindings or calls.
 - A reference formed from an arbitrary raw pointer has no Sema origin, so its escape is bounded only by the caller's unsafe contract.

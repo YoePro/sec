@@ -2038,12 +2038,18 @@ type MotorProtocol register[8] {
 	_: bit[3],
 }
 
+impl MotorProtocol {
+	fn Start(speed: uint16<rpm>) void {
+		self.Speed = bit[4](speed)<rpm>
+		self.Enabled = true
+	}
+}
+
 @address(0x40021000)
 let mut motorProtocol: MotorProtocol
 
 fn StartMotor(speed: uint16<rpm>) void {
-	motorProtocol.Speed = bit[4](speed)<rpm>
-	motorProtocol.Enabled = true
+	motorProtocol.Start(speed)
 }
 `
 
@@ -2520,12 +2526,9 @@ type Wide128 register[128] {
 	Value: bit[128],
 }
 
-@address(0x1000)
-let mut wide65: Wide65
-@address(0x2000)
-let mut wide128: Wide128
-
 fn Update() void {
+	let mut wide65 := Wide65(0)
+	let mut wide128 := Wide128(0)
 	wide65.Value = 18446744073709551616
 	wide65.Value = 36893488147419103231
 	wide65.Value = 36893488147419103232
@@ -2537,8 +2540,8 @@ fn Update() void {
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, []string{
-		"value 36893488147419103232 does not fit register field Value (bit[65], 0..36893488147419103231) at 20:17",
-		"value 340282366920938463463374607431768211456 does not fit register field Value (bit[128], 0..340282366920938463463374607431768211455) at 23:18",
+		"value 36893488147419103232 does not fit register field Value (bit[65], 0..36893488147419103231) at 17:17",
+		"value 340282366920938463463374607431768211456 does not fit register field Value (bit[128], 0..340282366920938463463374607431768211455) at 20:18",
 	})
 
 	// MD-046: a field observation is the smallest unsigned carrier with the
@@ -2582,16 +2585,27 @@ type MotorProtocol register[8] {
 	_: bit[3],
 }
 
+impl MotorStatus {
+	static fn Test() void {
+		let reserved := motorStatus._
+		motorStatus.Running = true
+	}
+}
+
+impl MotorProtocol {
+	static fn Test() void {
+		motorProtocol.Speed = 19
+	}
+}
+
 @address(0x40021000)
 let motorStatus: MotorStatus
 
 @address(0x40021001)
 let mut motorProtocol: MotorProtocol
 
-fn Test() void {
-	let reserved := motorStatus._
-	motorStatus.Running = true
-	motorProtocol.Speed = 19
+fn Outside() void {
+	motorProtocol.Enabled = true
 }
 `
 
@@ -2600,9 +2614,10 @@ fn Test() void {
 	expected := []string{
 		"register InvalidProtocol declares 8 bits but its fields occupy 7 bits at 6:22",
 		"register field BadField.Value width must be positive at 13:13",
-		"reserved register field _ cannot be accessed at 36:30",
-		"cannot assign to field Running on read-only addressed register motorStatus at 37:14",
-		"value 19 does not fit register field Speed (bit[4]<rpm>, 0..15) at 38:24",
+		"register field Enabled of hardware instance motorProtocol is not public; hardware is reached through the members of impl MotorProtocol at 49:16",
+		"reserved register field _ cannot be accessed at 31:31",
+		"cannot assign to field Running on read-only addressed register motorStatus at 32:15",
+		"value 19 does not fit register field Speed (bit[4]<rpm>, 0..15) at 38:25",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2642,6 +2657,14 @@ impl TimerConfig {
 	}
 }
 
+impl TimerValue {
+	property Count: uint32<ticks> {
+		get {
+			return self.Ticks
+		}
+	}
+}
+
 @address(0x3FF5F000)
 let mut config: TimerConfig
 
@@ -2651,7 +2674,7 @@ let value: TimerValue
 fn Test() void {
 	config.Start(ClockSource.PLL_CLK)
 	let active := config.IsRunning
-	let count: uint32<ticks> := value.Ticks
+	let count: uint32<ticks> := value.Count
 }
 `
 
@@ -4651,11 +4674,17 @@ type ClockConfig register[32] {
 	_: bit[29],
 }
 
+impl ClockConfig {
+	fn UseExternal() void {
+		self.Source = ClockSource.External
+	}
+}
+
 @address(0x40000000)
 let mut config: ClockConfig
 
 fn Configure() void {
-	config.Source = ClockSource.External
+	config.UseExternal()
 }
 `
 
@@ -4721,10 +4750,8 @@ type ClockConfig register[2] {
 	Source: ClockSource,
 }
 
-@address(0x40000000)
-let mut config: ClockConfig
-
 fn InvalidAssignments() void {
+	let mut config := ClockConfig(0)
 	config.Source = 5
 	let converted := ClockSource(5)
 }
@@ -4734,8 +4761,8 @@ fn InvalidAssignments() void {
 	expected := []string{
 		"enum InvalidWidth bit width must be between 1 and 256, got 0 at 2:6",
 		"value 4 overflows bit[2] at 7:2",
-		"value 5 does not fit in 2-bit enum ClockSource at 23:18",
-		"value 5 does not fit in 2-bit enum ClockSource at 24:31",
+		"value 5 does not fit in 2-bit enum ClockSource at 21:18",
+		"value 5 does not fit in 2-bit enum ClockSource at 22:31",
 	}
 	assertSemaErrors(t, errors, expected)
 }

@@ -25,6 +25,7 @@ func package15Fixtures() map[string]string {
 		"parameters":    referenceParameterFixture,
 		"reference-use": referenceUseFixture,
 		"returned":      returnedReferenceFixture,
+		"matrix":        package15MatrixFixture,
 	}
 }
 

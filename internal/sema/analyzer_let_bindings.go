@@ -141,6 +141,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
 			a.recordAtomicOrderBinding(stmt.Name.Value, stmt.Value)
 			a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
+			a.recordRawPointerOriginBinding(stmt.Name.Value, stmt.Value)
 			a.recordOwnedCleanupInitialization(stmt, errorsBefore)
 		}
 		return
@@ -199,6 +200,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.recordIntegerBindingInterval(stmt.Name.Value, stmt.Value)
 		a.recordAtomicOrderBinding(stmt.Name.Value, stmt.Value)
 		a.recordRawPointerNullBinding(stmt.Name.Value, stmt.Value)
+		a.recordRawPointerOriginBinding(stmt.Name.Value, stmt.Value)
 		a.recordOwnedCleanupInitialization(stmt, errorsBefore)
 	}
 }

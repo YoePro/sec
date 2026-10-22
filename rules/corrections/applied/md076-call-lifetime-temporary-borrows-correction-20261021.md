@@ -269,4 +269,4 @@ Both are fixed. A rejected mutable or consuming receiver now always reports an e
 **Known holes (verified 2026-10-21):**
 - Full-expression cleanup of a temporary that is not trivially destructible is an explicit Semantic IR lowering boundary until P17 (§ 9(6)).
 - The native track (`emit-sec-mlir`, `build`) still stops at P14 (MD-086), so these programs reach schema-11 only through package-15 builds.
-- P10 (branches and short-circuits) relies on the ordinary per-path evaluation of the producing expression and has no dedicated regression test yet.
+- (Closed 2026-10-22) P10, branches and short-circuits, now has dedicated regression tests. `TestTemporaryBorrowsExistOnlyOnReachedPaths` checks that under `&&`, `||` and `if` a temporary is produced, materialized and borrowed only on the reached path, with mutable compiler storage declared there and never on the entry path. `TestBranchScopedTemporariesEmitSchema11` checks that the result verifies in schema 11 on 32/64-bit plans.

@@ -24,7 +24,8 @@ fn Effect(value: int) bool { return value >= FLOOR || Observe() || value <= LIMI
 fn Failure(value: int, items: ref int[]) bool { return value > LIMIT && items[0] == 0 && value < FLOOR }
 fn Consume(value: int, -> token: Token) bool { return value > LIMIT && Take(<-token) && value < FLOOR }
 type Device register[8] { Level: bit[8] }
+impl Device { property CurrentLevel: uint8 { get { return self.Level } } }
 @address(0x40021000)
 let device: Device
-fn Physical() bool { return device.Level > 10 && device.Level < 5 }
+fn Physical() bool { return device.CurrentLevel > 10 && device.CurrentLevel < 5 }
 fn Index(items: ref uint[]) bool { return items[0] >= 0 }

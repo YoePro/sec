@@ -15,7 +15,7 @@ bool isSlice(Type type) { return isa<SliceType, SliceMutType>(type); }
 
 // Canonical P15 metadata is reused, with parameter dictionaries and operation
 // properties exposed under the same keys. Absence keeps the established
-// ordinary-address/unpinned/empty-storage defaults (MD-084 remains open).
+// ordinary-address/unpinned/empty-storage defaults (MD-084 § 3(4)).
 // Rules: rules/mlir/sec_mlir_dialect.md — v11.7,v12.5,v12.25.
 DictionaryAttr metadata(Value value) {
   value = sourceValue(value);

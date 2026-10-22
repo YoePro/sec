@@ -154,7 +154,7 @@ BorrowID
 LifetimeID
 validity policy
 epoch dependency
-relocation class
+address stability and pinning (formerly "relocation class"; MD-084)
 provenance/trust class
 ```
 
@@ -227,7 +227,7 @@ origin
 storage identity
 authority
 validity policy
-relocation class
+address stability and pinning (formerly "relocation class"; MD-084)
 ```
 
 No ownership transfer of the referent occurs.
@@ -486,7 +486,7 @@ reference kind
 BorrowID/LifetimeID
 validity policy
 epoch dependency identity
-relocation class
+address stability and pinning (formerly "relocation class"; MD-084)
 ```
 
 Do not make source display spelling the semantic identifier.

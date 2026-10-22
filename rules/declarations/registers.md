@@ -2,9 +2,9 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-10-13 (MD-046 unit-annotated fields, field observation types)
+**Last updated:** 2026-10-22 (MD-077 hardware-bound access, field carriers)
 **Replaces:** register-type portions of `rules/platform/registers.txt`  
-**Document revision:** 3
+**Document revision:** 4
 **Sec language version:** 0.1
 
 ## 1. Purpose
@@ -410,6 +410,16 @@ Access semantics apply through nested registers.
 
 An operation on an entire nested field is valid only when the compiler can lower it without violating any contained access or side-effect semantics.
 
+### 11.7 Hardware-bound access through the owning `impl` (MD-077)
+
+Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 1–2, 7):
+
+- **Two kinds of register.** A `register[N]` is a nominal bit-layout type. As a *detached value* (a protocol header, packet field, file format or snapshot) it carries no hardware effect. As a *hardware-bound instance* (`@address`), its physical register is an external resource, not a memory Place.
+- **Type-owned `impl`.** A hardware-bound register type requires a type-owned primary `impl`. Normal code reaches the hardware only through the properties and methods that `impl` exposes. Physical fields are available for resolution inside the owning `impl` and are not public members because they appear in the declaration.
+- **Field syntax inside the `impl`** resolves to the declared logical register operation. A `write-one-clear` field written with its trigger value is a clear action, not a memory store.
+- **Direct access outside the `impl`.** Direct hardware field access outside the owning `impl` is rejected with a diagnostic naming the permitted public member.
+- **Permissions.** Permissions and specialized behaviors (§§ 11.1–11.6) are unchanged. No property or method can rename its way around them.
+
 ## 12. Register values and conversions
 
 A register type is a fixed-width nominal value type.
@@ -501,6 +511,16 @@ motor.Speed = bit[12](speed)<rpm>   // keeps the source's own unit
 `bit[N](value)` never inherits a unit; the suffix `bit[N](value)<U>` labels a unitless value or keeps the source's own unit, and never changes a unit (`types.md` "Explicit low-bit extraction"; `units.md` "Interaction with registers and FFI").
 
 Byte-oriented encoding and decoding are separate operations and must obey the register type's byte-order contract.
+
+### 12.x Field carriers and lossy extraction (MD-077)
+
+Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 5–6):
+
+- **Detached values.** Field extraction and update on a detached register value are pure value operations. They imply no hardware transaction, and a snapshot returned by a hardware read stays detached.
+- **`bit` fields.** A `bit` field reads as `bool`.
+- **`bit[N]` fields with `N >= 2`.** They read as the smallest standard unsigned carrier: `uint8` up to 8 bits, then `uint16`, `uint32`, `uint64`, `uint128` and `uint256`. Sema also records the proven interval `0..2^N-1`. That interval is a refinement fact, not a named `range` type, and `bit[N]` is never a standalone integer type.
+- **Explicit extraction.** `bit[N](value)`, including `N = 1`, still returns the unsigned carrier of `types.md`, never `bool`. It is the only low-bit extraction and is never inserted implicitly by a field write (§ 12.1).
+- **Bit-backed enums.** A bit-backed enum field keeps its nominal enum type and open bit domain.
 
 ## 13. Field access
 

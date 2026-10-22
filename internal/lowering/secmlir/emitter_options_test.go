@@ -48,7 +48,7 @@ func TestEmitSchemaSelectionPreservesDefaultAndTargetFacts(t *testing.T) {
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §87;
 // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md — §1.
 func TestEmitSchemaSelectionRejectsUnknownAndDowngradeVersions(t *testing.T) {
-	for _, version := range []uint32{1, 10, 13, 14, ^uint32(0)} {
+	for _, version := range []uint32{1, 10, 14, ^uint32(0)} {
 		output, err := EmitWithOptions(boolModule(t), testPlan(64), EmitOptions{DialectVersion: version})
 		if len(output) != 0 || err == nil || !strings.Contains(err.Error(), "unsupported Sec MLIR emission schema version") {
 			t.Fatalf("version %d: output=%q err=%v", version, output, err)

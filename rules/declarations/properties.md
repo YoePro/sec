@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
+- **Last updated:** 2026-10-22
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/properties.txt`
@@ -487,3 +487,10 @@ Related rules are owned elsewhere:
 - ownership and borrowing: memory rulebooks;
 - effects: effect-analysis rulebooks;
 - semantic lowering: Semantic IR and MLIR rulebooks.
+
+---
+
+## Amendment MD-077 (2026-10-22)
+
+On a hardware-bound register type, properties and methods of the type-owned `impl` are the public hardware API (`rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 2(4), 14(3)). A getter may return `Result[T, E]` where its API models recoverable errors. No `try get` syntax exists, the compiler never turns every hardware read into a `Result`, and it never suppresses a target fault. A property or method exposes an API and never alters the field's access permissions or hardware semantics.
+

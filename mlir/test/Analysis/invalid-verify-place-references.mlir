@@ -153,7 +153,7 @@ func.func @missing_return_origins(%a: !sec.ref<!sec.int> {sec.reference = {borro
 // -----
 
 func.func @unnamed_parameter(%a: !sec.ref<!sec.int> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}}, %b: !sec.ref<!sec.int> {sec.reference = {borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}}) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["param#0"]} {
-  // expected-error@+1 {{returns a reference derived from parameter 1, which sec.return_origins does not name}}
+  // expected-error@+1 {{returns a reference derived from param#1, which sec.return_origins does not list}}
   return %b : !sec.ref<!sec.int>
 }
 

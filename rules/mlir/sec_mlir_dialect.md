@@ -1440,7 +1440,7 @@ sec.lifetime_id
 sec.validity_policy
 sec.validity_proof
 sec.epoch_dependency
-sec.relocation_class
+sec.relocation_class   (superseded by address_stability + pinned; MD-084 amendment below)
 sec.reference_origin
 ```
 
@@ -1449,6 +1449,27 @@ where applicable.
 These attributes are semantic.
 
 They do not force physical fields.
+
+**Amendment MD-084 (2026-10-21; `rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md`).** The canonical schema-11 serialization of resolved reference facts is shared unchanged by schema 12:
+
+- **`sec.reference` dictionary.** It sits on a `func.func` argument of type `!sec.ref<T>` / `!sec.ref_mut<T>`, and on a direct call that produces a single reference result, where it describes that result. Its exact keys are `borrow_id`, `lifetime_id`, `validity_policy` (`proven` | `dynamic-epoch`), `validity_proof`, `invalidation_domain`, `epoch_dependency`, `address_stability`, `provenance`, `source_borrow`, `origin_storages`, `pinned` and `address_space`.
+  - No placeholder IDs, fabricated proofs or made-up provenance are allowed.
+  - `source_borrow` may be omitted only on a copy or move where it equals `borrow_id`.
+  - An empty `origin_storages`, `pinned = false` and the ordinary address space may be omitted only where the verifier reconstructs exactly that default.
+- **Operation properties.** Reference-producing operations keep their operation properties. These must agree with any dictionary that states the same fact; neither form replaces the other.
+- **`sec.relocation_class` (listed above).** It is superseded for current emission by `address_stability` (`Movable` | `Stable` | `Fixed` | `Unknown`). Pinning is a separate fact, and no `pinned == Fixed` inference is permitted. A reader that accepts the legacy name needs an explicit compatibility path; emitters never write it.
+- **Discardable attributes.** `sec.origin_storages`, `sec.pinned` and `sec.reference_address_space` appear only on operations defining exactly one reference result.
+- **`sec.return_origins`.** A `func.func` attribute, required and non-empty on a function with a reference result and absent otherwise. It is a set of strings in the canonical grammar:
+
+  ```text
+  origin := root projection*;  root := "param#" N | "receiver" | "static@" N
+  projection := ".field#" N | "[" N "]" | "[*]";  N := "0" | [1-9][0-9]*
+  ```
+
+  The grammar is case-sensitive and whitespace-free, and allows no duplicates. Malformed entries are rejected, never normalized. `param#N` is the zero-based source parameter ordinal. `receiver` requires a real receiver. `static@N` names a resolved static root and does not by itself authorize the return. The order is deterministic, following the Semantic IR origin summary. New root or projection kinds need a schema amendment.
+- **`sec.address_taken = true`.** A boolean `true` on `sec.storage.declare` for reference-addressable storage.
+- **Calls and dynamic indices.** Reference call operands carry the argument actions `shared-reference` / `mutable-reference`. Dynamic Place-index identity is the SSA index operand.
+- **Names and address spaces.** `sec.source_name` is emitted only for a real source binding: compiler-materialized storage has an empty name plus `sec.synthesized = true`. Target-defined `target:` address spaces are rejected as an unsupported lowering.
 
 ---
 
@@ -1897,6 +1918,8 @@ Storage that participates in a live place/reference identity remains high-level.
 P5 must not lower it to MemRef before reference representation has been
 discharged.
 
+**Amendment MD-087 (2026-10-21; `rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md`).** The single authoritative query is `sec::isReferenceDependentStorage`: a declaration carrying `sec.address_taken = true` or consumed by `sec.place.storage`. `--sec-lower-trivial-core` keeps such storage as `sec.storage`, and `--sec-resolve-scalar-layout` resolves only its element type (for example `!sec.storage<i1>`). Storage without a reference dependency lowers as before. No competing predicate may be introduced.
+
 ---
 
 ## v11.32 P6 interaction
@@ -1910,12 +1933,21 @@ borrow metadata
 reference semantics
 ```
 
+**Amendment MD-087 (2026-10-21).** A `sec.call.direct` whose operands or results contain `!sec.place`, `!sec.ref` or `!sec.ref_mut` stays a Sec call until a representation-aware lowering transports its argument actions, `sec.reference` and origin metadata losslessly. Other calls lower as before, and P6 preserves applicable discardable call attributes.
+
 ---
 
 ## v11.33 P8 interaction
 
 Signless normalization must not recursively erase semantic integer distinction
 inside reference/place wrappers.
+
+**Amendment MD-087 (2026-10-21).** P8 must accept modules containing Places and references. Rejecting a whole module only because they appear is nonconforming, and supersedes the P15-60 blanket rejection.
+- P8 lowers every integer computation whose representations are known. It never signless-normalizes or erases referent identity inside `!sec.place` / `!sec.ref` / `!sec.ref_mut`, and preserves their metadata.
+- At `sec.place.read` / `sec.place.write`, calls, storage, block arguments and checked-operation results, the semantic `siN`/`uiN` contract is kept. A legal, verified representation transition to signless `iN` is materialized: exact width and bit pattern, signedness from the Sema-resolved operation, and overflow paths intact. `arith.bitcast` between signed and signless integers is not legal MLIR. `builtin.unrealized_conversion_cast` may serve only as a temporary bridge that must be reconciled before the LLVM boundary.
+- Widths come from the `CompilationPlan`.
+- A failed boundary conversion leaves no partially rewritten published IR.
+- A specific unsupported conversion is diagnosed with its operation; it is never reported as a module-wide prohibition.
 
 ---
 
@@ -1977,6 +2009,14 @@ reference move structure
 end-borrow use ordering
 returned origin metadata
 ```
+
+**Amendment MD-085 (2026-10-21; `rules/corrections/applied/md085-return-origin-verification-correction-20261021.md`).** "Returned origin metadata" is verified structurally and path-aware; this supersedes P15-56's root-only depth and its "every reference argument of a call" fallback.
+- **Summary.** Every function with a reference result carries a valid MD-084 `sec.return_origins`. Each root names an eligible reference parameter, a real receiver, or a permitted static root, and each projection is type-compatible.
+- **Tracing.** Each reachable reference return is traced through copies, moves, reborrows, dereferences, Place projections, block arguments and joins, using deterministic fixed-point or visited-state logic. Field steps add `.field#N`, constant elements `[K]` and dynamic elements `[*]`.
+- **Calls.** A direct call contributes only the callee's own `sec.return_origins`, instantiated against the caller's actual operands. The caller prefix is followed by the callee suffix. A missing, malformed or uninstantiable callee summary fails verification.
+- **Inclusion.** The observed origin set must be included in the declared set. Conservative summaries may be broader, but never omit a possible origin or name a non-existent one. A bare root does not cover projected paths unless that abstraction is defined, and distinct fields never match.
+- **Local origins.** Local storage and value origins are rejected.
+- **Boundaries.** The verifier never patches IR, never guesses origins, and runs no second source-level borrow or lifetime analysis. A failure in compiler-generated IR is a compiler defect, not a user error.
 
 ---
 
@@ -2064,10 +2104,62 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.fail.panic` (reason, optional message) | panic.md §§ 8.1, 12(2) | 2026-10-18 |
 | `sec.static.global`, `sec.static.load`, `sec.static.store` | static storage (P15 places, `rules/declarations/static.md`) | 2026-10-18 |
 | `sec.const.float {bits}`, `sec.float.neg`, `sec.float.binary`, `sec.float.cmp` | P20 §§ 20–26, 63–65, 73–77 (`lowering.sec-mlir-package20`) | 2026-10-18 |
+| `!sec.register<T>`, `!sec.hw_instance<T>`, `sec.register.extract`, `sec.register.update`, `sec.hw.bind`, `sec.hw.observe`, `sec.hw.request_write`, `sec.hw.shadow_observe`, `sec.hw.shadow_intent`, `sec.hw.shadow_invalidate`, `sec.hw.commit` | MD-077 § 19 (v11.41.1 below); P15-42/42a | 2026-10-22 (specification; implementation tracked in governance) |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
 schema 11 or later is rejected by the version gate of the installing package.
+
+### v11.41.1 Register values and hardware operations (MD-077 early admission)
+
+Installed 2026-10-22 from `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 19. Schema 12 inherits this subsection verbatim. Schemas 1–10 reject every construct in it. The default emitted schema is unchanged.
+
+**Types.**
+- `!sec.register<"module::TypeName">` is a detached nominal register value.
+- `!sec.hw_instance<"module::TypeName">` is a software implementation-instance and authority descriptor.
+
+Neither is equivalent to the other or to an integer. The quoted name must resolve to the same canonical nominal register type in the module's verified register-definition table, and neither spelling implies an instance-state layout or an endpoint representation.
+
+**Operations.** The Semantic IR → MLIR mapping is:
+- `register.value.extract` → `sec.register.extract`
+- `register.value.update` → `sec.register.update`
+- `register.hw.bind` → `sec.hw.bind`
+- `register.hw.observe` → `sec.hw.observe`
+- `register.hw.request_write` → `sec.hw.request_write`
+- `register.hw.shadow_observe` → `sec.hw.shadow_observe`
+- `register.hw.shadow_intent` → `sec.hw.shadow_intent`
+- `register.hw.shadow_invalidate` → `sec.hw.shadow_invalidate`
+- `register.hw.commit` → `sec.hw.commit`
+
+**Value operations.**
+- `sec.register.extract` consumes `!sec.register<T>` and a validated `sec.field_path`, and produces the exact resolved field value type.
+- `sec.register.update` consumes `!sec.register<T>`, one value of the field's carrier or nominal enum type, and the same `sec.field_path`, and produces `!sec.register<T>`.
+- Both are pure and verified against range, layout, reserved bits and field type.
+- The module-level register definition lists ordered field names and IDs, bit widths and offsets, representation modes, effective access contracts and nominal identity.
+
+**Hardware operations.**
+- `sec.hw.bind` yields `!sec.hw_instance<T>`. It carries the canonical instance, binding and resource IDs, the endpoint kind, the implementation identity and target-plan applicability. A runtime-mapped resource takes its mapping as an explicit operand. The operation performs no physical I/O and rejects a binding without the mandatory `impl T`.
+- `sec.hw.observe` and `sec.hw.request_write` take a compatible instance, a validated projection or path (and a request value for writes) and an immutable verified plan reference. Observation returns a detached value on its success path, and failures use the resolved Result/failure CFG. Both are forbidden outside validated `impl T` access paths.
+- The shadow operations and `sec.hw.commit` act on identified per-instance shadow groups. They keep `Unknown` / `Known(value)` knowledge separate from pending logical intents.
+- `sec.hw.commit` may have no physical effect when no intents are pending, and is never synthesized at destruction or at a borrow end.
+
+**Mandatory metadata** on hardware operations:
+- `sec.register_type_id`, `sec.impl_instance_id`, `sec.hardware_binding_id`, `sec.hardware_resource_id`, `sec.endpoint_id`;
+- `sec.field_path` or an explicit whole-register projection;
+- `sec.access_behavior`, `sec.effect_contract`, `sec.verified_plan_id`, `sec.compilation_plan_identity`, `sec.source_provenance`;
+- the physical width, alignment and footprint, shadow, ordering, completion, privilege or access-context, and fault-plan facts.
+
+These may reference immutable module-scoped plan records, which must exist and satisfy every constraint. Free-form descriptive strings never substitute for canonical IDs or typed lists. Definition tables, identities and plan records are module-scoped, unique, deterministically ordered and resolved during verification.
+
+**References.**
+- `!sec.ref<!sec.hw_instance<T>>` and `!sec.ref_mut<!sec.hw_instance<T>>` are ordinary reference categories over a referable software instance Place.
+- `!sec.ref<!sec.register<T>>` references a detached register value.
+- The verifier rejects `sec.place.read`, `sec.place.write` or `sec.ref.borrow_*` applied directly to a physical resource or endpoint.
+
+**Effects and verification.**
+- Hardware operations carry memory/effect information that prevents elimination, duplication, speculation, movement, coalescing and reordering, even when their result is unused.
+- The verifier checks preservation of the established contracts: operand and result types, required attributes, field width, range and enum facts, instance and resource bindings, plan and target eligibility, fault edges and effect declarations. A missing plan or capability is a fail-closed diagnostic.
+- `emit-sec-mlir` may emit these operations only once their complete parse, print and verify contract is implemented. Physical lowering stays capability-gated per endpoint kind.
 
 
 ---
@@ -2075,6 +2167,8 @@ schema 11 or later is rejected by the version gate of the installing package.
 # Schema version 12 — borrowed slices
 
 ## v12.1 Version history
+
+Schema 12 inherits the MD-077 register and hardware admission of v11.41.1 verbatim (2026-10-22).
 
 ```text
 v1   dialect foundation
@@ -2170,9 +2264,9 @@ sec.reference_origin
 Address stability uses `Movable`, `Stable`, `Fixed` or `Unknown`; pinning is
 separate, as required by P15 § 28 (revised 2026-10-03). These are semantic facts,
 not prescribed physical fields. The legacy snapshot's `sec.relocation_class`
-is withdrawn. Concrete schema-11 metadata spellings for parameters, calls,
-returned origins and optional facts remain subject to MD-084; this installation
-does not approve an unresolved serialization choice. Slices reuse the same P15
+is withdrawn. The concrete schema-11 metadata spellings for parameters, calls,
+returned origins and optional facts were decided by MD-084 (2026-10-21; v11.7
+amendment) and are inherited unchanged by schema 12. Slices reuse the same P15
 metadata family rather than defining a parallel one.
 
 ---

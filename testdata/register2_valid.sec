@@ -48,6 +48,16 @@ type TimerValue register[32] {
     Ticks: bit[32]<ticks>,     // 32-bit wide multi-bit field with custom unit <ticks>
 }
 
+// A hardware-bound register exposes its fields only through its type-owned
+// impl (MD-077).
+impl TimerValue {
+    property CurrentTicks: uint32<ticks> {
+        get {
+            return self.Ticks
+        }
+    }
+}
+
 // =====================================================================
 // REGISTER IMPLEMENTATIONS (Methods and properties for safety encapsulation)
 // =====================================================================
@@ -107,5 +117,5 @@ fn CheckTimerStatus() void {
     let active := TMR0_CONFIG.IsRunning
 
     // Read the current elapsed ticks with unit safety verification
-    let currentCount: <ticks> := TMR0_VALUE.Ticks
+    let currentCount: uint32<ticks> := TMR0_VALUE.CurrentTicks
 }

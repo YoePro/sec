@@ -747,7 +747,7 @@ Semantic IR records:
 ```text
 storage identity
 epoch dependency
-relocation class
+address stability and pinning (formerly "relocation class"; MD-084)
 address space
 failure behavior
 ```
@@ -1524,6 +1524,8 @@ epoch dependency class
 
 Do not serialize source variable names as the only semantic identity.
 
+**Amendment MD-084 (2026-10-21).** The origin summary is serialized as `sec.return_origins` in the canonical grammar of `sec_mlir_dialect.md` v11.7 (amendment): `param#N` | `receiver` | `static@N` followed by `.field#N`, `[K]` and `[*]`. It is a deterministic set without duplicates, and malformed entries are rejected.
+
 ---
 
 # 63. Place/Reference MLIR strategy
@@ -1553,6 +1555,13 @@ cannot cross a normal function call as a user value
 It exists only to make addressable semantics explicit before physical lowering.
 
 ---
+
+**Amendment MD-077 (2026-10-22) for P15-42/42a.** Addressed roots are split by binding category:
+
+- **Ordinary addressed storage.** Memory whose target provides reference-compatible storage. It is a P15 Place root under the normal reference rules.
+- **Hardware register bindings.** A `register.hw.bind` resource and instance root of type `HardwareInstance[T]`. No Place root is fabricated for a `HardwareResourceID` or `HardwareEndpointID`, and a fixed numeric address is not proof of memory semantics. IR that reaches a physical register through `place.read`, `place.write`, `ref.borrow*`, a raw dereference or an address-space reinterpretation is rejected.
+
+P15 owns the root identity, the prohibition on direct hardware borrows, the typing of `HardwareInstance[T]` and the faithful production of the register operations. Missing target capabilities fail closed. The schema representation is `sec_mlir_dialect.md` v11.41.1 (`rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 12, 19).
 
 # 64. Place root from semantic storage
 
@@ -1655,6 +1664,8 @@ reference-origin dependent operation
 
 until reference representation lowering has discharged the place/reference
 semantics.
+
+**Amendment MD-084/MD-087 (2026-10-21).** The spelling is the boolean `sec.address_taken = true`, and the single query is `sec::isReferenceDependentStorage` (P15-59). Compiler-materialized storage, such as an MD-076 temporary, carries an empty `sec.source_name` plus `sec.synthesized = true`.
 
 ---
 
@@ -1867,7 +1878,7 @@ borrow_id
 lifetime_id
 validity_policy
 storage_identity or structured origin facts
-relocation_class
+address_stability and pinned (relocation_class superseded, MD-084)
 address_space
 epoch_dependency when applicable
 ```
@@ -2133,6 +2144,8 @@ place/reference types agree
 ```
 
 It does not replace Sema's full borrow checker.
+
+**Amendment MD-085 (2026-10-21).** "Returned ref has non-local allowed origin summary" means path-aware structural inclusion with callee-summary instantiation (`sec_mlir_dialect.md` v11.37 amendment). Implemented 2026-10-22 (`mlir/lib/Analysis/VerifyPlaceReferences.cpp`).
 
 ---
 
@@ -2684,7 +2697,7 @@ Reference-producing operations may carry semantic attrs:
 ```text
 sec.validity_policy
 sec.epoch_dependency
-sec.relocation_class
+sec.address_stability / sec.pinned (sec.relocation_class superseded, MD-084)
 sec.borrow_id
 sec.lifetime_id
 sec.reference_origin
@@ -3466,7 +3479,7 @@ Package 15 is complete only when:
 [ ] validity policy proven/dynamic implemented
 [ ] 64-bit logical epoch default represented in CompilationPlan facts
 [ ] shorter widths require compile-time proof
-[ ] relocation class represented
+[ ] address stability and pinning represented (formerly "relocation class"; MD-084)
 [ ] address space represented
 [ ] BorrowID/LifetimeID represented
 [ ] shared ref copy classification preserved

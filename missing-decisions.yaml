@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-21"
+updated: "2026-10-22"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -604,30 +604,6 @@ decisions:
       (memory64) is in scope for Sec 0.1.
     classification: localized
     status: open
-  - id: MD-077
-    area: semantic-ir-register-operations
-    rulebooks:
-      - rules/compiler/semantic_ir.md
-      - rules/platform/fixed-address-bindings.md
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-    description: >-
-      semantic_ir.md § 21 says Semantic IR preserves register width, field
-      identities and bit ranges, reserved ranges, field units, permissions,
-      special read/write semantics, the volatile/hardware contract and the
-      bound address/resource identity, and that register field access is
-      represented as semantic register/hardware operations (§ 21(3)), but no
-      rulebook or implementation package defines those types and operations
-      (their names, operands, ordering/volatility effects, read-modify-write
-      and special-access forms, and how addressed register bindings become
-      Place roots with the MMIO address space). Today Semantic IR rejects
-      every register type and access, so P15-42's addressed (fixed-address /
-      MMIO) Place roots cannot be implemented without inventing them. Decide
-      or supply the Semantic IR register operation set (or assign it to a
-      package), including whether `ref`/`ref mut` of an addressed register
-      binding is a P15 Place root and its validity/proof facts
-      (package15.md § 115 "addressed-storage"). Found 2026-10-16.
-    classification: blocking
-    status: open
   - id: MD-078
     area: ffi-callback-trusted-fact-encoding
     rulebooks:
@@ -669,129 +645,6 @@ decisions:
       initializers, whether `ref mut` of a mutable static is allowed there
       (static.md § 5 synchronization requirements), and whether field and
       element sub-Places of a static may be referenced.
-    classification: localized
-    status: open
-  - id: MD-084
-    area: schema11-emitter-metadata-spelling
-    rulebooks:
-      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
-      - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-      - rules/mlir/sec_mlir_dialect.md
-      - rules/mlir/sec_mlir_lowering.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17, P15-57). The
-      v11 dialect defines reference metadata only on reference operations
-      (§ 7) and requires parameter facts, returned-origin summaries
-      (lowering v11 § 16, package15.md §§ 59-62) and an address-taken storage
-      fact (package15.md § 67, "sec.address_taken = true or an equivalent")
-      without spelling them. The Go emitter and sec-mlir-opt now use:
-      (1) a `sec.reference` dictionary (keys borrow_id, lifetime_id,
-      validity_policy, validity_proof, invalidation_domain, epoch_dependency,
-      address_stability, provenance, optional source_borrow,
-      origin_storages, pinned, address_space) as a func.func argument
-      attribute on ref/ref-mut parameters and as an attribute on calls with
-      a reference result; (2) `sec.return_origins` as an array of strings in
-      the Semantic IR printer spelling (param#N, receiver, static@N, then
-      .field#N, [K], [*]); (3) `sec.address_taken = true` on
-      sec.storage.declare; (4) discardable `sec.origin_storages`,
-      `sec.pinned` and `sec.reference_address_space` on reference
-      operations, omitted for empty/false/ordinary; (5) call argument
-      actions "shared-reference" and "mutable-reference", required for
-      !sec.ref and !sec.ref_mut operands (replacing the schema-2
-      copy-trivial-only rule); (6) copies and moves omit source_borrow
-      (Semantic IR sets it equal to borrow_id); (7) sec.place.read always
-      carries action "copy-trivial". Since P15-58, `--sec-verify-places`
-      requires `sec.address_taken = true` on any sec.storage.declare that a
-      sec.place.storage addresses, and the discardable reference facts are
-      accepted only on operations defining one reference. Not emitted: the § 6/§ 65 "source
-      binding identity"/sec.source_name of a value root (Semantic IR has no
-      such fact), and a Place's dynamic index identity, which the SSA index
-      operand carries. Target-defined address spaces ("target:...") have no
-      schema-11 form and are rejected as unsupported lowering. Confirm the
-      spellings or choose others (for example structured attributes instead
-      of origin strings). P16-05 (2026-10-19) installs the slice contracts in
-      the consolidated dialect/lowering v12 sections, retaining canonical
-      AddressStability and separate pin facts. Slices inherit this same open
-      metadata-serialization decision; that installation confirms no new
-      spelling and does not close MD-084.
-    classification: localized
-    status: open
-  - id: MD-085
-    area: schema11-return-origin-verification-depth
-    rulebooks:
-      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17, P15-56).
-      `--sec-verify-borrow-semantics` checks "returned origin metadata"
-      (dialect v11 § 37, package15.md § 85 "returned ref has non-local
-      allowed origin summary") as follows: a function with a reference
-      result must carry a non-empty sec.return_origins whose parameter
-      entries name reference parameters, and every returned reference must
-      derive (through copies, moves, reborrows, dereferences, Place
-      projections, block arguments, and calls via their reference
-      arguments) only from listed parameters; local storage and value roots
-      are rejected. The projection paths in the summary are not re-derived
-      (package15.md § 86 forbids an independent borrow algorithm), and a
-      call result is attributed to all of its reference arguments rather than
-      the callee's own summary. Confirm this depth or require path- or
-      callee-summary-level checking.
-      P16-43 (2026-10-21) reuses that same provisional parameter-root
-      verification for represented direct slice results and slice element
-      references, following slice construction, reborrow, transfer and CFG
-      forwarding. Slice range narrowing consumes the represented source and
-      normalized tuple; it does not choose a new returned-range metadata
-      spelling or settle path/callee-summary verification depth. Those open
-      obligations remain P16-07/P16-27/P16-36.
-    classification: localized
-    status: open
-  - id: MD-086
-    area: p15-cli-emit-routes
-    rulebooks:
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-      - rules/compiler/compiler_pipeline.md
-    description: >-
-      Open decision (2026-10-17). The schema-11 emitter now lowers verified
-      Package 15 Semantic IR (P15-57), but the CLI routes `emit-ir` and
-      `emit-sec-mlir` still build Semantic IR with package ceiling 14, so a
-      valid reference program is rejected as unsupported lowering
-      (`TestReferenceProgramsAreRejectedByEveryEmitRoute`, P15-67). Decide
-      whether those two routes should now emit Package 15 Semantic IR and
-      schema-11 MLIR (the source-to-schema-11 pipeline of P15-65/P15-72),
-      while `emit-llvm`/`emit-mlir` keep rejecting references until physical
-      reference representation exists, or whether the CLI stays at
-      package 14 until Package 15 is accepted as a whole.
-    classification: localized
-    status: open
-  - id: MD-087
-    area: p15-p5-p6-p8-boundaries
-    rulebooks:
-      - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md
-      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-    description: >-
-      Implementation choice awaiting confirmation (2026-10-17, P15-59/P15-60).
-      (1) The single authoritative storage query of lowering v11 § 18 is
-      `sec::isReferenceDependentStorage`: storage whose declaration carries
-      `sec.address_taken = true`, or that a sec.place.storage consumes.
-      `--sec-lower-trivial-core` keeps such storage as sec.storage, and
-      `--sec-resolve-scalar-layout` converts only its element type, keeping
-      reference-dependent bool storage as !sec.storage<i1> instead of the
-      P6 memref<i8> form. (2) A sec.call.direct with a !sec.place, !sec.ref or
-      !sec.ref_mut operand or result is not lowered to func.call by
-      trivial-core: it keeps its argument actions and sec.reference facts
-      until reference ABI lowering (package15.md § 87 allows references in
-      func.call signatures but nothing would carry the facts there). P6
-      scalar call lowering now keeps every discardable call attribute.
-      (3) `--sec-lower-checked-integers` (P8) rejects any module that still
-      has Place/reference types or operations ("must be discharged by
-      reference representation lowering before checked integer lowering")
-      instead of lowering around them, because normalizing the plain integer
-      results of place.read while the wrappers keep semantic integers would
-      mix representations (dialect v11 § 33, lowering v11 § 20 only forbid
-      recursion). Confirm, or require P8 to run with P15 operations present
-      (for example with explicit casts at place.read/place.write boundaries).
     classification: localized
     status: open
   - id: MD-090

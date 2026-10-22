@@ -186,8 +186,9 @@ that acceptance.
    package and consolidated contracts reuse P15 `AddressStability` and a
    separate pin dependency, replacing withdrawn relocation classes. Historical
    inputs retain notices identifying the corrected canonical contracts.
-   Concrete metadata serialization MD-084 remains open; no new spelling is
-   approved by this synchronization.
+   Concrete metadata serialization MD-084 remained open at the time; no new
+   spelling was approved by this synchronization. (MD-084 decided and applied
+   2026-10-22; schema 12 inherits the schema-11 spellings unchanged.)
 3. **Length type (decided 2026-10-17, MD-074/MD-088):** `len(slice)` and
    `slice.Len` are both `uint` and the same count
    (`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`).
@@ -302,7 +303,7 @@ sources unless an actual synchronized migration requires them.
   and pin dependency replace historical relocation-class assumptions. Existing
   schema-11 early admissions are retained as v11.41. The applied correction is
   `rules/corrections/applied/p16-slice-ir-schema12-synchronization-20261019.md`.
-  Default emission stays schema 11 and MD-084 remains open. This closes the
+  Default emission stays schema 11; MD-084 was open then (applied 2026-10-22). This closes the
   representation-rule installation only; P16-03/P16-04 source-rule sync and
   P16-01/P16-02/P16-07 acceptance gates still require their own evidence.
 - [x] P16-06 — Create the sole `lowering.sec-mlir-package16` integration in
@@ -1238,7 +1239,9 @@ sources unless an actual synchronized migration requires them.
   each returns the owning error and no schema bytes. Actual emitted source
   passes all four slice/P15 verifiers before the real support gate, composed
   LLVM pipeline and P8 boundary reject physical representation without output
-  files on either target plan. CLI tests add a real supported entry and check
+  files on either target plan. (MD-087, 2026-10-22: P8 now lowers such
+  modules selectively instead; the support gate and composed LLVM pipeline
+  remain the physical boundaries.) CLI tests add a real supported entry and check
   build/emit-mlir/emit-llvm error classes and absence of stdout/artifacts for
   sixteen source boundaries. Default schema remains 11; these tests do not
   promote P17/P18/P24 or source holder/signature support.
@@ -1261,8 +1264,9 @@ sources unless an actual synchronized migration requires them.
   operation contracts after P6 on 32/64 plans, preserving exact signatures
   while forbidding physical descriptors, LLVM/memref operations, address
   arithmetic, allocation/helper calls, atomics, undef and poison throughout
-  the output. P8 must reject unresolved reference representation without an
-  output artifact. Full MLIR suite passes 130/130. Source-to-schema emission,
+  the output. P8 rejected unresolved reference representation without an
+  output artifact; MD-087 (2026-10-22) replaces that with selective lowering
+  that keeps the slice operations high-level. Full MLIR suite passes 130/130. Source-to-schema emission,
   complete guard/borrow verification and physical execution remain separate.
 - [x] P16-53 — Rebuild plans/modules with fresh analyzers and reordered metadata.
   Verify deterministic identities, origin ordering, exact range printing, source
@@ -1297,7 +1301,7 @@ sources unless an actual synchronized migration requires them.
   55 current §144 criteria, retaining the exact criterion text and linking
   concrete implementation/specification and test evidence. Stage-specific
   status distinguishes Sema, Semantic IR, handwritten MLIR, source emission
-  and recorded gates. Open implementation, MD-031/MD-084/MD-085, P17/P18/P24
+  and recorded gates. Open implementation, MD-031 (MD-084/MD-085 applied 2026-10-22), P17/P18/P24
   exclusions, final snapshot/full-Go gates and the retired legacy-route wording
   remain explicit. Completing the matrix does not complete those criteria or
   change P16's partial governance status. Row count/order, referenced paths
@@ -1345,7 +1349,7 @@ matrix closes P16-54 only. P16-56 stays open, and the sole governance owner
 Evidence references use repository-relative paths. `file::TestName` identifies
 an existing Go test in that exact file. Gate results below are dated records
 from prior implementation steps, not new executions performed for this audit.
-Open MD-084 and MD-085 in `missing-decisions.yaml` retain their recorded gaps; MD-031
+MD-084 and MD-085 were open at the audit and were applied on 2026-10-22: canonical metadata grammar and path-aware return-origin verification. MD-031
 separately limits guarded/residual try metadata. P17/P18 and P24 retain their
 non-trivial-element, owning-array and physical-representation responsibilities.
 

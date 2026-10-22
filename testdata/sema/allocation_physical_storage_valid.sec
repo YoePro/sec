@@ -3,18 +3,28 @@ type Device register[8] {
     Ready: bit,
     _: bit[7],
 }
+impl Device {
+    property IsReady: bool {
+        get {
+            return self.Ready
+        }
+        set ready {
+            self.Ready = ready
+        }
+    }
+}
 @address(0x40021000)
 let mut device: Device
 @address(0x40021004)
 let mut local: Device
 @noAlloc
-fn Read() bool { return device.Ready }
+fn Read() bool { return device.IsReady }
 @noAlloc
-fn Write(ready: bool) void { device.Ready = ready }
+fn Write(ready: bool) void { device.IsReady = ready }
 @noAlloc
 fn Bind() void {
-    local.Ready = true
-    discard local.Ready
+    local.IsReady = true
+    discard local.IsReady
 }
 @noAlloc
 fn Volatile(pointer: RawPtr[int], value: int) int {

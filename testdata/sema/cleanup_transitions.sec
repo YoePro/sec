@@ -1,0 +1,87 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type Pair struct { first: Handle, second: Handle }
+type Failure enum error { Broken }
+
+fn Consume(value: Handle) void {}
+
+fn MoveAndReinit() void {
+    let mut target := Handle { id: 1 }
+    let moved :<- target
+    target = Handle { id: 2 }
+}
+
+fn Replace() void {
+    let mut target := Handle { id: 1 }
+    if true {
+        target = Handle { id: 2 }
+    }
+}
+
+fn DiscardAndReinit() void {
+    let mut target := Handle { id: 1 }
+    discard target
+    target = Handle { id: 2 }
+}
+
+fn Conditional(flag: bool) void {
+    let mut target := Handle { id: 1 }
+    if flag {
+        Consume(<-target)
+    }
+    target = Handle { id: 2 }
+}
+
+fn Partial() void {
+    let mut pair := Pair { first: Handle { id: 1 }, second: Handle { id: 2 } }
+    let field :<- pair.first
+    pair = Pair { first: Handle { id: 3 }, second: Handle { id: 4 } }
+}
+
+fn PartialDiscard() void {
+    let pair := Pair { first: Handle { id: 1 }, second: Handle { id: 2 } }
+    discard pair.first
+}
+
+fn Give() Handle {
+    let owned := Handle { id: 1 }
+    return <-owned
+}
+
+fn Make(fail: bool) Result[Handle, Failure] {
+    if fail {
+        return Err(Failure.Broken)
+    }
+    return Ok(Handle { id: 3 })
+}
+
+fn Fallible(fail: bool) Result[int, Failure] {
+    let mut target := Handle { id: 1 }
+    target = try Make(fail)
+    return Ok(1)
+}
+
+fn ConsumeAndReplace() void {
+    let mut target := Handle { id: 1 }
+    target = Pass(<-target)
+}
+
+fn Pass(value: Handle) Handle {
+    return <-value
+}
+
+fn ConditionalDiscard(flag: bool) void {
+    let target := Handle { id: 1 }
+    if flag {
+        Consume(<-target)
+    }
+    discard target
+}
+
+fn RedundantDiscard() void {
+    let target := Handle { id: 1 }
+    discard target
+    discard target
+}

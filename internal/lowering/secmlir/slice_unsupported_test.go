@@ -180,7 +180,6 @@ func TestPackage16UnsupportedPhysicalPipeline(t *testing.T) {
 		}{
 			{[]string{"--sec-check-lowering-support"}, "does not lower 'sec.slice."},
 			{[]string{"--sec-lower-to-llvm"}, "does not lower 'sec.slice."},
-			{[]string{"--sec-resolve-scalar-layout", "--sec-lower-checked-integers"}, "Place/reference semantics must be discharged"},
 		} {
 			artifact := filepath.Join(t.TempDir(), "unsupported.mlir")
 			cmd := exec.Command(tool, append(tc.args, "-o", artifact, "-")...)

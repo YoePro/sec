@@ -27,6 +27,9 @@ type Analyzer struct {
 	cleanupDefers               map[*ast.DeferStatement]ResolvedDeferIdentity
 	resolvedDeferPlans          map[*ast.DeferStatement]ResolvedDeferPlan
 	ownedCleanupInitializations map[*ast.LetStatement]ResolvedOwnedCleanupRegistration
+	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
+	ownedCleanupDeclarations    map[BindingID]*ast.LetStatement
+	ownedCleanupAssignments     map[*ast.AssignmentStatement]ResolvedOwnedCleanupAssignment
 	// analyzedContractNodes tracks exact declarations consumed during this analysis.
 	// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites.
 	analyzedContractNodes  map[ast.Contract]bool
@@ -360,6 +363,7 @@ type Analyzer struct {
 	// resolvedTransferPlans holds the P17 ownership transfer plan of each
 	// validated source expression (transfer_plans.go).
 	resolvedTransferPlans map[ast.Expression]ResolvedTransferPlan
+	transferDestinations  map[transferDestinationKey]TransferDestinationID
 }
 
 type borrowKind string
@@ -534,6 +538,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.cleanupDefers = nil
 	a.resolvedDeferPlans = nil
 	a.ownedCleanupInitializations = nil
+	a.ownedCleanupCancellations = nil
+	a.ownedCleanupDeclarations = nil
+	a.ownedCleanupAssignments = nil
 	// P16 range identities belong to this analysis, never an earlier edit.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 26.
 	a.placeIdentities.sliceRanges = nil
@@ -602,6 +609,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
+	a.transferDestinations = nil
 	a.resolvedForRangeSteps = map[*ast.ForStatement]*big.Int{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
@@ -2618,7 +2626,7 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 			break
 		}
 		a.statementFrames[frame].index = index
-		a.releaseDeadReferenceHolders()
+		a.releaseDeadReferenceHolders(statementToken(stmt))
 		a.analyzeStatement(stmt)
 		if a.statementTerminatesBlock(stmt) {
 			unreachable = true
@@ -6029,6 +6037,12 @@ func clonePlaces(places []Place) []Place {
 
 func (a *Analyzer) endBorrowsHeldBy(holder string) {
 	a.recordReferenceLifetimeEnd(holder, a.currentStatementToken)
+	a.dropBorrowsHeldBy(holder)
+}
+
+// dropBorrowsHeldBy removes the borrow records a holder grants, after its end
+// has been recorded.
+func (a *Analyzer) dropBorrowsHeldBy(holder string) {
 	for root, records := range a.borrows {
 		out := records[:0]
 		for _, record := range records {
@@ -8422,6 +8436,9 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 	}
 
 	symbol := a.symbols[stmt.Name.Value]
+	// MD-077 § 4(7): the binding denotes the software instance of T.
+	a.requireHardwareImpl(declaredType, stmt.Type.Token)
+	symbol.Type = hardwareInstanceType(declaredType)
 	symbol.Addressed = true
 	symbol.Volatile = true
 	symbol.Address = stmt.Address.String()
@@ -8433,7 +8450,12 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 	a.assigned[stmt.Name.Value] = true
 }
 
+// analyzeAssignmentStatement validates and commits assignment, retaining
+// success-only cleanup facts before destination availability is reset.
+// Rules: rules/memory/copy_move.md — §§12.1–12.3;
+// rules/memory/destruction.md — §6.1(2–3), §13.
 func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, allowFallible bool) {
+	errorsBefore := len(a.errors)
 	// Assertion facts retain independent binding versions; older bounds/state
 	// consumers still use the conservative assignment epoch.
 	// Rules: rules/errors/panic.md — §15.6, §15.8; rules/memory/borrowing.md — mutation authority.
@@ -8577,6 +8599,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		if propertyOK {
 			a.recordResolvedPropertyWrite(stmt.Target, a.types[a.currentImplTarget], property, stmt.Operator)
 		}
+		cleanupAssignment := a.prepareOwnedCleanupAssignment(stmt, errorsBefore)
 		a.applyAssignmentOwnership(stmt)
 		a.updateAssignedConstInt(symbol.Name, stmt)
 		a.assigned[symbol.Name] = true
@@ -8598,17 +8621,8 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		}
 		a.recordBoundCallableIdentity(symbol.Name, stmt.Value)
 		a.logNestedCallableWrite(symbol.Name)
+		a.recordOwnedCleanupAssignment(stmt, cleanupAssignment, errorsBefore)
 	}
-}
-
-func (a *Analyzer) validateLetOwnership(stmt *ast.LetStatement) bool {
-	if stmt == nil {
-		return false
-	}
-	if a.rejectTemporaryReferenceRetention(stmt.Value) {
-		return false
-	}
-	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil, TransferSiteInitialization)
 }
 
 // applyLetOwnership retains arena and mutex-guard provenance before committing
@@ -8625,16 +8639,6 @@ func (a *Analyzer) applyLetOwnership(stmt *ast.LetStatement) {
 		return
 	}
 	a.markMoveSource(stmt.Value)
-}
-
-func (a *Analyzer) validateAssignmentOwnership(stmt *ast.AssignmentStatement) bool {
-	if stmt == nil {
-		return false
-	}
-	if a.rejectTemporaryReferenceRetention(stmt.Value) {
-		return false
-	}
-	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Token, false, false, TransferSiteAssignment)
 }
 
 func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) bool {
@@ -8713,155 +8717,6 @@ func compilerKnownNonCopyable(typ Type) bool {
 	default:
 		return false
 	}
-}
-
-func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		symbol, ok := a.symbols[expr.Value]
-		if !ok || !requiresOwnershipTransfer(symbol.Type) {
-			return false
-		}
-		if a.checkBorrowedMove(expr.Value, expr.Token) || a.rejectBorrowedArenaMove(expr.Value, expr.Token) {
-			return false
-		}
-		a.moved[expr.Value] = expr.Token
-		a.moveReasons[expr.Value] = "moved"
-		return true
-	case *ast.MemberExpression:
-		place, ok := a.resolvePlace(expr)
-		if !ok || !requiresOwnershipTransfer(place.Type) || a.rejectCustomFreePartialMove(place, expr.Property.Token) || a.checkBorrowedMovePlace(place, expr.Property.Token) {
-			return false
-		}
-		a.markPlaceUnavailable(place, expr.Property.Token, "moved")
-		return true
-	case *ast.StructLiteral:
-		moved := false
-		for _, field := range expr.Fields {
-			if field != nil && a.markMoveSource(field.Value) {
-				moved = true
-			}
-		}
-		return moved
-	case *ast.ArrayLiteral:
-		moved := false
-		for _, element := range expr.Elements {
-			if a.markMoveSource(element) {
-				moved = true
-			}
-		}
-		return moved
-	case *ast.OkExpression:
-		if expr.Value != nil {
-			return a.markMoveSource(expr.Value)
-		}
-	case *ast.ErrExpression:
-		if expr.Value != nil {
-			return a.markMoveSource(expr.Value)
-		}
-	case *ast.PrefixExpression:
-		if expr.Operator == "<-" && expr.Right != nil {
-			return a.markExplicitMoveSource(expr.Right)
-		}
-	case *ast.SpreadExpression:
-		return a.markMoveSource(expr.Value)
-	case *ast.BitExtractionExpression:
-		return a.markMoveSource(expr.Value)
-	case *ast.ConversionExpression:
-		return a.markMoveSource(expr.Value)
-	case *ast.CallExpression:
-		// rules/declarations/unions.md; correction17.md: constructing an
-		// unnamed union payload transfers ownership into the aggregate. Keep
-		// this specific to resolved union constructors; ordinary calls apply
-		// their ownership rules through markMovedCallArguments instead.
-		if payload, ok := a.unionConstructorPayload(expr); ok && requiresOwnershipTransfer(payload) {
-			return a.markMoveSource(expr.Arguments[0])
-		}
-	}
-	return false
-}
-
-func (a *Analyzer) unionConstructorPayload(expr *ast.CallExpression) (Type, bool) {
-	if expr == nil || len(expr.Arguments) != 1 {
-		return Type{}, false
-	}
-	unionType, ok := a.expressionTypes[expr]
-	if !ok || unionType.Kind != UnionType {
-		return Type{}, false
-	}
-	variantName := ""
-	switch callee := expr.Callee.(type) {
-	case *ast.Identifier:
-		// Contextual constructors such as Some(value) are resolved from the
-		// expected union type before ownership forwarding reaches this point.
-		variantName = callee.Value
-	case *ast.MemberExpression:
-		if callee.Property == nil || !a.expressionNamesType(callee.Object) {
-			return Type{}, false
-		}
-		variantName = callee.Property.Value
-	default:
-		return Type{}, false
-	}
-	variant, ok := lookupUnionVariant(unionType, variantName)
-	if !ok || variant.Payload == nil || len(variant.PayloadFields) != 0 {
-		return Type{}, false
-	}
-	return *variant.Payload, true
-}
-
-func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		symbol, ok := a.symbols[expr.Value]
-		if !ok || !isCloseTrackedResourceType(symbol.Type) {
-			return false
-		}
-		if a.checkBorrowedMove(expr.Value, expr.Token) {
-			return false
-		}
-		a.moved[expr.Value] = expr.Token
-		a.moveReasons[expr.Value] = "returned"
-		a.endBorrowsHeldBy(expr.Value)
-		return true
-	case *ast.OkExpression:
-		if expr.Value != nil {
-			return a.markResourceTransfer(expr.Value)
-		}
-	case *ast.ErrExpression:
-		if expr.Value != nil {
-			return a.markResourceTransfer(expr.Value)
-		}
-	case *ast.StructLiteral:
-		transferred := false
-		for _, field := range expr.Fields {
-			if field != nil && a.markResourceTransfer(field.Value) {
-				transferred = true
-			}
-		}
-		return transferred
-	case *ast.ArrayLiteral:
-		transferred := false
-		for _, element := range expr.Elements {
-			if a.markResourceTransfer(element) {
-				transferred = true
-			}
-		}
-		return transferred
-	case *ast.PrefixExpression:
-		if expr.Operator == "<-" {
-			return a.markResourceTransfer(expr.Right)
-		}
-	case *ast.CallExpression:
-		if _, structural := a.unionConstructorPayload(expr); structural {
-			return a.markResourceTransfer(expr.Arguments[0])
-		}
-	case *ast.BitExtractionExpression:
-		return a.markResourceTransfer(expr.Value)
-	case *ast.ConversionExpression:
-		return a.markResourceTransfer(expr.Value)
-	}
-	return false
 }
 
 func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder string) {
@@ -9074,6 +8929,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.bindDefinition(member.Property.Token, staticSymbol.Token)
 	} else {
 		objectType, _ := a.inferPlaceBase(member.Object)
+		if a.rejectHardwareFieldAccess(member, objectType) {
+			return
+		}
 		registerField, registerFieldOK = lookupRegisterFieldInfo(objectType, member.Property.Value)
 		if registerFieldOK {
 			targetType = registerField.Type
@@ -9370,6 +9228,15 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type
 			return true
 		}
 		return a.validateCompilerKnownTypeArity(token, *typ, 0, 1, 1)
+	case "HardwareInstance":
+		// MD-077 § 4(6): the instance type of a hardware-bound register.
+		if len(typ.TypeArgs) != 1 {
+			return false
+		}
+		if typ.TypeArgs[0].Kind != RegisterType {
+			a.addErrorAtToken(token, "HardwareInstance[T] requires a register type, got %s", typeDisplayName(typ.TypeArgs[0]))
+			return false
+		}
 	case "Atomic":
 		if len(typ.TypeArgs) != 1 {
 			return false
@@ -10361,7 +10228,12 @@ func lookupRegisterFieldInfo(typ Type, name string) (RegisterField, bool) {
 
 func dereferenceType(typ Type) Type {
 	if typ.Kind == ReferenceType && typ.Element != nil {
-		return *typ.Element
+		typ = *typ.Element
+	}
+	// MD-077: a hardware instance exposes the members of its register type's
+	// impl; it stays a distinct type for assignment, borrowing and calls.
+	if typ.Kind == HardwareInstanceType && len(typ.TypeArgs) == 1 {
+		return typ.TypeArgs[0]
 	}
 	return typ
 }

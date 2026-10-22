@@ -57,6 +57,23 @@ func (t Toolchain) VerifySec(mlirPath string) error {
 	return t.run("sec-mlir-opt", args...)
 }
 
+// VerifySecInspection runs the Sec dialect checks plus the schema-11 Place,
+// reference-guard and borrow-semantics verifiers that the emit-sec-mlir
+// inspection boundary requires before it publishes P15 output (MD-086 § 5).
+func (t Toolchain) VerifySecInspection(mlirPath string) error {
+	args := append([]string{mlirPath}, secVerificationPasses...)
+	args = append(args, secReferenceVerificationPasses...)
+	args = append(args, "-o", os.DevNull)
+	return t.run("sec-mlir-opt", args...)
+}
+
+// secReferenceVerificationPasses check Place and direct-reference facts.
+var secReferenceVerificationPasses = []string{
+	"--sec-verify-places",
+	"--sec-verify-reference-guards",
+	"--sec-verify-borrow-semantics",
+}
+
 // secVerificationPasses are the Sec dialect proof checks every emission and
 // lowering runs before trusting the module.
 var secVerificationPasses = []string{

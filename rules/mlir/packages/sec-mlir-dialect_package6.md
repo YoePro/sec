@@ -2416,3 +2416,9 @@ semantic numeric operations choose exact signed/unsigned MLIR operations
 signless lower integer representation may be introduced without losing
 language signedness semantics.
 ```
+
+---
+
+## Amendment MD-087 (2026-10-22)
+
+Target scalar resolution converts only the referent types under `!sec.place`, `!sec.ref`, `!sec.ref_mut` and slice views, keeping the wrappers, operations and metadata. Reference-dependent storage keeps its `sec.storage` wrapper with a resolved element type, and scalar call lowering preserves discardable call attributes (`rules/mlir/sec_mlir_dialect.md` v11.31–v11.32 amendments).

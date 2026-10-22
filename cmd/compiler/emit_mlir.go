@@ -31,7 +31,7 @@ func runEmitSecMLIRCommand(args []string) {
 		exitCLI(1)
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
-	mlirText, _ := emitSecDialect(analyzed, options.InputFile, options.Target)
+	mlirText, _ := emitSecDialect(analyzed, options.InputFile, options.Target, inspectionMaxPackage)
 	verifyPath, removeVerifyPath, err := createTempOutputPath(".sec.mlir")
 	if err != nil {
 		reportToolError("temp file", "%v", err)
@@ -44,7 +44,7 @@ func runEmitSecMLIRCommand(args []string) {
 		reportToolError("write", "%v", err)
 		exitCLI(1)
 	}
-	if err := mlirtoolchain.NewToolchain(options.MLIRBin).VerifySec(verifyPath); err != nil {
+	if err := mlirtoolchain.NewToolchain(options.MLIRBin).VerifySecInspection(verifyPath); err != nil {
 		reportPipelineError("Sec MLIR verification", err)
 		exitCLI(4)
 	}
@@ -122,7 +122,7 @@ func runEmitMLIRCommand(args []string) {
 
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
 	requireOutputLoweringReadiness(analyzed, options.InputFile)
-	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target)
+	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target, nativeTrackMaxPackage)
 	llvmDialectPath, cleanup := lowerToLLVMDialect(secMLIR, entry, options.MLIRBin, "")
 	defer cleanup()
 	lowered, err := os.ReadFile(llvmDialectPath)

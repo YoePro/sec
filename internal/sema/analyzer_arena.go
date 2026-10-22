@@ -482,6 +482,9 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		a.arenaGenerations[domain]++
 		a.moved[receiver.Value] = expr.Token
 		a.moveReasons[receiver.Value] = "released"
+		if place, ok := a.rootPlace(receiver.Value); ok {
+			a.recordOwnedCleanupCancellation(place, expr.Token, "released")
+		}
 		a.endBorrowsHeldBy(receiver.Value)
 		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, domain, member.Property.Token, false)
 		return a.types["void"], expressionValue{Display: expr.String()}, true

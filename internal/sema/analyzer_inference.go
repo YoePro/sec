@@ -1124,6 +1124,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	if objectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
 	}
+	if a.rejectHardwareFieldAccess(expr, objectType) {
+		return Type{Kind: InvalidType}, false
+	}
 	objectType = dereferenceType(objectType)
 	if definition, exists := memberDefinitionToken(objectType, expr.Property.Value); exists {
 		a.bindDefinition(expr.Property.Token, definition)

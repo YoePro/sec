@@ -802,7 +802,7 @@ func (a *Analyzer) isPlaceBase(expr ast.Expression) bool {
 
 func (a *Analyzer) unavailablePlace(place Place) (lexer.Token, string, bool, bool) {
 	key := place.String()
-	if token, ok := a.moved[place.Root]; ok {
+	if token, ok := a.moved[place.Root]; ok && !a.referentOfMovedHolder(place) {
 		return token, place.Root, false, true
 	}
 	for movedKey, token := range a.moved {
@@ -817,6 +817,19 @@ func (a *Analyzer) unavailablePlace(place Place) (lexer.Token, string, bool, boo
 		}
 	}
 	return lexer.Token{}, "", false, false
+}
+
+// referentOfMovedHolder reports a Place reached through another holder whose
+// origin root is itself a reference holder (a reference parameter): moving
+// that holder (`let moved :<- pair`) transfers the borrow, not the referent,
+// so the referent stays available through the new holder (references.md
+// § 3.2(5)); the new holder's own availability is checked separately.
+func (a *Analyzer) referentOfMovedHolder(place Place) bool {
+	if place.ReferenceHolder == "" || place.ReferenceHolder == place.Root {
+		return false
+	}
+	root, ok := a.symbols[place.Root]
+	return ok && root.Type.Kind == ReferenceType
 }
 
 // checkPlaceAvailableForRead rejects reads of unavailable Places and retains
@@ -852,7 +865,12 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 	return true
 }
 
+// markPlaceUnavailable commits an accepted ownership end and its cleanup
+// cancellation at the same canonical Place.
+// Rules: rules/memory/ownership.md — §§10,23;
+// rules/memory/destruction.md — §6.1(3).
 func (a *Analyzer) markPlaceUnavailable(place Place, token lexer.Token, reason string) {
+	a.recordOwnedCleanupCancellation(place, token, reason)
 	key := place.String()
 	a.moved[key] = token
 	a.moveReasons[key] = reason

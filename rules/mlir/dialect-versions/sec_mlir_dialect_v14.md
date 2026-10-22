@@ -359,7 +359,7 @@ sec.reclamation_plan
 sec.invalidation_domain
 sec.epoch_dependency
 sec.address_stability
-sec.relocation_class
+(sec.relocation_class withdrawn; sec.address_stability above, MD-084)
 sec.memory_space
 ```
 

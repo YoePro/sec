@@ -1878,3 +1878,9 @@ Relevant upstream concepts:
 
 Use current APIs from the exact installed MLIR release rather than copying API
 spelling from documentation for a different release.
+
+---
+
+## Amendment MD-087 (2026-10-22)
+
+Package-15 Places and references postdate this package. Storage that is reference-dependent, as decided by the single query `sec::isReferenceDependentStorage` (`sec.address_taken = true` or a `sec.place.storage` consumer), is not ordinary Package-5 storage. `--sec-lower-trivial-core` keeps it as `sec.storage`, and a `sec.call.direct` with Place/reference operands or results stays a Sec call. All other storage and calls lower exactly as specified here (`rules/mlir/sec_mlir_dialect.md` v11.31–v11.32 amendments; `rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md`).

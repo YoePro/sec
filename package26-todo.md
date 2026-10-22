@@ -163,6 +163,7 @@ a general heap allocator, final LLVM/ABI encoding or interface-view layout.
   ABI substrate is executable (book § 35). **Blocked on P25.**
 - [ ] P26-23 — Test verified foreign call-bounded ref adapter; reject public
   MD-070 conversions until decided (book §§ 29, 36). **Blocked on P25.**
+  Note 2026-10-22: MD-070 was decided and applied on 2026-10-21. The public spellings are the unsafe compiler-known `RawPtr[T].AsRef()` / `AsRefMut()` (`raw_pointers.md` § 18A), and their Semantic IR operation is still a capability boundary. The "reject public conversions" part of this item therefore becomes: lower them only once that operation exists with its proof facts (MD-070 § 6).
 
 ## F. Regression and handoff
 

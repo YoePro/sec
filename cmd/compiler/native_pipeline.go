@@ -24,17 +24,27 @@ import (
 //   - rules/compiler/compiler_pipeline.md — §§ 2(8–9), 32–34, 59–60
 //   - rules/compiler/initialization.md — §§ 21, 28 command entry adapter
 
-// nativeTrackMaxPackage is the Semantic IR package level the Sec MLIR
-// emitter accepts.
+// nativeTrackMaxPackage is the Semantic IR package level whose Sec MLIR the
+// track lowers on to standard MLIR, LLVM and an object (emit-mlir, emit-llvm,
+// build). Package-15 Places and references have no physical representation
+// yet, so those routes reject them as an unsupported lowering.
 const nativeTrackMaxPackage = 14
+
+// inspectionMaxPackage is the Semantic IR package level of the high-level
+// inspection routes emit-ir and emit-sec-mlir, which stop at verified
+// Semantic IR and verified schema-11 Sec MLIR (MD-086).
+//
+// Rules: rules/compiler/compiler_pipeline.md — § 59(4)–(7) (MD-086).
+const inspectionMaxPackage = 15
 
 // emitSecDialect builds verified-ready Sec dialect MLIR text for one analyzed
 // source file and reports the Sec function identity of its command entry, or
-// "" when the module defines none.
-func emitSecDialect(analyzed analyzedProgram, inputFile string, target CompilerTarget) ([]byte, string) {
-	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: nativeTrackMaxPackage})
+// "" when the module defines none. maxPackage is the route's Semantic IR
+// package ceiling.
+func emitSecDialect(analyzed analyzedProgram, inputFile string, target CompilerTarget, maxPackage uint8) ([]byte, string) {
+	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: maxPackage})
 	if err != nil {
-		reportPipelineError("semantic IR", err)
+		reportPipelineError("semantic IR", physicalReferenceBoundary(analyzed, inputFile, maxPackage, err))
 		exitCLI(4)
 	}
 	targetDefinition, ok := findTargetDefinition(target)
@@ -131,4 +141,24 @@ func stripMLIRHeaderComments(text string) string {
 		text = text[newline+1:]
 	}
 	return text
+}
+
+// physicalReferenceBoundary names the real limitation when a lowering route
+// rejects a program that the package-15 inspection routes accept: Places and
+// safe references have no physical representation or ABI yet (MD-086 § 2(4)).
+// It keeps the original location, and the error stays an unsupported-lowering
+// capability failure, never a source error.
+func physicalReferenceBoundary(analyzed analyzedProgram, inputFile string, maxPackage uint8, err error) error {
+	unsupported, ok := err.(*semantic.UnsupportedFeatureError)
+	if !ok || maxPackage >= inspectionMaxPackage {
+		return err
+	}
+	if _, inspectable := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: inspectionMaxPackage}); inspectable != nil {
+		return err
+	}
+	return &semantic.UnsupportedFeatureError{
+		Feature:  "physical representation of Places and safe references (" + unsupported.Feature + "); inspect this program with emit-ir or emit-sec-mlir",
+		Package:  unsupported.Package,
+		Location: unsupported.Location,
+	}
 }

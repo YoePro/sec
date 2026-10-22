@@ -33,6 +33,8 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 			}
 			if !a.validateNamedOwnershipSource(ast.OwnershipMove, source, move.Token, false, false, TransferSiteArgument) {
 				valid = false
+			} else {
+				a.bindTransferArgumentDestination(source, function, sourceIndex, param)
 			}
 			continue
 		}
@@ -54,6 +56,7 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 				action = TransferCopySemantic
 			}
 			a.recordTransferPlan(source, place, TransferSiteArgument, action)
+			a.bindTransferArgumentDestination(source, function, sourceIndex, param)
 			continue
 		}
 		if param.Consuming {

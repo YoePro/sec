@@ -326,8 +326,11 @@ a second source borrow analysis or choosing the unresolved metadata policy.
 ## 30. P6/P8 compatibility
 
 P6 resolves target-sized scalars inside abstract slice types without selecting
-a descriptor. P8 rejects unresolved Place/reference representation before
-checked-integer lowering and leaves no output file. Both 32/64 tests run before
+a descriptor. P8 rejected unresolved Place/reference representation before
+checked-integer lowering and left no output file; since MD-087 (2026-10-22)
+it lowers the representable integer computation selectively and keeps every
+slice/Place/reference operation high-level, while the physical gates are
+`--sec-check-lowering-support` and `--sec-lower-to-llvm`. Both 32/64 tests run before
 and after P6. The composed LLVM pipeline likewise rejects unsupported slice
 operations; schema-12 success does not imply slice binary support.
 

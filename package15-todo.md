@@ -439,6 +439,7 @@ equally named roots of different declarations stay distinct alternatives
   the P15 representation boundary is discharged.
 
   Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Static roots (2026-10-16, with P15-42a): `ref` / `ref mut` of a module static or function-local static lowers to `place.static-root @N` with the static's authority, marks the static address-taken and carries Sema's static-storage facts (`TestPackage15LowersStaticPlaceRoots`). Remaining: addressed (fixed-address/MMIO) roots, blocked by MD-077 (no Semantic IR register types or operations are specified; Semantic IR rejects every register access).
+  MD-077 (decided 2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md`): addressed roots split by binding category. Ordinary addressed storage becomes a Place root. A hardware register binding becomes a `register.hw.bind` resource/instance root of type `HardwareInstance[T]`, never a Place, with no `ref` to physical bits. The schema is `sec_mlir_dialect.md` v11.41.1. P15-42/42a stays open until MD-077 steps 2–5 are implemented.
 - [ ] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
   static (module-level), thread-local and addressed (fixed-address binding,
   register/MMIO) storage in Semantic IR, which today has only local-automatic
@@ -507,12 +508,27 @@ equally named roots of different declarations stay distinct alternatives
   reachable.
 
   Completed 2026-10-12: Sema adds the panic effect `may-panic-invalid-reference` with the exact reason `InvalidReferenceGeneration` for each read, write, equality and reborrow use of a dynamic-epoch reference, which are exactly the uses Semantic IR validates. A later, more specific use of the same node replaces the effect. Proven uses, borrow creation and end, and reference passing add no effect, and validation adds no allocation or blocking effect. `@noPanic` (S1092) and ISR panic checks reject a reachable dynamic use with mentor help. In Semantic IR, the verifier rejects a `@noPanic` function that reaches `fail.reference-generation` and accepts proven uses (`TestDynamicReferenceUsesCarryInvalidReferencePanicEffect`, `TestNoPanicRejectsReachableInvalidReferenceGeneration`).
-- [ ] P15-49 — Add source-to-Semantic-IR tests for local and parameter refs,
+- [x] P15-49 — Add source-to-Semantic-IR tests for local and parameter refs,
   field and array subreferences, shared copy, mutable move, all legal/
   prohibited reborrows, dynamic validity CFG, equality, writes, borrow ends,
   effects, and `@noPanic`. Assert evaluation order, exact SSA reuse, no
   aggregate copy, no partial IR, no `undef`/poison, no hidden allocation, and
   no physical reference/layout vocabulary.
+
+  Completed 2026-10-22. `TestPackage15SourceMatrix` (new `package15MatrixFixture`) covers:
+  - parameter and local holders;
+  - a `ref mut` holder move and a shared copy, both reusing the holder's SSA value;
+  - field and element reborrows naming their parent borrow;
+  - equality on the same reference SSA value;
+  - `*target = Compute()` forming its Place before the call;
+  - compound writes through a reborrow;
+  - a Sema-placed borrow end (MD-065) before a conflicting call.
+
+  `TestPackage15FixtureInvariants` checks that every P15 fixture verifies, never reads a whole aggregate through a reference, and contains no undef/poison/allocation. The matrix joins the P15 fixtures, so P15-66 (physical vocabulary) and P15-68 (determinism) cover it too. Prohibited reborrows, partial IR, effects and `@noPanic` keep their dedicated tests (P15-45..48, `TestPackage15RejectsOutOfScopeReferencesWithoutPartialModule`).
+
+  Two Sema defects surfaced and were fixed:
+  - Moving a reference-parameter holder made the referent unavailable through the new holder.
+  - An owned Place implicitly borrowed for a `ref` parameter had no instantiated return origin.
 
 ## F. Implement Sec MLIR schema 11 and its three verifiers
 
@@ -581,7 +597,7 @@ equally named roots of different declarations stay distinct alternatives
 
   P15-56 completed 2026-10-17 together with P15-57:
   - A reference parameter's facts come from its `sec.reference` argument attribute, and a call result's from the call's `sec.reference` attribute. Uses of dynamic-epoch parameters are therefore guard-checked, and `end_borrow`/derivations of them are checked against their identities.
-  - Returned origins: a function with a reference result must carry a non-empty `sec.return_origins` whose parameter entries name reference parameters. Every returned reference must derive only from listed parameters, traced through copies, moves, reborrows, dereferences, field/element/payload projections, block arguments and calls (through their reference arguments). Local storage and value roots are rejected. Projection paths are Sema facts and are not re-derived (MD-085).
+  - Returned origins: a function with a reference result must carry a non-empty `sec.return_origins` whose parameter entries name reference parameters. Every returned reference must derive only from listed parameters, traced through copies, moves, reborrows, dereferences, field/element/payload projections, block arguments and calls (through their reference arguments). Local storage and value roots are rejected. Projection paths are Sema facts and are not re-derived. MD-085 (decided 2026-10-21) replaced this root-only depth on 2026-10-22. `verifyReturnOrigins` now checks the summary against the canonical grammar and parameter types, and traces each return's path (fields, `[K]` only for proven-safe constants, `[*]`, transparent slice views, joins with visited states). Calls contribute only the callee's own summary, instantiated over the actual operands, and every observed origin must be listed exactly. Static roots, receivers of non-methods and union payloads are rejected. Tests: lit `return-origins-paths.mlir`, `invalid-return-origins-paths.mlir` (10 cases), and all P15/P16 source fixtures. MD-084 (2026-10-21) adds canonical origin grammar and duplicate rejection, which are implemented in the dialect attribute verifier.
   - Fix: a reborrow from an element or payload sub-Place of a dereference was rejected as underived; derivation now follows field, element and payload projections down to `place.deref`.
 - [x] P15-57 — Extend the Go emitter from verified Semantic IR to schema 11.
   Preserve TypeIDs, root/storage/domain/epoch/borrow/lifetime facts, exact
@@ -595,7 +611,7 @@ equally named roots of different declarations stay distinct alternatives
     - Projections carry the P13 field ordinal, P14 `bounds_kind`/`bounds_proof` and `index_signed`, and the P11/P12 variant (Result Ok 0, Err 1).
     - Reference operations carry `borrow_id`, `lifetime_id`, `validity_policy`, `validity_proof`, `invalidation_domain`/`epoch_dependency` for dynamic-epoch references, `address_stability`, `provenance` and `source_borrow` for reborrows.
     - `fail.reference_generation` carries `panic.invalid-reference-generation`. Source locations and the CFG (guard branches, `fail.bounds` and failure blocks) are kept as is.
-  - Facts outside the operation properties, all with spellings awaiting confirmation (MD-084):
+  - Facts outside the operation properties, with spellings confirmed by MD-084 (2026-10-22, `sec_mlir_dialect.md` v11.7 amendment):
     - `sec.reference` dictionary on reference parameters and call results;
     - `sec.return_origins` on reference-returning functions;
     - `sec.address_taken = true` on address-taken storage;
@@ -664,7 +680,7 @@ equally named roots of different declarations stay distinct alternatives
   Completed 2026-10-17:
   - `--sec-resolve-scalar-layout` converts `!sec.place<T,a>`, `!sec.ref<T>` and `!sec.ref_mut<T>` by converting only `T` (recursively through structs, arrays, unions and Results), keeping wrapper and authority.
   - All schema-11 Place/reference operations take part unchanged apart from their types, with properties and discardable facts kept. Function `sec.reference` argument attributes are kept.
-  - `--sec-lower-checked-integers` rejects a module with Place/reference types or operations before any rewrite, so it never recurses through the wrappers or lowers P15 operations (MD-087).
+  - `--sec-lower-checked-integers` rejects a module with Place/reference types or operations before any rewrite, so it never recurses through the wrappers or lowers P15 operations. MD-087 (decided 2026-10-21) made this blanket rejection nonconforming. It was replaced on 2026-10-22: P8 now lowers representable integer computation in mixed modules and keeps every Place/reference operation and its facts high-level. At Place, storage and call boundaries it bridges values with exact-width `builtin.unrealized_conversion_cast` (`siN`/`uiN` ↔ `iN`), never `arith.bitcast`, and rejects any other bridge that survives. Tests: lit `schema11-reference-scalar-layout.mlir` (P8 prefix), `schema12-slice-architecture.mlir`, `invalid-reference-bridges.mlir`; Go `TestCheckedIntegerLoweringCoexistsWithReferences` (32/64-bit) and the P15 emit fixtures through `--sec-lower-integer-core` plus verifiers.
   - lit: `Conversion/SecToCore/schema11-reference-scalar-layout.mlir` checks a nested struct/array referent through deref, field, bounds, element, reborrow, end_borrow, read and write. It resolves to `si64`/`ui64` and `si32`/`ui32` with identical metadata, verifies under the three passes, and is rejected by `--sec-lower-integer-core` and by `--sec-lower-checked-integers` after resolution.
   - Go: the emitter fixtures pass through the scalar pipeline on both plans with no `!sec.int`/`!sec.uint` left and are rejected by `--sec-lower-integer-core`.
 - [x] P15-61 — P13: test shared and mutable struct-field references, two
@@ -699,10 +715,12 @@ equally named roots of different declarations stay distinct alternatives
   and deterministic instantiated origin summaries.
 
   Completed 2026-10-16. Parameters, implicit borrows, shared copy and mutable reborrow passing are covered by the P15-47 tests (`TestPackage15LowersReferenceParametersAndPassing`). Returned input and subfield references, receiver-field returns, element paths, call-result returns and caller-side instantiated facts are covered, and two builds print identically (`TestPackage15LowersReturnedReferences`). Local return rejection holds in two places: Sema reports S1128 for local-origin returns (`TestEscapeDiagnostics`), and the verifier rejects a returned reference that does not trace to a listed parameter origin (`TestPackage15VerifierChecksReturnedReferenceOrigins`). The liveness of a holder of a call-returned reference now ends at its last use, because its origin comes from the callee summary (`TestCallReturnedReferenceHolderEndsAtLastUse`; confirmed by MD-069, 2026-10-16).
-- [ ] P15-65 — Add end-to-end source → target-aware Sema → verified Semantic IR
+- [x] P15-65 — Add end-to-end source → target-aware Sema → verified Semantic IR
   → schema-11 → `sec-mlir-opt` tests on 32- and 64-bit CompilationPlans using
   an absolute tool path. Include P13/P14/P12 integration, proven and dynamic
   validity, failure CFG, wrapper preservation, and all three verifier passes.
+
+  Completed 2026-10-22: `TestPackage15SourceToSchema11Pipeline` runs every P15 emit fixture plus a P12/P13/P14 integration fixture through a target-aware Sema per plan (32-bit armv7, 64-bit amd64). The integration fixture covers a match payload borrow, struct field references, a runtime-checked array element with its failure CFG, `*r` and implicit borrows. The chain is Semantic IR verification, schema 11 with the plan recorded, and `sec-mlir-opt` at an absolute path, running the three verifiers, `--sec-lower-scalar-core` with wrapper preservation, and selective `--sec-lower-integer-core` (MD-087). Known hole (verified 2026-10-22): dynamic-epoch validity is not producible from P15 source, because Arena allocation does not lower; it is covered from verified Semantic IR onward by `TestPackage15EmitsDynamicReferenceGuards`.
 - [x] P15-66 — Assert successful P15 modules contain no physical offset/stride,
   GEP, pointer arithmetic, MemRef/LLVM reference form, raw-pointer collapse,
   address-plus-epoch aggregate, side-table/capability choice, hidden ABI args,
@@ -715,6 +733,8 @@ equally named roots of different declarations stay distinct alternatives
   RawPtr conversions, physical pinning/epoch/collection invalidation lowering,
   concurrent invalidation, move-only/semantic-copy reference reads, non-trivial
   write/destruction, physical reference ABI/layout, and LLVM lowering.
+
+  MD-086 (2026-10-21) changes the route part of this item. `emit-ir` and `emit-sec-mlir` now build package-15 Semantic IR and publish verified output; `emit-sec-mlir` also runs the Place, reference-guard and borrow-semantics verifiers. `emit-llvm` and `emit-mlir` still reject reference programs, now with a diagnostic that names the missing physical representation of Places and references, and they leave existing output files untouched. `TestReferenceProgramsAreRejectedByEveryEmitRoute` is replaced by `TestReferenceProgramsReachOnlyTheInspectionBoundaries` (32/64-bit).
 
   Completed 2026-10-16. The following are each rejected as a whole package-15 boundary with no module: slice borrows, slice reference parameters, references into dynamic arrays (collection invalidation), foreign reference parameters (physical reference ABI), move-only referents with custom free (non-trivial read, write and destruction) and static roots (`TestPackage15RejectsOutOfScopeReferencesWithoutPartialModule`). Every emit route (`emit-ir`, `emit-sec-mlir`, `emit-llvm`, `emit-mlir`) rejects a valid reference program, prints nothing and leaves an existing output file unchanged (`TestReferenceProgramsAreRejectedByEveryEmitRoute`).
 

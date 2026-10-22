@@ -17,12 +17,18 @@ type ClockConfig register[32] {
     _: bit[29],
 }
 
+impl ClockConfig {
+    fn SelectExternal() void {
+        self.Source = ClockSource.External
+        self.Enabled = EnabledState.Enabled
+    }
+}
+
 @address(0x40021000)
 let mut clockConfig: ClockConfig
 
 fn SelectExternalClock() void {
-    clockConfig.Source = ClockSource.External
-    clockConfig.Enabled = EnabledState.Enabled
+    clockConfig.SelectExternal()
 }
 
 fn main() int {

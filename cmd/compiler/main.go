@@ -587,7 +587,7 @@ func runEmitLLVMCommand(args []string) {
 	}
 
 	analyzed := parseAndAnalyzeFileForLowering(inputFile, target)
-	secMLIR, entry := emitSecDialect(analyzed, inputFile, target)
+	secMLIR, entry := emitSecDialect(analyzed, inputFile, target, nativeTrackMaxPackage)
 	llvmDialectPath, cleanup := lowerToLLVMDialect(secMLIR, entry, mlirBin, "")
 	defer cleanup()
 	llvmPath := outputFile
@@ -630,7 +630,7 @@ func runEmitIRCommand(args []string) {
 		exitCLI(1)
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), inputFile, target, false)
-	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}})
+	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: inspectionMaxPackage})
 	if err != nil {
 		reportPipelineError("semantic IR", err)
 		exitCLI(4)

@@ -24,25 +24,29 @@ const (
 )
 
 const (
-	InvalidType   TypeKind = "invalid"
-	AnyType       TypeKind = "any"
-	BoolType      TypeKind = "bool"
-	IntType       TypeKind = "int"
-	UintType      TypeKind = "uint"
-	FloatType     TypeKind = "float"
-	DecimalType   TypeKind = "decimal"
-	EnumType      TypeKind = "enum"
-	UnionType     TypeKind = "union"
-	StringType    TypeKind = "string"
-	CharType      TypeKind = "char"
-	RuneType      TypeKind = "rune"
-	RawPtrType    TypeKind = "rawptr"
-	ReferenceType TypeKind = "reference"
-	ResultType    TypeKind = "result"
-	RegisterType  TypeKind = "register"
-	StructType    TypeKind = "struct"
-	SliceType     TypeKind = "slice"
-	ArrayType     TypeKind = "array"
+	InvalidType TypeKind = "invalid"
+	AnyType     TypeKind = "any"
+	BoolType    TypeKind = "bool"
+	IntType     TypeKind = "int"
+	UintType    TypeKind = "uint"
+	FloatType   TypeKind = "float"
+	DecimalType TypeKind = "decimal"
+	EnumType    TypeKind = "enum"
+	UnionType   TypeKind = "union"
+	StringType  TypeKind = "string"
+	CharType    TypeKind = "char"
+	RuneType    TypeKind = "rune"
+	RawPtrType  TypeKind = "rawptr"
+	// HardwareInstanceType is the compiler-known HardwareInstance[T]: the
+	// software implementation instance of a hardware-bound register type T
+	// (MD-077; rules/platform/hardware-register-access.md § 2).
+	HardwareInstanceType TypeKind = "hardware-instance"
+	ReferenceType        TypeKind = "reference"
+	ResultType           TypeKind = "result"
+	RegisterType         TypeKind = "register"
+	StructType           TypeKind = "struct"
+	SliceType            TypeKind = "slice"
+	ArrayType            TypeKind = "array"
 	// VariadicPackType is the compiler-known invocation-lifetime pack defined
 	// by rules/declarations/functions.md sections 29-34. It is deliberately
 	// distinct from arrays and slices because it has no source-visible layout.
@@ -910,9 +914,13 @@ type Symbol struct {
 	// the null sentinel, so every dereference through it is a proven null
 	// dereference (rules/memory/raw_pointers.md — § 7(8)).
 	RawPointerNull bool
-	Name           string
-	Type           Type
-	Mutable        bool
+	// RawPointerOrigin is the Place an immutable RawPtr[T] binding was
+	// initialized from with `.Ptr` (nil when unknown); MD-070 conversions
+	// check it against live borrows and availability.
+	RawPointerOrigin *Place
+	Name             string
+	Type             Type
+	Mutable          bool
 	// ImplicitMember marks the short-name alias injected for an impl member.
 	// A lexical declaration may shadow such an alias without redeclaring the
 	// underlying field, property or event.
@@ -986,15 +994,16 @@ func sharedBuiltinTypes() map[string]Type {
 // rules/declarations/interfaces.md — §9.1.
 func newBuiltinTypes() map[string]Type {
 	types := map[string]Type{
-		"any":    {Name: "any", Kind: AnyType},
-		"bool":   {Name: "bool", Kind: BoolType},
-		"byte":   unsignedType("byte", 255),
-		"char":   {Name: "char", Kind: CharType},
-		"rune":   {Name: "rune", Kind: RuneType},
-		"error":  {Name: "error", Kind: ErrorRootType},
-		"RawPtr": {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
-		"never":  {Name: "never", Kind: NeverType},
-		"Arena":  {Name: "Arena", Kind: StructType},
+		"any":              {Name: "any", Kind: AnyType},
+		"bool":             {Name: "bool", Kind: BoolType},
+		"byte":             unsignedType("byte", 255),
+		"char":             {Name: "char", Kind: CharType},
+		"rune":             {Name: "rune", Kind: RuneType},
+		"error":            {Name: "error", Kind: ErrorRootType},
+		"RawPtr":           {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
+		"HardwareInstance": {Name: "HardwareInstance", Kind: HardwareInstanceType, GenericParameters: []string{"T"}},
+		"never":            {Name: "never", Kind: NeverType},
+		"Arena":            {Name: "Arena", Kind: StructType},
 		"AllocationError": {
 			Name:       "AllocationError",
 			Kind:       EnumType,
@@ -1479,6 +1488,11 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 		InterfaceType,
 		RegisterType:
 		return true
+	case HardwareInstanceType:
+		// MD-077 §§ 8(2), 16(6): ending a hardware instance never writes back
+		// or otherwise touches the hardware. Its software state is the
+		// register type's impl instance members, which are none here.
+		return true
 	case StringType:
 		// Current Sec strings are lowered as string views or static literals.
 		// Owned string storage will need an explicit non-trivial string type.
@@ -1706,6 +1720,10 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 	}
 	switch typ.Kind {
 	case InvalidType, VoidType, NeverType:
+		return CopyNonCopyable
+	case HardwareInstanceType:
+		// MD-077 § 3(5): copying or moving an instance never duplicates
+		// hardware authority; the instance is borrowed, not copied.
 		return CopyNonCopyable
 	case AnyType:
 		return CopyConditional

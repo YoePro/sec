@@ -1290,6 +1290,17 @@ objects.
 
 § 59(3) Output records/identifies schema and selected plan where required.
 
+§ 59(4) Amendment MD-086 (2026-10-21; `rules/corrections/applied/md086-p15-cli-emit-routes-correction-20261021.md`): the inspection routes reach their own boundaries for every program in the implemented package-15 subset.
+- `emit-ir` publishes verified package-15 Semantic IR.
+- `emit-sec-mlir` publishes schema-11 Sec MLIR only after the dialect verifier and `--sec-verify-places`, `--sec-verify-reference-guards` and `--sec-verify-borrow-semantics` succeed.
+- A package-14 gate must not reject such a program for containing Places or safe references.
+
+§ 59(5) The package ceiling of an inspection route is a statement about its output boundary, not about physical lowering or native code generation.
+
+§ 59(6) The default schema stays 11. Explicit schema-12 selection emits only implemented and verified operations, and schema selection never depends on whether the source contains references. MD-084 spellings and MD-085 verification apply. A program failing MD-085 verification is never published, and no metadata is stripped to make a route succeed.
+
+§ 59(7) Output is published only after verification (§ 59(2)). A failure leaves an existing output file untouched, and diagnostics distinguish invalid source, target/profile limits, compiler capability gaps and internal correctness failures (§ 2).
+
 ---
 
 ## § 60 Generic MLIR emission command
@@ -1316,6 +1327,8 @@ another documented boundary.
 § 61(2) It consumes selected target/layout/ABI facts.
 
 § 61(3) Unsupported source must be diagnosed before publishing partial invalid LLVM IR.
+
+§ 61(4) Amendment MD-086 (2026-10-21): `emit-mlir` (§ 60), `emit-llvm` and `build` need the physical representation of Places and safe references. Until it exists, they reject a reference program as an unsupported lowering that names the missing representation and points to `emit-ir` / `emit-sec-mlir`. They never fake or erase reference metadata, and ordinary non-reference programs keep their behavior.
 
 ---
 

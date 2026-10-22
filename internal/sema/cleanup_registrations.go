@@ -60,6 +60,10 @@ func (a *Analyzer) recordOwnedCleanupInitialization(stmt *ast.LetStatement, erro
 		a.ownedCleanupInitializations = map[*ast.LetStatement]ResolvedOwnedCleanupRegistration{}
 	}
 	a.ownedCleanupInitializations[stmt] = registration
+	if a.ownedCleanupDeclarations == nil {
+		a.ownedCleanupDeclarations = map[BindingID]*ast.LetStatement{}
+	}
+	a.ownedCleanupDeclarations[binding] = stmt
 }
 
 // ResolvedOwnedCleanupInitializationOf reads the success-only obligation of a
@@ -74,11 +78,18 @@ func (a *Analyzer) ResolvedOwnedCleanupInitializationOf(stmt *ast.LetStatement) 
 	if !ok {
 		return ResolvedOwnedCleanupRegistration{}, false
 	}
+	return cloneOwnedCleanupRegistration(registration), true
+}
+
+// cloneOwnedCleanupRegistration detaches a registration's typed Place and
+// destruction graph for read-only cleanup consumers.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§79–80.
+func cloneOwnedCleanupRegistration(registration ResolvedOwnedCleanupRegistration) ResolvedOwnedCleanupRegistration {
 	registration.Place = cloneSlicePlanPlace(registration.Place)
 	plans := make(map[DestructionPlanID]ResolvedDestructionPlan, len(registration.Destruction.Plans))
 	for id, plan := range registration.Destruction.Plans {
 		plans[id] = plan.clone()
 	}
 	registration.Destruction.Plans = plans
-	return registration, true
+	return registration
 }

@@ -40,6 +40,12 @@ type Peripheral register[8] {
     _: bit[7],
 }
 
+impl Peripheral {
+    fn Enable() void {
+        self.Enabled = true
+    }
+}
+
 let ordinary := 1
 
 @address(0x40021000)
@@ -63,6 +69,11 @@ let mut peripheral: Peripheral
 	}
 	if !peripheral.Addressed || !peripheral.Volatile {
 		t.Fatalf("addressed register metadata missing: %+v", peripheral)
+	}
+	// MD-077 § 4(7): the binding denotes the software instance of its
+	// register type.
+	if peripheral.Type.Kind != HardwareInstanceType || len(peripheral.Type.TypeArgs) != 1 || peripheral.Type.TypeArgs[0].Name != "Peripheral" {
+		t.Fatalf("addressed register binding type = %s, want HardwareInstance[Peripheral]", typeDisplayName(peripheral.Type))
 	}
 }
 

@@ -1,0 +1,5 @@
+module main
+
+fn Drop(-> values: byte[]) void {
+    discard values
+}

@@ -608,6 +608,22 @@ address/resource identity where bound
 
 § 21(3) Register field access is represented as semantic register/hardware operations, not inferred later from integer masks.
 
+§ 21(4) *Register value and hardware operation distinction (MD-077, 2026-10-22; `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md`).* A nominal `register[N]` used as a detached value is represented by typed, effect-free field extraction and update operations preserving register type identity, field paths, bit layout, enum and range facts. A hardware-bound register is represented by a distinct resolved binding/resource identity and effectful logical hardware operations through an authorized type-owned implementation. These operations preserve field permissions, specialized read/write behaviors, shadow intent/knowledge, physical access plan, resource/endpoint aliases, footprints, ordering, completion, access authority, fault behavior and provenance. External hardware register endpoints are not ordinary `Place` roots and do not permit `ref` or `ref mut` to their bits. Separately allocated ordinary implementation state remains eligible for regular Place/reference operations. The compiler validates logical register operations before target-aware lowering; lower stages shall not reconstruct field behavior from integer bit masks or numeric addresses.
+
+§ 21(5) The canonical operation families are:
+
+| Operation | Inputs → outcome | Effects |
+|---|---|---|
+| `register.value.extract` | detached `T`, validated field path → field value | pure |
+| `register.value.update` | detached `T`, field path, range-validated value → `T` | pure |
+| `register.hw.bind` | binding, nominal `T`, resource/endpoint → `HardwareInstance[T]` identity | authority association; no physical I/O |
+| `register.hw.observe` | instance, read projection, verified plan → observed value or fault continuation | external observation; may be destructive |
+| `register.hw.request_write` | instance, field path, validated request, verified plan → completion/intent or failure continuation | hardware write or pending intent |
+| `register.hw.shadow_observe` / `shadow_intent` / `shadow_invalidate` | instance/shadow group → updated knowledge / pending intent | software shadow state |
+| `register.hw.commit` | instance/shadow group, pending intents, verified plan → completion or failure | hardware operation only when intents are pending |
+
+Value operations keep `RegisterTypeID`, field-path identities, bit width/offset, allocation order, byte-order contract at serialization boundaries, field value type, enum/unit/range facts and provenance. Hardware operations additionally keep or losslessly reference the identity, field, request, transfer, safety, effect, shadow, authority, failure and trace data of the correction's § 10(2). Builders consume Sema's immutable resolved plans and never re-derive hardware meaning from syntax. The verifier checks category, type and field identity, payload presence, value-width and enum facts, the linkage between resource and instance, effect and plan capability, and that no ordinary Place root is fabricated for a physical resource. It is not a second planner.
+
 ---
 
 ## § 22 Enums
@@ -2177,6 +2193,8 @@ fault behavior
 ```
 
 § 85(3) Lowering must not reconstruct these facts from address/width/naming convention.
+
+§ 85(4) (MD-077, 2026-10-22) These facts travel in the § 21(5) operation families. Hardware operations are effect-ordered relative to every operation their hardware or compiler contracts order, and volatile access is never reinterpreted as atomic synchronization. A logical operation realized by several physical transactions remains one coherent operation, with explicit sub-operation ordering, completion, collateral effects and a partial-failure contract. When no semantics-preserving plan exists for the selected target, the operation fails closed with an operation-specific capability diagnostic.
 
 ---
 

@@ -123,6 +123,86 @@ Source searches establish the P17 API/operation absences above. Full Go/vet,
    template's classification. A concrete unsupported representation stays an
    explicit lowering limitation, not a declaration that destruction is trivial.
 
+## P17-06 migration map — audited 2026-10-22
+
+This map supersedes the historical inventory above for ownership implementation
+locations. It records the current working checkout, including uncommitted P17
+changes; it is not the reproducible acceptance snapshot required by P17-01.
+The canonical owner remains `lowering.sec-mlir-package17`. This audit changes
+neither language rules nor the supported source-to-binary surface.
+
+Authority: P17 §§9–18 (identities and transfers), §§19–27 (destruction),
+§§31–44 (replacement and cleanup), §§79–80 (cleanup queries), §135
+(architecture); `rules/memory/copy_move.md` §§3,5,8–12;
+`rules/memory/destruction.md` §6.1 and §§9–18;
+`rules/control-flow/defer.md` §§9–14. P15 Places/reference facts and P16 slice
+facts remain their respective authorities. The current corrections and
+capability gates take precedence over historical package assumptions.
+
+### Existing producers and their migration owners
+
+Paths in the first table are relative to `internal/sema/`.
+
+| Responsibility | Existing producer and published facts | Remaining work and owning task |
+|---|---|---|
+| Type classification | `types.go`: `CopyClassificationOf`, `TriviallyDestructible`; `destruction_plans.go`: `ResolveTransferAction`, `ResolveDestructionPlans`, `ResolvedDestructionPlanOf`. Destruction graphs retain unsupported concrete boundaries. | P17-09 must resolve an infallible semantic-copy operation before enabling that action. `CopySemantic` currently propagates through aggregate classification but has no leaf producer selecting an operation. A named duplication method is not such a producer. |
+| Availability and partial moves | `place.go`: `unavailablePlace`, `markPlaceUnavailable`, `markPlaceAvailable`; `ownership_moves.go`: `markMoveSource`, `markResourceTransfer`. `analyzer.go` retains `assigned`, `moved`, `moveReasons`, `closedResources` and branch/loop snapshots and merges. | P17-15/16 must publish path/subobject state and failed-construction cleanup from these existing decisions. String-keyed availability and resource bookkeeping are current producer internals, not a complete cleanup plan to reconstruct in the builder. |
+| Initialization and assignment | `ownership_transfer_context.go` wraps existing ownership validation and binds accepted destination Places; `analyzer_let_bindings.go` and `analyzer.go` commit the existing declaration/assignment state. `transfer_plans.go` publishes detached `ResolvedTransferPlanOf` and `ResolvedTransferPlans`. | P17-13 completes use-site coverage; P17-15/16 completes partial-state facts; P17-28/35/36/39 consumes them for initialization, replacement and projected stores. Preserve RHS preparation before old-value destruction. |
+| Calls and constructions | `call_ownership.go` resolves ordinary argument copies and explicit moves against the selected parameter. `analyzer_inference.go` validates explicit construction moves. `semantic_facts.go` exposes `ResolvedConstructionOf`, `ResolvedUnionConstructionOf`, `ResolvedStructLiteralPlanOf` and `ResolvedArrayLiteralPlanOf`. | P17-13 completes construction sources and fresh-value/observation distinctions; P17-31/32/35 extends the existing aggregate/call plans. Preserve selected overloads, field identities, variant identities and exact array plans. |
+| Returns, captures and branches | `return_ownership.go`: terminal return construction; `analyzer_lifetime.go`: lambda capture validation; `match_arm_bindings.go`: branch-local payload borrow/move and arm-result validation. `ResolvedMatchPlanOf` retains selected binding actions in `semantic_facts.go`. | P17-13 still needs copy-return/copy-capture and complete match-binding/branch-use publication. P17-23/32/37/42 then relates protected outgoing values to cleanup and exits. Do not recheck arms after losing their branch-local state. |
+| Borrowing and observation | `analyzer_borrow_access.go`, `analyzer_lifetime.go` and `borrow_liveness.go` enforce existing borrow/defer obligations. `reference_plans.go` publishes `ResolvedPlaceOf`, `ResolvedReferencePlanOf`, `ResolvedReferenceUseOf` and lifetime ends; `slice_creation_plans.go`, `slice_index_plans.go`, `slice_length_plans.go` own slice facts. | P17-13 distinguishes these uses from owned transfers by consuming the existing P15/P16 facts. Ending a holder must never destroy its referent or slice elements. No second borrow checker belongs in P17. |
+| Explicit discard and ownership ends | `analyzer_discard.go` validates terminal use, redundant no-op and conditional convergence. Existing accepted move, resource, receiver-consumption and arena-release producers publish through `cleanup_cancellations.go`: `ResolvedOwnedCleanupCancellationsAt`. | P17-19 must match binding/Place cancellation targets to the current registration on each executing path; partial cancellation must preserve siblings. P17-29/40 owns explicit terminal IR and temporary lifetime ends. |
+| Owned registration and replacement | `cleanup_registrations.go`: `ResolvedOwnedCleanupInitializationOf`; `cleanup_assignments.go`: `ResolvedOwnedCleanupAssignmentOf`. Accepted non-trivial initialized locals get success-only obligations; whole tracked local assignments retain the declaration scope and a fresh action with distinct previous-availability states. | P17-19 still needs initially empty locals, parameters, projected producers and path-exact incarnation matching. P17-21..25 adds dynamic registrations, exits and the consolidated cleanup plan. Current facts do not implement those consumers. |
+| Defer capture and lifetime | `analyzer_defer.go` checks bodies in isolated flow state and retains dependencies through existing `borrowRecord`s. `defer_plans.go`: `ResolvedDeferPlanOf`, including binding/Place uses, separate retained reference holders and invocation/body identities. | P17-21/24/25/33/41/42 must preserve one registration per execution, interleave owned cleanup and defer in one order, and select eligible scope/function exits. A capture plan does not copy a value or evaluate a deferred index early. |
+
+### Identity decisions
+
+Existing identities are reused at their current granularity. Deterministic
+per-analysis allocation does not promise persistent IDs across different
+programs, compiler versions or edited analysis snapshots. Query methods must
+not allocate identities or infer again.
+
+| Identity | Canonical owner / meaning | Migration constraint |
+|---|---|---|
+| `BindingID`, `CallableID` | `semantic_facts.go` and `call_graph_identity.go` / `call_graph.go`: declaration and selected callable identities. | Use declaration/callable identity rather than spelling; same-named locals in different functions remain distinct. |
+| `PlaceRootID`, `Place`, storage/domain/epoch/borrow/lifetime/index/range IDs | `place.go`, `place_identities.go` and P15/P16 producers: canonical storage paths and validity dependencies. | Preserve projections, alternative origins, address stability and separate pin dependencies. A holder, referent and backing storage are distinct responsibilities. |
+| `TransferDestinationID` | `transfer_destinations.go`: use-node, site kind and callable context, refined by destination Place or selected callable/argument position. | Same-coordinate synthesized use nodes stay distinct; the ID is a semantic continuation, not a physical address or loop execution. |
+| `DestructionPlanID` | `destruction_plans.go`: canonical type identity and its derived destruction graph. | Type-level plan identity does not identify a particular initialized value or its remaining subobjects. |
+| `CleanupScopeID` | `cleanup_identities.go`: parent scope plus lexical block site. | Lexical scope identity does not enumerate dynamic invocations. Preserve declaration lifetime when assignment occurs inside an inner block. |
+| `CleanupActionID`, `DeferID` | `cleanup_identities.go`: binding plus initialization/assignment site, or lexical defer site; owned and defer actions share one action namespace. | Distinct sites have distinct IDs. Reexecuting a site still needs distinct dynamic registrations under P17-21; an ID alone is not the active incarnation or registration order. |
+| `ValueID`, `StorageID`, `BlockID` | `internal/ir/semantic/model.go`: existing SSA, storage and CFG identities. | Retain explicit mappings from Sema binding/Place facts. No additional `OwnershipID` is required now: P17 §9 makes it optional. Do not add a source or runtime ownership-token type (§87). |
+
+The cancellation producer deliberately records binding/Place targets rather
+than guessing one earlier `CleanupActionID`. P17-19/24 must resolve the current
+incarnation along CFG paths, including loop repetitions and joins. The current
+initialized-to-moved transfer facts and four replacement availability labels
+must not be presented as the complete per-path P17-15 state model.
+
+### IR, schema and focused file ownership
+
+| Layer | Current boundary | Chosen integration location |
+|---|---|---|
+| Semantic IR model | `internal/ir/semantic/model.go` has value ownership classes, aggregate action metadata and trivial `OpDiscardValue`; these do not represent all P17 terminal obligations. | P17-26..34 extends the existing model, printer and verifier. Keep ownership operation building/verification in focused sibling `ownership_values.go` and cleanup building/verification in sibling `cleanup.go` when implemented; these two files are planned, not present implementation. |
+| Builder | `internal/ir/semantic/builder.go` still has predecessor trivial-only aggregate/call/branch gates. `discard.go` lowers trivial discard and slice-holder borrow end. `ownership_capabilities.go` consumes Sema facts to reject unavailable P17 operations before constructing IR. | P17-35..44 migrates producers incrementally to the canonical transfer/destruction/cleanup queries. Extract touched cohesive code from the builder into the focused siblings; remove an unsupported gate only when its complete operation and verifier exist. |
+| MLIR emission | `internal/lowering/secmlir/emitter_options.go` selects schema 11/12 and reports schema 13 as structured unsupported; `errors.go` preserves the requested boundary. | P17-45..50 extends existing schema selection and emission, with cohesive ownership/cleanup emission in a sibling file. Preserve no-output-on-failure and do not downgrade schema 13. |
+| MLIR dialect and analysis | `mlir/include/sec/Dialect/Sec/SecOps.td`, `mlir/lib/Dialect/Sec/SecOps.cpp` and `mlir/include/sec/Analysis/Passes.td` have no P17 `sec.own.*`, `sec.cleanup.*` or three P17 verifiers yet. | P17-46..54 extends the existing dialect and pass registry with focused ownership, destruction-plan and cleanup analysis implementations under `mlir/lib/Analysis/`. |
+| Physical/runtime handoff | P17 targets verified high-level schema 13; it does not implement backing storage, destructor ABI or physical cleanup execution. | P18 reuses these plans and P15/P16 validity identities. The sole source-to-binary pipeline remains unchanged; no alternate backend or cleanup engine is introduced. |
+
+Implementation sequence: finish producer coverage and partial-state facts
+(P17-09/13/15/16), resolve registration incarnations and one unified cleanup
+plan (P17-19/21..25), then add explicit IR and migrate producers
+(P17-26..44), and finally schema operations/verifiers (P17-45..54).
+Independent IR model work may proceed earlier, but it must keep unsupported
+capability gates until the corresponding producers and consumers agree.
+
+Existing evidence anchors are `internal/sema/transfer_destinations_test.go`,
+`package17_ownership_matrix_test.go`, `cleanup_identities_test.go`,
+`cleanup_transitions_test.go` and `defer_plans_test.go` (the latter four also
+under `internal/sema/`), plus `ownership_capabilities_test.go` in both
+`internal/ir/semantic/` and `internal/lowering/secmlir/`. These test detached
+queries, identities, existing source decisions and named boundaries; they do
+not establish dynamic cleanup execution or schema-13 acceptance.
+
 ## Completion boundary
 
 P17 represents the already-resolved ownership action and terminal responsibility
@@ -170,13 +250,37 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-05 — Synchronize schema/lowering v13 after the v11/v12 predecessor
   contracts, resolving historical path/attribute spelling and MD-031/MD-061
   intersections. A supplied document's existence is not synchronization evidence.
-- [ ] P17-06 — Audit existing ownership/type/Place/call/discard/defer state and
+- [x] P17-06 — Audit existing ownership/type/Place/call/discard/defer state and
   publish one migration map. Decide focused file ownership and stable identities;
   do not add a parallel move table, borrow checker or cleanup engine.
-- [ ] P17-07 — Establish a package-17 capability boundary and one canonical
+  Completed 2026-10-22: see the migration map above for current producer/query
+  owners, identity granularity, named gaps, focused future file ownership and
+  the staged Sema → IR → schema migration. No runtime support is claimed.
+- [x] P17-07 — Establish a package-17 capability boundary and one canonical
   package governance entry when implementation starts. Link existing
   `semantic-ir.copy-move`, `lowering.copy-move`, `semantic-ir.destruction`,
   `lowering.destruction`, discard/defer and P15/P16 owners; avoid duplicate claims.
+
+  Done 2026-10-22: `internal/ir/semantic/ownership_capabilities.go` preflights
+  explicit P17-or-later requests against canonical Sema facts of the requested
+  module before constructing IR. Missing owned-value initialization/transfer,
+  replacement, termination and defer cleanup operations have named capability
+  errors, with source locations and no partial module. Existing scalar/reference/
+  slice routes remain available; package selection alone does not enable absent
+  ownership/cleanup operations. Explicit schema 13 is a structured unsupported
+  emission boundary naming schema 13 and returning no bytes. Default schema 11,
+  explicit schema 12 and earlier package errors retain their existing behavior.
+  The two `ownership_capabilities_test.go` files cover predecessor equality,
+  repeated read-only preflight, module isolation, source diagnostics, and 32/64-bit
+  schema rejection without downgrade or mutation. Native build/run also passes.
+  The canonical owner remains `lowering.sec-mlir-package17` in
+  `governance/lowering.yaml`, alongside predecessor owners
+  `lowering.sec-mlir-package15` / `lowering.sec-mlir-package16`. Shared source/IR
+  responsibilities remain with `semantic-ir.copy-move`, `lowering.copy-move`,
+  `semantic-ir.destruction`, `lowering.destruction` in `governance/memory.yaml`
+  and `frontend.discard-v2`, `frontend.defer-v2`, `sema.defer-delayed-uses` in
+  `governance/control_flow.yaml`. This closes the capability/ownership boundary
+  task, not the unimplemented schema-13 operations or cleanup execution.
 
 ## B. Publish complete immutable transfer and destruction plans
 
@@ -208,21 +312,39 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Done 2026-10-20: `DestructionPlanID` = `destroy:` + canonical type identity; nested and
   recursive references share IDs in a self-contained `DestructionPlanSet`; no offsets or ABI.
 
-- [ ] P17-12 — Implement `ResolvedTransferPlan` or an equivalent consolidated
+- [x] P17-12 — Implement `ResolvedTransferPlan` or an equivalent consolidated
   model containing action, source value/Place, destination, partial path and
   before/after ownership state. Retain the existing canonical Place identities.
 
-  Partial 2026-10-20: `ResolvedTransferPlan` (`internal/sema/transfer_plans.go`) records site,
-  action, cloned source Place and partial flag for every transfer accepted by
-  `validateNamedOwnershipSource`. Missing: destination Place and before/after ownership state.
+  Done 2026-10-22: `ResolvedTransferPlan` retains its selected action, detached
+  source Place and partial path, plus a typed owning destination continuation and
+  the exact source's before/after state at transfer commit. A move transitions
+  initialized to moved; copy preserves initialized availability. Destination IDs
+  are allocated per semantic use, separating even synthetic nodes with identical
+  token coordinates. Local initialization/assignment retain canonical target
+  Places; argument destinations retain the selected callable, parameter token and
+  argument position; return, construction and capture continuations retain their
+  kind, identity and enclosing callable. No physical storage or dynamic loop
+  instance is inferred from these IDs. `ownership_transfer_context.go` extracts
+  declaration/assignment validation from `analyzer.go`; `transfer_destinations.go`
+  owns destination production/cloning. Both query APIs deeply detach destination
+  and source data, with deterministic ordering for equal source coordinates.
+  `transfer_destinations_test.go` and `testdata/sema/transfer_destinations.sec`
+  cover every currently produced site kind, exact field targets, state transitions,
+  selected callees, mutation isolation and repeatable analysis. These are resolved
+  commit plans, not premature commitment of a partly prepared call. Complete
+  producer coverage remains P17-13, aggregate availability/masks P17-15 and
+  Semantic IR ownership operations P17-26 onward.
 
 - [ ] P17-13 — Publish transfer plans for initialization, assignment, argument,
   return, constructor field/element/payload, match binding and branch use sites.
   Distinguish non-consuming observation and borrowing from ownership transfer.
 
-  Partial 2026-10-20: initialization, assignment, explicit-move argument, return, construction
-  (`<-` in aggregate/payload) and lambda move captures publish plans. Missing: implicit argument
-  copies, match bindings and branch uses.
+  Partial, refreshed 2026-10-22: initialization, assignment, ordinary owning
+  argument copies, explicit-move arguments, supported return/construction moves
+  and lambda move captures publish plans. Their destination/state model is complete
+  under P17-12. Remaining return/construction/capture producers, match bindings,
+  branch uses and complete observation/borrow distinctions remain open.
 
 - [x] P17-14 — Provide detached read-only transfer/destruction queries. Prove
   repeated queries neither infer types nor mutate borrow/move state; clone nested
@@ -245,14 +367,25 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Partial 2026-10-20: reverse field and reverse index order and active-payload-only
   destruction are in the plans; failed/partial construction cleanup is not.
 
-- [ ] P17-17 — Add Sema tests for classifications, detached queries, consuming
+- [x] P17-17 — Add Sema tests for classifications, detached queries, consuming
   calls/returns, whole and partial move/reinit, copyable/move-only references and
   slices, destruction completeness, custom-free decisions and forbidden actions.
-
-
-  Partial 2026-10-20: `destruction_plans_test.go` and `transfer_plans_test.go` cover
-  classifications, detached queries, struct/array/variant/resource plans, the P18 boundary and
-  whole/partial moves; consuming-call returns, reinit and forbidden actions remain.
+  Done 2026-10-22: `package17_ownership_matrix_test.go` and the paired
+  `testdata/sema/package17_ownership_matrix*.sec` fixtures complete the Sema gate
+  alongside `destruction_plans_test.go`, `transfer_plans_test.go`,
+  `copy_move_test.go`, `slice_aggregate_test.go`, custom-free tests and
+  `cleanup_transitions_test.go`. The new source matrix verifies consuming
+  call/return plans, whole and field move/reinit, shared/exclusive references and
+  slices, no accepted plan for rejected copies/extractions, custom-free field
+  restrictions and use after consumption. Destruction graph checks cover every
+  child ID, active union/Option/Result payloads, non-owning holder destruction
+  and compact exact fixed-array counts beyond 64 bits.
+  Independent analysis snapshots exposed shared nested type data in transfer
+  queries; `transfer_plans.go` now detaches typed Places at publication and in
+  both query APIs. Mutation tests cover element/field types and ownership/borrow
+  state. These tests establish the supported Sema plans, not the still-open
+  semantic-copy producer (P17-09), complete transfer/cleanup models or later
+  source-to-IR/schema-13/runtime integration.
 
 ## C. Resolve one cleanup registration and exit model in Sema
 
@@ -287,9 +420,28 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   inferred/typed declarations, custom free, fixed arrays, reverse-field aggregate
   destruction, fallible initialization, fresh destinations of explicit moves,
   rejected initializers, detached queries and analysis reset. These are source-site
-  facts, not a runtime cleanup log or an active-owner map. Cancellation, partial
-  transfer/discard, reinitialization/replacement and path-sensitive continuation
-  through exit plans remain open; no cleanup IR or native execution is claimed.
+  facts, not a runtime cleanup log or an active-owner map. Cancellation,
+  reinitialization/replacement and path-sensitive continuation remained open at
+  that snapshot; the next increment is recorded below.
+
+  Partial 2026-10-22: `cleanup_cancellations.go` records accepted ownership-end
+  sites through the canonical move/discard/consumption producers, including
+  precise subobject Places and conditional discard convergence. Repeated general
+  and resource tracking of the same end publishes one cancellation. Borrow-holder
+  termination creates no referent-destruction cancellation. `cleanup_assignments.go`
+  publishes success-only whole-local replacement/reinitialization facts after RHS
+  preparation and before destination availability is cleared. Each gets a fresh
+  action and retains the declaration's scope/invocation, including inner-block
+  assignment. Available, unavailable, conditional and partial previous states
+  remain distinct; RHS consumption of the destination is observed before selecting
+  reinitialization. `ownership_moves.go` extracts the touched move/resource-transfer
+  producers from `analyzer.go` with rule traceability. `cleanup_transitions_test.go`
+  covers these source transitions, fallible RHS, partial Places, rejected writes/
+  self-moves/borrowed moves, detached queries and deterministic reanalysis.
+  Cancellation targets the current binding/Place incarnation on the executing path;
+  matching it to registrations through CFG joins, complete partial-state cleanup,
+  projected stores and parameters, cleanup IR and execution remain open. P17-19
+  therefore stays unchecked; P17-15/16/P17-21..24/P17-36 retain their separate work.
 - [x] P17-20 — Resolve defer capture Places/binding identities and required
   lifetime extension. Registration does not copy a value; execution observes the
   current value of the captured binding instance (P17 §§42–43).

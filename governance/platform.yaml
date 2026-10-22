@@ -38,6 +38,7 @@ integrations:
       - canonical read-set source spelling is represented through parser, AST, Sema compound-read diagnostics, and compiler-fact-driven LSP hover
       - the complete write-one/write-zero clear/set/toggle modifier family is represented through parser, AST, Sema direct-write and compound-read diagnostics, and compiler-fact-driven LSP hover
     remaining:
+      - "MD-077 (decided 2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md) steps 3-4: Semantic IR register.value.extract/update and register.hw.bind/observe/request_write/shadow_*/commit built from Sema's resolved plans with the full § 10 payload; controlled public exposure; shadow/side-effect emission; fail-closed target capability diagnostics; negative tests before enabling CLI output"
       - add shadow and noshadow field modifiers plus register-level default inheritance
       - implement shadow observed-state and pending-logical-write analysis without a global runtime manager
       - add compiler-known hardware register Read() returning a detached coherent snapshot
@@ -346,6 +347,7 @@ integrations:
       - represent AddressStability.Fixed independently from conservative Unknown storage origin for platform-owned hardware without a stronger target contract
       - reject field writes through non-mut addressed register bindings
     remaining:
+      - "MD-077 (decided 2026-10-22): classify @address bindings as hardware register bindings (register.hw.bind roots, HardwareInstance[T]) versus ordinary addressed storage (P15 Place roots); never form Places or safe refs to hardware endpoints"
       - propagate AddressStability.Fixed independently from storage origin through Place, Semantic IR, MLIR, and tooling facts
       - require every binding, including raw numeric spelling, to resolve against a canonical target region covering its complete extent
       - validate target address domain/space, alignment, extent, access width, memory space, layout, representation, availability, and permissions

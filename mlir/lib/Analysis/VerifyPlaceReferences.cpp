@@ -13,6 +13,12 @@
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
+#include "sec/Dialect/Sec/SecAttributes.h"
+#include "sec/Dialect/Sec/ReturnOrigins.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/IR/SymbolTable.h"
+#include <set>
+#include <string>
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -159,33 +165,238 @@ Value derivationSource(Value source) {
   return Value();
 }
 
-// The function parameter a `sec.return_origins` entry is rooted at: param#N,
-// or the receiver, which is parameter 0. Static origins have no schema-11
-// root and yield std::nullopt with *isStatic set.
-std::optional<unsigned> originParameter(StringRef origin, bool *isStatic) {
-  *isStatic = origin.starts_with("static@");
-  if (origin.starts_with("receiver"))
-    return 0u;
-  if (!origin.consume_front("param#"))
-    return std::nullopt;
-  StringRef digits = origin.take_while([](char c) { return llvm::isDigit(c); });
-  unsigned index = 0;
-  if (digits.empty() || digits.getAsInteger(10, index))
-    return std::nullopt;
-  return index;
+// MD-085: structural, path-aware return-origin verification. Origins use the
+// canonical MD-084 grammar; a receiver is parameter 0 of an instance method
+// (sec.parameter_names[0] == "self") and is compared as param#0. The walk
+// mirrors the Semantic IR verifier: copies, moves, borrows, reborrows and
+// dereferences keep the path; a field Place adds .field#N, a proven-safe
+// constant element [K] and any other element [*]; a slice view keeps its
+// parent's origin and its element is [*]; block arguments follow every
+// predecessor with visited states; a direct call contributes only the callee's
+// own summary instantiated over the actual operands (caller prefix + callee
+// suffix). Every observed origin must be listed exactly. Sema stays the only
+// source-level borrow/lifetime authority; nothing is guessed or patched.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.37 amendment (MD-085);
+// rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 61–62, 85;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 63–69.
+
+bool hasReceiver(func::FuncOp function) {
+  auto names = function->getAttrOfType<ArrayAttr>("sec.parameter_names");
+  if (!names || names.empty())
+    return false;
+  auto first = dyn_cast<StringAttr>(names[0]);
+  return first && first.getValue() == "self";
 }
 
+std::string projectionText(const sec::ReturnOriginProjection &projection) {
+  switch (projection.kind) {
+  case sec::ReturnOriginProjection::Kind::Field:
+    return ".field#" + std::to_string(projection.value);
+  case sec::ReturnOriginProjection::Kind::Index:
+    return "[" + std::to_string(projection.value) + "]";
+  case sec::ReturnOriginProjection::Kind::AnyIndex:
+    return "[*]";
+  }
+  return "";
+}
+
+std::string projectionsText(const sec::ReturnOrigin &origin) {
+  std::string text;
+  for (const sec::ReturnOriginProjection &projection : origin.projections)
+    text += projectionText(projection);
+  return text;
+}
+
+// The referent a projection path starts from: the element of a direct
+// reference, or the element sequence of a slice view.
+Type originRootReferent(Type type, bool *sequence) {
+  *sequence = false;
+  if (auto reference = dyn_cast<sec::RefType>(type))
+    return reference.getElementType();
+  if (auto reference = dyn_cast<sec::RefMutType>(type))
+    return reference.getElementType();
+  if (auto slice = dyn_cast<sec::SliceType>(type)) {
+    *sequence = true;
+    return slice.getElementType();
+  }
+  if (auto slice = dyn_cast<sec::SliceMutType>(type)) {
+    *sequence = true;
+    return slice.getElementType();
+  }
+  return Type();
+}
+
+// The type-aware admissibility of a projection path (MD-084 § 4(4),
+// MD-085 § 2(3)): fields of structs, indexes of fixed arrays within their
+// extent (or of a slice view's element sequence).
+bool admissibleProjections(Type root, const sec::ReturnOrigin &origin) {
+  bool sequence = false;
+  Type current = originRootReferent(root, &sequence);
+  if (!current)
+    return false;
+  for (const sec::ReturnOriginProjection &projection : origin.projections) {
+    if (projection.kind == sec::ReturnOriginProjection::Kind::Field) {
+      auto structure = dyn_cast<sec::StructType>(current);
+      if (sequence || !structure)
+        return false;
+      Type fieldType;
+      for (Attribute attribute : structure.getFields())
+        if (auto field = dyn_cast<sec::StructFieldAttr>(attribute))
+          if (field.getOrdinal() == projection.value)
+            fieldType = field.getType();
+      if (!fieldType)
+        return false;
+      current = fieldType;
+      continue;
+    }
+    if (sequence) {
+      sequence = false;
+      continue;
+    }
+    auto array = dyn_cast<sec::ArrayType>(current);
+    if (!array)
+      return false;
+    if (projection.kind == sec::ReturnOriginProjection::Kind::Index) {
+      uint64_t extent = 0;
+      if (!array.getLength().getValue().getAsInteger(10, extent) &&
+          projection.value >= extent)
+        return false;
+    }
+    current = array.getElementType();
+  }
+  return true;
+}
+
+// The parameter an origin root names (receiver = parameter 0).
+std::optional<unsigned> originRootParameter(const sec::ReturnOrigin &origin) {
+  if (origin.root == sec::ReturnOrigin::Root::Receiver)
+    return 0u;
+  if (origin.root == sec::ReturnOrigin::Root::Parameter)
+    return origin.rootIndex;
+  return std::nullopt;
+}
+
+std::optional<uint64_t> constantIndex(Value index) {
+  while (auto cast = index.getDefiningOp<UnrealizedConversionCastOp>()) {
+    if (cast->getNumOperands() != 1)
+      return std::nullopt;
+    index = cast->getOperand(0);
+  }
+  if (auto constant = index.getDefiningOp<sec::ConstIntOp>()) {
+    uint64_t value = 0;
+    if (constant.getValue().getAsInteger(10, value))
+      return std::nullopt;
+    return value;
+  }
+  if (auto constant = index.getDefiningOp<arith::ConstantOp>())
+    if (auto integer = dyn_cast<IntegerAttr>(constant.getValue()))
+      if (!integer.getValue().isNegative())
+        return integer.getValue().getZExtValue();
+  return std::nullopt;
+}
+
+class ReturnOriginTracer {
+public:
+  ReturnOriginTracer(func::FuncOp function, func::ReturnOp ret)
+      : function(function), ret(ret), entry(&function.getBody().front()) {}
+
+  // trace collects the origins of value with the projection path tail that
+  // lies between value and the returned reference.
+  LogicalResult trace(Value value, const std::string &tail,
+                      std::set<std::string> &origins) {
+    if (!visited.insert({value.getAsOpaquePointer(), tail}).second)
+      return success();
+    if (auto argument = dyn_cast<BlockArgument>(value)) {
+      Block *owner = argument.getOwner();
+      if (owner == entry) {
+        origins.insert("param#" + std::to_string(argument.getArgNumber()) + tail);
+        return success();
+      }
+      for (Block *predecessor : owner->getPredecessors()) {
+        auto branch = dyn_cast<BranchOpInterface>(predecessor->getTerminator());
+        if (!branch)
+          return ret.emitOpError("returned reference has an unknown origin");
+        for (unsigned index = 0; index < branch->getNumSuccessors(); ++index)
+          if (branch->getSuccessor(index) == owner)
+            if (Value incoming =
+                    branch.getSuccessorOperands(index)[argument.getArgNumber()])
+              if (failed(trace(incoming, tail, origins)))
+                return failure();
+      }
+      return success();
+    }
+    Operation *definition = value.getDefiningOp();
+    if (isa<sec::PlaceStorageOp, sec::PlaceValueOp>(definition))
+      return ret.emitOpError(
+          "returns a reference to local storage or a local value");
+    if (isa<sec::RefBorrowSharedOp, sec::RefBorrowMutOp, sec::RefCopySharedOp,
+            sec::RefMoveOp, sec::RefReborrowSharedOp, sec::RefReborrowMutOp,
+            sec::PlaceDerefOp, sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
+            sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
+            sec::SliceCopySharedOp, sec::SliceMoveMutOp>(definition))
+      return trace(definition->getOperand(0), tail, origins);
+    if (auto field = dyn_cast<sec::PlaceFieldOp>(definition))
+      return trace(field.getBase(),
+                   ".field#" + std::to_string(field.getField()) + tail, origins);
+    if (auto element = dyn_cast<sec::PlaceArrayElementOp>(definition)) {
+      std::string step = "[*]";
+      if (element.getBoundsKind() == "proven-safe")
+        if (std::optional<uint64_t> index = constantIndex(element.getIndex()))
+          step = "[" + std::to_string(*index) + "]";
+      return trace(element.getBase(), step + tail, origins);
+    }
+    if (isa<sec::SliceElementPlaceOp>(definition))
+      return trace(definition->getOperand(0), "[*]" + tail, origins);
+    if (isa<sec::PlaceUnionPayloadOp>(definition))
+      return ret.emitOpError(
+          "returns a reference through a union payload, which has no "
+          "canonical return-origin projection");
+    if (auto call = dyn_cast<sec::CallDirectOp>(definition))
+      return traceCall(call, tail, origins);
+    return ret.emitOpError("returned reference has an unknown origin");
+  }
+
+private:
+  // A direct call contributes only its callee's listed origins (MD-085 § 4).
+  LogicalResult traceCall(sec::CallDirectOp call, const std::string &tail,
+                          std::set<std::string> &origins) {
+    auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+        call, call->getAttrOfType<FlatSymbolRefAttr>("callee"));
+    auto summary = callee ? callee->getAttrOfType<ArrayAttr>("sec.return_origins")
+                          : ArrayAttr();
+    if (!callee || !summary || summary.empty())
+      return ret.emitOpError()
+             << "returns a reference from a call to "
+             << (callee ? callee.getSymName() : StringRef("an unresolved callee"))
+             << " without a sec.return_origins summary";
+    for (Attribute attribute : summary) {
+      auto text = dyn_cast<StringAttr>(attribute);
+      std::optional<sec::ReturnOrigin> origin =
+          text ? sec::parseReturnOrigin(text.getValue()) : std::nullopt;
+      std::optional<unsigned> parameter =
+          origin ? originRootParameter(*origin) : std::nullopt;
+      if (!parameter || *parameter >= call->getNumOperands() ||
+          (origin->root == sec::ReturnOrigin::Root::Receiver &&
+           !hasReceiver(callee)))
+        return ret.emitOpError()
+               << "cannot instantiate origin " << attribute << " of callee @"
+               << callee.getSymName() << " at this call";
+      if (failed(trace(call->getOperand(*parameter),
+                       projectionsText(*origin) + tail, origins)))
+        return failure();
+    }
+    return success();
+  }
+
+  func::FuncOp function;
+  func::ReturnOp ret;
+  Block *entry;
+  std::set<std::pair<const void *, std::string>> visited;
+};
+
 // verifyReturnOrigins requires a function returning a direct reference to
-// carry its origin summary, and every returned reference to derive only from
-// the reference parameters that summary names: through copies, moves,
-// reborrows, dereferences, Place projections, block arguments and calls whose
-// reference arguments derive from them. A Place rooted at local storage or a
-// local value is never an allowed origin (package15.md sections 61-62, 85).
-// Bounded slices and element references follow their same source operands;
-// normalized ranges are checked by the shared slice guard verifier. Summary
-// paths/callee precision remain the provisional P15 depth (MD-084/MD-085).
-// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§63–69,86,116.
-// The projection paths of the summary are Sema facts and are not re-derived here.
+// carry a valid canonical origin summary and every returned reference's
+// observed origins to be listed in it (MD-085).
 LogicalResult verifyReturnOrigins(func::FuncOp function) {
   ArrayRef<Type> results = function.getFunctionType().getResults();
   if (function.isExternal() || !llvm::any_of(results, isReference))
@@ -194,88 +405,53 @@ LogicalResult verifyReturnOrigins(func::FuncOp function) {
   if (!origins || origins.empty())
     return function.emitOpError(
         "a function returning a direct reference requires sec.return_origins");
-  llvm::SmallDenseSet<unsigned> allowed;
+  std::set<std::string> declared;
   for (Attribute attribute : origins) {
-    auto origin = dyn_cast<StringAttr>(attribute);
-    bool isStatic = false;
-    std::optional<unsigned> parameter =
-        origin ? originParameter(origin.getValue(), &isStatic) : std::nullopt;
-    if (isStatic)
-      continue;
-    if (!parameter || *parameter >= function.getNumArguments() ||
-        !isReference(function.getArgumentTypes()[*parameter]))
+    auto text = dyn_cast<StringAttr>(attribute);
+    std::optional<sec::ReturnOrigin> origin =
+        text ? sec::parseReturnOrigin(text.getValue()) : std::nullopt;
+    if (!origin)
+      return function.emitOpError()
+             << "sec.return_origins entry " << attribute
+             << " is not a canonical origin";
+    if (origin->root == sec::ReturnOrigin::Root::Static)
+      return function.emitOpError()
+             << "sec.return_origins entry " << attribute
+             << " names a static root, which has no schema-11 Place root "
+                "(unsupported static-origin representation)";
+    if (origin->root == sec::ReturnOrigin::Root::Receiver &&
+        !hasReceiver(function))
+      return function.emitOpError()
+             << "sec.return_origins entry " << attribute
+             << " names a receiver, but the function has none";
+    unsigned parameter = *originRootParameter(*origin);
+    if (parameter >= function.getNumArguments() ||
+        !isReference(function.getArgumentTypes()[parameter]))
       return function.emitOpError()
              << "sec.return_origins entry " << attribute
              << " must name a reference parameter";
-    allowed.insert(*parameter);
+    if (!admissibleProjections(function.getArgumentTypes()[parameter], *origin))
+      return function.emitOpError()
+             << "sec.return_origins entry " << attribute
+             << " has a projection that the parameter's referent type does "
+                "not admit";
+    declared.insert("param#" + std::to_string(parameter) +
+                    projectionsText(*origin));
   }
-  Block &entry = function.getBody().front();
   WalkResult result = function.walk([&](func::ReturnOp ret) {
-    SmallVector<Value> worklist;
-    llvm::SmallPtrSet<Operation *, 16> visitedOps;
-    llvm::DenseSet<Value> visited;
-    for (Value operand : ret.getOperands())
-      if (isReference(operand.getType()))
-        worklist.push_back(operand);
-    while (!worklist.empty()) {
-      Value value = worklist.pop_back_val();
-      if (!visited.insert(value).second)
+    for (Value operand : ret.getOperands()) {
+      if (!isReference(operand.getType()))
         continue;
-      if (auto argument = dyn_cast<BlockArgument>(value)) {
-        Block *owner = argument.getOwner();
-        if (owner == &entry) {
-          if (!allowed.contains(argument.getArgNumber()))
-            return ret.emitOpError()
-                       << "returns a reference derived from parameter "
-                       << argument.getArgNumber()
-                       << ", which sec.return_origins does not name",
-                   WalkResult::interrupt();
-          continue;
+      std::set<std::string> observed;
+      ReturnOriginTracer tracer(function, ret);
+      if (failed(tracer.trace(operand, "", observed)))
+        return WalkResult::interrupt();
+      for (const std::string &origin : observed)
+        if (!declared.count(origin)) {
+          ret.emitOpError() << "returns a reference derived from " << origin
+                            << ", which sec.return_origins does not list";
+          return WalkResult::interrupt();
         }
-        for (Block *predecessor : owner->getPredecessors()) {
-          auto branch =
-              dyn_cast<BranchOpInterface>(predecessor->getTerminator());
-          if (!branch)
-            return ret.emitOpError("returned reference has an unknown origin"),
-                   WalkResult::interrupt();
-          for (unsigned index = 0; index < branch->getNumSuccessors(); ++index)
-            if (branch->getSuccessor(index) == owner)
-              if (Value incoming = branch.getSuccessorOperands(index)
-                                       [argument.getArgNumber()])
-                worklist.push_back(incoming);
-        }
-        continue;
-      }
-      Operation *definition = value.getDefiningOp();
-      if (isa<sec::PlaceStorageOp, sec::PlaceValueOp>(definition))
-        return ret.emitOpError(
-                   "returns a reference to local storage or a local value"),
-               WalkResult::interrupt();
-      if (isa<sec::RefBorrowSharedOp, sec::RefBorrowMutOp,
-              sec::RefCopySharedOp, sec::RefMoveOp, sec::RefReborrowSharedOp,
-              sec::RefReborrowMutOp, sec::PlaceDerefOp, sec::PlaceFieldOp,
-              sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp,
-              sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
-              sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
-              sec::SliceCopySharedOp, sec::SliceMoveMutOp,
-              sec::SliceElementPlaceOp>(definition)) {
-        worklist.push_back(definition->getOperand(0));
-        continue;
-      }
-      if (isa<sec::CallDirectOp>(definition)) {
-        if (!visitedOps.insert(definition).second)
-          continue;
-        bool any = false;
-        for (Value operand : definition->getOperands())
-          if (isReference(operand.getType())) {
-            worklist.push_back(operand);
-            any = true;
-          }
-        if (any)
-          continue;
-      }
-      return ret.emitOpError("returned reference has an unknown origin"),
-             WalkResult::interrupt();
     }
     return WalkResult::advance();
   });

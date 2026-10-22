@@ -85,3 +85,73 @@ fn Implicit(pointer: RawPtr[int]) void {
 		t.Fatalf("implicit conversion help = %q", errors[4].Help)
 	}
 }
+
+// MD-070 § 5(3): where Sema knows the raw pointer's origin (an immutable
+// binding initialized from `place.Ptr`), forming `ref mut T` over a live
+// borrow, `ref T` over a live mutable borrow, or any reference to an origin
+// that no longer holds a value is rejected even inside unsafe.
+func TestRawPointerReferenceConversionsCheckKnownOrigins(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+    Id: int,
+}
+
+fn Conflicts() int {
+    let mut x := 1
+    let r := ref mut x
+    unsafe {
+        let p: RawPtr[int] := x.Ptr
+        let alias := p.AsRefMut()
+        *r = 2
+        return *alias
+    }
+}
+
+fn SharedWhileMutable() int {
+    let mut x := 1
+    let r := ref mut x
+    unsafe {
+        let p: RawPtr[int] := x.Ptr
+        let view := p.AsRef()
+        *r = 3
+        return *view
+    }
+}
+
+fn Dangling() int {
+    let s := Session{Id: 1}
+    unsafe {
+        let p: RawPtr[Session] := s.Ptr
+        let moved :<- s
+        let view := p.AsRef()
+        return view.Id + moved.Id
+    }
+}
+
+fn Fine() int {
+    let mut x := 1
+    unsafe {
+        let p: RawPtr[int] := x.Ptr
+        let view := p.AsRef()
+        return *view
+    }
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	want := []string{
+		"cannot form a mutable reference through RawPtr.AsRefMut to x while it is mutably borrowed",
+		"cannot form a shared reference through RawPtr.AsRef to x while it is mutably borrowed",
+		"RawPtr.AsRef through p would form a reference to s, which no longer holds a value",
+	}
+	if len(errors) != len(want) {
+		t.Fatalf("wrong sema error count. got=%d want=%d errors=%v", len(errors), len(want), errors)
+	}
+	for index, expected := range want {
+		if !strings.Contains(errors[index].Error(), expected) {
+			t.Fatalf("sema error %d = %q, want it to contain %q", index, errors[index].Error(), expected)
+		}
+	}
+}

@@ -1,0 +1,55 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type Pair struct { left: Handle, right: Handle }
+type Choice union { Empty, Owned(Handle) }
+type Failure enum error { Broken }
+type Optional struct { value: Option[Handle] }
+type Outcome struct { value: Result[Handle, Failure] }
+
+fn Transfer(-> value: Handle) Handle {
+    return <-value
+}
+
+fn Whole() void {
+    let mut first := Handle { id: 1 }
+    let second :<- first
+    first = Handle { id: 2 }
+    let returned := Transfer(<-second)
+    discard first
+    discard returned
+}
+
+fn Partial() void {
+    let mut pair := Pair { left: Handle { id: 1 }, right: Handle { id: 2 } }
+    let extracted :<- pair.left
+    pair.left = Handle { id: 3 }
+    let complete :<- pair
+    discard extracted
+    discard complete
+}
+
+fn SharedReference() void {
+    let value := Handle { id: 1 }
+    let view := ref value
+    let alias := view
+}
+
+fn MutableReference() void {
+    let mut value := 1
+    let view := ref mut value
+    let moved :<- view
+}
+
+fn SharedSlice() void {
+    let values: Handle[2] := [Handle { id: 1 }, Handle { id: 2 }]
+    let view := ref values[..]
+    let alias := view
+}
+
+fn MutableSlice() void {
+    let mut values: int[2] := [1, 2]
+    let view := ref mut values[..]
+    let moved :<- view
+}

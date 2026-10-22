@@ -2814,7 +2814,7 @@ allocator/deallocator pairing
 empty owning array
 construction
 reserve/growth semantics
-relocation class
+address stability and separate pin dependencies
 element initialization
 push/append ownership transfer
 index Place integration
@@ -2829,3 +2829,7 @@ no physical allocator ABI yet
 
 Package 18 should reuse P15/P16 reference invalidation identities rather than
 creating a collection-specific reference model.
+
+Address stability and pin dependencies follow the canonical model in
+`rules/memory/storage.md` §§14,24, `rules/memory/reference_model.md` §26 and
+`rules/mlir/packages/sec-mlir-dialect_package15.md` §28.

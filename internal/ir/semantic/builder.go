@@ -24,6 +24,7 @@ type BuildOptions struct {
 // Rules: rules/compiler/compiler_pipeline.md — §§32–34;
 // rules/compiler/semantic_ir.md — §§64(2–5), 65.
 // rules/memory/allocation.md — §§25(1)–(5),26(1)–(3).
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §§4,79,128,135 (capability preflight).
 func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) (*Module, error) {
 	if program == nil || analyzer == nil {
 		return nil, fmt.Errorf("program and completed analyzer are required")
@@ -41,6 +42,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		return nil, err
 	}
 	if err := analyzer.ValidateAllocationLoweringReadiness(program, identity); err != nil {
+		return nil, err
+	}
+	if err := validateOwnershipLoweringCapabilities(program, analyzer, identity, options.MaxPackage); err != nil {
 		return nil, err
 	}
 	if free, ok := firstCustomFreeDeclaration(program); ok {
@@ -129,6 +133,8 @@ type builder struct {
 	definedStructs map[TypeID]bool
 	statics        staticRegistry
 	slicePlans     *sliceLoweringPlans
+	// borrowEnds indexes Sema's last-required-use borrow ends (MD-065).
+	borrowEnds map[string][]sema.ReferenceLifetimeEnd
 }
 type functionBuilder struct {
 	// variantGuard is the union.is-variant predicate of the match arm being
@@ -161,6 +167,15 @@ type functionBuilder struct {
 	// receiver is the implicit `self` reference parameter of the instance
 	// method being built (reference_receiver.go); zero otherwise.
 	receiver builtValue
+	// MD-065 borrow ends (borrow_ends.go): the statement list each reference
+	// holder is declared in, bindings awaiting the next list, and where a
+	// holder's borrow has been ended.
+	statementLists int
+	holderHomes    map[sema.BindingID]int
+	pendingHomes   []sema.BindingID
+	borrowEnds     map[ValueID]borrowEndMark
+	// armPayloadBinding is the binding of the match arm being built.
+	armPayloadBinding sema.BindingID
 }
 type binding struct {
 	value   ValueID
@@ -620,14 +635,19 @@ func numericWidth(name string) uint16 {
 }
 
 func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
+	list := fb.enterStatementList()
 	for _, statement := range statements {
 		if fb.current == nil {
 			return &UnsupportedFeatureError{Feature: "unreachable statement after terminator", Package: fb.owner.maxPackage, Location: statementLocation(statement)}
 		}
+		fb.endBorrowsBefore(statement, list)
 		switch stmt := statement.(type) {
 		case *ast.LetStatement:
 			if err := fb.buildLet(stmt); err != nil {
 				return err
+			}
+			if fact, ok := fb.owner.analyzer.ResolvedBindingOf(stmt.Name); ok {
+				fb.setHolderHome(fact.ID, list)
 			}
 		case *ast.AssignmentStatement:
 			if err := fb.buildAssignment(stmt); err != nil {
@@ -2606,6 +2626,7 @@ func matchArmBindingIdentifier(pattern ast.Expression) *ast.Identifier {
 }
 
 func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, value builtValue, hasValue bool) (func(), error) {
+	fb.armPayloadBinding = 0
 	if plan.BindingName == "" || plan.BindingName == "_" {
 		return func() {}, nil
 	}
@@ -2622,6 +2643,7 @@ func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMat
 	}
 	previous, existed := fb.bindings[fact.ID]
 	fb.bindings[fact.ID] = binding{value: value.id, typ: value.typ}
+	fb.armPayloadBinding = fact.ID
 	return func() {
 		if existed {
 			fb.bindings[fact.ID] = previous
@@ -2652,6 +2674,10 @@ func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.R
 		return fb.buildReturn(arm.ReturnBody)
 	}
 	if arm.BlockBody != nil {
+		// A match payload's home list is its arm body (MD-065).
+		if fb.armPayloadBinding != 0 {
+			fb.pendingHomes = append(fb.pendingHomes, fb.armPayloadBinding)
+		}
 		if err := fb.buildStatements(arm.BlockBody.Statements); err != nil {
 			return err
 		}

@@ -265,7 +265,9 @@ func (fb *functionBuilder) endPayloadBorrow(reference builtValue, armBlocks []*B
 		return Operation{Kind: OpReferenceEndBorrow, Operands: []ValueID{reference.id}, Reference: cloneReferenceMetadata(metadata), Location: loc}
 	}
 	for _, block := range armBlocks {
-		if len(block.Operations) == 0 {
+		// MD-065: an exit already dominated by the Sema-resolved end of the
+		// payload borrow needs no second marker.
+		if len(block.Operations) == 0 || fb.endedBeforeExit(reference.id, block.ID) {
 			continue
 		}
 		last := len(block.Operations) - 1

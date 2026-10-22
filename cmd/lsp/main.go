@@ -2906,6 +2906,18 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 	if declared, ok := types[exprType.Name]; ok && exprType.Kind == sema.StructType && len(exprType.Fields) == 0 && len(declared.Fields) > 0 {
 		exprType = declared
 	}
+	// MD-077: a hardware instance offers the public members of its register
+	// type's impl, never the physical register fields.
+	hardware := false
+	if exprType.Kind == sema.ReferenceType && exprType.Element != nil && exprType.Element.Kind == sema.HardwareInstanceType {
+		exprType = *exprType.Element
+	}
+	if exprType.Kind == sema.HardwareInstanceType && len(exprType.TypeArgs) == 1 {
+		exprType, hardware = exprType.TypeArgs[0], true
+		if declared, ok := types[exprType.Name]; ok {
+			exprType = declared
+		}
+	}
 	items := []completionItem{}
 	seen := map[string]bool{}
 	addTyped := func(item completionItem, valueTypes ...sema.Type) {
@@ -2960,7 +2972,7 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 			}
 		}
 	case sema.RegisterType:
-		if !static {
+		if !static && !hardware {
 			for _, field := range exprType.RegisterFields {
 				detail := lspTypeName(field.Type)
 				if field.Access != "" {

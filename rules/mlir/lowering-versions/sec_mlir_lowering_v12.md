@@ -381,7 +381,7 @@ place authority
 storage identity
 borrow/lifetime
 epoch dependency
-relocation class
+address stability and pinning (formerly "relocation class"; MD-084)
 reference generation failure
 ```
 

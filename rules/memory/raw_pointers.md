@@ -566,7 +566,7 @@ let editor := unsafe otherPointer.AsRefMut()
 
 § 18A(5) No lifetime parameters, annotations or lifetime syntax participate. The result is an ordinary Sec reference with the existing provenance, BorrowID, LifetimeID, validity policy, invalidation domain/epoch and storage-live-range model. Where the storage origin is known it constrains the reference. Otherwise the caller's contract bounds it, and a bare address never yields a static or unconstrained lifetime. Copying, reborrowing, escape analysis and borrow ends (MD-065) follow the ordinary rules. The reference neither owns, pins nor extends the storage, nor does it prevent an Arena reset.
 
-§ 18A(6) Known hole (verified 2026-10-21): Sema has no origin for a reference formed from an arbitrary raw pointer, so returning or retaining it relies on the caller's unsafe contract. Proving conflicting authority against live safe borrows of the pointer's origin, which § 18(5) requires where provable, is not yet implemented.
+§ 18A(6) Known hole (verified 2026-10-21): Sema has no origin for a reference formed from an arbitrary raw pointer, so returning or retaining it relies on the caller's unsafe contract. Since 2026-10-22, conflicting authority and a no-longer-available origin are proven for an immutable binding initialized from `place.Ptr` (or `r.Ptr`, `(*r).Ptr`). Other origins, misalignment and dead Arena epochs are not yet proven.
 
 ---
 

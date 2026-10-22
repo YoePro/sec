@@ -18,16 +18,22 @@ func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
 // checkBorrowedReadPlace rejects conflicting owner access using canonical Place overlap.
 // Rules: rules/memory/borrowing.md — §§4(1–3),6(1–7),22,32(7–8).
 func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
+	return a.checkBorrowedReadPlaceForAction(place, token, "read")
+}
+
+// checkBorrowedReadPlaceForAction applies the shared-access check of
+// checkBorrowedReadPlace to another operation that needs shared authority.
+func (a *Analyzer) checkBorrowedReadPlaceForAction(place Place, token lexer.Token, action string) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
 			if record.Kind != mutableBorrow || record.Holder == candidate.Root || a.grantingBorrowAncestor(candidate, record) || !borrowRecordMayOverlap(candidate, record) {
 				continue
 			}
 			if record.LoopCarried {
-				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowOwnerReadConflict, "cannot read %s because it may remain mutably borrowed from a previous loop iteration", place.String())
+				a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowOwnerReadConflict, "cannot %s %s because it may remain mutably borrowed from a previous loop iteration", action, place.String())
 				return true
 			}
-			a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowOwnerReadConflict, "cannot read %s while it is mutably borrowed", place.String())
+			a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowOwnerReadConflict, "cannot %s %s while it is mutably borrowed", action, place.String())
 			return true
 		}
 	}

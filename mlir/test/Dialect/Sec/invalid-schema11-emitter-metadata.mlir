@@ -143,3 +143,59 @@ func.func @value_reference_action(%v: !sec.int) {
   "sec.call.direct"(%v) <{callee = @callee}> {sec.argument_actions = ["shared-reference"]} : (!sec.int) -> ()
   return
 }
+
+// -----
+
+// MD-084 § 4: entries follow the canonical origin grammar.
+// expected-error@+1 {{sec.return_origins entry "param#01" is not a canonical origin}}
+func.func @return_origins_leading_zero(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["param#01"]} {
+  return %r : !sec.ref<!sec.int>
+}
+
+// -----
+
+// MD-084 § 4: entries follow the canonical origin grammar.
+// expected-error@+1 {{sec.return_origins entry "self" is not a canonical origin}}
+func.func @return_origins_unknown_root(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["self"]} {
+  return %r : !sec.ref<!sec.int>
+}
+
+// -----
+
+// MD-084 § 4: entries follow the canonical origin grammar.
+// expected-error@+1 {{sec.return_origins entry "param#0.field" is not a canonical origin}}
+func.func @return_origins_bad_projection(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["param#0.field"]} {
+  return %r : !sec.ref<!sec.int>
+}
+
+// -----
+
+// MD-084 § 4: entries follow the canonical origin grammar.
+// expected-error@+1 {{sec.return_origins entry "param#0 .field#1" is not a canonical origin}}
+func.func @return_origins_whitespace(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["param#0 .field#1"]} {
+  return %r : !sec.ref<!sec.int>
+}
+
+// -----
+
+// MD-084 § 4: entries follow the canonical origin grammar.
+// expected-error@+1 {{sec.return_origins entry "param#0[3" is not a canonical origin}}
+func.func @return_origins_unclosed_index(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["param#0[3"]} {
+  return %r : !sec.ref<!sec.int>
+}
+
+// -----
+
+// MD-084 § 4: entries follow the canonical origin grammar.
+// expected-error@+1 {{sec.return_origins entry "Param#0" is not a canonical origin}}
+func.func @return_origins_case(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["Param#0"]} {
+  return %r : !sec.ref<!sec.int>
+}
+
+// -----
+
+// MD-084 § 4(5): the origin array is a set.
+// expected-error@+1 {{sec.return_origins contains duplicate entry "param#0.field#1"}}
+func.func @return_origins_duplicate(%r: !sec.ref<!sec.int>) -> !sec.ref<!sec.int> attributes {sec.return_origins = ["param#0.field#1", "param#0.field#1"]} {
+  return %r : !sec.ref<!sec.int>
+}

@@ -280,11 +280,17 @@ func verifyPackage15MLIR(t *testing.T, name string, output []byte) {
 			t.Errorf("reference-dependent storage was lowered to MemRef: %s", line)
 		}
 	}
-	// P8 rejects remaining Place/reference semantics instead of normalizing
-	// through the wrappers.
-	integer := exec.Command(tool, path, "--sec-lower-integer-core")
-	if rejected, err := integer.CombinedOutput(); err == nil || !strings.Contains(string(rejected), "Place/reference semantics must be discharged") {
-		t.Fatalf("sec-lower-integer-core accepted Place/reference semantics: %v\n%s", err, rejected)
+	// MD-087: P8 lowers the representable integer computation of the mixed
+	// module selectively, keeping every Place/reference operation high-level
+	// with its facts, and the result still verifies. Bridges between the
+	// semantic and signless integer forms are exact-width only.
+	integer := exec.Command(tool, append([]string{path, "--sec-lower-integer-core"}, verifiers...)...)
+	integerLowered, err := integer.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sec-lower-integer-core rejected a module with Place/reference semantics: %v\n%s", err, integerLowered)
+	}
+	if strings.Contains(string(integerLowered), "sec.int.binary_checked") || strings.Contains(string(integerLowered), "arith.bitcast") {
+		t.Errorf("checked integer lowering left semantic arithmetic or used arith.bitcast:\n%s", integerLowered)
 	}
 }
 

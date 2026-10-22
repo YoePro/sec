@@ -130,6 +130,15 @@ type ReferenceLifetimeEnd struct {
 	Holder string
 	Place  Place
 	Source lexer.Token
+	// Binding is the holder's resolved binding. Before is the statement the
+	// end precedes when Sema ended the borrow after its last required use in
+	// a statement list (MD-065 § 8.1(9)); it is zero for scope-exit and
+	// rebinding ends. HolderDepth and EndDepth are the scope depths of the
+	// holder's declaration and of that statement list.
+	Binding     BindingID
+	Before      lexer.Token
+	HolderDepth int
+	EndDepth    int
 }
 
 // referenceProvenance classifies the origin storage of a Place.
@@ -368,6 +377,12 @@ func (a *Analyzer) recordReferenceWriteUse(target ast.Expression) {
 
 // recordReferenceLifetimeEnd records the resolved end of a holder's borrow.
 func (a *Analyzer) recordReferenceLifetimeEnd(holder string, source lexer.Token) {
+	a.recordReferenceLifetimeEndBefore(holder, source, lexer.Token{})
+}
+
+// recordReferenceLifetimeEndBefore records the end of a holder's borrow and,
+// for a last-required-use end, the statement it precedes (MD-065).
+func (a *Analyzer) recordReferenceLifetimeEndBefore(holder string, source lexer.Token, before lexer.Token) {
 	if a.summaryPass || holder == "" {
 		return
 	}
@@ -379,7 +394,11 @@ func (a *Analyzer) recordReferenceLifetimeEnd(holder string, source lexer.Token)
 	if !ok {
 		return
 	}
-	a.referenceLifetimeEnds = append(a.referenceLifetimeEnds, ReferenceLifetimeEnd{Holder: holder, Place: clonePlace(place), Source: source})
+	a.referenceLifetimeEnds = append(a.referenceLifetimeEnds, ReferenceLifetimeEnd{
+		Holder: holder, Place: clonePlace(place), Source: source,
+		Binding: a.bindingIDs[sourceTokenLocation(symbol.Token)], Before: before,
+		HolderDepth: symbol.ScopeDepth, EndDepth: a.scopeDepth,
+	})
 }
 
 // recordCallReferencePlans publishes the borrows of one validated call: an

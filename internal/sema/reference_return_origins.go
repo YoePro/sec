@@ -160,6 +160,16 @@ func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression
 			// MD-076: the borrow of a fresh temporary argument.
 			return a.temporaryArgumentOrigin(args[index]), true
 		}
+		if argumentType, typed := a.expressionTypes[args[index]]; typed && !typeCarriesReferenceOrigin(argumentType) {
+			// An owned Place implicitly borrowed for a ref/ref mut parameter
+			// (borrowing.md § 15.2) is the origin, exactly as for a receiver.
+			if place, ok := a.resolvePlace(args[index]); ok {
+				name, token, local, _, _ := a.referenceOriginForExpression(args[index])
+				origin := localOriginWithPlaces(localReferenceOrigin{Name: name, Token: token, Local: local}, placeOriginAlternatives(place))
+				origin.Contained = a.referenceContentsForBinding(args[index])
+				return origin, true
+			}
+		}
 		return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
 	}
 	if root == "$receiver" {

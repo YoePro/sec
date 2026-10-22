@@ -40,6 +40,7 @@ fn ChangedAtStart(values: ref mut list[int]) void {
     for i in ResetStart(values)..values.Len - 1 { discard i }
 }
 type Device register[8] { Level: bit[8], }
+impl Device { property CurrentLevel: uint8 { get { return self.Level } } }
 @address(0x40021000)
 let device: Device
-fn Physical() bool { return device.Level >= 1 && device.Level <= 9 }
+fn Physical() bool { return device.CurrentLevel >= 1 && device.CurrentLevel <= 9 }

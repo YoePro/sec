@@ -2,9 +2,9 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-28
+**Last updated:** 2026-10-22
 **Replaces:** `rules/platform/registers.txt`  
-**Document revision:** 2
+**Document revision:** 3
 **Sec language version:** 0.1
 **Implementation governance:** `governance/platform.yaml`
 
@@ -64,6 +64,13 @@ Its storage origin remains independently classified. A linker-defined region
 may be `Static`, while platform-owned hardware storage may be `Unknown` unless
 a stronger target contract exists.
 
+**Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 12).** Addressed bindings are classified by semantic binding category:
+
+- **Hardware register binding.** The type is a hardware-bound `register[N]`. It produces a `register.hw.bind` resource and instance root with type `HardwareInstance[T]`. It is never an ordinary `Place[T]`.
+- **Ordinary addressed storage.** Memory whose target provides reference-compatible storage. It continues through P15's addressed Place root and the normal reference validity rules.
+
+The endpoint may be memory-mapped, port-mapped, instruction-encoded, runtime-mapped or target-defined; only the first is necessarily a memory-mapped domain.
+
 ## 3. Fixed-address contract
 
 A fixed-address binding consumes the canonical storage contract, including:
@@ -89,6 +96,8 @@ dereference target hardware memory.
 
 Fixed address placement is not itself an origin and does not by itself imply
 volatility, mutability, atomicity, thread safety, or unlimited lifetime.
+
+**Amendment MD-077 (2026-10-22).** `@address` is binding metadata. It does not confer lifetime, atomicity, safe RAM semantics or unrestricted referencing. A non-MMIO hardware endpoint is never converted to a numeric memory pointer, and no safe `ref` to an external resource is formed. The prohibition does not apply to legitimate fixed-address RAM classified as ordinary addressed storage.
 
 ## 4. `@address` volatility
 

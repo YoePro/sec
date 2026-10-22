@@ -1618,3 +1618,9 @@ Relevant upstream references:
 https://mlir.llvm.org/docs/Dialects/ArithOps/
 https://mlir.llvm.org/docs/DialectConversion/
 ```
+
+---
+
+## Amendment MD-087 (2026-10-22)
+
+Checked-integer lowering is selective in modules that contain Places, references or slices. It lowers every representable integer computation and keeps those operations high-level with their facts. Where a value crosses between a lowered signless computation and such an operation, it bridges with an exact-width `builtin.unrealized_conversion_cast` (`siN`/`uiN` ↔ `iN`), never `arith.bitcast`, and rejects any other surviving bridge. The presence of references alone never rejects a module (`rules/mlir/sec_mlir_dialect.md` v11.33 amendment; `rules/mlir/sec_mlir_lowering.md` v11.20 amendment).

@@ -1,0 +1,53 @@
+module main
+
+type Pair struct {
+    left: int,
+    right: int,
+}
+
+type Counter struct {
+    count: int,
+}
+
+impl Counter {
+    fn Bump() void {
+        self.count = self.count + 1
+    }
+}
+
+fn Right(pair: ref Pair) ref int {
+    return ref pair.right
+}
+
+fn Same(a: ref int, b: ref int) bool {
+    return a == b && *a == *b
+}
+
+fn Increment(value: ref mut int) void {
+    *value += 1
+}
+
+fn Third(values: ref int[4]) int {
+    return values[2]
+}
+
+fn CreateCounter() Counter {
+    return Counter { count: 1 }
+}
+
+fn main() int {
+    let mut pair := Pair { left: 1, right: 2 }
+    let shared := ref pair
+    let right := Right(shared)
+    let copy := *right
+    let mut total := copy
+    let editor := ref mut total
+    *editor = *editor + pair.left
+    Increment(total)
+    let values := [1, 2, 3, 4]
+    CreateCounter().Bump()
+    if Same(ref total, ref total) {
+        return total + Third(ref values) - 6
+    }
+    return 1
+}

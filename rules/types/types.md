@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-12 (MD-046/MD-056 bit extraction)
+- **Last updated:** 2026-10-22 (MD-077 field carriers cross-reference)
 - **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
@@ -2004,7 +2004,7 @@ The compiler-known expression
 bit[N](value)
 ```
 
-extracts the `N` least-significant bits of an integer value (MD-056, 2026-10-12 and 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 3, which supersedes `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is a deliberate, visibly lossy bit-pattern extraction, distinct from the value-preserving checked conversion `TargetType(value)`; it is not a new keyword, a general cast, a core function, a standalone `bit[N]` type or a `uintN` family.
+extracts the `N` least-significant bits of an integer value (MD-056, 2026-10-12 and 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 3, which supersedes `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is a deliberate, visibly lossy bit-pattern extraction, distinct from the value-preserving checked conversion `TargetType(value)`; it is not a new keyword, a general cast, a core function, a standalone `bit[N]` type or a `uintN` family. MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 6): a register *field* declared `bit[N]` (`N >= 2`) reads as the same unsigned carrier with a Sema-proven interval `0..2^N-1`; a `bit` field reads as `bool`, whereas `bit[1](value)` still yields the carrier. These are different constructs.
 
 Semantics: with bit 0 as the least-significant bit of the source's fixed-width two's-complement representation, the result is
 

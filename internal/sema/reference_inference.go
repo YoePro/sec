@@ -14,7 +14,7 @@ import (
 //   - rules/mlir/packages/sec-mlir-dialect_package16.md — §17
 //   - rules/memory/borrowing.md — §§5.3,6–7,12
 func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expressionValue) {
-	if a.checkBorrowCreation(expr.Value, expr.Mutable, expr.Token) {
+	if a.rejectPhysicalRegisterBorrow(expr.Value, expr.Token) || a.checkBorrowCreation(expr.Value, expr.Mutable, expr.Token) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	valueType, _ := a.inferExpression(expr.Value)

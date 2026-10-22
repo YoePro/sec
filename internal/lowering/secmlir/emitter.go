@@ -349,6 +349,11 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if storage.AddressTaken {
 			e.out.WriteString(", sec.address_taken = true")
 		}
+		if storage.Name == "" {
+			// A compiler-materialized storage (MD-076 temporary) has no
+			// source binding; its name is never fabricated (MD-084 § 5(4)).
+			e.out.WriteString(", sec.synthesized = true")
+		}
 		fmt.Fprintf(&e.out, "} : () -> !sec.storage<%s>", elementType)
 	case semantic.OpStorageInit, semantic.OpStorageStore:
 		storage, ok := storages[operation.Storage]

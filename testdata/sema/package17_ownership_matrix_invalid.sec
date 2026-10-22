@@ -1,0 +1,51 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type Pair struct { left: Handle, right: Handle }
+impl Pair { free {} }
+
+fn Consume(-> value: Handle) void {}
+
+fn CustomCopy() void {
+    let source := Handle { id: 1 }
+    let rejected := source
+}
+
+fn MissingTransfer() void {
+    let source := Handle { id: 1 }
+    Consume(source)
+}
+
+fn CustomFieldMove() void {
+    let pair := Pair { left: Handle { id: 1 }, right: Handle { id: 2 } }
+    let rejected :<- pair.left
+}
+
+fn CustomFieldDiscard() void {
+    let pair := Pair { left: Handle { id: 1 }, right: Handle { id: 2 } }
+    discard pair.left
+}
+
+fn ArrayElementMove() void {
+    let values: Handle[2] := [Handle { id: 1 }, Handle { id: 2 }]
+    let rejected :<- values[0]
+}
+
+fn UseAfterMove() void {
+    let source := Handle { id: 1 }
+    Consume(<-source)
+    let observed := source.id
+}
+
+fn MutableReferenceCopy() void {
+    let mut value := 1
+    let view := ref mut value
+    let rejected := view
+}
+
+fn MutableSliceCopy() void {
+    let mut values: int[2] := [1, 2]
+    let view := ref mut values[..]
+    let rejected := view
+}

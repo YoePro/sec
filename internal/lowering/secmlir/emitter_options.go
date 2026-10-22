@@ -20,9 +20,13 @@ type EmitOptions struct {
 // Older schemas remain readable regression inputs, not output downgrade modes.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §87;
 // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md — §1.
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §86 (unimplemented schema 13).
 func emissionSchema(version uint32) (uint32, error) {
 	if version == 0 {
 		return dialectSchemaVersion, nil
+	}
+	if version == 13 {
+		return 0, &UnsupportedLoweringError{Feature: "P17 ownership/cleanup emission (schema 13)", SchemaVersion: version}
 	}
 	if version != 11 && version != 12 {
 		return 0, fmt.Errorf("unsupported Sec MLIR emission schema version %d; supported output schemas are 11 and 12", version)

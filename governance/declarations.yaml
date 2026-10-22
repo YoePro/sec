@@ -182,6 +182,7 @@ integrations:
       - testdata/register8_valid.sec
       - testdata/register_invalid.sec
     implemented:
+      - "MD-077 steps 1-2 (2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md): detached bit[N] carriers, proven field writes and the no-truncation rules are locked by tests. @address bindings resolve to the compiler-known HardwareInstance[T] (types.go, hardware_instances.go), which is non-copyable, trivially destructible and only for register T. The type-owned primary impl is mandatory. Physical fields resolve only inside impl T, with a diagnostic naming the public members. ref/ref mut of physical bits (through an instance or self) are rejected, while ref of the instance is ref HardwareInstance[T] and never crosses with ref T. LSP completion offers impl members, not fields. Fixtures register_valid, register2/3/5, register_invalid, bit_enum_*, allocation_physical_storage_valid and the pitfall fixtures were migrated to the impl API (register_md077_test.go, cmd/lsp/hardware_instance_test.go)."
       - nominal declarations through type Name register[N] with positive allocation-free compile-time integer expressions, including source-order-independent immutable module constants
       - bit and bit[N] fields with positive compile-time integer-expression widths and exact total-width validation
       - duplicate named-field rejection and inaccessible reserved underscore fields that retain layout width

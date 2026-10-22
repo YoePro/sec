@@ -69,7 +69,7 @@ BorrowID
 LifetimeID
 validity policy
 epoch dependency
-relocation class
+address stability and pinning (formerly "relocation class"; MD-084)
 address space
 ```
 

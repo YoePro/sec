@@ -126,7 +126,7 @@ sec.lifetime_id
 sec.validity_policy
 sec.validity_proof
 sec.epoch_dependency
-sec.relocation_class
+sec.relocation_class   (superseded by address_stability + pinned; see Amendments, MD-084)
 sec.reference_origin
 ```
 
@@ -752,3 +752,15 @@ other operation may be used in schema 11 without being recorded here.
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
 schema 11 or later is rejected by the version gate of the installing package.
+
+---
+
+## Amendments (2026-10-21)
+
+This snapshot keeps its historical paragraph numbering. Where it conflicts with the following owner-approved corrections, the consolidated `rules/mlir/sec_mlir_dialect.md` amendments take precedence:
+
+- **MD-084** (v11.7): the canonical `sec.reference`, `sec.return_origins` grammar and `sec.address_taken` spellings. `sec.relocation_class` is superseded by `address_stability`, and pinning is separate (`rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md`).
+- **MD-085** (v11.37): path-aware structural return-origin verification with callee-summary instantiation (`rules/corrections/applied/md085-return-origin-verification-correction-20261021.md`).
+- **MD-087** (v11.31–v11.33): the P5 storage query, P6 reference-bearing calls staying high-level, and selective P8 coexistence (`rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md`).
+- **MD-077** (v11.41.1, 2026-10-22): explicit early admission of `!sec.register<T>`, `!sec.hw_instance<T>`, `sec.register.extract` / `update` and `sec.hw.bind` / `observe` / `request_write` / `shadow_*` / `commit`, with mandatory structured metadata. Schemas 1–10 reject these constructs and schema 12 inherits them (`rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` § 19).
+

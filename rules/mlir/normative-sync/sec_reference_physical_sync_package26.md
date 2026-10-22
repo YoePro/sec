@@ -32,7 +32,7 @@ P16 slice, P18 `T[]`, P23 string, P19 Arena and P15 reference descriptors materi
 
 ## § 6. Foreign boundary and MD-070
 
-No publicly callable `RawPtr` ↔ safe reference conversion form is added while MD-070 remains open. Existing P25-approved call-bounded internal foreign reference adapter may lower with retained proof. Foreign raw return cannot be promoted automatically into a safe reference.
+No publicly callable `RawPtr` ↔ safe reference conversion form is added while MD-070 remains open. (Note 2026-10-22: MD-070 was applied on 2026-10-21. `RawPtr[T].AsRef()` / `AsRefMut()` are the source spellings (`raw_pointers.md` § 18A), and they lower only once the distinct Semantic IR raw-to-safe operation of § 32(7) exists.) Existing P25-approved call-bounded internal foreign reference adapter may lower with retained proof. Foreign raw return cannot be promoted automatically into a safe reference.
 
 ## § 7. Concurrency and hardening
 

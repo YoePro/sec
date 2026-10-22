@@ -1094,7 +1094,7 @@ integrations:
       - implement ordinary Read and Write frontend semantics completely where compiler-known member classification is incomplete
       - implement complete target-pointer-width and address-space validation for integer/raw conversions
       - implement complete RawPtr arithmetic target layout and range validation
-      - "MD-070 known hole (verified 2026-10-21): conflicting-authority proof for AsRef/AsRefMut against live safe borrows of the pointer's known origin (raw_pointers.md § 18(5), § 18A(6))"
+      - "MD-070 known hole (verified 2026-10-22): AsRef/AsRefMut check conflicting authority and availability only for immutable bindings initialized directly from `.Ptr`; origins through arithmetic, mutable pointer bindings or calls, misalignment and dead Arena epochs are not yet proven (raw_pointers.md § 18(5), § 18A(6))"
       - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2 and references-v2 proof facts into raw-to-safe conversion validation
       - reject compiler-known null, dangling, unaligned, uninitialized and conflicting raw-to-safe operations even inside unsafe
       - lock and implement exact source spelling for ref/ref mut to and from RawPtr in a dedicated conversion decision

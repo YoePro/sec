@@ -605,7 +605,9 @@ fn Breaks(figure: Figure, count: int) int {
 // fall-through to the match merge, a break out of the enclosing loop, and the
 // false edge of a guard that reads the borrowed payload (on its own edge
 // block, since the next pattern test is shared). The verifier accepts the
-// loop re-entering the borrow (P15-63).
+// loop re-entering the borrow (P15-63). Since MD-065 a borrow whose last
+// required use comes earlier (here: never used in Failure) ends there instead
+// of at the arm exit, with no second marker on that path.
 //
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 49, 50, 82
@@ -638,8 +640,16 @@ func TestPackage15PayloadBorrowsEndOnEveryArmExit(t *testing.T) {
 					if borrow == nil || op.Reference == nil || op.Reference.Borrow != borrow.Borrow || op.Reference.Lifetime != borrow.Lifetime {
 						t.Errorf("%s: end-borrow does not name its borrow: %+v", name, op)
 					}
+					// MD-065: a marker sits at an arm exit, or earlier at Sema's
+					// last required use; then nothing after it uses the borrow.
 					if next := block.Operations[index+1]; !next.IsTerminator() {
-						t.Errorf("%s: end-borrow is not at an arm exit (followed by %s)", name, next.Kind)
+						for _, later := range block.Operations[index+1:] {
+							for _, operand := range later.Operands {
+								if operand == op.Operands[0] {
+									t.Errorf("%s: end-borrow precedes a use of its borrow (%s)", name, later.Kind)
+								}
+							}
+						}
 					}
 				}
 			}

@@ -552,7 +552,7 @@ func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.R
 	if mutable {
 		id := fb.nextStorage
 		fb.nextStorage++
-		fb.fn.Storages = append(fb.fn.Storages, Storage{ID: id, Name: "temporary", Type: element, Mutable: true, Class: StorageLocalAutomatic, Location: loc, AddressTaken: true})
+		fb.fn.Storages = append(fb.fn.Storages, Storage{ID: id, Type: element, Mutable: true, Class: StorageLocalAutomatic, Location: loc, AddressTaken: true})
 		fb.emit(Operation{Kind: OpStorageDeclare, Storage: id, Location: loc})
 		fb.emit(Operation{Kind: OpStorageInit, Storage: id, Operands: []ValueID{value.id}, Location: loc})
 		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element, Mutable: true})

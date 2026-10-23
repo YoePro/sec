@@ -175,13 +175,15 @@ type Type struct {
 	RegisterWidth           int64
 	RegisterAllocationOrder string
 	RegisterByteOrder       string
-	RegisterFields          []RegisterField
-	Properties              []Property
-	Events                  []Event
-	Implements              []Type
-	InterfaceMethods        []Function
-	InterfaceProperties     []InterfaceProperty
-	InterfaceEvents         []InterfaceEvent
+	// RegisterShadow is the register-level shadow default after inheritance.
+	RegisterShadow      RegisterShadowPolicy
+	RegisterFields      []RegisterField
+	Properties          []Property
+	Events              []Event
+	Implements          []Type
+	InterfaceMethods    []Function
+	InterfaceProperties []InterfaceProperty
+	InterfaceEvents     []InterfaceEvent
 	// CustomFree is set when the nominal declaration owns a custom `free`
 	// lifecycle member (rules/memory/destruction.md §15). Such a type is
 	// non-trivially destructible and forbids partial moves from its fields.
@@ -376,6 +378,30 @@ type RegisterField struct {
 	Type      Type
 	Token     lexer.Token
 	Access    RegisterFieldAccess
+	// Shadow is the effective policy, RegisterShadowed or RegisterNoShadow:
+	// the field override, else the register default, else noshadow
+	// (registers.md § 11.5; hardware-register-access.md § 9.4).
+	Shadow RegisterShadowPolicy
+}
+
+type RegisterShadowPolicy string
+
+const (
+	RegisterShadowed RegisterShadowPolicy = "shadow"
+	RegisterNoShadow RegisterShadowPolicy = "noshadow"
+)
+
+// effectiveRegisterShadow applies the field > register > global noshadow
+// inheritance rule.
+func effectiveRegisterShadow(field, register string) RegisterShadowPolicy {
+	switch {
+	case field != "":
+		return RegisterShadowPolicy(field)
+	case register != "":
+		return RegisterShadowPolicy(register)
+	default:
+		return RegisterNoShadow
+	}
 }
 
 type RegisterFieldAccess string

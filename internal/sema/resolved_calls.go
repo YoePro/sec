@@ -38,6 +38,7 @@ func (a *Analyzer) recordResolvedCall(call *ast.CallExpression, function Functio
 		fact.InterfaceContract = interfaceInvocationContract(receiver, function)
 	}
 	a.resolvedCalls[call] = fact
+	a.recordRegisterMethodCall(call, function)
 	if member, ok := compilerKnownInterfaceMember(function); ok {
 		if selector, ok := call.Callee.(*ast.MemberExpression); ok && selector.Property != nil {
 			a.compilerKnownMemberFacts[sourceTokenLocation(selector.Property.Token)] = member

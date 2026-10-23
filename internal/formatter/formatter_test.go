@@ -1403,3 +1403,11 @@ func TestFormatInlineBlockCommentKeepsFieldAlignment(t *testing.T) {
 		"}\n"
 	assertFormat(t, input, want)
 }
+
+func TestFormatPreservesRegisterShadowModifiers(t *testing.T) {
+	input := "type Configuration register[16] msb-first shadow {\nMode: bit[3],\nCurrentInput: bit read-only noshadow,\n_: bit[12],\n}\n"
+	want := "type Configuration register[16] msb-first shadow {\n    Mode:         bit[3],\n    CurrentInput: bit read-only noshadow,\n    _:            bit[12],\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong register shadow formatting:\n%s\nwant:\n%s", got, want)
+	}
+}

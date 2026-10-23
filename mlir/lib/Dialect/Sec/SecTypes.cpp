@@ -16,6 +16,27 @@ using namespace sec;
 #define GET_TYPEDEF_CLASSES
 #include "sec/Dialect/Sec/SecTypes.cpp.inc"
 
+// Validate nominal spelling without choosing register-table serialization.
+// Module-level identity resolution remains a separate admission obligation.
+// Rules: rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md
+// section 19(1)-(2), (9).
+LogicalResult RegisterType::verify(
+    function_ref<InFlightDiagnostic()> emitError, StringAttr identity) {
+  if (!identity || identity.getValue().empty())
+    return emitError() << "sec.register identity must not be empty";
+  return success();
+}
+
+// Preserve the distinct software-instance identity, without endpoint layout.
+// Rules: rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md
+// section 19(1)-(2).
+LogicalResult HardwareInstanceType::verify(
+    function_ref<InFlightDiagnostic()> emitError, StringAttr identity) {
+  if (!identity || identity.getValue().empty())
+    return emitError() << "sec.hw_instance identity must not be empty";
+  return success();
+}
+
 static LogicalResult verifyIdentityType(
     function_ref<InFlightDiagnostic()> emitError, StringAttr identity,
     Type base, StringRef typeName) {

@@ -1,8 +1,0 @@
-module main
-
-fn Move() void {
-    let mut values := [1, 2, 3, 4]
-    let source := ref mut values[..]
-    let moved :<- source
-    discard moved
-}

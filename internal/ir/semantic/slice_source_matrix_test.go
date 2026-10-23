@@ -119,14 +119,10 @@ func TestPackage16SourceDependencyMatrix(t *testing.T) {
 	for _, width := range []uint16{32, 64} {
 		for _, test := range []struct{ file, want string }{
 			{"package16_boundary_owner.sec", "dynamic"},
-			{"slice_length_forms.sec", "P16-36"},
 			{"slice_try_recovery.sec", "slice recovery holder joins"},
 			{"slice_try_mixed.sec", "heterogeneous failure set"},
 			{"slice_index_reference_element.sec", "P15 trivial value surface"},
-			{"package16_unsupported/shared_copy.sec", "P16-36"},
-			{"package16_unsupported/mutable_move.sec", "P16-36"},
-			{"package16_unsupported/holder_reborrow.sec", "P16-36"},
-			{"package16_unsupported/returned_subslice.sec", "P16-36"},
+			{"package16_unsupported/returned_subslice.sec", "MD-115"},
 			{"package16_unsupported/projected_holder.sec", "P16-36"},
 			{"package16_unsupported/text_value_element.sec", "P15 trivial value surface"},
 			{"package16_unsupported/nontrivial_replacement.sec", "custom free lifecycle destruction"},

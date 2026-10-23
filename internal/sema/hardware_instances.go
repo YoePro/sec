@@ -109,9 +109,11 @@ func (a *Analyzer) rejectHardwareFieldAccess(member *ast.MemberExpression, objec
 
 // rejectPhysicalRegisterBorrow rejects `ref` / `ref mut` of physical register
 // bits (MD-077 §§ 4(1), 17(2)): a register field path rooted at a hardware
-// instance, or at `self` inside the impl of a register type (whose methods
-// may run on a hardware instance). Borrowing the instance itself borrows the
-// software instance and stays valid.
+// instance. A field of `self` inside the impl of a register type is a
+// software register field on a software receiver; the borrowing member is
+// marked software-only and rejected where it is used on a hardware instance
+// (register_receivers.go). Borrowing the instance itself borrows the software
+// instance and stays valid.
 func (a *Analyzer) rejectPhysicalRegisterBorrow(expr ast.Expression, token lexer.Token) bool {
 	var fields []string
 	current := expr
@@ -124,17 +126,30 @@ func (a *Analyzer) rejectPhysicalRegisterBorrow(expr ast.Expression, token lexer
 		current = member.Object
 	}
 	root, ok := current.(*ast.Identifier)
-	if !ok || len(fields) == 0 {
+	if !ok {
+		return false
+	}
+	if len(fields) == 0 {
+		// An implicit `Field` of a register impl is `self.Field`.
+		if symbol, exists := a.symbols[root.Value]; exists && symbol.ImplicitMember {
+			if target, isRegister := a.types[a.currentImplTarget]; isRegister && target.Kind == RegisterType {
+				if _, isField := lookupRegisterFieldInfo(target, root.Value); isField {
+					a.markSoftwareOnlyMember(token, "borrows a register field of its receiver")
+				}
+			}
+		}
 		return false
 	}
 	var register Type
 	switch {
 	case root.Value == "self":
 		target, exists := a.types[a.currentImplTarget]
-		if !exists || target.Kind != RegisterType {
-			return false
+		if exists && target.Kind == RegisterType {
+			if _, isField := lookupRegisterFieldInfo(target, fields[0]); isField {
+				a.markSoftwareOnlyMember(token, "borrows a register field of its receiver")
+			}
 		}
-		register = target
+		return false
 	default:
 		symbol, exists := a.symbols[root.Value]
 		if !exists || !isHardwareInstance(symbol.Type) {

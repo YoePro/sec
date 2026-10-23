@@ -181,33 +181,40 @@ type Analyzer struct {
 	// identities assigned in scopes nested below the declaration, and
 	// loopWrittenNames the bindings the current function assigns inside a
 	// loop; both keep callable target sets sound across control-flow joins.
-	nestedCallableWrites       map[sourceTokenKey][]nestedCallableWrite
-	loopWrittenNames           map[string]bool
-	currentStableBindings      map[string]bool // parameters and locals the current function never changes
-	arrayIndexMutationEpoch    uint64
-	resolvedStructLiteralPlans map[*ast.StructLiteral]ResolvedStructLiteralPlan
-	resolvedStructMemberPlans  map[*ast.MemberExpression]ResolvedStructMemberPlan
-	resolvedPropertyAccesses   map[ast.Expression]ResolvedPropertyAccess
-	nextBindingID              BindingID
-	definitionTokens           map[sourceTokenKey][]lexer.Token
-	callGraph                  *CallGraph
-	escapeAnalysis             *EscapeAnalysis
-	parameterUsageAnalysis     *ParameterUsageAnalysis
-	importedParameterDemands   map[CallableID]persistedParameterDemand
-	pitfallAnalysis            *PitfallAnalysis
-	resolvedStateRequirements  map[ast.Expression]ResolvedStateRequirement
-	pitfallDiagnosticOwners    map[pitfallRootCause]int
-	boundsDiagnostics          map[sourceTokenKey]int
-	boundsFindings             map[sourceTokenKey][]PitfallFinding
-	boundsIncomplete           map[sourceTokenKey]bool
-	currentCallable            CallableID
-	callGraphPathReachable     bool
-	generatedIdentities        *GeneratedIdentityIndex
-	spawnCallExpression        *ast.CallExpression
-	spawnCallExecution         CallExecutionRelation
-	typeDefinitionTokens       map[string]lexer.Token
-	invalidTypeDeclarations    map[sourceTokenKey]bool
-	genericTypeDefinitions     map[string]lexer.Token
+	nestedCallableWrites        map[sourceTokenKey][]nestedCallableWrite
+	loopWrittenNames            map[string]bool
+	currentStableBindings       map[string]bool // parameters and locals the current function never changes
+	arrayIndexMutationEpoch     uint64
+	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
+	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
+	resolvedRegisterFields      map[*ast.MemberExpression]ResolvedRegisterFieldPlan
+	resolvedRegisterWrites      map[*ast.AssignmentStatement]ResolvedRegisterWriteProof
+	softwareOnlyRegisterMembers map[string]softwareOnlyReason
+	hardwareOnlyRegisterMembers map[string]softwareOnlyReason
+	resolvedRegisterOperations  map[*ast.CallExpression]ResolvedRegisterOperation
+	registerWriteTargets        map[ast.Expression]*ast.AssignmentStatement
+	registerMemberUses          []registerMemberUse
+	resolvedPropertyAccesses    map[ast.Expression]ResolvedPropertyAccess
+	nextBindingID               BindingID
+	definitionTokens            map[sourceTokenKey][]lexer.Token
+	callGraph                   *CallGraph
+	escapeAnalysis              *EscapeAnalysis
+	parameterUsageAnalysis      *ParameterUsageAnalysis
+	importedParameterDemands    map[CallableID]persistedParameterDemand
+	pitfallAnalysis             *PitfallAnalysis
+	resolvedStateRequirements   map[ast.Expression]ResolvedStateRequirement
+	pitfallDiagnosticOwners     map[pitfallRootCause]int
+	boundsDiagnostics           map[sourceTokenKey]int
+	boundsFindings              map[sourceTokenKey][]PitfallFinding
+	boundsIncomplete            map[sourceTokenKey]bool
+	currentCallable             CallableID
+	callGraphPathReachable      bool
+	generatedIdentities         *GeneratedIdentityIndex
+	spawnCallExpression         *ast.CallExpression
+	spawnCallExecution          CallExecutionRelation
+	typeDefinitionTokens        map[string]lexer.Token
+	invalidTypeDeclarations     map[sourceTokenKey]bool
+	genericTypeDefinitions      map[string]lexer.Token
 	// confusableSkeletons caches UTS #39 skeletons and confusableModuleIndex
 	// indexes module declarations a local may not shadow (MD-001).
 	confusableSkeletons         map[string]string
@@ -652,6 +659,13 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.arrayIndexMutationEpoch = 0
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
+	a.resolvedRegisterFields = map[*ast.MemberExpression]ResolvedRegisterFieldPlan{}
+	a.resolvedRegisterWrites = map[*ast.AssignmentStatement]ResolvedRegisterWriteProof{}
+	a.softwareOnlyRegisterMembers = nil
+	a.hardwareOnlyRegisterMembers = nil
+	a.resolvedRegisterOperations = nil
+	a.registerWriteTargets = nil
+	a.registerMemberUses = nil
 	a.resolvedPropertyAccesses = map[ast.Expression]ResolvedPropertyAccess{}
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
@@ -760,6 +774,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
+	a.resolveRegisterHardwareRequests()
+	a.checkRegisterReceiverRequirements()
 	a.iteratorLoweringProgram = program
 	// Advisory promotion must not change mandatory ownership/effect analysis.
 	// Rules: rules/control-flow/discard.md — §§5,38.
@@ -7231,6 +7247,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		Underlying:              "register",
 		RegisterWidth:           registerWidth,
 		RegisterAllocationOrder: stmt.RegisterType.AllocationOrder,
+		RegisterShadow:          effectiveRegisterShadow(stmt.RegisterType.Shadow, ""),
 		RegisterByteOrder:       stmt.RegisterType.ByteOrder,
 		GenericParameters:       genericParameterNameValues(stmt.GenericParameters),
 	}
@@ -7314,6 +7331,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 			Type:      fieldType,
 			Token:     field.Name.Token,
 			Access:    registerFieldAccessFromAST(field.Access),
+			Shadow:    effectiveRegisterShadow(field.Shadow, stmt.RegisterType.Shadow),
 		})
 		a.recordDefinition(field.Name.Token)
 	}
@@ -7777,6 +7795,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 
 		if fn, ok := member.(*ast.FunctionDeclaration); ok {
 			name := fn.Name.Value
+			if a.rejectReservedRegisterMember(target, name, fn.Name.Token) {
+				continue
+			}
 			if _, exists := fields[name]; exists {
 				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with field %s in %s", name, name, stmt.Target.Name)
 				continue
@@ -7822,6 +7843,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 
+		if a.rejectReservedRegisterMember(target, property.Name.Value, property.Name.Token) {
+			continue
+		}
 		if _, exists := fields[property.Name.Value]; exists {
 			a.addErrorAtToken(property.Name.Token, "property %s conflicts with field %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
@@ -8507,7 +8531,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 	if symbol.RegisterAccess != "" {
 		field := RegisterField{Name: target.Value, Access: symbol.RegisterAccess}
-		if !a.validateRegisterFieldWrite(field, stmt.Operator, target.Token) {
+		if !a.validateRegisterFieldWrite(field, RegisterRootImplReceiver, stmt.Operator, target.Token) {
 			return
 		}
 	}
@@ -8559,6 +8583,14 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 
 	exprType, _ := a.inferExpressionWithExpected(stmt.Value, symbol.Type)
 	if exprType.Kind == InvalidType {
+		return
+	}
+	if field, implicit := a.implicitRegisterFieldOf(target, symbol); implicit && stmt.Operator == "=" {
+		if a.checkImplicitRegisterFieldWrite(stmt, field, exprType) {
+			a.recordRegisterWriteTarget(target, stmt)
+			a.assigned[symbol.Name] = true
+			delete(a.constInts, symbol.Name)
+		}
 		return
 	}
 	if a.checkAssignmentEscapesMatchPayload(stmt.Target, stmt.Value) {
@@ -8936,6 +8968,8 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		if registerFieldOK {
 			targetType = registerField.Type
 			a.bindDefinition(member.Property.Token, registerField.Token)
+			a.recordRegisterField(member, objectType)
+			a.recordRegisterWriteTarget(member, stmt)
 		} else if a.rejectCompilerKnownPropertyWrite(objectType, member) {
 			return
 		} else {
@@ -8970,7 +9004,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.addErrorAtToken(member.Property.Token, "property %s has no getter and cannot be used with %s", member.Property.Value, stmt.Operator)
 		return
 	}
-	if registerFieldOK && !a.validateRegisterFieldWrite(registerField, stmt.Operator, member.Property.Token) {
+	if registerFieldOK && !a.validateRegisterFieldWrite(registerField, a.registerRootKind(member.Object), stmt.Operator, member.Property.Token) {
 		return
 	}
 	if registerFieldOK && !a.validateRegisterFieldWriteAncestors(member.Object, member.Property.Token) {
@@ -9015,6 +9049,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	}
 
 	if !staticProperty && !staticSymbolOK && stmt.Operator == "=" && a.isRegisterBitField(member) && a.isZeroOrOneIntegerConstant(stmt.Value) {
+		if value, constant := a.integerConstantValue(stmt.Value); constant {
+			a.recordRegisterWrite(stmt, ResolvedRegisterWriteProof{Basis: RegisterWriteConstant, Low: value, High: new(big.Int).Set(value)})
+		}
 		return
 	}
 	registerWrite := false
@@ -9048,6 +9085,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return
 	}
+	if registerFieldOK && !registerWrite {
+		a.recordRegisterWrite(stmt, ResolvedRegisterWriteProof{Basis: RegisterWriteTyped})
+	}
 	if !a.validateAssignmentOwnership(stmt) {
 		return
 	}
@@ -9067,7 +9107,12 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 // rules/declarations/registers.md. Special write lowering remains a later
 // Semantic IR/backend responsibility, but unsafe read-modify-write syntax is
 // rejected here rather than losing the field contract.
-func (a *Analyzer) validateRegisterFieldWrite(field RegisterField, operator string, token lexer.Token) bool {
+//
+// A specialized field of a software register is ordinary bits (owner decision
+// 2026-10-23, registers.md § 11.7), so the compound-assignment restriction
+// applies only on hardware; inside a register impl it makes the member
+// software-only.
+func (a *Analyzer) validateRegisterFieldWrite(field RegisterField, root RegisterRootKind, operator string, token lexer.Token) bool {
 	switch field.Access {
 	case RegisterReadOnly:
 		a.addErrorAtToken(token, "register field %s is read-only and cannot be written", field.Name)
@@ -9081,8 +9126,14 @@ func (a *Analyzer) validateRegisterFieldWrite(field RegisterField, operator stri
 		RegisterWriteZeroClear, RegisterWriteZeroSet, RegisterWriteZeroToggle,
 		RegisterReadClear, RegisterReadSet:
 		if operator != "=" {
-			a.addErrorAtToken(token, "register field %s with %s semantics cannot use compound assignment", field.Name, field.Access)
-			return false
+			switch root {
+			case RegisterRootDetached:
+			case RegisterRootImplReceiver:
+				a.markSoftwareOnlyMember(token, "uses compound assignment on "+string(field.Access)+" register field "+field.Name)
+			default:
+				a.addErrorAtToken(token, "register field %s with %s semantics cannot use compound assignment", field.Name, field.Access)
+				return false
+			}
 		}
 	}
 	if field.Type.Kind == RegisterType {

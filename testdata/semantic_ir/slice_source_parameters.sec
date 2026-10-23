@@ -1,0 +1,35 @@
+module main
+
+// P16-36: slice parameters receive the caller's borrow; a shared holder is
+// passed with slice.copy-shared, a mutable holder with an implicit
+// full-range slice.reborrow-mut so the caller keeps it.
+fn Fill(values: ref mut int[]) void {
+    if values.Len > 0 {
+        values[0] = 1
+    }
+}
+
+fn Sum(values: ref int[]) int {
+    return values[0]
+}
+
+fn Forward(values: ref mut int[]) void {
+    Fill(values)
+    Fill(values)
+}
+
+fn Peek(values: ref int[]) int {
+    return Sum(values)
+}
+
+fn main() int {
+    let mut data := [1, 2, 3, 4]
+    let m := ref mut data[..]
+    Fill(m)
+    Forward(m)
+    discard m
+    let view := ref data[1..<3]
+    let a := Peek(view)
+    discard view
+    return a + Sum(ref data[..])
+}

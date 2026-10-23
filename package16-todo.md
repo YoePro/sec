@@ -715,6 +715,17 @@ sources unless an actual synchronized migration requires them.
 - [ ] P16-27 — Extend returned-origin/range verification using the represented P15
   return contracts. Add deterministic printing and defensive clones of slice
   metadata, with no physical descriptor vocabulary (amendment §§22,25–26).
+
+  Progress 2026-10-23: native return-origin tracing no longer erases a narrowed
+  slice range by following borrow/reborrow operand zero. Whole-open reborrows
+  retain the existing parameter origin; bounded/start-only/explicit-bound
+  slice returns fail closed on MD-115, including through shared copy, mutable
+  move and direct-call results. Direct element-reference `[*]` projections
+  remain supported. The two `schema12-slice-return-ranges.mlir` fixtures and
+  the Go real-tool matrix cover verification before/after P6, deterministic
+  round trips and failed invocations without stdout or an output artifact.
+  This aligns the native boundary with the existing source/IR gate; the
+  missing range projection decision still prevents closing P16-27.
 - [x] P16-28 — Add positive/negative white-box IR tests, including mismatched SSA,
   misplaced guards, stale validation caught as a spatial error, missing proofs,
   widened reborrows, mutable copies and uses after borrow end (§§129,136).
@@ -904,6 +915,20 @@ sources unless an actual synchronized migration requires them.
 - [ ] P16-36 — Lower copy/move, parameters, permitted returned slices, projected
   origins and borrow ends from Sema plans. Retain exact static subranges and
   conservative runtime origins; reject local escape (§§39–41,63–67).
+
+  Progress 2026-10-23:
+  - **Parameters.** `ref T[]` / `ref mut T[]` parameters are P16 slice types with Sema's parameter reference facts, so length, index, element Place and write work on them (`slice_parameters.go`).
+  - **Arguments.** At a call:
+    - a fresh `ref data[..]` argument is built in place;
+    - an existing shared holder is passed with `slice.copy-shared` under its own borrow;
+    - an existing mutable holder is passed with an implicit full-range `slice.reborrow-mut` under the pass's new borrow, so the caller keeps it.
+
+    Call argument actions are `shared-reference` / `mutable-reference`, matching the Semantic IR verifier and the dialect's `verifyArgumentActions` (v12.5; lit `invalid-schema12-slice-call-action.mlir`).
+  - **Holder transfers.** `let copy := shared` is `slice.copy-shared`, and `let moved :<- mutable` is `slice.move-mut` from Sema's transfer plan. `ref holder` / `ref mut holder` reborrow the complete extent (`slice_holder_transfers.go`).
+  - **Returns.** A slice derived from a slice parameter can be returned as the holder, a copy, a full-extent reborrow or a call result. The summary is `returns-from=[param#0]`, the verifier traces through slice copy/move/whole-range reborrow, and callers get the instantiated facts. Sub-slice returns fail closed on MD-115, which has no return-origin slice projection spelling.
+  - **Tests and fixtures.** The new fixtures `slice_source_parameters.sec`, `slice_source_transfers.sec` and `slice_source_returns.sec` emit schema 12 and pass all four real verifiers on 32/64-bit plans (`TestPackage16EmitSourceSlices`). The obsolete fixtures `package16_unsupported/{shared_copy,mutable_move,holder_reborrow}.sec` were removed.
+  - **Automatic local ends (verified 2026-10-23).** The existing Sema schedule and shared borrow-end producer also handle local slices in their own statement list. `slice_source_automatic_ends.sec` covers shared holders/copies, mutable moves, child reborrows and unused holders before subsequent backing-array writes. `TestPackage16AutomaticSliceBorrowEnds` checks the resolved endpoints, including ending the surviving moved holder; `TestPackage16EmitSourceSlices` checks the complete source-to-schema-12 chain on both 32/64 plans before/after P6. These tests contain no explicit `discard` and inject no IR facts.
+  - **Remaining.** Projected holders (a slice in a struct field, which needs P17 aggregates with references), sub-slice returns (MD-115) and general path-specific automatic holder borrow ends outside the holder's own statement list.
 - [x] P16-37 — Add source-to-IR tests for every supported path and every deferred
   dependency. Prove operand order, SSA reuse, no redundant proven checks, no
   aggregate copies, no partial modules and unchanged predecessor paths (§§129–137).

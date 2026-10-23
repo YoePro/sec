@@ -55,7 +55,8 @@ func validConversionProof(module *Module, proof *ConversionProof) error {
 	}
 	switch proof.Basis {
 	case string(sema.IntegerConversionConstant), string(sema.IntegerConversionSourceDomain),
-		string(sema.IntegerConversionClosedEnumDomain), string(sema.IntegerConversionOpenEnumDomain), compilerWideningProof.Basis:
+		string(sema.IntegerConversionClosedEnumDomain), string(sema.IntegerConversionOpenEnumDomain), compilerWideningProof.Basis,
+		registerFieldIntervalProof.Basis:
 	default:
 		return fmt.Errorf("unknown exactness proof basis %q", proof.Basis)
 	}

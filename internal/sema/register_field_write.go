@@ -79,12 +79,14 @@ func (a *Analyzer) checkRegisterFieldWrite(stmt *ast.AssignmentStatement, field 
 	// proven interval is clamped to the value type's domain.
 	if value, constant := a.integerConstantValue(stmt.Value); constant {
 		if value.Sign() >= 0 && value.Cmp(maximum) <= 0 {
+			a.recordRegisterWrite(stmt, ResolvedRegisterWriteProof{Basis: RegisterWriteConstant, Low: value, High: new(big.Int).Set(value)})
 			return true
 		}
 		a.addErrorAtToken(token, "value %s does not fit register field %s (%s, 0..%s)", value.String(), fieldName, spelling, maximum.String())
 		return false
 	}
 	if low, high, known := a.scalarValueInterval(stmt.Value, valueType); known && low.Sign() >= 0 && high.Cmp(maximum) <= 0 {
+		a.recordRegisterWrite(stmt, ResolvedRegisterWriteProof{Basis: RegisterWriteInterval, Low: low, High: high})
 		return true
 	}
 	a.addErrorAtTokenWithMetadata(token, "",

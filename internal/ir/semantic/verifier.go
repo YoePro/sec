@@ -34,6 +34,9 @@ func Verify(module *Module) error {
 	if err := verifyStructDefinitions(module); err != nil {
 		return err
 	}
+	if err := verifyRegisterDefinitions(module); err != nil {
+		return err
+	}
 	if _, err := verifyStatics(module); err != nil {
 		return err
 	}
@@ -727,7 +730,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Results) == 1 {
 			// A returned direct reference carries the caller-side facts
 			// instantiated from the callee's origin summary (package15.md § 62).
-			if _, isReference := referenceType(module.Types, op.Results[0].Type); isReference {
+			if _, isReference := referenceType(module.Types, op.Results[0].Type); isReference || typeHasKind(module.Types, op.Results[0].Type, TypeSharedSlice, TypeMutableSlice) {
 				if err := verifyReferenceMetadata(op); err != nil {
 					return err
 				}
@@ -748,6 +751,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 				if reference.Mutable {
 					want = ArgumentMutableReference
 				}
+			} else if parameter, ok := module.Types.Lookup(callee.Parameters[i].Value.Type); ok && parameter.Kind == TypeSharedSlice {
+				want = ArgumentSharedReference
+			} else if ok && parameter.Kind == TypeMutableSlice {
+				want = ArgumentMutableReference
 			}
 			if op.ArgumentActions[i] != want {
 				return fmt.Errorf("call argument %d action %q, want %q for its parameter type", i, op.ArgumentActions[i], want)
@@ -1047,6 +1054,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		OpReferenceReborrowMutable, OpReferenceIsValid, OpReferenceGenerationFailure, OpReferenceEndBorrow,
 		OpReferenceCompare:
 		if err := verifyPlaceReferenceOperation(module, op, values, storages); err != nil {
+			return err
+		}
+	case OpRegisterValueExtract, OpRegisterValueUpdate:
+		if err := verifyRegisterValueOperation(module, op, values); err != nil {
 			return err
 		}
 	case OpStaticLoad, OpStaticStore, OpPlaceStaticRoot:

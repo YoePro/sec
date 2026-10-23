@@ -4387,6 +4387,18 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 				return fields
 			}
 		}
+		for isRegisterShadowModifier(p.peekToken) && p.peekToken.Line == p.curToken.Line {
+			p.nextToken()
+			if field.Shadow != "" {
+				p.reportShadowModifierConflict("register field "+field.Name.Value, field.Shadow, p.curToken)
+				return fields
+			}
+			field.Shadow = p.curToken.Lexeme
+			if isRegisterFieldAccessPrefix(p.peekToken) {
+				p.addError("register field %s: the access modifier precedes the shadow modifier at %d:%d", field.Name.Value, p.peekToken.Line, p.peekToken.Column)
+				return fields
+			}
+		}
 
 		fields = append(fields, field)
 		p.attachDocumentation(documentation, field)

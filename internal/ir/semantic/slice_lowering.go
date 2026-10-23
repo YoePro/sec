@@ -131,6 +131,11 @@ func (fb *functionBuilder) p16SliceExpression(expr ast.Expression) (builtValue, 
 				return value, true, err
 			}
 		}
+		if holder, named := expr.Value.(*ast.Identifier); named {
+			if value, handled, err := fb.lowerSliceHolderReborrow(expr, holder); handled {
+				return value, true, err
+			}
+		}
 		if _, sliced := expr.Value.(*ast.SliceExpression); !sliced {
 			break
 		}
@@ -159,6 +164,16 @@ func (fb *functionBuilder) p16SliceExpression(expr ast.Expression) (builtValue, 
 		return builtValue{}, true, fb.unsupported("slice expression without a prepared explicit borrow", expr.Token)
 	}
 	if source, resolved := fb.owner.analyzer.ResolvedTypeOf(expr); resolved && sourceSliceType(source) {
+		if holder, named := expr.(*ast.Identifier); named {
+			if value, handled, err := fb.lowerSliceHolderTransfer(holder); handled {
+				return value, true, err
+			}
+		}
+		if _, call := expr.(*ast.CallExpression); call {
+			// A call returning a slice carries the caller-side facts Sema
+			// instantiated from the callee's returned-origin summary.
+			return builtValue{}, false, nil
+		}
 		return builtValue{}, true, fb.unsupported("slice holder value transfer or projected origin (P16-36)", expressionToken(expr))
 	}
 	return builtValue{}, false, nil

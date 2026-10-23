@@ -61,6 +61,7 @@ func Format(module *Module) string {
 		}
 		out.WriteString("  }\n")
 	}
+	formatRegisters(&out, module.Registers)
 	formatStatics(&out, module.Statics)
 	for _, fn := range module.Functions {
 		formatFunction(&out, fn)
@@ -89,6 +90,9 @@ func formatType(t Type) string {
 	}
 	if t.Kind == TypeStruct {
 		return fmt.Sprintf("struct %q", t.Identity)
+	}
+	if t.Kind == TypeRegister {
+		return fmt.Sprintf("register %q width=%d", t.Identity, t.BitWidth)
 	}
 	if t.Kind == TypeArray {
 		return fmt.Sprintf("array<!%d, %q>", t.Element, t.Length)
@@ -350,6 +354,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d field=#%d[%s]", op.Operands[0], op.StructField, op.StructActions[0])
 	case OpStructReplaceField:
 		fmt.Fprintf(out, " %%%d field=#%d value=%%%d", op.Operands[0], op.StructField, op.Operands[1])
+	case OpRegisterValueExtract, OpRegisterValueUpdate:
+		formatRegisterValueOperation(out, op)
 	case OpArrayConstruct:
 		fmt.Fprintf(out, " element=!%d length=%q", op.ArrayElementType, op.ArrayLength)
 		for index, operand := range op.Operands {

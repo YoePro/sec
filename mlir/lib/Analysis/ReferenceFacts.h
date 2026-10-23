@@ -36,6 +36,8 @@ struct ReferenceFacts {
   uint32_t borrow = 0;
   uint32_t lifetime = 0;
   bool dynamic = false;
+  uint32_t invalidationDomain = 0;
+  uint32_t epochDependency = 0;
 };
 
 // Read canonical operation-owned P15 reference facts.
@@ -43,7 +45,9 @@ struct ReferenceFacts {
 template <typename OpT>
 inline ReferenceFacts factsOf(OpT op) {
   return ReferenceFacts{true, op.getBorrowId(), op.getLifetimeId(),
-                        op.getValidityPolicy() == "dynamic-epoch"};
+                        op.getValidityPolicy() == "dynamic-epoch",
+                        op.getInvalidationDomain().value_or(0),
+                        op.getEpochDependency().value_or(0)};
 }
 
 // Facts recorded as a `sec.reference` dictionary on a reference function
@@ -55,11 +59,15 @@ inline ReferenceFacts dictionaryFacts(DictionaryAttr facts) {
   auto borrow = facts.getAs<IntegerAttr>("borrow_id");
   auto lifetime = facts.getAs<IntegerAttr>("lifetime_id");
   auto policy = facts.getAs<StringAttr>("validity_policy");
+  auto domain = facts.getAs<IntegerAttr>("invalidation_domain");
+  auto epoch = facts.getAs<IntegerAttr>("epoch_dependency");
   if (!borrow || !lifetime || !policy)
     return ReferenceFacts{};
   return ReferenceFacts{true, static_cast<uint32_t>(borrow.getInt()),
                         static_cast<uint32_t>(lifetime.getInt()),
-                        policy.getValue() == "dynamic-epoch"};
+                        policy.getValue() == "dynamic-epoch",
+                        domain ? static_cast<uint32_t>(domain.getInt()) : 0,
+                        epoch ? static_cast<uint32_t>(epoch.getInt()) : 0};
 }
 
 // Resolve canonical facts of a reference/slice SSA definition or parameter.

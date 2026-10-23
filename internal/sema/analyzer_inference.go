@@ -1203,6 +1203,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			a.addErrorAtToken(expr.Property.Token, "register field %s.%s is write-only and cannot be read", typeDisplayName(objectType), expr.Property.Value)
 			return Type{Kind: InvalidType}, false
 		}
+		a.recordRegisterField(expr, objectType)
 		return field.Type, true
 	}
 	if objectType.Kind == RegisterType && expr.Property.Value == "_" {
@@ -1979,6 +1980,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return typ, value
 	}
 	if typ, value, ok := a.inferRawPointerCall(expr); ok {
+		return typ, value
+	}
+	if typ, value, ok := a.inferRegisterOperationCall(expr); ok {
 		return typ, value
 	}
 	if typ, value, ok := a.inferRuneArrayToStringCall(expr); ok {

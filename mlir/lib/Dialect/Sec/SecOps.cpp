@@ -154,7 +154,10 @@ LogicalResult verifyStoragePair(Operation *operation, Value storage,
 
 // Ordinary arguments are copied trivially; a direct reference argument is
 // passed with the action of its reference kind (schema 11,
-// sec-mlir-dialect_package15.md sections 59-60 and 87).
+// sec-mlir-dialect_package15.md sections 59-60 and 87). A schema-12 slice is
+// a bounded reference and reuses the same actions (sec_mlir_dialect.md v12.5;
+// sec-mlir-dialect_package16.md sections 64-65); the type itself is gated to
+// schema 12 elsewhere.
 LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
   auto actions = operation->getAttrOfType<ArrayAttr>("sec.argument_actions");
   if (!actions)
@@ -162,16 +165,21 @@ LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
   if (actions.size() != arity)
     return operation->emitOpError("argument action count must equal operand count");
   for (auto [action, operand] : llvm::zip(actions, operation->getOperands())) {
+    if (failed(verifyHardwareInstanceCopy(operation, operand.getType())))
+      return failure();
     auto string = dyn_cast<StringAttr>(action);
     StringRef expected = "copy-trivial";
-    if (isa<RefType>(operand.getType()))
+    if (isa<RefType, SliceType>(operand.getType()))
       expected = "shared-reference";
-    else if (isa<RefMutType>(operand.getType()))
+    else if (isa<RefMutType, SliceMutType>(operand.getType()))
       expected = "mutable-reference";
     if (!string || string.getValue() != expected)
       return operation->emitOpError()
              << "argument action must be " << expected
-             << ": copy-trivial for ordinary values, shared-reference for !sec.ref and mutable-reference for !sec.ref_mut";
+             << ": copy-trivial for ordinary values, shared-reference for !sec.ref and !sec.slice, mutable-reference for !sec.ref_mut and !sec.slice_mut";
+    if (expected == "copy-trivial" &&
+        failed(verifyExclusiveReferenceCopy(operation, operand.getType())))
+      return failure();
   }
   return success();
 }
@@ -307,6 +315,9 @@ LogicalResult StorageInitOp::verify() {
 }
 
 LogicalResult StorageLoadOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
+    return failure();
   auto storageType = dyn_cast<StorageType>(getStorage().getType());
   if (!storageType)
     return emitOpError("operand must have !sec.storage type");
@@ -564,6 +575,10 @@ LogicalResult EnumCmpOp::verify() {
 }
 
 LogicalResult UnionConstructOp::verify() {
+  for (Value payload : getPayloads())
+    if (failed(verifyHardwareInstanceCopy(*this, payload.getType())) ||
+        failed(verifyExclusiveReferenceCopy(*this, payload.getType())))
+      return failure();
   auto variant = lookupUnionVariant(getResult().getType(), getVariantAttr(), *this);
   if (failed(variant))
     return failure();
@@ -605,6 +620,9 @@ LogicalResult UnionIsVariantOp::verify() {
 }
 
 LogicalResult UnionUnwrapPayloadOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
+    return failure();
   auto variant = lookupUnionVariant(getValue().getType(), getVariantAttr(), *this);
   if (failed(variant))
     return failure();
@@ -615,6 +633,9 @@ LogicalResult UnionUnwrapPayloadOp::verify() {
 }
 
 LogicalResult UnionUnwrapFieldOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
+    return failure();
   auto variant = lookupUnionVariant(getValue().getType(), getVariantAttr(), *this);
   if (failed(variant))
     return failure();
@@ -693,6 +714,9 @@ LogicalResult ArrayConstructOp::verify() {
         return emitOpError(
             "element segment type must match the result element type");
     } else if (kind.getValue() == "spread") {
+      if (failed(verifyHardwareInstanceCopy(*this, operand.getType())) ||
+          failed(verifyExclusiveReferenceCopy(*this, operand.getType())))
+        return failure();
       if (action.getValue() != "copy-trivial")
         return emitOpError("spread segment action must be copy-trivial");
       auto spreadType = dyn_cast<ArrayType>(operand.getType());
@@ -771,6 +795,9 @@ LogicalResult ArrayIndexInBoundsOp::verify() {
 }
 
 LogicalResult ArrayExtractOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
+    return failure();
   if (failed(verifyArrayIndex(*this, getArray(), getIndex())))
     return failure();
   auto array = cast<ArrayType>(getArray().getType());
@@ -782,6 +809,9 @@ LogicalResult ArrayExtractOp::verify() {
 }
 
 LogicalResult ArrayReplaceOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getArray().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getArray().getType())))
+    return failure();
   if (failed(verifyArrayIndex(*this, getArray(), getIndex())))
     return failure();
   auto array = cast<ArrayType>(getArray().getType());
@@ -1000,6 +1030,9 @@ LogicalResult PlaceDerefOp::verify() {
 }
 
 LogicalResult PlaceReadOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
+    return failure();
   auto place = requirePlace(*this, getPlace().getType(), "operand");
   if (failed(place))
     return failure();

@@ -61,6 +61,8 @@ const (
 	TypeUnion                   TypeKind = "union"
 	TypeStruct                  TypeKind = "struct"
 	TypeArray                   TypeKind = "array"
+	// TypeRegister is a detached nominal register[N] value (MD-077 § 5).
+	TypeRegister TypeKind = "register"
 )
 
 type Type struct {
@@ -262,6 +264,8 @@ type Module struct {
 	Enums       []EnumDefinition
 	Unions      []UnionDefinition
 	Structs     []StructDefinition
+	// Registers is the module's register-definition table (MD-077 § 10(1)).
+	Registers []RegisterDefinition
 	// Statics are the module's static-duration storage locations
 	// (semantic_ir.md § 28), in identity order.
 	Statics []Static
@@ -513,6 +517,8 @@ const (
 	OpStructSpreadFields              OpKind = "struct.spread-fields"
 	OpStructExtractField              OpKind = "struct.extract-field"
 	OpStructReplaceField              OpKind = "struct.replace-field"
+	OpRegisterValueExtract            OpKind = "register.value.extract"
+	OpRegisterValueUpdate             OpKind = "register.value.update"
 	OpArrayConstruct                  OpKind = "array.construct"
 	OpArrayDefault                    OpKind = "array.default"
 	OpArrayLength                     OpKind = "array.len"
@@ -746,6 +752,10 @@ type Operation struct {
 	StructField         StructFieldID
 	StructOrigins       []StructFieldOrigin
 	StructActions       []StructFieldAction
+	// RegisterField and RegisterWrite carry a register.value.* field step
+	// and, for an update, the Sema proof that the value fits (MD-077 § 10(1)).
+	RegisterField       RegisterFieldID
+	RegisterWrite       RegisterWriteProof
 	ArrayElementType    TypeID
 	ArrayLength         string
 	ArraySegmentKinds   []ArrayConstructSegmentKind

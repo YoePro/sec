@@ -51,6 +51,21 @@ def Sec_CoreErrorType : Sec_Type<"CoreError", "core_error"> {
   let genVerifyDecl = 1;
 }
 
+// MD-077 section 19(1)-(2): nominal identities only, never physical layout.
+def Sec_RegisterType : Sec_Type<"Register", "register"> {
+  let summary = "Detached nominal Sec register value";
+  let parameters = (ins "::mlir::StringAttr":$identity);
+  let assemblyFormat = "`<` $identity `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_HardwareInstanceType : Sec_Type<"HardwareInstance", "hw_instance"> {
+  let summary = "Sec software hardware-instance authority descriptor";
+  let parameters = (ins "::mlir::StringAttr":$identity);
+  let assemblyFormat = "`<` $identity `>`";
+  let genVerifyDecl = 1;
+}
+
 def Sec_ResultType : Sec_Type<"Result", "result"> {
   let summary = "Semantic Sec Result success and error identity";
   let parameters = (ins "::mlir::Type":$successType,

@@ -420,6 +420,13 @@ Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic
 - **Direct access outside the `impl`.** Direct hardware field access outside the owning `impl` is rejected with a diagnostic naming the permitted public member.
 - **Permissions.** Permissions and specialized behaviors (§§ 11.1–11.6) are unchanged. No property or method can rename its way around them.
 
+Clarification (owner, 2026-10-23):
+
+- **The receiver decides, not the `impl`.** One `impl T` serves both kinds of register. On a hardware register (`HardwareInstance[T]`), `self.Field` is the field's hardware access with its declared access semantics. On a software register (a detached value in a memory Place, such as an IP or file header), `self.Field` is an ordinary field, much like a struct field. Each member is lowered statically for the receiver kind it is used with. Nothing is dispatched at run time.
+- **Specialized semantics on software registers.** On a detached value, a field with specialized read or write semantics (for example `write-one-clear` or `read-clear`) is just bits. Writing it updates the bits, and reading it is pure. The specialized behavior exists only as a hardware operation.
+- **`Read` and `Write` are reserved.** In an `impl` of a register type, `Read` and `Write` cannot be declared as members. Inside the `impl`, `self.Read()`, `self.Write()` and `self.Write(value)` always mean the compiler-known hardware operations (`rules/platform/hardware-register-access.md` §§ 7–8). They are not reachable outside the owning `impl`, and they require a hardware receiver. A member that uses them can therefore only be used on a hardware instance. A public operation is published under another name, for example `fn Snapshot() T { return self.Read() }`.
+- **Borrowed fields.** A member that borrows `self.Field` (`ref`/`ref mut`) needs a software receiver, because physical register bits are not memory (§ 11.7, MD-077 § 4(1)). Using such a member on a hardware instance is a compile-time error. This also applies when the member is reached through another member that calls it on its own receiver.
+
 ## 12. Register values and conversions
 
 A register type is a fixed-width nominal value type.

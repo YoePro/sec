@@ -20,6 +20,9 @@ import "sec/internal/ast"
 type ImplicitReceiverUse struct {
 	Self  bool
 	Field ResolvedStructMemberPlan
+	// RegisterField is set for an implicit field name of a register impl,
+	// which is `self.Field` (MD-077 §§ 1, 5).
+	RegisterField *ResolvedRegisterFieldPlan
 }
 
 // recordReceiverFacts publishes the callee-side reference facts of the
@@ -68,6 +71,14 @@ func (a *Analyzer) recordImplicitReceiverUse(expr *ast.Identifier, symbol Symbol
 	}
 	if !symbol.ImplicitMember {
 		return
+	}
+	if target.Kind == RegisterType {
+		for index, field := range target.RegisterFields {
+			if field.Name == expr.Value && field.Name != "_" {
+				a.implicitReceiverUses[expr] = ImplicitReceiverUse{RegisterField: &ResolvedRegisterFieldPlan{Register: target, FieldIndex: index, Field: field, Root: RegisterRootImplReceiver, Member: a.currentRegisterMemberKey()}}
+				return
+			}
+		}
 	}
 	for fieldID, field := range target.Fields {
 		if field.Name == expr.Value {

@@ -122,11 +122,18 @@ Chain valueChain(Value value) {
   }
 }
 
-// reachableUses reports a use of `value` reachable after `from` in its own
-// block or in any successor block (cycles included).
+// Report a reference use after end/move, including unambiguous CFG forwarding.
+// Distinct copies/reborrows are separate holders, not forwarding aliases.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 20,25,37;
+// rules/mlir/packages/sec-mlir-dialect_package15.md section 7.
 Operation *reachableUse(Operation *from, Value value) {
+  auto usesReference = [&](Operation *operation) {
+    return llvm::any_of(operation->getOperands(), [&](Value operand) {
+      return isReference(operand.getType()) && sameSource(operand, value);
+    });
+  };
   for (Operation *next = from->getNextNode(); next; next = next->getNextNode())
-    if (llvm::is_contained(next->getOperands(), value))
+    if (usesReference(next))
       return next;
   SmallVector<Block *> worklist(from->getBlock()->getSuccessors().begin(),
                                 from->getBlock()->getSuccessors().end());
@@ -136,7 +143,7 @@ Operation *reachableUse(Operation *from, Value value) {
     if (!visited.insert(block).second)
       continue;
     for (Operation &operation : *block)
-      if (llvm::is_contained(operation.getOperands(), value))
+      if (usesReference(&operation))
         return &operation;
     for (Block *successor : block->getSuccessors())
       worklist.push_back(successor);
@@ -297,8 +304,9 @@ std::optional<uint64_t> constantIndex(Value index) {
 
 class ReturnOriginTracer {
 public:
-  ReturnOriginTracer(func::FuncOp function, func::ReturnOp ret)
-      : function(function), ret(ret), entry(&function.getBody().front()) {}
+  ReturnOriginTracer(func::FuncOp function, func::ReturnOp ret, bool sliceReturn)
+      : function(function), ret(ret), entry(&function.getBody().front()),
+        sliceReturn(sliceReturn) {}
 
   // trace collects the origins of value with the projection path tail that
   // lies between value and the returned reference.
@@ -331,10 +339,27 @@ public:
           "returns a reference to local storage or a local value");
     if (isa<sec::RefBorrowSharedOp, sec::RefBorrowMutOp, sec::RefCopySharedOp,
             sec::RefMoveOp, sec::RefReborrowSharedOp, sec::RefReborrowMutOp,
-            sec::PlaceDerefOp, sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
-            sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
+            sec::PlaceDerefOp,
             sec::SliceCopySharedOp, sec::SliceMoveMutOp>(definition))
       return trace(definition->getOperand(0), tail, origins);
+    // Only the complete source extent retains an unchanged slice origin.
+    // An explicit sub-range needs a projection the current grammar cannot
+    // encode; do not erase the range merely by following operand zero.
+    // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md sections 66-67;
+    // rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
+    // section 4(6); missing-decisions.yaml MD-115 records the open spelling.
+    if (isa<sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
+            sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp>(definition)) {
+      Value start = sourceValue(definition->getOperand(1));
+      auto normalize = start ? start.getDefiningOp<sec::SliceRangeNormalizeOp>()
+                             : sec::SliceRangeNormalizeOp{};
+      if (sliceReturn &&
+          (!normalize || normalize.getProofKind() != "source-open-bound" ||
+           normalize.getStartPresent() || normalize.getEndPresent()))
+        return ret.emitOpError(
+            "returned sub-slice origin requires an explicit slice-range projection (MD-115)");
+      return trace(definition->getOperand(0), tail, origins);
+    }
     if (auto field = dyn_cast<sec::PlaceFieldOp>(definition))
       return trace(field.getBase(),
                    ".field#" + std::to_string(field.getField()) + tail, origins);
@@ -391,6 +416,7 @@ private:
   func::FuncOp function;
   func::ReturnOp ret;
   Block *entry;
+  bool sliceReturn;
   std::set<std::pair<const void *, std::string>> visited;
 };
 
@@ -443,7 +469,8 @@ LogicalResult verifyReturnOrigins(func::FuncOp function) {
       if (!isReference(operand.getType()))
         continue;
       std::set<std::string> observed;
-      ReturnOriginTracer tracer(function, ret);
+      ReturnOriginTracer tracer(function, ret,
+          isa<sec::SliceType, sec::SliceMutType>(operand.getType()));
       if (failed(tracer.trace(operand, "", observed)))
         return WalkResult::interrupt();
       for (const std::string &origin : observed)
@@ -547,6 +574,9 @@ LogicalResult sec::verifyPlaces(func::FuncOp function) {
 // on the same SSA reference, whose false edge terminates in
 // sec.fail.reference_generation (sec_mlir_dialect_v11.md section 36).
 LogicalResult sec::verifyReferenceGuards(func::FuncOp function) {
+  // A transfer cannot forge a proven result and thereby evade this pass.
+  // Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 19-20,27.
+  if (failed(verifyReferenceTransfers(function))) return failure();
   // The shared slice verifier owns exact-source temporal/spatial ordering.
   // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §84.
   if (failed(verifySliceGuards(function))) return failure();
@@ -586,7 +616,10 @@ LogicalResult sec::verifyReferenceGuards(func::FuncOp function) {
         references.push_back(reborrow.getSource());
     }
     for (Value reference : references) {
-      if (!referenceFacts(reference).dynamic)
+      auto incoming = incomingReferenceFacts(reference);
+      if (!llvm::any_of(incoming, [](const ReferenceFacts &facts) {
+            return facts.dynamic;
+          }))
         continue;
       if (!validated(reference, operation))
         return operation->emitOpError(
@@ -604,6 +637,7 @@ LogicalResult sec::verifyReferenceGuards(func::FuncOp function) {
 // references derive only from the origins their function's summary names
 // (sec_mlir_dialect_v11.md section 37).
 LogicalResult sec::verifyBorrowSemantics(func::FuncOp function) {
+  if (failed(verifyReferenceTransfers(function))) return failure();
   if (failed(verifySliceReferences(function))) return failure();
   auto checkDerivation = [](Operation *operation, Value source,
                             std::optional<uint32_t> sourceBorrow) -> LogicalResult {
@@ -611,10 +645,10 @@ LogicalResult sec::verifyBorrowSemantics(func::FuncOp function) {
     if (!reference)
       return operation->emitOpError(
           "a reborrow derives from a reference or a sub-Place of its dereference");
-    ReferenceFacts facts = referenceFacts(sourceValue(reference));
-    if (facts.known && (!sourceBorrow || *sourceBorrow != facts.borrow))
-      return operation->emitOpError(
-          "source_borrow must name the borrow_id of the reference it derives from");
+    for (const ReferenceFacts &facts : incomingReferenceFacts(reference))
+      if (!sourceBorrow || *sourceBorrow != facts.borrow)
+        return operation->emitOpError(
+            "source_borrow must name the borrow_id of the reference it derives from");
     return success();
   };
   WalkResult result = function.walk([&](Operation *operation) {
@@ -625,6 +659,17 @@ LogicalResult sec::verifyBorrowSemantics(func::FuncOp function) {
       if (failed(checkDerivation(operation, reborrow.getSource(), reborrow.getSourceBorrow())))
         return WalkResult::interrupt();
     if (auto end = dyn_cast<sec::RefEndBorrowOp>(operation)) {
+      // The selected holder's identities must match every represented
+      // incoming direct-reference source, not just a local SSA definition.
+      // Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 25,37.
+      if (isa<sec::RefType, sec::RefMutType>(end.getReference().getType()))
+        for (const ReferenceFacts &incoming :
+             incomingReferenceFacts(end.getReference()))
+          if (incoming.borrow != end.getBorrowId() ||
+              incoming.lifetime != end.getLifetimeId())
+            return operation->emitOpError(
+                       "end_borrow must name the ended reference's borrow_id and lifetime_id"),
+                   WalkResult::interrupt();
       ReferenceFacts facts = referenceFacts(end.getReference());
       if (facts.known && (facts.borrow != end.getBorrowId() ||
                           facts.lifetime != end.getLifetimeId()))

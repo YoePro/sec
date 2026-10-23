@@ -1,0 +1,46 @@
+module main
+
+// P16 sections 39-41 and borrowing.md section 8.1(9)-(14): last use
+// releases local slice authority before the owner is written again.
+fn Shared() int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref values[..]
+    let first := view[0]
+    values[0] = 5
+    return first
+}
+
+fn SharedCopy() int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref values[..]
+    let copied := view
+    let first := copied[0]
+    values[0] = 5
+    return first
+}
+
+fn MutableMove() int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    let moved :<- view
+    moved[0] = 7
+    values[0] = 5
+    return values[0]
+}
+
+fn Reborrow() int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    let child := ref mut view
+    child[0] = 7
+    view[1] = 9
+    values[0] = 5
+    return values[0]
+}
+
+fn Unused() int {
+    let mut values := [1, 2, 3, 4]
+    let view := ref mut values[..]
+    values[0] = 5
+    return values[0]
+}

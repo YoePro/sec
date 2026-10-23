@@ -563,7 +563,7 @@ Expected: argument preparation obtains a borrow of the ordinary implementation i
 - Hardware-bound instances: a binding without `impl` is accepted, direct public field access outside the `impl` is accepted, `ref mut device` is accepted with the register type instead of `HardwareInstance[T]`, and no register Semantic IR or MLIR exists.
 - About 11 `@address` fixtures and 7 Go test files use direct access. They migrate with step 2.
 
-**Implementation progress (2026-10-22): steps 1–2 done.**
+**Implementation progress: steps 1–2 done (2026-10-22); step 3 detached part done (2026-10-23).**
 
 - **Step 1:**
   - Detached field carriers, proven writes and no-truncation are locked by `TestMD077DetachedFieldCarriersAndProvenWrites` and `TestMD077DetachedFieldWritesNeverTruncate`.
@@ -577,3 +577,12 @@ Expected: argument preparation obtains a borrow of the ordinary implementation i
   - Tests: `TestMD077HardwareInstancesUseTheImplAPI`, `TestMD077HardwareInstanceMisuseIsRejected`, `TestHardwareInstanceCompletionAndHover`.
 - **Migration:** 17 Sema tests and the `@address` fixtures now use the `impl` API. In `register_invalid.sec`, every intended error is still triggered inside the owning `impl`, plus the new MD-077 cases. `register3/4/5/6_valid.sec` still contain earlier, unrelated errors (units used as types, unknown members) that no test exercises.
 - **Remaining:** steps 3–5. Semantic IR register operations with their payload, shadow and effect emission, and fail-closed capability checks come first, followed by MLIR v11.41.1 and P15-42/42a.
+- **Step 3, detached part (2026-10-23):**
+  - Sema records immutable register field plans (`ResolvedRegisterFieldOf`) with the root kind, plus write proofs (`ResolvedRegisterWriteOf`).
+  - Semantic IR has the register type, the module register-definition table and the pure `register.value.extract`/`register.value.update`, including nested registers and registers inside structs (`register_values_test.go`).
+  - Hardware roots, `HardwareInstance[T]` and integer-to-register conversion fail closed with specific diagnostics. The conversion is open as MD-110.
+  - `impl T` members used on a software receiver lower `self.Field` as ordinary register value operations through the receiver Place (owner clarification 2026-10-23, `registers.md` § 11.7). A member that borrows a receiver field is rejected on a hardware instance.
+  - `shadow`/`noshadow` modifiers are implemented in the parser, Sema (inheritance), formatter, LSP hover and the IR definition table.
+- **Step 4, logical requests (2026-10-23):** hardware and impl-receiver field steps resolve to logical requests (observe, destructive-observe, write-value, clear/set/toggle action). The safe implicit read rule, the compound-update restriction and the trigger-value rule (MD-112) are enforced on hardware and make impl members software-only.
+- **Step 4, `Read()`/`Write()` (2026-10-23):** these are compiler-known, impl-only operations on a hardware receiver. A member that uses them is hardware-only, and `Read`/`Write` are reserved member names in a register `impl` (owner decision). `Write()` requires a writable shadow field.
+- **Steps 3–4, physical part:** blocked by MD-111, which has no canonical endpoint/DeviceModel fact source, so no verified physical plan can exist. Hardware uses fail closed.

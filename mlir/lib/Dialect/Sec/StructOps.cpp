@@ -8,32 +8,6 @@ using namespace mlir;
 using namespace sec;
 using namespace sec::detail;
 
-namespace {
-// Inspect only owned aggregate storage; reference/slice referents are not copied.
-// Rules: rules/memory/copy_move.md — §§4.1–4.4;
-// rules/mlir/packages/sec-mlir-dialect_package16.md — §§39,114.
-bool containsOwnedMutableSlice(Type type) {
-  if (isa<SliceMutType>(type)) return true;
-  if (auto named = dyn_cast<NamedType>(type)) return containsOwnedMutableSlice(named.getBase());
-  if (auto named = dyn_cast<DistinctType>(type)) return containsOwnedMutableSlice(named.getBase());
-  if (auto array = dyn_cast<ArrayType>(type)) return containsOwnedMutableSlice(array.getElementType());
-  if (auto result = dyn_cast<ResultType>(type))
-    return containsOwnedMutableSlice(result.getSuccessType()) || containsOwnedMutableSlice(result.getErrorType());
-  if (auto structure = dyn_cast<StructType>(type))
-    for (Attribute attr : structure.getFields())
-      if (containsOwnedMutableSlice(cast<StructFieldAttr>(attr).getType())) return true;
-  if (auto sum = dyn_cast<UnionType>(type)) {
-    for (Attribute attr : sum.getVariants()) {
-      auto variant = cast<UnionVariantAttr>(attr);
-      if (variant.getKind().getValue() == "single" && containsOwnedMutableSlice(variant.getPayload())) return true;
-      for (Attribute field : variant.getFields())
-        if (containsOwnedMutableSlice(cast<UnionFieldAttr>(field).getType())) return true;
-    }
-  }
-  return false;
-}
-} // namespace
-
 // Verify declaration-order construction without exclusive-holder duplication.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–39;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §114.
@@ -56,6 +30,10 @@ LogicalResult StructConstructOp::verify() {
     return failure();
   for (auto [index, attribute] : llvm::enumerate(type->getFields())) {
     auto field = cast<StructFieldAttr>(attribute);
+    if (cast<StringAttr>(getFieldActions()[index]).getValue() == "copy-trivial" &&
+        (failed(verifyHardwareInstanceCopy(*this, field.getType())) ||
+         failed(verifyExclusiveReferenceCopy(*this, field.getType()))))
+      return failure();
     if (getFields()[index].getType() != field.getType())
       return emitOpError("field operands must use declaration order and exact types");
   }
@@ -66,8 +44,12 @@ LogicalResult StructConstructOp::verify() {
 // Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–39;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §114.
 LogicalResult StructSpreadFieldsOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getSource().getType())))
+    return failure();
   if (containsOwnedMutableSlice(getSource().getType()))
     return emitOpError("cannot copy a mutable slice through struct spread");
+  if (failed(verifyExclusiveReferenceCopy(*this, getSource().getType())))
+    return failure();
   auto type = requireStructType(getSource().getType(), *this);
   if (failed(type))
     return failure();
@@ -89,8 +71,12 @@ LogicalResult StructSpreadFieldsOp::verify() {
 // Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–39;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §114.
 LogicalResult StructExtractOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())))
+    return failure();
   if (containsOwnedMutableSlice(getResult().getType()))
     return emitOpError("cannot copy a mutable slice through struct extract");
+  if (failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
+    return failure();
   auto type = requireStructType(getSource().getType(), *this);
   if (failed(type))
     return failure();
@@ -108,8 +94,12 @@ LogicalResult StructExtractOp::verify() {
 // Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–39;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §114.
 LogicalResult StructReplaceFieldOp::verify() {
+  if (failed(verifyHardwareInstanceCopy(*this, getSource().getType())))
+    return failure();
   if (containsOwnedMutableSlice(getSource().getType()))
     return emitOpError("cannot copy a mutable slice through struct replacement");
+  if (failed(verifyExclusiveReferenceCopy(*this, getSource().getType())))
+    return failure();
   auto type = requireStructType(getSource().getType(), *this);
   if (failed(type))
     return failure();

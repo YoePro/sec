@@ -79,6 +79,10 @@ func TestPackage16MLIRRejectionMatrix(t *testing.T) {
 		{"versioned-operations", "Dialect/Sec/invalid-schema12-slice-boundary-version.mlir"},
 		{"range-index-reference-guards", "Analysis/invalid-schema12-slice-guards.mlir"},
 		{"metadata-copy-move-end-return", "Analysis/invalid-schema12-slice-borrows.mlir"},
+		{"loop-forwarding", "Dialect/Sec/invalid-schema12-slice-loop-forwarding.mlir"},
+		{"transfer-metadata", "Dialect/Sec/invalid-schema12-slice-transfer-metadata.mlir"},
+		{"returned-ranges", "Dialect/Sec/invalid-schema12-slice-return-ranges.mlir"},
+		{"exclusive-holder-copies", "Dialect/Sec/invalid-exclusive-holder-copies.mlir"},
 	}
 	for _, suite := range suites {
 		input := sliceVerificationFixture(t, suite.file)
@@ -110,6 +114,9 @@ func TestPackage16MLIRRoundTripMatrix(t *testing.T) {
 		"Dialect/Sec/schema12-slice-aggregates.mlir",
 		"Analysis/schema12-slice-borrows.mlir",
 		"Dialect/Sec/schema11-emitter-metadata.mlir",
+		"Dialect/Sec/schema12-slice-loop-forwarding.mlir",
+		"Dialect/Sec/schema12-slice-transfer-metadata.mlir",
+		"Dialect/Sec/schema12-slice-return-ranges.mlir",
 	} {
 		input := sliceVerificationFixture(t, file)
 		for _, resolve := range []bool{false, true} {

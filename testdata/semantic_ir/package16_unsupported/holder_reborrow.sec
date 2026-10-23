@@ -1,8 +1,0 @@
-module main
-
-fn Reborrow(values: int[4]) void {
-    let source := ref values[..]
-    let child := ref source
-    discard child
-    discard source
-}

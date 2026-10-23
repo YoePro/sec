@@ -3,8 +3,11 @@
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/ReturnOrigins.h"
+#include "sec/Dialect/Sec/TypeTraversal.h"
+#include "OperationContracts.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -45,6 +48,23 @@ LogicalResult verifyReferenceDictionary(Operation *operation,
   auto facts = dyn_cast<DictionaryAttr>(value);
   if (!facts)
     return operation->emitError("sec.reference must be a dictionary attribute");
+  // MD-084 section 3(1): exact schema, not free-form descriptive metadata.
+  for (NamedAttribute fact : facts) {
+    StringRef key = fact.getName().getValue();
+    bool known = llvm::StringSwitch<bool>(key)
+        .Cases({"borrow_id", "lifetime_id", "validity_policy"}, true)
+        .Cases({"validity_proof", "invalidation_domain", "epoch_dependency"}, true)
+        .Cases({"address_stability", "provenance", "source_borrow"}, true)
+        .Cases({"origin_storages", "pinned", "address_space"}, true)
+        .Default(false);
+    if (!known)
+      return operation->emitError() << "unknown sec.reference field '" << key << "'";
+  }
+  // A proof is optional for dynamic policy, but retains its declared type
+  // when present. MD-084 section 3(2); schema-11 reference properties.
+  if (Attribute proof = facts.get("validity_proof"))
+    if (!isa<StringAttr>(proof))
+      return operation->emitError("sec.reference validity_proof must be a string");
   auto identity = [&](StringRef key, bool required) -> LogicalResult {
     Attribute entry = facts.get(key);
     if (!entry)
@@ -72,6 +92,8 @@ LogicalResult verifyReferenceDictionary(Operation *operation,
   if (text("address_stability").empty() || text("provenance").empty())
     return operation->emitError(
         "sec.reference requires non-empty address_stability and provenance");
+  if (failed(sec::detail::verifyAddressStability(operation, text("address_stability"))))
+    return failure();
   StringRef policy = text("validity_policy");
   if (policy == "proven") {
     if (text("validity_proof").empty() || facts.get("epoch_dependency"))
@@ -156,6 +178,21 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
         number != 5 && number != 6 && number != 7 && number != 8 &&
         number != 9 && number != 10 && number != 11 && number != 12)
       return operation->emitError("unsupported Sec dialect schema version");
+    // Reject MD-077 identities recursively, including type attributes and
+    // signatures, before schema 11. No default schema change is implied.
+    // Rules: rules/mlir/sec_mlir_dialect.md, v11.41.1 Types and admission.
+    if (number < 11) {
+      bool hasRegister = false;
+      module.walk([&](Operation *nested) {
+        hasRegister |= bool(findOperationType(nested, [](Type type) {
+          return isa<RegisterType, HardwareInstanceType>(type);
+        }));
+      });
+      if (hasRegister)
+        return operation->emitError()
+               << "register and hardware-instance types require schema 11, module declares schema "
+               << number;
+    }
     // Slice types (including nested type attributes, signatures and block
     // parameters) belong to schema 12. An older header cannot hide a P16 value
     // inside an aggregate or nominal wrapper.
@@ -163,21 +200,10 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md sections 1-4.
     if (number < 12) {
       bool hasSlice = false;
-      auto checkType = [&](Type type) {
-        type.walk([&](Type nested) {
-          hasSlice |= isa<SliceType, SliceMutType>(nested);
-        });
-      };
       module.walk([&](Operation *nested) {
-        nested->getAttrDictionary().walk(checkType);
-        for (Type type : nested->getResultTypes())
-          checkType(type);
-        for (Type type : nested->getOperandTypes())
-          checkType(type);
-        for (Region &region : nested->getRegions())
-          for (Block &block : region)
-            for (BlockArgument argument : block.getArguments())
-              checkType(argument.getType());
+        hasSlice |= bool(findOperationType(nested, [](Type type) {
+          return isa<SliceType, SliceMutType>(type);
+        }));
       });
       if (hasSlice)
         return operation->emitError()
@@ -192,20 +218,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       WalkResult walk = module->walk([&](Operation *nested) {
         if (isa<FailReferenceGenerationOp>(nested))
           return WalkResult::interrupt();
-        for (Type type : nested->getResultTypes())
-          if (usesSchema11Type(type))
-            return WalkResult::interrupt();
-        for (Type type : nested->getOperandTypes())
-          if (usesSchema11Type(type))
-            return WalkResult::interrupt();
-        if (auto function = dyn_cast<func::FuncOp>(nested)) {
-          for (Type type : function.getFunctionType().getInputs())
-            if (usesSchema11Type(type))
-              return WalkResult::interrupt();
-          for (Type type : function.getFunctionType().getResults())
-            if (usesSchema11Type(type))
-              return WalkResult::interrupt();
-        }
+        if (findOperationType(nested, usesSchema11Type))
+          return WalkResult::interrupt();
         return WalkResult::advance();
       });
       if (walk.wasInterrupted())
@@ -361,7 +375,11 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     if (!isa<StorageDeclareOp>(operation))
       return operation->emitError(
           "sec.address_taken annotates sec.storage.declare");
-    return requireBool();
+    // MD-084 section 2(4): absence means no marker; false is not a marker.
+    if (failed(requireBool())) return failure();
+    if (!cast<BoolAttr>(value).getValue())
+      return operation->emitError("sec.address_taken must be the boolean marker true");
+    return success();
   }
   if ((name == "sec.pinned" || name == "sec.origin_storages" ||
        name == "sec.reference_address_space") &&
@@ -375,7 +393,29 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
         !isReferenceValueType(operation->getResult(0).getType()))
       return operation->emitError(
           "sec.reference annotates an operation with one !sec.ref or !sec.ref_mut result, or a schema-12 slice result");
-    return verifyReferenceDictionary(operation, value);
+    if (failed(verifyReferenceDictionary(operation, value))) return failure();
+    // MD-084 section 2(5): a dictionary cannot override the operation's
+    // own semantic properties. In particular, it cannot hide a dynamic epoch
+    // from the shared reference-fact reader by claiming proven validity.
+    for (NamedAttribute fact : cast<DictionaryAttr>(value)) {
+      StringRef key = fact.getName().getValue();
+      if (Attribute property = operation->getAttr(key))
+        if (property != fact.getValue())
+          return operation->emitError()
+                 << "sec.reference field '" << key
+                 << "' conflicts with the operation property";
+      StringRef supplemental;
+      if (key == "pinned") supplemental = "sec.pinned";
+      else if (key == "origin_storages") supplemental = "sec.origin_storages";
+      else if (key == "address_space") supplemental = "sec.reference_address_space";
+      if (!supplemental.empty())
+        if (Attribute extra = operation->getAttr(supplemental))
+          if (extra != fact.getValue())
+            return operation->emitError()
+                   << "sec.reference field '" << key
+                   << "' conflicts with " << supplemental;
+    }
+    return success();
   }
   if (name == "sec.reference_address_space") {
     auto space = dyn_cast<StringAttr>(value);
@@ -403,6 +443,10 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
         }))
       return operation->emitError(
           "sec.return_origins must be a non-empty array of origin strings on func.func");
+    // MD-084 section 2(3): a non-reference result has no reference origins.
+    if (!llvm::any_of(function.getResultTypes(), isReferenceValueType))
+      return operation->emitError(
+          "sec.return_origins requires a function with a reference result");
     // MD-084 § 4: every entry follows the canonical origin grammar and the
     // array is a finite set without duplicate entries.
     llvm::StringSet<> seen;

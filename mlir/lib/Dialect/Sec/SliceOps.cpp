@@ -174,7 +174,9 @@ template <typename Op> LogicalResult verifyTransfer(Op op, bool mut) {
   Type source = op.getSource().getType();
   if (!sliceElement(source) || isa<SliceMutType>(source) != mut || op.getSlice().getType() != source)
     return op.emitOpError("holder transfer requires matching slice type and authority");
-  if (!op.getSourceBorrow() || *op.getSourceBorrow() != op.getBorrowId())
+  // MD-084 section 3(3): omission means the unchanged borrow_id for a
+  // copy/move, while an explicit source identity must still agree.
+  if (op.getSourceBorrow() && *op.getSourceBorrow() != op.getBorrowId())
     return op.emitOpError("holder transfer must preserve source_borrow");
   return success();
 }

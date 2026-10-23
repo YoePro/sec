@@ -50,13 +50,17 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 				return nil, fmt.Errorf("returned-reference origin names parameter %d of %d", origin.Parameter, len(fb.fn.Parameters))
 			}
 			referent, ok := fb.owner.module.Types.Lookup(fb.fn.Parameters[origin.Parameter].Value.Type)
-			if !ok || referent.Kind != TypeReference {
+			if !ok || referent.Kind != TypeReference && referent.Kind != TypeSharedSlice && referent.Kind != TypeMutableSlice {
 				return nil, fb.unsupported("returned reference derived from a non-reference parameter", decl.Token)
 			}
 			current = referent.Element
 		}
 		for _, projection := range source.Projections {
 			switch projection.Canonical() {
+			case sema.CanonicalProjectionSlice:
+				// MD-084 § 4(6): a slice projection needs an explicit
+				// return-origin spelling (P16 §§ 66–67).
+				return nil, fb.unsupported("returned sub-slice origin without a return-origin slice projection spelling (MD-115)", decl.Token)
 			case sema.CanonicalProjectionField:
 				definition, found := fb.owner.structDefinition(current)
 				if !found {
@@ -126,7 +130,7 @@ func formatReturnOrigins(origins []ReturnOrigin) string {
 // unknown derivation is rejected (semantic_ir.md § 96(5)).
 func verifyReturnOrigins(module *Module, fn *Function) error {
 	returned, ok := module.Types.Lookup(fn.ReturnType)
-	if !ok || returned.Kind != TypeReference {
+	if !ok || returned.Kind != TypeReference && returned.Kind != TypeSharedSlice && returned.Kind != TypeMutableSlice {
 		if len(fn.ReturnOrigins) != 0 {
 			return fmt.Errorf("returned-reference origins on a function that returns no reference")
 		}
@@ -202,6 +206,16 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 			// A fresh borrow is a valid returned origin only of static storage;
 			// local value and storage roots end the trace unaccepted.
 			OpReferenceBorrowShared, OpReferenceBorrowMutable:
+			value = op.Operands[0]
+		case OpSliceCopyShared, OpSliceMoveMutable:
+			value = op.Operands[0]
+		case OpSliceReborrowShared, OpSliceReborrowMutable:
+			// Only a reborrow of the complete extent keeps the source's
+			// origin without a slice projection (P16 §§ 66–67, MD-115).
+			normalize, ok := definitions[op.Operands[1]]
+			if !ok || normalize.Kind != OpSliceRangeNormalize || normalize.SliceRange == nil || normalize.SliceRange.ProofKind != SliceRangeProofOpenBound {
+				return nil, false
+			}
 			value = op.Operands[0]
 		case OpPlaceField:
 			reversed = append(reversed, ReturnOriginStep{Kind: ReturnOriginField, Field: op.StructField})

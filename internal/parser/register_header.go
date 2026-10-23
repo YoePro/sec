@@ -41,6 +41,15 @@ func (p *Parser) parseRegisterType() *ast.RegisterType {
 	for p.peekToken.Type == lexer.IDENT {
 		modifierToken := p.peekToken
 		p.nextToken()
+		if isRegisterShadowModifier(modifierToken) {
+			if registerType.Shadow != "" {
+				p.reportShadowModifierConflict("register", registerType.Shadow, modifierToken)
+				return registerType
+			}
+			registerType.Shadow = modifierToken.Lexeme
+			registerType.ModifierTokens = append(registerType.ModifierTokens, ast.RegisterModifierTokens{Start: modifierToken, End: p.curToken})
+			continue
+		}
 		modifier, ok := p.parseRegisterTypeModifier()
 		if !ok {
 			p.addError("unknown register modifier %q at %d:%d", modifierToken.Lexeme, modifierToken.Line, modifierToken.Column)
@@ -102,4 +111,20 @@ func (p *Parser) parseRegisterTypeModifier() (string, bool) {
 		return prefix + "-endian", true
 	}
 	return "", false
+}
+
+// isRegisterShadowModifier recognizes the compiler-known shadow policy
+// modifiers of a register declaration or field (registers.md § 11.5).
+func isRegisterShadowModifier(token lexer.Token) bool {
+	return token.Type == lexer.IDENT && (token.Lexeme == "shadow" || token.Lexeme == "noshadow")
+}
+
+// reportShadowModifierConflict rejects a second shadow policy modifier on one
+// declaration: a repeated one is a duplicate, a different one contradicts.
+func (p *Parser) reportShadowModifierConflict(owner, existing string, token lexer.Token) {
+	if existing == token.Lexeme {
+		p.addError("duplicate %s shadow modifier %q at %d:%d", owner, token.Lexeme, token.Line, token.Column)
+		return
+	}
+	p.addError("contradictory %s shadow modifiers %q and %q at %d:%d", owner, existing, token.Lexeme, token.Line, token.Column)
 }

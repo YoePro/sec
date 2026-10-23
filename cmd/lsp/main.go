@@ -1141,6 +1141,9 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 			}
 			items = filtered
 		}
+		if receiver, onIdentifier := targetExpr.(*ast.Identifier); onIdentifier && receiver.Value == "self" {
+			items = append(items, registerOperationCompletionItems(exprType, context.Prefix)...)
+		}
 		return items
 	}
 
@@ -3440,6 +3443,9 @@ func registerFieldHover(field sema.RegisterField) string {
 	contents := fmt.Sprintf("```sec\nregister field %s: %s\n```", field.Name, lspTypeName(field.Type))
 	if field.Access != "" {
 		contents += fmt.Sprintf("\n\nAccess: `%s`", field.Access)
+	}
+	if field.Shadow != "" {
+		contents += fmt.Sprintf("\n\nShadow: `%s`", field.Shadow)
 	}
 	return contents
 }

@@ -2302,13 +2302,13 @@ fn Invalid(device: ref mut Device) void {
 		"register field Device.Command is write-only and cannot be read",
 		"register field Ready is read-only and cannot be written",
 		"write-only register field Command cannot be used with += because compound assignment reads the field",
-		"register field Pending with write-one-clear semantics cannot use compound assignment",
-		"register field Enable with write-one-set semantics cannot use compound assignment",
-		"register field Invert with write-one-toggle semantics cannot use compound assignment",
-		"register field Disable with write-zero-set semantics cannot use compound assignment",
-		"register field Restore with write-zero-toggle semantics cannot use compound assignment",
-		"register field Event with read-clear semantics cannot use compound assignment",
-		"register field Flag with read-set semantics cannot use compound assignment",
+	}
+	// On a software (detached) register a specialized field is ordinary bits,
+	// so compound updates of it are valid (owner decision 2026-10-23,
+	// registers.md § 11.7); the hardware restriction is in
+	// TestMD077HardwareRequests. Permissions still apply.
+	if len(errors) != len(wantMessages) {
+		t.Fatalf("errors = %v, want only the permission errors %v", errors, wantMessages)
 	}
 	for _, want := range wantMessages {
 		found := false

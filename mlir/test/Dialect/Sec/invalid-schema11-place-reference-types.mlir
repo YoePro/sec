@@ -72,3 +72,23 @@ module attributes {
     "sec.fail.reference_generation"() <{reason = "panic.invalid-reference-generation"}> : () -> ()
   }
 }
+
+// -----
+
+// P15 types cannot hide inside aggregate function signatures.
+// expected-error@+1 {{Places, direct references and their operations require schema 11, module declares schema 10}}
+module attributes {sec.dialect_version = 10 : i32} {
+  func.func private @nested(!sec.array<!sec.ref<si32>, "2">)
+}
+
+// -----
+
+// Version 1's short metadata path must still reject nested P15 types.
+// expected-error@+1 {{Places, direct references and their operations require schema 11, module declares schema 1}}
+module attributes {sec.dialect_version = 1 : i32, sec.test_metadata = {nested = [!sec.named<"device::View", !sec.ref_mut<si32>>]}} {}
+
+// -----
+
+// Places are compiler-internal types even when nested in a type attribute.
+// expected-error@+1 {{Places, direct references and their operations require schema 11, module declares schema 10}}
+module attributes {sec.dialect_version = 10 : i32, sec.test_metadata = {nested = [!sec.place<si32, "ro">]}} {}

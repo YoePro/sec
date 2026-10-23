@@ -30,6 +30,7 @@
 #include "sec/Dialect/Sec/SecDialect.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
+#include "sec/Dialect/Sec/TypeTraversal.h"
 #include "llvm/ADT/StringSwitch.h"
 
 namespace sec {
@@ -103,6 +104,22 @@ struct CheckLoweringSupportPass
   void runOnOperation() override {
     bool failed = false;
     getOperation().walk([&](Operation *operation) {
+      // Recognizing the MD-077 type syntax does not select a physical
+      // representation or enable hardware lowering. Check signatures, nested
+      // attributes and block arguments as well as SSA operands/results before
+      // conversion can fail with a materialization error.
+      // Rules: rules/mlir/sec_mlir_dialect.md, v11.41.1 "Types" and
+      // "Effects and verification"; codex.md, "One compilation track".
+      Type unsupportedRegisterType = sec::findOperationType(
+          operation, [](Type type) {
+            return isa<sec::RegisterType, sec::HardwareInstanceType>(type);
+          });
+      if (unsupportedRegisterType) {
+        operation->emitError()
+            << "[unsupported-lowering] the Sec MLIR -> LLVM track does not lower type "
+            << unsupportedRegisterType << " yet; register/hardware physical lowering requires a verified representation and target plan";
+        failed = true;
+      }
       if (isa<sec::SecDialect>(operation->getDialect()) &&
           !isLoweredSecOperation(operation)) {
         operation->emitError()

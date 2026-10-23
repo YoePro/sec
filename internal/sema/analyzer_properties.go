@@ -51,6 +51,7 @@ func (a *Analyzer) recordResolvedPropertyAccess(expr ast.Expression, owner Type,
 	if a.resolvedPropertyAccesses == nil {
 		a.resolvedPropertyAccesses = map[ast.Expression]ResolvedPropertyAccess{}
 	}
+	a.recordRegisterPropertyAccess(expr, owner, property, kind)
 	a.resolvedPropertyAccesses[expr] = ResolvedPropertyAccess{
 		Kind:         kind,
 		OwnerType:    owner,

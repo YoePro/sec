@@ -155,13 +155,13 @@ func TestPackage16RejectsMissingPlansWithoutPartialIR(t *testing.T) {
 	}
 }
 
-// Dynamic owners and slice signatures keep their actual P18/P16-36 gates;
-// unrelated modules are not preflighted or lowered for the requested module.
+// Dynamic owners keep their actual P18 gate (slice signatures are lowered
+// since P16-36, slice_parameters_test.go); unrelated modules are not
+// preflighted or lowered for the requested module.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§115–116,123,128–137.
 func TestPackage16DependencyAndModuleBoundaries(t *testing.T) {
 	for _, test := range []struct{ file, want string }{
 		{"semantic_ir/package16_boundary_owner.sec", "dynamic"},
-		{"semantic_ir/slice_length_forms.sec", "P16-36"},
 	} {
 		program, a := sliceBoundaryInput(t, test.file)
 		module, err := Build(program, a, BuildOptions{RequestedModule: "main", MaxPackage: 16})

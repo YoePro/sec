@@ -145,6 +145,9 @@ func (fb *functionBuilder) receiverPlace(plans []sema.ResolvedStructMemberPlan, 
 // lowerReceiverRead reads a stored field of the receiver; a bare `self` value
 // is not lowered.
 func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, error) {
+	if registerPlans, register := fb.receiverRegisterPath(expr); register {
+		return fb.lowerReceiverRegisterRead(expr, registerPlans)
+	}
 	plans, steps, rooted, ok := fb.receiverFieldPath(expr)
 	if !rooted {
 		return builtValue{}, errNotReference
@@ -172,6 +175,9 @@ func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, e
 // destination Place first, then the source (operators.md "Assignment
 // evaluation order").
 func (fb *functionBuilder) lowerReceiverWrite(stmt *ast.AssignmentStatement) (bool, error) {
+	if registerPlans, register := fb.receiverRegisterPath(stmt.Target); register {
+		return true, fb.lowerReceiverRegisterWrite(stmt, registerPlans)
+	}
 	plans, steps, rooted, ok := fb.receiverFieldPath(stmt.Target)
 	if !rooted {
 		return false, nil

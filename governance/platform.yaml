@@ -37,13 +37,13 @@ integrations:
       - canonical read-clear source spelling is represented through parser, AST, Sema diagnostics, and formatter; legacy clear-on-read is rejected with a focused migration diagnostic
       - canonical read-set source spelling is represented through parser, AST, Sema compound-read diagnostics, and compiler-fact-driven LSP hover
       - the complete write-one/write-zero clear/set/toggle modifier family is represented through parser, AST, Sema direct-write and compound-read diagnostics, and compiler-fact-driven LSP hover
+      - "shadow/noshadow register-level and field-level modifiers (2026-10-23): parser (duplicate, contradictory and order diagnostics), AST, Sema effective policy with field > register > global noshadow inheritance (RegisterField.Shadow), formatter round trip, LSP hover and the Semantic IR register-definition table (register_shadow_test.go, TestRegisterShadowPolicyInheritance, TestHoverShowsEffectiveRegisterShadowPolicy)"
+      - "logical hardware requests (2026-10-23, register_requests.go): every leaf field step on a hardware instance or impl receiver resolves to observe, destructive-observe (read-clear/read-set), write-value or a clear/set/toggle action with its shadow policy (ResolvedRegisterHardwareRequestOf); the safe implicit read rule rejects an observation whose register holds another read-clear/read-set field (no selective capability is known); compound updates of specialized fields and non-trigger special writes (MD-112) are rejected on hardware; inside impl T they make the member software-only, and such members are rejected where used on a hardware instance (register_receivers.go, TestMD077HardwareRequests). Implicit field writes in a register impl now use the field rules (TestImplicitRegisterFieldWritesUseFieldRules)."
     remaining:
-      - "MD-077 (decided 2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md) steps 3-4: Semantic IR register.value.extract/update and register.hw.bind/observe/request_write/shadow_*/commit built from Sema's resolved plans with the full § 10 payload; controlled public exposure; shadow/side-effect emission; fail-closed target capability diagnostics; negative tests before enabling CLI output"
-      - add shadow and noshadow field modifiers plus register-level default inheritance
+      - "MD-077 (decided 2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md) steps 3-4 (detached register.value.extract/update done 2026-10-23, see frontend.registers): Semantic IR register.hw.bind/observe (physical plans blocked by MD-111: no canonical endpoint fact source)/request_write/shadow_*/commit built from Sema's resolved plans with the full § 10 payload; controlled public exposure; shadow/side-effect emission; fail-closed target capability diagnostics; negative tests before enabling CLI output"
       - implement shadow observed-state and pending-logical-write analysis without a global runtime manager
-      - add compiler-known hardware register Read() returning a detached coherent snapshot
-      - add compiler-known shadow commit Write() and legal whole-register Write(value) semantics
-      - implement safe-only implicit hardware field observation with collateral-effect rejection
+      - "compiler-known hardware register Read() / Write() / Write(value): frontend done 2026-10-23 (register_operations.go: impl-only, hardware receiver, hardware-only members, reserved names, Write() needs a writable shadow field); remaining: coherent snapshot plan, shadow intent analysis behind Write(), and the §8.4 mixed-semantics check of Write(value), all needing MD-111 plan facts"
+      - "implement safe-only implicit hardware field observation with collateral-effect rejection (type-level necessary check done 2026-10-23; plan-level proof needs MD-111 endpoint facts)"
       - introduce canonical HardwareResourceIdentity, EndpointIdentity, and physical operation identities
       - model endpoint kinds including memory-mapped, port-mapped, instruction-encoded, runtime-mapped, and target-defined
       - represent read/write aliases and set/clear/toggle operations by resource effects rather than address heuristics
@@ -64,7 +64,7 @@ integrations:
       - model explicit checked mapping/access failure separately from architecture/platform faults
       - preserve special operations, shadow effects, footprints, context, ordering, completion, and fault facts through Semantic IR and Sec MLIR
       - reject any target lowering that cannot materialize the required hardware semantics exactly
-      - add LSP hover/diagnostics for resource, endpoint, shadow, access widths, implicit-read safety, aliases, and context requirements
+      - "add LSP hover/diagnostics for resource, endpoint, shadow, access widths, implicit-read safety, aliases, and context requirements (partial 2026-10-23: field hover shows the shadow policy and the logical hardware request, Read()/Write() hover, self.Read/Write completion, and Sema diagnostics for implicit-read safety; resource, endpoint, widths, aliases and context need MD-111)"
     required_test_families:
       - field permissions and specialized read/write semantics
       - safe implicit field observation and destructive collateral rejection

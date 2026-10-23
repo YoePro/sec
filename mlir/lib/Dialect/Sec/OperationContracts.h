@@ -4,10 +4,96 @@
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include <initializer_list>
 
 namespace sec::detail {
 using namespace mlir;
+
+// Validate the canonical stability vocabulary independently of pinning.
+// Rules: rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
+// section 3(5).
+inline LogicalResult verifyAddressStability(Operation *operation, StringRef value) {
+  if (value != "Movable" && value != "Stable" && value != "Fixed" &&
+      value != "Unknown")
+    return operation->emitOpError(
+        "address_stability must be Movable, Stable, Fixed or Unknown");
+  return success();
+}
+
+// Inspect owning aggregate components, never a reference/slice referent.
+// Array classification follows its element even for zero length.
+// Rules: rules/memory/copy_move.md sections 4.1-4.3;
+// rules/mlir/packages/sec-mlir-dialect_package16.md sections 39,114.
+inline bool containsOwnedValueMatching(
+    Type type, llvm::function_ref<bool(Type)> matches) {
+  if (matches(type)) return true;
+  if (isa<RefType, RefMutType, SliceType, SliceMutType>(type)) return false;
+  if (auto named = dyn_cast<NamedType>(type))
+    return containsOwnedValueMatching(named.getBase(), matches);
+  if (auto distinct = dyn_cast<DistinctType>(type))
+    return containsOwnedValueMatching(distinct.getBase(), matches);
+  if (auto array = dyn_cast<ArrayType>(type))
+    return containsOwnedValueMatching(array.getElementType(), matches);
+  if (auto result = dyn_cast<ResultType>(type))
+    return containsOwnedValueMatching(result.getSuccessType(), matches) ||
+           containsOwnedValueMatching(result.getErrorType(), matches);
+  if (auto structure = dyn_cast<StructType>(type))
+    for (Attribute attribute : structure.getFields())
+      if (containsOwnedValueMatching(cast<StructFieldAttr>(attribute).getType(), matches))
+        return true;
+  if (auto sum = dyn_cast<UnionType>(type))
+    for (Attribute attribute : sum.getVariants()) {
+      auto variant = cast<UnionVariantAttr>(attribute);
+      if (variant.getKind().getValue() == "single" &&
+          containsOwnedValueMatching(variant.getPayload(), matches)) return true;
+      for (Attribute field : variant.getFields())
+        if (containsOwnedValueMatching(cast<UnionFieldAttr>(field).getType(), matches))
+          return true;
+    }
+  return false;
+}
+
+// Hardware instance authority remains non-duplicable inside owning aggregates.
+// Rules: rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md
+// section 3(5); rules/memory/copy_move.md section 4.1.
+inline bool containsOwnedHardwareInstance(Type type) {
+  return containsOwnedValueMatching(type, [](Type nested) {
+    return isa<HardwareInstanceType>(nested);
+  });
+}
+
+// Preserve the existing P16-specific constructor/spread diagnostics.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md sections 39,114.
+inline bool containsOwnedMutableSlice(Type type) {
+  return containsOwnedValueMatching(type, [](Type nested) {
+    return isa<SliceMutType>(nested);
+  });
+}
+
+// Trivial copies cannot duplicate mutable direct-reference or slice holders.
+// Shared holders do not own the potentially move-only values they refer to.
+// Rules: rules/memory/copy_move.md sections 4.1-4.4;
+// rules/mlir/packages/sec-mlir-dialect_package15.md section 7;
+// rules/mlir/packages/sec-mlir-dialect_package16.md sections 39,114.
+inline LogicalResult verifyExclusiveReferenceCopy(Operation *operation, Type type) {
+  if (containsOwnedValueMatching(type, [](Type nested) {
+        return isa<RefMutType, SliceMutType>(nested);
+      }))
+    return operation->emitOpError(
+        "cannot trivially copy an exclusive reference holder; move-aware ownership lowering is required");
+  return success();
+}
+
+// Fail closed rather than manufacture authority through a copy-only operation.
+// Rules: rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md
+// section 3(5).
+inline LogicalResult verifyHardwareInstanceCopy(Operation *operation, Type type) {
+  if (containsOwnedHardwareInstance(type))
+    return operation->emitOpError(
+        "cannot trivially copy hardware-instance authority; use a safe reference or verified ownership transfer");
+  return success();
+}
 
 // Shared canonical struct/type/field and metadata vocabulary checks.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package13.md — §§33–39.
@@ -124,6 +210,8 @@ LogicalResult verifyReferenceMetadata(OpT op) {
     return op.emitOpError("borrow_id and lifetime_id must be non-zero");
   if (op.getAddressStability().empty() || op.getProvenance().empty())
     return op.emitOpError("address_stability and provenance must be non-empty");
+  if (failed(verifyAddressStability(op, op.getAddressStability())))
+    return failure();
   StringRef policy = op.getValidityPolicy();
   if (policy == "proven") {
     if (!op.getValidityProof() || op.getValidityProof()->empty())

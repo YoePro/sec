@@ -26,10 +26,16 @@ DictionaryAttr metadata(Value value) {
   }
   Operation *op = value.getDefiningOp();
   if (!op) return {};
-  if (auto facts = op->getAttrOfType<DictionaryAttr>("sec.reference")) return facts;
+  auto facts = op->getAttrOfType<DictionaryAttr>("sec.reference");
   auto properties = dyn_cast_or_null<DictionaryAttr>(op->getPropertiesAsAttribute());
-  if (!properties || !properties.get("borrow_id")) return {};
-  NamedAttrList attrs(properties);
+  if (!facts && (!properties || !properties.get("borrow_id"))) return {};
+  NamedAttrList attrs;
+  if (properties) attrs.append(properties.getValue());
+  // MD-084 section 2(5): dictionary and properties are compatible views of
+  // the same facts, not mutually exclusive sources. Supplemental facts still
+  // apply when a dictionary omits their redundant/default entries.
+  if (facts)
+    for (NamedAttribute entry : facts) attrs.set(entry.getName(), entry.getValue());
   for (auto [key, extra] : {std::pair{"origin_storages", "sec.origin_storages"},
                             {"pinned", "sec.pinned"},
                             {"address_space", "sec.reference_address_space"}})
@@ -77,7 +83,11 @@ LogicalResult preserveFacts(Operation *op, Value source, bool derived) {
   // explicit reborrows and slice transfers carry source_borrow.
   // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§50–58,116.
   bool implicitPlaceBorrow = isa<RefBorrowSharedOp, RefBorrowMutOp>(op) && !after.get("source_borrow");
-  if (!isa<SliceElementPlaceOp>(op) && !implicitPlaceBorrow && after.get("source_borrow") != before.get("borrow_id"))
+  // MD-084 section 3(3): copy/move may omit source_borrow when it equals
+  // borrow_id. The exact borrow/lifetime identity checks above still apply.
+  bool implicitTransfer = isa<SliceCopySharedOp, SliceMoveMutOp>(op) && !after.get("source_borrow");
+  if (!isa<SliceElementPlaceOp>(op) && !implicitPlaceBorrow && !implicitTransfer &&
+      after.get("source_borrow") != before.get("borrow_id"))
     return op->emitOpError("source_borrow must name the granting source borrow_id");
   if (isa<SliceElementPlaceOp>(op) && fact(before,"source_borrow") != fact(after,"source_borrow"))
     return op->emitOpError("slice element Place changes source_borrow");

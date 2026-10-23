@@ -197,7 +197,7 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 }
 
 func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved sema.Function) error {
-	returnType, err := b.internType(resolved.ReturnType)
+	returnType, err := b.internSignatureType(resolved.ReturnType)
 	if err != nil {
 		token := decl.Token
 		if decl.ReturnType != nil {
@@ -223,11 +223,7 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 			}
 			referenceFacts = facts
 		}
-		typeID, err := b.internType(parameter.Type)
-		if err != nil {
-			return locateUnsupportedType(err, parameter.Token)
-		}
-		ownership, err := ownershipForParameter(parameter, b.maxPackage)
+		typeID, ownership, err := b.parameterType(parameter)
 		if err != nil {
 			return err
 		}
@@ -303,6 +299,12 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 	}
 	if t.Kind == sema.ReferenceType {
 		return b.internReferenceType(t)
+	}
+	if t.Kind == sema.RegisterType {
+		return b.internRegisterType(t)
+	}
+	if t.Kind == sema.HardwareInstanceType {
+		return 0, &UnsupportedFeatureError{Feature: "hardware register instance " + t.Name + " (register.hw.bind, MD-077 § 18(3)-(4))", Package: b.maxPackage}
 	}
 	if t.Kind == sema.RawPtrType {
 		return b.internRawPointerType(t)
@@ -737,6 +739,9 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			}
 			resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 			if !ok {
+				if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
+					return fb.unsupported("hardware register operation "+string(operation.Kind)+" on "+operation.Register.Name+" (register.hw.*, MD-077 § 18(4); physical plans need MD-111)", call.Token)
+				}
 				return fb.unsupported("unresolved function call", call.Token)
 			}
 			if resolved.Function.ReturnType.Kind != sema.VoidType {
@@ -868,6 +873,11 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 			return fb.buildNestedAggregateAssignment(stmt)
 		}
 		return fb.buildArrayIndexAssignment(stmt, index)
+	}
+	if member, ok := stmt.Target.(*ast.MemberExpression); ok && fb.owner.maxPackage >= registerLoweringPackage {
+		if _, register := fb.owner.analyzer.ResolvedRegisterFieldOf(member); register {
+			return fb.buildRegisterFieldAssignment(stmt, member)
+		}
 	}
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok && fb.owner.maxPackage >= 13 {
 		if fb.owner.maxPackage >= 14 && aggregatePathContainsIndex(member) {
@@ -1623,7 +1633,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return builtValue{}, fmt.Errorf("missing resolved type for %T at %s", expr, formatLocation(location(expressionToken(expr))))
 	}
-	typeID, err := fb.owner.internType(resolved)
+	// Slice-typed expressions reach this point only through routes that
+	// p16SliceExpression admitted (calls returning slices).
+	typeID, err := fb.owner.internSignatureType(resolved)
 	if err != nil {
 		return builtValue{}, err
 	}
@@ -1718,6 +1730,14 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			member, resolved := fb.owner.analyzer.CompilerKnownMemberAt(e.Property.Token.File, e.Property.Token.Line, e.Property.Token.Column)
 			if resolved && member.ID == "CKM-LEN-ARRAY" {
 				return fb.buildFixedArrayLength(e, typeID)
+			}
+		}
+		if fb.owner.maxPackage >= registerLoweringPackage {
+			if plan, resolved := fb.owner.analyzer.ResolvedRegisterFieldOf(e); resolved {
+				return fb.buildRegisterFieldRead(e, plan)
+			}
+			if err := fb.hardwareInstanceMemberBoundary(e); err != nil {
+				return builtValue{}, err
 			}
 		}
 		if fb.owner.maxPackage >= 13 {
@@ -3443,6 +3463,14 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {
+		if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
+			return builtValue{}, fb.unsupported("hardware register operation "+string(operation.Kind)+" on "+operation.Register.Name+" (register.hw.*, MD-077 § 18(4); physical plans need MD-111)", call.Token)
+		}
+		if result, typed := fb.owner.analyzer.TypeOf(call); typed && result.Kind == sema.RegisterType {
+			// MD-110: no Semantic IR operation creates a register value from
+			// an integer bit pattern yet.
+			return builtValue{}, fb.unsupported("integer-to-register conversion "+result.Name+"(...) (no admitted Semantic IR operation, MD-110)", call.Token)
+		}
 		return builtValue{}, fb.unsupported("unresolved function call", call.Token)
 	}
 	if resolved.Kind == sema.ResolvedInterfaceMethodCall {
@@ -3470,7 +3498,25 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	for index, arg := range call.Arguments {
 		expected := TypeID(0)
 		if index < len(resolved.Function.Parameters) {
-			expected, _ = fb.owner.internType(resolved.Function.Parameters[index].Type)
+			parameter := resolved.Function.Parameters[index]
+			if fb.owner.maxPackage >= sliceLoweringPackage && sourceSliceType(parameter.Type) {
+				sliceType, mutable, err := fb.owner.internSourceSliceType(parameter.Type)
+				if err != nil {
+					return builtValue{}, err
+				}
+				v, err := fb.lowerSliceArgument(arg, sliceType)
+				if err != nil {
+					return builtValue{}, err
+				}
+				action := ArgumentSharedReference
+				if mutable {
+					action = ArgumentMutableReference
+				}
+				args = append(args, v.id)
+				actions = append(actions, action)
+				continue
+			}
+			expected, _ = fb.owner.internType(parameter.Type)
 		}
 		if action, isReference := fb.referenceArgumentAction(expected); isReference {
 			// package 15 §§ 59-60: the argument is the reference value its
@@ -3499,7 +3545,7 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		args = append(args, v.id)
 		actions = append(actions, ArgumentCopyTrivial)
 	}
-	ret, err := fb.owner.internType(resolved.Function.ReturnType)
+	ret, err := fb.owner.internSignatureType(resolved.Function.ReturnType)
 	if err != nil {
 		return builtValue{}, err
 	}
@@ -3610,6 +3656,12 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 		return OwnershipRawPointer, nil
 	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType, sema.EnumType:
 		return OwnershipImmediate, nil
+	case sema.RegisterType:
+		// A detached register value is a trivially copyable bit layout
+		// (MD-077 § 5).
+		if maxPackage >= registerLoweringPackage {
+			return OwnershipImmediate, nil
+		}
 	case sema.ArrayType:
 		if maxPackage >= 14 && sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil

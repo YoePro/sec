@@ -1468,6 +1468,9 @@ type RegisterType struct {
 	WidthExpression Expression
 	AllocationOrder string
 	ByteOrder       string
+	// Shadow is the register-level shadow default, "shadow" or "noshadow",
+	// or empty when the declaration leaves the global noshadow default.
+	Shadow string
 	// ModifierTokens retains accepted header modifiers for lossless CST spacing.
 	// Rules: rules/tooling/formatter.md — §5(2,4–5),§22(1).
 	ModifierTokens []RegisterModifierTokens
@@ -1499,6 +1502,10 @@ type RegisterField struct {
 	// rules/declarations/registers.md. Empty input is normalized by the parser
 	// to RegisterReadWrite.
 	Access RegisterFieldAccess
+	// Shadow is an explicit field-level "shadow" or "noshadow" override, or
+	// empty when the field inherits the register default
+	// (rules/declarations/registers.md § 11.5).
+	Shadow string
 }
 
 type RegisterFieldAccess string

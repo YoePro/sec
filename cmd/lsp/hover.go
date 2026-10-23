@@ -101,6 +101,14 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}
 
+	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if plan, ok := analyzer.RegisterFieldAccessAt(token.File, token.Line, token.Column); ok && plan.Request != nil {
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: registerAccessHover(plan)}, Range: nameRange}, true
+		}
+		if operation, ok := analyzer.RegisterOperationAt(token.File, token.Line, token.Column); ok {
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: registerOperationHover(operation)}, Range: nameRange}, true
+		}
+	}
 	if target, ok := implTargetAtOffset(program, analyzer, text, path, offset); ok {
 		if name == "self" {
 			return typedHover(nameRange, "self", target), true

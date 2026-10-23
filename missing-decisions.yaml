@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-22"
+updated: "2026-10-23"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -979,4 +979,176 @@ decisions:
       (c) another mechanism. Decide the single bytes -> string path stdlib
       uses and its allocation/ownership contract.
     classification: architectural
+    status: open
+  - id: MD-110
+    area: register-integer-conversion-ir-vocabulary
+    rulebooks:
+      - rules/declarations/registers.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir_dialect.md
+    description: >-
+      Open 2026-10-23 (raised while implementing MD-077 § 18(3)). registers.md
+      § 12 admits explicit integer-to-register conversion (`Packet(raw)`,
+      checked `try Packet12(raw)` when the source may exceed the width,
+      compile-time rejection of a known out-of-range constant), but the
+      canonical MD-077 vocabulary (semantic_ir.md § 21(5), dialect v11.41.1)
+      lists only register.value.extract/update and the hardware family. No
+      Semantic IR or Sec MLIR operation therefore creates a detached register
+      value from bits, and none turns one back into its integer bit pattern
+      (needed for protocol serialization). Until decided, Semantic IR rejects
+      the conversion fail-closed; detached values reach IR only as
+      parameters, returns and copies. Decide: the operation names (for
+      example register.value.from-bits / register.value.to-bits and
+      sec.register.from_bits / sec.register.to_bits), whether the checked
+      form is one op with a failure edge or a range guard plus an exact op
+      (as numeric.convert-exact), the source integer types admitted, whether
+      register-to-integer conversion exists in source at all, and the schema
+      admission (v11.41.x early admission or later).
+    classification: constraining
+    status: open
+  - id: MD-111
+    area: hardware-endpoint-fact-source
+    rulebooks:
+      - rules/platform/platform_model.md
+      - rules/platform/fixed-address-bindings.md
+      - rules/platform/hardware-register-access.md
+      - rules/compiler/semantic_ir.md
+    description: >-
+      Open 2026-10-23 (raised while implementing MD-077 § 18(3)-(4)).
+      register.hw.bind/observe/request_write/commit need resolved resource,
+      endpoint and verified physical-plan facts (MD-077 § 10(2), § 19(8):
+      endpoint kind, legal read/write widths, alignment, read/write
+      footprints, collateral effects, aliases, atomicity, ordering and
+      completion, access context, fault model). fixed-address-bindings.md § 8
+      requires every @address binding to resolve against a canonical region
+      or endpoint from the CompilationPlan, MemoryEnvironment or DeviceModel,
+      and hardware-register-access.md § 32 lists these as canonical facts,
+      but platform_model.md §§ 5, 10 describe DeviceModel and
+      MemoryEnvironment only conceptually. No rulebook fixes their concrete
+      source (target definition, project manifest section, device file or
+      knowledge pack), schema, identity scheme or validation, and the
+      compiler has no such model. Without it no verified operation plan can
+      exist, so every hardware operation can only fail closed, and @address
+      region validation (fixed-address-bindings.md § 8) cannot be performed.
+      Decide: where endpoint/region facts come from and their format; the
+      canonical HardwareResourceID / HardwareEndpointID / plan-ID scheme;
+      the minimum fact set a MemoryMapped endpoint needs for a first
+      verified plan; and how a numeric @address maps to a resource when no
+      device description names it (reject, or a target-default linear MMIO
+      region). The same facts decide the MD-077 § 12 binding category: Sec 0.1
+      admits @address only for register types (fixed-address-bindings.md
+      § 12), so whether such a binding is "ordinary addressed storage"
+      (reference-compatible RAM, a P15 Place root) or a hardware register
+      (HardwareInstance[T]) depends on the region's memory kind. Until
+      decided, Sema types every @address binding as a hardware register, and
+      the ordinary-addressed-storage branch of P15-42/42a is unreachable.
+    classification: blocking
+    status: open
+  - id: MD-112
+    area: hardware-special-write-non-trigger-values
+    rulebooks:
+      - rules/declarations/registers.md
+      - rules/platform/hardware-register-access.md
+    description: >-
+      Open 2026-10-23 (raised while implementing MD-077 § 18(4)).
+      registers.md § 11.3 and hardware-register-access.md §§ 4.4-4.9 define
+      only the trigger value of the write-one/write-zero clear/set/toggle
+      family, and MD-077 § 7(3) defers non-trigger semantics to those books,
+      which do not define them. For a hardware-bound field it is undecided
+      what a non-trigger constant (`self.Pending = false` on write-one-clear)
+      or a runtime value (`self.Pending = flag`) requests. Until decided,
+      Sema rejects both in hardware context and accepts only the trigger
+      constant. Software (detached) registers are unaffected: there the field
+      is ordinary bits (owner decision 2026-10-23, registers.md § 11.7).
+      The trigger value of a multi-bit write-one/write-zero field
+      (`Events: bit[4] write-one-clear`, where each written one usually
+      clears its bit) is not defined either, so every write to such a field
+      is rejected on hardware for now. Decide: whether a non-trigger constant
+      is an error, a no-op request or something else; whether a runtime value
+      is an error or a conditional action (with the branch made explicit in
+      Semantic IR); and the per-bit trigger meaning of multi-bit fields.
+    classification: localized
+    status: open
+  - id: MD-113
+    area: hardware-shadow-knowledge-across-calls
+    rulebooks:
+      - rules/platform/hardware-register-access.md
+      - rules/declarations/registers.md
+    description: >-
+      Open 2026-10-23 (raised while implementing MD-077 § 18(4)).
+      hardware-register-access.md §§ 9.7-9.8 allow a shadow field to be read
+      as a shadowed value only when its observed or intended state is known
+      on the executing path; the compiler performs definite-shadow-state
+      analysis "where possible" and may keep a runtime known mask when the
+      state is path-dependent. Shadow state belongs to the instance and
+      outlives a member call, so a getter such as `get Mode { return
+      self.Mode }` on a shadow field cannot be proven known inside the
+      member alone. The books do not say (1) whether the analysis is
+      intra-member only (making such getters invalid unless the member first
+      calls Read() or writes the field), interprocedural over the impl
+      members, or runtime-checked with a known mask; (2) what a read does
+      when the runtime mask says Unknown (§ 9.15 forbids an automatic
+      refresh, so a fault, a compile-time rejection or a Result are the
+      candidates); (3) whether a pending write intent makes the field Known
+      for a following read (intended state) before Write(); and (4) the
+      Unknown/Known state of every shadow field when the instance is bound
+      (§ 9.8 forbids a fabricated initial value). Until decided, Sema
+      resolves shadow fields' logical requests with their policy but does
+      not check knowledge, and Semantic IR fails closed for hardware.
+    classification: constraining
+    status: open
+  - id: MD-114
+    area: sec-mlir-register-value-text-contract
+    rulebooks:
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+    description: >-
+      Open 2026-10-23 (raised by the MD-077 dialect work in mlir/). Dialect
+      v11.41.1 fixes the names !sec.register<"m::T">, sec.register.extract /
+      sec.register.update and requires a module-level register-definition
+      table and a sec.field_path, but it does not spell the table, its
+      records or the path, so neither the C++ verifier nor the Go emitter can
+      be written without inventing normative text. Proposal for the detached
+      value operations only (hardware records wait for MD-111): module
+      attribute `sec.registers = [#sec.register_def<identity = "m::T",
+      width = 32, order = "msb-first", byte_order = "big-endian" | absent,
+      fields = [#sec.register_field<ordinal = 0, name = "Flag", offset = 31,
+      width = 1, type = i1, access = "read-write", shadow = false,
+      unit = absent, reserved = false>, ...]>]`, ordered by first use like the
+      Semantic IR table; operation attribute `sec.field_path = [i32 ordinal,
+      ...]` from the operand's register to the field (one step per nested
+      register); sec.register.update additionally carries `sec.write_proof =
+      #sec.register_write_proof<"typed" | "constant" | "interval", low, high>`
+      mirroring Semantic IR. Decide: accept, amend or replace this text, so
+      that it can be installed in v11.41.1 and its snapshot together.
+    classification: localized
+    status: open
+  - id: MD-115
+    area: returned-slice-origin-projection
+    rulebooks:
+      - rules/mlir/packages/sec-mlir-dialect_package16.md
+      - rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/compiler/semantic_ir.md
+    description: >-
+      Open 2026-10-23 (raised while implementing P16-36/P16-27). Package 16
+      §§ 66-67 let a function return a slice derived from a parameter and
+      require the return summary to keep the normalized range when it is
+      statically expressible, or to degrade it conservatively. MD-084 § 4
+      fixes the sec.return_origins grammar (root, `.field#N`, `[K]`, `[*]`)
+      and § 4(6) requires an explicit schema amendment for a new projection
+      kind; none exists for a slice range. Returning a holder, a copy, a
+      call result or a reborrow of its complete extent needs no new spelling
+      and is implemented (slice_source_returns.sec); `return ref
+      values[1..<3]` (a fixed-array or slice parameter's sub-range) is
+      rejected fail-closed. Proposal: add `"[" unsigned "..<" unsigned "]"`
+      for an exact static half-open range relative to the projected source
+      and `"[..]"` for a range that is not statically expressible (the
+      caller then treats the result as overlapping the full source extent,
+      § 67), mirrored by a Semantic IR ReturnOriginSlice step; the MLIR
+      ReturnOriginTracer follows slice.borrow-*/reborrow-* to them. Decide:
+      accept, amend or replace these spellings, and whether the epoch,
+      address-stability and pin data § 66 lists need fields beyond the
+      existing caller-side reference facts.
+    classification: localized
     status: open

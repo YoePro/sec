@@ -1,0 +1,33 @@
+module main
+
+fn Read(values: ref int[]) int { return values[0] }
+fn Mutate(values: ref mut int[]) void { values[0] = 1 }
+fn ReadUnsigned(values: ref uint[]) int { return 0 }
+fn Both(shared: ref int[], writable: ref mut int[]) void {}
+fn IdentityMutable(values: ref mut int[]) ref mut int[] { return values }
+fn IdentityShared(values: ref int[]) ref int[] { return values }
+
+fn Overlap() void {
+    let mut data := [1, 2, 3]
+    Both(ref mut data[..], ref mut data[..])
+}
+
+fn Retained(values: ref mut int[]) int {
+    let shared := IdentityShared(IdentityMutable(values))
+    values[0] = 5
+    return shared[0]
+}
+
+fn ElementType() int {
+    let mut data := [1, 2, 3]
+    return ReadUnsigned(ref mut data[..])
+}
+
+fn Upgrade(values: ref int[]) void {
+    Mutate(IdentityShared(values))
+}
+
+fn LocalEscape() ref int[] {
+    let mut data := [1, 2, 3]
+    return IdentityShared(ref mut data[..])
+}

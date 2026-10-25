@@ -62,6 +62,7 @@ func Format(module *Module) string {
 		out.WriteString("  }\n")
 	}
 	formatRegisters(&out, module.Registers)
+	formatDestructionPlans(&out, module.DestructionPlans)
 	formatStatics(&out, module.Statics)
 	for _, fn := range module.Functions {
 		formatFunction(&out, fn)
@@ -356,6 +357,11 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d field=#%d value=%%%d", op.Operands[0], op.StructField, op.Operands[1])
 	case OpRegisterValueExtract, OpRegisterValueUpdate:
 		formatRegisterValueOperation(out, op)
+	case OpOwnCopy, OpOwnSemanticCopy, OpOwnMove, OpOwnCopyFromPlace, OpOwnMoveFromPlace,
+		OpOwnInitializePlace, OpOwnReplacePlace, OpOwnDiscard, OpOwnDestroyValue, OpOwnDestroyPlace:
+		formatOwnershipOperation(out, op)
+	case OpCleanupTrackOwned, OpCleanupCancel, OpCleanupDeferRegister, OpCleanupDeferYield, OpCleanupRunScope, OpCleanupRunFunction:
+		formatCleanupOperation(out, op, "      ")
 	case OpArrayConstruct:
 		fmt.Fprintf(out, " element=!%d length=%q", op.ArrayElementType, op.ArrayLength)
 		for index, operand := range op.Operands {

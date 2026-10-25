@@ -8,7 +8,8 @@ import (
 // inferValidatedCompilerKnownMemberCall resolves compiler-owned receiver and
 // argument contracts before publishing a result.
 // Rules: rules/compiler/compiler_known_members.md — "Lookup order";
-// rules/collections/collections.md — §§6.7,13.10,13.12,14.5,14.8,15.5.
+// rules/collections/collections.md — §§6.7,13.10,13.12,14.5,14.8,15.5;
+// rules/corrections/md109-core-string-materialization-correction.md — §§2.1–2.2,9.3.
 func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	memberExpr, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || memberExpr == nil || memberExpr.Property == nil {
@@ -24,16 +25,6 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	}
 	if path, static := typePathFromExpression(memberExpr.Object); static {
 		typ, exists := a.types[a.resolveTypeName(path)]
-		if exists && typ.Kind == StringType && memberExpr.Property.Value == "FromByteArray" {
-			// MD-091: byte-to-string decoding is owned by stdlib/str.
-			a.addErrorAtTokenWithMetadata(memberExpr.Property.Token, "",
-				"decode bytes with str.FromByteArray(ref bytes) or str.FromByteArrayLossy(ref bytes) from stdlib/str (import \"str\")",
-				"string.FromByteArray is not a core API; byte-to-string decoding belongs to stdlib/str")
-			for _, argument := range expr.Arguments {
-				a.inferExpression(argument)
-			}
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
 		if exists {
 			member, memberExists := compilerKnownMember(typ, memberExpr.Property.Value, true)
 			if !memberExists || (member.Kind != CompilerKnownMethod && member.Kind != CompilerKnownAssociatedFunction) {
@@ -41,7 +32,7 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 			}
 			a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
 			switch member.Name {
-			case "FromRuneArray":
+			case "FromByteArray", "FromRuneArray":
 				return a.inferCompilerKnownStringConstructor(expr, member)
 			case "FromBuffer", "WithCapacity", "Growable":
 				return a.inferArenaConstructorCall(expr, member)
@@ -60,6 +51,12 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	lookupType := dereferenceType(receiverType)
+	if lookupType.Kind == StringType && (memberExpr.Property.Value == "FromByteArray" || memberExpr.Property.Value == "FromRuneArray") {
+		a.addErrorAtTokenWithMetadata(memberExpr.Property.Token, diagnostics.UnknownCallTarget,
+			"Call string."+memberExpr.Property.Value+"(data) using the type name; the input is borrowed.",
+			"string.%s is static and cannot be called through an instance", memberExpr.Property.Value)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if lookupType.Name == "map" && len(lookupType.TypeArgs) == 2 && memberExpr.Property.Value == "Set" {
 		a.addErrorAtTokenWithMetadata(memberExpr.Property.Token, diagnostics.UnknownCallTarget,
 			"Use indexed assignment: try "+memberExpr.Object.String()+"[key] = value (or <- for an explicit move). := is only for declarations and initialization.",

@@ -162,9 +162,9 @@ impl string {
      * Returns the encoded UTF-8 byte at the given byte index.
      *
      * Parameters:
-     *   - index: Zero-based UTF-8 byte index (not a rune index); below self.SizeOf.
+     * - index: Zero-based UTF-8 byte index (not a rune index); below self.SizeOf.
      * Errors:
-     *   IndexError.OutOfBounds when index is not below self.SizeOf.
+     * IndexError.OutOfBounds when index is not below self.SizeOf.
      */
     fn GetByte(index: uint) Result[byte, IndexError] {
         if index >= self.SizeOf {
@@ -184,9 +184,9 @@ impl string {
      * Returns a Unicode scalar at the specified rune index.
      *
      * Parameters:
-     *   - index: Zero-based rune index, not a byte offset.
+     * - index: Zero-based rune index, not a byte offset.
      * Errors:
-     *   IndexError.OutOfBounds when index is not below self.Len.
+     * IndexError.OutOfBounds when index is not below self.Len.
      */
     fn GetRune(index: uint) Result[rune, IndexError] {
         let mut current: uint := 0
@@ -206,9 +206,9 @@ impl string {
      * Returns the encoded UTF-8 byte at the given byte index.
      *
      * Parameters:
-     *   - index: Zero-based UTF-8 byte index (not a rune index).
+     * - index: Zero-based UTF-8 byte index (not a rune index).
      * Panics:
-     *   When index is not below self.SizeOf.
+     * When index is not below self.SizeOf.
      */
     fn ByteAt(index: uint) byte {
         if index >= self.SizeOf {
@@ -231,9 +231,9 @@ impl string {
      * is renamed or redesigned is not decided (MD-050/MD-071 correction § 3(5)).
      *
      * Parameters:
-     *   - index: Zero-based UTF-8 byte index (not a rune index).
+     * - index: Zero-based UTF-8 byte index (not a rune index).
      * Panics:
-     *   When index is not below self.SizeOf.
+     * When index is not below self.SizeOf.
      */
     fn CharAt(index: uint) char {
         if index >= self.SizeOf {
@@ -253,9 +253,9 @@ impl string {
      * Returns a Unicode scalar at the specified rune index.
      *
      * Parameters:
-     *   - index: Zero-based rune index, not a byte offset.
+     * - index: Zero-based rune index, not a byte offset.
      * Panics:
-     *   When index is not below self.Len.
+     * When index is not below self.Len.
      */
     fn RuneAt(index: uint) rune {
         let mut current: uint := 0
@@ -272,33 +272,88 @@ impl string {
     }
 
     /**
-     * Encodes an array of Unicode scalars as canonical UTF-8 text.
+     * Creates an immutable string from strictly validated UTF-8 bytes.
+     *
+     * Description:
+     * Reads the entire represented byte array and rejects malformed UTF-8.
+     * No replacement characters, truncation, encoding fallback, normalization,
+     * terminator handling, or case conversion are performed. This is a static
+     * associated function and has no string receiver.
      *
      * Parameters:
-     *   - value: Borrowed rune array; every rune is already a valid scalar.
+     * - data: Borrowed, read-only byte array containing the complete UTF-8
+     *     sequence to decode. Every represented byte, including 0x00, is data.
+     *
      * Returns:
-     *   An independent UTF-8 string preserving scalar order.
+     * An independently owned, immutable string containing exactly the Unicode
+     * scalar sequence represented by the input bytes. An empty array returns
+     * an empty string.
+     *
      * Errors:
-     *   StringError.Allocation(error) if text storage cannot be acquired.
+     * - StringError.InvalidUtf8(offset): The first malformed or truncated UTF-8
+     *     sequence; offset is the zero-based start byte index of that sequence.
+     * - StringError.Allocation(cause): String storage could not be materialized.
+     *
+     * Ownership:
+     * Borrows data for this call only. Does not consume, modify, adopt, or
+     * retain a mutable alias to the caller's byte array. The caller retains the
+     * array. Result validity never depends on the array's subsequent lifetime.
+     *
      * Allocation:
-     *   May allocate; uses the active permitted allocation context.
+     * May allocate result storage through the permitted allocation context.
+     * Failure produces StringError.Allocation; no partial string is returned.
+     *
+     * Standards:
+     * - RFC 3629, UTF-8, sections 3 and 4.
+     * - The Unicode Standard, UTF-8 encoding form.
      */
-    fn FromRuneArray(value: ref rune[]) Result[string, StringError] {
-        // The compiler-known rune-sequence materialization encodes each
-        // scalar to canonical UTF-8 in order (compiler_known_members.md,
-        // "Rune-sequence semantics"); safe runes cannot be invalid.
-        return value.ToString()
+    static fn FromByteArray(data: ref byte[]) Result[string, StringError] {
+        // TODO: Validate string.FromByteArray()
+        return _stringFromUtf8(data)
+    }
+
+    /**
+     * Creates an immutable UTF-8 string from Unicode scalar values.
+     *
+     * Description:
+     * Encodes every input rune in order using canonical UTF-8. The operation
+     * does not normalize, change case, add a terminator, or inspect a receiver.
+     * Every rune validly constructible in safe Sec is a Unicode scalar value.
+     *
+     * Parameters:
+     * - data: Borrowed, read-only array of valid Sec rune values.
+     *
+     * Returns:
+     * An independently owned immutable string representing all input runes in
+     * order. An empty rune array returns an empty string.
+     *
+     * Errors:
+     * - StringError.Allocation(cause): String storage could not be materialized.
+     *
+     * Ownership:
+     * Borrows data without consuming or mutating it. The caller retains the
+     * array, and the returned string remains valid after the array is changed,
+     * moved, or destroyed according to normal ownership rules.
+     *
+     * Allocation:
+     * May allocate result storage through the permitted allocation context.
+     *
+     * Standards:
+     * - The Unicode Standard, Unicode scalar values and UTF-8 encoding form.
+     */
+    static fn FromRuneArray(data: ref rune[]) Result[string, StringError] {
+        return data.ToString()
     }
 
     /**
      * Materializes the UTF-8 encoding into a separate owning byte array.
      *
      * Returns:
-     *   Exactly self.SizeOf bytes in encoded order; no terminator.
+     * Exactly self.SizeOf bytes in encoded order; no terminator.
      * Errors:
-     *   CollectionError for unavailable or insufficient result storage.
+     * CollectionError for unavailable or insufficient result storage.
      * Allocation:
-     *   May allocate; the returned mutable array never aliases string storage.
+     * May allocate; the returned mutable array never aliases string storage.
      */
     fn ToByteArray() Result[byte[], CollectionError] {
         let mut result: byte[]
@@ -316,11 +371,11 @@ impl string {
      * Materializes the text into a separate owning rune array.
      *
      * Returns:
-     *   Exactly self.Len Unicode scalar values in order.
+     * Exactly self.Len Unicode scalar values in order.
      * Errors:
-     *   CollectionError for unavailable or insufficient result storage.
+     * CollectionError for unavailable or insufficient result storage.
      * Allocation:
-     *   May allocate; the returned mutable array never aliases string storage.
+     * May allocate; the returned mutable array never aliases string storage.
      */
     fn ToRuneArray() Result[rune[], CollectionError] {
         let mut result: rune[]
@@ -420,11 +475,11 @@ impl string {
      * Finds the first exact occurrence of value.
      *
      * Parameters:
-     *   - value: Text to find; an empty value matches rune position zero.
+     * - value: Text to find; an empty value matches rune position zero.
      * Returns:
-     *   Some(zero-based rune index) or None if no match exists.
+     * Some(zero-based rune index) or None if no match exists.
      * Allocation:
-     *   Does not allocate.
+     * Does not allocate.
      */
     fn IndexOf(value: string) Option[uint] {
         return self.IndexOf(value, 0)
@@ -434,12 +489,12 @@ impl string {
      * Finds the first exact occurrence of value at or after start.
      *
      * Parameters:
-     *   - value: UTF-8 text to find, interpreted as Unicode scalars.
-     *   - start: Zero-based rune position, inclusive.
+     * - value: UTF-8 text to find, interpreted as Unicode scalars.
+     * - start: Zero-based rune position, inclusive.
      * Returns:
-     *   Some(rune index) or None, including an out-of-range start.
+     * Some(rune index) or None, including an out-of-range start.
      * Allocation:
-     *   Does not allocate.
+     * Does not allocate.
      */
     fn IndexOf(value: string, start: uint) Option[uint] {
         if start > self.Len {
@@ -477,11 +532,11 @@ impl string {
      * Finds the last exact occurrence of value.
      *
      * Parameters:
-     *   - value: UTF-8 text to find; empty text matches at self.Len.
+     * - value: UTF-8 text to find; empty text matches at self.Len.
      * Returns:
-     *   Some(zero-based rune index) or None if no match exists.
+     * Some(zero-based rune index) or None if no match exists.
      * Allocation:
-     *   Does not allocate.
+     * Does not allocate.
      */
     fn LastIndexOf(value: string) Option[uint] {
         if value.SizeOf == 0 {
@@ -699,12 +754,12 @@ impl string {
      * Produces text from the half-open rune interval [start, end).
      *
      * Parameters:
-     *   - start: Inclusive Unicode-scalar index.
-     *   - end: Exclusive Unicode-scalar index.
+     * - start: Inclusive Unicode-scalar index.
+     * - end: Exclusive Unicode-scalar index.
      * Returns:
-     *   The exact selected text without normalization.
+     * The exact selected text without normalization.
      * Errors:
-     *   RangeError.StartAfterEnd or RangeError.OutOfBounds.
+     * RangeError.StartAfterEnd or RangeError.OutOfBounds.
      */
     fn Slice(start: uint, end: uint) Result[string, RangeError] {
         if start > end {

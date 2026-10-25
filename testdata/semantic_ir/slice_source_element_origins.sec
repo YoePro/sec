@@ -1,0 +1,44 @@
+module main
+
+type Pair struct {
+    Left: int,
+    Right: int,
+}
+
+fn First(values: ref int[]) ref int {
+    return ref values[0]
+}
+
+fn Slot(values: ref mut int[], index: int) ref mut int {
+    return ref mut values[index]
+}
+
+fn RightOf(pairs: ref Pair[], index: int) ref int {
+    return ref pairs[index].Right
+}
+
+fn Read(value: ref int) int {
+    return *value
+}
+
+fn main() int {
+    let mut data := [1, 2, 3, 4]
+    let view := ref data[1..<3]
+    let first := First(view)
+    let a := *first
+    discard first
+    let b := Read(ref view[1])
+    discard view
+    let m := ref mut data[..]
+    let slot := Slot(m, 2)
+    *slot = a + b
+    discard slot
+    discard m
+    let pairs := [Pair{Left: 1, Right: 2}, Pair{Left: 3, Right: 4}]
+    let pview := ref pairs[..]
+    let r := RightOf(pview, 1)
+    let c := *r
+    discard r
+    discard pview
+    return c
+}

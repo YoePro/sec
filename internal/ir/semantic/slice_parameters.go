@@ -58,16 +58,38 @@ func (b *builder) internSourceSliceType(t sema.Type) (TypeID, bool, error) {
 // existing holder is passed as Sema resolved it (§ 65): a shared slice with
 // slice.copy-shared under its own borrow, a mutable slice with an implicit
 // full-range slice.reborrow-mut under a new borrow, so the caller keeps its
-// holder; a mutable slice descriptor is never copied.
+// holder. A mutable holder passed to a shared parameter instead grants a
+// full-range shared reborrow; a mutable descriptor is never copied.
+// Non-holder mutable slices also use the resolved shared pass, after evaluating
+// the original expression once with its own authority and creation/return facts.
+// Rules: rules/memory/borrowing.md — §15.3(2)–(3);
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§39–41,64–65.
 func (fb *functionBuilder) lowerSliceArgument(arg ast.Expression, param TypeID) (builtValue, error) {
 	paramType, _ := fb.owner.module.Types.Lookup(param)
 	holder, named := arg.(*ast.Identifier)
 	if !named {
-		value, err := fb.buildExpr(arg, param)
+		var value builtValue
+		var err error
+		if call, ok := arg.(*ast.CallExpression); ok {
+			// The pass is applied below to the returned value; evaluating
+			// the call must retain its own result facts and mutable type.
+			value, err = fb.buildCall(call)
+		} else {
+			value, err = fb.buildExpr(arg, param)
+		}
 		if err != nil {
 			return builtValue{}, err
 		}
 		if value.typ != param {
+			sourceType, _ := fb.owner.module.Types.Lookup(value.typ)
+			if paramType.Kind == TypeSharedSlice && sourceType.Kind == TypeMutableSlice && sourceType.Element == paramType.Element {
+				use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(arg)
+				metadata := fb.references[value.id]
+				if !ok || use.Kind != sema.ReferenceUsePass || !use.Facts.Checkable() || use.Facts.MutableAuthority || metadata == nil {
+					return builtValue{}, fmt.Errorf("mutable slice expression argument has no resolved shared pass")
+				}
+				return fb.reborrowWholeSlice(value, metadata, false, use.Facts, location(expressionToken(arg)))
+			}
 			return builtValue{}, fb.unsupported("slice argument whose type differs from its parameter", expressionToken(arg))
 		}
 		return value, nil
@@ -79,6 +101,13 @@ func (fb *functionBuilder) lowerSliceArgument(arg ast.Expression, param TypeID) 
 	sourceType, _ := fb.owner.module.Types.Lookup(source.typ)
 	loc := location(holder.Token)
 	if paramType.Kind == TypeSharedSlice {
+		if sourceType.Kind == TypeMutableSlice && sourceType.Element == paramType.Element {
+			use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(holder)
+			if !ok || use.Kind != sema.ReferenceUsePass || !use.Facts.Checkable() || use.Facts.MutableAuthority {
+				return builtValue{}, fmt.Errorf("mutable slice argument %s has no resolved shared pass", holder.Value)
+			}
+			return fb.reborrowWholeSlice(source, metadata, false, use.Facts, loc)
+		}
 		if source.typ != param {
 			return builtValue{}, fb.unsupported("passing a mutable slice holder to a shared slice parameter", holder.Token)
 		}

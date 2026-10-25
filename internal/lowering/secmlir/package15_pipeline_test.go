@@ -1,6 +1,7 @@
 package secmlir
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -77,6 +78,11 @@ func TestPackage15SourceToSchema11Pipeline(t *testing.T) {
 		t.Fatalf("sec-mlir-opt path %q is not absolute", tool)
 	}
 	sources := map[string]string{"integration": package15IntegrationFixture}
+	sharedCall, err := os.ReadFile("../../../testdata/semantic_ir/reference_shared_call_reborrow.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources["shared-call-reborrow"] = string(sharedCall)
 	for name, source := range package15EmitFixtures {
 		sources[name] = source
 	}

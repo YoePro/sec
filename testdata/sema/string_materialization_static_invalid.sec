@@ -1,0 +1,17 @@
+module main
+
+fn WrongBytes(runes: ref rune[]) Result[string, StringError] {
+    return string.FromByteArray(runes)
+}
+fn WrongRunes(data: ref byte[]) Result[string, StringError] {
+    return string.FromRuneArray(data)
+}
+fn Missing() Result[string, StringError] {
+    return string.FromByteArray()
+}
+fn MoveBytes(data: byte[]) Result[string, StringError] {
+    return string.FromByteArray(<-data)
+}
+fn MoveRunes(data: rune[]) Result[string, StringError] {
+    return string.FromRuneArray(<-data)
+}

@@ -141,7 +141,11 @@ func placeConsumer(kind OpKind) bool {
 		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable,
 		// A reborrow may derive from a dereferenced sub-Place (§ 78);
 		// verifySubplaceReborrowSource checks where that Place comes from.
-		OpReferenceReborrowShared, OpReferenceReborrowMutable:
+		OpReferenceReborrowShared, OpReferenceReborrowMutable,
+		// P17 ownership operations on a Place (package17 §§ 52–58).
+		OpOwnCopyFromPlace, OpOwnMoveFromPlace, OpOwnInitializePlace, OpOwnReplacePlace, OpOwnDestroyPlace,
+		// P17 cleanup registration of a Place and defer captures (§§ 38, 42).
+		OpCleanupTrackOwned, OpCleanupDeferRegister:
 		return true
 	}
 	return false

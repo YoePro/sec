@@ -1,7 +1,7 @@
 module main
 
-fn Legacy(bytes: ref byte[]) Result[string, StringError] {
-    return string.FromByteArray(bytes)
+fn Instance(bytes: ref byte[], text: string) Result[string, StringError] {
+    return text.FromByteArray(bytes)
 }
 
 fn Internal(bytes: ref byte[]) Result[string, StringError] {
@@ -23,4 +23,8 @@ fn Summary(bytes: byte[]) Result[string, StringError] {
 
 fn main() int {
     return 0
+}
+
+fn RuneInstance(runes: ref rune[], text: string) Result[string, StringError] {
+    return text.FromRuneArray(runes)
 }

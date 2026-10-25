@@ -1,0 +1,11 @@
+module main
+
+fn Length[T](values: ref T[]) uint {
+    return values.Len
+}
+
+fn Check(values: ref mut int[]) uint {
+    let count := Length(values)
+    values[0] = 7
+    return count + Length[int](values)
+}

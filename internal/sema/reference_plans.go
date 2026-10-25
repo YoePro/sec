@@ -404,7 +404,10 @@ func (a *Analyzer) recordReferenceLifetimeEndBefore(holder string, source lexer.
 // recordCallReferencePlans publishes the borrows of one validated call: an
 // owned argument bound to a borrowed parameter is an implicit call-site
 // borrow plan (borrowing.md § 15.2), and an existing reference passed on is a
-// pass use.
+// pass use. Non-holder mutable slice expressions retain their creation/return
+// identity and publish a separate shared pass after selection.
+// Rules: rules/memory/borrowing.md — §15.2(4), §15.3, §15.4;
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§64–67.
 func (a *Analyzer) recordCallReferencePlans(callee Function, args []ast.Expression, preparedSpreadValues []bool) {
 	if a.summaryPass {
 		return
@@ -423,6 +426,9 @@ func (a *Analyzer) recordCallReferencePlans(callee Function, args []ast.Expressi
 		}
 		place, ok := a.resolvePlace(arg)
 		if !ok {
+			if a.recordExpressionReferencePass(arg, mutable) {
+				continue
+			}
 			a.recordTemporaryBorrowPlan(arg, mutable)
 			continue
 		}

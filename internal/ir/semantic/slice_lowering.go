@@ -136,6 +136,11 @@ func (fb *functionBuilder) p16SliceExpression(expr ast.Expression) (builtValue, 
 				return value, true, err
 			}
 		}
+		if _, member := expr.Value.(*ast.MemberExpression); member {
+			if value, handled, err := fb.lowerSliceElementSubplaceBorrow(expr); handled {
+				return value, true, err
+			}
+		}
 		if _, sliced := expr.Value.(*ast.SliceExpression); !sliced {
 			break
 		}

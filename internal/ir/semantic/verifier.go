@@ -37,6 +37,9 @@ func Verify(module *Module) error {
 	if err := verifyRegisterDefinitions(module); err != nil {
 		return err
 	}
+	if err := verifyDestructionPlans(module); err != nil {
+		return err
+	}
 	if _, err := verifyStatics(module); err != nil {
 		return err
 	}
@@ -55,6 +58,9 @@ func Verify(module *Module) error {
 	}
 	for _, fn := range module.Functions {
 		if err := verifyFunction(module, fn, functions); err != nil {
+			return fmt.Errorf("function %s: %w", fn.ID, err)
+		}
+		if err := verifyCleanupFunction(module, fn, functions); err != nil {
 			return fmt.Errorf("function %s: %w", fn.ID, err)
 		}
 	}
@@ -523,6 +529,12 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 		return err
 	}
 	if err := verifyPlaceReferenceFunction(module, fn, blocks, values, dom); err != nil {
+		return err
+	}
+	if err := verifyOwnershipFlow(fn); err != nil {
+		return err
+	}
+	if err := verifySubobjectState(module, fn); err != nil {
 		return err
 	}
 	return verifyReturnOrigins(module, fn)
@@ -1058,6 +1070,15 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	case OpRegisterValueExtract, OpRegisterValueUpdate:
 		if err := verifyRegisterValueOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpOwnCopy, OpOwnSemanticCopy, OpOwnMove, OpOwnCopyFromPlace, OpOwnMoveFromPlace,
+		OpOwnInitializePlace, OpOwnReplacePlace, OpOwnDiscard, OpOwnDestroyValue, OpOwnDestroyPlace:
+		if err := verifyOwnershipOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpCleanupTrackOwned, OpCleanupCancel, OpCleanupDeferRegister, OpCleanupDeferYield, OpCleanupRunScope, OpCleanupRunFunction:
+		if err := verifyCleanupOperation(module, op, values); err != nil {
 			return err
 		}
 	case OpStaticLoad, OpStaticStore, OpPlaceStaticRoot:

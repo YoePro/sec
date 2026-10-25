@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-23"
+updated: "2026-10-25"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -38,7 +38,6 @@ decisions:
       every regex contract with S1058.
     classification: constraining
     status: open
-
   - id: MD-016
     area: compiler-known-declarations
     rulebooks:
@@ -959,25 +958,31 @@ decisions:
       - rules/library/core-library.md
       - rules/compiler/compiler_known_members.md
       - sec/stdlib/str/stdlib_str.md
+      - rules/corrections/md109-core-string-materialization-correction.md
     description: >-
-      Open 2026-10-18 (raised while applying MD-091). MD-091 moved public
-      byte decoding to stdlib/str (str.FromByteArray, FromByteArrayLossy)
-      and made byte[].ToString() a type summary. The owner then decided that
-      the internal materialization capability `_stringFromUtf8`
-      (CKF-STRING-FROM-UTF8) is known only to loader-proven core, never to
-      stdlib, and core may allocate only in ToString(); core cannot
-      implement methods on array types. So no stdlib code can currently
-      turn validated bytes into a string: str.FromByteArray,
-      str.Builder.Finish (which all Builder-based str functions use),
-      stdlib/io directory-entry names (file.linux.amd64.sec) and
-      stdlib/net/url percent decoding (percent.sec, two sites) fail to
-      compile. Candidate directions raised: (a) a core type such as a
-      validated borrowed `Utf8Bytes` view whose ToString() materializes via
-      `_stringFromUtf8` (new public core type; amends MD-091 § 5.3.3);
-      (b) a compiler-known byte-sequence overload ToString(TextEncoding.Utf8)
-      analogous to byte.ToString(ByteStringFormat) (amends MD-091 § 5.2.3);
-      (c) another mechanism. Decide the single bytes -> string path stdlib
-      uses and its allocation/ownership contract.
+      Open for complete application. Owner supplied the core-owned string
+      materialization correction on 2026-10-25: public static
+      string.FromByteArray(data: ref byte[]) and
+      string.FromRuneArray(data: ref rune[]) return Result[string, StringError],
+      borrow inputs and produce independent immutable strings; core is
+      allocation-averse rather than allocation-forbidden. MD-091 byte-array
+      ToString remains a type summary and the private CKF-STRING-FROM-UTF8
+      remains loader-proven-core-only. Phase 1 inventory and phase 2 static
+      source/registry/API/LSP checks are implemented. Core byte forwarding
+      uses the actual _stringFromUtf8 signature; the existing canonical
+      rune-sequence encoder is retained, not replaced by an empty stub.
+      Phase 3 is blocked on missing P23 string materialization and P18/P19
+      allocation/storage prerequisites (P23 sections 35-37): source checks
+      pass, but both materializers fail emit-mlir with a named P23
+      unsupported-lowering diagnostic and no output. No allocator or hidden
+      heap was invented. Executable UTF-8/rune conformance, allocation-failure
+      and independent-result lifetime/cleanup tests remain unavailable.
+      Per the supplied phase order, stdlib collect/Builder/io/url migration,
+      canonical rulebook reconciliation and final closure remain pending;
+      str.FromByteArray and Builder.Finish still contain MD-109 panics.
+      Do not remove this entry or archive the correction as applied until
+      those required implementation and verification gates pass. No new
+      language decision is requested for the already chosen public route.
     classification: architectural
     status: open
   - id: MD-110
@@ -1150,5 +1155,33 @@ decisions:
       accept, amend or replace these spellings, and whether the epoch,
       address-stability and pin data § 66 lists need fields beyond the
       existing caller-side reference facts.
+    classification: localized
+    status: open
+  - id: MD-116
+    area: sec-mlir-static-place-root-text-contract
+    rulebooks:
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
+    description: >-
+      Open 2026-10-25 while closing P15-42/42a/47. Semantic IR already has
+      static declarations, OpPlaceStaticRoot and static@N return origins
+      (semantic_ir.md section 28); the schema-11 early admissions include
+      sec.static.global/load/store. No schema-11 or inherited schema-12
+      operation specifies a Place rooted at that static symbol, however.
+      sec.place.storage consumes local storage declarations, and the native
+      return-origin verifier explicitly rejects static@N without a static
+      Place root. Decide the admitted operation name, static-symbol operand
+      or property, how its type/authority and address-taken/storage facts
+      relate to sec.static.global, and the canonical mapping from a
+      resolved static identity to both that symbol and static@N. The Go
+      emitter and native verifier currently reject static Place roots;
+      scalar static load/store support does not complete the reference
+      chain. This is distinct from MD-081 (which static reference
+      initializers are legal), MD-111 (addressed memory/endpoint facts)
+      and MD-114 (register serialization). No static Place spelling is
+      invented pending the explicit schema contract required by MD-084.
     classification: localized
     status: open

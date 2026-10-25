@@ -930,23 +930,34 @@ fn Plain(runes: ref rune[]) string {
 	}
 }
 
-// MD-091: the registry has no public string.FromByteArray alias of the stdlib
-// decoder; the only byte materialization is the internal capability, limited
-// to trusted core, and a byte sequence's
-// ToString() is documented as a summary, never as decoding.
-//
-// Rules:
-//   - rules/compiler/compiler_known_members.md — "Internal core string materialization"
-func TestRegistryHasNoPublicByteDecoder(t *testing.T) {
-	if member, ok := compilerKnownMember(builtinType("string"), "FromByteArray", true); ok {
-		t.Fatalf("string.FromByteArray is still registered: %+v", member)
+// Static materializers retain distinct stable IDs and borrowed signatures,
+// while private materialization stays core-only and bytes.ToString is a summary.
+// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// — §§1–2,8,10.2; compiler_known_members.md — Internal core string materialization.
+func TestRegistryStringMaterializers(t *testing.T) {
+	for _, constructor := range []struct{ name, id, element string }{
+		{"FromByteArray", "CKM-STRING-FROMBYTEARRAY", "byte"},
+		{"FromRuneArray", "CKM-STRING-FROMRUNEARRAY", "rune"},
+	} {
+		member, ok := compilerKnownMember(builtinType("string"), constructor.name, true)
+		if !ok || member.ID != constructor.id || member.Kind != CompilerKnownAssociatedFunction || !isToStringResultType(member.Result) {
+			t.Fatalf("bad static materializer: %+v", member)
+		}
+		if _, ok := compilerKnownMember(builtinType("string"), constructor.name, false); ok {
+			t.Fatalf("materializer exposed as instance member: %s", constructor.name)
+		}
+		info := compilerKnownSyntheticCatalog[constructor.id]
+		want := "static fn " + constructor.name + "(data: ref " + constructor.element + "[]) Result[string, StringError]"
+		if info.Signature != want {
+			t.Fatalf("signature %q, want %q", info.Signature, want)
+		}
 	}
 	known, ok := compilerKnownFunction("_stringFromUtf8")
 	if !ok || !known.Internal || !isToStringResultType(known.Result) {
 		t.Fatalf("internal string materialization registry entry is wrong: %+v", known)
 	}
 	info := compilerKnownSyntheticCatalog["CKM-TOSTRING-BYTE-SEQUENCE"]
-	if !strings.Contains(info.Documentation, "never UTF-8 decoding") || !strings.Contains(info.Documentation, "str.FromByteArray") {
-		t.Fatalf("byte-sequence ToString documentation still implies decoding: %q", info.Documentation)
+	if !strings.Contains(info.Documentation, "never UTF-8 decoding") || !strings.Contains(info.Documentation, "string.FromByteArray") {
+		t.Fatalf("byte ToString docs imply decoding: %q", info.Documentation)
 	}
 }

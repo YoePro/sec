@@ -151,7 +151,10 @@ func TestParameterizedAndAggregateMatrix(t *testing.T) {
 		{"Box[int]", "Box[int]", true, true}, {"Box[int]", "Box[string]", false, false},
 		{"Fixed", "Box[int]", false, true}, {"Fixed", "Box[string]", false, false}, {"Fixed", "FixedOther", false, true}, {"Fixed", "DifferentlyFixed", false, false}, {"GenericFixed[string]", "Box[int]", false, true}, {"GenericFixed[string]", "Box[string]", false, false}, {"GenericIdentity[Left]", "Left", false, true},
 		{"ArrayA", "ArrayB", false, true}, {"ArrayA", "int[2]", false, true}, {"int[2]", "int[3]", false, false}, {"int[2]", "uint[2]", false, false}, {"int[]", "int[2]", false, false}, {"int[]", "int[]", true, true},
-		{"ref int", "ref int", true, true}, {"ref int", "ref mut int", false, false}, {"ref mut int", "ref int", false, false}, {"ref int[]", "ref int[]", true, true}, {"ref int[]", "ref int[2]", false, false},
+		// This template exercises a call, not storage initialization:
+		// borrowing.md §15.3(2) permits a shared call reborrow while explicit
+		// conversions and authority upgrades keep their separate restrictions.
+		{"ref int", "ref int", true, true}, {"ref int", "ref mut int", true, false}, {"ref mut int", "ref int", false, false}, {"ref int[]", "ref int[]", true, true}, {"ref int[]", "ref mut int[]", true, false}, {"ref int[]", "ref int[2]", false, false},
 		{"CallbackA", "CallbackB", false, true}, {"fn(int) int", "fn(int) bool", false, false}, {"fn(int) int", "fn(uint) int", false, false}, {"fn(int) int", "mut fn(int) int", false, false},
 		{"Word", "Word", true, true}, {"Word", "OtherWord", false, false}, {"Choice", "Choice", true, true}, {"Choice", "OtherChoice", false, false}, {"RegisterA", "RegisterB", false, false},
 		{"list[int]", "list[string]", false, false}, {"list[int]", "list[int]", true, true}, {"map[int,bool]", "map[string,bool]", false, false}, {"set[int]", "set[string]", false, false},

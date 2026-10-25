@@ -1,0 +1,28 @@
+module main
+
+fn Read(value: ref int) int { return *value }
+fn Keep(value: ref int) ref int { return value }
+
+fn Forward(value: ref mut int) int {
+    let first := Read(value)
+    *value = first + 1
+    return Read(value)
+}
+
+fn ReturnShared(value: ref mut int) ref int {
+    return Keep(value)
+}
+
+fn Select(value: ref int) int { return 1 }
+fn Select(value: ref mut int) int { return 2 }
+fn SelectExact(value: ref mut int) int { return Select(value) }
+
+fn main() int {
+    let mut value := 1
+    let mutable := ref mut value
+    let first := Read(mutable)
+    *mutable = first + 1
+    let next := Forward(mutable)
+    discard mutable
+    return next
+}

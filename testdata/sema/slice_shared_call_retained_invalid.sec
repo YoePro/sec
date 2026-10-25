@@ -1,0 +1,11 @@
+module main
+
+fn Keep(values: ref int[]) ref int {
+    return ref values[0]
+}
+
+fn Conflict(values: ref mut int[]) int {
+    let kept := Keep(values)
+    values[0] = 7
+    return *kept
+}

@@ -1,0 +1,8 @@
+module main
+
+fn main() int {
+    let data: rune[2] := [65r, 0x1F600r]
+    let text := string.FromRuneArray(data)
+    discard text
+    return 0
+}

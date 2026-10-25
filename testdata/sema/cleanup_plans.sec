@@ -1,0 +1,66 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+
+enum Failure error {
+    Missing,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Observe(value: ref Handle) void {
+}
+
+fn Fallible(flag: bool) Result[Handle, Failure] {
+    if flag {
+        return Ok(Make(1))
+    }
+    return Err(Failure.Missing)
+}
+
+fn Order(flag: bool) int {
+    let first := Make(1)
+    defer {
+        Observe(ref first)
+    }
+    let second := Make(2)
+    if flag {
+        let inner := Make(3)
+        Observe(ref inner)
+        return 1
+    }
+    for i in 0..<3 {
+        let item := Make(4)
+        defer {
+            Observe(ref item)
+        }
+        if i == 1 {
+            continue
+        }
+        if i == 2 {
+            break
+        }
+    }
+    Observe(ref second)
+    return 0
+}
+
+fn Propagate() Result[int, Failure] {
+    let value := try Fallible(true)
+    Observe(ref value)
+    return Ok(1)
+}
+
+fn Crash() int {
+    let held := Make(5)
+    Observe(ref held)
+    panic "boom"
+}
+
+fn Tail() void {
+    let held := Make(6)
+    Observe(ref held)
+}

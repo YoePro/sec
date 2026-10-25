@@ -1,5 +1,10 @@
 # P15 closure audit — 2026-10-23
 
+Historical snapshot. Current 2026-10-25 evidence is recorded in the
+[acceptance matrix](../rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md)
+and [implementation report](../rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md).
+The scope limits and counts below describe the original audit only.
+
 **Disposition: P15 cannot close yet.** This is an evidence matrix and blocker report, not an implementation-complete claim. All primary-worktree edits in this pass stay under `mlir/`; Claude owns Go/governance/rulebook updates.
 
 ## Tested snapshot
@@ -13,7 +18,7 @@
 
 ## Closure blockers
 
-1. **MD-111 / P15-42 and P15-42a:** canonical endpoint/DeviceModel fact source is undecided. Hardware binding/access cannot obtain a verified physical plan. The register table, field path and hardware-plan MLIR text contract is also undecided; Claude confirmed this in `MD077-handoff.md`. MD-110 conversion remains a separate open decision.
+1. **MD-111 / P15-42 and P15-42a:** canonical endpoint/DeviceModel fact source is undecided. Hardware binding/access cannot obtain a verified physical plan. The register table, field path and hardware-plan MLIR text contract is also undecided; Claude confirmed this in `compiler-packages-handoff.md`. MD-110 conversion remains a separate open decision.
 2. **Static reference chain is incomplete:** `internal/lowering/secmlir/place_reference.go` explicitly rejects `semantic.OpPlaceStaticRoot` as `static Place roots`; native `verifyReturnOrigins` explicitly rejects `static@N` because no schema-11 static Place root exists. Static scalar load/store support is not reference-root support.
 3. **P15-47 scope reconciliation:** returned parameter/subfield/call references and MD-076 temporaries have focused tests, but static/addressed returns and the documented consuming/generic receiver residuals prevent treating the entire unchecked item as complete without explicit package ownership decisions.
 4. **Governance validation fails:** `governance/index.yaml` lists `concurrency_events.yaml` and `concurrency_spawn.yaml`, neither of which exists in the snapshot or primary checkout. Do not fabricate fragments or silently remove registry entries in this MLIR-only task.
@@ -124,8 +129,8 @@ This index preserves all 46 report topics in order. It is a review artifact for 
 | 2 | local/merged P13 and P14 status | Current predecessor records in governance/lowering.yaml; adjacent schema 9/10 native selection passes. |
 | 3 | previous package status | Native regressions pass; full Go snapshot result below. |
 | 4 | reference/runtime-check rule synchronization | Installed canonical rulebooks and MD-061/076/084/085 corrections; matrix rows 3–6. |
-| 5 | files added | See MD077-handoff.md fixture/helper list; this audit is new under mlir/. |
-| 6 | files modified | Type/operation/dialect/reference analysis files described in MD077-handoff.md; primary Go edits belong to Claude. |
+| 5 | files added | See compiler-packages-handoff.md fixture/helper list; this audit is new under mlir/. |
+| 6 | files modified | Type/operation/dialect/reference analysis files described in compiler-packages-handoff.md; primary Go edits belong to Claude. |
 | 7 | PlaceRootID migration | Matrix row 7. |
 | 8 | arbitrary-precision place-index migration | Matrix row 11; exact index exceeds uint64. |
 | 9 | PlaceRelationship implementation | Matrix row 12. |

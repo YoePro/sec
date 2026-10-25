@@ -1,0 +1,17 @@
+module main
+
+fn Mutate(values: ref mut int) void {}
+fn ReadUnsigned(values: ref uint) void {}
+
+fn NoAuthorityUpgrade(values: ref int) void {
+    Mutate(values)
+}
+
+fn NoElementConversion(values: ref mut int) void {
+    ReadUnsigned(values)
+}
+
+fn NoStorageConversion(values: ref mut int) void {
+    let shared: ref int := values
+    discard shared
+}

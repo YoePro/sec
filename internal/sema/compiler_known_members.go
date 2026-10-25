@@ -542,12 +542,11 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		}
 	}
 	if typ.Kind == StringType {
-		// MD-072 (2026-10-17): FromRuneArray borrows its input, returns
-		// Result[string, StringError] and reports allocation failure as
-		// StringError.Allocation (core-library.md § 5.2). MD-091 (2026-10-18)
-		// removed string.FromByteArray: byte decoding is stdlib/str's
-		// str.FromByteArray, never a public core or registry entry.
+		// MD-109 restores strict byte decoding as a public static core API.
+		// Rules: rules/corrections/md109-core-string-materialization-correction.md
+		// — §§1.2–1.7,2.1–2.6; both inputs are borrowed and results fallible.
 		members = append(members,
+			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
 			CompilerKnownMember{ID: "CKM-STRING-FROMRUNEARRAY", Name: "FromRuneArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},
 		)
 	}

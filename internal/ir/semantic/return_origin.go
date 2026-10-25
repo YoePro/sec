@@ -54,6 +54,10 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 				return nil, fb.unsupported("returned reference derived from a non-reference parameter", decl.Token)
 			}
 			current = referent.Element
+			if referent.Kind == TypeSharedSlice || referent.Kind == TypeMutableSlice {
+				// A slice parameter is itself the indexed sequence.
+				current = fb.fn.Parameters[origin.Parameter].Value.Type
+			}
 		}
 		for _, projection := range source.Projections {
 			switch projection.Canonical() {
@@ -79,11 +83,15 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 				}
 			case sema.CanonicalProjectionConstant, sema.CanonicalProjectionDynamic:
 				array, found := fb.owner.module.Types.Lookup(current)
-				if !found || array.Kind != TypeArray {
+				slice := found && (array.Kind == TypeSharedSlice || array.Kind == TypeMutableSlice)
+				if !found || array.Kind != TypeArray && !slice {
 					return nil, fb.unsupported("returned reference through an element of a non-array", decl.Token)
 				}
 				step := ReturnOriginStep{Kind: ReturnOriginElement}
-				if projection.Canonical() == sema.CanonicalProjectionConstant && projection.ConstantIndex != nil {
+				// A slice element is bounds-checked at run time even for a
+				// constant index, so its origin stays the conservative [*]
+				// (P16 § 67).
+				if !slice && projection.Canonical() == sema.CanonicalProjectionConstant && projection.ConstantIndex != nil {
 					step.Index = new(big.Int).Set(projection.ConstantIndex)
 				}
 				origin.Path = append(origin.Path, step)
@@ -208,6 +216,9 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 			OpReferenceBorrowShared, OpReferenceBorrowMutable:
 			value = op.Operands[0]
 		case OpSliceCopyShared, OpSliceMoveMutable:
+			value = op.Operands[0]
+		case OpSliceElementPlace:
+			reversed = append(reversed, ReturnOriginStep{Kind: ReturnOriginElement})
 			value = op.Operands[0]
 		case OpSliceReborrowShared, OpSliceReborrowMutable:
 			// Only a reborrow of the complete extent keeps the source's

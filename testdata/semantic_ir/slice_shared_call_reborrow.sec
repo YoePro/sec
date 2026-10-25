@@ -1,0 +1,44 @@
+module main
+
+// borrowing.md section 15.3(2): a shared call borrows the mutable slice,
+// preserving the caller's holder for subsequent mutable use.
+fn Read(values: ref int[]) int {
+    return values[0]
+}
+
+fn Forward(values: ref mut int[]) int {
+    let first := Read(values)
+    values[0] = first + 1
+    return Read(values)
+}
+
+fn Identity(values: ref int[]) ref int[] {
+    return values
+}
+
+fn BorrowAsShared(values: ref mut int[]) ref int[] {
+    return Identity(values)
+}
+
+fn Select(values: ref int[]) int {
+    return 1
+}
+
+fn Select(values: ref mut int[]) int {
+    values[0] = 2
+    return values[0]
+}
+
+fn SelectExact(values: ref mut int[]) int {
+    return Select(values)
+}
+
+fn main() int {
+    let mut data := [1, 2, 3, 4]
+    let view := ref mut data[..]
+    let first := Read(view)
+    view[1] = first
+    let next := Forward(view)
+    discard view
+    return next
+}

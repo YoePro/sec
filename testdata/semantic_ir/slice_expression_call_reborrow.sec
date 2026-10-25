@@ -1,0 +1,40 @@
+module main
+
+// P16-36 / borrowing.md 15.3(2): expression arguments retain their own
+// mutable borrow and grant a separate shared pass. Evaluate endpoints once.
+fn Start() int { return 1 }
+fn End() int { return 3 }
+
+fn Read(values: ref int[]) int { return values[0] }
+fn IdentityMutable(values: ref mut int[]) ref mut int[] { return values }
+fn IdentityShared(values: ref int[]) ref int[] { return values }
+
+fn Fresh() int {
+    let mut data := [1, 2, 3, 4]
+    let first := Read(ref mut data[Start()..<End()])
+    data[1] = first
+    return first
+}
+
+fn Nested(values: ref mut int[]) int {
+    let first := Read(IdentityMutable(values))
+    values[0] = first
+    return first
+}
+
+fn Returned(values: ref mut int[]) ref int[] {
+    return IdentityShared(IdentityMutable(values))
+}
+
+fn Select(values: ref int[]) int { return values[0] }
+fn Select(values: ref mut int[]) int {
+    values[0] = 7
+    return values[0]
+}
+
+fn SelectFresh() int {
+    let mut data := [1, 2, 3]
+    return Select(ref mut data[..])
+}
+
+fn main() int { return Fresh() }

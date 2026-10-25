@@ -350,6 +350,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		a.addErrorAtToken(expr.Token, "Err can only be returned from Result-returning function")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	case *ast.TryExpression:
+		a.recordCleanupTrySite(expr)
 		return a.inferTryExpression(expr)
 	case *ast.SpawnExpression:
 		return a.inferSpawnExpression(expr)
@@ -2181,7 +2182,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				continue
 			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], parameter.Type)
-			if !a.canInitializeUnrecorded(parameter.Type, argType, arg) {
+			if !a.canPassCallArgumentUnrecorded(parameter.Type, argType, arg) {
 				matchesArguments = false
 				break
 			}
@@ -2368,7 +2369,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				continue
 			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], param.Type)
-			if !a.canInitialize(param.Type, argType, arg) {
+			if !sharedReferenceCallReborrow(param.Type, argType) && !a.canInitialize(param.Type, argType, arg) {
 				a.addTypeMismatchError(expressionToken(arg), param.Type, argType, arg, "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
 			}
 		}
@@ -2376,20 +2377,6 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-}
-
-func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression, member CompilerKnownMember) (Type, expressionValue, bool) {
-	if !a.checkCompilerKnownCallArity(expr, "string."+member.Name, 1, 1) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	argumentType, _ := a.inferExpression(expr.Arguments[0])
-	sequence := dereferenceType(argumentType)
-	want := "rune"
-	if (sequence.Kind != ArrayType && sequence.Kind != SliceType) || sequence.Element == nil || sequence.Element.Name != want {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "string.%s requires a %s array or slice, got %s", member.Name, want, typeDisplayName(argumentType))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	return a.refinedCompilerKnownType(member.Result), expressionValue{Display: expr.String()}, true
 }
 
 // inferRawPointerCall validates compiler-known raw-address operations. Unsafe
@@ -2941,7 +2928,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		rank := 0
 		for i, arg := range args {
 			parameter, parameterOK := functionParameterForArgument(instantiated, i)
-			if !parameterOK || !a.canInitializeUnrecorded(parameter.Type, argTypes[i], arg) {
+			if !parameterOK || !a.canPassCallArgumentUnrecorded(parameter.Type, argTypes[i], arg) {
 				matchesArguments = false
 				break
 			}

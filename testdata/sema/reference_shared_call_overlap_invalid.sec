@@ -1,0 +1,9 @@
+module main
+
+fn MutThenShare(left: ref mut int, right: ref int) void {}
+fn ShareThenMut(left: ref int, right: ref mut int) void {}
+
+fn Conflict(values: ref mut int) void {
+    MutThenShare(values, values)
+    ShareThenMut(values, values)
+}

@@ -128,6 +128,7 @@ integrations:
       - rules/compiler/compile_time_evaluation.md
       - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
       - rules/corrections/applied/temporal-now-correction-20260928.md
+      - rules/corrections/md109-core-string-materialization-correction.md
     code:
       - internal/sema/call_graph_identity.go
       - internal/sema/analyzer_arena.go
@@ -150,6 +151,10 @@ integrations:
       - internal/sema/static.go
       - cmd/lsp/main.go
       - internal/sema/compiler_known_functions.go
+      - internal/sema/string_materialization_calls.go
+      - internal/sema/compiler_known_calls.go
+      - internal/ir/semantic/builder.go
+      - sec/core/string.sec
     tests:
       - internal/sema/corehelpers/generated_identity_test.go
       - testdata/core/generated_identity
@@ -164,6 +169,14 @@ integrations:
       - internal/sema/temporal/analyzer_test.go
       - cmd/lsp/main_test.go
       - internal/sema/slice_creation_plans_test.go
+      - internal/sema/string_materialization_calls_test.go
+      - cmd/compiler/byte_string_decoding_test.go
+      - cmd/compiler/string_materialization_test.go
+      - cmd/lsp/string_materialization_test.go
+      - testdata/sema/string_materialization_static_valid.sec
+      - testdata/sema/string_materialization_static_invalid.sec
+      - testdata/semantic_ir/string_materialization_bytes.sec
+      - testdata/semantic_ir/string_materialization_runes.sec
     implemented:
       - "deterministic and traceable generated helper/resource identities (2026-10-09): GeneratedIdentityIndex freezes declaration-relative lexical origins and keys compiler-only records by artifact kind, source module/owner, lexical occurrence and resolved representation plan where relevant. Detached records are sorted by identity and retain current source locations separately. Arena frontend creation/owner sites replace the process-wide analysis counter with this stable identity while moves retain the original domain; repeated analysis, reversed source-file order and shifted coordinates preserve IDs, and distinct creation sites remain distinct. LLVM lambda helpers and existing legacy LLVM-dialect overload specializations use the same origin service, include target representation in their keys and publish origin comments. Generated helper symbols occupy a separate emitted namespace; fixed rune-length helpers have canonical names/rule provenance, and explicit linkage collisions are rejected. Existing registry IDs and maintained nominal/synthetic-payload symbols remain canonical; local SSA/block numbering is not an exported semantic identity."
       - "prevent arbitrary compiler-known extension (2026-10-09): impl registration preserves registry-owned type authority through trusted core forward declarations and concrete named representations. User and forged core-module/path sources cannot add primary or extended impls, methods, properties or nested types to these identities; invalid members never enter the semantic tables. Legitimate loader-proven core extensions and user-owned nominal derivations retain ordinary behavior and acquire no compiler-known method identity. Raw and analyzed legacy backend entry points validate impls targeting registered builtin identities against the current AST/provenance and selected scalar plan, including revoked authority; failures publish source-located errors and no partial output. Impl-target validation and core support predicates were extracted from analyzer.go into the existing type declaration responsibility file."
@@ -181,8 +194,9 @@ integrations:
       - "MD-091 byte-to-string boundary (decided 2026-10-18; core-library.md § 5.2, compiler_known_members.md \"Internal core string materialization\", stdlib_str.md § 10.6): core string.FromByteArray and its CKM-STRING-FROMBYTEARRAY registry entry are removed and diagnosed with a pointer to str.FromByteArray; string.FromRuneArray (2026-10-13) still returns Result[string, StringError]; the internal CKF-STRING-FROM-UTF8 `_stringFromUtf8` (borrowed byte[] / byte[N] / byte slice -> Result[string, StringError], validating) is known only to loader-proven core (owner decision 2026-10-18: never stdlib) and used by the core byte formatters; byte-sequence ToString hover documents the type summary `byte[]` and never decoding (TestByteStringDecodingBelongsToStdlibStr, TestRegistryHasNoPublicByteDecoder)"
       - _now is a stable datetime value intrinsic available only to loader-proven core; it is reserved against source declarations, hidden from ordinary completion, rejected in static initialization, and records one MayUseNondeterministicInput effect per evaluated expression
       - "P16-14 RangeError identity integration (2026-10-18; lowering.sec-mlir-package16): standalone Sema reserves the same nominal core error enum as the existing core declaration, with InvalidRange/StartAfterEnd/OutOfBounds and int carrier; loader-proven core refines that identity. Slice creation plans expose detached exact error cases. TestSliceRangeErrorCoreIdentity verifies source/fallback compatibility."
+      - "MD-109 phase 2 (2026-10-25; pending correction): string.FromByteArray(data: ref byte[]) and string.FromRuneArray(data: ref rune[]) have matching static source declarations, stable associated-function registry IDs, Result[string, StringError] and structured source/LSP comments. The byte declaration forwards to the existing loader-proven-core-only CKF-STRING-FROM-UTF8 contract; the rune declaration preserves canonical rune-sequence ToString encoding. Static call validation checks byte/rune sequences and arity, rejects consuming markers and instance calls, and preserves named inputs. Completion/hover expose both static signatures and exclude instance completion. MD-091 byte-sequence ToString remains a type summary. Missing IR materialization now reports an explicit P23 unsupported boundary with no output artifact. Frontend/API scope only: no executable decoding/allocation-failure or complete correction application is claimed."
     remaining:
-      - "MD-109 (open): stdlib has no bytes -> string path — str.FromByteArray and str.Builder.Finish panic after validation/copying, and stdlib/io file.linux.amd64.sec:714 and stdlib/net/url percent.sec:171,336 still call the removed string.FromByteArray, so TestCompilerLoadsIOReadFileIntoAPI and TestCompilerLoadsIOWriteSeekAndDirectoryAPIs fail (Known hole (verified 2026-10-18))"
+      - "MD-109 pending phases 3..7: phase-2 static APIs/metadata and trusted-core forwarding declarations are implemented, but P23 string materialization and its P18/P19 allocation/storage prerequisites are absent. Byte/rune CLI source fixtures pass check and fail emit-mlir explicitly without artifacts. The UTF-8/encoding corpus, forced allocation failure, independent-result lifetime and cleanup cannot yet be exercised. Keep str.FromByteArray/Builder.Finish migration, IO/URL integration, canonical rulebook reconciliation and final MD closure pending in the required phase order; the correction remains under rules/corrections and MD-109 stays open. Existing IO tests still fail on linux bindings and heterogeneous RangeError/StringError propagation, not removed public constructor lookup."
       - "MD-091: lower _stringFromUtf8 and byte-sequence ToString (type summary) through Semantic IR and the native track with P23; run the stdlib/str decoding, lossy, ownership and round-trip tests once strings lower and the str module compiles as a whole (Known hole (verified 2026-10-18): pre-existing Builder/escape diagnostics block `sec test sec/stdlib/str`)"
       - validate _now's UTCWallClock requirement against the frozen CompilationPlan once the target-capability model reaches Sema
       - preserve _now as an explicit Semantic IR operation and lower it through the selected target/runtime wall-clock service without folding or merging reads
@@ -196,6 +210,18 @@ integrations:
       - Iterator registry completion is the compile-time interface/conformance boundary; it introduces no interface object, virtual dispatch or new MLIR operation. Existing iterator dependency, readiness, ownership and maintained lowering integrations retain their scopes. Compiler-known-surfaces remaining decreases from 9 to 8 and core total from 14 to 13. Broader compiler/LSP registry sharing remains separately listed.
       - "this closes the compiler-authority/visibility boundary only: no new MLIR operation or inline MLIR/LLVM source syntax is introduced. The existing LLVM string-slice descriptor emission remains the compatibility implementation, and core.string-slice-helper keeps its five low-level syntax, migration, compatibility-removal and lifetime requirements; MD-052 remains open. Internal callable representation is separately deferred until the real helper migration supplies a callable body. Compiler-known-surfaces remaining decreases from 10 to 9, and core total from 15 to 14."
     verification:
+      - command: yamlstatus check; yamlstatus fmt -check governance/core.yaml; git diff --check
+        result: "passed on 2026-10-25: 0 problems in 45 fragments, core fragment canonical with no type hazards; core.yaml has 12 remaining entries, compiler.compiler-known-surfaces has 7. MD-109 retained once as open for complete application; pending correction not archived."
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "TestStringMaterialization|TestCompilerLoadsIOReadFileIntoAPI|TestCompilerLoadsIOWriteSeekAndDirectoryAPIs" -count=1
+        result: MD-109 authority/capability tests passed; two existing IO integration tests still fail on undefined linux, RangeError propagation into IOError/IOErrorLegacy and a heterogeneous RangeError/StringError try at directory-name materialization. Removed public-constructor lookup failure is gone. IO/URL/Builder migration and complete MD-109 application are not claimed.
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/... ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-25 after MD-109 phase-2/API and capability-boundary changes
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-25 in all five packages after the stable-ID-keyed P23 materialization capability diagnostic; no new string allocation/lowering implementation
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestStringMaterialization|TestRegistryStringMaterializers|TestCompilerKnownFundamentalMembers|TestStringConstructorsReturnStringErrorResult|TestCompilerKnownUniversalToStringAndTextSequences|TestCompilerAllowsCoreStringImpl|TestCompilerLoadsCoreRuneAndStringConversionAPI|TestCompletionIncludesStaticCompilerKnownMembers|TestCompletionKeepsNamedStringOptionFlowAndEnumMembers|TestAnalyzeAllowsCoreStringImpl" -count=1
+        result: "passed on 2026-10-25 in all three packages: matching static signatures, type/arity/ownership restrictions, byte ToString summary, real core bootstrap, static-only completion/hover, user modules named core/str denied private materialization, and public API checks with named P23 emission rejection/no artifacts. No executable UTF-8 or allocation-failure pass is claimed."
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/parser ./internal/sema -count=1
+        result: "passed on 2026-10-25 after MD-109 phase-2 implementation: complete parser and root Sema suites; parser 77.918s, Sema 13.522s"
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
         result: passed on 2026-10-19 after extracting global compiler-known/internal function inference into compiler_known_functions.go and routing slice len observations through canonical P15 use facts for P16-18
       - command: go test ./cmd/compiler -run 'TestByteStringDecodingBelongsToStdlibStr|TestStringUTF8Positions' -count=1 && go test ./internal/sema -run 'TestRegistryHasNoPublicByteDecoder|TestStringConstructors' -count=1

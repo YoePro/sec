@@ -49,6 +49,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
+	defer a.enterCleanupLoop()()
 	stateTest, hasStateTest := a.whileConditionStateTest(stmt)
 	if hasStateTest {
 		if binding, refined := stateTestRefinement(stateTest, true); refined {

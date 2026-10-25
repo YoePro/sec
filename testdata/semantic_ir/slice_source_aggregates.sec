@@ -1,0 +1,42 @@
+module main
+
+// P16-48 (package16 §§ 117, 140): union payloads and struct fields may hold
+// slice values. Construction copies the shared holder into the aggregate,
+// and the aggregate is passed, returned and copied like any value.
+// Reading a contained slice back out needs P15 § 101 contained-reference
+// facts, which are not represented yet (see slice_integration_test.go).
+type Views union {
+    Values(ref int[])
+    Missing
+}
+
+type Window struct {
+    Data: ref int[],
+    Start: int,
+}
+
+fn Pick(values: ref int[], flag: bool) Views {
+    if flag {
+        return Views.Values(values)
+    }
+    return Views.Missing
+}
+
+fn Frame(values: ref int[], start: int) Window {
+    return Window{Data: values, Start: start}
+}
+
+fn Keep(window: Window) int {
+    return window.Start
+}
+
+fn main() int {
+    let data := [1, 2, 3, 4]
+    let view := ref data[..]
+    let picked := Pick(view, true)
+    discard picked
+    let window := Frame(view, 2)
+    let copy := window
+    discard view
+    return Keep(copy)
+}

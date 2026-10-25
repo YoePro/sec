@@ -459,38 +459,102 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   reproducible reanalysis and query purity. P17-19/P17-21..24 still own cleanup
   registration, dynamic multiplicity, exit plans and the consolidated cleanup API;
   this completion does not claim source-to-IR cleanup or native defer execution.
-- [ ] P17-21 — Preserve conditional registration and one registration per
+- [x] P17-21 — Preserve conditional registration and one registration per
   executed loop defer, including distinct iteration bindings. A site ID or
   registration ordinal is not a replacement for dynamic instance multiplicity.
-- [ ] P17-22 — Resolve normal scope/function exit edges and eligible automatic
+
+  Done 2026-10-25 (Claude):
+  - **Multiplicity.** Every registration site in `ResolvedCleanupPlan` carries `PerExecution` (inside a loop: one registration per execution, never collapsed into its site ID) and `Conditional` (below the invocation's root scope, so only the paths that execute it register). A loop-body binding is a fresh incarnation per iteration through its owned action.
+  - **Evidence.** `testdata/sema/cleanup_plans.sec`, `TestResolvedCleanupPlans`: a loop `defer` and a loop-local owned value are per-execution and conditional; an `if`-local is conditional only.
+- [x] P17-22 — Resolve normal scope/function exit edges and eligible automatic
   obligations. Block fallthrough, break, continue and branch exit run exited-scope
   automatic cleanup; function-scoped defer remains pending until function exit.
+
+  Done 2026-10-25 (Claude), `cleanup_exits.go`:
+  - **Exit edges.** Analysis records each exit edge with the scopes it leaves, innermost first:
+    - a block that can fall through (`fallthrough`; a function exit when it is the invocation's root);
+    - `break`/`continue` up to the innermost loop's entry scope;
+    - `return`.
+  - **Branch exits.** Match/switch arm bodies exit as block fallthrough.
+  - **Function-scoped registrations.** Only exits with `FunctionExit` run them, so a defer never runs at its block's end.
+  - **Defer bodies.** Exits inside defer bodies are not invocation exits.
+  - **Dedup.** Recording is idempotent across loop re-analysis and the summary pass.
 - [ ] P17-23 — Resolve protected return/error transfers before function cleanup.
   Preserve failure-before-replacement, construction temporaries and argument
   consumption; distinguish normal error propagation from non-unwinding panic.
-- [ ] P17-24 — Publish detached `ResolvedCleanupPlan` queries containing scopes,
+
+  Partial 2026-10-25 (Claude):
+  - **Protected value.** A `return` protects its returned value (`ProtectedKind = return-value`), and a propagating `try` is a function exit of kind `error-propagation` that protects its Err (`ProtectedKind = error`), read from the resolved try kind.
+  - **Panic.** `panic`/`unreachable` are `CleanupExitPanic` with `RunsCleanup = false` (§ 46).
+  - **Failure before replacement.** It is kept by the success-only assignment facts (P17-19).
+  - **Remaining.** Construction temporaries and argument consumption as protected/consumed values at an exit.
+- [x] P17-24 — Publish detached `ResolvedCleanupPlan` queries containing scopes,
   registrations, defer bodies/captures, normal exits and protected values. Builders
   must not reconstruct cleanup by walking variable names or counting SSA uses.
+
+  Done 2026-10-25 (Claude), `cleanup_plans.go`:
+  - **Query.** `ResolvedCleanupPlanOf(function)` returns the invocation's scope tree, all registration sites in source order and all exit edges, with protected values. Registrations are owned initialization, reinitialization/replacement with the previous state, and defer with its detached capture plan.
+  - **Purity.** It is read-only and detached (`TestResolvedCleanupPlansDetached`), and it consumes the existing registration/assignment/defer facts without new inference.
+  - **IR alignment.** IR helpers now classify `string` as copy-trivial and trivially destructible, as Sema does (fixtures use a custom-free struct as the non-trivial type).
 - [ ] P17-25 — Test interleaved local/defer registration, replacement/reinit order,
   branches, loops, scope exits, captures observing later assignments, return/Err
   protection, discard convergence and existing defer-body restrictions.
 
 ## D. Add explicit ownership and cleanup Semantic IR
 
-- [ ] P17-26 — Add CopyValue, SemanticCopyValue and MoveValue operations with
+- [x] P17-26 — Add CopyValue, SemanticCopyValue and MoveValue operations with
   resolved actions/plans, value identity and provenance. Copy keeps the source;
   move creates the ownership continuation and removes source responsibility.
+
+  Done 2026-10-25 (Claude), Semantic IR model scope (`ownership_ops.go`):
+  - **Operations.** `own.copy`, `own.semantic-copy` and `own.move` keep the value type.
+  - **Copy contracts.** `own.copy` requires a copy-trivial type. `own.semantic-copy` requires a semantic class and a named infallible semantic-copy plan.
+  - **Move.** `own.move` consumes its operand.
+  - **Verification.** A block-local flow check rejects any later use or second consumption of a consumed value (`TestOwnershipOperationsVerifyAndPrint`, `TestOwnershipOperationsRejectInvalidUse`).
+  - **Boundaries.** Producer migration is P17-35, the path-sensitive ownership verifier is P17-52, and schema 13 is P17-45+.
 - [ ] P17-27 — Add CopyFromPlace/MoveFromPlace through canonical P15 Places.
   Preserve holder/referent distinctions, partial-path state and borrow obligations.
-- [ ] P17-28 — Add InitializePlace and ReplacePlace. Initialization/reinit has
+
+  Partial 2026-10-25 (Claude):
+  - **Operations.** `own.copy-from-place` (mode `trivial` / `semantic-infallible`) and `own.move-from-place` take a canonical P15 Place and produce its element type.
+  - **Authority.** A move requires a writable Place.
+  - **Place consumers.** These operations are admitted by P15's Place-consumer rule.
+  - **Partial-path state (2026-10-25, with P17-30).** A move out of a field or active-payload sub-Place is tracked by root Place identity and field/payload path. Moving, copying or replacing an overlapping subobject (or the whole value) is rejected until the subobject is reinitialized, and a move below an array element is rejected (§ 15).
+  - **Remaining.** Moves on other CFG paths and borrow obligations of the moved subobject are the path-sensitive verifier's job (P17-52).
+- [x] P17-28 — Add InitializePlace and ReplacePlace. Initialization/reinit has
   no old destruction; replacement consumes a fully prepared new value and owns
   old destruction plus old/new cleanup incarnation facts.
+
+  Done 2026-10-25 (Claude), Semantic IR model scope:
+  - **Initialize.** `own.initialize-place` consumes a value into a writable Place of its type. The verifier rejects old destruction-plan/cleanup metadata and accepts a new cleanup identity (`TestOwnershipInitializationNewCleanup`; initialization mutations in `TestOwnershipOperationsRejectInvalidUse`, Codex 2026-10-25).
+  - **Replace.** `own.replace-place` consumes the prepared replacement and carries the old value's destruction plan. A non-trivial plan also requires distinct old/new cleanup action identities (printed `cleanup=#old->#new`).
 - [ ] P17-29 — Add DiscardValue/DestroyValue/DestroyPlace with plan identity and
   explicit/implicit/compiler provenance. Represent conditional/no-op discard
   without double destruction. Borrow-holder termination never frees referents.
-- [ ] P17-30 — Represent derived destruction and exact remaining subobject state
+
+  Partial 2026-10-25 (Claude):
+  - **Discard.** `own.discard` requires an origin (`explicit` / `implicit-call-result` / `compiler-temporary`). A trivial discard carries no plan and is a no-op, and a non-trivial one requires its plan. A reference/slice discard must not carry a plan, because it never destroys the referent.
+  - **Destroy.** `own.destroy-value` and `own.destroy-place` require a plan matching the destroyed type and a cause (scope-exit, function-exit, temporary-end, cleanup, compiler-generated). `own.destroy-value` of a reference/slice is rejected in favour of `ref.end-borrow`.
+  - **Plan table.** Module-level `DestructionPlans` records are unique and printed.
+  - **Double destruction.** It is rejected within a block.
+  - **Remaining.** Conditional discard and double destruction across paths need the path-sensitive verifier (P17-52).
+- [x] P17-30 — Represent derived destruction and exact remaining subobject state
   compactly. Large arrays must not expand one IR record per element. Keep custom
   free, remaining-field cleanup and semantic release authority distinct.
+
+  Done 2026-10-25 (Claude), Semantic IR model scope (`ownership_state.go`):
+  - **Destruction plan graph.** The module `DestructionPlans` records form a closed, type-checked graph (`verifyDestructionPlanGraph`):
+    - **struct:** a custom-free flag plus remaining-field steps listed once in reverse declaration order. Every non-trivial field must be covered.
+    - **fixed-array:** one element plan with the exact count, so a 1000-element array is one record.
+    - **active-variant:** per-variant payload plans covering every non-trivial payload.
+    - **compiler-known-resource:** a release contract.
+    - **trivial:** only for types needing no destruction.
+
+    Steps must name existing plans of the stepped type, and a plan may not carry another kind's steps.
+  - **Custom free, field cleanup, release.** Custom free (struct only), remaining-field cleanup (field steps) and resource release (resource contract) stay distinct.
+  - **Remaining subobject state.** It is kept compactly as root Place identity plus field/payload path. `own.destroy-place` lists its `Skipped` subobjects (printed `skip=[field#0]`). The verifier requires every subobject moved earlier in the block to be skipped, rejects skipping through custom-free or non-struct/variant plans, rejects partial moves out of custom-free structs (§ 12) and array elements (§ 15), and lets reinitialization (`own.initialize-place` on the field) restore completeness (§ 13).
+  - **Tests.** `TestOwnershipDerivedDestructionAndPartialState` and `TestOwnershipDerivedDestructionAndPartialStateRejects` (14 negatives).
+  - **Remaining.** Cross-path state is P17-52, and source producers are P17-35.
 - [ ] P17-31 — Extend struct/array/union/Result/Option constructor actions to
   resolved move and infallible semantic copy. Spread remains copying; this package
   does not silently make a move-only spread source legal.
@@ -498,9 +562,23 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Mutually exclusive successors may transfer the same current owner; merges
   select one continuation. Verify compatible partial/active-variant state and
   destruction plans without rejecting legal source convergence by approximation.
-- [ ] P17-33 — Add cleanup track/cancel/defer-register/run-scope/run-function
+- [x] P17-33 — Add cleanup track/cancel/defer-register/run-scope/run-function
   operations and explicit defer regions with capture-Place parameters. Preserve
   dynamic registrations without selecting a physical stack or global runtime.
+
+  Done 2026-10-25 (Claude), Semantic IR model scope (`cleanup_ops.go`):
+  - **Operations.**
+    - `cleanup.track-owned` (value or Place, with action/scope/ordinal identities and a non-trivial destruction plan; borrow holders are rejected);
+    - `cleanup.cancel` (registered action, with reason `moved`/`replaced`/`transferred`);
+    - `cleanup.defer-register` (action/scope/ordinal/defer identities, capture Places and one body region);
+    - `cleanup.defer-yield` (the region terminator);
+    - `cleanup.run-scope` (exited scopes plus a scope exit kind);
+    - `cleanup.run-function` (function exit kind only, before its block's return).
+  - **Defer region.** The region is verified as an isolated body: its entry parameters must equal the capture Place types, it cannot use outer SSA values or return, and every block ends with a yield or an internal branch.
+  - **Registrations.** Action and ordinal identities are unique per operation site, which may run repeatedly (dynamic loop registrations stay one site).
+  - **Runtime.** No stack, runtime or physical representation is chosen.
+  - **Tests.** `TestCleanupOperationsVerifyAndPrint` follows the § 41 order, plus `TestCleanupOperationsRejectInvalidUse` (17 negatives).
+  - **Remaining.** Reverse-order and cross-path cleanup execution checks are P17-54, and producers are P17-35. Producers also need Sema `ResolvedCleanupPlan` (P17-19, P17-21–24).
 - [ ] P17-34 — Extend the model, deterministic printer, effect/provenance facts
   and verifier. Print transfer, Place, destruction/cleanup/scope/defer identities;
   verify terminal actions and cleanup order without physical representation.

@@ -42,6 +42,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
+	defer a.enterCleanupLoop()()
 
 	iterableErrors := len(a.errors)
 	if len(stmt.Bindings) > 0 || stmt.Iterable != nil {

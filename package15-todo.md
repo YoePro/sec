@@ -440,6 +440,8 @@ equally named roots of different declarations stay distinct alternatives
 
   Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Static roots (2026-10-16, with P15-42a): `ref` / `ref mut` of a module static or function-local static lowers to `place.static-root @N` with the static's authority, marks the static address-taken and carries Sema's static-storage facts (`TestPackage15LowersStaticPlaceRoots`). Remaining: addressed (fixed-address/MMIO) roots, blocked by MD-077 (no Semantic IR register types or operations are specified; Semantic IR rejects every register access).
   MD-077 (decided 2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md`): addressed roots split by binding category. Ordinary addressed storage becomes a Place root. A hardware register binding becomes a `register.hw.bind` resource/instance root of type `HardwareInstance[T]`, never a Place, with no `ref` to physical bits. The schema is `sec_mlir_dialect.md` v11.41.1. P15-42/42a stays open until MD-077 steps 2–5 are implemented.
+  Current closure boundary (2026-10-25): ordinary addressed roots require MD-111 endpoint/region facts; hardware operation serialization requires MD-114. Detached register/hardware-instance types exist, so the earlier statement that no register IR types exist is historical. Static reference emission is independently blocked by MD-116 (no admitted static Place root text/identity mapping). None is waived by the evidence tasks below.
+
 - [ ] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
   static (module-level), thread-local and addressed (fixed-address binding,
   register/MMIO) storage in Semantic IR, which today has only local-automatic
@@ -501,6 +503,8 @@ equally named roots of different declarations stay distinct alternatives
   Partial 2026-10-12: Sema records callee-side facts for every ref/ref mut parameter (`ReferenceParameterFactsOf`; caller-owned-borrow proof, or dynamic-epoch for Arena-backed referents). Semantic IR parameters carry them (`Parameter.Reference`, printed and verifier-required), and the verifier now tracks dynamic-epoch parameters so their dereferences need guards (the P15-46 note). Reads and writes through a reference parameter use the P15-46 policy. At a call site an owned Place passed to a ref or ref mut parameter lowers Sema's implicit borrow as a Place borrow, an explicit `ref` argument its borrow, an existing shared reference is passed with `ref.copy-shared` (same borrow), and an existing ref mut is passed with `ref.reborrow-mut`, never copied. The new argument actions `shared-reference` and `mutable-reference` are verifier-checked against the parameter type (`TestPackage15LowersReferenceParametersAndPassing`, `TestPackage15DynamicReferenceUseValidatesOnce`). Instance-method receivers (2026-10-12): Sema publishes `ReceiverReferenceFactsOf` per instance method, `ResolvedImplicitReceiverOf` for `self` and implicit stored-field identifiers (reads and assignment targets), and an implicit borrow or pass use for the receiver expression of each instance-method call. From package 15 Semantic IR builds non-generic instance methods with a borrowed receiver, with an explicit first parameter `self` of type ref/ref mut Target carrying those facts. Field reads and writes through `self.f` or an implicit `f` dereference it and project `place.field`. A call passes the receiver: an implicit borrow of an owned Place, a pass of a reference holder, or the caller's own `self` (copied when shared), including bare method calls inside a method (`TestPackage15LowersInstanceMethodReceivers`, `TestPackage15ReceiverBoundaries`, `TestPackage15ImplicitFieldWriteUsesMutableReceiver`). Returned references (2026-10-16): Sema publishes `ReturnReferenceSummaryOf` (positional origins `$param:N`/`$receiver` with canonical projections) and `ResolvedCallReferenceOf` (caller-side facts instantiated from the callee summary over the actual arguments). A function returning a direct reference carries `ReturnOrigins` metadata (printed `returns-from=[param#0.field#0]`, `receiver.field#0`, `[1]`/`[*]` for elements). A returned reference may be the parameter's own reference, a sub-Place reborrow of it (`return ref pair.left`; `ref self.left` in a method reborrows the receiver), a local holder of one, or a call result. The verifier traces every returned reference through copies, moves, reborrows, dereferences, field and element Places and calls (via the callee's summary), and requires each traced origin to be listed. A call returning a reference carries the instantiated facts on its result (`TestPackage15LowersReturnedReferences`, `TestPackage15VerifierChecksReturnedReferenceOrigins`). Static and addressed origins stay unsupported until P15-42a. Receiver reborrows (2026-10-16): Sema publishes `ResolvedReceiverReborrowOf(call)` for a call on the enclosing method's own mutable receiver. `Bump()` and `self.Bump()` inside a mutating method lower to `ref.reborrow-mut` of the receiver with a fresh BorrowID/LifetimeID per call, or `ref.reborrow-shared` when the callee only reads. The receiver is never copied. `self` or a receiver field passed to a ref/ref mut parameter (`Read(self)`, `ReadInner(inner)`, `Write(self)`), and explicit `ref self` / `ref mut self`, derive the borrow from the dereferenced receiver with Sema's implicit-borrow facts (`TestPackage15ReborrowsReceiversForNestedCallsAndArguments`). The temporary-borrow rejection ("cannot borrow temporary expression") now carries S1168. Remaining: consuming receivers; generic implementations; and receivers that are temporaries without a Place (for example `Start().Next()`), which keep try-chain-intermediate-lowering blocked and await MD-076 (Sema accepts call-lifetime temporaries without an explicit rule).
 
   MD-076 (2026-10-21, `borrowing.md` § 5.4): temporary arguments and receivers, which Semantic IR previously rejected ("receiver argument without a resolved borrow or reference pass"), now lower. Each one gets its own compiler-materialized Place: a value root for a shared borrow, address-taken compiler storage for `ref mut`. The producer is evaluated once, in left-to-right order. Mutating methods on temporaries had been silently invalid in Sema and are now accepted. References returned through such a borrow are usable within the full expression (`*Field(CreateCounter())`) and are rejected when retained or returned. Tests: `TestTemporaryCallBorrowsAreAccepted`, `TestTemporaryCallBorrowsRejectEscapesAndExplicitBorrows`, `TestTemporaryBorrowsMaterializeOwnPlaces`, `TestTemporaryBorrowsAndDereferenceEmitSchema11`. Cleanup of non-trivially-destructible temporaries remains P17.
+  Further implementation 2026-10-25: named `ref mut T` arguments now grant a shared call reborrow to `ref T` through the normal Sema candidate/ownership/overlap checks and the existing P15 shared-reborrow producer (`borrowing.md` §15.3(2)). Exact mutable overloads retain precedence, the parent remains usable after non-retaining calls, and returned shared dependencies retain normal lifetime restrictions. `reference_shared_call_reborrow.sec`, focused Sema/IR negative tests and all 12 source pipeline cases pass on both widths. The structured type-compatibility call oracle was corrected; storage initialization and explicit conversions were not weakened. Generic/consuming and unrepresented root-dependent producers keep P15-47 open.
+
 - [x] P15-48 — Integrate effects and `@noPanic`: proven use adds no invalid-
   reference panic; a reachable dynamic failure adds the exact panic reason;
   validation itself adds neither allocation nor blocking; borrow creation/end
@@ -757,30 +761,42 @@ equally named roots of different declarations stay distinct alternatives
 
 ## H. Final acceptance, governance, and report
 
-- [ ] P15-69 — Create a section-155 acceptance matrix mapping every criterion
+- [x] P15-69 — Create a section-155 acceptance matrix mapping every criterion
   to a focused test and/or exact implementation location. Aggregate test success
   is evidence only for the explicitly repository-wide criteria.
-- [ ] P15-70 — From a fresh isolated worktree containing the exact P15 diff,
+- [x] P15-70 — From a fresh isolated worktree containing the exact P15 diff,
   run `go test ./...`, `go vet ./...`, `git diff --check`, and unique-key YAML
   validation. Record commands, HEAD/tree, environment, and results.
-- [ ] P15-71 — Run the complete `check-sec-mlir` target and explicit adjacent
+- [x] P15-71 — Run the complete `check-sec-mlir` target and explicit adjacent
   schema-9/10/11 selection. Record exact LLVM/MLIR/lit versions and all test
   counts; split failures into new checklist items rather than weakening tests.
-- [ ] P15-72 — Run the package-specific 32/64 source-to-schema-11 pipeline
+- [x] P15-72 — Run the package-specific 32/64 source-to-schema-11 pipeline
   with an absolute `SEC_MLIR_BIN`, `--sec-verify-places`,
   `--sec-verify-reference-guards`, and `--sec-verify-borrow-semantics`.
-- [ ] P15-73 — Update the sole `lowering.sec-mlir-package15` governance entry
+- [x] P15-73 — Update the sole `lowering.sec-mlir-package15` governance entry
   in `governance/lowering.yaml` with exact implemented surface, intentional
   P16/P17/P18/FFI deferrals, baseline/head, code/tests, toolchains, commands,
   results, and `status: implemented` only after every section-155 criterion is
   satisfied. Do not duplicate it in `implementation-status.yaml`.
-- [ ] P15-74 — Write the section-156 implementation report in the P15 package
+- [x] P15-74 — Write the section-156 implementation report in the P15 package
   directory, covering all 46 required topics in order, deviations, exact
   commands/results, and Package 16 recommendations.
 - [ ] P15-75 — Re-run the acceptance matrix, governance unique-ownership check,
   rulebook-status check, complete Go/vet suites with absolute MLIR tooling, and
   full Sec MLIR suite before handoff. Confirm every P15 TODO item is either
   complete or explicitly moved to its owning later package.
+
+  Completed 2026-10-25: `rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md` covers all 46 section-156 topics in their normative order, including exact commands/results, test-oracle correction, baseline failures, deferrals and P16 recommendations.
+
+  Completed governance reconciliation 2026-10-25: the sole `lowering.sec-mlir-package15` entry records the actual surface, HEAD/manifest, source/native tests, exact counts and remaining MD/acceptance boundaries. Status remains `partial`; neither report completion nor passing focused tests promotes the package. P15-75 retains final acceptance.
+
+  Completed 2026-10-25: the isolated `TestPackage15SourceToSchema11Pipeline` run used an absolute `SEC_MLIR_BIN`, actual armv7/amd64 plans and all three P15 verifiers. All 12 subtests passed (six fixtures at both widths), including the new mutable-to-shared reference call fixture. P6/P8 wrapper preservation remains checked; no physical reference ABI is claimed.
+
+  Completed 2026-10-25: `check-sec-mlir` passed 165/165. Explicit schema-9/10/11 selection passed 26/26 with 139 excluded. LLVM/MLIR is 24.0.0git, optimized with assertions; lit 24.0.0dev. Exact commands/counts are recorded in report sections 40–42.
+
+  Completed execution/reporting 2026-10-25: a fresh isolated source snapshot at HEAD `9eb7c77e4e3153b61d29610581e33e07e57e2fa0` ran the complete Go command to termination (434.556s, exit 1), full vet (pass), whitespace (pass) and governance/unique-key validation. The 46-topic report records the exact source manifest, toolchain, seven reproduced baseline test failures, the corrected shared-call test oracle and the two existing missing governance fragments. The full run predates that test-only oracle correction; focused revalidation passed afterward. This closes the run-and-record task, not the green-suite or latest-tree final acceptance requirement (P15-75).
+
+  Completed 2026-10-25: `rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md` maps all 56 criteria to focused tests or exact locations, with blocked criteria labelled explicitly. Completing this mapping does not claim all criteria pass.
 
 ## Recommended execution order
 
@@ -794,4 +810,4 @@ equally named roots of different declarations stay distinct alternatives
 6. P15-50–58 — implement schema 11, emitter, and the three MLIR verifiers.
 7. P15-59–68 — prove P5/P6/P8/P11/P12/P13/P14 integration, safety boundaries,
    and determinism.
-8. P15-69–75 — complete evidence, final governance, and the mandatory report.
+8. P15-69–74 — evidence collection, partial-status governance and the mandatory report are complete; P15-75 final acceptance remains open.

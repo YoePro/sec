@@ -266,6 +266,9 @@ type Module struct {
 	Structs     []StructDefinition
 	// Registers is the module's register-definition table (MD-077 § 10(1)).
 	Registers []RegisterDefinition
+	// DestructionPlans are the type-level destruction plans own.* operations
+	// reference (P17 §§ 20–21, 57; ownership_ops.go).
+	DestructionPlans []DestructionPlanRecord
 	// Statics are the module's static-duration storage locations
 	// (semantic_ir.md § 28), in identity order.
 	Statics []Static
@@ -732,6 +735,13 @@ type Operation struct {
 	// Slice retains resolved value provenance without selecting a descriptor.
 	// Rules: rules/compiler/semantic_ir.md — §126.2–4,26.
 	Slice *SliceFacts
+	// Ownership carries the resolved facts of an own.* operation (P17
+	// §§ 48–58; ownership_ops.go).
+	Ownership *OwnershipFacts
+	// Cleanup carries the identities of a cleanup.* operation, and Region the
+	// body of cleanup.defer-register (P17-33; cleanup_ops.go).
+	Cleanup *CleanupFacts
+	Region  *Region
 	// UnsafeAuthorization is the source position of a call's direct
 	// `unsafe` prefix (MD-079); nil when the call carries no prefix.
 	UnsafeAuthorization *Location
@@ -811,5 +821,6 @@ type Operation struct {
 }
 
 func (o Operation) IsTerminator() bool {
-	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable || o.Kind == OpPanic || o.Kind == OpReferenceGenerationFailure
+	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable || o.Kind == OpPanic || o.Kind == OpReferenceGenerationFailure ||
+		o.Kind == OpCleanupDeferYield
 }

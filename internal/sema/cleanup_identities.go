@@ -102,7 +102,11 @@ func (a *Analyzer) enterCleanupScope(block *ast.BlockStatement) func() {
 	}
 	a.cleanupScopes[block] = id
 	a.currentCleanupScope = id
-	return func() { a.currentCleanupScope = previous }
+	a.recordCleanupScope(id, previous, block)
+	return func() {
+		a.recordCleanupBlockExit(id, block)
+		a.currentCleanupScope = previous
+	}
 }
 
 // ResolvedCleanupScopeOf reads a block's analyzed lexical identity without

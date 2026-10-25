@@ -295,7 +295,12 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		return b.internArrayType(t)
 	}
 	if b.maxPackage >= sliceLoweringPackage && sourceSliceType(t) {
-		return 0, &UnsupportedFeatureError{Feature: "slice value/signature source lowering (P16-36)", Package: b.maxPackage}
+		// P16-48: a slice is an ordinary bounded-reference value type that
+		// aggregates may contain (package16 §§ 117, 140). Expressions that
+		// produce or consume slices are still admitted one by one in
+		// p16SliceExpression.
+		typeID, _, err := b.internSourceSliceType(t)
+		return typeID, err
 	}
 	if t.Kind == sema.ReferenceType {
 		return b.internReferenceType(t)
@@ -3463,6 +3468,16 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {
+		// Public lookup is implemented, but checked materialization needs
+		// P23 and its P18/P19 allocation/string-storage prerequisites.
+		// Rules: rules/corrections/md109-core-string-materialization-correction.md
+		// — §§5.2,9.3,10.3; rules/mlir/packages/sec-mlir-dialect_package23.md — §§35–37.
+		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
+			site := member.Property.Token
+			if known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-STRING-FROMBYTEARRAY" || known.ID == "CKM-STRING-FROMRUNEARRAY") {
+				return builtValue{}, fb.unsupported("string."+known.Name+" materialization requires P23 allocation/string lowering", site)
+			}
+		}
 		if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
 			return builtValue{}, fb.unsupported("hardware register operation "+string(operation.Kind)+" on "+operation.Register.Name+" (register.hw.*, MD-077 § 18(4); physical plans need MD-111)", call.Token)
 		}

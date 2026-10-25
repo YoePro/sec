@@ -53,7 +53,7 @@ func sliceEmitModule(t *testing.T, file string, width uint16) *semantic.Module {
 func TestPackage16EmitSourceSlices(t *testing.T) {
 	tool := testsupport.RequireSecMLIROptPath(t)
 	for _, width := range []uint16{32, 64} {
-		for _, file := range []string{"slice_source_fixed.sec", "slice_source_reborrow.sec", "slice_source_length.sec", "slice_source_index.sec", "slice_source_wide.sec", "slice_emit_nominal.sec", "slice_aggregate_arrays.sec", "slice_disjoint_mutable.sec", "slice_empty_mutable.sec", "slice_source_parameters.sec", "slice_source_transfers.sec", "slice_source_returns.sec", "slice_source_automatic_ends.sec"} {
+		for _, file := range []string{"slice_source_fixed.sec", "slice_source_reborrow.sec", "slice_source_length.sec", "slice_source_index.sec", "slice_source_wide.sec", "slice_emit_nominal.sec", "slice_aggregate_arrays.sec", "slice_disjoint_mutable.sec", "slice_empty_mutable.sec", "slice_source_parameters.sec", "slice_source_transfers.sec", "slice_source_returns.sec", "slice_source_element_origins.sec", "slice_source_aggregates.sec", "slice_source_automatic_ends.sec"} {
 			t.Run(fmt.Sprintf("%d/%s", width, file), func(t *testing.T) {
 				m := sliceEmitModule(t, file, width)
 				before := semantic.Format(m)

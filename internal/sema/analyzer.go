@@ -25,6 +25,7 @@ type Analyzer struct {
 	currentCleanupScope         CleanupScopeID
 	cleanupScopes               map[*ast.BlockStatement]CleanupScopeID
 	cleanupDefers               map[*ast.DeferStatement]ResolvedDeferIdentity
+	cleanupFlow                 cleanupFlowState
 	resolvedDeferPlans          map[*ast.DeferStatement]ResolvedDeferPlan
 	ownedCleanupInitializations map[*ast.LetStatement]ResolvedOwnedCleanupRegistration
 	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
@@ -543,6 +544,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.currentCleanupScope = 0
 	a.cleanupScopes = nil
 	a.cleanupDefers = nil
+	a.cleanupFlow = cleanupFlowState{}
 	a.resolvedDeferPlans = nil
 	a.ownedCleanupInitializations = nil
 	a.ownedCleanupCancellations = nil
@@ -2483,8 +2485,10 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeAssertStatement(stmt)
 	case *ast.PanicStatement:
 		a.analyzePanicStatement(stmt)
+		a.recordCleanupPanic(stmt.Token)
 	case *ast.UnreachableStatement:
 		a.analyzeUnreachableStatement(stmt)
+		a.recordCleanupPanic(stmt.Token)
 	case *ast.DetachStatement:
 		a.analyzeDetachStatement(stmt)
 	case *ast.CancelStatement:
@@ -2502,6 +2506,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 		if a.inFunctionBody {
 			a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, stmt)
+			a.recordCleanupReturn(stmt)
 		}
 	case *ast.IfStatement:
 		a.analyzeIfStatement(stmt)
@@ -2532,6 +2537,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.addErrorAtToken(stmt.Token, "break is only valid inside a loop")
 		} else {
 			a.recordLoopBreak()
+			a.recordCleanupJump(CleanupExitBreak, stmt.Token)
 		}
 	case *ast.ContinueStatement:
 		if a.inDeferBlock {
@@ -2542,6 +2548,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.addErrorAtToken(stmt.Token, "continue is only valid inside a loop")
 		} else {
 			a.recordLoopContinue()
+			a.recordCleanupJump(CleanupExitContinue, stmt.Token)
 		}
 	case *ast.UnsafeStatement:
 		a.analyzeUnsafeStatement(stmt)

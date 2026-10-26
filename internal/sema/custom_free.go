@@ -10,6 +10,10 @@ import (
 
 func freeFunctionName(target string) string { return "@free:" + target }
 
+// CustomFreeFunctionName is the lifecycle key under which a type's resolved
+// custom `free` is registered in Functions(); it is not a callable method.
+func CustomFreeFunctionName(target string) string { return freeFunctionName(target) }
+
 // registerCustomFreeDeclarations records every `free` lifecycle member before
 // type bodies resolve, so destruction classification and partial-move
 // legality see the custom destructor wherever the type is used. A type has at

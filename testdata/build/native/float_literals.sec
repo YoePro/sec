@@ -1,0 +1,41 @@
+module main
+
+// P20 §§11–19,82,85: direct-width rounding and source sign survive the
+// complete native track. Integer-form witnesses distinguish double rounding.
+fn Negative32() float32 {
+    return -0.0g
+}
+
+fn Negative64() float64 {
+    return -1e-400g
+}
+
+fn main() int {
+    let tricky: float32 := 1.00000017881393432617187499g
+    if tricky != 1.00000011920928955078125 {
+        return 1
+    }
+    let base: float32 := 0x100000100000001g
+    if base != 72057602627862528g {
+        return 2
+    }
+    let negative := Negative32()
+    if !(1.0 / negative < 0.0) {
+        return 3
+    }
+    let tiny := Negative64()
+    if !(1.0 / tiny < 0.0) {
+        return 4
+    }
+    let smallest: float32 := 1.401298464324817e-45g
+    let underflow: float32 := 1e-46g
+    if smallest <= 0.0 || underflow != 0.0 {
+        return 5
+    }
+    let integer: float32 := 10
+    let hexadecimal: float64 := 0x10
+    if integer != 10.0 || hexadecimal != 16.0 {
+        return 6
+    }
+    return 0
+}

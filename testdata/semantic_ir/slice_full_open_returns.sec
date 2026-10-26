@@ -1,0 +1,19 @@
+module main
+
+fn Same(values: ref int[]) ref int[] { return values }
+fn Writable(values: ref mut int[]) ref mut int[] { return values }
+fn Shared(values: ref int[]) ref int[] {
+    return ref Same(values)[..]
+}
+fn Mutable(values: ref mut int[]) ref mut int[] {
+    return ref mut Writable(Writable(values))[..]
+}
+fn Reduced(values: ref mut int[]) ref int[] {
+    return ref Writable(values)[..]
+}
+fn Named(values: ref int[]) ref int[] {
+    return ref values[..]
+}
+fn Nested(values: ref int[]) ref int[] {
+    return ref Shared(values)[..]
+}

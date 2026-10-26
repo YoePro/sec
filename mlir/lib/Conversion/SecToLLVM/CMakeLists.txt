@@ -2,6 +2,7 @@ add_mlir_conversion_library(SecMLIRSecToLLVM
   SecToLLVM.cpp
   IntegerEnums.cpp
   Floats.cpp
+  FloatRemainder.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${SEC_MLIR_SOURCE_DIR}/include/sec/Conversion/SecToLLVM
@@ -24,6 +25,7 @@ add_mlir_conversion_library(SecMLIRSecToLLVM
   MLIRPass
   MLIRReconcileUnrealizedCasts
   MLIRTransforms
+  SecMLIRAnalysis
   SecMLIRDialect
   SecMLIRSecIntegerToArith
   SecMLIRSecToCore

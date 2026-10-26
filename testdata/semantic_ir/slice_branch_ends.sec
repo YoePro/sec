@@ -1,0 +1,170 @@
+module main
+fn Both(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        let first := view[0]
+        values[0] = 7
+    } else {
+        let last := view[1]
+        values[1] = 8
+    }
+    values[0] = 9
+    return values[0]
+}
+fn Mixed(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        let first := view[0]
+        values[0] = 7
+    } else {
+        let last := view[1]
+    }
+    values[0] = 9
+    return values[0]
+}
+fn Mutable(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref mut values[..]
+    if choose {
+        view[0] = 4
+        values[0] = 7
+    } else {
+        view[1] = 5
+        values[1] = 8
+    }
+    values[0] = 9
+    return values[0]
+}
+fn Terminal(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        let first := view[0]
+        values[0] = 7
+        return first
+    } else {
+        let last := view[1]
+        values[1] = 8
+        return last
+    }
+}
+fn Iteration(count: int) int {
+    let mut remaining := count
+    let mut values := [1, 2, 3]
+    while remaining > 0 {
+        let view := ref mut values[..]
+        view[0] += 1
+        values[1] = 8
+        remaining -= 1
+    }
+    return values[0]
+}
+fn Nested(choose: bool, again: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        if again {
+            let first := view[0]
+            values[0] = 7
+        } else {
+            let second := view[1]
+            values[1] = 8
+        }
+    } else {
+        let last := view[2]
+        values[2] = 9
+    }
+    values[0] = 10
+    return values[0]
+}
+fn Early(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        let first := view[0]
+        values[0] = 7
+        return first
+    }
+    let last := view[1]
+    values[1] = 8
+    return last
+}
+fn NestedEarly(choose: bool, again: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        if again {
+            let first := view[0]
+            values[0] = 7
+            return first
+        }
+        let second := view[1]
+    }
+    let last := view[2]
+    values[2] = 8
+    return last
+}
+fn EarlyUnused(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        values[0] = 7
+        return 1
+    }
+    let last := view[1]
+    values[1] = 8
+    return last
+}
+fn MutableEarly(choose: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref mut values[..]
+    if choose {
+        view[0] = 4
+        values[0] = 7
+        return 1
+    }
+    view[1] = 5
+    values[1] = 8
+    return values[1]
+}
+fn Transparent(choose: bool, again: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        if again {
+            let first := view[0]
+            values[0] = 7
+        } else {
+            let second := view[1]
+        }
+    } else {
+        let last := view[2]
+        values[2] = 8
+    }
+    values[0] = 9
+    return values[0]
+}
+fn DeepTransparent(choose: bool, again: bool, third: bool) int {
+    let mut values := [1, 2, 3]
+    let view := ref values[..]
+    if choose {
+        if again {
+            if third {
+                let first := view[0]
+                values[0] = 7
+            } else {
+                let second := view[1]
+            }
+        } else {
+            let middle := view[1]
+            values[1] = 8
+        }
+    } else {
+        let last := view[2]
+        values[2] = 9
+    }
+    values[0] = 10
+    return values[0]
+}

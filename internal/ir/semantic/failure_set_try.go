@@ -107,7 +107,7 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 	var carrier *sema.TryFailurePoint
 	for index, point := range resolved.Failures {
 		switch point.Kind {
-		case sema.TryFailureArithmetic, sema.TryFailureBounds, sema.TryFailureSliceRange:
+		case sema.TryFailureArithmetic, sema.TryFailureBounds, sema.TryFailureSliceRange, sema.TryFailureConversion:
 			router.points[point.Expression] = point
 		case sema.TryFailureCarrier:
 			if point.Expression != expr.Expression {

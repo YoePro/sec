@@ -1,0 +1,5 @@
+module main
+
+fn Invalid(a: float32, b: float64) float32 {
+    return a + b
+}

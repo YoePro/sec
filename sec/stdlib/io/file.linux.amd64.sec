@@ -398,15 +398,15 @@ fn Copy(source: ref mut File, destination: ref mut File, buffer: ref mut byte[])
                 if count == 0u {
                     return Ok(copied)
                 }
-                let written := try destination.WriteAll(ref buffer[..<int(count)])
+                let written := try destination.WriteAll(ref buffer[..<count])
                 copied += written
             }
         }
     }
 }
 
-fn _directoryRecordLength(buffer: ref byte[], position: int) uint {
-    return uint(buffer[position + 16]) | (uint(buffer[position + 17]) << 8)
+fn _directoryRecordLength(buffer: ref byte[], position: int) int {
+    return int(buffer[position + 16]) | (int(buffer[position + 17]) << 8)
 }
 
 fn _directoryEntryType(value: byte) DirectoryEntryType {
@@ -682,7 +682,11 @@ impl Directory {
                             let end: Option[DirectoryEntry] := None
                             return Ok(end)
                         }
-                        self.buffer_length = int(count)
+                        // MD-056: the kernel's uint count is converted with a check.
+                        let length := try int(count) {
+                            Err(_) => return Err(IOErrorLegacy.InvalidData)
+                        }
+                        self.buffer_length = length
                         self.buffer_position = 0
                     }
                 }
@@ -693,7 +697,7 @@ impl Directory {
                 return Err(IOErrorLegacy.InvalidData)
             }
 
-            let recordLength := int(_directoryRecordLength(ref self.buffer[..], recordStart))
+            let recordLength := _directoryRecordLength(ref self.buffer[..], recordStart)
             let recordEnd := recordStart + recordLength
             if recordLength < 20 || recordEnd > self.buffer_length {
                 return Err(IOErrorLegacy.InvalidData)

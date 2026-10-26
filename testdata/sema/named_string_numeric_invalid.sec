@@ -1,0 +1,27 @@
+module main
+
+type Name string
+type Count int
+
+fn Direct(number: int, unsigned: uint, small: byte, floating: float64, fixed: decimal, named: Count) void {
+    let literal := Name(123)
+    let runtime := Name(number)
+    let a := Name(unsigned)
+    let b := Name(small)
+    let c := Name(floating)
+    let d := Name(fixed)
+    let e := Name(named)
+}
+
+fn Wrapped(number: int) Result[Name, error] {
+    let literal := try Name(123)
+    return Ok(try Name(number))
+}
+
+fn Use(value: Name) void {}
+
+fn Positions(number: int) Name {
+    let explicit: Name := Name(number)
+    Use(Name(number))
+    return Name(number)
+}

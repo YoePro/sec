@@ -1,0 +1,263 @@
+module main
+
+fn F32Tenth() float32 {
+    return 0.1
+}
+
+fn F32Suffix() float32 {
+    return 0.1g
+}
+
+fn F32Integer() float32 {
+    return 10g
+}
+
+fn F32Hex() float32 {
+    return 0x1000001g
+}
+
+fn F32Binary() float32 {
+    return 0b101g
+}
+
+fn F32Octal() float32 {
+    return 0o17g
+}
+
+fn F32Separators() float32 {
+    return 1_000.5g
+}
+
+fn F32DoubleRounding() float32 {
+    return 1.00000017881393432617187499
+}
+
+fn F32Tiny32() float32 {
+    return 1e-46
+}
+
+fn F32Subnormal32() float32 {
+    return 1.401298464324817e-45
+}
+
+fn F32Tiny64() float32 {
+    return 1e-400
+}
+
+fn F32Subnormal64() float32 {
+    return 4.9406564584124654e-324
+}
+
+fn F32Max32() float32 {
+    return 3.40282346638528859811704183484516925440e38
+}
+
+fn F32NegativeZero() float32 {
+    return -0.0g
+}
+
+fn F32NegativeUnderflow() float32 {
+    return -1e-400g
+}
+
+fn F32Positive() float32 {
+    return +1.5g
+}
+
+fn F64Tenth() float64 {
+    return 0.1
+}
+
+fn F64Suffix() float64 {
+    return 0.1g
+}
+
+fn F64Integer() float64 {
+    return 10g
+}
+
+fn F64Hex() float64 {
+    return 0x1000001g
+}
+
+fn F64Binary() float64 {
+    return 0b101g
+}
+
+fn F64Octal() float64 {
+    return 0o17g
+}
+
+fn F64Separators() float64 {
+    return 1_000.5g
+}
+
+fn F64DoubleRounding() float64 {
+    return 1.00000017881393432617187499
+}
+
+fn F64Tiny32() float64 {
+    return 1e-46
+}
+
+fn F64Subnormal32() float64 {
+    return 1.401298464324817e-45
+}
+
+fn F64Tiny64() float64 {
+    return 1e-400
+}
+
+fn F64Subnormal64() float64 {
+    return 4.9406564584124654e-324
+}
+
+fn F64Max32() float64 {
+    return 3.40282346638528859811704183484516925440e38
+}
+
+fn F64NegativeZero() float64 {
+    return -0.0g
+}
+
+fn F64NegativeUnderflow() float64 {
+    return -1e-400g
+}
+
+fn F64Positive() float64 {
+    return +1.5g
+}
+
+fn PlatformTenth() float {
+    return 0.1
+}
+
+fn PlatformSuffix() float {
+    return 0.1g
+}
+
+fn PlatformInteger() float {
+    return 10g
+}
+
+fn PlatformHex() float {
+    return 0x1000001g
+}
+
+fn PlatformBinary() float {
+    return 0b101g
+}
+
+fn PlatformOctal() float {
+    return 0o17g
+}
+
+fn PlatformSeparators() float {
+    return 1_000.5g
+}
+
+fn PlatformDoubleRounding() float {
+    return 1.00000017881393432617187499
+}
+
+fn PlatformTiny32() float {
+    return 1e-46
+}
+
+fn PlatformSubnormal32() float {
+    return 1.401298464324817e-45
+}
+
+fn PlatformTiny64() float {
+    return 1e-400
+}
+
+fn PlatformSubnormal64() float {
+    return 4.9406564584124654e-324
+}
+
+fn PlatformMax32() float {
+    return 3.40282346638528859811704183484516925440e38
+}
+
+fn PlatformNegativeZero() float {
+    return -0.0g
+}
+
+fn PlatformNegativeUnderflow() float {
+    return -1e-400g
+}
+
+fn PlatformPositive() float {
+    return +1.5g
+}
+
+fn F32BaseDoubleRounding() float32 {
+    return 0x100000100000001g
+}
+
+fn F32UnsuffixedInteger() float32 {
+    return 10
+}
+
+fn F32UnsuffixedHex() float32 {
+    return 0x10
+}
+
+fn F32ExponentSuffix() float32 {
+    return 1.5e+2g
+}
+
+fn F32NegativeBaseZero() float32 {
+    return -0x0g
+}
+
+fn F64BaseDoubleRounding() float64 {
+    return 0x100000100000001g
+}
+
+fn F64UnsuffixedInteger() float64 {
+    return 10
+}
+
+fn F64UnsuffixedHex() float64 {
+    return 0x10
+}
+
+fn F64ExponentSuffix() float64 {
+    return 1.5e+2g
+}
+
+fn F64NegativeBaseZero() float64 {
+    return -0x0g
+}
+
+fn PlatformBaseDoubleRounding() float {
+    return 0x100000100000001g
+}
+
+fn PlatformUnsuffixedInteger() float {
+    return 10
+}
+
+fn PlatformUnsuffixedHex() float {
+    return 0x10
+}
+
+fn PlatformExponentSuffix() float {
+    return 1.5e+2g
+}
+
+fn PlatformNegativeBaseZero() float {
+    return -0x0g
+}
+
+fn Identity32(value: float32) float32 {
+    return value
+}
+
+fn Contexts(value: float32) float32 {
+    let local: float32 := 1.00000017881393432617187499
+    let argument := Identity32(0x10g)
+    return local + argument + value + 0.5
+}

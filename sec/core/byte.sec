@@ -11,16 +11,16 @@ impl byte {
     fn ToString(fmt: byte.ByteStringFormat) Result[string, StringError] {
         match fmt {
             ByteStringFormat.Decimal => {
-                return self._ToDecimal(self)
+                return self._ToDecimal
             }
             ByteStringFormat.Hexadecimal => {
-                return self._ToHexadecimal(self)
+                return self._ToHexadecimal
             }
             ByteStringFormat.Octal => {
-                return self._ToOctal(self)
+                return self._ToOctal
             }
             ByteStringFormat.Binary => {
-                return self._ToBinary(self)
+                return self._ToBinary
             }
         }
     }
@@ -33,63 +33,71 @@ impl byte {
         return value + 55
     }
 
-    fn _ToDecimal(value: byte) Result[string, StringError] {
-        if value >= 100 {
+    property _ToDecimal: Result[string, StringError] {
+        get {
+            if self >= 100 {
+                let bytes: byte[3] := [
+                    (self / 100) + 48,
+                    ((self / 10) % 10) + 48,
+                    (self % 10) + 48,
+                ]
+
+                return bytes.ToString()
+            }
+
+            if self >= 10 {
+                let bytes: byte[2] := [
+                    (self / 10) + 48,
+                    (self % 10) + 48,
+                ]
+
+                return bytes.ToString()
+            }
+
+            let bytes: byte[1] := [
+                self + 48,
+            ]
+
+            return bytes.ToString()
+        }
+    }
+
+    property _ToHexadecimal: Result[string, StringError] {
+        get {
+            let high := self._ByteDigit((self >> 4) & 0x0F)
+            let low  := self._ByteDigit(self & 0x0F)
+
+            let bytes: byte[2] := [high, low]
+            return bytes.ToString()
+        }
+    }
+
+    property _ToOctal: Result[string, StringError] {
+        get {
             let bytes: byte[3] := [
-                (value / 100) + 48,
-                ((value / 10) % 10) + 48,
-                (value % 10) + 48,
+                ((self >> 6) & 0x03) + 48,
+                ((self >> 3) & 0x07) + 48,
+                (self & 0x07) + 48,
             ]
 
             return bytes.ToString()
         }
+    }
 
-        if value >= 10 {
-            let bytes: byte[2] := [
-                (value / 10) + 48,
-                (value % 10) + 48,
+    property _ToBinary: Result[string, StringError] {
+        get {
+            let bytes: byte[8] := [
+                ((self >> 7) & 0x01) + 48,
+                ((self >> 6) & 0x01) + 48,
+                ((self >> 5) & 0x01) + 48,
+                ((self >> 4) & 0x01) + 48,
+                ((self >> 3) & 0x01) + 48,
+                ((self >> 2) & 0x01) + 48,
+                ((self >> 1) & 0x01) + 48,
+                (self & 0x01) + 48,
             ]
 
             return bytes.ToString()
         }
-
-        let bytes: byte[1] := [
-            value + 48,
-        ]
-
-        return bytes.ToString()
-    }
-
-    fn _ToHexadecimal(value: byte) Result[string, StringError] {
-        let high := self._ByteDigit((value >> 4) & 0x0F)
-        let low  := self._ByteDigit(value & 0x0F)
-
-        let bytes: byte[2] := [high, low]
-        return bytes.ToString()
-    }
-
-    fn _ToOctal(value: byte) Result[string, StringError] {
-        let bytes: byte[3] := [
-            ((value >> 6) & 0x03) + 48,
-            ((value >> 3) & 0x07) + 48,
-            (value & 0x07) + 48,
-        ]
-
-        return bytes.ToString()
-    }
-
-    fn _ToBinary(value: byte) Result[string, StringError] {
-        let bytes: byte[8] := [
-            ((value >> 7) & 0x01) + 48,
-            ((value >> 6) & 0x01) + 48,
-            ((value >> 5) & 0x01) + 48,
-            ((value >> 4) & 0x01) + 48,
-            ((value >> 3) & 0x01) + 48,
-            ((value >> 2) & 0x01) + 48,
-            ((value >> 1) & 0x01) + 48,
-            (value & 0x01) + 48,
-        ]
-
-        return bytes.ToString()
     }
 }

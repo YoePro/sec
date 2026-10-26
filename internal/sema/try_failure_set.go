@@ -105,6 +105,7 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			}
 			for _, argument := range node.Arguments {
 				visit(argument)
+				points = a.appendTryChainCarrierPoint(points, argument)
 			}
 			if a.runtimeContractConversion(node) {
 				errorType := a.types["ContractError"]
@@ -120,6 +121,7 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			visit(node.Value)
 		case *ast.ConversionExpression:
 			visit(node.Value)
+			points = a.appendTryChainCarrierPoint(points, node.Value)
 			points = a.appendCheckedConversionPoint(points, node, ast.Expression(node) == root)
 		case *ast.NewExpression:
 			for _, argument := range node.Arguments {

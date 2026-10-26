@@ -574,3 +574,230 @@ func (fb *functionBuilder) lowerReceiverRegisterWrite(stmt *ast.AssignmentStatem
 	fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{root.id, replacement.id}, Location: loc})
 	return nil
 }
+
+// Register bit-pattern conversions (MD-110 §§ 3–5, 7; semantic_ir.md
+// § 21(6)). register.value.fits-bits is the runtime fit predicate,
+// register.value.from-bits the exact construction under a constant,
+// source-domain, bit-extraction or guarded proof, and register.value.to-bits
+// the total zero/sign-extending interpretation. All three are pure.
+const (
+	OpRegisterValueFitsBits OpKind = "register.value.fits-bits"
+	OpRegisterValueFromBits OpKind = "register.value.from-bits"
+	OpRegisterValueToBits   OpKind = "register.value.to-bits"
+)
+
+// RegisterConversionFacts are the destination register, the proof basis of
+// a from-bits and the signed interpretation of a to-bits.
+type RegisterConversionFacts struct {
+	Register TypeID
+	Basis    string
+	Signed   bool
+}
+
+// buildRegisterConversion lowers an explicit `T(x)` or `IntegerType(r)` that
+// Sema resolved. The checked form (guarded) needs the try failure lowering
+// that checked integer conversions also wait for.
+func (fb *functionBuilder) buildRegisterConversion(call *ast.CallExpression, conversion sema.ResolvedRegisterConversion) (builtValue, error) {
+	loc := location(call.Token)
+	registerType, err := fb.owner.internType(conversion.Register)
+	if err != nil {
+		return builtValue{}, err
+	}
+	integerType, err := fb.owner.internType(conversion.Integer)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if conversion.Kind == sema.RegisterToBits {
+		source, err := fb.buildExpr(call.Arguments[0], registerType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		return fb.result(Operation{Kind: OpRegisterValueToBits, Operands: []ValueID{source.id},
+			RegisterConversion: &RegisterConversionFacts{Register: registerType, Signed: conversion.Signed}, Location: loc}, integerType), nil
+	}
+	if conversion.Basis == sema.RegisterFitGuarded {
+		return builtValue{}, fb.unsupported("checked integer-to-register conversion "+conversion.Register.Name+"(...) (needs try, as checked integer conversions)", call.Token)
+	}
+	value, err := fb.buildExpr(call.Arguments[0], integerType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.result(Operation{Kind: OpRegisterValueFromBits, Operands: []ValueID{value.id},
+		RegisterConversion: &RegisterConversionFacts{Register: registerType, Basis: string(conversion.Basis)}, Location: loc}, registerType), nil
+}
+
+// integerShape is the signedness and bit width of a Semantic IR integer.
+func integerShape(module *Module, id TypeID) (signed bool, width uint16, ok bool) {
+	typ, found := module.Types.Lookup(id)
+	if !found {
+		return false, 0, false
+	}
+	switch typ.Kind {
+	case TypeByte:
+		return false, 8, true
+	case TypeInt, TypeUint:
+		width = typ.BitWidth
+		if typ.TargetSize {
+			width = module.PointerWidthBits
+		}
+		// A target-sized integer without a CompilationPlan has width 0.
+		return typ.Kind == TypeInt, width, true
+	}
+	return false, 0, false
+}
+
+// verifyRegisterConversionOperation checks one conversion's local contract.
+func verifyRegisterConversionOperation(module *Module, op Operation, values map[ValueID]Value) error {
+	facts := op.RegisterConversion
+	if facts == nil || len(op.Operands) != 1 || len(op.Results) != 1 {
+		return fmt.Errorf("%s requires one operand, one result and conversion facts", op.Kind)
+	}
+	definition, ok := registerDefinition(module, facts.Register)
+	if !ok {
+		return fmt.Errorf("%s names no register type", op.Kind)
+	}
+	operand, result := values[op.Operands[0]].Type, op.Results[0].Type
+	switch op.Kind {
+	case OpRegisterValueFitsBits, OpRegisterValueFromBits:
+		if _, _, integer := integerShape(module, operand); !integer {
+			return fmt.Errorf("%s operand must be a resolved primitive integer", op.Kind)
+		}
+		if op.Kind == OpRegisterValueFitsBits {
+			if !typeHasKind(module.Types, result, TypeBool) || facts.Basis != "" {
+				return fmt.Errorf("register.value.fits-bits returns bool and carries no proof")
+			}
+			return nil
+		}
+		if result != facts.Register {
+			return fmt.Errorf("register.value.from-bits must produce its destination register")
+		}
+		switch facts.Basis {
+		case string(sema.RegisterFitConstant), string(sema.RegisterFitSourceDomain), string(sema.RegisterFitBitExtraction), string(sema.RegisterFitGuarded):
+		default:
+			return fmt.Errorf("register.value.from-bits has unknown proof basis %q", facts.Basis)
+		}
+	case OpRegisterValueToBits:
+		if values[op.Operands[0]].Type != facts.Register || facts.Basis != "" {
+			return fmt.Errorf("register.value.to-bits takes its register and carries no proof")
+		}
+		signed, width, integer := integerShape(module, result)
+		if !integer || width == 0 || signed != facts.Signed {
+			return fmt.Errorf("register.value.to-bits result must be an integer of its recorded signedness")
+		}
+		if width < definition.Width {
+			return fmt.Errorf("register.value.to-bits result width %d is narrower than register width %d", width, definition.Width)
+		}
+	}
+	return nil
+}
+
+// registerBitsFit is the MD-110 § 3(2) fit rule.
+func registerBitsFit(value *big.Int, width uint16) bool {
+	if value.Sign() >= 0 {
+		return value.BitLen() <= int(width)
+	}
+	minimum := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
+	return value.Cmp(minimum) >= 0
+}
+
+// verifyRegisterConversionProofs checks every from-bits proof against its
+// evidence: a fitting constant, a fitting source domain, a bit extraction of
+// at most N bits, or a dominating true edge of a fits-bits predicate on the
+// same operand and register.
+func verifyRegisterConversionProofs(module *Module, fn *Function, dom map[BlockID]map[BlockID]bool) error {
+	definitions := map[ValueID]Operation{}
+	values := map[ValueID]Value{}
+	for _, parameter := range fn.Parameters {
+		values[parameter.Value.ID] = parameter.Value
+	}
+	for _, block := range fn.Blocks {
+		for _, parameter := range block.Parameters {
+			values[parameter.ID] = parameter
+		}
+		for _, op := range block.Operations {
+			for _, result := range op.Results {
+				definitions[result.ID], values[result.ID] = op, result
+			}
+		}
+	}
+	// guardedBlocks are the blocks a true edge of fits-bits(operand, register) enters.
+	type guardKey struct {
+		operand  ValueID
+		register TypeID
+	}
+	guards := map[guardKey][]BlockID{}
+	predecessors := map[BlockID]int{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			for _, successor := range op.Successors {
+				predecessors[successor.Block]++
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if op.Kind != OpCondBranch || len(op.Operands) != 1 || len(op.Successors) != 2 {
+				continue
+			}
+			predicate, found := definitions[op.Operands[0]]
+			if !found || predicate.Kind != OpRegisterValueFitsBits {
+				continue
+			}
+			key := guardKey{predicate.Operands[0], predicate.RegisterConversion.Register}
+			guards[key] = append(guards[key], op.Successors[0].Block)
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if op.Kind != OpRegisterValueFromBits {
+				continue
+			}
+			definition, _ := registerDefinition(module, op.RegisterConversion.Register)
+			operand := op.Operands[0]
+			switch sema.RegisterFitBasis(op.RegisterConversion.Basis) {
+			case sema.RegisterFitConstant:
+				constant := definitions[operand]
+				if constant.Kind != OpConstInt || constant.Integer == nil || !registerBitsFit(constant.Integer, definition.Width) {
+					return fmt.Errorf("register.value.from-bits constant proof without a fitting constant operand")
+				}
+			case sema.RegisterFitSourceDomain:
+				signed, width, _ := integerShape(module, values[operand].Type)
+				// Every value of a width-W integer fits when W <= N (unsigned)
+				// or W <= N (signed: its minimum is -2^(W-1) >= -2^(N-1)).
+				if width == 0 || width > definition.Width {
+					return fmt.Errorf("register.value.from-bits source-domain proof: %d-bit source (signed=%t) exceeds register width %d", width, signed, definition.Width)
+				}
+			case sema.RegisterFitBitExtraction:
+				extraction := definitions[operand]
+				if extraction.Kind != OpIntBitExtract || extraction.Integer == nil || extraction.Integer.Int64() > int64(definition.Width) {
+					return fmt.Errorf("register.value.from-bits bit-extraction proof without an extraction of at most %d bits", definition.Width)
+				}
+			case sema.RegisterFitGuarded:
+				guarded := false
+				// The true edge proves the fit only where it is the sole way in.
+				for _, entry := range guards[guardKey{operand, op.RegisterConversion.Register}] {
+					if predecessors[entry] == 1 && (entry == block.ID || dom[block.ID][entry]) {
+						guarded = true
+					}
+				}
+				if !guarded {
+					return fmt.Errorf("register.value.from-bits guarded proof without a dominating successful fits-bits on the same operand and register")
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func formatRegisterConversionOperation(out *strings.Builder, op Operation) {
+	fmt.Fprintf(out, " %%%d", op.Operands[0])
+	if facts := op.RegisterConversion; facts != nil {
+		fmt.Fprintf(out, " register=!%d", facts.Register)
+		if facts.Basis != "" {
+			fmt.Fprintf(out, " proof=%s", facts.Basis)
+		}
+		if op.Kind == OpRegisterValueToBits {
+			fmt.Fprintf(out, " signed=%t", facts.Signed)
+		}
+	}
+}

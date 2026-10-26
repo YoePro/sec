@@ -43,3 +43,19 @@ module {
     return %out : si64
   }
 }
+
+// -----
+
+func.func @checked_failure(%a: si32) -> si8 {
+  // expected-error @+1 {{failure must be OutOfRange for integer targets}}
+  %c, %f = "sec.numeric.convert_checked"(%a) <{failure = "PrecisionLoss"}> : (si32) -> (si8, i1)
+  return %c : si8
+}
+
+// -----
+
+func.func @checked_float(%a: f64) -> si8 {
+  // expected-error @+1 {{admits only builtin Sec integer operand and candidate types}}
+  %c, %f = "sec.numeric.convert_checked"(%a) <{failure = "OutOfRange"}> : (f64) -> (si8, i1)
+  return %c : si8
+}

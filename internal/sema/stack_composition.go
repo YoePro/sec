@@ -132,23 +132,10 @@ func composeKnownStack(graph *CallGraph, own map[CallableID]StackBound, contract
 	}
 	recursive := map[CallableID]bool{}
 	components := map[CallableID][]CallableID{}
-	for _, component := range graph.sameStackComponents() {
-		members := make([]CallableID, 0, len(component))
-		for member := range component {
-			members = append(members, member)
-		}
-		sort.Slice(members, func(i, j int) bool { return members[i] < members[j] })
-		for id := range component {
-			components[id] = members
-			if len(component) > 1 {
-				recursive[id] = true
-			} else {
-				for _, target := range graph.sameStackTargets(id) {
-					if target == id {
-						recursive[id] = true
-					}
-				}
-			}
+	for _, component := range graph.SameStackComponents() {
+		for _, id := range component.Members {
+			components[id] = component.Members
+			recursive[id] = component.Recursive
 		}
 	}
 	var visit func(CallableID) stackCompositionValue

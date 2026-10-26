@@ -1,0 +1,22 @@
+module main
+fn Writable(values: ref mut int[]) ref mut int[] { return values }
+fn Index() int { return 0 }
+fn Value() int { return 2 }
+fn Add(values: ref mut int[]) void { Writable(values)[Index()] += Value() }
+fn Operations(values: ref mut int[], shift: int) void {
+    values[0] -= 1
+    values[0] *= 2
+    values[0] /= 2
+    values[0] %= 2
+    values[0] &= 3
+    values[0] |= 4
+    values[0] ^= 1
+    values[0] <<= shift
+    values[0] >>= shift
+    values[0]++
+    values[0]--
+}
+fn Wide(values: ref mut uint256[], rhs: uint256, count: uint256) void {
+    values[0] += rhs
+    values[0] <<= count
+}

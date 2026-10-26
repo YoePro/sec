@@ -68,8 +68,12 @@ type DestructionPlanRecord struct {
 	ID   string
 	Type TypeID
 	Kind string
-	// CustomFree runs the struct's `free` before its remaining fields.
-	CustomFree bool
+	// CustomFree runs the struct's `free` before its remaining fields;
+	// FreeFunction is that built lifecycle function and FreeType the source
+	// type it belongs to.
+	CustomFree   bool
+	FreeFunction FunctionID
+	FreeType     string
 	// Fields destroy remaining owned stored fields, in execution order
 	// (reverse declaration order).
 	Fields []DestructionFieldRecord
@@ -199,6 +203,9 @@ func verifyDestructionPlans(module *Module) error {
 		}
 		if _, ok := module.Types.Lookup(plan.Type); !ok {
 			return fmt.Errorf("destruction plan %q names unknown type !%d", plan.ID, plan.Type)
+		}
+		if plan.FreeFunction != "" && !customFreeFunctionOf(module, plan) {
+			return fmt.Errorf("destruction plan %q names %q, which is not a custom free over ref mut of its type", plan.ID, plan.FreeFunction)
 		}
 		seen[plan.ID] = true
 	}
@@ -423,6 +430,9 @@ func formatDestructionPlans(out *strings.Builder, plans []DestructionPlanRecord)
 		fmt.Fprintf(out, "    %q !%d %s", plan.ID, plan.Type, plan.Kind)
 		if plan.CustomFree {
 			out.WriteString(" custom-free")
+			if plan.FreeFunction != "" {
+				fmt.Fprintf(out, "=%q", plan.FreeFunction)
+			}
 		}
 		for _, field := range plan.Fields {
 			fmt.Fprintf(out, " field#%d=%q", field.Field, field.Plan)
@@ -439,4 +449,17 @@ func formatDestructionPlans(out *strings.Builder, plans []DestructionPlanRecord)
 		out.WriteByte('\n')
 	}
 	out.WriteString("  }\n")
+}
+
+// customFreeFunctionOf reports whether a plan's free function exists and
+// takes exactly a mutable reference to the destroyed type and returns void.
+func customFreeFunctionOf(module *Module, plan DestructionPlanRecord) bool {
+	for _, fn := range module.Functions {
+		if fn.ID != plan.FreeFunction || len(fn.Parameters) != 1 {
+			continue
+		}
+		receiver, ok := module.Types.Lookup(fn.Parameters[0].Value.Type)
+		return ok && receiver.Kind == TypeReference && receiver.Mutable && receiver.Element == plan.Type && typeHasKind(module.Types, fn.ReturnType, TypeVoid)
+	}
+	return false
 }

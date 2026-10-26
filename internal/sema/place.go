@@ -566,7 +566,9 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 		}
 		return Place{}, false
 	case *ast.IndexExpression:
-		base, ok := a.resolvePlace(expr.Left)
+		// Indexing a returned slice projects its existing referent Place;
+		// the call does not create an owning temporary array (P16 §§55,59–62).
+		base, ok := a.indexSourcePlace(expr.Left)
 		if !ok {
 			return Place{}, false
 		}
@@ -620,9 +622,16 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 			return Place{}, false
 		}
 		projection := a.slicePlaceProjectionWithLength(expr, containerType, staticSliceExtent(base))
-		base.Projections = appendSliceProjection(base.Projections, projection)
-		for index := range base.AlternativeOrigins {
-			base.AlternativeOrigins[index].Projections = appendSliceProjection(base.AlternativeOrigins[index].Projections, projection)
+		// A full-open reborrow of an existing slice has exactly its source
+		// range, even when the extent is dynamic. Retain the source's range
+		// identities and every alternative instead of inventing a new one.
+		// Fixed-array construction and explicit endpoints still project.
+		// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§28,60–62,66–67.
+		if containerType.Kind != SliceType || expr.Start != nil || expr.End != nil {
+			base.Projections = appendSliceProjection(base.Projections, projection)
+			for index := range base.AlternativeOrigins {
+				base.AlternativeOrigins[index].Projections = appendSliceProjection(base.AlternativeOrigins[index].Projections, projection)
+			}
 		}
 		base.Type = Type{Name: typeDisplayName(*containerType.Element) + "[]", Kind: SliceType, Element: containerType.Element}
 		base.PartialMoveSafe = false

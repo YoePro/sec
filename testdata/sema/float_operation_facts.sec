@@ -1,0 +1,74 @@
+module main
+
+fn F32(a: float32, b: float32) bool {
+    let positive := +a
+    let negative := -a
+    let add := a + b
+    let sub := a - b
+    let mul := a * b
+    let div := a / b
+    let rem := a % b
+    let eq := a == b
+    let ne := a != b
+    let lt := a < b
+    let le := a <= b
+    let gt := a > b
+    let ge := a >= b
+    let mut accumulator: float32 := a
+    accumulator += b
+    accumulator -= b
+    accumulator *= b
+    accumulator /= b
+    accumulator %= b
+    return a != b
+}
+
+fn F64(a: float64, b: float64) bool {
+    let positive := +a
+    let negative := -a
+    let add := a + b
+    let sub := a - b
+    let mul := a * b
+    let div := a / b
+    let rem := a % b
+    let eq := a == b
+    let ne := a != b
+    let lt := a < b
+    let le := a <= b
+    let gt := a > b
+    let ge := a >= b
+    let mut accumulator: float64 := a
+    accumulator += b
+    accumulator -= b
+    accumulator *= b
+    accumulator /= b
+    accumulator %= b
+    return a != b
+}
+
+fn Platform(a: float, b: float) bool {
+    let positive := +a
+    let negative := -a
+    let add := a + b
+    let sub := a - b
+    let mul := a * b
+    let div := a / b
+    let rem := a % b
+    let eq := a == b
+    let ne := a != b
+    let lt := a < b
+    let le := a <= b
+    let gt := a > b
+    let ge := a >= b
+    let mut accumulator: float := a
+    accumulator += b
+    accumulator -= b
+    accumulator *= b
+    accumulator /= b
+    accumulator %= b
+    return a != b
+}
+
+fn Integer(a: int) int {
+    return a + 1
+}

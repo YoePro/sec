@@ -309,6 +309,8 @@ const (
 )
 
 type ResolvedOperator struct {
+	// Float publishes immutable P20 operator facts; zero for non-float operators.
+	Float           ResolvedFloatOperation
 	Kind            ResolvedOperatorKind
 	LeftType        Type
 	RightType       *Type
@@ -611,15 +613,18 @@ const (
 )
 
 type ResolvedMatchArm struct {
-	SourceIndex           int
-	PatternKind           ResolvedMatchPatternKind
-	EnumNumericValue      *big.Int
-	EnumCaseName          string
-	UnionVariantIndex     uint32
-	UnionVariantName      string
-	BindingName           string
-	BindingType           Type
-	BindingAction         ResolvedMatchBindingAction
+	SourceIndex       int
+	PatternKind       ResolvedMatchPatternKind
+	EnumNumericValue  *big.Int
+	EnumCaseName      string
+	UnionVariantIndex uint32
+	UnionVariantName  string
+	BindingName       string
+	BindingType       Type
+	BindingAction     ResolvedMatchBindingAction
+	// FieldBindings are the arm's shallow named-field bindings, in source
+	// order (flowcontrol_match.md § 10).
+	FieldBindings         []ResolvedMatchFieldBinding
 	Guarded               bool
 	Flow                  ResolvedMatchArmFlow
 	ResultType            Type
@@ -1739,6 +1744,7 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 		if infix, ok := expr.(*ast.InfixExpression); ok {
 			resolved = a.proveShiftCount(resolved, infix.Left, infix.Right)
 		}
+		resolved.Float = a.resolvedFloatOperationFacts(resolved)
 		a.resolvedOperators[expr] = resolved
 	}
 }
@@ -1882,6 +1888,7 @@ func (a *Analyzer) recordResolvedCompoundAssignment(stmt *ast.AssignmentStatemen
 	if floating, ok := resolvedFloatInfixOperator(operator, target, value, target); ok {
 		// `x op= y` on a float is exactly `x op y` (operators.md
 		// "Compound assignment"); floating operators never fail.
+		floating.Float = a.resolvedFloatOperationFacts(floating)
 		a.resolvedCompoundAssignments[stmt] = floating
 		return
 	}

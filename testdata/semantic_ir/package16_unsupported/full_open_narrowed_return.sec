@@ -1,0 +1,6 @@
+module main
+fn Same(values: ref int[]) ref int[] { return values }
+fn Narrow(values: ref int[]) ref int[] {
+    let part := ref values[1..<3]
+    return ref Same(part)[..]
+}

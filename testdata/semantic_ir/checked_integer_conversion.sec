@@ -1,0 +1,22 @@
+module main
+
+fn Narrow(x: int32) Result[int8, ConversionError] {
+    let v := try int8(x)
+    return Ok(v)
+}
+
+fn Recover(x: int64) uint16 {
+    let v := try uint16(x) {
+        Err(e) => 9
+    }
+    return v
+}
+
+fn Widen(x: int8) Result[uint64, ConversionError] {
+    let v := try uint64(x)
+    return Ok(v)
+}
+
+fn main() int {
+    return 0
+}

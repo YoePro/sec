@@ -222,16 +222,16 @@ impl Builder {
             encoded[0] = byte(codepoint)
             count = 1
         } else if codepoint <= 0x7FF {
-            encoded[0] = byte(0xC0 | (codepoint >> 6))
+            encoded[0] = byte(bit[8](0xC0 | (codepoint >> 6)))
             encoded[1] = byte(0x80 | (codepoint & 0x3F))
             count = 2
         } else if codepoint <= 0xFFFF {
-            encoded[0] = byte(0xE0 | (codepoint >> 12))
+            encoded[0] = byte(bit[8](0xE0 | (codepoint >> 12)))
             encoded[1] = byte(0x80 | ((codepoint >> 6) & 0x3F))
             encoded[2] = byte(0x80 | (codepoint & 0x3F))
             count = 3
         } else {
-            encoded[0] = byte(0xF0 | (codepoint >> 18))
+            encoded[0] = byte(bit[8](0xF0 | (codepoint >> 18)))
             encoded[1] = byte(0x80 | ((codepoint >> 12) & 0x3F))
             encoded[2] = byte(0x80 | ((codepoint >> 6) & 0x3F))
             encoded[3] = byte(0x80 | (codepoint & 0x3F))

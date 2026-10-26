@@ -642,18 +642,6 @@ func executionContributesReachability(execution CallExecutionRelation) bool {
 	}
 }
 
-func (g *CallGraph) SameStackSCC(id CallableID) []CallableNode {
-	if g == nil {
-		return nil
-	}
-	for _, component := range g.componentsForTargets(g.sameStackTargets) {
-		if component[id] {
-			return g.nodesInOrder(component)
-		}
-	}
-	return nil
-}
-
 // TaskSpawnSCC returns the strongly connected component containing id when
 // only task-spawn execution relationships are followed.
 //
@@ -767,22 +755,6 @@ func (g *CallGraph) isInExecutionCycle(id CallableID, execution CallExecutionRel
 		return false
 	}
 	for _, target := range g.targetsForExecution(id, execution) {
-		if target == id {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *CallGraph) IsSameStackRecursive(id CallableID) bool {
-	component := g.SameStackSCC(id)
-	if len(component) > 1 {
-		return true
-	}
-	if len(component) == 0 {
-		return false
-	}
-	for _, target := range g.sameStackTargets(id) {
 		if target == id {
 			return true
 		}

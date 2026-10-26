@@ -262,28 +262,28 @@ impl Ipv6Address {
     property Bytes: byte[16] {
         get {
             return [
-                byte(uint16(self.Segment0) >> 8),
+                byte(bit[8](uint16(self.Segment0) >> 8)),
                 byte(uint16(self.Segment0) & 0xff),
 
-                byte(uint16(self.Segment1) >> 8),
+                byte(bit[8](uint16(self.Segment1) >> 8)),
                 byte(uint16(self.Segment1) & 0xff),
 
-                byte(uint16(self.Segment2) >> 8),
+                byte(bit[8](uint16(self.Segment2) >> 8)),
                 byte(uint16(self.Segment2) & 0xff),
 
-                byte(uint16(self.Segment3) >> 8),
+                byte(bit[8](uint16(self.Segment3) >> 8)),
                 byte(uint16(self.Segment3) & 0xff),
 
-                byte(uint16(self.Segment4) >> 8),
+                byte(bit[8](uint16(self.Segment4) >> 8)),
                 byte(uint16(self.Segment4) & 0xff),
 
-                byte(uint16(self.Segment5) >> 8),
+                byte(bit[8](uint16(self.Segment5) >> 8)),
                 byte(uint16(self.Segment5) & 0xff),
 
-                byte(uint16(self.Segment6) >> 8),
+                byte(bit[8](uint16(self.Segment6) >> 8)),
                 byte(uint16(self.Segment6) & 0xff),
 
-                byte(uint16(self.Segment7) >> 8),
+                byte(bit[8](uint16(self.Segment7) >> 8)),
                 byte(uint16(self.Segment7) & 0xff),
             ]
         }
@@ -419,11 +419,16 @@ impl Ipv6Address {
             return Err(AddressError.InvalidIpv6)
         }
 
-        if value.IsDigit {
-            return Ok(byte(int(value) - 48))
+        // A validated hex digit is 0..15; the checked conversion keeps
+        // that proof explicit (MD-056).
+        let mut offset := 48
+        if !value.IsDigit {
+            offset = 55
         }
-
-        return Ok(byte(int(value.ToUpper()) - 55))
+        let digit := try byte(int(value.ToUpper()) - offset) {
+            Err(_) => return Err(AddressError.InvalidIpv6)
+        }
+        return Ok(digit)
     }
 
     /**

@@ -8,8 +8,8 @@ import (
 
 // An explicit built-in integer conversion records Sema's plan: exact when the
 // source domain fits the target on every supported width or the argument is a
-// validated compile-time constant, checked otherwise (types.md "Explicit
-// conversions"; MD-104). char and rune comparisons resolve to character
+// validated compile-time constant, checked otherwise, which then needs try
+// (types.md "Explicit conversions"; MD-104, MD-056). char and rune comparisons resolve to character
 // comparisons, never to integer ones (operators.md "Character ordering",
 // "Rune ordering"; MD-105).
 func TestIntegerConversionPlansAndCharacterComparisons(t *testing.T) {
@@ -22,7 +22,10 @@ fn Conversions(small: int8, unsigned: uint8, wide: int) int8 {
     discard a
     discard b
     discard d
-    return int8(wide)
+    let narrowed := try int8(wide) {
+        Err(_) => 0
+    }
+    return narrowed
 }
 
 fn Compare(r: rune, s: rune, c: char) bool {

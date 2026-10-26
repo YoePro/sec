@@ -1,4 +1,5 @@
 add_mlir_library(SecMLIRAnalysis
+  VerifyFloatSemantics.cpp
   VerifyCheckedIntegerGuards.cpp
   VerifyPlaceReferences.cpp
   VerifyReferenceTransfers.cpp
@@ -12,6 +13,7 @@ add_mlir_library(SecMLIRAnalysis
   SecMLIRAnalysisPassIncGen
 
   LINK_LIBS PUBLIC
+  MLIRArithDialect
   MLIRControlFlowDialect
   MLIRFuncDialect
   MLIRIR

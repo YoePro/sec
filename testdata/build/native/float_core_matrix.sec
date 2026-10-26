@@ -1,0 +1,287 @@
+module main
+
+// P20 §§28–36,78,80: native execution of primitive core operations.
+// Clamp candidate/failure execution has a separate dialect fixture.
+
+fn CoreF32(one: float32, two: float32) int {
+    let zero: float32 := 0.0
+    let negativeZero: float32 := -0.0
+    let half: float32 := 0.5
+    let positive: float32 := 2.7
+    let negative: float32 := -2.7
+    let evenHalf: float32 := 2.5
+    let oddHalf: float32 := 3.5
+    let nan := float32.NaN
+    let infinity := float32.Infinity
+    let largest := float32.Max
+    let minimum := float32.Min
+    let epsilon := float32.Epsilon
+    let mut smallest: float32 := one
+    let mut smallestNormal: float32 := one
+    for i in 0..<1100 {
+        let next := smallest / two
+        if next.IsNormal() { smallestNormal = next }
+        if next == zero { break }
+        smallest = next
+    }
+    let largestSubnormal := smallestNormal - smallest
+    if !one.IsNormal() || !largest.IsNormal() || !smallestNormal.IsNormal() || !largestSubnormal.IsSubnormal() || !smallest.IsSubnormal() {
+        return 1
+    }
+    if zero.IsNormal() || zero.IsSubnormal() || negativeZero.IsNormal() || negativeZero.IsSubnormal() || !zero.IsFinite() || !negativeZero.IsFinite() {
+        return 2
+    }
+    if !infinity.IsInfinite() || !(-infinity).IsInfinite() || infinity.IsFinite() || infinity.IsNormal() || infinity.IsSubnormal() || infinity.IsNaN() {
+        return 3
+    }
+    if !nan.IsNaN() || nan.IsFinite() || nan.IsInfinite() || nan.IsNormal() || nan.IsSubnormal() {
+        return 4
+    }
+    if !largestSubnormal.IsFinite() || !smallestNormal.IsFinite() || smallestNormal.IsSubnormal() || smallest.IsNormal() {
+        return 5
+    }
+    if minimum != -largest || minimum.Abs() != largest || epsilon <= zero || !epsilon.IsNormal() || one + epsilon <= one || one + epsilon / two != one {
+        return 6
+    }
+    if negativeZero.Abs() != zero || !(one / negativeZero.Abs() > zero) || (-infinity).Abs() != infinity || !nan.Abs().IsNaN() {
+        return 7
+    }
+    if one.Min(two) != one || one.Max(two) != two || !nan.Min(one).IsNaN() || !one.Min(nan).IsNaN() || !nan.Max(one).IsNaN() || !one.Max(nan).IsNaN() {
+        return 8
+    }
+    if !(one / negativeZero.Min(zero) < zero) || !(one / zero.Min(negativeZero) < zero) || !(one / negativeZero.Max(zero) > zero) || !(one / zero.Max(negativeZero) > zero) {
+        return 9
+    }
+    if infinity.Min(one) != one || (-infinity).Max(one) != one || infinity.Max(one) != infinity || (-infinity).Min(one) != -infinity {
+        return 10
+    }
+    if positive.Floor() != two || positive.Ceiling() != 3.0 || positive.Truncate() != two || positive.Round() != 3.0 {
+        return 11
+    }
+    if negative.Floor() != -3.0 || negative.Ceiling() != -two || negative.Truncate() != -two || negative.Round() != -3.0 {
+        return 12
+    }
+    if half.Round() != zero || !(one / half.Round() > zero) || !((one + half).Round() == two) || evenHalf.Round() != two || oddHalf.Round() != 4.0 {
+        return 13
+    }
+    if (-half).Round() != zero || !(one / (-half).Round() < zero) || (-evenHalf).Round() != -two || (-oddHalf).Round() != -4.0 {
+        return 14
+    }
+    if !(one / negativeZero.Floor() < zero) || !(one / negativeZero.Ceiling() < zero) || !(one / negativeZero.Truncate() < zero) || !(one / negativeZero.Round() < zero) {
+        return 15
+    }
+    if !(one / zero.Floor() > zero) || !(one / zero.Ceiling() > zero) || !(one / zero.Truncate() > zero) || !(one / zero.Round() > zero) {
+        return 16
+    }
+    if infinity.Floor() != infinity || infinity.Ceiling() != infinity || infinity.Truncate() != infinity || infinity.Round() != infinity {
+        return 17
+    }
+    if (-infinity).Floor() != -infinity || (-infinity).Ceiling() != -infinity || (-infinity).Truncate() != -infinity || (-infinity).Round() != -infinity {
+        return 18
+    }
+    if !nan.Floor().IsNaN() || !nan.Ceiling().IsNaN() || !nan.Truncate().IsNaN() || !nan.Round().IsNaN() {
+        return 19
+    }
+    if smallest.Floor() != zero || smallest.Ceiling() != one || smallest.Truncate() != zero || smallest.Round() != zero || !(one / smallest.Round() > zero) {
+        return 20
+    }
+    if (-smallest).Floor() != -one || !(one / (-smallest).Ceiling() < zero) || !(one / (-smallest).Truncate() < zero) || !(one / (-smallest).Round() < zero) {
+        return 21
+    }
+    if largest.Floor() != largest || largest.Ceiling() != largest || largest.Truncate() != largest || largest.Round() != largest {
+        return 22
+    }
+    return 0
+}
+
+fn CoreF64(one: float64, two: float64) int {
+    let zero: float64 := 0.0
+    let negativeZero: float64 := -0.0
+    let half: float64 := 0.5
+    let positive: float64 := 2.7
+    let negative: float64 := -2.7
+    let evenHalf: float64 := 2.5
+    let oddHalf: float64 := 3.5
+    let nan := float64.NaN
+    let infinity := float64.Infinity
+    let largest := float64.Max
+    let minimum := float64.Min
+    let epsilon := float64.Epsilon
+    let mut smallest: float64 := one
+    let mut smallestNormal: float64 := one
+    for i in 0..<1100 {
+        let next := smallest / two
+        if next.IsNormal() { smallestNormal = next }
+        if next == zero { break }
+        smallest = next
+    }
+    let largestSubnormal := smallestNormal - smallest
+    if !one.IsNormal() || !largest.IsNormal() || !smallestNormal.IsNormal() || !largestSubnormal.IsSubnormal() || !smallest.IsSubnormal() {
+        return 1
+    }
+    if zero.IsNormal() || zero.IsSubnormal() || negativeZero.IsNormal() || negativeZero.IsSubnormal() || !zero.IsFinite() || !negativeZero.IsFinite() {
+        return 2
+    }
+    if !infinity.IsInfinite() || !(-infinity).IsInfinite() || infinity.IsFinite() || infinity.IsNormal() || infinity.IsSubnormal() || infinity.IsNaN() {
+        return 3
+    }
+    if !nan.IsNaN() || nan.IsFinite() || nan.IsInfinite() || nan.IsNormal() || nan.IsSubnormal() {
+        return 4
+    }
+    if !largestSubnormal.IsFinite() || !smallestNormal.IsFinite() || smallestNormal.IsSubnormal() || smallest.IsNormal() {
+        return 5
+    }
+    if minimum != -largest || minimum.Abs() != largest || epsilon <= zero || !epsilon.IsNormal() || one + epsilon <= one || one + epsilon / two != one {
+        return 6
+    }
+    if negativeZero.Abs() != zero || !(one / negativeZero.Abs() > zero) || (-infinity).Abs() != infinity || !nan.Abs().IsNaN() {
+        return 7
+    }
+    if one.Min(two) != one || one.Max(two) != two || !nan.Min(one).IsNaN() || !one.Min(nan).IsNaN() || !nan.Max(one).IsNaN() || !one.Max(nan).IsNaN() {
+        return 8
+    }
+    if !(one / negativeZero.Min(zero) < zero) || !(one / zero.Min(negativeZero) < zero) || !(one / negativeZero.Max(zero) > zero) || !(one / zero.Max(negativeZero) > zero) {
+        return 9
+    }
+    if infinity.Min(one) != one || (-infinity).Max(one) != one || infinity.Max(one) != infinity || (-infinity).Min(one) != -infinity {
+        return 10
+    }
+    if positive.Floor() != two || positive.Ceiling() != 3.0 || positive.Truncate() != two || positive.Round() != 3.0 {
+        return 11
+    }
+    if negative.Floor() != -3.0 || negative.Ceiling() != -two || negative.Truncate() != -two || negative.Round() != -3.0 {
+        return 12
+    }
+    if half.Round() != zero || !(one / half.Round() > zero) || !((one + half).Round() == two) || evenHalf.Round() != two || oddHalf.Round() != 4.0 {
+        return 13
+    }
+    if (-half).Round() != zero || !(one / (-half).Round() < zero) || (-evenHalf).Round() != -two || (-oddHalf).Round() != -4.0 {
+        return 14
+    }
+    if !(one / negativeZero.Floor() < zero) || !(one / negativeZero.Ceiling() < zero) || !(one / negativeZero.Truncate() < zero) || !(one / negativeZero.Round() < zero) {
+        return 15
+    }
+    if !(one / zero.Floor() > zero) || !(one / zero.Ceiling() > zero) || !(one / zero.Truncate() > zero) || !(one / zero.Round() > zero) {
+        return 16
+    }
+    if infinity.Floor() != infinity || infinity.Ceiling() != infinity || infinity.Truncate() != infinity || infinity.Round() != infinity {
+        return 17
+    }
+    if (-infinity).Floor() != -infinity || (-infinity).Ceiling() != -infinity || (-infinity).Truncate() != -infinity || (-infinity).Round() != -infinity {
+        return 18
+    }
+    if !nan.Floor().IsNaN() || !nan.Ceiling().IsNaN() || !nan.Truncate().IsNaN() || !nan.Round().IsNaN() {
+        return 19
+    }
+    if smallest.Floor() != zero || smallest.Ceiling() != one || smallest.Truncate() != zero || smallest.Round() != zero || !(one / smallest.Round() > zero) {
+        return 20
+    }
+    if (-smallest).Floor() != -one || !(one / (-smallest).Ceiling() < zero) || !(one / (-smallest).Truncate() < zero) || !(one / (-smallest).Round() < zero) {
+        return 21
+    }
+    if largest.Floor() != largest || largest.Ceiling() != largest || largest.Truncate() != largest || largest.Round() != largest {
+        return 22
+    }
+    return 0
+}
+
+fn CorePlatform(one: float, two: float) int {
+    let zero: float := 0.0
+    let negativeZero: float := -0.0
+    let half: float := 0.5
+    let positive: float := 2.7
+    let negative: float := -2.7
+    let evenHalf: float := 2.5
+    let oddHalf: float := 3.5
+    let nan := float.NaN
+    let infinity := float.Infinity
+    let largest := float.Max
+    let minimum := float.Min
+    let epsilon := float.Epsilon
+    let mut smallest: float := one
+    let mut smallestNormal: float := one
+    for i in 0..<1100 {
+        let next := smallest / two
+        if next.IsNormal() { smallestNormal = next }
+        if next == zero { break }
+        smallest = next
+    }
+    let largestSubnormal := smallestNormal - smallest
+    if !one.IsNormal() || !largest.IsNormal() || !smallestNormal.IsNormal() || !largestSubnormal.IsSubnormal() || !smallest.IsSubnormal() {
+        return 1
+    }
+    if zero.IsNormal() || zero.IsSubnormal() || negativeZero.IsNormal() || negativeZero.IsSubnormal() || !zero.IsFinite() || !negativeZero.IsFinite() {
+        return 2
+    }
+    if !infinity.IsInfinite() || !(-infinity).IsInfinite() || infinity.IsFinite() || infinity.IsNormal() || infinity.IsSubnormal() || infinity.IsNaN() {
+        return 3
+    }
+    if !nan.IsNaN() || nan.IsFinite() || nan.IsInfinite() || nan.IsNormal() || nan.IsSubnormal() {
+        return 4
+    }
+    if !largestSubnormal.IsFinite() || !smallestNormal.IsFinite() || smallestNormal.IsSubnormal() || smallest.IsNormal() {
+        return 5
+    }
+    if minimum != -largest || minimum.Abs() != largest || epsilon <= zero || !epsilon.IsNormal() || one + epsilon <= one || one + epsilon / two != one {
+        return 6
+    }
+    if negativeZero.Abs() != zero || !(one / negativeZero.Abs() > zero) || (-infinity).Abs() != infinity || !nan.Abs().IsNaN() {
+        return 7
+    }
+    if one.Min(two) != one || one.Max(two) != two || !nan.Min(one).IsNaN() || !one.Min(nan).IsNaN() || !nan.Max(one).IsNaN() || !one.Max(nan).IsNaN() {
+        return 8
+    }
+    if !(one / negativeZero.Min(zero) < zero) || !(one / zero.Min(negativeZero) < zero) || !(one / negativeZero.Max(zero) > zero) || !(one / zero.Max(negativeZero) > zero) {
+        return 9
+    }
+    if infinity.Min(one) != one || (-infinity).Max(one) != one || infinity.Max(one) != infinity || (-infinity).Min(one) != -infinity {
+        return 10
+    }
+    if positive.Floor() != two || positive.Ceiling() != 3.0 || positive.Truncate() != two || positive.Round() != 3.0 {
+        return 11
+    }
+    if negative.Floor() != -3.0 || negative.Ceiling() != -two || negative.Truncate() != -two || negative.Round() != -3.0 {
+        return 12
+    }
+    if half.Round() != zero || !(one / half.Round() > zero) || !((one + half).Round() == two) || evenHalf.Round() != two || oddHalf.Round() != 4.0 {
+        return 13
+    }
+    if (-half).Round() != zero || !(one / (-half).Round() < zero) || (-evenHalf).Round() != -two || (-oddHalf).Round() != -4.0 {
+        return 14
+    }
+    if !(one / negativeZero.Floor() < zero) || !(one / negativeZero.Ceiling() < zero) || !(one / negativeZero.Truncate() < zero) || !(one / negativeZero.Round() < zero) {
+        return 15
+    }
+    if !(one / zero.Floor() > zero) || !(one / zero.Ceiling() > zero) || !(one / zero.Truncate() > zero) || !(one / zero.Round() > zero) {
+        return 16
+    }
+    if infinity.Floor() != infinity || infinity.Ceiling() != infinity || infinity.Truncate() != infinity || infinity.Round() != infinity {
+        return 17
+    }
+    if (-infinity).Floor() != -infinity || (-infinity).Ceiling() != -infinity || (-infinity).Truncate() != -infinity || (-infinity).Round() != -infinity {
+        return 18
+    }
+    if !nan.Floor().IsNaN() || !nan.Ceiling().IsNaN() || !nan.Truncate().IsNaN() || !nan.Round().IsNaN() {
+        return 19
+    }
+    if smallest.Floor() != zero || smallest.Ceiling() != one || smallest.Truncate() != zero || smallest.Round() != zero || !(one / smallest.Round() > zero) {
+        return 20
+    }
+    if (-smallest).Floor() != -one || !(one / (-smallest).Ceiling() < zero) || !(one / (-smallest).Truncate() < zero) || !(one / (-smallest).Round() < zero) {
+        return 21
+    }
+    if largest.Floor() != largest || largest.Ceiling() != largest || largest.Truncate() != largest || largest.Round() != largest {
+        return 22
+    }
+    return 0
+}
+
+fn main() int {
+    let f32 := CoreF32(1.0, 2.0)
+    if f32 != 0 { return f32 }
+    let f64 := CoreF64(1.0, 2.0)
+    if f64 != 0 { return f64 + 32 }
+    let platform := CorePlatform(1.0, 2.0)
+    if platform != 0 { return platform + 64 }
+    return 0
+}

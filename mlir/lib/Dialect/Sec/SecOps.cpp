@@ -269,6 +269,68 @@ LogicalResult FloatCmpOp::verify() {
   return success();
 }
 
+LogicalResult FloatAbsOp::verify() {
+  if (!isSecFloatSemanticType(getValue().getType()) ||
+      getValue().getType() != getResult().getType())
+    return emitOpError("operand and result must have the same Sec float type");
+  return success();
+}
+
+static LogicalResult verifyFloatExtremum(Operation *op, Value left,
+                                         Value right, Value result) {
+  if (!isSecFloatSemanticType(left.getType()) ||
+      left.getType() != right.getType() || left.getType() != result.getType())
+    return op->emitOpError(
+        "operands and result must have the same Sec float type");
+  return success();
+}
+
+LogicalResult FloatMinimumOp::verify() {
+  return verifyFloatExtremum(*this, getLeft(), getRight(), getResult());
+}
+
+LogicalResult FloatMaximumOp::verify() {
+  return verifyFloatExtremum(*this, getLeft(), getRight(), getResult());
+}
+
+LogicalResult FloatClassifyOp::verify() {
+  if (!isOneOf(getKind(), {"finite", "infinite", "nan", "normal", "subnormal"}))
+    return emitOpError(
+        "kind must be finite, infinite, nan, normal, or subnormal");
+  if (!isSecFloatSemanticType(getValue().getType()))
+    return emitOpError("operand must have a Sec float type");
+  return success();
+}
+
+LogicalResult FloatRoundOp::verify() {
+  if (!isOneOf(getKind(), {"floor", "ceiling", "truncate", "nearest-even"}))
+    return emitOpError(
+        "kind must be floor, ceiling, truncate, or nearest-even");
+  if (!isSecFloatSemanticType(getValue().getType()) ||
+      getValue().getType() != getResult().getType())
+    return emitOpError("operand and result must have the same Sec float type");
+  return success();
+}
+
+LogicalResult FloatClampCheckedOp::verify() {
+  Type type = getValue().getType();
+  if (!isSecFloatSemanticType(type) || getMinimum().getType() != type ||
+      getMaximum().getType() != type || getResult().getType() != type)
+    return emitOpError(
+        "value, bounds and result must have the same Sec float type");
+  return success();
+}
+
+LogicalResult FloatPropertyOp::verify() {
+  if (!isOneOf(getKind(), {"min", "max", "epsilon", "infinity",
+                           "negative-infinity", "nan"}))
+    return emitOpError("kind must be min, max, epsilon, infinity, "
+                       "negative-infinity, or nan");
+  if (!isSecFloatSemanticType(getResult().getType()))
+    return emitOpError("result must have a Sec float type");
+  return success();
+}
+
 LogicalResult ConstDecimalOp::verify() {
   if (failed(parseDecimalInteger(getCoefficient())))
     return emitOpError("coefficient must be a base-10 integer string");
@@ -360,6 +422,16 @@ LogicalResult NumericConvertExactOp::verify() {
     return emitOpError(
         "schema 11 admits only builtin Sec integer operand and result types");
   return verifyConversionProof(*this);
+}
+
+LogicalResult NumericConvertCheckedOp::verify() {
+  if (getFailure() != "OutOfRange")
+    return emitOpError("failure must be OutOfRange for integer targets");
+  if (!isBuiltinIntegerSemanticType(getValue().getType()) ||
+      !isBuiltinIntegerSemanticType(getCandidate().getType()))
+    return emitOpError(
+        "admits only builtin Sec integer operand and candidate types");
+  return success();
 }
 
 LogicalResult IntBitNotOp::verify() {

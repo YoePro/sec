@@ -2,6 +2,7 @@
 #define SEC_ANALYSIS_PASSES_H
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 
 namespace sec {
@@ -9,6 +10,8 @@ namespace sec {
 #define GEN_PASS_DECL
 #include "sec/Analysis/Passes.h.inc"
 
+std::unique_ptr<mlir::Pass> createSecVerifyFloatSemanticsPass();
+mlir::LogicalResult verifyFloatSemantics(mlir::ModuleOp module);
 std::unique_ptr<mlir::Pass> createSecVerifyCheckedIntegerGuardsPass();
 mlir::LogicalResult verifyCheckedIntegerGuards(mlir::func::FuncOp function);
 std::unique_ptr<mlir::Pass> createSecVerifyResultGuardsPass();

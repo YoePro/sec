@@ -1,0 +1,6 @@
+module main
+
+fn Same(values: ref int[]) ref int[] { return values }
+fn Narrow(values: ref int[]) ref int[] {
+    return ref Same(values)[1..<3]
+}

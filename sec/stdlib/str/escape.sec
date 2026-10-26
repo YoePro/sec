@@ -269,7 +269,11 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                 )
                 index += 1
 
-                decoded = rune(upper * 16 + lower)
+                // Two hex digits are at most 0xFF, always a scalar value.
+                let byteScalar := try rune(upper * 16 + lower) {
+                    Err(_) => return Err(UnescapeError.InvalidUnicodeScalar(escapeStart))
+                }
+                decoded = byteScalar
             case 117:
                 // Unicode escape: \u{H...}
                 if index >= value.SizeOf {
@@ -315,7 +319,10 @@ fn UnescapeLiteral(value: string) Result[string, UnescapeError] {
                     return Err(UnescapeError.InvalidUnicodeScalar(escapeStart))
                 }
 
-                decoded = rune(scalar)
+                let unicodeScalar := try rune(scalar) {
+                    Err(_) => return Err(UnescapeError.InvalidUnicodeScalar(escapeStart))
+                }
+                decoded = unicodeScalar
             default:
                 return Err(UnescapeError.InvalidEscape(escapeStart))
         }
@@ -484,7 +491,9 @@ fn Unquote(value: string) Result[string, UnescapeError] {
  */
 
 fn _AppendHexEscape(builder: ref mut Builder, character: rune) Result[void, CollectionError] {
-    let value := byte(character)
+    // Callers pass only C0/C1 controls (below 0xA0), so the low byte is the
+    // whole value.
+    let value := byte(bit[8](uint32(character)))
 
     let hex := try value.ToString(byte.ByteStringFormat.Hexadecimal) {
         Err(_) => {

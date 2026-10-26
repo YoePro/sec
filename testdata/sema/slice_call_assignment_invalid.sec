@@ -1,0 +1,26 @@
+module main
+
+fn Shared(values: ref int[]) ref int[] { return values }
+fn Writable(values: ref mut int[]) ref mut int[] { return values }
+fn Factory() int[2] { return [1, 2] }
+
+fn ReadOnly(values: ref int[]) void {
+    Shared(values)[0] = 3
+}
+
+fn OwningTemporary() void {
+    Factory()[0] = 3
+}
+
+fn Overlap() int {
+    let mut data := [1, 2, 3, 4]
+    let held := ref data[..<2]
+    Writable(ref mut data[..<2])[0] = 3
+    return held[0]
+}
+
+fn Parent(values: ref mut int[]) int {
+    let child := ref values[..]
+    Writable(values)[0] = 3
+    return child[0]
+}

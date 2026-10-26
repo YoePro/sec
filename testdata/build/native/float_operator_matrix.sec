@@ -1,0 +1,224 @@
+module main
+
+// P20 §§20–27,86: arithmetic, every comparison, NaN, signed zero,
+// infinity and gradual underflow for each primitive floating source type.
+
+fn CheckF32(one: float32, two: float32, a: float32) int {
+    let zero: float32 := 0.0
+    let negativeZero: float32 := -0.0
+    let negative: float32 := -a
+    let nan := zero / zero
+    let infinity := one / zero
+    let largest := float32.Max
+    let overflow := largest * two
+    let negativeOverflow := -largest * two
+    let mut smallest: float32 := 1.0
+    for i in 0..<1100 {
+        if smallest / two == zero {
+            break
+        }
+        smallest /= two
+    }
+    if a + two != 9.5 || a - two != 5.5 || a * two != 15.0 || a / two != 3.75 || a % two != 1.5 {
+        return 1
+    }
+    if +a != a || -a != -7.5 || negative % two != -1.5 || a % -two != 1.5 || negative % -two != -1.5 {
+        return 2
+    }
+    if !(one == one) || one != one || !(one < two) || !(one <= one) || !(two > one) || !(two >= two) {
+        return 3
+    }
+    if nan == nan || !(nan != nan) || nan == one || one == nan || !(one != nan) || !(nan != one) {
+        return 4
+    }
+    if nan < one || nan <= one || nan > one || nan >= one || one < nan || one <= nan || one > nan || one >= nan {
+        return 5
+    }
+    if zero != negativeZero || zero < negativeZero || negativeZero < zero || !(zero <= negativeZero) || !(negativeZero >= zero) {
+        return 6
+    }
+    if !(one / (+negativeZero) < zero) || !(one / (-negativeZero) > zero) {
+        return 7
+    }
+    if !(one / (negativeZero * one) < zero) || !(one / (zero / -one) < zero) || !(one / (negativeZero + negativeZero) < zero) {
+        return 8
+    }
+    if !(one / (a - a) > zero) || !(one / (negative - negative) > zero) {
+        return 9
+    }
+    if !infinity.IsInfinite() || !(-infinity).IsInfinite() || !(infinity > a) || !(-infinity < negative) {
+        return 10
+    }
+    if !overflow.IsInfinite() || !(overflow > zero) || !(negativeOverflow < zero) || !(largest + largest).IsInfinite() {
+        return 11
+    }
+    if !(infinity - infinity).IsNaN() || !(infinity / infinity).IsNaN() || !(infinity * zero).IsNaN() || !(one % zero).IsNaN() {
+        return 12
+    }
+    if !(nan + one).IsNaN() || !(nan - one).IsNaN() || !(nan * one).IsNaN() || !(nan / one).IsNaN() || !(nan % one).IsNaN() {
+        return 13
+    }
+    if !(one / infinity == zero) || !(one / (one / -infinity) < zero) {
+        return 14
+    }
+    if !smallest.IsSubnormal() || !smallest.IsFinite() || smallest <= zero || smallest / two != zero {
+        return 15
+    }
+    if smallest + smallest <= smallest || smallest * two != smallest + smallest || !(one / (-smallest / two) < zero) {
+        return 16
+    }
+    if !one.IsNormal() || !one.IsFinite() || zero.IsNormal() || zero.IsSubnormal() || negativeZero.IsSubnormal() {
+        return 17
+    }
+    return 0
+}
+
+fn CheckF64(one: float64, two: float64, a: float64) int {
+    let zero: float64 := 0.0
+    let negativeZero: float64 := -0.0
+    let negative: float64 := -a
+    let nan := zero / zero
+    let infinity := one / zero
+    let largest := float64.Max
+    let overflow := largest * two
+    let negativeOverflow := -largest * two
+    let mut smallest: float64 := 1.0
+    for i in 0..<1100 {
+        if smallest / two == zero {
+            break
+        }
+        smallest /= two
+    }
+    if a + two != 9.5 || a - two != 5.5 || a * two != 15.0 || a / two != 3.75 || a % two != 1.5 {
+        return 1
+    }
+    if +a != a || -a != -7.5 || negative % two != -1.5 || a % -two != 1.5 || negative % -two != -1.5 {
+        return 2
+    }
+    if !(one == one) || one != one || !(one < two) || !(one <= one) || !(two > one) || !(two >= two) {
+        return 3
+    }
+    if nan == nan || !(nan != nan) || nan == one || one == nan || !(one != nan) || !(nan != one) {
+        return 4
+    }
+    if nan < one || nan <= one || nan > one || nan >= one || one < nan || one <= nan || one > nan || one >= nan {
+        return 5
+    }
+    if zero != negativeZero || zero < negativeZero || negativeZero < zero || !(zero <= negativeZero) || !(negativeZero >= zero) {
+        return 6
+    }
+    if !(one / (+negativeZero) < zero) || !(one / (-negativeZero) > zero) {
+        return 7
+    }
+    if !(one / (negativeZero * one) < zero) || !(one / (zero / -one) < zero) || !(one / (negativeZero + negativeZero) < zero) {
+        return 8
+    }
+    if !(one / (a - a) > zero) || !(one / (negative - negative) > zero) {
+        return 9
+    }
+    if !infinity.IsInfinite() || !(-infinity).IsInfinite() || !(infinity > a) || !(-infinity < negative) {
+        return 10
+    }
+    if !overflow.IsInfinite() || !(overflow > zero) || !(negativeOverflow < zero) || !(largest + largest).IsInfinite() {
+        return 11
+    }
+    if !(infinity - infinity).IsNaN() || !(infinity / infinity).IsNaN() || !(infinity * zero).IsNaN() || !(one % zero).IsNaN() {
+        return 12
+    }
+    if !(nan + one).IsNaN() || !(nan - one).IsNaN() || !(nan * one).IsNaN() || !(nan / one).IsNaN() || !(nan % one).IsNaN() {
+        return 13
+    }
+    if !(one / infinity == zero) || !(one / (one / -infinity) < zero) {
+        return 14
+    }
+    if !smallest.IsSubnormal() || !smallest.IsFinite() || smallest <= zero || smallest / two != zero {
+        return 15
+    }
+    if smallest + smallest <= smallest || smallest * two != smallest + smallest || !(one / (-smallest / two) < zero) {
+        return 16
+    }
+    if !one.IsNormal() || !one.IsFinite() || zero.IsNormal() || zero.IsSubnormal() || negativeZero.IsSubnormal() {
+        return 17
+    }
+    return 0
+}
+
+fn CheckPlatform(one: float, two: float, a: float) int {
+    let zero: float := 0.0
+    let negativeZero: float := -0.0
+    let negative: float := -a
+    let nan := zero / zero
+    let infinity := one / zero
+    let largest := float.Max
+    let overflow := largest * two
+    let negativeOverflow := -largest * two
+    let mut smallest: float := 1.0
+    for i in 0..<1100 {
+        if smallest / two == zero {
+            break
+        }
+        smallest /= two
+    }
+    if a + two != 9.5 || a - two != 5.5 || a * two != 15.0 || a / two != 3.75 || a % two != 1.5 {
+        return 1
+    }
+    if +a != a || -a != -7.5 || negative % two != -1.5 || a % -two != 1.5 || negative % -two != -1.5 {
+        return 2
+    }
+    if !(one == one) || one != one || !(one < two) || !(one <= one) || !(two > one) || !(two >= two) {
+        return 3
+    }
+    if nan == nan || !(nan != nan) || nan == one || one == nan || !(one != nan) || !(nan != one) {
+        return 4
+    }
+    if nan < one || nan <= one || nan > one || nan >= one || one < nan || one <= nan || one > nan || one >= nan {
+        return 5
+    }
+    if zero != negativeZero || zero < negativeZero || negativeZero < zero || !(zero <= negativeZero) || !(negativeZero >= zero) {
+        return 6
+    }
+    if !(one / (+negativeZero) < zero) || !(one / (-negativeZero) > zero) {
+        return 7
+    }
+    if !(one / (negativeZero * one) < zero) || !(one / (zero / -one) < zero) || !(one / (negativeZero + negativeZero) < zero) {
+        return 8
+    }
+    if !(one / (a - a) > zero) || !(one / (negative - negative) > zero) {
+        return 9
+    }
+    if !infinity.IsInfinite() || !(-infinity).IsInfinite() || !(infinity > a) || !(-infinity < negative) {
+        return 10
+    }
+    if !overflow.IsInfinite() || !(overflow > zero) || !(negativeOverflow < zero) || !(largest + largest).IsInfinite() {
+        return 11
+    }
+    if !(infinity - infinity).IsNaN() || !(infinity / infinity).IsNaN() || !(infinity * zero).IsNaN() || !(one % zero).IsNaN() {
+        return 12
+    }
+    if !(nan + one).IsNaN() || !(nan - one).IsNaN() || !(nan * one).IsNaN() || !(nan / one).IsNaN() || !(nan % one).IsNaN() {
+        return 13
+    }
+    if !(one / infinity == zero) || !(one / (one / -infinity) < zero) {
+        return 14
+    }
+    if !smallest.IsSubnormal() || !smallest.IsFinite() || smallest <= zero || smallest / two != zero {
+        return 15
+    }
+    if smallest + smallest <= smallest || smallest * two != smallest + smallest || !(one / (-smallest / two) < zero) {
+        return 16
+    }
+    if !one.IsNormal() || !one.IsFinite() || zero.IsNormal() || zero.IsSubnormal() || negativeZero.IsSubnormal() {
+        return 17
+    }
+    return 0
+}
+
+fn main() int {
+    let f32 := CheckF32(1.0, 2.0, 7.5)
+    if f32 != 0 { return f32 }
+    let f64 := CheckF64(1.0, 2.0, 7.5)
+    if f64 != 0 { return f64 + 32 }
+    let platform := CheckPlatform(1.0, 2.0, 7.5)
+    if platform != 0 { return platform + 64 }
+    return 0
+}

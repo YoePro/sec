@@ -30,7 +30,7 @@ fn ReadAtLeast(reader: ref mut Reader, buffer: ref mut byte[], minimum: uint) Re
 
     let mut total := 0u
     while total < minimum {
-        let count := try reader.Read(ref mut buffer[int(total)..])
+        let count := try reader.Read(ref mut buffer[total..])
         if count == 0u {
             return Err(IOError.UnexpectedEnd)
         }
@@ -43,7 +43,7 @@ fn ReadAtLeast(reader: ref mut Reader, buffer: ref mut byte[], minimum: uint) Re
 fn ReadExactly(reader: ref mut Reader, buffer: ref mut byte[]) Result[void, IOError] {
     let mut total := 0u
     while total < buffer.Len {
-        let count := try reader.Read(ref mut buffer[int(total)..])
+        let count := try reader.Read(ref mut buffer[total..])
         if count == 0u {
             return Err(IOError.UnexpectedEnd)
         }
@@ -88,7 +88,7 @@ fn WriteAll(writer: ref mut Writer, data: ref byte[]) Result[void, IOError] {
     let mut written := 0u
     let mut idle := 0u
     while written < data.Len {
-        let count := try writer.Write(ref data[int(written)..])
+        let count := try writer.Write(ref data[written..])
         if count == 0u {
             idle += 1
             if idle >= _maxZeroProgressWrites {
@@ -112,7 +112,7 @@ fn Copy(destination: ref mut Writer, source: ref mut Reader) Result[uint64, IOEr
         if count == 0u {
             return Ok(copied)
         }
-        try WriteAll(destination, ref chunk[..<int(count)])
+        try WriteAll(destination, ref chunk[..<count])
         copied += uint64(count)
     }
 }
@@ -127,11 +127,11 @@ fn CopyN(destination: ref mut Writer, source: ref mut Reader, count: uint64) Res
         if count - copied < uint64(want) {
             want = uint(count - copied)
         }
-        let received := try source.Read(ref mut chunk[..<int(want)])
+        let received := try source.Read(ref mut chunk[..<want])
         if received == 0u {
             return Err(IOError.UnexpectedEnd)
         }
-        try WriteAll(destination, ref chunk[..<int(received)])
+        try WriteAll(destination, ref chunk[..<received])
         copied += uint64(received)
     }
     return Ok(count)

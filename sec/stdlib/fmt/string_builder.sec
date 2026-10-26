@@ -56,7 +56,7 @@ impl StringBuilder {
         while n > 0 {
             i = i - 1
             let digit := n % 10
-            temp_buf[i] = byte(48 + digit) // 48 is ASCII '0'
+            temp_buf[i] = byte(bit[8](48 + digit)) // 48 is ASCII '0'; digit is 0..9
             n = n / 10
         }
 

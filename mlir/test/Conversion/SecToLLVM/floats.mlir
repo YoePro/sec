@@ -24,7 +24,8 @@ module attributes {sec.dialect_version = 11 : i32, sec.semantic_ir_version = 1 :
 // ARITH-LABEL: func.func @sec_fn_0(%{{.*}}: f32 {{.*}}, %{{.*}}: f64 {{.*}}) -> i1
 // ARITH: arith.constant 1.000000e-01 : f32
 // ARITH: arith.addf %{{.*}}, %{{.*}} : f32
-// ARITH: arith.remf %{{.*}}, %{{.*}} : f32
+// ARITH: arith.cmpi uge
+// ARITH: cf.cond_br
 // ARITH: arith.negf %{{.*}} : f32
 // ARITH: arith.cmpf une, %{{.*}}, %{{.*}} : f32
 // ARITH: arith.constant 2.000000e+00 : f64
@@ -34,7 +35,7 @@ module attributes {sec.dialect_version = 11 : i32, sec.semantic_ir_version = 1 :
 
 // CHECK-LABEL: llvm.func @sec_fn_0(%{{.*}}: f32, %{{.*}}: f64) -> i1
 // CHECK: llvm.fadd
-// CHECK: llvm.frem
+// CHECK: llvm.icmp "uge"
 // CHECK: llvm.fneg
 // CHECK: llvm.fcmp "une"
 // CHECK: llvm.fdiv

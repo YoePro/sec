@@ -1,0 +1,25 @@
+module main
+
+fn Same(values: ref int[]) ref int[] { return values }
+fn Writable(values: ref mut int[]) ref mut int[] { return values }
+
+fn Upgrade(values: ref int[]) void {
+    let child := ref mut Same(values)[..]
+    discard child
+}
+
+fn Retained(values: ref mut int[]) int {
+    let child := ref Writable(values)[..]
+    values[0] = 3
+    return child[0]
+}
+
+fn Descending(values: ref int[]) void {
+    let child := ref Same(values)[3..<1]
+    discard child
+}
+
+fn Escape() ref int[] {
+    let values := [1, 2, 3]
+    return Same(ref values[..])
+}

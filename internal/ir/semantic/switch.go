@@ -111,7 +111,7 @@ func (fb *functionBuilder) buildSwitch(stmt *ast.SwitchStatement) error {
 			next = bodies[index+1].block
 		}
 		fb.fallthroughTargets = append(fb.fallthroughTargets, next)
-		err := fb.buildStatements(body.clause.Body.Statements)
+		err := fb.buildScope(body.clause.Body)
 		fb.fallthroughTargets = fb.fallthroughTargets[:len(fb.fallthroughTargets)-1]
 		if err != nil {
 			return err

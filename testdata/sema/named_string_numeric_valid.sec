@@ -1,0 +1,25 @@
+module main
+
+type Name string
+type ShortName string minLen 1 maxLen 2
+
+fn Outer(number: int) Result[Name, StringError] {
+    let name: Name := try Name(number.ToString())
+    return Ok(name)
+}
+
+fn Inner(number: int) Result[Name, StringError] {
+    return Ok(Name(try number.ToString()))
+}
+
+fn Constrained(number: int) Result[ShortName, error] {
+    return Ok(try ShortName(number.ToString()))
+}
+
+fn Primitive(number: int) Result[string, StringError] {
+    return Ok(try string(number))
+}
+
+fn ExistingText(text: string) Name {
+    return Name(text)
+}

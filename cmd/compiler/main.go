@@ -1991,6 +1991,19 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
 	case *ast.TryExpression:
 		qualifyLocalTypesInExpression(expr.Expression, module, localTypes)
+		// Handler patterns and bodies are module code too.
+		for _, handler := range expr.Handlers {
+			if handler == nil {
+				continue
+			}
+			qualifyLocalTypesInExpression(handler.Pattern, module, localTypes)
+			qualifyLocalTypesInExpression(handler.Guard, module, localTypes)
+			qualifyLocalTypesInExpression(handler.Body, module, localTypes)
+			if handler.ReturnBody != nil {
+				qualifyLocalTypeReferencesInStatement(handler.ReturnBody, module, localTypes)
+			}
+			qualifyLocalTypeReferencesInBlock(handler.BlockBody, module, localTypes)
+		}
 	case *ast.MatchExpression:
 		qualifyLocalTypesInExpression(expr.Subject, module, localTypes)
 		for _, arm := range expr.Arms {
@@ -2093,6 +2106,17 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
 	case *ast.TryExpression:
 		qualifyLocalCallsInExpression(expr.Expression, module, localFunctions)
+		for _, handler := range expr.Handlers {
+			if handler == nil {
+				continue
+			}
+			qualifyLocalCallsInExpression(handler.Guard, module, localFunctions)
+			qualifyLocalCallsInExpression(handler.Body, module, localFunctions)
+			if handler.ReturnBody != nil {
+				qualifyLocalCallsInStatement(handler.ReturnBody, module, localFunctions)
+			}
+			qualifyLocalCalls(handler.BlockBody, module, localFunctions)
+		}
 	case *ast.OkExpression:
 		if expr.Value != nil {
 			qualifyLocalCallsInExpression(expr.Value, module, localFunctions)

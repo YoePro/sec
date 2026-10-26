@@ -1,0 +1,7 @@
+module main
+
+type ShortName string minLen 1 maxLen 2
+
+fn InnerOnly(number: int) Result[ShortName, error] {
+    return Ok(ShortName(try number.ToString()))
+}

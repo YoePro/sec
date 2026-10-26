@@ -123,8 +123,10 @@ func (e *LoweringCapabilityError) ImplementationCapability() diagnostics.Impleme
 }
 
 // loweringCapabilityPattern matches only the fixed capability diagnostics of
-// the track's gates (sec-check-lowering-support, sec-finalize-for-llvm).
-var loweringCapabilityPattern = regexp.MustCompile(`(?m)^(.+?):(\d+):(\d+): error: the Sec MLIR -> LLVM track does not lower (.+) yet$`)
+// the track's gates (sec-check-lowering-support, sec-finalize-for-llvm),
+// accepting both the categorized and historical spellings. Source coordinates
+// are retained independently of the optional capability category.
+var loweringCapabilityPattern = regexp.MustCompile(`(?m)^(.+?):(\d+):(\d+): error: (?:\[unsupported-lowering\] )?the Sec MLIR -> LLVM track does not lower (.+) yet$`)
 
 func loweringCapabilityErrors(output string) []error {
 	limits := []error{}

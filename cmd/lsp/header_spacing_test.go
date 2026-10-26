@@ -36,3 +36,7 @@ func assertFormattingGoldenLSP(t *testing.T, fixture string) {
 // the same CST formatter used by the command line.
 // Rules: rules/tooling/formatter.md — §§21,28,31(8).
 func TestDestructionSyntaxLSP(t *testing.T) { assertFormattingGoldenLSP(t, "destruction_syntax") }
+
+// The LSP uses the same declaration-table golden as the CLI.
+// Rules: rules/tooling/formatter.md — § 9(1)–(10), § 28(1)–(2), § 29.
+func TestBindingAlignmentLSP(t *testing.T) { assertFormattingGoldenLSP(t, "binding_alignment") }

@@ -1,0 +1,29 @@
+module main
+
+fn Writable(values: ref mut int[]) ref mut int[] { return values }
+fn Index() int { return 0 }
+fn Value() int { return 7 }
+
+fn Write(values: ref mut int[]) int {
+    Writable(values)[Index()] = Value()
+    return values[0]
+}
+
+fn Nested(values: ref mut int[]) int {
+    Writable(Writable(values))[Index()] = Value()
+    return values[0]
+}
+
+fn Local() int {
+    let mut data := [1, 2, 3]
+    let view := ref mut data[..]
+    Writable(Writable(view))[Index()] = Value()
+    return view[0]
+}
+
+fn Disjoint() int {
+    let mut data := [1, 2, 3, 4]
+    let right := ref data[2..<4]
+    Writable(ref mut data[..<2])[Index()] = Value()
+    return right[0]
+}

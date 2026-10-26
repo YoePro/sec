@@ -1,0 +1,10 @@
+module main
+fn Same(values: ref int[]) ref int[] { return values }
+fn Shared(values: ref int[]) ref mut int[] {
+    return ref mut Same(values)[..]
+}
+fn Escape() ref int[] {
+    let data := [1, 2, 3]
+    let view := ref data[..]
+    return ref Same(view)[..]
+}

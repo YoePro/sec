@@ -211,6 +211,7 @@ integrations:
       - cmd/compiler/module_sources.go
       - testdata/diagnostics/emitted_occurrences_invalid.sec
     implemented:
+      - "2026-10-26: after active/retired ID checks, allocated S1174 types.conversion-unavailable as the general mandatory error for an unavailable explicit conversion relation, distinct from S1139 checked-conversion protection and S1093 error-channel compatibility. Both explicit conversion inference paths publish it; numeric-to-named-string rejection includes the explicit ToString/try repair (MD-093). CLI human/JSON and LSP conformance are tested by the types-core owner; source positions and mandatory error severity are retained."
       - id: diagnostics.escape-ids
         description: >-
           Mandatory central S1128–S1133 escape category IDs preserve sink/origin

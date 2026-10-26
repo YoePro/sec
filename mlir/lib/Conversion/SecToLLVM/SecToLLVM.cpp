@@ -74,8 +74,22 @@ bool isFailureTerminator(Operation *operation) {
              sec::FailReferenceGenerationOp, sec::UnreachableOp>(operation);
 }
 
+// The complete currently represented P20 float operation set. Registration
+// grants this native track only; schema/conversion/target-capability gates
+// remain independent responsibilities.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§63–69,77–84;
+// codex.md — "One compilation track" (MD-101).
+bool isLoweredSecFloatOperation(Operation *operation) {
+  return isa<sec::ConstFloatOp, sec::FloatNegOp, sec::FloatBinaryOp,
+             sec::FloatCmpOp, sec::FloatAbsOp, sec::FloatMinimumOp,
+             sec::FloatMaximumOp, sec::FloatClassifyOp, sec::FloatRoundOp,
+             sec::FloatPropertyOp, sec::FloatClampCheckedOp>(operation);
+}
+
 // The Sec operations the track lowers today. Adding lowering for a construct
 // adds its operations here; nothing outside this set reaches conversion.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§63–75,79–84;
+// rules/mlir/sec_mlir_lowering.md — staged lowering, no hidden fallback.
 bool isLoweredSecOperation(Operation *operation) {
   // Only ordinary integer enums have their representation discharged by this
   // slice (rules/memory/layout.md § 14; lowering v7 sections 1–6).
@@ -86,13 +100,13 @@ bool isLoweredSecOperation(Operation *operation) {
     auto type = cast<sec::EnumType>(valueType);
     return type.getRepresentation() == "integer";
   }
-  return isa<sec::ConstIntOp, sec::ConstBoolOp, sec::StorageDeclareOp,
+  return isLoweredSecFloatOperation(operation) ||
+         isa<sec::ConstIntOp, sec::ConstBoolOp, sec::StorageDeclareOp,
              sec::StorageInitOp, sec::StorageLoadOp, sec::StorageStoreOp,
              sec::CallDirectOp, sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
              sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
-             sec::ConstFloatOp, sec::FloatNegOp, sec::FloatBinaryOp,
-             sec::FloatCmpOp,
+             sec::NumericConvertCheckedOp,
              sec::ArithmeticFailureReasonConstantOp, sec::FailArithmeticOp,
              sec::FailPanicOp, sec::StaticGlobalOp, sec::StaticLoadOp,
              sec::StaticStoreOp,
@@ -120,10 +134,20 @@ struct CheckLoweringSupportPass
             << unsupportedRegisterType << " yet; register/hardware physical lowering requires a verified representation and target plan";
         failed = true;
       }
+      // Lexeme-only constants can round-trip historically, but have no
+      // canonical physical value for P20. Reject at entry, before rewriting.
+      // Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§18,76,84.
+      if (auto constant = dyn_cast<sec::ConstFloatOp>(operation)) {
+        if (!constant.getBitsAttr()) {
+          constant.emitError()
+              << "[unsupported-lowering] sec.const.float requires canonical bits before native lowering";
+          failed = true;
+        }
+      }
       if (isa<sec::SecDialect>(operation->getDialect()) &&
           !isLoweredSecOperation(operation)) {
         operation->emitError()
-            << "the Sec MLIR -> LLVM track does not lower '"
+            << "[unsupported-lowering] the Sec MLIR -> LLVM track does not lower '"
             << operation->getName() << "' yet";
         failed = true;
       }

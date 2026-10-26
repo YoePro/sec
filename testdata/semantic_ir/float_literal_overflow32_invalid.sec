@@ -1,0 +1,5 @@
+module main
+
+fn Overflow() float32 {
+    return 3.5e38
+}

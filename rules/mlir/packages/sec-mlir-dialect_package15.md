@@ -1563,6 +1563,8 @@ It exists only to make addressable semantics explicit before physical lowering.
 
 P15 owns the root identity, the prohibition on direct hardware borrows, the typing of `HardwareInstance[T]` and the faithful production of the register operations. Missing target capabilities fail closed. The schema representation is `sec_mlir_dialect.md` v11.41.1 (`rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 12, 19).
 
+**Amendment MD-110 (2026-10-25).** The detached register value family also includes the pure bit-pattern conversions `register.value.fits-bits` / `from-bits` / `to-bits` (Semantic IR § 21(6)) and their MLIR `sec.register.fits_bits` / `from_bits` / `to_bits` (dialect v11.41.2). They never touch hardware roots or Places (`rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md`).
+
 # 64. Place root from semantic storage
 
 Add:

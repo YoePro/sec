@@ -1,0 +1,22 @@
+module main
+
+fn Invoke(callback: fn() int) int {
+    return callback()
+}
+
+fn Work(seed: int) int {
+    let captured := capture(seed) fn() int {
+        return seed
+    }
+    let plain := fn() int {
+        return 1
+    }
+    return Invoke(captured) + plain()
+}
+
+fn Unrelated(other: int) int {
+    let operation := capture(other) fn() int {
+        return other
+    }
+    return operation()
+}

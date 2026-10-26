@@ -326,6 +326,10 @@ const (
 	// is wrong (MD-016).
 	// Rules: rules/collections/shaped-types.md — §§ 4.1, 6.0, 15.3.
 	ShapedMetadataLiteralInvalid = "S1173"
+	// ConversionUnavailable rejects an explicit conversion whose source/target
+	// types have no conversion relation; try cannot create such a relation.
+	// Rules: rules/types/types.md — "Explicit conversions", "Numeric-to-text conversion".
+	ConversionUnavailable = "S1174"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -370,6 +374,7 @@ var registry = map[string]Definition{
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceByValueParameter:             {ID: InterfaceByValueParameter, Name: "interfaces.by-value-parameter", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	ShapedMetadataLiteralInvalid:          {ID: ShapedMetadataLiteralInvalid, Name: "collections.shaped-metadata-literal", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
+	ConversionUnavailable:                 {ID: ConversionUnavailable, Name: "types.conversion-unavailable", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowNonAddressable:                  {ID: BorrowNonAddressable, Name: "borrowing.non-addressable-place", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowSharedConflict:                  {ID: BorrowSharedConflict, Name: "borrowing.shared-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowMutableConflict:                 {ID: BorrowMutableConflict, Name: "borrowing.mutable-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},

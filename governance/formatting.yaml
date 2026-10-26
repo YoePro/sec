@@ -300,22 +300,39 @@ integrations:
     area: tooling
     status: implemented
     integrated: "2026-08-27"
-    revised: "2026-10-18"
+    revised: "2026-10-26"
     summary: >-
-      Aligns trailing line comments within local nominal-declaration groups and
-      exposes the shared behavior through both LSP formatting and the initial
-      in-place sec fmt command.
+      Aligns structural type, initializer, tag and trailing-comment columns
+      within compatible declaration groups through the shared CLI/LSP formatter,
+      including let, type-first and named-value declarations.
     rules:
       - rules/tooling/formatter.md
     code:
+      - internal/cst/roles.go
+      - internal/cst/binding_roles.go
+      - internal/formatter/cst_spacing.go
+      - internal/formatter/binding_alignment.go
+      - internal/formatter/trailing_comment_alignment.go
+      - internal/formatter/struct_field_alignment.go
+      - internal/formatter/parameter_alignment.go
+      - internal/formatter/named_type_alignment.go
       - internal/formatter/formatter.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
     tests:
+      - internal/cst/binding_roles_test.go
+      - internal/formatter/binding_alignment_test.go
+      - cmd/compiler/header_spacing_test.go
+      - cmd/lsp/header_spacing_test.go
+      - testdata/formatter/binding_alignment.sec
+      - testdata/formatter/binding_alignment.expected.sec
+      - testdata/formatter/binding_alignment_padding.sec
+      - testdata/formatter/binding_alignment_padding.expected.sec
       - internal/formatter/formatter_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - "2026-10-26: completed the whole declaration-alignment extension (§ 9(1)–(10)): parser-owned CST binding name/type/initializer roles drive compatible let, type-first and parenthesized named-value groups, including static/mutable declarations, := and :<- and attached line/block comments. Existing struct/register field type/tag, callable parameter and named-type tables cover the other declaration families. Columns use structural anchors, the colon binds left, primary/secondary padding candidates fall back per group, and blank lines, standalone/inline comments, multiple bindings on one line, incompatible rows and multiline expressions delimit safe groups. Golden tests preserve syntax/literal/comment tokens, cover widths 2/4/6, both styles, cap fallback and idempotence, and compare exact CLI/LSP output. Nominal trailing-comment alignment now consumes the configured indentation width and lives in trailing_comment_alignment.go. MD-099's independent comment-padding policy and MD-100's possible further exemptions remain unchanged; neither blocks this extension under the current rules."
       - align trailing comments in consecutive struct, enum, register, union, and equivalent nominal declaration items to one visual column
       - place the aligned comment column at least four spaces after the widest code item in its local group
       - end groups at blank lines, standalone or documentation comments, multiline items, and nested block boundaries
@@ -325,10 +342,11 @@ integrations:
       - expose identical output through LSP document formatting without editor-side alignment logic
       - "inline block comment fix (2026-10-18, formerly identified bug tooling.formatter.inline-block-comment-breaks-field-alignment): the root cause was the parser — a one-line `/* ... */` with code before and after it on the same line (`c: int /* inline */,`, `a /* note */ + b`) was not skipped and produced a parse error, so the formatter saw uncertain syntax and lost the following fields' roles. Parser.nextToken now treats such a comment as inline trivia (still recorded as an inline comment attachment); every field keeps the § 9(5) type column (TestFormatInlineBlockCommentKeepsFieldAlignment, TestParseInlineBlockCommentsAsTrivia; formatter.md § 9(5), § 9(8), § 12(9a)). TestFormatTokenSpacingLeavesUnroledAndMultilineGaps had only passed because of that parse error and now expects the canonical output"
     remaining:
-      - extend the generic alignment engine to typed declaration groups, struct field/type/tag columns, and compatible non-nominal declaration groups
-      - complete sec fmt range, on-type, and minimal-edit modes; recursive directory and project selection is blocked on MD-037; check, stdin, and fix modes are implemented
+      - complete range and on-type formatting; recursive directory and project selection is blocked on MD-037; document-formatting minimal enclosing edits, check, stdin, and fix modes are implemented
       - migrate the remaining trimmed-line indentation and alignment decisions to the parser-owned lossless comment/trivia attachments now returned by the shared formatter
     verification:
+      - command: go test ./internal/cst ./internal/formatter -count=1; go test ./cmd/compiler ./cmd/lsp -run "BindingAlignment|Fmt|Format|Formatting" -count=1
+        result: passed on 2026-10-26 with GOCACHE set; whole declaration-alignment extension verified including existing field/register/parameter/named-type families, exact CLI/LSP goldens, all indentation widths, both styles, padding fallback, literal/comment token preservation and idempotence; remaining for this ID 3 to 2 and formatting.yaml 20 to 19
       - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
         result: passed
 
@@ -395,7 +413,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-10-15"
+    revised: "2026-10-26"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-09-23
     summary: Tracks conformance of the shared Sec formatter to formatter revision 2.1. The repository has a usable but primarily bespoke, line-oriented CLI/LSP formatter plus a lexical CST foundation that is not yet its primary engine. The formatter must migrate to a CST-driven architecture while preserving existing behavior, then complete the configured, grammar-aware formatting and correction contract.
@@ -435,6 +453,8 @@ integrations:
       - internal/parser/register_header.go
       - internal/cst/expression_continuations.go
       - internal/formatter/expression_continuations.go
+      - internal/formatter/edits.go
+      - cmd/lsp/format_document.go
     tests:
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
@@ -460,6 +480,8 @@ integrations:
       - testdata/formatter/expression_continuations.expected.sec
       - testdata/formatter/return_continuation_literals.sec
       - testdata/formatter/return_continuation_literals.expected.sec
+      - internal/formatter/edits_test.go
+      - cmd/lsp/format_document_test.go
     implemented:
       - >-
         One shared formatter implementation serves sec fmt and LSP document
@@ -659,6 +681,7 @@ integrations:
       - "MD-032 switch label column (2026-10-12, formatter.md § 18(7), § 18(10a)): case/default labels sit one configured indentation level inside switch, their bodies one further level and the closing brace aligns with switch; verified for indentation widths 2, 4 and 6, nested switches and idempotence (TestFormatSwitchLabelsFollowConfiguredIndentation); the § 18(7) example and the switch examples of flowcontrol_switch.md, flowcontrol_while.md and grammar.md follow the decided layout"
       - "formatter-header-token-spacing is complete for parser-confirmed declaration headers and statement keywords: existing named-type/contract, function/extern, reference/function-type, type-first, enum/unit/interface/impl/import and statement spacing is complemented by module headers, unsafe/static function prefixes, mutable/consuming/static interface receiver prefixes, static let modifiers and parser-retained register allocation/byte-order modifier ranges. CST roles compact only accepted modifier hyphens, leave ordinary subtraction distinct, preserve rejected syntax and share canonical/idempotent golden output through formatter, CLI and LSP."
       - Inline-start return expressions and if/else-if conditions use one configured continuation indentation level (2, 4 or 6 spaces; default 4), preserving leading/trailing operator placement, nested delimiter layout, literal contents, body indentation and following statements through shared parser-owned CST expression/continuation relations; duplicate visits through comment owners cannot add multiple indentation levels, and CLI/LSP project settings yield identical idempotent output
+      - "2026-10-26: formatter-imports-and-file-layout is complete (the milestone below was already implemented); removed the stale remaining entry after auditing § 13–§ 14 against import_region.go and the import-region/group-heading tests. Gathering, path sorting within explicit groups, attached comments, duplicate preservation, conservative handling of ambiguous comments, configured indentation and ordinary declaration order are covered. MD-033 forbids import-origin classification; that obsolete wording is not an outstanding requirement. Top-level vertical spacing continues to use the existing rules; broader canonical spacing remains owned by formatter-canonical-layout."
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
@@ -679,10 +702,6 @@ integrations:
         = 1 configuration, structured/compact vertical style, indentation
         widths, fixed/adaptive width, and alignment limits from § 4.
       - >-
-        formatter-imports-and-file-layout: Implement canonical import gathering,
-        classification, comment attachment, sorting, grouping, and top-level
-        file layout from § 13–§ 14 without reordering ordinary declarations.
-      - >-
         formatter-language-surface: Complete canonical formatting and focused
         conformance coverage for every current Sec construct in § 15–§ 24.
       - >-
@@ -691,9 +710,9 @@ integrations:
         recognizers with a grammar-aware correction engine, expose canonical
         project configuration, and complete the § 26–§ 27 catalogue.
       - >-
-        formatter-cli-lsp-unification: Add project configuration, effective
-        width, format-on-save, range/on-type/minimal-edit, recursive project,
-        and exact-output equivalence behavior required by § 28.
+        formatter-cli-lsp-unification: Complete project configuration, effective
+        width, format-on-save, range/on-type, recursive project, and
+        exact-output equivalence behavior required by § 28.
       - >-
         formatter-invariants-and-tests: Enforce every § 29 and § 31 invariant
         and complete the § 30 golden, second-pass, round-trip, malformed-source,
@@ -915,6 +934,8 @@ integrations:
           - No independent LSP formatter grammar or formatting policy exists.
           - CLI/LSP equivalence tests compare exact output bytes.
           - Format-on-save preserves clean permitted multiline intent.
+        implemented:
+          - "2026-10-26: internal/formatter.MinimalEdit expresses the exact shared formatter output as one minimal enclosing byte edit, excluding unchanged prefix/suffix and never splitting a Unicode scalar or CRLF. The LSP formatDocument adapter is extracted from main.go into format_document.go, uses the live snapshot or disk fallback, converts safe byte offsets to UTF-16 positions, and returns no edit for canonical source. Golden request tests cover both input sources, non-BMP characters, LF/CRLF (including canonical LF normalization) and second-pass idempotence. Range/on-type and incremental syntax-tree formatting remain separate work; this is one enclosing edit, not a disjoint syntax-tree diff."
       - id: formatter-invariants
         status: partial
         rules:
@@ -993,6 +1014,10 @@ integrations:
       - semantic normalization of numeric or string literals
       - automatic ownership, mutability, error-policy, or control-flow changes
     verification:
+      - command: go test ./internal/cst ./internal/formatter ./cmd/lsp ./cmd/compiler -run "Format|Formatting|MinimalEdit|Fmt" -count=1
+        result: passed on 2026-10-26 with GOCACHE set; minimal enclosing edits reconstruct golden canonical output, use UTF-16 positions after non-BMP characters, protect CRLF boundaries, handle snapshot/disk input and are idempotent; existing CLI/LSP formatting tests passed
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/cst ./internal/formatter -count=1; GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -run "^(TestFmtCheckAfterFormatting|TestFmtCommandUsesProjectFormatConfiguration|TestLSPFormattingUsesProjectFormatConfiguration|TestFormatSourceIndentsGroupedImports)$" -count=1
+        result: passed on 2026-10-26; audited formatter-imports-and-file-layout against formatter.md sections 13-14 and removed its stale remaining entry; full CST/formatter suites and focused CLI/LSP formatting checks passed
       - command: yamlstatus check; yamlstatus fmt -check governance/formatting.yaml; git diff --check
         result: passed on 2026-10-15 with 0 problems in 47 fragments, canonical formatting governance, synchronized formatter revision 2.1 and clean whitespace
       - command: go vet ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp

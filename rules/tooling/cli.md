@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative tooling rulebook, revision 1.0 (2026-10-17).
+Normative tooling rulebook, revision 1.1 (2026-10-26).
 
 Created by the MD-017 correction
 (`rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md`),
@@ -109,9 +109,10 @@ name. A directory whose name equals an analysis name is written as a path
 | `pitfalls` | Pitfall analysis | `rules/analysis/pitfall_analysis.md` |
 | `parameter-usage` | Parameter usage analysis | `rules/analysis/parameter_usage_analysis.md` |
 | `stack` | Stack analysis | `rules/analysis/stack_analysis.md` |
+| `closures` | Closure analysis | `rules/analysis/closure_analysis.md` |
 
 § 5.2(2) No alternate pluralization, shortened alias or flag-based selector
-exists. Another analysis family (for example closure analysis) gets exactly
+exists. Another analysis family gets exactly
 one registered name before it becomes individually selectable; the table is
 not an inventory of every fact producer.
 

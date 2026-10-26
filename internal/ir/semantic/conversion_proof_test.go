@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -62,7 +63,9 @@ func buildWithPlan(t *testing.T, source string, width uint16) (*sema.Analyzer, *
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: width})
 	if errs := analyzer.Analyze(parsed.Program); len(errs) != 0 {
-		t.Fatal(errs)
+		// A conversion that may fail is rejected by Sema unless try protects
+		// it (types.md "Explicit conversions"); callers see that as err.
+		return analyzer, nil, fmt.Errorf("sema: %v", errs)
 	}
 	module, err := Build(parsed.Program, analyzer, BuildOptions{RequestedModule: "main", SourceFiles: []string{"proof.sec"}})
 	return analyzer, module, err
@@ -100,7 +103,7 @@ func TestExactConversionsCarryPlanProofs(t *testing.T) {
 }
 
 // MD-104: on a 32-bit plan uint32 -> int is not exact (fail closed, never
-// truncate); an open bit[8] enum is not exact into int8, and a closed enum
+// truncate: without try Sema rejects it); an open bit[8] enum is not exact into int8, and a closed enum
 // with one case beyond the target is not exact.
 func TestUnprovenConversionsFailClosed(t *testing.T) {
 	for name, test := range map[string]struct {
@@ -108,7 +111,7 @@ func TestUnprovenConversionsFailClosed(t *testing.T) {
 		width  uint16
 		want   string
 	}{
-		"uint32 to int on 32-bit plan": {"module main\nfn Native(value: uint32) int {\n    return int(value)\n}\n", 32, "checked integer conversion uint32 to int"},
+		"uint32 to int on 32-bit plan": {"module main\nfn Native(value: uint32) int {\n    return int(value)\n}\n", 32, "converting uint32 to int may fail with ConversionError.OutOfRange and requires try"},
 		"open bit[8] enum to int8":     {"module main\nenum DeviceMode bit[8] {\n    Off = 0\n    Running = 1\n}\nfn Mode(value: DeviceMode) Result[int8, ArithmeticError] {\n    return int8(value)\n}\n", 64, "enum"},
 		"closed enum case beyond int8": {"module main\nenum State int32 {\n    Idle = 1\n    Failed = 200\n}\nfn Code(value: State) Result[int8, ArithmeticError] {\n    return int8(value)\n}\n", 64, "enum"},
 	} {

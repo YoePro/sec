@@ -1,0 +1,32 @@
+module alignment
+
+let host:string := "localhost" // host
+let mut port:uint16 := 8080 /* port */
+let timeout:Duration := 30
+
+let a := "// literal"
+let longer := "/* literal */" // attached
+// separate group
+let x:int := 1
+let longerName:uint16 := 2
+
+type Endpoint struct {
+Host:string `json:"host"`, // host
+Timeout:Duration `json:"timeout"`,
+}
+
+fn Work() void {
+int (
+    Short := 1, // one
+    Longer := 2, /* two */
+)
+int: x := 1
+uint16: longer := 2
+
+let before := 1
+let broken := 1 +
+2
+let following := 3
+let untouched /* inline */ := 4
+let first := 1, second := 2
+}

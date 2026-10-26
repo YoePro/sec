@@ -240,6 +240,21 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.FloatBinary, op.Operands[0], op.Operands[1])
 	case OpFloatCompare:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
+	case OpFloatClampChecked:
+		fmt.Fprintf(out, " %%%d, min=%%%d, max=%%%d", op.Operands[0], op.Operands[1], op.Operands[2])
+	case OpNumericConvertChecked:
+		fmt.Fprintf(out, " %%%d failure=%s", op.Operands[0], op.ConversionFailure)
+	case OpFloatAbs, OpFloatMinimum, OpFloatMaximum, OpFloatClassify, OpFloatRound, OpFloatProperty:
+		if op.FloatCore != "" {
+			fmt.Fprintf(out, " %s", op.FloatCore)
+		}
+		for index, operand := range op.Operands {
+			separator := " "
+			if index > 0 {
+				separator = ", "
+			}
+			fmt.Fprintf(out, "%s%%%d", separator, operand)
+		}
 	case OpStorageDeclare:
 		fmt.Fprintf(out, " $%d", op.Storage)
 	case OpStorageInit, OpStorageStore:
@@ -357,6 +372,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d field=#%d value=%%%d", op.Operands[0], op.StructField, op.Operands[1])
 	case OpRegisterValueExtract, OpRegisterValueUpdate:
 		formatRegisterValueOperation(out, op)
+	case OpRegisterValueFitsBits, OpRegisterValueFromBits, OpRegisterValueToBits:
+		formatRegisterConversionOperation(out, op)
 	case OpOwnCopy, OpOwnSemanticCopy, OpOwnMove, OpOwnCopyFromPlace, OpOwnMoveFromPlace,
 		OpOwnInitializePlace, OpOwnReplacePlace, OpOwnDiscard, OpOwnDestroyValue, OpOwnDestroyPlace:
 		formatOwnershipOperation(out, op)

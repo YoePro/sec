@@ -32,10 +32,14 @@ def SecLowerFloats : Pass<"sec-lower-floats", "mlir::ModuleOp"> {
   let description = [{
     After scalar layout, sec.const.float becomes arith.constant from its
     canonical bit pattern, sec.float.neg/binary/cmp become arith.negf,
-    addf/subf/mulf/divf/remf and cmpf (oeq/une/olt/ole/ogt/oge) with no
-    fast-math flags.
+    addf/subf/mulf/divf and cmpf (oeq/une/olt/ole/ogt/oge) with no
+    fast-math flags. Remainder uses exact integer significand reduction and CF,
+    avoiding an undeclared external fmod runtime dependency. The P20 core members lower without a runtime library:
+    abs and classify through bitcast and field masks, minimum/maximum to
+    the NaN-propagating minimumf/maximumf, round through a guarded integer
+    conversion that keeps the sign of zero, and property to exact constants.
   }];
-  let dependentDialects = ["mlir::arith::ArithDialect"];
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect"];
 }
 
 def SecLowerFailureEndpoints : Pass<"sec-lower-failure-endpoints", "mlir::ModuleOp"> {

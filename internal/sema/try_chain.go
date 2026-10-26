@@ -14,8 +14,9 @@ import "sec/internal/ast"
 //   - rules/errors/runtime_checks.md — "try boundaries"
 //   - rules/corrections/applied/md028-md032-md055-try-switch-import-comments-correction-20261012.md — §§ 2.1-2.3
 
-// markTryChainReceivers marks every member receiver of the protected
-// expression, stopping at nested try, lambda and match boundaries, and
+// markTryChainReceivers marks every member receiver and explicit conversion
+// operand of the protected expression (an operand uses an empty member name),
+// stopping at nested try, lambda and match boundaries, and
 // returns the marked receivers so the caller can clear them afterwards.
 func (a *Analyzer) markTryChainReceivers(expr ast.Expression) []ast.Expression {
 	if a.tryChainReceivers == nil {
@@ -42,6 +43,9 @@ func (a *Analyzer) markTryChainReceivers(expr ast.Expression) []ast.Expression {
 			}
 			visit(node.Object)
 		case *ast.CallExpression:
+			if a.expressionNamesType(node.Callee) && len(node.Arguments) == 1 {
+				mark(node.Arguments[0], "")
+			}
 			if member, ok := node.Callee.(*ast.MemberExpression); ok {
 				if member.Property != nil {
 					mark(member.Object, member.Property.Value)
@@ -66,6 +70,7 @@ func (a *Analyzer) markTryChainReceivers(expr ast.Expression) []ast.Expression {
 		case *ast.BitExtractionExpression:
 			visit(node.Value)
 		case *ast.ConversionExpression:
+			mark(node.Value, "")
 			visit(node.Value)
 		case *ast.NewExpression:
 			for _, argument := range node.Arguments {
@@ -101,7 +106,8 @@ func (a *Analyzer) markTryChainReceivers(expr ast.Expression) []ast.Expression {
 
 // unwrapTryChainReceiver gives a marked receiver of type Result[T, E] the
 // success type T when the member it is accessed through is not a Result
-// member, and records the unwrap; the receiver's own expression type stays
+// member, and records the unwrap; conversion operands use the same path with
+// no member name (errorhandling.md §13; MD-093). The expression's own type stays
 // the Result.
 func (a *Analyzer) unwrapTryChainReceiver(expr ast.Expression, typ Type) (Type, bool) {
 	member, marked := a.tryChainReceivers[expr]

@@ -111,6 +111,15 @@ const (
 	// DeclarationGroupSeparator marks a comma that separates two declarators
 	// belonging to one parser-confirmed declaration group.
 	DeclarationGroupSeparator Role = "declaration-group-separator"
+	// BindingName, BindingTypeStart and BindingInitializer identify the
+	// structural columns of parser-owned let and type-first declarations.
+	// Rules: rules/tooling/formatter.md — § 9(1)–(10).
+	BindingName        Role = "binding-name"
+	BindingTypeStart   Role = "binding-type-start"
+	BindingInitializer Role = "binding-initializer"
+	// BindingMultiline excludes an initializer spanning physical lines from
+	// a single-line alignment table.
+	BindingMultiline Role = "binding-multiline"
 	// MatchPatternPayloadOpen marks the opening parenthesis of a parsed variant
 	// payload-binding pattern.
 	MatchPatternPayloadOpen Role = "match-pattern-payload-open"
@@ -527,6 +536,8 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			if node.Name == nil {
 				break
 			}
+			mark(node.Name.Token, BindingName)
+			d.applyBindingExtent(node, indexes)
 			// Typed declarations such as `float: low := 1.0` start with their
 			// type name, not a let keyword.
 			if node.Token.Type == lexer.LET {
@@ -542,12 +553,15 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				colon := nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool { return true })
 				if colon >= 0 && d.Elements[colon].Token.Type == lexer.COLON {
 					markIndex(colon, DeclarationColon)
+					mark(typeReferenceFirstToken(node.Type), BindingTypeStart)
 				}
 			}
 			if node.Value != nil && !node.SynthesizedDefault {
-				markIndex(nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool {
+				initializer := nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool {
 					return typ == lexer.DECLARE || typ == lexer.MOVE_DECLARE
-				}), AssignmentOperator)
+				})
+				markIndex(initializer, AssignmentOperator)
+				markIndex(initializer, BindingInitializer)
 			}
 		case *ast.TypeDeclStatement:
 			// rules/tooling/formatter.md §3 and §6: one canonical space separates

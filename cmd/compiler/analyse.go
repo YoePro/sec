@@ -280,6 +280,9 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 	if family == "" || family == "pitfalls" {
 		report.addPitfalls(analyzer.PitfallAnalysis(), inSelection)
 	}
+	if family == "" || family == "closures" {
+		report.addClosures(analyzer, inSelection)
+	}
 	if report.depth != sema.AnalysisDeep {
 		report.limitations = append(report.limitations, fmt.Sprintf("depth %s: advisory refinement may be reduced; anything not proven is reported as unproven, never as valid", report.depth))
 	}

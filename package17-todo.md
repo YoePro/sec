@@ -488,6 +488,11 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Panic.** `panic`/`unreachable` are `CleanupExitPanic` with `RunsCleanup = false` (§ 46).
   - **Failure before replacement.** It is kept by the success-only assignment facts (P17-19).
   - **Remaining.** Construction temporaries and argument consumption as protected/consumed values at an exit.
+  - **Semantic IR (2026-10-26).** With owned locals, every propagating try exit
+    (Result call, checked arithmetic — whose failure return sits at the
+    operator and is mapped to the try's exit — bounds and failure sets) emits
+    `cleanup.run-function exit=error-propagation` after the Err is built and
+    before its return (`TestErrorPropagationRunsFunctionCleanup`).
 - [x] P17-24 — Publish detached `ResolvedCleanupPlan` queries containing scopes,
   registrations, defer bodies/captures, normal exits and protected values. Builders
   must not reconstruct cleanup by walking variable names or counting SSA uses.
@@ -562,6 +567,16 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Mutually exclusive successors may transfer the same current owner; merges
   select one continuation. Verify compatible partial/active-variant state and
   destruction plans without rejecting legal source convergence by approximation.
+  Partial 2026-10-26 (Claude): owned by-value parameters are registered by
+  Sema at function entry (`cleanup_parameters.go`, kind `owned-parameter`,
+  activation `at-function-entry`) and tracked on entry in Semantic IR, so they
+  are destroyed at every exit unless moved out. Arguments needing destruction
+  use the new action `move`: a moved owned local (`<-h`: own.move, its cancel
+  emitted only when the call commits after every argument, destruction.md
+  § 9.2(3)) or a forwarded fresh temporary; the verifier requires `move` for
+  parameters whose type needs destruction (`TestOwnedParametersAndArgumentMoves`).
+  Remaining: branch ownership merges and consuming `->` parameter contracts.
+
 - [x] P17-33 — Add cleanup track/cancel/defer-register/run-scope/run-function
   operations and explicit defer regions with capture-Place parameters. Preserve
   dynamic registrations without selecting a physical stack or global runtime.
@@ -588,9 +603,43 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-35 — Migrate local, call, constructor, return and branch producers to
   consume immutable plans. Missing required facts produce structured unsupported
   lowering; do not fall back to fresh ownership inference in the builder.
+
+  Partial 2026-10-26 (Claude), first producer slice at MaxPackage 17:
+  - **Custom free.** A resolved custom `free` builds as a non-callable lifecycle
+    function over `ref mut self` (Sema's `@free:<Type>`); predecessor packages
+    still reject custom free outright.
+  - **Destruction plans.** `importDestructionPlans` copies Sema's plan graph into
+    the module table (struct with custom free and reverse-order field steps,
+    fixed arrays, trivial); a custom-free plan names its built free function and
+    the verifier checks it is `ref mut T -> void`.
+  - **Owned locals.** An immutable root-scope local with
+    `ResolvedOwnedCleanupInitializationOf` emits `cleanup.track-owned` (Sema's
+    action/scope, source-order ordinal, root plan) after its initialization.
+  - **Function exits.** Every return of such a function gets
+    `cleanup.run-function` with Sema's resolved exit kind, after the protected
+    return value is built.
+  - **Boundaries kept.** Nested/loop scopes (P17-42), mutable owned storage,
+    error-propagation exits, variant/resource plans and moves out keep explicit
+    P17 boundaries (`cleanup_producers.go`, `cleanup_producers_test.go`).
+  - **Moves (2026-10-26).** Sema's move of a whole tracked owned local at a
+    return or a `let x :<- h` initialization is `own.move` followed by
+    `cleanup.cancel` of its registration (`transferred` / `moved`); the new local
+    is tracked as the new owner and the returned value leaves before function
+    cleanup (`TestOwnedLocalMovesCancelTheirRegistration`). Argument moves need
+    owned parameters (P17-32); field and partial moves stay P17-27/P17-36.
 - [ ] P17-36 — Lower direct stored-field partial move, field reinit and non-trivial
   field replacement through Places. Preserve the owner of untouched fields; do
   not replace one owned field by copying and rebuilding its whole struct.
+  Partial 2026-10-26 (Claude): mutable owned locals live in address-taken
+  storage initialized through `own.initialize-place` and tracked by Place;
+  stored fields are read through `place.field`/`place.read` (never a whole-value
+  load); whole-local replacement is `own.replace-place` with the old plan and
+  `cleanup=#old->#new` plus cancel/re-track, reinitialization after a move is
+  initialize + track, and a move out is `own.move-from-place` + cancel
+  (`TestMutableOwnedStorage`). Re-registration outside the declaring scope is
+  rejected until path-exact incarnation matching (P17-19); field partial moves
+  and field replacement remain.
+
 - [ ] P17-37 — Lower move-only active union/Result/Option payload bindings only
   on the predecessor's proven variant path, updating container partial state.
   Keep borrowed bindings on P15 and respect MD-031 handler emission limits.
@@ -609,6 +658,27 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-42 — Insert planned scope cleanup before exited-scope edges, and function
   cleanup after return/Err transfer but before return. Keep panic/raw process-exit/
   proven-unreachable endpoints outside normal cleanup; no hidden unwinding.
+
+  Partial 2026-10-26 (Claude), at MaxPackage 17 for owned locals:
+  - **Scope exits.** Falling out of an if/else, loop, switch-case, unsafe or
+    match-arm block, `break` and `continue` emit `cleanup.run-scope` over exactly
+    the scopes Sema's exit leaves (innermost first), directly before the edge.
+  - **Function exits.** Every return (also from nested scopes and try-handler
+    bodies) emits `cleanup.run-function` with Sema's exit kind after the
+    returned value is built; panic endpoints run no cleanup.
+  - **Only when relevant.** Cleanup is emitted only for exits leaving a scope
+    with owned registrations, so programs without owned locals keep their
+    predecessor IR (`TestScopeCleanupOnlyWithOwnedLocals`).
+  - **Completeness.** Every cleanup-relevant Sema exit must have been emitted;
+    one built outside a cleanup-aware block (e.g. a value-producing handler
+    block) is rejected instead of dropped.
+  - **Value-producing blocks (2026-10-26).** A try-handler block that yields a
+    recovery value builds the value first, then runs its scope cleanup, then
+    branches to the merge (`TestValueProducingHandlerBlockRunsScopeCleanup`);
+    statement handler blocks use the cleanup-aware block path.
+  - **Remaining.** Match-expression arm blocks (not yet lowered at all) and
+    path-dependent incarnations; error-propagation exits, whole-local moves,
+    owned parameters and mutable storage are done (P17-23, P17-32, P17-35/36).
 - [ ] P17-43 — Remove predecessor trivial-only gates only for operations whose
   complete transfer, destruction and cleanup path now exists. Keep default
   package selection conservative until the emitter/verifier bridge is operational.

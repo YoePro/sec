@@ -7,7 +7,7 @@ import "platform/linux/amd64"
 
 unsafe fn Exit(code: int) never {
     unsafe {
-        amd64.RawSyscall(uint(amd64.SysCall.sysExit), uint(code))
+        amd64.RawSyscall(uint(amd64.SysCall.sysExit), uint(bit[64](code)))
     }
 }
 

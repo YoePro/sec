@@ -5,6 +5,7 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
+	"sec/internal/sema"
 )
 
 // activeLoop is the innermost-first stack entry that `break` and `continue`
@@ -78,7 +79,7 @@ func (fb *functionBuilder) buildWhile(stmt *ast.WhileStatement) error {
 		}
 		fb.current = body
 		fb.loops = append(fb.loops, loop)
-		err := fb.buildStatements(stmt.Body.Statements)
+		err := fb.buildScope(stmt.Body)
 		fb.loops = fb.loops[:len(fb.loops)-1]
 		if err != nil {
 			return err
@@ -118,9 +119,14 @@ func (fb *functionBuilder) buildLoopControl(edge LoopEdge, token lexer.Token) er
 	}
 	loop := fb.loops[len(fb.loops)-1]
 	target := loop.condition
+	exit := sema.CleanupExitContinue
 	if edge == LoopEdgeBreak {
 		target = fb.loopExit(loop)
+		exit = sema.CleanupExitBreak
 	}
+	// Leaving the loop body's scopes runs their owned-value cleanup first
+	// (P17-42).
+	fb.runScopeCleanup(exit, token)
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: target.ID}}, LoopID: loop.id, LoopEdge: edge, Location: location(token)})
 	fb.current = nil
 	return nil

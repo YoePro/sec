@@ -1,0 +1,6 @@
+module formatting
+
+// Keep the document and this comment outside the edit.
+fn Value() string {
+    return "😀" + "suffix"
+}

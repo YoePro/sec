@@ -1,8 +1,10 @@
 package sema
 
 import (
+	"math"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/sema/constant"
@@ -24,6 +26,7 @@ func compileTimeOperatorExpression(expr ast.Expression) bool {
 // intermediate value. Exact decimals never pass through binary floating point.
 // Rules: rules/types/types.md — Binary floating-point types, Exact decimal types;
 // rules/compiler/compile_time_evaluation.md — §§2(3),47(4).
+// rules/mlir/packages/sec-mlir-dialect_package20.md — §§12–20,82.
 func (a *Analyzer) prepareCompileTimeConstant(value DefaultConstant, context Type) (DefaultConstant, compileTimeOutcome) {
 	if value.Integer != nil && (context.Kind == FloatType || context.Kind == DecimalType) {
 		value.Exact = new(big.Rat).SetInt(value.Integer)
@@ -43,6 +46,22 @@ func (a *Analyzer) prepareCompileTimeConstant(value DefaultConstant, context Typ
 			number = float64(v)
 		} else {
 			number, _ = value.Exact.Float64()
+		}
+		// Literal source bits share the exact direct-width rounding boundary
+		// with Semantic IR. Already-rounded negative zero survives rechecking.
+		// Rules: package20 §§13–19,82; compiler/compile_time_evaluation.md §2(3).
+		if value.FloatBits == 0 && value.Lexeme != "" {
+			pattern, err := constant.FloatLiteralBits(value.Lexeme, uint16(bits))
+			if err != nil {
+				return DefaultConstant{}, compileTimeNotConstant
+			}
+			if bits == 32 {
+				number = float64(math.Float32frombits(uint32(pattern)))
+			} else {
+				number = math.Float64frombits(pattern)
+			}
+		} else if number == 0 && strings.HasPrefix(value.Lexeme, "-") {
+			number = math.Copysign(0, -1)
 		}
 		converted, ok := binaryFloatConstant(number, bits)
 		if !ok {

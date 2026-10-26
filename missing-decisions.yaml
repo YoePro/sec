@@ -677,23 +677,6 @@ decisions:
       in favour of ByteAt/RuneAt, or redefine).
     classification: localized
     status: open
-  - id: MD-093
-    area: numeric-to-named-string-conversion
-    rulebooks:
-      - rules/types/types.md
-      - rules/library/core-library.md
-    description: >-
-      Open decision (2026-10-17, remainder of MD-051, which was closed after
-      the owner confirmed that byte counts as uint8 for string(b)). The
-      decided rule makes string(numericValue) the fallible numeric
-      ToString(). A conversion from a numeric value to a named string type,
-      for example `type Name string` with `Name(123)`, is not covered: Sema
-      still accepts it as an infallible conversion producing Name, which
-      bypasses the fallible text materialization. Decide whether it is
-      rejected (write `Name(try n.ToString())`), fallible
-      (Result[Name, ...] including the Name contracts) or allowed as is.
-    classification: localized
-    status: open
   - id: MD-095
     area: atomic-capability-requirement-keys
     rulebooks:
@@ -1009,8 +992,25 @@ decisions:
       (as numeric.convert-exact), the source integer types admitted, whether
       register-to-integer conversion exists in source at all, and the schema
       admission (v11.41.x early admission or later).
+      Decided 2026-10-25 (rules/corrections/MD-110-register-bit-pattern-conversion-ir-20261025.md):
+      bit-pattern representability fit, IntegerType(register) with W >= N,
+      register.value.fits-bits/from-bits/to-bits and
+      sec.register.fits_bits/from_bits/to_bits (v11.41.2). Normative owners
+      synchronized 2026-10-26 (registers.md § 12/§ 12.3, types.md,
+      semantic_ir.md §§ 21(6)/59(5), sec_mlir_dialect.md v11.41.2 and the v11
+      snapshot, P15 note). Kept open per the correction's § 12(6) until Sema,
+      Semantic IR and MLIR implementation pass their acceptance checks; the
+      MLIR from_bits additionally waits for the MD-114 register table spelling.
+      Progress 2026-10-26: Sema (fit rule, constant rejection, proof basis,
+      W >= N) and Semantic IR (the three ops, local verifier, dominance-checked
+      proofs) implemented and tested; checked (guarded) conversions stay
+      fail-closed until try lowering, as checked integer conversions. Open gap
+      for the owner: § 4(2) makes T(bit[N](x)) exact, but § 8(4) lists no
+      matching MLIR proof basis; Semantic IR records it as proof=bit-extraction
+      and the MLIR spelling needs a decision. Sec MLIR emission not started
+      (MD-114).
     classification: constraining
-    status: open
+    status: decided-implementation-pending
   - id: MD-111
     area: hardware-endpoint-fact-source
     rulebooks:
@@ -1184,4 +1184,51 @@ decisions:
       and MD-114 (register serialization). No static Place spelling is
       invented pending the explicit schema contract required by MD-084.
     classification: localized
+    status: open
+  - id: MD-117
+    area: stdlib-formatting-heterogeneous-argument-model
+    rulebooks:
+      - rules/library/stdlib.md
+      - rules/library/core-library.md
+      - rules/declarations/functions.md
+      - rules/declarations/spread.md
+      - rules/declarations/interfaces.md
+      - rules/types/types.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/monomorphization.md
+      - rules/platform/ffi.md
+    description: >-
+      Opened 2026-10-26 while investigating the desired native call
+      `fmt.Printf("str", strVal, intVal, boolVal)`. No such public API exists:
+      sec/stdlib/fmt/fmt.sec currently exports only Println(value: string).
+      The similarly intended log stubs use bare `args...`, which is invalid
+      Sec syntax; `go run ./cmd/compiler sema sec/stdlib/log/log.sec` reports
+      sixteen parse errors because a native variadic parameter must be written
+      `name: ...T`. Under functions.md §§28-38, every captured native variadic
+      argument must satisfy the one element type T, so `...T` cannot directly
+      carry a string, integer and bool as one heterogeneous pack.
+
+      Core-library.md §15 deliberately leaves a higher-level strongly typed
+      formatting API and its format grammar for later. Decide its public
+      `fmt` surface (including the spelling and result/error contract of
+      text materialization versus output), the literal-format validation and
+      runtime-invalid-format behavior, and the closed argument model. In
+      particular decide whether formatting uses an explicit nominal/tagged
+      FormatArg carrier with explicit conversions, a narrowly specified
+      compiler-known format-argument pack, or another statically typed
+      mechanism. The decision must define per-argument evaluation order,
+      ownership/borrowing and cleanup, allocation and StringError/IO-error
+      behavior, supported builtin and user-defined formatting participation,
+      spread behavior, Semantic IR facts, lowering, diagnostics and tooling.
+
+      Do not solve this by making native `...T` untyped, by introducing an
+      implicit `any` conversion, or by relying on generic type erasure or
+      implicit boxing: those conflict with the current typed-variadic and
+      monomorphization contracts. C Printf is a separate unsafe foreign
+      variadic call: it requires C-ABI-representable and promoted arguments,
+      an explicit foreign text representation, and never supplies the native
+      `fmt.Printf` contract. The primary future governance owner is
+      governance/stdlib.yaml; types, sema, lowering and ffi are affected only
+      through the chosen design rather than as duplicate owners.
+    classification: architectural
     status: open

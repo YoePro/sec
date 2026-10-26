@@ -412,6 +412,55 @@ public:
   }
 };
 
+// A checked integer conversion compares the source, extended one bit beyond
+// both widths, with the target's domain; the candidate is the same width
+// change as the exact form and is consumed only on the success edge
+// (package20.md §§ 48–54, 71).
+class NumericConvertCheckedLowering final
+    : public OpConversionPattern<sec::NumericConvertCheckedOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(sec::NumericConvertCheckedOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto sourceType = dyn_cast<IntegerType>(op.getValue().getType());
+    auto targetType = dyn_cast<IntegerType>(op.getCandidate().getType());
+    Value value = adaptor.getValue();
+    auto from = dyn_cast<IntegerType>(value.getType());
+    auto to = dyn_cast_or_null<IntegerType>(
+        getTypeConverter()->convertType(op.getCandidate().getType()));
+    if (!sourceType || !targetType || !from || !to ||
+        (!sourceType.isSigned() && !sourceType.isUnsigned()) ||
+        (!targetType.isSigned() && !targetType.isUnsigned()))
+      return op.emitOpError(
+          "requires resolved signed or unsigned builtin integer types");
+    Location location = op.getLoc();
+    unsigned width = std::max(from.getWidth(), to.getWidth()) + 1;
+    auto wide = IntegerType::get(rewriter.getContext(), width);
+    Value extended = extendInteger(rewriter, location, value, wide,
+                                   sourceType.isSigned());
+    unsigned bits = to.getWidth();
+    APInt minimum = targetType.isSigned()
+                        ? APInt::getSignedMinValue(bits).sext(width)
+                        : APInt::getZero(width);
+    APInt maximum = targetType.isSigned()
+                        ? APInt::getSignedMaxValue(bits).sext(width)
+                        : APInt::getMaxValue(bits).zext(width);
+    Value below = arith::CmpIOp::create(
+        rewriter, location, arith::CmpIPredicate::slt, extended,
+        integerConstant(rewriter, location, wide, minimum));
+    Value above = arith::CmpIOp::create(
+        rewriter, location, arith::CmpIPredicate::sgt, extended,
+        integerConstant(rewriter, location, wide, maximum));
+    Value failed = combineOr(rewriter, location, below, above);
+    Value candidate = extendInteger(rewriter, location, value, to,
+                                    sourceType.isSigned());
+    rewriter.replaceOp(op, ValueRange{candidate, failed});
+    return success();
+  }
+};
+
 // Static storage access keeps its symbol and attributes while its value type
 // becomes the signless integer of the resolved representation.
 class StaticAccessTypeLowering final : public ConversionPattern {
@@ -801,7 +850,8 @@ public:
                            func::FuncDialect, cf::ControlFlowDialect,
                            memref::MemRefDialect>();
     target.addLegalDialect<sec::SecDialect>();
-    target.addIllegalOp<sec::NumericConvertExactOp>();
+    target.addIllegalOp<sec::NumericConvertExactOp,
+                        sec::NumericConvertCheckedOp>();
     target.addDynamicallyLegalOp<sec::StaticLoadOp, sec::StaticStoreOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addIllegalOp<sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
@@ -837,7 +887,8 @@ public:
                  SecIntegerStoreLowering,
                  SecCallTypeLowering<sec::CallDirectOp>,
                  SecCallTypeLowering<sec::CallForeignOp>, SecConstIntLowering,
-                 ArithConstantTypeLowering, NumericConvertExactLowering>(
+                 ArithConstantTypeLowering, NumericConvertExactLowering,
+                 NumericConvertCheckedLowering>(
         typeConverter, context);
     for (StringRef name : {sec::StaticLoadOp::getOperationName(),
                            sec::StaticStoreOp::getOperationName()})

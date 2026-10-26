@@ -69,4 +69,10 @@ def SecVerifyBorrowSemantics : Pass<"sec-verify-borrow-semantics", "mlir::func::
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§6–9, 81.
+def SecVerifyFloatSemantics : Pass<"sec-verify-float-semantics", "mlir::ModuleOp"> {
+  let summary = "Verify strict Sec binary floating semantics and Clamp guards";
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

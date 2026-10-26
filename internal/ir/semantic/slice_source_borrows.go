@@ -179,10 +179,11 @@ func (fb *functionBuilder) fixedSliceSourcePlace(expr *ast.RefExpression, plan s
 
 // sliceSourceValue evaluates a slice source once without copying/moving its
 // holder. Named holders and freshly constructed expressions keep their P15
-// reference facts; signatures, returned values and projected holders retain
-// their separately tracked P16-36 gates.
+// reference facts. Calls retain the returned slice's instantiated origin and
+// authority; evaluating the source never recreates it or substitutes a holder.
+// Projected aggregate holders retain their separate P16-36 boundary.
 // Rules: rules/compiler/semantic_ir.md — §126.8;
-// rules/mlir/packages/sec-mlir-dialect_package16.md — §§17,43–46.
+// rules/mlir/packages/sec-mlir-dialect_package16.md — §§17,43–49,64–67.
 func (fb *functionBuilder) sliceSourceValue(expr ast.Expression) (builtValue, *ReferenceMetadata, error) {
 	if holder, ok := expr.(*ast.Identifier); ok {
 		value, facts, err := fb.referenceHolder(holder)
@@ -201,6 +202,16 @@ func (fb *functionBuilder) sliceSourceValue(expr ast.Expression) (builtValue, *R
 			return builtValue{}, nil, err
 		}
 		if handled && fb.references[value.id] != nil {
+			return value, fb.references[value.id], nil
+		}
+	}
+	if call, ok := expr.(*ast.CallExpression); ok {
+		value, err := fb.buildCall(call)
+		if err != nil {
+			return builtValue{}, nil, err
+		}
+		typ, _ := fb.owner.module.Types.Lookup(value.typ)
+		if (typ.Kind == TypeSharedSlice || typ.Kind == TypeMutableSlice) && fb.references[value.id] != nil {
 			return value, fb.references[value.id], nil
 		}
 	}

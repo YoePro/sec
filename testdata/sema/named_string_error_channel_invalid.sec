@@ -1,0 +1,7 @@
+module main
+
+type ShortName string minLen 1 maxLen 2
+
+fn NarrowChannel(number: int) Result[ShortName, StringError] {
+    return Ok(try ShortName(number.ToString()))
+}

@@ -13,6 +13,16 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	if target.Kind == InvalidType || value.Kind == InvalidType {
 		return true
 	}
+	// Float contexts may select width, but cannot change an explicit source
+	// family. Unsuffixed integer forms can shape directly to binary float.
+	// Rules: rules/types/types.md — "Numeric literal suffixes", "Context shaping";
+	// rules/mlir/packages/sec-mlir-dialect_package20.md — §§11–15.
+	if target.Kind == FloatType && isNumericLiteral(expr) {
+		_, suffix := ast.SplitNumericLiteralSuffix(numericLiteralSource(expr))
+		if suffix != "" && suffix != "g" {
+			return false
+		}
+	}
 	// A never expression has no continuing path on which a value would need to
 	// inhabit the target type.
 	if value.Kind == NeverType {
@@ -120,7 +130,7 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return ok && value.fitsCoefficientBits(decimalCoefficientBits(target))
 	}
 
-	if target.Kind == FloatType && value.Kind == DecimalType && isNumericLiteral(expr) {
+	if target.Kind == FloatType && (value.Kind == DecimalType || isIntegerType(value)) && isNumericLiteral(expr) {
 		return true
 	}
 
@@ -243,8 +253,8 @@ func (a *Analyzer) namedRepresentation(typ Type) Type {
 }
 
 // canExplicitConvert checks scalar-family conversion permissions; it does not
-// implement runtime domain checking. The legacy numeric-to-string exception
-// remains unresolved under MD-051 rather than claiming normative conformance.
+// implement runtime domain checking. Numeric text materialization belongs only
+// to primitive string (MD-051); named strings require explicit text first (MD-093).
 //
 // Rules:
 //   - rules/declarations/enums.md — "Conversions"
@@ -274,6 +284,11 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 	if target.Kind == RegisterType && isIntegerType(value) {
+		return true
+	}
+	// MD-110: a detached register converts explicitly to an integer; the
+	// width and signedness rules are checked by registerToIntegerResultType.
+	if isIntegerType(target) && value.Kind == RegisterType {
 		return true
 	}
 
@@ -311,10 +326,10 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
-	// Legacy permission only; MD-051 records the missing normative constructor
-	// relation. ToString is a separate operation, not a rule for this cast.
+	// MD-051 permits fallible primitive text materialization; MD-093 forbids
+	// inheriting that conversion relation for nominal string targets.
 	if target.Kind == StringType && isNumericType(value) {
-		return true
+		return !target.Named
 	}
 
 	if target.Kind == UnionType || value.Kind == UnionType {

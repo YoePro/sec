@@ -163,6 +163,60 @@ def Sec_FloatCmpOp : Sec_Op<"float.cmp", [Pure]> {
   let hasVerifier = 1;
 }
 
+// P20 core floating operations (sec-mlir-dialect_package20.md §§ 28–36,
+// 66–68, 73): total and allocation-free. minimum/maximum propagate NaN.
+def Sec_FloatAbsOp : Sec_Op<"float.abs", [Pure]> {
+  let summary = "Sec floating magnitude (clears the sign, NaN stays NaN)";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatMinimumOp : Sec_Op<"float.minimum", [Pure]> {
+  let summary = "Sec NaN-propagating minimum (Min(-0, +0) is -0)";
+  let arguments = (ins AnyType:$left, AnyType:$right);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatMaximumOp : Sec_Op<"float.maximum", [Pure]> {
+  let summary = "Sec NaN-propagating maximum (Max(-0, +0) is +0)";
+  let arguments = (ins AnyType:$left, AnyType:$right);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatClassifyOp : Sec_Op<"float.classify", [Pure]> {
+  let summary = "Sec floating classification: finite, infinite, nan, normal or subnormal";
+  let arguments = (ins StrAttr:$kind, AnyType:$value);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatRoundOp : Sec_Op<"float.round", [Pure]> {
+  let summary = "Sec integral rounding: floor, ceiling, truncate or nearest-even";
+  let arguments = (ins StrAttr:$kind, AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+// FloatClampCheckedOp (§§ 31, 69): the clamped value and a failed flag for
+// invalid bounds; failure always maps to RangeError.InvalidRange and the
+// value is consumed only on success.
+def Sec_FloatClampCheckedOp : Sec_Op<"float.clamp_checked", [Pure]> {
+  let summary = "Sec checked floating Clamp with a failed flag for invalid bounds";
+  let arguments = (ins AnyType:$value, AnyType:$minimum, AnyType:$maximum);
+  let results = (outs AnyType:$result, I1:$failed);
+  let hasVerifier = 1;
+}
+
+def Sec_FloatPropertyOp : Sec_Op<"float.property", [Pure]> {
+  let summary = "Sec floating associated property: min, max, epsilon, infinity, negative-infinity or nan";
+  let arguments = (ins StrAttr:$kind);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 // P20 NumericConvertExactOp (sec-mlir-dialect_package20.md §§ 44, 63, 73),
 // admitted early in schema 11 for built-in integer conversions the frontend
 // proved exact; P20 extends it to the float family (MD-104).
@@ -170,6 +224,17 @@ def Sec_NumericConvertExactOp : Sec_Op<"numeric.convert_exact", [Pure]> {
   let summary = "Exact, infallible numeric conversion proven before lowering";
   let arguments = (ins AnyType:$value);
   let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+// P20 NumericConvertCheckedOp (sec-mlir-dialect_package20.md §§ 48–54, 71–72),
+// admitted early for built-in integer targets: a target-typed candidate and a
+// failed flag; the candidate is consumed only on the success edge and the
+// static failure names the ConversionError variant of the failure edge.
+def Sec_NumericConvertCheckedOp : Sec_Op<"numeric.convert_checked", [Pure]> {
+  let summary = "Checked numeric conversion with a candidate and a failed flag";
+  let arguments = (ins StrAttr:$failure, AnyType:$value);
+  let results = (outs AnyType:$candidate, I1:$failed);
   let hasVerifier = 1;
 }
 

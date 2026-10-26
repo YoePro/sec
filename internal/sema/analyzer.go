@@ -28,6 +28,7 @@ type Analyzer struct {
 	cleanupFlow                 cleanupFlowState
 	resolvedDeferPlans          map[*ast.DeferStatement]ResolvedDeferPlan
 	ownedCleanupInitializations map[*ast.LetStatement]ResolvedOwnedCleanupRegistration
+	ownedCleanupParameters      map[BindingID]ownedCleanupParameter
 	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
 	ownedCleanupDeclarations    map[BindingID]*ast.LetStatement
 	ownedCleanupAssignments     map[*ast.AssignmentStatement]ResolvedOwnedCleanupAssignment
@@ -190,6 +191,10 @@ type Analyzer struct {
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
 	resolvedRegisterFields      map[*ast.MemberExpression]ResolvedRegisterFieldPlan
 	resolvedRegisterWrites      map[*ast.AssignmentStatement]ResolvedRegisterWriteProof
+	resolvedRegisterConversions map[ast.Expression]ResolvedRegisterConversion
+	// tryProtections are the effects and call sites each try's protected
+	// expression introduced (ResolvedTryRemainingPanicsOf).
+	tryProtections              map[*ast.TryExpression]tryProtection
 	softwareOnlyRegisterMembers map[string]softwareOnlyReason
 	hardwareOnlyRegisterMembers map[string]softwareOnlyReason
 	resolvedRegisterOperations  map[*ast.CallExpression]ResolvedRegisterOperation
@@ -305,6 +310,8 @@ type Analyzer struct {
 	statementTries map[*ast.TryExpression]bool
 	// tryChainReceivers marks, while a try's protected expression is
 	// inferred, each member receiver with the member it is accessed through;
+	// a conversion operand uses an empty member name for the same protected
+	// Result-success adaptation (errorhandling.md §13; MD-093).
 	// tryUnwrappedReceivers records the receivers whose Result type the try
 	// unwraps to continue a chain (try_chain.go).
 	tryChainReceivers map[ast.Expression]string
@@ -547,6 +554,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.cleanupFlow = cleanupFlowState{}
 	a.resolvedDeferPlans = nil
 	a.ownedCleanupInitializations = nil
+	a.ownedCleanupParameters = nil
 	a.ownedCleanupCancellations = nil
 	a.ownedCleanupDeclarations = nil
 	a.ownedCleanupAssignments = nil
@@ -663,6 +671,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
 	a.resolvedRegisterFields = map[*ast.MemberExpression]ResolvedRegisterFieldPlan{}
 	a.resolvedRegisterWrites = map[*ast.AssignmentStatement]ResolvedRegisterWriteProof{}
+	a.resolvedRegisterConversions = nil
+	a.tryProtections = nil
 	a.softwareOnlyRegisterMembers = nil
 	a.hardwareOnlyRegisterMembers = nil
 	a.resolvedRegisterOperations = nil
@@ -8942,11 +8952,6 @@ func borrowRootName(expr ast.Expression) (string, bool) {
 	}
 }
 
-func (a *Analyzer) indexAssignmentTargetIsMutable(expr ast.Expression) bool {
-	place, ok := a.resolvePlace(expr)
-	return ok && place.Mutable
-}
-
 func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatement, member *ast.MemberExpression, allowFallible bool) {
 	// rules/declarations/properties.md, Assignment; correction12.md. Property
 	// metadata must be resolved without performing a getter read so write-only
@@ -11522,22 +11527,7 @@ func (a *Analyzer) fallibleEnumConversionType(target Type) Type {
 // every other runtime value yields Result[T, ArithmeticError] for explicit try
 // handling, with no hidden runtime or implicit trap.
 func (a *Analyzer) integerToRegisterConversionResultType(target Type, source Type, expression ast.Expression) Type {
-	minimum := big.NewInt(0)
-	maximum := new(big.Int).Lsh(big.NewInt(1), uint(target.RegisterWidth))
-	maximum.Sub(maximum, big.NewInt(1))
-	if value, constant := a.integerConstantValue(expression); constant {
-		if value.Cmp(minimum) < 0 || value.Cmp(maximum) > 0 {
-			a.addErrorAtToken(expressionToken(expression), "integer value %s does not fit register %s width %d", value.String(), target.Name, target.RegisterWidth)
-			return Type{Kind: InvalidType}
-		}
-		return target
-	}
-	if source.MinInteger != nil && source.MaxInteger != nil &&
-		source.MinInteger.Cmp(minimum) >= 0 && source.MaxInteger.Cmp(maximum) <= 0 {
-		return target
-	}
-	errorType := a.types["ArithmeticError"]
-	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, errorType}}
+	return a.integerToRegisterConversion(target, source, expression)
 }
 
 // commitFallibleBoundsIndex publishes positive evidence only after the complete
@@ -11946,6 +11936,9 @@ type matchPatternInfo struct {
 	// InitializesSubject names a possibly-empty union subject binding that
 	// this arm proves initialized (every variant arm of such a match).
 	InitializesSubject string
+	// FieldBindings are the shallow named-field bindings of a struct-like
+	// union pattern (flowcontrol_match.md § 10).
+	FieldBindings []matchFieldBinding
 }
 
 // analyzeMatch validates patterns, exhaustiveness, branch state and an optional
@@ -12024,12 +12017,13 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			addArmResult(arm, armType)
 			continue
 		}
+		var info matchPatternInfo
+		var ok bool
 		if arm.Pattern.Kind == ast.MatchPatternFields {
-			a.addErrorAtToken(arm.Pattern.Token, "shallow named-field match patterns are not implemented yet")
-			patternError = true
-			continue
+			info, ok = a.analyzeMatchFieldPattern(expr.Subject, arm.Pattern, subjectType)
+		} else {
+			info, ok = a.analyzeMatchPattern(arm.Pattern.Expression(), subjectType)
 		}
-		info, ok := a.analyzeMatchPattern(arm.Pattern.Expression(), subjectType)
 		if !ok {
 			patternError = true
 			continue
@@ -12567,19 +12561,18 @@ func unionPayloadPatternBinding(expr ast.Expression) (binding *ast.Identifier, b
 }
 
 func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {
-	if info.BindingName == "" {
-		return branch
-	}
-	delete(branch.assigned, info.BindingName)
-	delete(branch.closedResources, info.BindingName)
-	for place := range branch.moved {
-		if place == info.BindingName || strings.HasPrefix(place, info.BindingName+".") || strings.HasPrefix(place, info.BindingName+"[") {
-			delete(branch.moved, place)
-			delete(branch.moveReasons, place)
+	for _, name := range info.matchBindingNames() {
+		delete(branch.assigned, name)
+		delete(branch.closedResources, name)
+		for place := range branch.moved {
+			if place == name || strings.HasPrefix(place, name+".") || strings.HasPrefix(place, name+"[") {
+				delete(branch.moved, place)
+				delete(branch.moveReasons, place)
+			}
 		}
+		removeBorrowHolder(branch.borrows, name)
+		delete(branch.localRefContainers, name)
 	}
-	removeBorrowHolder(branch.borrows, info.BindingName)
-	delete(branch.localRefContainers, info.BindingName)
 	return branch
 }
 
@@ -12633,6 +12626,7 @@ func (a *Analyzer) resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex in
 		BindingName:       info.BindingName,
 		BindingType:       info.BindingType,
 		BindingAction:     resolvedMatchBindingAction(info),
+		FieldBindings:     resolvedMatchFieldBindings(info),
 		Guarded:           arm.Guard != nil,
 		Flow:              MatchArmContinues,
 		ResultType:        resultType,
@@ -12980,27 +12974,6 @@ func appendStringConcatSegments(target []StringConcatSegment, segments ...String
 		target = append(target, segment)
 	}
 	return target
-}
-
-func (a *Analyzer) contextualNumericLiteralType(expr ast.Expression, actual Type, target Type) (Type, bool) {
-	if !isUntypedNumericExpression(expr) || !isNumericType(target) || !a.canInitialize(target, actual, expr) {
-		return actual, true
-	}
-	if isIntegerType(target) {
-		value, known := a.integerConstantValue(expr)
-		if known && a.checkIntegerValueRange(target, value, expressionToken(expr)) {
-			return Type{Kind: InvalidType}, false
-		}
-	}
-	a.expressionTypes[expr] = target
-	// A signed literal shapes its operand with it (`-1.5` beside a float64 is
-	// the float64 literal 1.5 negated, package20.md § 17).
-	if prefix, ok := expr.(*ast.PrefixExpression); ok && (prefix.Operator == "-" || prefix.Operator == "+") && target.Kind == FloatType {
-		if operand, recorded := a.expressionTypes[prefix.Right]; recorded {
-			a.contextualNumericLiteralType(prefix.Right, operand, target)
-		}
-	}
-	return target, true
 }
 
 func isTextConcatKind(typ Type) bool {

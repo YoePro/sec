@@ -283,9 +283,9 @@ integrations:
 
   - id: tooling.lsp-try-result-hover
     area: tooling
-    status: partial
+    status: implemented
     integrated: "2026-08-14"
-    revised: "2026-10-14"
+    revised: "2026-10-26"
     summary: >-
       Makes hover at try and its operand explain the callable's declared
       carrier, the value produced on success, and the exact failure-handling
@@ -303,11 +303,14 @@ integrations:
       - cmd/lsp/hover_try_handlers.go
       - cmd/lsp/hover_assert.go
       - internal/sema/analyzer_inference.go
+      - internal/sema/try_remaining_panics.go
     tests:
       - cmd/lsp/hover_try_test.go
       - cmd/lsp/hover_property_test.go
       - cmd/lsp/hover_try_coverage_test.go
       - testdata/lsp/try_hover
+      - cmd/lsp/hover_try_panic_test.go
+      - internal/sema/try_remaining_panics_test.go
     implemented:
       - hover on a resolved Result try keyword shows the exact protected Result[T, E] carrier and the T produced by the try expression
       - hover on the protected root callable shows the same compiler-owned try facts while nested argument tokens retain their ordinary hover
@@ -322,11 +325,15 @@ integrations:
       - focused source-fixture coverage exercises single/multiple partial variant handlers, guarded catch-all and guarded-plus-variant partial handlers, exhaustive fallback, partial error-root widening, arithmetic checks, indexing and narrowing conversions at the keyword and protected operation; nested arguments retain ordinary hover
       - invalid operands, incompatible Result/Option channels, partial handlers without a compatible return channel, and invalid recovery values publish no valid-looking try-flow hover; completed handler plans are required, incompatible Result propagation retains no resolved propagation fact, and valid neighboring tries remain visible
       - try handler/failure-set presentation and assertion hover have focused sibling files; hover reuses compiler-owned facts and contains no second error-handling engine
-    remaining:
-      - show the remaining panic effect when Sema exposes that presentation fact on resolved try operations
+      - "remaining panic effect (2026-10-26): Sema publishes ResolvedTryRemainingPanicsOf, the call-graph panic effects and panicking call sites the protected expression introduced that the try does not convert (handler bodies excluded, converted failures filtered against the final graph); try hover lists them with callee, line and canonical panic reason names and stays silent when none remain"
+    remaining: []
     reconciliation:
       - the migrated legacy statement that Option cannot propagate with try was superseded by errorhandling revision 2; rules/errors/errorhandling.md §§ 9 and 12.2 permit Option try
     verification:
+      - command: go test ./internal/sema ./cmd/lsp ./internal/lsp/...
+        result: passed on 2026-10-26 with TestResolvedTryRemainingPanics and TestTryHoverShowsRemainingPanicEffect
+      - command: go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-10-26
       - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/... -count=1
         result: passed on 2026-10-14; complete LSP, Sema and shared LSP suites; final extended invalid operand assertions additionally passed in focused coverage tests
       - command: go vet ./cmd/lsp ./internal/sema/...
@@ -499,7 +506,7 @@ integrations:
 
   - id: tooling.lsp-expected-type-member-completion
     area: tooling-lsp
-    status: partial
+    status: implemented
     integrated: "2026-10-03"
     summary: >-
       Member completion written directly as a returned value offers only members
@@ -514,8 +521,11 @@ integrations:
       - cmd/lsp/main.go
       - cmd/lsp/state_test_completion.go
       - cmd/lsp/subject_completion.go
+      - cmd/lsp/expected_value_completion.go
+      - internal/sema/value_assignability.go
     tests:
       - cmd/lsp/expected_type_completion_test.go
+      - cmd/lsp/expected_value_completion_test.go
       - cmd/lsp/state_test_completion_test.go
       - testdata/lsp/state_test_completion/context.sec.in
     implemented:
@@ -531,10 +541,16 @@ integrations:
       - "`is` state tests offering the subject's variants"
       - is/is not completion uses shared analyzed subject types to offer only union variants, Option Some/None and Result Ok/Err, with prefix filtering, valid one-owner qualifiers and deterministic ordering; supports member and call subjects, stored/returned booleans, incomplete if/while headers, grouped tests, negation, Unicode and CRLF positions without introducing payload bindings or wildcards
       - a focused state_test_completion.go recovers only the unfinished variant and consumes shared cached compiler analysis; unknown/non-union subjects and mismatched owners yield no guessed variants, and lexical tokens distinguish tests from strings, comments, payload bindings and contextual members named is
-    remaining:
-      - expected types from typed let initializers, assignments, call arguments, struct literal fields, and match arm values
-      - assignability beyond nominal equality (widening, Option/Result wrapping, generic instantiation, interface satisfaction)
+      - "expected value positions (2026-10-26): a selector written directly as the value of a typed let (binding type), an assignment (target binding type), a call argument (parameter type of the resolved call or the only overload of that arity; ref and variadic parameters excluded), a struct literal field (declared field type) or a match arm value (Sema's match type or the agreeing other arm types) completes only members of that type; untyped lets and selectors nested in larger expressions stay unfiltered"
+      - "assignability (2026-10-26): every expected-type filter asks Sema's ValueAssignable (canInitialize for typed values) instead of comparing type names, so the one-way concrete-error-to-error widening, references, unit quantities and Sema's contextual conversions follow the compiler exactly"
+    remaining: []
+    reconciliation:
+      - "the former remaining item named widening, Option/Result wrapping, generic instantiation and interface satisfaction; Sec has no implicit typed scalar widening (types.md typed scalar identity, typecompatibility matrix) and no implicit Some/Ok wrapping (Sema rejects `let x: Option[int] := y`), so the LSP offers exactly what Sema's assignability accepts and invents no further relation"
     verification:
+      - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/...
+        result: passed on 2026-10-26 with TestMemberCompletionUsesExpectedValueTypes and TestExpectedTypeCompletionFollowsSemaAssignability; TestCompletionKeepsNamedStringOptionFlowAndEnumMembers now targets its intended untyped `let n := value.` site (the first `value.` is a typed uint let, which correctly filters)
+      - command: go vet ./cmd/lsp ./internal/sema
+        result: passed on 2026-10-26
       - command: go test ./cmd/lsp ./internal/lsp/... -count=1
         result: passed on 2026-10-14; complete LSP, protocol and server suites; final operator-word guard also passed in targeted race verification
       - command: go vet ./cmd/lsp ./internal/lsp/...
@@ -545,7 +561,7 @@ integrations:
         result: passed on 2026-10-03 for a FileMode getter offering only FileMode fields and methods without the getter's own property, an unfiltered non-return selector, and a string method return
       - command: go test ./cmd/lsp -run 'Comparison|SwitchCaseCompletion|MatchArmCompletion|BlankLineOutside' -count=1
         result: passed on 2026-10-03 for == and != self. operands, an uncovered switch case, union, Option, and Result match arms, and unchanged global completion on a blank line outside match
-    revised: "2026-10-14"
+    revised: "2026-10-26"
 
   - id: tooling.lsp-inlay-hints
     area: tooling-lsp

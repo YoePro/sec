@@ -11,12 +11,12 @@ fn Transfer(->value: Resource) Resource {
     return <-value
 }
 fn Cleanup(value: Resource) void {
-    let destination :<- value
+    let destination     :<- value
     let mut replacement := Create()
     replacement <- destination
     Consume(<-replacement)
-    let payload := Packet{ Value: <-Create() }
-    let option := Some(<-Create())
+    let payload       := Packet{ Value: <-Create() }
+    let option        := Some(<-Create())
     let captureSource := Create()
     let closure := capture(<-captureSource) fn() void {
         discard captureSource

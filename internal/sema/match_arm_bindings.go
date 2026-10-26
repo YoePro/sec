@@ -83,6 +83,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 			}
 		}
 	}
+	a.defineMatchFieldBindings(info)
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts

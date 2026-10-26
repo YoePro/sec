@@ -326,6 +326,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			},
 		)
 	}
+	members = append(members, compilerKnownFloatMembers(sequence)...)
 	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
 	members = append(members, compilerKnownAtomicMembers(sequence)...)
 	members = append(members, compilerKnownMutexMembers(sequence)...)

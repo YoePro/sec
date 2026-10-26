@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/sema"
 )
@@ -197,8 +198,43 @@ func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpr
 		}
 		lines = append(lines, errorIdentityHoverLines(resolved)...)
 	}
+	lines = append(lines, tryRemainingPanicHoverLines(analyzer, expression)...)
 
 	return strings.Join(lines, "\n\n")
+}
+
+// tryRemainingPanicHoverLines shows the panic paths a try leaves in its
+// protected expression; try converts only the failures it handles and never
+// catches panic (errorhandling.md § 31). Nothing is shown when Sema has no
+// fact or no panic path remains.
+//
+// Rules:
+//   - rules/tooling/lsp.md — try hover "remaining panic effect"
+//   - rules/analysis/effect_analysis.md — try removes only the supported panic path
+func tryRemainingPanicHoverLines(analyzer *sema.Analyzer, expression *ast.TryExpression) []string {
+	remaining, ok := analyzer.ResolvedTryRemainingPanicsOf(expression)
+	if !ok || len(remaining) == 0 {
+		return nil
+	}
+	lines := []string{"Remaining panic effect: `may panic` (try does not catch panic)"}
+	for _, panic := range remaining {
+		reasons := make([]string, 0, len(panic.PanicReasonIDs))
+		for _, id := range panic.PanicReasonIDs {
+			if definition, found := diagnostics.PanicReasonByID(id); found {
+				reasons = append(reasons, definition.Name)
+			}
+		}
+		reasonText := ""
+		if len(reasons) > 0 {
+			reasonText = ": `" + strings.Join(reasons, "`, `") + "`"
+		}
+		if panic.Callee != "" {
+			lines = append(lines, fmt.Sprintf("- call to `%s` at line %d may panic%s", panic.Callee, panic.Source.Line, reasonText))
+		} else {
+			lines = append(lines, fmt.Sprintf("- `%s` at line %d%s", panic.Kind, panic.Source.Line, reasonText))
+		}
+	}
+	return lines
 }
 
 // tryAssignmentHover presents the Sema-resolved contract of a fallible

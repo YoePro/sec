@@ -46,6 +46,8 @@ type analysisFamily struct {
 	DiagnosticIDs      []string
 }
 
+// analysisFamilies owns every canonical selector and its reporting producer.
+// Rules: rules/tooling/cli.md — § 3(2), § 5.2.
 func analysisFamilies() []analysisFamily {
 	return []analysisFamily{
 		{Name: "pitfalls", Title: "pitfall analysis", Description: "likely mistakes such as final-element access without a non-empty proof, with suggested fixes",
@@ -54,6 +56,8 @@ func analysisFamilies() []analysisFamily {
 			Availability: analysisAvailable, DiagnosticIDs: []string{diagnostics.LargeValueParameter}},
 		{Name: "stack", Title: "stack analysis", Description: "stack budget proofs for entry points, interrupts and tasks",
 			Availability: analysisAvailable, DiagnosticFamilies: []string{"stack"}},
+		{Name: "closures", Title: "closure analysis", Description: "closure creation, capture transfer and callable target facts (details with --verbose)",
+			Availability: analysisAvailable},
 		{Name: "isr", Title: "ISR analysis", Description: "interrupt-handler safety: no allocation, no panic, no blocking",
 			Availability: analysisNotSelectable, Limitation: "its checks run as mandatory diagnostics of every compilation and cannot yet be selected alone; run `sec analyse` or `sec check`"},
 		{Name: "deadlocks", Title: "deadlock analysis", Description: "lock-order and same-resource reacquisition hazards",
@@ -125,6 +129,7 @@ Examples:
   sec analyse pitfalls
   sec analyse deadlocks
   sec analyse stack
+  sec analyse closures --verbose
   sec analyse -f myFunc
   sec analyse deadlocks --function myFunc
   sec analyse -d standard

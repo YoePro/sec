@@ -47,7 +47,7 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	if err := validateOwnershipLoweringCapabilities(program, analyzer, identity, options.MaxPackage); err != nil {
 		return nil, err
 	}
-	if free, ok := firstCustomFreeDeclaration(program); ok {
+	if free, ok := firstCustomFreeDeclaration(program); ok && options.MaxPackage < ownershipLoweringPackage {
 		// rules/memory/destruction.md §§15.5, 30–31: custom free must run
 		// exactly once before field destruction. Semantic IR has no
 		// destruction plan yet, so it must not silently drop the destructor.
@@ -106,6 +106,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 			return nil, err
 		}
 	}
+	if err := b.bindCustomFrees(); err != nil {
+		return nil, err
+	}
 	return module, nil
 }
 
@@ -135,8 +138,30 @@ type builder struct {
 	slicePlans     *sliceLoweringPlans
 	// borrowEnds indexes Sema's last-required-use borrow ends (MD-065).
 	borrowEnds map[string][]sema.ReferenceLifetimeEnd
+	// customFrees maps a type to its built custom `free` (P17).
+	customFrees map[string]FunctionID
 }
 type functionBuilder struct {
+	// resolved is the Sema function being built; cleanupOrdinal counts its
+	// owned-value cleanup registrations (P17).
+	resolved       *sema.Function
+	cleanupOrdinal uint32
+	// cleanupExitsDone are the scope exits whose cleanup was emitted.
+	cleanupExitsDone map[cleanupExitKey]bool
+	// trackedActions maps an owned local's binding to its cleanup action.
+	trackedActions map[sema.BindingID]uint32
+	// pendingArgumentCancels are argument moves' cancels, emitted when their
+	// call commits.
+	pendingArgumentCancels []Operation
+	// ownedStorages are the owned mutable locals held in storage (P17).
+	ownedStorages map[sema.BindingID]ownedStorage
+	// cleanupScopes is the stack of lexical cleanup scopes being built.
+	cleanupScopes []sema.CleanupScopeID
+	// propagatingTry is the bodyless arithmetic try being built; its
+	// propagation return sits at the operator, so propagationReturns maps
+	// that location to the try's Sema exit.
+	propagatingTry     lexer.Token
+	propagationReturns map[sourceKey]sourceKey
 	// variantGuard is the union.is-variant predicate of the match arm being
 	// lowered, consumed by a borrowed payload binding (P15-45).
 	variantGuard ValueID
@@ -174,8 +199,9 @@ type functionBuilder struct {
 	holderHomes    map[sema.BindingID]int
 	pendingHomes   []sema.BindingID
 	borrowEnds     map[ValueID]borrowEndMark
-	// armPayloadBinding is the binding of the match arm being built.
-	armPayloadBinding sema.BindingID
+	// armPayloadBindings are the payload and named-field bindings of the
+	// match arm being built.
+	armPayloadBindings []sema.BindingID
 }
 type binding struct {
 	value   ValueID
@@ -208,7 +234,7 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
 	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
 	b.module.Functions = append(b.module.Functions, fn)
-	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1}
+	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1, resolved: &resolved}
 	if !resolved.Static && resolved.ImplTarget != "" {
 		if err := fb.addReceiverParameter(resolved, decl); err != nil {
 			return err
@@ -254,12 +280,21 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 	if decl.Body == nil {
 		return fmt.Errorf("non-extern function %s has no body", fn.ID)
 	}
+	if err := fb.trackOwnedParameters(decl); err != nil {
+		return err
+	}
 	if err := fb.buildStatements(decl.Body.Statements); err != nil {
 		return err
 	}
 	if fb.current != nil && resolved.ReturnType.Kind == sema.VoidType {
 		fb.emit(Operation{Kind: OpReturn, Location: location(decl.Token)})
 		fb.current = nil
+	}
+	if err := fb.normalizeSliceBorrowEnds(); err != nil {
+		return err
+	}
+	if err := fb.runFunctionCleanup(decl); err != nil {
+		return err
 	}
 	// Package 14 sections 88-89 and 103 permit fixed-array type identity but
 	// defer owned parameter cleanup for arrays whose elements are not trivially
@@ -768,7 +803,7 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if stmt.Body == nil {
 				return fb.unsupported("empty unsafe block", stmt.Token)
 			}
-			if err := fb.buildStatements(stmt.Body.Statements); err != nil {
+			if err := fb.buildScope(stmt.Body); err != nil {
 				return err
 			}
 		default:
@@ -832,6 +867,11 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 		if fb.owner.maxPackage < 3 {
 			return fb.unsupported("mutable local storage", stmt.Token)
 		}
+		if fb.owner.maxPackage >= ownershipLoweringPackage {
+			if registration, ok := fb.owner.analyzer.ResolvedOwnedCleanupInitializationOf(stmt); ok {
+				return fb.declareOwnedStorage(stmt, fact.ID, registration, value, fact.Type)
+			}
+		}
 		if !fb.storageAllowed(value.typ) {
 			return fb.unsupported("non-trivial mutable local storage", stmt.Token)
 		}
@@ -845,10 +885,18 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 		return nil
 	}
 	fb.bindings[fact.ID] = binding{value: value.id, typ: value.typ}
+	if fb.owner.maxPackage >= ownershipLoweringPackage {
+		if registration, ok := fb.owner.analyzer.ResolvedOwnedCleanupInitializationOf(stmt); ok {
+			return fb.trackOwnedLocal(stmt, registration, value, fact.Type)
+		}
+	}
 	return nil
 }
 
 func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error {
+	if handled, err := fb.assignOwnedStorageTarget(stmt); handled {
+		return err
+	}
 	if fb.owner.maxPackage >= sliceLoweringPackage {
 		if index, ok := stmt.Target.(*ast.IndexExpression); ok {
 			if plan, ok := fb.owner.slicePlans.indexes[index]; ok {
@@ -1286,79 +1334,6 @@ func (fb *functionBuilder) buildStructFieldAssignment(stmt *ast.AssignmentStatem
 	return nil
 }
 
-// buildCompoundAssignment lowers `local op= value` for an integer mutable
-// local: the destination is read once, the source evaluated once, the
-// Sema-resolved underlying operator applied with its checks, and the result
-// written once only after the checks pass. Other targets remain an explicit
-// boundary.
-//
-// Rules:
-//   - rules/foundations/operators.md — "Compound assignment", "Compound arithmetic failure", "Increment and decrement aliases"
-//   - rules/compiler/semantic_ir.md — § 31 "Storage operations", § 58 "Arithmetic"
-func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement) error {
-	resolved, ok := fb.owner.analyzer.ResolvedCompoundAssignmentOf(stmt)
-	if !ok || fb.owner.maxPackage < 13 {
-		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
-	}
-	id, ok := stmt.Target.(*ast.Identifier)
-	if !ok {
-		return fb.unsupported("compound assignment to a non-local place", stmt.Token)
-	}
-	if _, ok := stmt.Value.(*ast.TryExpression); ok {
-		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
-	}
-	if static, isStatic, err := fb.staticOfIdentifier(id); isStatic {
-		if err != nil {
-			return err
-		}
-		return fb.buildStaticCompoundAssignment(stmt, resolved, static)
-	}
-	fact, ok := fb.owner.analyzer.ResolvedBindingOf(id)
-	if !ok {
-		return fmt.Errorf("missing resolved assignment binding")
-	}
-	bind, ok := fb.bindings[fact.ID]
-	if !ok || bind.storage == 0 {
-		return fmt.Errorf("assignment target has no semantic storage")
-	}
-	leftType, err := fb.owner.internType(resolved.LeftType)
-	if err != nil {
-		return err
-	}
-	rightType, err := fb.owner.internType(*resolved.RightType)
-	if err != nil {
-		return err
-	}
-	resultType, err := fb.owner.internType(resolved.ResultType)
-	if err != nil {
-		return err
-	}
-	if leftType != bind.typ || resultType != bind.typ {
-		return fmt.Errorf("compound assignment type does not match its storage")
-	}
-	loc := location(stmt.Token)
-	current := fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ)
-	value, err := fb.buildExpr(stmt.Value, rightType)
-	if err != nil {
-		return err
-	}
-	op := Operation{Operands: []ValueID{current.id, value.id}, Location: loc, Operator: strings.TrimSuffix(stmt.Operator, "=")}
-	if !semanticOperatorKind(resolved, &op) {
-		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
-	}
-	updated := builtValue{}
-	if resolved.RuntimeCheck || resolved.ShiftCountProven {
-		updated, err = fb.emitCheckedOperator(op, resultType, nil, nil, nil)
-		if err != nil {
-			return err
-		}
-	} else {
-		updated = fb.result(op, resultType)
-	}
-	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{updated.id}, Location: loc})
-	return nil
-}
-
 func (fb *functionBuilder) buildReturn(stmt *ast.ReturnStatement) error {
 	// Direct `return try result` has two terminal paths. Sema alone decides
 	// whether the narrow forwarding rule applies; lowering never infers it from
@@ -1435,7 +1410,7 @@ func (fb *functionBuilder) buildIf(stmt *ast.IfStatement) error {
 	}
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: thenBlock.ID}, {Block: elseBlock.ID}}, Location: location(stmt.Token)})
 	fb.current = thenBlock
-	if err := fb.buildStatements(stmt.Consequence.Statements); err != nil {
+	if err := fb.buildScope(stmt.Consequence); err != nil {
 		return err
 	}
 	thenEnd := fb.current
@@ -1444,7 +1419,7 @@ func (fb *functionBuilder) buildIf(stmt *ast.IfStatement) error {
 	elseEnd := merge
 	if stmt.Alternative != nil {
 		fb.current = elseBlock
-		if err := fb.buildStatements(stmt.Alternative.Statements); err != nil {
+		if err := fb.buildScope(stmt.Alternative); err != nil {
 			return err
 		}
 		elseEnd = fb.current
@@ -1523,7 +1498,7 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 	}
 	previous, existed := fb.bindings[bindingFact.ID]
 	fb.bindings[bindingFact.ID] = binding{value: payload.id, typ: payload.typ}
-	if err := fb.buildStatements(stmt.Consequence.Statements); err != nil {
+	if err := fb.buildScope(stmt.Consequence); err != nil {
 		return err
 	}
 	thenEnd := fb.current
@@ -1535,7 +1510,7 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 
 	if stmt.Alternative != nil {
 		fb.current = elseBlock
-		if err := fb.buildStatements(stmt.Alternative.Statements); err != nil {
+		if err := fb.buildScope(stmt.Alternative); err != nil {
 			return err
 		}
 	}
@@ -1726,8 +1701,14 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if _, fixed := sema.FixedArrayLength(fact.Type); fixed && sema.CopyClassificationOf(fact.Type) != sema.CopyTrivial {
 			return builtValue{}, fb.unsupported("non-trivial fixed-array value transfer", e.Token)
 		}
+		if owned, isOwned := fb.ownedStorages[fact.ID]; isOwned {
+			return fb.readOwnedStorage(e, fact.ID, owned)
+		}
 		if bind.storage != 0 {
 			return fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ), nil
+		}
+		if moved, handled, err := fb.moveOwnedLocal(e, fact.ID, builtValue{id: bind.value, typ: bind.typ}); handled {
+			return moved, err
 		}
 		return builtValue{id: bind.value, typ: bind.typ}, nil
 	case *ast.MemberExpression:
@@ -1735,6 +1716,14 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			member, resolved := fb.owner.analyzer.CompilerKnownMemberAt(e.Property.Token.File, e.Property.Token.Line, e.Property.Token.Column)
 			if resolved && member.ID == "CKM-LEN-ARRAY" {
 				return fb.buildFixedArrayLength(e, typeID)
+			}
+		}
+		if fb.owner.maxPackage >= 7 && e.Property != nil {
+			site := e.Property.Token
+			if member, resolved := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); resolved && member.Kind == sema.CompilerKnownProperty {
+				if value, handled, err := fb.buildNumericTypeProperty(e, member, typeID); handled {
+					return value, err
+				}
 			}
 		}
 		if fb.owner.maxPackage >= registerLoweringPackage {
@@ -1749,6 +1738,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			if plan, resolved := fb.owner.analyzer.ResolvedStructMemberOf(e); resolved && plan.Kind == sema.MemberStoredField {
 				if plan.Action != sema.StructFieldCopyTrivial {
 					return builtValue{}, fb.unsupported("non-trivial struct field read", e.Token)
+				}
+				if owned, isOwned := fb.ownedStorageOf(e.Object); isOwned {
+					return fb.readOwnedStorageField(e, owned, plan)
 				}
 				source, err := fb.buildExpr(e.Object, 0)
 				if err != nil {
@@ -1778,11 +1770,29 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if fb.owner.maxPackage < 3 {
 			return builtValue{}, fb.unsupported("function call", e.Token)
 		}
+		if fb.owner.maxPackage >= registerLoweringPackage && len(e.Arguments) == 1 {
+			if conversion, resolved := fb.owner.analyzer.ResolvedRegisterConversionOf(e.Arguments[0]); resolved {
+				return fb.buildRegisterConversion(e, conversion)
+			}
+		}
 		if conversion, resolved := fb.owner.analyzer.ResolvedIntegerConversionOf(e); resolved {
 			return fb.buildIntegerConversion(e, conversion)
 		}
+		if member, ok := e.Callee.(*ast.MemberExpression); ok && member.Property != nil && fb.owner.maxPackage >= 7 {
+			site := member.Property.Token
+			if known, resolved := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); resolved && known.Kind == sema.CompilerKnownMethod {
+				if value, handled, err := fb.buildFloatCoreCall(e, member, known); handled {
+					return value, err
+				}
+			}
+		}
 		return fb.buildCall(e)
 	case *ast.PrefixExpression, *ast.InfixExpression:
+		if prefix, ok := expr.(*ast.PrefixExpression); ok && prefix.Operator == "<-" && fb.owner.maxPackage >= ownershipLoweringPackage {
+			// The explicit move marker (copy_move.md § 8.2): the operand's
+			// own transfer plan lowers the move.
+			return fb.buildExpr(prefix.Right, typeID)
+		}
 		if fb.owner.maxPackage < 7 {
 			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
 		}
@@ -2395,6 +2405,20 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if err != nil {
 			return builtValue{}, err
 		}
+		var fieldBorrows []builtValue
+		if len(armPlan.FieldBindings) > 0 {
+			restorePayload := restore
+			restoreFields, borrows, err := fb.bindMatchFields(expr.Subject, subject, subjectPlace, armPlan, matchID, arm.Token)
+			if err != nil {
+				restorePayload()
+				return builtValue{}, err
+			}
+			fieldBorrows = borrows
+			restore = func() {
+				restoreFields()
+				restorePayload()
+			}
+		}
 		armBlocksFrom := len(fb.fn.Blocks)
 		if armPlan.Guarded {
 			guard, err := fb.buildExpr(arm.Guard, boolType)
@@ -2426,6 +2450,18 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 				return builtValue{}, err
 			}
 		}
+		if len(fieldBorrows) > 0 {
+			armBlocks := append([]*Block{bodyBlock}, fb.fn.Blocks[armBlocksFrom:]...)
+			if armPlan.Guarded {
+				armBlocks = append(armBlocks, matchedBlock)
+			}
+			for _, borrowed := range fieldBorrows {
+				if err := fb.endPayloadBorrow(borrowed, armBlocks, location(arm.Token)); err != nil {
+					restore()
+					return builtValue{}, err
+				}
+			}
+		}
 		restore()
 		record.Arms = append(record.Arms, MatchArmRecord{
 			SourceIndex: armPlan.SourceIndex, PatternKind: string(armPlan.PatternKind), PatternBlock: patternBlock.ID,
@@ -2437,6 +2473,10 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 			fb.current = nil
 			break
 		}
+		// The next arm's test block was created before this arm's body, which
+		// may have added blocks (checked arithmetic, guards, borrow ends).
+		// Lay it out after them so arm provenance stays in source order.
+		fb.moveBlockToEnd(nextBlock)
 		fb.current = nextBlock
 		if planIndex == len(plan.Arms)-1 {
 			fb.emit(Operation{Kind: OpUnreachable, Synthesized: true, Reason: "exhaustive-match-fallthrough", MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "residual", MatchPatternKind: string(armPlan.PatternKind), Location: location(expr.Token)})
@@ -2651,7 +2691,7 @@ func matchArmBindingIdentifier(pattern ast.Expression) *ast.Identifier {
 }
 
 func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, value builtValue, hasValue bool) (func(), error) {
-	fb.armPayloadBinding = 0
+	fb.armPayloadBindings = nil
 	if plan.BindingName == "" || plan.BindingName == "_" {
 		return func() {}, nil
 	}
@@ -2668,7 +2708,7 @@ func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMat
 	}
 	previous, existed := fb.bindings[fact.ID]
 	fb.bindings[fact.ID] = binding{value: value.id, typ: value.typ}
-	fb.armPayloadBinding = fact.ID
+	fb.armPayloadBindings = []sema.BindingID{fact.ID}
 	return func() {
 		if existed {
 			fb.bindings[fact.ID] = previous
@@ -2700,10 +2740,8 @@ func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.R
 	}
 	if arm.BlockBody != nil {
 		// A match payload's home list is its arm body (MD-065).
-		if fb.armPayloadBinding != 0 {
-			fb.pendingHomes = append(fb.pendingHomes, fb.armPayloadBinding)
-		}
-		if err := fb.buildStatements(arm.BlockBody.Statements); err != nil {
+		fb.pendingHomes = append(fb.pendingHomes, fb.armPayloadBindings...)
+		if err := fb.buildScope(arm.BlockBody); err != nil {
 			return err
 		}
 	} else if arm.Body != nil {
@@ -2794,7 +2832,11 @@ func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtVal
 		if len(expr.Handlers) != 0 {
 			return builtValue{}, fb.unsupported("handled arithmetic try", expr.Token)
 		}
-		return fb.buildResolvedOperatorWithFailure(expr.Expression, &resolved, nil)
+		previous := fb.propagatingTry
+		fb.propagatingTry = expr.Token
+		value, err := fb.buildResolvedOperatorWithFailure(expr.Expression, &resolved, nil)
+		fb.propagatingTry = previous
+		return value, err
 	case sema.ResolvedTryResultPropagation:
 		if fb.owner.maxPackage < 10 {
 			return builtValue{}, fb.unsupported("Result try propagation", expr.Token)
@@ -3042,6 +3084,8 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 			if !ok || final.Expression == nil {
 				return fb.unsupported("block recovery value without a final expression", handler.Token)
 			}
+			popScope := fb.enterBuildScope(handler.BlockBody)
+			defer popScope()
 			if err := fb.buildStatements(statements[:len(statements)-1]); err != nil {
 				return err
 			}
@@ -3052,10 +3096,13 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 			if err != nil {
 				return err
 			}
+			// The recovery value is built first; leaving the block then runs
+			// its owned-value cleanup (P17-42).
+			fb.runScopeCleanup(sema.CleanupExitFallthrough, handler.BlockBody.Token)
 			fb.branchToTryMerge(merge, value, metadata)
 			return nil
 		}
-		if err := fb.buildStatements(statements); err != nil {
+		if err := fb.buildScope(handler.BlockBody); err != nil {
 			return err
 		}
 		if fb.current != nil {
@@ -3420,6 +3467,7 @@ func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, 
 		}
 		errorValue := fb.result(Operation{Kind: OpArithmeticErrorFromReason, Operands: []ValueID{failureReason.ID}, Location: op.Location}, errorType)
 		errResult := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{errorValue.id}, Location: op.Location}, resultContainer)
+		fb.notePropagationReturn(op.Location)
 		fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{errResult.id}, Location: op.Location})
 	}
 	fb.current = success
@@ -3482,9 +3530,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 			return builtValue{}, fb.unsupported("hardware register operation "+string(operation.Kind)+" on "+operation.Register.Name+" (register.hw.*, MD-077 § 18(4); physical plans need MD-111)", call.Token)
 		}
 		if result, typed := fb.owner.analyzer.TypeOf(call); typed && result.Kind == sema.RegisterType {
-			// MD-110: no Semantic IR operation creates a register value from
-			// an integer bit pattern yet.
-			return builtValue{}, fb.unsupported("integer-to-register conversion "+result.Name+"(...) (no admitted Semantic IR operation, MD-110)", call.Token)
+			// MD-110 conversions are built before buildCall; reaching here
+			// means Sema recorded no conversion for the operand.
+			return builtValue{}, fb.unsupported("integer-to-register conversion "+result.Name+"(...) without a resolved MD-110 conversion", call.Token)
 		}
 		return builtValue{}, fb.unsupported("unresolved function call", call.Token)
 	}
@@ -3510,6 +3558,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		args = append(args, receiver.id)
 		actions = append(actions, action)
 	}
+	// Argument moves cancel their source cleanup only when the call commits,
+	// after every argument was prepared (destruction.md § 9.2(3)).
+	pendingCancels := len(fb.pendingArgumentCancels)
 	for index, arg := range call.Arguments {
 		expected := TypeID(0)
 		if index < len(resolved.Function.Parameters) {
@@ -3554,11 +3605,15 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		if err != nil {
 			return builtValue{}, err
 		}
+		action := ArgumentCopyTrivial
 		if !fb.storageAllowed(v.typ) {
-			return builtValue{}, fb.unsupported("non-trivial call argument", expressionToken(arg))
+			if !fb.ownedArgumentLowerable(arg) {
+				return builtValue{}, fb.unsupported("non-trivial call argument", expressionToken(arg))
+			}
+			action = ArgumentMove
 		}
 		args = append(args, v.id)
-		actions = append(actions, ArgumentCopyTrivial)
+		actions = append(actions, action)
 	}
 	ret, err := fb.owner.internSignatureType(resolved.Function.ReturnType)
 	if err != nil {
@@ -3568,6 +3623,10 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if resolved.Kind == sema.ResolvedForeignCall {
 		kind = OpForeignCall
 	}
+	for _, cancel := range fb.pendingArgumentCancels[pendingCancels:] {
+		fb.emit(cancel)
+	}
+	fb.pendingArgumentCancels = fb.pendingArgumentCancels[:pendingCancels]
 	op := Operation{Kind: kind, Callee: functionID(resolved.Function, fb.owner.module.Types), Operands: args, ArgumentActions: actions, Location: location(call.Token)}
 	if call.HasUnsafePrefix() {
 		marker := location(call.Unsafe)
@@ -3623,6 +3682,18 @@ func (fb *functionBuilder) newBlock() *Block {
 	fb.fn.Blocks = append(fb.fn.Blocks, b)
 	return b
 }
+
+// moveBlockToEnd moves an already created block to the end of the layout;
+// block identities are unchanged.
+func (fb *functionBuilder) moveBlockToEnd(block *Block) {
+	for index, candidate := range fb.fn.Blocks {
+		if candidate == block {
+			fb.fn.Blocks = append(append(fb.fn.Blocks[:index:index], fb.fn.Blocks[index+1:]...), block)
+			return
+		}
+	}
+}
+
 func (fb *functionBuilder) unsupported(feature string, token lexer.Token) error {
 	return &UnsupportedFeatureError{Feature: feature, Package: fb.owner.maxPackage, Location: location(token)}
 }
@@ -3687,6 +3758,11 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 	case sema.UnionType, sema.ResultType, sema.StructType:
 		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil
+		}
+		// An owned by-value struct parameter is the callee's to destroy
+		// (functions.md § 6; P17 owned-parameter registration).
+		if maxPackage >= ownershipLoweringPackage && p.Type.Kind == sema.StructType {
+			return OwnershipOwned, nil
 		}
 	}
 	return "", &UnsupportedFeatureError{Feature: "non-scalar parameter type " + p.Type.Name, Package: maxPackage}

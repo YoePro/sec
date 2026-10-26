@@ -879,6 +879,9 @@ integrations:
       - internal/sema/union_state_test.go
       - testdata/sema/union_empty_match_valid.sec
       - testdata/sema/union_empty_match_invalid.sec
+      - internal/sema/match_field_patterns_test.go
+      - internal/ir/semantic/match_field_bindings_test.go
+      - testdata/semantic_ir/match_field_patterns.sec
     implemented:
       - AST represents MatchExpression, MatchStatement, and MatchArm
       - parser supports match in statement and expression positions
@@ -924,12 +927,11 @@ integrations:
       - parser and Sema accept Err(_) as an exhaustive Result error-payload discard in match arms and try handlers
       - Sema rejects direct bool match subjects once at the subject with focused guidance to use if and else; LSP reports the same shared diagnostic
       - the compiler-known empty pattern is analyzed for possibly-empty local union subjects with exhaustiveness, per-arm definite-assignment refinement, duplicate and impossible-arm diagnostics, and an EmptyStateReachable resolved plan with an empty-state arm; moved-from subjects remain ownership errors rather than empty
+      - "shallow named-field destructuring (2026-10-26, flowcontrol_match.md §§ 10, 15; borrowing.md § 19.4): Sema resolves `Variant { field }`, renamed, `ref`/`ref mut` and qualified forms with partial binding (internal/sema/match_field_patterns.go, ResolvedMatchArm.FieldBindings); unknown, repeated and `_` fields and repeated names are rejected; a by-value field binding only copies and a move-only field is rejected with a borrow or whole-payload hint, so no hidden partial move occurs; Semantic IR copies only bound fields and borrows field Places"
     remaining:
       - lower the compiler-known empty union pattern and reachable empty state through Semantic IR and MLIR with a runtime initialization flag, and expose empty-state facts through LSP
       - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
       - derive statement-match termination from ResolvedMatchPlan so exhaustive Option, union, enum-alias, open-bit-enum, and nested matches agree with return and reachability analysis
-      - implement shallow named-field union destructuring with partial binding, rename, ref and ref mut modes
-      - enforce copy-only shallow by-value fields and reject move-only fields without hidden partial moves
       - make every whole-payload plain binding action explicitly resolve to copy, legal move, or temporary forwarding without silent borrow or clone
       - reject move-only payload transfer from ref and ref mut subjects unless an explicit permitted pattern borrow is used
       - delay guarded move-only binding commitment until guard success and retain ownership on the guard-false continuation

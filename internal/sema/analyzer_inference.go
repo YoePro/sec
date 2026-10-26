@@ -482,6 +482,11 @@ func (a *Analyzer) inferInterpolatedStringLiteral(expr *ast.InterpolatedStringLi
 // Rules:
 //   - rules/types/types.md — "Context shaping" and "Character literal"
 //   - rules/foundations/lexical_structure.md — §13 "Character literals"
+//
+// inferExpressionWithExpected applies declared/call/result contexts to literals
+// and constructors, retaining source float family while selecting target width.
+// Rules: rules/types/types.md — "Context shaping";
+// rules/mlir/packages/sec-mlir-dialect_package20.md — §§11–19.
 func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
 	if tryExpr, ok := expr.(*ast.TryExpression); ok && tryExpr.Expression != nil {
 		a.expectedExpressionTypes[tryExpr.Expression] = expected
@@ -515,7 +520,7 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	call, ok := expr.(*ast.CallExpression)
 	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
 		typ, value := a.inferExpression(expr)
-		if expected.Kind == FloatType && typ.Kind != FloatType && isUntypedNumericExpression(expr) {
+		if expected.Kind == FloatType && isUntypedNumericExpression(expr) {
 			// An untyped numeric literal in a float context is shaped to
 			// that float type and recorded so, not kept as decimal or int
 			// (types.md "Context shaping"; package20.md § 11).
@@ -1312,6 +1317,9 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 			a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
 			return a.refinedCompilerKnownType(member.Result), true
 		}
+		if a.reportMisspelledNumericProperty(typ, expr) {
+			return Type{Kind: InvalidType}, true
+		}
 		return Type{}, false
 	}
 	a.bindDefinition(expr.Property.Token, symbol.Token)
@@ -1582,6 +1590,11 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 
 	valueType, _ := a.inferExpression(expr.Value)
+	if targetType.Kind != ResultType {
+		if success, unwrapped := a.unwrapTryChainReceiver(expr.Value, valueType); unwrapped {
+			valueType = success
+		}
+	}
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1592,7 +1605,7 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 
 	if !a.canExplicitConvert(targetType, valueType) {
-		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
+		a.reportUnavailableConversion(expr.Token, targetType, valueType)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if (hasUnitSemantics(targetType) || hasUnitSemantics(valueType)) && !a.validateExplicitUnitConversion(expr.Token, targetType, valueType) {
@@ -1613,6 +1626,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 	if targetType.Kind == RegisterType && isIntegerType(valueType) {
 		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
+	}
+	if isIntegerType(targetType) && valueType.Kind == RegisterType {
+		return a.registerToIntegerConversion(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
 	}
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
 		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
@@ -3139,6 +3155,11 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	}
 
 	valueType, _ := a.inferExpression(expr.Arguments[0])
+	if targetType.Kind != ResultType {
+		if success, unwrapped := a.unwrapTryChainReceiver(expr.Arguments[0], valueType); unwrapped {
+			valueType = success
+		}
+	}
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -3149,7 +3170,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	}
 
 	if !a.canExplicitConvert(targetType, valueType) {
-		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
+		a.reportUnavailableConversion(expr.Token, targetType, valueType)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if (hasUnitSemantics(targetType) || hasUnitSemantics(valueType)) && !a.validateExplicitUnitConversion(expr.Token, targetType, valueType) {
@@ -3171,6 +3192,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if targetType.Kind == RegisterType && isIntegerType(valueType) {
 		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
 	}
+	if isIntegerType(targetType) && valueType.Kind == RegisterType {
+		return a.registerToIntegerConversion(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
+	}
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
 		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
 	}
@@ -3190,14 +3214,17 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if a.runtimeContractConversion(expr) {
 		a.recordContractConversionEffect(expr)
 	}
-	a.recordCheckedConversion(expr, targetType, valueType)
+	// The plan-aware exactness proof (MD-104) is recorded first: a
+	// conversion it proves exact needs no try.
 	a.recordIntegerConversion(expr, targetType, valueType)
+	a.recordCheckedConversion(expr, targetType, valueType)
 
 	return targetType, expressionValue{Display: expr.String()}
 }
 
 func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expressionValue) {
 	var valueType Type
+	start, tracked := a.beginTryProtection()
 	if construction, ok := expr.Expression.(*ast.NewExpression); ok {
 		valueType, _ = a.inferNewExpression(construction, true)
 		if resolved, exists := a.resolvedConstructions[construction]; exists {
@@ -3209,6 +3236,10 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		for _, receiver := range marked {
 			delete(a.tryChainReceivers, receiver)
 		}
+	}
+	if tracked {
+		// Only the protected expression: handler bodies are not protected.
+		a.endTryProtection(expr, start)
 	}
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}

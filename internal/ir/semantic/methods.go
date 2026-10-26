@@ -29,6 +29,12 @@ func (b *builder) buildStaticMethods(impl *ast.ImplStatement) error {
 		return nil
 	}
 	for _, member := range impl.Members {
+		if free, ok := member.(*ast.FreeDeclaration); ok && b.maxPackage >= ownershipLoweringPackage {
+			if err := b.buildCustomFree(impl, free); err != nil {
+				return err
+			}
+			continue
+		}
 		decl, ok := member.(*ast.FunctionDeclaration)
 		if !ok || decl == nil || decl.Name == nil {
 			continue

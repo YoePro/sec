@@ -2219,7 +2219,7 @@ let invalid := Packet12(0x1000)
 `
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"integer value 4096 does not fit register Packet12 width 12 at 11:25",
+		"integer value 4096 does not fit register Packet12: its bit pattern needs more than 12 bits at 11:25",
 	})
 }
 

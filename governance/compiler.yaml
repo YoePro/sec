@@ -68,6 +68,7 @@ integrations:
       - "Ordinary integer enums now reach executable binaries through sec-lower-integer-enums in the one track (2026-10-17; lowering.integer-enum-representation): exact constants/aliases/defaults, eq/ne, enum match CFG, local storage and direct calls; 32/64-bit representation tests and native execution evidence. Enum conversions and bit-backed enums remain unsupported."
       - "MD-104 proof transport (2026-10-18; lowering.integer-enum-representation): the emitter preserves ConversionProof as sec.conversion_proof (basis and plan_pointer_width) on enum.to_integer and numeric.convert_exact; dialect verification rejects missing/malformed/unknown-basis or incompatible-plan contracts. IntegerEnums.cpp consumes the verified contract without recomputing enum domains and forwards it to numeric.convert_exact. Schema 7-10 enum read compatibility remains, but lowering without a proof fails closed."
       - Optional terminal `return <-expression` now reaches the single source-to-binary track with the same result ownership and Semantic IR as `return expression` (frontend.functions-v2, 2026-10-18). The marker is parser-retained syntax, not a backend unary move operation; TestNativeTrackBuildsAndRuns/explicit_return compiles and runs marked literal, arithmetic and call returns and checks exactly-once operand evaluation.
+      - "Capability diagnostic regression fixed (2026-10-26): internal/mlir recognizes both historical and categorized unsupported-lowering messages from the native gates, retaining typed LoweringCapabilityError feature and source coordinates. Tests cover both spellings, multiple limits, colon-containing paths and unrelated errors/notes; TestNativeTrackNamesUnloweredConstructs again verifies the source file:line:column suffix."
     remaining:
       - make the Semantic IR -> Sec MLIR path cover all maintained Sec 0.1 features
       - "widen the single track (Known hole, verified 2026-10-18): Semantic IR P14 rejects runtime for steps, collection/iterator for loops, string/named switch subjects, floating core methods/properties and float conversions (the P20 operator subset is lowered, lowering.sec-mlir-package20), checked integer conversions needing try, extern calls, inline asm and discard of values that need destruction; the LLVM track rejects structs, arrays, enum.from_integer and bit-backed enums, unions and union matches, Result/Option, references, strings, address-taken statics and interface dispatch. Lowered since 2026-10-17: for (implicit and constant steps), integer/subjectless/enum/bool switch, exact int(x) and enum-to-integer conversions, char/rune comparison, integer enums, explicit/implicit discard of trivial values, explicit panic and failed assert (sec.fail.panic -> trap), module constants and mutable statics (LLVM globals). Each widening adds lowering plus its operations to sec-check-lowering-support"
@@ -77,10 +78,14 @@ integrations:
       - preserve verified target/profile/reference/ownership/effect facts through object/link generation
       - preserve, transform, or explicitly invalidate canonical debug provenance through final emission under compiler.debug-information-v1
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run TestNativeTrackNamesUnloweredConstructs -count=1
+        result: passed on 2026-10-26 after restoring structured parsing of categorized capability diagnostics
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/lowering/secmlir ./cmd/compiler -run 'TestConversionProofTransport|TestNativeTrack|TestIntegerEnumTrack' -count=1
         result: passed on 2026-10-18 after extracting the shared proof verifier into ConversionProof.cpp; 32/64 proof transport and tamper rejection plus native binaries and enum emission boundaries
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler ./internal/lowering/secmlir -count=1
         result: passed on 2026-10-17; includes native integer-enum executable (exit 0), all emission boundaries, deferred-operation rejection preserving output and existing compiler/emitter regressions
+    tests:
+      - internal/mlir/capability_diagnostics_test.go
 
   - id: compiler.debug-information-v1
     area: compiler-debug-information-and-artifact-correlation

@@ -13,14 +13,18 @@ func TestFormatLeavesNestedInterpolationLiteralsAndIndentationIntact(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := Format(Source{Text: string(source)}, Options{}).Text; got != string(source) {
+	want, err := os.ReadFile("../../testdata/formatter/interpolation_alignment.expected.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Format(Source{Text: string(source)}, Options{}).Text; got != string(want) {
 		t.Fatalf("canonical interpolation fixture changed:\n%s", got)
 	}
 }
 
 func TestFormatIndentsAfterLiteralClosingBraces(t *testing.T) {
 	input := "fn main() void {\nlet quoted := $\"{Format(\"text }\")}\"\nlet raw := `}`\nlet character := '}'\nlet following := 42\n}\n"
-	want := "fn main() void {\n    let quoted := $\"{Format(\"text }\")}\"\n    let raw := `}`\n    let character := '}'\n    let following := 42\n}\n"
+	want := "fn main() void {\n    let quoted    := $\"{Format(\"text }\")}\"\n    let raw       := `}`\n    let character := '}'\n    let following := 42\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("Format() =\n%s\nwant:\n%s", got, want)
 	}

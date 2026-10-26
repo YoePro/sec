@@ -55,7 +55,18 @@ func (a *Analyzer) referencePlaceOrigin(expr ast.Expression) (Place, bool) {
 		if !ok || origin.Unknown {
 			return Place{}, false
 		}
-		return placeFromReferenceOrigin(origin, "")
+		// A call result continues the authority granted by its actual
+		// reference arguments. Keep each origin's granting holder until a
+		// named result establishes its own edge; clearing it would treat
+		// immediate access as conflicting owner access (borrowing.md §15.3,
+		// package16 §§59–62,66–67), including through nested returned calls.
+		places := localOriginPlaces(origin)
+		if len(places) == 0 {
+			return Place{}, false
+		}
+		place := places[0]
+		place.AlternativeOrigins = append(place.AlternativeOrigins, places[1:]...)
+		return place, true
 	case *ast.MemberExpression:
 		origin, ok := a.containedOriginForAccess(expr)
 		if !ok || origin.Unknown {

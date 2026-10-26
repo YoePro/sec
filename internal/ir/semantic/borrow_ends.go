@@ -12,10 +12,9 @@ import (
 // MD-065 path-exact borrow ends. Sema ends a local reference holder's borrow
 // after its last required use on each path and publishes the statement the
 // end precedes. Semantic IR emits ref.end-borrow there — under the borrow's
-// own BorrowID and LifetimeID — when that statement belongs to the holder's
-// own statement list (its let's block, or the arm body of a borrowed match
-// payload). An end Sema records inside a nested block is not placed: the
-// borrow then conservatively ends at its scope exit (borrowing.md § 8.1(8)).
+// own BorrowID and LifetimeID. Direct-reference holders retain the existing
+// home-list restriction (their let's block or borrowed match arm). Slice
+// endpoints in nested lists are emitted and normalized over the complete CFG.
 // An arm-exit marker of a payload borrow is emitted only on exits not already
 // dominated by such an end.
 //
@@ -88,15 +87,23 @@ func (fb *functionBuilder) endBorrowsBefore(statement ast.Statement, list int) {
 		return
 	}
 	for _, end := range fb.owner.lifetimeEndsBefore()[lifetimeEndKey(statementToken(statement))] {
-		if fb.holderHomes[end.Binding] != list {
-			continue
-		}
 		held, ok := fb.bindings[end.Binding]
 		if !ok || held.storage != 0 {
 			continue
 		}
+		typ, _ := fb.owner.module.Types.Lookup(held.typ)
+		slice := typ.Kind == TypeSharedSlice || typ.Kind == TypeMutableSlice
+		if fb.holderHomes[end.Binding] != list && !slice {
+			continue
+		}
 		metadata := fb.references[held.value]
 		if metadata == nil {
+			continue
+		}
+		if slice {
+			// Sema owns the endpoint. Normalize repeated/join candidates only
+			// after the complete CFG is available (MD-065 §§6–7).
+			fb.emit(Operation{Kind: OpReferenceEndBorrow, Operands: []ValueID{held.value}, Reference: cloneReferenceMetadata(metadata), Location: location(statementToken(statement)), Synthesized: true})
 			continue
 		}
 		if _, ended := fb.borrowEnds[held.value]; ended {

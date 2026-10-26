@@ -42,9 +42,12 @@ func TestPackage17CapabilityPreservesPredecessors(t *testing.T) {
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§4,17–18,38,79,128,135.
 func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 	for _, test := range []struct{ fixture, module, feature string }{
-		{"sema/cleanup_initializations.sec", "main", "initialization"},
+		// Owned locals, scope cleanup and whole-local moves lower since
+		// P17-35/P17-42; these fixtures' next boundaries are a non-trivial
+		// array literal element and a P18 dynamic array.
+		{"sema/cleanup_initializations.sec", "main", "non-trivial array literal element"},
 		{"semantic_ir/package17_boundary_defer.sec", "cleanup", "deferred cleanup"},
-		{"semantic_ir/package17_boundary_transfer.sec", "main", "ownership transfer"},
+		{"semantic_ir/package17_boundary_transfer.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_discard.sec", "main", "cleanup cancellation"},
 	} {
 		t.Run(test.feature, func(t *testing.T) {

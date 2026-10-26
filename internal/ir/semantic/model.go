@@ -617,6 +617,10 @@ const (
 	// parameter (package 15 §§ 59-60).
 	ArgumentSharedReference  ArgumentAction = "shared-reference"
 	ArgumentMutableReference ArgumentAction = "mutable-reference"
+	// ArgumentMove transfers an owned value needing destruction into an
+	// owned by-value parameter: a moved owned local or a fresh temporary
+	// (package17 § 67).
+	ArgumentMove ArgumentAction = "move"
 )
 
 type UnionPayloadAction string
@@ -723,12 +727,18 @@ type Operation struct {
 	Float *FloatConstant
 	// FloatBinary is the kind of float.binary.
 	FloatBinary FloatBinaryKind
-	Storage     StorageID
-	Static      StaticID
-	Callee      FunctionID
+	// FloatCore is the kind of float.classify, float.round or float.property
+	// (package20.md §§ 66–68).
+	FloatCore string
+	Storage   StorageID
+	Static    StaticID
+	Callee    FunctionID
 	// ConversionProof is required on numeric.convert-exact and
 	// enum.to-integer (MD-104).
 	ConversionProof *ConversionProof
+	// ConversionFailure is the ConversionError variant of a
+	// numeric.convert-checked failure edge (package20.md § 72).
+	ConversionFailure string
 	// SliceRange retains original endpoint types and range proof provenance.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§35,78–79.
 	SliceRange *SliceRangeMetadata
@@ -764,8 +774,11 @@ type Operation struct {
 	StructActions       []StructFieldAction
 	// RegisterField and RegisterWrite carry a register.value.* field step
 	// and, for an update, the Sema proof that the value fits (MD-077 § 10(1)).
-	RegisterField       RegisterFieldID
-	RegisterWrite       RegisterWriteProof
+	RegisterField RegisterFieldID
+	RegisterWrite RegisterWriteProof
+	// RegisterConversion carries a register.value.fits-bits / from-bits /
+	// to-bits destination, proof and interpretation (MD-110 § 7).
+	RegisterConversion  *RegisterConversionFacts
 	ArrayElementType    TypeID
 	ArrayLength         string
 	ArraySegmentKinds   []ArrayConstructSegmentKind

@@ -1,0 +1,10 @@
+fn Padding() void {
+    let a: int := 1
+    let longerName: uint16 := 2
+
+    let left: int := 1
+    let right: ExtremelyLongTypeName := 2
+
+    let a := 1
+    let longerName := 2
+}

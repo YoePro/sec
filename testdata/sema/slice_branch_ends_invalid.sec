@@ -1,0 +1,10 @@
+module main
+fn FutureUse(values: ref mut int[], choose: bool) int {
+    let held := ref values[..]
+    if choose {
+        values[0] = 7
+    } else {
+        values[0] = 8
+    }
+    return held[0]
+}

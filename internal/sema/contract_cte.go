@@ -2,6 +2,7 @@ package sema
 
 import (
 	"math/big"
+	"strconv"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -54,6 +55,7 @@ func (a *Analyzer) semanticCompileTimeConstant(expr ast.Expression) (DefaultCons
 // Rules: rules/compiler/compile_time_evaluation.md — §§2(3),47;
 // rules/types/contracts.md — Contract arguments; rules/types/default_values.md — Explicit defaults;
 // rules/types/temporal.md — §3 (no clock input in semantic CTE).
+// rules/mlir/packages/sec-mlir-dialect_package20.md — §§12–20,82.
 func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visiting map[string]bool, context Type) (DefaultConstant, compileTimeOutcome) {
 	if expr == nil {
 		return DefaultConstant{}, compileTimeAlreadyInvalid
@@ -130,6 +132,19 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 			return inner, compileTimeEvaluated
 		}
 		if expr.Operator == "-" && inner.Exact != nil {
+			// Negation toggles the resolved floating sign, including zero.
+			// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §20.
+			if inner.FloatBits != 0 {
+				number, err := strconv.ParseFloat(inner.Lexeme, inner.FloatBits)
+				if err != nil {
+					return DefaultConstant{}, compileTimeNotConstant
+				}
+				value, ok := binaryFloatConstant(-number, inner.FloatBits)
+				if !ok {
+					return DefaultConstant{}, compileTimeNotConstant
+				}
+				return value, compileTimeEvaluated
+			}
 			inner.Exact = new(big.Rat).Neg(inner.Exact)
 			inner.Lexeme = ""
 			return a.prepareCompileTimeConstant(inner, context)

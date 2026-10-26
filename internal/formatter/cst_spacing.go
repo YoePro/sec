@@ -39,7 +39,8 @@ type formatterReplacement struct {
 //   - rules/tooling/formatter.md — §7(6) and §9(2) named-type group alignment
 //   - rules/tooling/formatter.md — §16(18–19),§22(1) declaration header modifiers
 func formatCSTRoles(text string, maxPadding int) string {
-	program := parser.New(lexer.New(text)).ParseProgram()
+	p := parser.New(lexer.New(text))
+	program := p.ParseProgram()
 	document := cst.Build(text, "")
 	document.ApplyProgramRoles(program)
 
@@ -382,6 +383,9 @@ func formatCSTRoles(text string, maxPadding int) string {
 	replacements = append(replacements, parameterAlignmentReplacements(document, maxPadding)...)
 	replacements = append(replacements, enumValueAlignmentReplacements(document, maxPadding)...)
 	replacements = append(replacements, namedTypeAlignmentReplacements(document, maxPadding)...)
+	if len(p.Errors()) == 0 {
+		replacements = append(replacements, bindingAlignmentReplacements(document, maxPadding)...)
+	}
 
 	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
 	for _, replacement := range replacements {

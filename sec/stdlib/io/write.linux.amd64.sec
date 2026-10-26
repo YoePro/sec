@@ -9,7 +9,7 @@ import (
 )
 unsafe fn _sysWrite(fd: int, ptr: RawPtr[byte], len: uint) int {
     unsafe {
-        return amd64.RawSyscall(uint(amd64.SysCall.Write), uint(fd), uint(ptr), uint(len))
+        return amd64.RawSyscall(uint(amd64.SysCall.Write), uint(bit[64](fd)), uint(ptr), len)
     }
 }
 

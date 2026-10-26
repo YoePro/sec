@@ -1114,6 +1114,10 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		receiverStart := memberReceiverStart(text, context.DotOffset)
 		if context.ExpectedType != nil && isReturnValueContext(text[:receiverStart], receiverStart) {
 			expected = context.ExpectedType
+		} else if valueType, ok := expectedValueTypeAt(fileAST, analyzer, text, context.DotOffset); ok {
+			// Typed let, assignment, call argument, struct field and match
+			// arm values complete like a returned value.
+			expected = &valueType
 		} else if left := comparisonLeftOperandAt(fileAST, parseText, receiverStart); left != nil {
 			// The right operand of `==`/`!=` completes only members of the
 			// left operand's type (decision 2026-10-03).
@@ -2930,7 +2934,7 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 		if expected != nil {
 			matched := false
 			for _, valueType := range valueTypes {
-				if completionTypeMatches(*expected, valueType) {
+				if completionTypeMatches(analyzer, *expected, valueType) {
 					matched = true
 					break
 				}
@@ -3154,7 +3158,7 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 			continue
 		}
 		for _, function := range overloads {
-			if !completionTypeMatches(expected, function.ReturnType) {
+			if !completionTypeMatches(analyzer, expected, function.ReturnType) {
 				continue
 			}
 			add(completionItem{Label: name, Kind: 3, Detail: lspTypeName(function.ReturnType)})
@@ -3163,7 +3167,7 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 	}
 
 	for _, binding := range visibleLocalBindings(analyzer, text, context) {
-		if completionTypeMatches(expected, binding.Type) {
+		if completionTypeMatches(analyzer, expected, binding.Type) {
 			add(completionItem{Label: binding.Name, Kind: 6, Detail: lspTypeName(binding.Type)})
 		}
 	}
@@ -3174,7 +3178,7 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 		if symbol.Local && (!localSymbolInCompletionFile(symbol, context) || !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context)) {
 			continue
 		}
-		if completionTypeMatches(expected, symbol.Type) {
+		if completionTypeMatches(analyzer, expected, symbol.Type) {
 			add(completionItem{Label: name, Kind: 6, Detail: lspTypeName(symbol.Type)})
 		}
 	}
@@ -3188,9 +3192,17 @@ func internalCompilerOverloads(functions []sema.Function) bool {
 	return len(functions) > 0 && functions[0].CompilerInternal
 }
 
-func completionTypeMatches(expected sema.Type, actual sema.Type) bool {
+// completionTypeMatches asks Sema whether a value of the actual type is
+// assignable where the expected type is required, so expected-type
+// completion follows the language's own assignability (error widening,
+// references, unit quantities, contextual conversions) instead of an
+// LSP-owned name comparison.
+func completionTypeMatches(analyzer *sema.Analyzer, expected sema.Type, actual sema.Type) bool {
 	if expected.Kind == sema.InvalidType || actual.Kind == sema.InvalidType {
 		return false
+	}
+	if analyzer != nil {
+		return analyzer.ValueAssignable(expected, actual)
 	}
 	if expected.Name != "" || actual.Name != "" {
 		return expected.Name != "" && expected.Name == actual.Name
@@ -3497,35 +3509,6 @@ func sortCompletionItems(items []completionItem) {
 	})
 }
 
-func (s *server) formatDocument(uri string) ([]textEdit, error) {
-	snapshot, ok := s.documentSnapshots.Snapshot(uri)
-	text := snapshot.Text
-	if !ok {
-		data, err := os.ReadFile(pathFromURI(uri))
-		if err != nil {
-			return nil, err
-		}
-		text = string(data)
-	}
-
-	formatted, err := formatSourceForDocument(uri, text)
-	if err != nil {
-		return nil, err
-	}
-	if formatted == text {
-		return []textEdit{}, nil
-	}
-
-	return []textEdit{
-		{
-			Range: lspRange{
-				Start: position{Line: 0, Character: 0},
-				End:   endPosition(text),
-			},
-			NewText: formatted,
-		},
-	}, nil
-}
 
 func ownershipCodeActions(uri string, text string, reported []diagnostic) []codeAction {
 	actions := make([]codeAction, 0, len(reported))
@@ -5241,6 +5224,19 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
 	case *ast.TryExpression:
 		qualifyLocalTypesInExpression(expr.Expression, module, localTypes)
+		// Handler patterns and bodies are module code too.
+		for _, handler := range expr.Handlers {
+			if handler == nil {
+				continue
+			}
+			qualifyLocalTypesInExpression(handler.Pattern, module, localTypes)
+			qualifyLocalTypesInExpression(handler.Guard, module, localTypes)
+			qualifyLocalTypesInExpression(handler.Body, module, localTypes)
+			if handler.ReturnBody != nil {
+				qualifyLocalTypeReferencesInStatement(handler.ReturnBody, module, localTypes)
+			}
+			qualifyLocalTypeReferencesInBlock(handler.BlockBody, module, localTypes)
+		}
 	case *ast.MatchExpression:
 		qualifyLocalTypesInExpression(expr.Subject, module, localTypes)
 		for _, arm := range expr.Arms {
@@ -5379,6 +5375,17 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
 	case *ast.TryExpression:
 		qualifyLocalCallsInExpression(expr.Expression, module, localFunctions)
+		for _, handler := range expr.Handlers {
+			if handler == nil {
+				continue
+			}
+			qualifyLocalCallsInExpression(handler.Guard, module, localFunctions)
+			qualifyLocalCallsInExpression(handler.Body, module, localFunctions)
+			if handler.ReturnBody != nil {
+				qualifyLocalCallsInStatement(handler.ReturnBody, module, localFunctions)
+			}
+			qualifyLocalCalls(handler.BlockBody, module, localFunctions)
+		}
 	case *ast.OkExpression:
 		if expr.Value != nil {
 			qualifyLocalCallsInExpression(expr.Value, module, localFunctions)

@@ -130,7 +130,7 @@ func TestFormatTopLevelTestDeclaration(t *testing.T) {
 // without rewriting the same spelling when it is an ordinary identifier.
 func TestFormatContextualCollectionAndShapedTypeNames(t *testing.T) {
 	input := "fn Use() void {\nlet values: list[ int, 8 ]\nlet lookup: map[ string, int ]\nlet flags: set[ string ]\nlet position: vector[ float64, 3 ]\nlet transform: matrix[ float32, 4, 4 ]\nlet image: tensor[ float32, 3, 224, 224 ]\nlet view: tensor_view[ float32, 3 ]\nlet set := 1\ndiscard set\n}\n"
-	want := "fn Use() void {\n    let values: list[int, 8]\n    let lookup: map[string, int]\n    let flags: set[string]\n    let position: vector[float64, 3]\n    let transform: matrix[float32, 4, 4]\n    let image: tensor[float32, 3, 224, 224]\n    let view: tensor_view[float32, 3]\n    let set := 1\n    discard set\n}\n"
+	want := "fn Use() void {\n    let values:    list[int, 8]\n    let lookup:    map[string, int]\n    let flags:     set[string]\n    let position:  vector[float64, 3]\n    let transform: matrix[float32, 4, 4]\n    let image:     tensor[float32, 3, 224, 224]\n    let view:      tensor_view[float32, 3]\n    let set := 1\n    discard set\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
 		t.Fatalf("wrong contextual type-name formatting:\n%s\nwant:\n%s", got, want)
@@ -390,7 +390,7 @@ func TestFormatImplExtension(t *testing.T) {
 // rules/declarations/static.md, sections 3, 6, and 25.
 func TestFormatRemovesOnlyRedundantModuleStatic(t *testing.T) {
 	input := "static let Global: int := 1\n\nimpl Counter {\nstatic let Value: int := 2\nstatic let mut Total: int := 0\nstatic property Current: int {\nget { return Counter.Value }\n}\n}\n\nfn Use() void {\nstatic let Calls: int := 0\n}\n"
-	want := "let Global: int := 1\n\nimpl Counter {\n    static let Value: int := 2\n    static let mut Total: int := 0\n    static property Current: int {\n        get {\n            return Counter.Value\n        }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
+	want := "let Global: int := 1\n\nimpl Counter {\n    static let Value:     int := 2\n    static let mut Total: int := 0\n    static property Current: int {\n        get {\n            return Counter.Value\n        }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong static formatting:\n%s\nwant:\n%s", got, want)
 	}
@@ -619,8 +619,8 @@ let grouped := (             first + second              )
         None => {
         }
     }
-    let values := [first, Build("(", [second, third])]
-    let item := Build(Item { Left: first, Right: second }, third)
+    let values  := [first, Build("(", [second, third])]
+    let item    := Build(Item { Left: first, Right: second }, third)
     let grouped := (first + second)
 }
 `
@@ -1267,7 +1267,7 @@ func TestFormatLineCommentsUsesOnlyLexerCommentTokens(t *testing.T) {
 //   - rules/tooling/formatter.md — §23(5–8) ranges and step
 func TestFormatRangesAndStepFromCST(t *testing.T) {
 	input := "fn Visit(values: int[], step: int) void {\nfor index in 0  ..<  values.Len    step    2 {\nlet window := values[index  ..  index + 2]\nlet ordinary := step\n}\n}\n"
-	want := "fn Visit(values: int[], step: int) void {\n    for index in 0..<values.Len step 2 {\n        let window := values[index..index + 2]\n        let ordinary := step\n    }\n}\n"
+	want := "fn Visit(values: int[], step: int) void {\n    for index in 0..<values.Len step 2 {\n        let window   := values[index..index + 2]\n        let ordinary := step\n    }\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
 		t.Fatalf("wrong CST range formatting:\n%s\nwant:\n%s", got, want)

@@ -1,0 +1,33 @@
+module main
+fn Returned(values: ref mut int[], choose: bool) ref int[] {
+    let held := ref values[..]
+    if choose {
+        values[0] = 7
+        return held
+    }
+    return held
+}
+fn Deferred(values: ref mut int[], choose: bool) int {
+    let held := ref values[..]
+    defer {
+        let first := held[0]
+    }
+    if choose {
+        values[0] = 7
+        return 1
+    }
+    return held[0]
+}
+fn LoopBackedge(values: ref mut int[], choose: bool) int {
+    let held := ref values[..]
+    let mut count := 2
+    while count > 0 {
+        let first := held[0]
+        if choose {
+            values[0] = 7
+            continue
+        }
+        count -= 1
+    }
+    return held[0]
+}

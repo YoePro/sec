@@ -464,6 +464,8 @@ let invalid := Packet12(0x1ABC) // compile-time error
 
 This conversion interprets an already-formed numeric value or bit pattern. It is not byte decoding and does not perform implicit endian conversion.
 
+**Amendment MD-110 (2026-10-25, `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md` §§ 3, 5–6).** "Fits the register width" means **bit-pattern representability** (§ 12.3), not a non-negative numeric range: a signed negative source that sign-extends from bit `N-1` is accepted. The compile-time rejection of a known non-fitting constant, the checked `try` form for a runtime source that may not fit, nominal identity and the absence of implicit endian conversion are unchanged.
+
 ### 12.1 Plain field writes and explicit bit extraction
 
 A plain `bit[N]` field without a unit annotation keeps its physical width. A write to it is valid only when the field conversion rules prove that the value fits the field's representable unsigned interval; an unproven wider value is never silently truncated, and field assignment itself is not fallible (MD-046, 2026-10-12).
@@ -528,6 +530,21 @@ Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic
 - **`bit[N]` fields with `N >= 2`.** They read as the smallest standard unsigned carrier: `uint8` up to 8 bits, then `uint16`, `uint32`, `uint64`, `uint128` and `uint256`. Sema also records the proven interval `0..2^N-1`. That interval is a refinement fact, not a named `range` type, and `bit[N]` is never a standalone integer type.
 - **Explicit extraction.** `bit[N](value)`, including `N = 1`, still returns the unsigned carrier of `types.md`, never `bool`. It is the only low-bit extraction and is never inserted implicitly by a field write (§ 12.1).
 - **Bit-backed enums.** A bit-backed enum field keeps its nominal enum type and open bit domain.
+
+### 12.3 Bit-pattern conversions (MD-110)
+
+Decided by MD-110 (2026-10-25, `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md`).
+
+- **Logical value.** A detached `T register[N]` is an exact `N`-bit vector, with bit 0 as the least-significant bit, tied to the nominal type `T`. It includes reserved and nested-field bits and has no signedness. Two registers with equal width and bits remain distinct types. Field allocation order (`msb-first` / `lsb-first`) places fields within that vector; byte order (`big-endian` / `little-endian`) applies only to ordered byte encoding and decoding.
+- **Integer to register, `T(x)`.** The source is a primitive signed or unsigned integer of resolved width (target-sized `int` / `uint` through the `CompilationPlan`) or `byte`. Unresolved literals follow the existing literal typing. Named numeric types, enums, `char`, `rune`, units and floats need their own explicit conversion first; `bit[N](x)` already yields an ordinary unsigned carrier.
+- **Fit rule.** `x` fits `register[N]` when:
+  - for an unsigned source, or a signed source with `x >= 0`: `x <= 2^N-1`;
+  - for a signed source with `x < 0`: `-2^(N-1) <= x`.
+
+  The register receives the low `N` bits of `x`'s two's-complement form. For example, `int8(-1)` and `uint8(255)` both give `0xFF` in `register[8]`; `int16(-1)` gives `0xFFFF` and `uint8(255)` gives `0x00FF` in `register[16]`.
+- **Failure.** A constant that does not fit is a compile-time error, which `try` does not rescue (`Packet8(0x01FF)`, `Packet8(256)` and `Packet8(-129)` are rejected). A runtime source that may not fit uses the existing checked conversion (`try`), whose check tests this fit rule rather than `0..2^N-1`. A source proven to fit needs no check. The conversion never silently drops high bits; deliberate truncation is spelled `bit[N](x)`, whose proven unsigned result then converts exactly.
+- **Register to integer, `IntegerType(r)`.** It is admitted for a detached register when the integer width `W >= N`. An unsigned target reads the bits as a magnitude and zero-extends; a signed target reads them as two's complement and sign-extends from bit `N-1`. For example, `Packet8(-1)` gives `uint8` 255, `int8` -1, `uint16` 255 and `int16` -1, and a `register[12]` sign-extends from bit 11. The conversion is explicit, pure and total (no `try`). It is never implicit, and there is no narrower target; to keep fewer bits, convert to a wide enough unsigned carrier and then use `bit[M](...)`.
+- **No endian or hardware effect.** Neither direction swaps bytes, decodes bytes or reinterprets native memory. Byte-oriented encoding and decoding apply the declared byte order independently of the host's endianness. These conversions apply only to detached values; a `HardwareInstance[T]` is never converted (§ 11.7).
 
 ## 13. Field access
 

@@ -1,0 +1,38 @@
+module main
+
+fn Same(values: ref int[]) ref int[] { return values }
+fn Writable(values: ref mut int[]) ref mut int[] { return values }
+fn Start() int { return 1 }
+fn End() int { return 3 }
+fn Index() int { return 0 }
+
+fn Shared(values: ref int[]) int {
+    let child := ref Same(values)[Start()..<End()]
+    let result := child[0]
+    discard child
+    return result
+}
+
+fn Mutable(values: ref mut int[]) int {
+    let child := ref mut Writable(values)[..]
+    child[0] = 7
+    let result := child[0]
+    discard child
+    return result
+}
+
+fn Reduced(values: ref mut int[]) int {
+    let child := ref Writable(values)[..]
+    let result := child[0]
+    discard child
+    return result
+}
+
+fn Observed(values: ref int[]) uint {
+    let propertyLength := Same(values).Len
+    let functionLength := len(Same(values))
+    return propertyLength + functionLength
+}
+
+fn Read(values: ref int[]) int { return Same(values)[Index()] }
+

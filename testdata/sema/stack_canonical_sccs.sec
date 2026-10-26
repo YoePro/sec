@@ -1,0 +1,25 @@
+module main
+fn Leaf() void {}
+fn Direct(stop: bool) void {
+    if stop { return }
+    Direct(true)
+}
+fn Left(stop: bool) void {
+    if stop { return }
+    Right(true)
+}
+fn Right(stop: bool) void {
+    if stop { return }
+    Left(true)
+}
+fn Indirect(stop: bool) void {
+    if stop { return }
+    let again := Indirect
+    again(true)
+}
+fn CallbackHost() void { CallbackTarget() }
+fn CallbackTarget() void {}
+fn ForeignHost() void { Foreign() }
+extern "C" fn Foreign() void
+fn SpawnHost() void { SpawnTarget() }
+fn SpawnTarget() void { SpawnHost() }

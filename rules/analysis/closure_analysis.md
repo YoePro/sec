@@ -2457,9 +2457,9 @@ The user may explicitly select one supported analysis instead of running all of
 them.
 
 The analysis-name vocabulary and full CLI syntax are owned by
-`rules/tooling/cli.md` (MD-017). Closure analysis has no registered individual
-name yet; it is selected through `sec analyse` until one is registered
-(§ 5.2(2)).
+`rules/tooling/cli.md` (MD-017). Closure analysis has the single registered
+name `closures`: `sec analyse closures` selects it individually. It also runs
+as part of `sec analyse` and `sec analyse --all` (§ 5.2).
 
 Closure deep analysis may expose information such as:
 

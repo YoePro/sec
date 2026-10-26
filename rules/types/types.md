@@ -1430,7 +1430,10 @@ Conversions are checked.
 
 They must not silently truncate, wrap, discard precision, violate a contract, or create an invalid scalar value unless a separately named lossy operation explicitly defines that behavior.
 
-A conversion that may fail requires `try`.
+A conversion that may fail requires `try`. A missing conversion relation is
+a compile-time type error; `try` does not create a relation. In particular,
+explicit `string -> Name` conversion for `type Name string` does not imply a
+direct `numeric -> Name` conversion (MD-093).
 
 Examples:
 
@@ -1552,14 +1555,37 @@ conversion, has no format argument (format-specific presentation stays
 number` remains invalid. The distinct `char` and `rune` conversions are
 unchanged (`rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md` § 7).
 `byte` is the `uint8` family member here (owner decision 2026-10-17): `string(b)`
-equals `b.ToString()` and yields decimal text, never a character. Conversion of
-a numeric value to a named string type is undecided (MD-093).
+equals `b.ToString()` and yields decimal text, never a character.
+
+The primitive formatting conversion is not inherited by named string types
+(MD-093, 2026-10-26). Given `type Name string`, both `Name(number)` and
+`try Name(number)` are invalid for numeric primitives and named numeric values.
+No implicit formatting step or `Result[Name, ...]` interpretation is permitted.
+
+Materialize text explicitly, preferably with `try Name(number.ToString())`.
+The outer `try` protects the entire expression under `errorhandling.md`
+§§ 11–14: materialization may fail with `StringError`, and subsequent target
+contract validation may independently fail with `ConversionError.Contract`.
+The first failure in evaluation order stops evaluation. Every unhandled
+failure must fit the enclosing declared error channel; no error union or
+mapping is inferred. The existing common `error` channel can accept both.
+
+`Name(try number.ToString())` is also valid when conversion of the resulting
+string to `Name` is infallible. An inner-only `try` does not protect a separately
+fallible outer named-type conversion. Existing strings still use `Name(text)`
+with ordinary nominal identity and contract validation. No new `try` grammar,
+conversion API or error family is introduced.
 
 ---
 
 # Named types and contracts
 
 A named type retains nominal identity.
+
+For a named string type, explicit conversion from an already materialized
+`string` preserves that nominal identity and applies its contracts. This is
+distinct from numeric text formatting: `Name(text)` may be a valid conversion,
+while `Name(number)` has no relation, even under `try` (MD-093).
 
 Example:
 
@@ -2044,6 +2070,8 @@ let wide: uint16 := 0xABCD
 let truncated := bit[8](wide)   // uint8, 0xCD: explicit truncation
 let checked := try uint8(wide)  // fails: 0xABCD does not fit uint8
 ```
+
+Register conversions (MD-110, 2026-10-25): `bit[N](x)` remains the only deliberate low-bit extraction. The exact detached register construction `T(x)` and the register-to-integer interpretation `IntegerType(register)` are specified in `rules/declarations/registers.md` § 12.3. Their fit rule is bit-pattern representability, so a signed `-1` is a valid all-ones pattern, and a `bit[N](x)` result converts to `register[N]` exactly, without a check.
 
 ---
 

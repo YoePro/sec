@@ -1,0 +1,8 @@
+module main
+fn Shared(values: ref int[]) void { values[0] += 1 }
+fn WrongType(values: ref mut int[]) void { values[0] += true }
+fn LiveChild(values: ref mut int[]) int {
+    let child := ref values[..]
+    values[0] += 1
+    return child[0]
+}

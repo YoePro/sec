@@ -497,6 +497,12 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
 		return err
 	}
+	if err := verifyRegisterConversionProofs(module, fn, dom); err != nil {
+		return err
+	}
+	if err := verifyCheckedConversionCandidates(fn, dom); err != nil {
+		return err
+	}
 	sliceFn, sliceBlocks, _ := sliceVerificationView(module.Types, fn, blocks)
 	if err := verifySliceRangeGuards(sliceFn, sliceBlocks, dom); err != nil {
 		return err
@@ -686,6 +692,18 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyFloatOperation(module, op, values); err != nil {
 			return err
 		}
+	case OpFloatAbs, OpFloatMinimum, OpFloatMaximum, OpFloatClassify, OpFloatRound, OpFloatProperty:
+		if err := verifyFloatCoreOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpFloatClampChecked:
+		if err := verifyFloatClampOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpNumericConvertChecked:
+		if err := verifyCheckedConversionOperation(module, op, values); err != nil {
+			return err
+		}
 	case OpReturn:
 		void := typeHasKind(module.Types, fn.ReturnType, TypeVoid)
 		if void && len(op.Operands) != 0 {
@@ -767,6 +785,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 				want = ArgumentSharedReference
 			} else if ok && parameter.Kind == TypeMutableSlice {
 				want = ArgumentMutableReference
+			} else if !trivialDestruction(module, callee.Parameters[i].Value.Type) {
+				want = ArgumentMove
 			}
 			if op.ArgumentActions[i] != want {
 				return fmt.Errorf("call argument %d action %q, want %q for its parameter type", i, op.ArgumentActions[i], want)
@@ -1070,6 +1090,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	case OpRegisterValueExtract, OpRegisterValueUpdate:
 		if err := verifyRegisterValueOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpRegisterValueFitsBits, OpRegisterValueFromBits, OpRegisterValueToBits:
+		if err := verifyRegisterConversionOperation(module, op, values); err != nil {
 			return err
 		}
 	case OpOwnCopy, OpOwnSemanticCopy, OpOwnMove, OpOwnCopyFromPlace, OpOwnMoveFromPlace,
@@ -2140,6 +2164,19 @@ func verifyStorageDominance(fn *Function, blocks map[BlockID]*Block, dom map[Blo
 				d, dok := decl[op.Storage]
 				i, iok := init[op.Storage]
 				use := position{b.ID, index}
+				// An owned value initializes its storage through the storage
+				// Place: a root immediately consumed by own.initialize-place
+				// is the initialization (P17-28).
+				if op.Kind == OpPlaceStorageRoot && !iok && index+1 < len(b.Operations) && len(op.Results) == 1 {
+					next := b.Operations[index+1]
+					if next.Kind == OpOwnInitializePlace && len(next.Operands) == 2 && next.Operands[0] == op.Results[0].ID {
+						if !dok || !dominatesPosition(d, use, dom) {
+							return fmt.Errorf("storage declaration does not dominate use")
+						}
+						init[op.Storage] = use
+						continue
+					}
+				}
 				if !dok || !dominatesPosition(d, use, dom) {
 					return fmt.Errorf("storage declaration does not dominate use")
 				}

@@ -42,3 +42,7 @@ func assertFormattingGoldenCLI(t *testing.T, fixture string) {
 // TestDestructionSyntaxCLI preserves explicit cleanup and ownership markers.
 // Rules: rules/tooling/formatter.md — §§21,28,31(8).
 func TestDestructionSyntaxCLI(t *testing.T) { assertFormattingGoldenCLI(t, "destruction_syntax") }
+
+// The CLI uses the shared declaration table and exact golden output.
+// Rules: rules/tooling/formatter.md — § 9(1)–(10), § 28(1)–(2), § 29.
+func TestBindingAlignmentCLI(t *testing.T) { assertFormattingGoldenCLI(t, "binding_alignment") }

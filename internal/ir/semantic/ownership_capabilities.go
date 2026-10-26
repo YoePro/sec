@@ -32,15 +32,15 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 			var at Location
 			switch node := node.(type) {
 			case *ast.LetStatement:
-				if _, ok := analyzer.ResolvedOwnedCleanupInitializationOf(node); ok {
-					feature = "P17 owned-value initialization and cleanup registration (P17-28/P17-33)"
-					at = location(node.Token)
-				}
+				// Root-scope immutable owned locals lower through
+				// cleanup.track-owned (P17-35); the builder rejects the
+				// remaining forms at their own sites.
+				// Owned locals, mutable ones in address-taken storage, lower
+				// through cleanup.track-owned (P17-35, P17-28).
 			case *ast.AssignmentStatement:
-				if _, ok := analyzer.ResolvedOwnedCleanupAssignmentOf(node); ok {
-					feature = "P17 owned-value replacement/reinitialization (P17-28)"
-					at = location(node.Token)
-				}
+				// Whole-local replacement/reinitialization lowers through
+				// own.replace-place / own.initialize-place (P17-28); the
+				// builder rejects conditional and partial previous values.
 			case *ast.DeferStatement:
 				if _, ok := analyzer.ResolvedDeferPlanOf(node); ok {
 					feature = "P17 deferred cleanup registration and execution (P17-33)"
@@ -51,12 +51,16 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				return &UnsupportedFeatureError{Feature: feature, Package: maxPackage, Location: at}
 			}
 			if expression, ok := node.(ast.Expression); ok {
-				if plan, ok := analyzer.ResolvedTransferPlanOf(expression); ok &&
+				plan, planned := analyzer.ResolvedTransferPlanOf(expression)
+				// A whole owned local moved out by a return or into a new
+				// local lowers to own.move + cleanup.cancel (P17-35).
+				wholeLocalMove := planned && ownedLocalMoveLowerable(plan)
+				if planned && !wholeLocalMove &&
 					(plan.Action == sema.TransferCopySemantic || !sema.TriviallyDestructible(plan.Source.Type)) {
 					return &UnsupportedFeatureError{Feature: "P17 non-trivial ownership transfer (P17-26/P17-27)", Package: maxPackage, Location: location(expressionToken(expression))}
 				}
 				at := expressionToken(expression)
-				if len(analyzer.ResolvedOwnedCleanupCancellationsAt(at.File, at.Line, at.Column)) != 0 {
+				if !wholeLocalMove && len(analyzer.ResolvedOwnedCleanupCancellationsAt(at.File, at.Line, at.Column)) != 0 {
 					return &UnsupportedFeatureError{Feature: "P17 ownership termination and cleanup cancellation (P17-29/P17-33)", Package: maxPackage, Location: location(at)}
 				}
 			}
@@ -66,4 +70,11 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 		}
 	}
 	return nil
+}
+
+// ownedLocalMoveLowerable reports a transfer the P17 producers lower: a move
+// of a whole local binding at a return or a local initialization.
+func ownedLocalMoveLowerable(plan sema.ResolvedTransferPlan) bool {
+	return plan.Action == sema.TransferMove && len(plan.Source.Projections) == 0 && !plan.Partial &&
+		(plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument)
 }

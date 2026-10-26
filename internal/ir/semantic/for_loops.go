@@ -174,7 +174,7 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 	}
 
 	fb.loops = append(fb.loops, loop)
-	err = fb.buildStatements(stmt.Body.Statements)
+	err = fb.buildScope(stmt.Body)
 	fb.loops = fb.loops[:len(fb.loops)-1]
 	if err != nil {
 		return err
@@ -207,7 +207,7 @@ func (fb *functionBuilder) buildInfiniteFor(stmt *ast.ForStatement) error {
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: body.ID}}, LoopID: loop.id, LoopEdge: LoopEdgeCondition, Location: loc})
 	fb.current = body
 	fb.loops = append(fb.loops, loop)
-	err := fb.buildStatements(stmt.Body.Statements)
+	err := fb.buildScope(stmt.Body)
 	fb.loops = fb.loops[:len(fb.loops)-1]
 	if err != nil {
 		return err

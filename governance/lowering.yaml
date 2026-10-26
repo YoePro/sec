@@ -687,7 +687,7 @@ integrations:
       - "MD-085 (2026-10-22, rules/corrections/applied/md085-return-origin-verification-correction-20261021.md): --sec-verify-borrow-semantics verifies return origins path-aware. It checks summaries against the canonical grammar and parameter referent types, traces fields, proven-safe constant [K], dynamic [*] and slice views through joins, instantiates the callee's own sec.return_origins at direct calls (no all-arguments fallback), and requires exact inclusion. Static roots, receivers of non-methods and union payloads are rejected (lit return-origins-paths.mlir, invalid-return-origins-paths.mlir; P15/P16 Go fixtures)."
       - "MD-087 (2026-10-22, rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md): --sec-lower-checked-integers is selective. It lowers representable integer computation in modules that contain Places, references or slices, keeps their operations and facts, materializes exact-width siN/uiN <-> iN unrealized-cast bridges at Place, storage and call boundaries, and rejects any other surviving bridge. P5 (sec::isReferenceDependentStorage) and P6 (reference-bearing sec.call.direct, discardable call attributes preserved) were audited as conforming (TestCheckedIntegerLoweringCoexistsWithReferences 32/64; lit schema11-reference-scalar-layout.mlir, schema12-slice-architecture.mlir, invalid-reference-bridges.mlir)."
       - "P15-49/P15-65 (2026-10-22): TestPackage15SourceMatrix checks evaluation order, SSA reuse for holder moves and copies, reborrow sources, equality and Sema-placed ends. TestPackage15FixtureInvariants checks verification, no aggregate reads, and no undef/poison/allocation; a matrix fixture is added to the P15 fixtures. TestPackage15SourceToSchema11Pipeline runs every P15 emit fixture plus a P12/P13/P14 integration fixture through target-aware Sema, verified Semantic IR, schema 11 and sec-mlir-opt (absolute path), with the three verifiers, P6 wrapper preservation and selective P8, on 32/64-bit plans. Dynamic-epoch validity is not producible from P15 source (Arena allocation does not lower) and is covered from Semantic IR onward."
-      - "MD-065 (2026-10-22): ref.end-borrow is placed at Sema's last-required-use end in the holder's own statement list (borrow_ends.go). Payload arm exits dominated by it get no second marker. Ends inside nested blocks stay conservative scope-exit ends (borrowing.md § 8.1(8))."
+      - "MD-065 (2026-10-22): ref.end-borrow is placed at Sema's last-required-use end in the holder's own statement list (borrow_ends.go). Payload arm exits dominated by it get no second marker. Direct P15 reference endpoints inside nested blocks retain their existing limitation. P16 slice endpoints in nested blocks are now represented through the slice-specific CFG normalization recorded in lowering.sec-mlir-package16 (2026-10-26); broader Sema/CFG schedules remain open."
       - "MD-084 (2026-10-22, rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md): the canonical sec.return_origins grammar and duplicate rejection are enforced by the dialect attribute verifier (mlir/include/sec/Dialect/Sec/ReturnOrigins.h; lit invalid-schema11-emitter-metadata.mlir). Compiler-materialized storage emits an empty sec.source_name with sec.synthesized = true instead of a fabricated name."
       - "MD-086 (2026-10-22, rules/corrections/applied/md086-p15-cli-emit-routes-correction-20261021.md): emit-ir and emit-sec-mlir build package-15 Semantic IR (inspectionMaxPackage). emit-sec-mlir publishes only after the Place, reference-guard and borrow-semantics verifiers pass. emit-mlir, emit-llvm and build stay at package 14 and reject reference programs as an unsupported lowering that names the missing physical representation (TestReferenceProgramsReachOnlyTheInspectionBoundaries, 32/64-bit)."
       - "MD-076 temporaries (2026-10-21): a Temporary borrow plan lowers by evaluating the producer once, then `place.value-root` + `ref.borrow-shared` for a shared borrow or address-taken compiler storage + `place.storage-root` + `ref.borrow-mut` for a mutable one. A returned reference carries the temporary's storage identity in `origins`, and `*call()` reads through `ref.deref-place` + `place.read` (MD-063). The schema-11 emission passes all three verifiers (TestTemporaryBorrowsMaterializeOwnPlaces, TestTemporaryBorrowsAndDereferenceEmitSchema11). Branch- and short-circuit-scoped temporaries (MD076-P10, 2026-10-22) exist only on reached paths and verify on 32/64 (TestTemporaryBorrowsExistOnlyOnReachedPaths, TestBranchScopedTemporariesEmitSchema11). Known hole (verified 2026-10-21): temporaries that need full-expression cleanup stay an explicit lowering boundary until P17."
@@ -795,8 +795,8 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     integrated: "2026-10-17"
-    revised: "2026-10-25"
-    summary: "P16 remains partial. Supported source-to-schema-12 paths include fixed-array borrows, slice reborrows, lengths and indexes, shared holder copies, mutable holder moves, slice parameters/call arguments (including fresh mutable expressions and nested mutable slice results reborrowed for shared parameters) and full-extent returned slices. MD-084/MD-085 were applied on 2026-10-22; whole-function verification now preserves exact metadata and unambiguous loop forwarding. Returned sub-slices fail closed on MD-115 instead of erasing their range; whole returns and existing element-reference projections remain supported. The real-tool Go matrix covers rejection without output/artifacts and deterministic round trips before/after P6. Automatic local slice ends are verified for the holder's own statement list, including copy/move/reborrow and unused holders. Broader joins, projected holders, general path-specific ends, sub-slice return summaries, predecessor P15 dependencies and final isolated acceptance remain open. Native suite passes 165/165; full Semantic IR/emitter suites pass. No physical slice representation or binary slice support claim. P16-36 expression-call adaptation completed on 2026-10-25: Sema publishes separate call-pass identities from resolved referent origins; lowering evaluates creation/returned values once before the shared reborrow. Both target plans pass native schema-12 verification before/after P6, and overlap, retained dependencies, local escape, type/authority restrictions and exact mutable overload preference are covered. This closes the expression-call boundary, not the remaining projected-holder/CFG/range-summary work."
+    revised: "2026-10-26"
+    summary: "P16 remains partial. Supported source-to-schema-12 paths include fixed-array borrows, slice reborrows, lengths and indexes, shared holder copies, mutable holder moves, slice parameters/call arguments (including fresh mutable expressions and nested mutable slice results reborrowed for shared parameters) and full-extent returned slices. MD-084/MD-085 were applied on 2026-10-22; whole-function verification now preserves exact metadata and unambiguous loop forwarding. Returned sub-slices fail closed on MD-115 instead of erasing their range; whole returns and existing element-reference projections remain supported. The real-tool Go matrix covers rejection without output/artifacts and deterministic round trips before/after P6. Automatic local slice ends cover the holder's own statement list plus Sema-published nested branch endpoints, with duplicate/join-edge normalization over the built CFG. Copy/move/reborrow and unused holders retain their existing coverage. Sema now stops suffix liveness at structurally proven function exits after checking dependency uses, so early-return branches no longer retain authority solely for an unreachable outer continuation. Deferred/captured/returned dependencies and loop backedges retain their protections. Non-structural termination and more general mixed-edge layouts remain open. Broader joins, projected holders, general path-specific ends, sub-slice return summaries, predecessor P15 dependencies and final isolated acceptance remain open. Native suite passes 165/165; full Semantic IR/emitter suites pass. No physical slice representation or binary slice support claim. P16-36 expression-call adaptation completed on 2026-10-25: Sema publishes separate call-pass identities from resolved referent origins; lowering evaluates creation/returned values once before the shared reborrow. Both target plans pass native schema-12 verification before/after P6, and overlap, retained dependencies, local escape, type/authority restrictions and exact mutable overload preference are covered. This closes the expression-call boundary, not the remaining projected-holder/CFG/range-summary work. Returned slice expression sources (2026-10-26) now lower directly through instantiated Sema call facts for shared/mutable/reduced-authority reborrows, both unsigned length forms and element reads. Source/endpoint/index calls evaluate once in order; 32/64 schema-12 native verifiers and deterministic round trips cover the complete source path. Direct mutable call-result slice index assignments now use canonical referent Places and preserve each actual argument's granting holder through nested calls. Source/index/Place/RHS/write ordering is verified on both target plans through the native schema-12 verifiers before/after P6. Full-open slice reborrows now retain their source origin without an identity projection, so shared/mutable/reduced-authority returns over named and nested call results pass source-to-schema-12 verification. Exact, empty, dynamic and alternative source ranges survive unchanged; actual narrowed returned ranges retain MD-115. Other existing boundaries remain open. Trivial integer slice element compound assignments now use one bounded Place/read/RHS/operator/commit, including returned sources and all ten operators plus increment/decrement aliases; checked failures never commit. Both target widths pass native schema-12 verification before/after P6, including uint256 arithmetic and shifts. Nested mixed slice-end joins now traverse transparent parameter-free unconditional forwarding blocks to the uniformly live incoming edges. Planning completes before CFG edits; instructions, parameters and cycles remain explicit boundaries, with deterministic source/native coverage on both target plans."
     predecessors:
       - SEC-MLIR-P15 (partial; schema 11, emitter and verifiers implemented 2026-10-17)
     rules:
@@ -874,9 +874,17 @@ integrations:
       - "P16 source and native integration evidence: slice_source_automatic_ends.sec verifies Sema-scheduled local ends before subsequent backing-array writes on 32/64 plans, including shared, copied, moved, reborrowed and unused holders. The Go native matrix includes loop forwarding, transfer metadata, returned ranges and exclusive-holder copy rejection; every negative case checks the owning diagnostic, empty stdout and absent output artifact before/after P6. Positive full-function fixtures round-trip deterministically. General path-specific automatic ends remain separate."
       - "P16-36 mutable-to-shared slice call boundary (2026-10-25): selected direct calls accept ref mut T[] as ref T[] with identical nominal element type. Sema retains the argument type for exact-overload ranking and publishes a shared pass only after ordinary ownership/borrow checks. Named mutable holders lower through a full-range slice.reborrow-shared with distinct resolved borrow/lifetime; caller authority and returned shared dependencies are retained. New source-to-schema-12 tests cover 32/64 plans and all four native verifiers before/after P6. Negative tests retain call-overlap/retention, authority, element identity and storage-initialization restrictions; forged child identity emits no bytes. Generic selection is Sema evidence only, and fresh/non-holder argument adaptation retains its unsupported boundary."
       - "P16-36 expression-call adaptation (2026-10-25): fresh mutable slice expressions and calls returning mutable slices can grant shared whole-extent call reborrows. The selected call publishes detached pass facts using the resolved canonical referent origin and a distinct Sema call-pass borrow/lifetime identity, preserving the expression creation/return facts. Lowering evaluates the source and endpoints once in order, keeps the mutable value type until reborrowing and never copies the mutable descriptor. Tests cover nested calls, returned shared dependencies, exact mutable overload preference, deterministic repeat builds and 32/64 schema-12 round trips through all four real verifiers before/after P6. Invalid child identity emits no bytes; source overlap, retained-parent mutation, element mismatch, authority upgrade and local escape remain rejected. Projected holders, general CFG endpoints and MD-115 summaries retain their existing open boundaries."
+      - "P16-36 returned slice expression sources (2026-10-26): sliceSourceValue evaluates a slice-returning call once using its existing instantiated caller-side reference metadata. Range reborrows, .Len/len and index reads now reuse that exact SSA/borrow/authority instead of rejecting a non-holder source. The source precedes endpoint/index calls and temporal/spatial observations. Tests cover shared/mutable and mutable-to-shared reborrows, writes through the resulting named mutable child, source/endpoint/index ordering, both length forms, repeat-build determinism and rejection of source authority upgrades, retained-parent writes, descending ranges and local escape. Actual source-to-schema-12 output passes all four native P15/P16 verifiers before/after P6 on 32/64 plans; corrupted call-source borrow identity returns no bytes and default schema 11 stays closed. Narrowed returned summaries remain MD-115; direct call-result index writes retain the Sema Place boundary, projected holders/general CFG ends remain separate and no physical slice execution is claimed."
+      - "P16-36 direct mutable returned-slice index stores (2026-10-26): canonical Sema referent Places preserve per-origin granting holders through nested calls, without making owning array temporaries assignable. Direct source/index/RHS evaluate once in order and use the existing slice element Place/write producer. Source-to-schema-12 tests cover local and parameter slices, nested returns, disjoint ranges, deterministic facts and native round trips before/after P6 on 32/64 plans; negative cases retain shared-authority and overlapping-child restrictions. Finite alternative origins retain each holder and exact projected index in Sema-only tests; broader join lowering remains open."
+      - "P16-36 full-open returned-slice origin normalization (2026-10-26): a slice reborrow with both endpoints omitted retains the complete canonical source range and all alternative origins without adding a relative identity projection. Shared/mutable/reduced-authority returns through named and nested call sources use the existing return-origin grammar and schema-12 operations. Focused Sema facts retain exact, empty and dynamic ranges and finite alternatives; narrowed sources keep their range and MD-115 gate, while mutable-authority escalation and local escape remain rejected. No new schema or physical slice capability."
+      - Full-open shared-to-mutable slice reborrows now reach the existing BorrowMutableAuthority diagnostic on the canonical source instead of a generic immutable projected-place error; regression expectations retain the same rejected programs.
+      - "P16-35 trivial integer slice compound replacements (2026-10-26): all ten resolved integer op= forms and increment/decrement aliases establish the bounded mutable element Place once, read once before RHS evaluation, apply the existing checked integer producer and commit once on success. The same focused compound value producer now serves mutable locals and slice Places; its local binding logic was extracted from builder.go. Source/native tests cover returned slice sources, one evaluation in order, checked arithmetic and shift failure blocks without writes, bitwise operations, uint256 carriers, deterministic 32/64 schema-12 round trips before/after P6 and rejection without partial IR for shared authority, wrong operand types and live shared children. Nontrivial replacement and fallible contract assignment retain their existing boundaries; no physical slice execution claim."
+      - "P16-36 nested automatic slice borrow ends (2026-10-26): consumes Sema-published endpoints outside a holder's declaration list. A focused post-build pass tracks only whether these markers have executed, resetting on SSA redefinition; it removes already-ended join candidates and splits uniformly live incoming edges of a mixed join before any real instruction. More complex layouts fail with a named P16-36/MD-065 boundary instead of guessing liveness. Source tests cover shared/mutable if branches, nested/terminating paths, mixed joins, fresh loop iterations, exact once-per-path ends before owner writes and deterministic 32/64 native schema-12 round trips before/after P6. Future retained uses remain errors; corrupted endpoint lifetime emits no bytes. Direct P15 reference-home handling and broader Sema/CFG schedules remain separate."
+      - "P16-36 structural early-return liveness (2026-10-26): Sema's existing holder suffix scan checks dependency uses before stopping at the shared structural no-fallthrough predicate; a terminating suffix no longer scans unreachable enclosing continuations. No future unresolved flow fact is assumed, and break/continue do not act as function exits. Existing defer/capture, returned-holder and loop-backedge protections are unchanged. New Sema schedule tests verify distinct nested/continuing endpoints on 32/64 plans; expanded source-to-IR/native tests cover early and nested returns, branch-unused and mutable holders, exact one-end-per-path owner-write ordering and schema-12 round trips through all four verifiers before/after P6. No new dialect or generic loop/termination capability."
+      - "P16-36 transparent nested mixed joins (2026-10-26): slice borrow-end placement plans live incoming edges through parameter-free blocks containing only an unconditional branch, before changing the CFG. Already-ended paths remain untouched, original edge arguments survive and each live path ends exactly once. Mixed paths through instructions, parameter definitions or cycles retain the explicit P16-36/MD-065 boundary and rejected planning mutates nothing. Source-built two-/three-level join fixtures verify exact endpoint/owner-write ordering, stable IR and native schema-12 round trips through all four verifiers before/after P6 on 32/64 plans. The edge planner lives in a focused sibling file; no second liveness model or dialect change."
     remaining:
       - P16-07 remaining relevant P15 acceptance dependencies (MD-084 metadata serialization and MD-085 returned-origin verification were applied 2026-10-22); preparation P16-01..P16-06 is complete, with full-Go baseline failures recorded and owned rather than hidden
-      - "P16-26/P16-27/P16-36: complete spatial/temporal/ownership verification and remaining source operation production, including broader joins, projected holders and general path-specific automatic borrow ends. Shared/mutable holder transfers, slice signatures/arguments and full-extent returns are implemented. Local automatic ends in the holder's own statement list are verified on both target plans, including copies, mutable moves, reborrows and unused holders; this does not close all path-specific endpoints. P16-26 preserves unanimous CFG facts and exact source/index/normalized-tuple identity through unambiguous forwarding. Returned sub-slices remain blocked by MD-115; native verification now rejects attempts to erase the range, consistently with Semantic IR. Nontrivial aggregate holders retain the P17 dependency."
+      - "P16-26/P16-27/P16-36: complete spatial/temporal/ownership verification and remaining source operation production, including broader joins, projected holders, remaining general path-specific automatic borrow ends and non-structural continuation schedules. Shared/mutable holder transfers, slice signatures/arguments and full-extent returns are implemented for current holder/ref-holder forms; full-open slice expressions now retain their exact source origins, including call results. Automatic slice ends now also consume Sema-published nested-list positions, including shared/mutable if branches, nested/terminating branches and iteration-local redefinitions. Duplicate join markers are removed; mixed joins end only uniformly live incoming edges before any real instruction. Mixed paths crossing real instructions, parameter definitions or cycles still fail clearly without guessing an endpoint, while structurally proven return suffixes now exclude unreachable enclosing continuations after checking all dependency uses. Non-structural termination and loop-control edge schedules remain separate. Existing local copy/move/reborrow/unused-holder coverage is retained. P16-26 preserves unanimous CFG facts and exact source/index/normalized-tuple identity through unambiguous forwarding. Returned sub-slices remain blocked by MD-115; native verification now rejects attempts to erase the range, consistently with Semantic IR. Nontrivial aggregate holders retain the P17 dependency."
       - P16-55/P16-56/P16-58 remaining final acceptance and governance closure (P16-48 predecessor value/return integration is implemented 2026-10-25 for the current source boundary; reading contained slices/references out of aggregates needs P15 section 101 contained-reference facts and stays with the projected-holder boundary of the P16-26/P16-27/P16-36 item above); P16-46 scalar wrapper resolution/P8 preservation, P16-47 P13/P14 compatibility, P16-49 wide-carrier matrices, P16-50 actual 32/64 source-to-schema12 tool integration with all slice/P15 verifiers, P16-51 unsupported boundaries, P16-52 architecture, P16-53 determinism and P16-54 acceptance coverage inventory are implemented; P16-57 implementation reporting is complete with all 43 required topics and explicit partial status
     deferred:
       - owning dynamic T[] backing representation remains P18 work (package18-todo.md; frontend.dynamic-array-public-api)
@@ -973,6 +981,12 @@ integrations:
       - internal/lowering/secmlir/branch_targets.go
       - internal/sema/reference_call_arguments.go
       - internal/ir/semantic/slice_parameters.go
+      - internal/sema/index_places.go
+      - internal/ir/semantic/compound_assignment.go
+      - internal/ir/semantic/borrow_ends.go
+      - internal/ir/semantic/slice_borrow_ends.go
+      - internal/sema/borrow_liveness.go
+      - internal/ir/semantic/slice_borrow_end_edges.go
     tests:
       - internal/sema/slice_range_id_test.go
       - testdata/sema/slice_range_id_valid.sec
@@ -1119,7 +1133,80 @@ integrations:
       - internal/lowering/secmlir/slice_shared_call_test.go
       - testdata/semantic_ir/slice_expression_call_reborrow.sec
       - testdata/sema/slice_expression_call_invalid.sec
+      - internal/ir/semantic/slice_returned_sources_test.go
+      - internal/lowering/secmlir/slice_returned_sources_test.go
+      - testdata/semantic_ir/slice_returned_expression_sources.sec
+      - testdata/sema/slice_returned_sources_invalid.sec
+      - testdata/semantic_ir/package16_unsupported/returned_call_subslice.sec
+      - internal/sema/index_places_test.go
+      - internal/ir/semantic/slice_call_assignment_test.go
+      - internal/lowering/secmlir/slice_call_assignment_test.go
+      - testdata/semantic_ir/slice_call_index_assignment.sec
+      - testdata/sema/slice_call_assignment_invalid.sec
+      - testdata/sema/slice_call_assignment_alternatives_valid.sec
+      - internal/sema/slice_full_open_origins_test.go
+      - internal/ir/semantic/slice_full_open_returns_test.go
+      - internal/lowering/secmlir/slice_full_open_returns_test.go
+      - testdata/sema/slice_full_open_origins.sec
+      - testdata/sema/slice_full_open_returns_invalid.sec
+      - testdata/semantic_ir/slice_full_open_returns.sec
+      - testdata/semantic_ir/package16_unsupported/full_open_narrowed_return.sec
+      - internal/ir/semantic/slice_compound_assignment_test.go
+      - internal/lowering/secmlir/slice_compound_assignment_test.go
+      - testdata/semantic_ir/slice_compound_assignment.sec
+      - testdata/sema/slice_compound_assignment_invalid.sec
+      - internal/ir/semantic/slice_branch_ends_test.go
+      - internal/lowering/secmlir/slice_branch_ends_test.go
+      - testdata/semantic_ir/slice_branch_ends.sec
+      - testdata/sema/slice_branch_ends_invalid.sec
+      - internal/sema/borrow_return_liveness_test.go
+      - testdata/sema/slice_early_return_liveness_invalid.sec
+      - internal/ir/semantic/slice_borrow_end_edges_test.go
     verification:
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26 after transparent nested slice-end joins: 0 problems in 45 fragments, canonical lowering/no type hazards, clean whitespace; new planner/tests contain no private workspace paths. P16 remains partial with 3 remaining groups / 7 numbered TODOs; lowering.yaml 101 remaining entries. Mixed paths through real instructions, parameter definitions or cycles retain the explicit endpoint boundary."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after extraction of the transparent slice end edge planner
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after transparent nested mixed slice-end joins. Two-/three-level source fixtures reproduced the old P16-36/MD-065 edge-schedule rejection, now verify one end per live path before owner writes with stable IR and native schema-12 round trips on 32/64 before/after P6. Negative planner cases reject instruction/parameter/cycle crossings without CFG mutation; existing source dependency and invalid-lifetime/no-output tests remain green.
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26 after structural early-return liveness: 0 problems in 45 fragments, canonical lowering fragment/no type hazards, clean whitespace; new tests/fixture contain no private workspace paths. P16 stays partial with 3 remaining groups / 7 numbered TODOs and lowering.yaml has 101 remaining entries. The documented early-return limitation is narrowed to non-structural/loop-control schedules and more general mixed-edge layouts."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after structural early-return liveness
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after structural early-return liveness. The extended source fixture reproduced shared-borrow conflicts before the fix; early/nested/unused/mutable return branches now publish and emit distinct path endpoints. Existing path-walk and native schema-12 tests verify exactly one end before owner writes, stable 32/64 IR and native round trips through all four verifiers before/after P6. New Sema tests preserve returned/deferred/loopback dependencies. Direct P15 nested endpoints and non-structural termination remain separate.
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26 after nested slice ends: 0 problems in 45 fragments, canonical lowering fragment and clean whitespace; new source/test files contain no private workspace paths. P16 remains partial with 3 remaining groups / 7 numbered TODOs, lowering.yaml 101 remaining entries. P15 MD-065 cross-reference now distinguishes unchanged direct-reference limitations from completed P16 slice endpoint placement."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after nested-list slice endpoint emission and slice_borrow_ends.go CFG normalization
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after nested automatic slice borrow ends. The baseline fixture had no branch-local end before owner writes. Source-built 32/64 matrices now verify exact once-per-path ends for shared/mutable branches, nested/terminal branches, mixed joins and iteration-local SSA redefinitions. Native schema-12 round trips pass all four verifiers before/after P6; wrong end lifetime emits no bytes. Future-use source remains rejected. Broader continuation-sensitive Sema schedules and mixed-edge layouts remain explicit boundaries.
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26 after slice compound assignments: 0 problems in 45 fragments, canonical lowering fragment and clean whitespace. P16 remains partial: 3 remaining groups / 7 numbered TODOs; lowering.yaml has 101 remaining entries. No blocked broader P16 point was marked complete."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after extraction of compound_assignment.go and slice compound replacement support
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/ir/semantic -run 'TestPackage16SliceCompound|TestCompoundAssignment' -count=1
+        result: passed on 2026-10-26 after strengthening exact checked/failure-operation counts; extracted local compound producer retains its existing positive and unsupported-target tests
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after trivial integer slice compound assignments. The regression reproduced the old compound/nontrivial P17 rejection before implementation. Source-built 32/64 schema-12 native tests pass before/after P6 for all ten operators, increment/decrement and uint256 arithmetic/shifts; exact target/read/RHS/check/commit order and failure blocks without writes are checked. Invalid shared/type/live-child source returns no module. No physical runtime claim.
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26 after full-open returned-slice normalization: 0 problems in 45 fragments, canonical lowering fragment, no type hazards, clean whitespace. P16 remains partial with 3 remaining groups / 7 unchecked numbered TODOs; lowering.yaml has 101 remaining entries. Actual narrowed summaries retain MD-115; no new decision or dialect text was needed."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after full-open returned-slice normalization
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after full-open returned-slice normalization. Focused Sema tests preserve static/empty/dynamic and finite alternative origins; IR checks exact parameter-root summaries, single call evaluation and MD-115 rejection of an actually narrowed source. Source-to-schema-12 native round trips pass on 32/64 plans before/after P6. Shared-to-mutable and local escape remain rejected; two previous diagnostic expectations now assert the canonical BorrowMutableAuthority message.
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26 after direct returned-slice index stores: 0 problems in 45 fragments, canonical lowering fragment and clean whitespace. P16 remains partial with 3 remaining groups and 7 unchecked numbered TODOs; lowering total remains 101 remaining entries. Full-open call-result return origin normalization remains producer work, while actual narrowed summaries retain MD-115."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after direct returned-slice index stores
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after direct returned-slice index stores. New source/IR/native tests cover both target widths, nested/local/parameter sources, exact source/index/Place/RHS/write evaluation order and deterministic schema-12 round trips through all four verifiers before/after P6. Sema-only alternatives preserve per-origin grants and projected indices; shared/owning-temporary/overlapping-child writes remain rejected. No physical slice runtime or complete P16 acceptance claim.
+      - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
+        result: "passed on 2026-10-26: 0 problems in 45 fragments, lowering fragment canonical with no type hazards, clean whitespace. P16 remains partial with 3 remaining groups / 7 numbered TODOs; lowering total 101 remaining entries. Direct call-result index writes and full-open call-result return origin normalization are explicitly retained as producer work, with narrowed summaries still gated by MD-115."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/ir/... ./internal/lowering/...
+        result: passed on 2026-10-26 after returned slice expression-source support
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1
+        result: passed on 2026-10-26 in all six packages after P16 returned-call slice sources. New focused source/IR/native matrices pass on 32/64 plans; all four P15/P16 verifiers pass before/after P6 with stable round trips. The regression reproduced the unsupported non-holder source before the fix. No physical slice runtime or complete P16 acceptance claim.
       - command: yamlstatus check; yamlstatus fmt -check governance/lowering.yaml; git diff --check
         result: "passed on 2026-10-25 after P16-36 expression-call adaptation: 0 problems in 45 fragments, canonical lowering.yaml with no type hazards and clean whitespace. P16 stays partial with 3 remaining groups and 7 unchecked numbered TODOs; lowering.yaml total remains 101 remaining entries."
       - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/... ./internal/lowering/...
@@ -1992,9 +2079,10 @@ integrations:
       - union payload verification accepts projections only in the dedicated matching successor selected by the corresponding variant test
       - the package document and YAML are synchronized with flowcontrol_match.md revision 2.0 and distinguish payload-less variants from compiler-known empty initialization state
       - the standard Sec verification toolchain invokes the match-CFG verifier
+      - "struct-like payloads (reconciled 2026-10-26): whole-payload binding `Variant(payload)` builds the canonical P13 synthetic payload struct from guarded projections, and shallow named-field patterns copy only bound fields through guarded union.unwrap-field or borrow field Places (place.union-payload + place.field); covered by match_field_bindings_test.go and the emit-sec-mlir test over testdata/semantic_ir/match_field_patterns.sec"
+      - "arm layout (2026-10-26): the next arm's test block is laid out after the current arm's body blocks, so guarded arms with checked arithmetic keep source-ordered arm provenance for --sec-verify-match-cfg"
     remaining:
       - compiler-known empty initialization-state matching awaits a distinct resolved frontend fact and is not the payload-less variant support completed here
-      - shallow named-field and struct-like whole-payload binding await canonical struct semantic values and field-binding facts
       - ref, ref mut, move, temporary-forward, semantic-copy, and conditional-copy payload actions await ownership commit, cleanup, and destruction IR
       - contextual value-producing arm blocks await resolved final-value facts for every continuing block path
       - loop-control arms await loop Semantic IR targets and cleanup edges
@@ -2259,16 +2347,8 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     integrated: "2026-10-18"
-    revised: "2026-10-18"
-    summary: >-
-      Early P20 binary-float subset on the one native track (2026-10-18; plan
-      package20-todo.md): float/float32/float64 literals rounded once into
-      binary32/binary64 with canonical bits, negation, add/sub/mul/div/rem
-      (truncation) and the six comparisons (une for !=, ordered otherwise),
-      locals, compound assignment, parameters and returns build and run
-      natively. Schema 16, P20 core methods/properties, checked numeric
-      conversions (ConversionError) and the float verifier passes are not
-      implemented; the compiler still emits schema 11.
+    revised: "2026-10-26"
+    summary: Early P20 binary-float operators, core properties/methods and the dedicated P20-22 float-semantics verifier are integrated on the one native track. Constants use canonical bits; arithmetic preserves nearest-even rounding, NaNs, signed zero, truncation remainder and subnormals. The verifier runs explicitly and before float lowering, rejecting weakening policies and malformed Clamp control flow. Schema 16, float conversions (ConversionError), numeric-conversion verification and target capability checks remain open; the compiler still emits schema 11.
     predecessors:
       - SEC-MLIR-P15–P19 (their incomplete items keep their owners)
     rules:
@@ -2279,6 +2359,9 @@ integrations:
     code:
       - internal/sema/semantic_facts.go
       - internal/sema/analyzer_inference.go
+      - internal/sema/float_core.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/compiler_known_calls.go
       - internal/ir/semantic/float_ops.go
       - internal/lowering/secmlir/emitter.go
       - mlir/include/sec/Dialect/Sec/SecOps.td
@@ -2287,6 +2370,17 @@ integrations:
       - mlir/lib/Conversion/SecToLLVM/Floats.cpp
       - internal/mlir/toolchain.go
       - cmd/compiler/build_command.go
+      - mlir/lib/Analysis/VerifyFloatSemantics.cpp
+      - internal/sema/float_operation_facts.go
+      - mlir/lib/Conversion/SecToLLVM/SecToLLVM.cpp
+      - internal/sema/constant/float_literal.go
+      - internal/sema/numeric_literal_context.go
+      - internal/sema/contract_cte.go
+      - internal/sema/contract_cte_operators.go
+      - internal/sema/type_compatibility.go
+      - internal/sema/unit_conversion_plan.go
+      - mlir/lib/Conversion/SecToLLVM/FloatRemainder.cpp
+      - mlir/lib/Conversion/SecToLLVM/FloatLowering.h
     tests:
       - internal/sema/float_operators_test.go
       - internal/ir/semantic/float_ops_test.go
@@ -2294,21 +2388,89 @@ integrations:
       - mlir/test/Dialect/Sec/invalid-float-ops.mlir
       - mlir/test/Conversion/SecToCore/scalar-layout-32.mlir
       - testdata/build/native/floats.sec
+      - internal/sema/float_core_test.go
+      - internal/ir/semantic/float_core_test.go
+      - mlir/test/Conversion/SecToLLVM/float-core.mlir
+      - mlir/test/Conversion/SecToLLVM/float-clamp.mlir
+      - testdata/build/native/float_core.sec
+      - mlir/test/Analysis/verify-float-semantics.mlir
+      - mlir/test/Analysis/invalid-float-semantics.mlir
+      - mlir/test/Analysis/invalid-float-weakenings.mlir
+      - internal/sema/float_operation_facts_test.go
+      - testdata/sema/float_operation_facts.sec
+      - testdata/sema/float_operation_facts_invalid.sec
+      - mlir/test/Conversion/SecToLLVM/check-float-lowering-support.mlir
+      - internal/sema/float_literal_matrix_test.go
+      - internal/ir/semantic/float_literal_matrix_test.go
+      - testdata/semantic_ir/float_literal_matrix.sec
+      - testdata/semantic_ir/float_literal_overflow32_invalid.sec
+      - testdata/semantic_ir/float_literal_overflow64_invalid.sec
+      - testdata/semantic_ir/float_literal_family_invalid.sec
+      - testdata/build/native/float_literals.sec
+      - internal/sema/constant/float_literal_test.go
+      - internal/ir/semantic/float_operator_matrix_test.go
+      - internal/lowering/secmlir/float_operator_matrix_test.go
+      - internal/mlir/float_clamp_native_test.go
+      - internal/mlir/float_remainder_native_test.go
+      - testdata/build/native/float_operator_matrix.sec
+      - testdata/build/native/float_core_matrix.sec
+      - mlir/test/Conversion/SecToLLVM/float-clamp-execution.mlir
+      - mlir/test/Conversion/SecToLLVM/float-remainder.mlir
+      - mlir/test/Conversion/SecToLLVM/invalid-unresolved-float-lowering.mlir
     implemented:
       - "Sema: ResolvedFloat* operator kinds for unary +/-, + - * / % and == != < <= > >= over one built-in float type, float compound assignment, and context shaping of untyped literals beside a float operand, in a float context (let/return/argument) and through a sign prefix; fixed in passing: float64 + 2.0 and decimal % decimal no longer type silently as invalid, and decimal mixed with another numeric family is diagnosed"
       - "Semantic IR: const.float carries FloatConstant bits/format rounded once from the exact source value (no binary64 intermediate for binary32, overflow rejected, underflow to signed zero/subnormal); float.neg, float.binary {add,sub,mul,div,rem}, float.compare; unary plus is the SSA identity; `-literal` is literal shaping followed by float.neg (P20 § 17)"
       - "Sec dialect (schema 11, early): sec.const.float {bits}, sec.float.neg, sec.float.binary, sec.float.cmp with verifiers; scalar layout resolves plain !sec.float to f32 on 32-bit and f64 on 64-bit plans (MD-014)"
-      - "native track: sec-lower-floats lowers constants from canonical bits (no lexeme reparse), arithmetic to arith addf/subf/mulf/divf/remf without fastmath and comparisons to cmpf oeq/une/olt/ole/ogt/oge; registered in sec-check-lowering-support"
+      - "native track: sec-lower-floats lowers constants from canonical bits (no lexeme reparse), arithmetic to arith addf/subf/mulf/divf without fastmath and exact integer/CF significand reduction for truncation remainder (2026-10-26: removes the undeclared fmod/fmodf dependency) and comparisons to cmpf oeq/une/olt/ole/ogt/oge; registered in sec-check-lowering-support"
       - "build: LLVM IR is compiled to an object by the llc of the same LLVM build as mlir-translate (textual IR is version-specific; system clang 21 rejected the newer float constant syntax) and clang only links the object (user decision 2026-10-18)"
+      - "core members (2026-10-26; owner decided PascalCase spellings, core-library.md §§ 7.1/8.1/9.1): Sema resolves T.Min/Max/Epsilon/Infinity/NegativeInfinity/NaN and Abs, Min, Max, Clamp (Result[T, RangeError]), IsFinite/IsInfinite/IsNaN/IsNormal/IsSubnormal, Floor/Ceiling/Truncate/Round as CKM-FLOAT-* members with arity and same-type checks; integer T.Min/Max/Bits are exact const.int"
+      - "Semantic IR and Sec dialect (schema 11, early): float.abs/minimum/maximum/classify/round/property and float.clamp-checked (value, failed; the value consumed only on success, verified with the checked-conversion candidate rule) building Err(RangeError.InvalidRange) or Ok"
+      - "native track: sec-lower-floats lowers them with Arith only (no runtime library or libm call): abs/classify through bitcast and field masks (§ 78), minimum/maximum to minimumf/maximumf (§ 36), rounding through a |x| < 2^p guarded conversion keeping signed zero/NaN/infinity, properties to exact APFloat constants, Clamp via cmpf uno/ogt and minimumf/maximumf; SquareRoot stays deferred (no MathError, § 37)"
+      - "P20-22 (2026-10-26): sec-verify-float-semantics validates registered float operation formats, constant bits, predicates, remainder/classification/round/property kinds and Clamp types; rejects explicit non-nearest-even, fast-math, contraction and denormal weakening policies at module/function/operation scope; requires Clamp candidates to stay on their guarded success edge. sec-lower-floats invokes the same verifier before erasing Sec operations. Historical lexeme-only constants still round-trip outside this P20 boundary; no schema-16 acceptance claim."
+      - "P20-11 (2026-10-26): Sema publishes value-only ResolvedFloatOperation snapshots for all primitive unary, binary, comparison and compound operators; facts retain common source identity, selected format and plan width, source operator, canonical NaN-aware predicate, nearest-even/no-fast-math/no-contraction/subnormal-preserving policies and truncation remainder. Read-only expression and assignment queries cannot alias stored facts; planless platform float explicitly retains unknown format rather than borrowing the host width."
+      - "P20-28 (2026-10-26): one native support classifier admits all eleven represented float operation families, including core members and Clamp. Entry rejects lexeme-only float constants before conversion and reports unsupported Sec operations with the unsupported-lowering category; regression tests retain decimal/decimal128 and unimplemented float conversion boundaries. The native driver selects only sec-lower-to-llvm (MD-101); no alternate backend or fallback was introduced."
+      - "P20-10 and P20-29 (2026-10-26): audited literal lexing/parsing/source preservation; Sema shapes g literals, signs and unsuffixed integer forms in float contexts and after call overload selection, refreshes sign operator facts after width shaping and rejects explicit i/u/m family changes. Shared constant.FloatLiteralBits rounds exact source directly at binary32/binary64 for both CTE and Semantic IR; CTE preserves signed zero through negation and rechecking. Source-backed 63-case matrix uses independent rational oracles on selected 32/64-bit plans, with spelling/location checks, decimal and integer-form double-rounding witnesses, subnormal/underflow/overflow and rejecting family fixtures. Native float_literals executes direct-width rounding and signed-zero cases. Full CTE arithmetic/core/conversion folding remains independently owned by P20-19."
+      - "P20-30 (2026-10-26): full arithmetic/comparison source matrix for float32/float64/plain float verifies through Semantic IR and emission on both 32/64-bit plans and executes with runtime operands natively on the hosted 64-bit target. Covers all arithmetic/predicates, unary signs, NaN in both operand orders, signed zero, infinity, overflow and gradual underflow. Nonconstant remainder exposed an undeclared fmod/fmodf dependency; exact bounded significand reduction in integer/CF removes it, with 584 bitwise edge/random native comparisons against an independent oracle and no math library."
+      - "P20-25 (2026-10-26): core operation lowering audited and executed for all primitive float types, including properties, Abs, NaN-propagating Min/Max, classification and guarded rounding over signed zeros, half ties, subnormals, finite extremes, infinities and NaN. Forty-five additional dialect-native Clamp cases verify candidate/failure edges, NaN bounds/input, inverted/equal/infinite bounds and zero sign without linking a math library. This completes the operation lowering point; public Result/union physical materialization and P20-27 target capabilities remain independently gated."
+      - Standalone float lowering now diagnoses missing binary32/binary64 scalar layout before casting unresolved Sec scalars, including remainder, classification and rounding; negative lit fixtures ensure an omitted predecessor cannot crash the optimizer (P20-25, 2026-10-26).
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler ./internal/mlir -run 'TestFloatClampNativeMatrix|TestFloatRemainderNativeDifferential|TestNativeTrackNamesUnloweredConstructs|TestNativeTrackBuildsAndRuns/(floats|float_core|float_literals|float_operator_matrix|float_core_matrix)$' -count=1 -v
+        result: "passed on 2026-10-26: five source native float fixtures, source diagnostic regression, 45 Clamp dialect-native cases and 584 remainder differential cases without a math library"
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir
+        result: passed on 2026-10-26
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir -count=1
+        result: "passed on 2026-10-26: complete suites, 32/64-bit source/IR/emitter matrix and executable Clamp/remainder differential cases"
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: "passed on 2026-10-26: 175/175 lit tests, including integer/CF remainder, full Clamp pipeline and unresolved-layout diagnostics"
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run 'TestNativeTrackNamesUnloweredConstructs|TestNativeTrackBuildsAndRuns/(floats|float_core|float_literals)$' -count=1 -v
+        result: "passed on 2026-10-26: float_core, floats and new float_literals executed successfully; unsupported construct diagnostics retain source coordinates"
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -count=1
+        result: "failed on 2026-10-26 only in TestCompilerLoadsIOReadFileIntoAPI and TestCompilerLoadsIOWriteSeekAndDirectoryAPIs (IO imports: linux qualification, unavailable target bit widths and try error typing); targeted native float and capability diagnostics pass"
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/parser ./internal/lexer ./internal/ast -count=1
+        result: passed on 2026-10-26
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/sema/constant ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir -count=1
+        result: passed on 2026-10-26 including P20-10/P20-29 source matrices, family boundaries, CTE parity and capability diagnostic regressions
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: "passed on 2026-10-26: 172/172 lit tests, including whole P20-22 verification and P20-28 support registration and unsupported boundaries"
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema
+        result: passed on 2026-10-26
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-10-26: complete suites, including source-backed immutable float facts for all 13 operators, compound assignments, depths and scalar plans"
+      - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run 'TestNativeTrackBuildsAndRuns/(floats|float_core)$' -count=1
+        result: passed on 2026-10-26 with the automatic P20-22 verifier before lowering
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: "passed on 2026-10-26: 171/171 lit tests, including P20-22 positive, malformed operation/policy/Clamp and standard floating weakening regressions; explicit verifier and native float-lowering entry both exercised"
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run 'TestNativeTrackBuildsAndRuns' -count=1
+        result: passed on 2026-10-26 including float_core (float64/float32/plain float core members at run time)
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j4
+        result: passed on 2026-10-26 (float-core.mlir, float-clamp.mlir, invalid-float-ops.mlir)
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run 'TestNativeTrackBuildsAndRuns/floats' -count=1
         result: passed on 2026-10-18; NaN, signed zero, infinity, remainder, float32 rounding, plain float, compound assignment and loops at run time
       - command: (cd build/sec-mlir/test && llvm-lit -q .)
         result: 116 tests passed on 2026-10-18
     remaining:
-      - P20 core properties/methods (min/max/epsilon/infinities/NaN, Abs, Min/Max, Clamp, classification, rounding); SquareRoot stays deferred
       - checked numeric conversions int<->float and float32<->float64 with ConversionError and try, float-to-bool, conversion plans and folding parity
-      - schema 16 gating, --sec-verify-float-semantics and --sec-verify-numeric-conversions, target capability checks
+      - schema 16 gating, --sec-verify-numeric-conversions, target capability checks
 
   - id: lowering.sec-mlir-package21
     package: SEC-MLIR-P21

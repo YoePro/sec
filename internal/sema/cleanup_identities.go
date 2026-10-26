@@ -103,6 +103,9 @@ func (a *Analyzer) enterCleanupScope(block *ast.BlockStatement) func() {
 	a.cleanupScopes[block] = id
 	a.currentCleanupScope = id
 	a.recordCleanupScope(id, previous, block)
+	if previous == 0 {
+		a.recordOwnedCleanupParameters(id)
+	}
 	return func() {
 		a.recordCleanupBlockExit(id, block)
 		a.currentCleanupScope = previous

@@ -57,7 +57,10 @@ fn _copyPath(path: string, destination: ref mut byte[]) Result[uint, LinuxError]
     }
 
     let mut index := 0
-    while index < int(path.Len) {
+    let length := try int(path.Len) {
+        Err(_) => return Err(LinuxError.nameTooLong)
+    }
+    while index < length {
         unsafe {
             let value := path.Ptr.Offset(index).Read()
             if value == 0 {
@@ -88,8 +91,8 @@ fn Open(path: string, flags: int, permissions: int) Result[int, LinuxError] {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.Open),
             uint(encodedPath[0].Ptr),
-            uint(flags),
-            uint(permissions),
+            uint(bit[64](flags)),
+            uint(bit[64](permissions)),
         )
 
         if result < 0 {
@@ -146,7 +149,7 @@ fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
     unsafe {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.Read),
-            uint(fd),
+            uint(bit[64](fd)),
             uint(data.Ptr),
             data.Len,
         )
@@ -163,7 +166,7 @@ fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
     unsafe {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.Write),
-            uint(fd),
+            uint(bit[64](fd)),
             uint(data.Ptr),
             data.Len,
         )
@@ -188,11 +191,15 @@ fn WriteStringFrom(fd: int, data: string, offset: uint) Result[uint, LinuxError]
         return Err(LinuxError.invalidArg)
     }
 
+    // MD-056: a uint offset is converted with a check, never truncated.
+    let start := try int(offset) {
+        Err(_) => return Err(LinuxError.invalidArg)
+    }
     unsafe {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.Write),
-            uint(fd),
-            uint(data.Ptr.Offset(int(offset))),
+            uint(bit[64](fd)),
+            uint(data.Ptr.Offset(start)),
             data.Len - offset,
         )
 
@@ -208,9 +215,9 @@ fn Seek(fd: int, offset: int, origin: int) Result[uint, LinuxError] {
     unsafe {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.sysLseek),
-            uint(fd),
-            uint(offset),
-            uint(origin),
+            uint(bit[64](fd)),
+            uint(bit[64](offset)),
+            uint(bit[64](origin)),
         )
 
         if result < 0 {
@@ -223,7 +230,7 @@ fn Seek(fd: int, offset: int, origin: int) Result[uint, LinuxError] {
 
 fn Flush(fd: int) Result[void, LinuxError] {
     unsafe {
-        let result := amd64.RawSyscall(uint(amd64.SysCall.sysFsync), uint(fd))
+        let result := amd64.RawSyscall(uint(amd64.SysCall.sysFsync), uint(bit[64](fd)))
         if result < 0 {
             return Err(_linuxError(-result))
         }
@@ -235,7 +242,7 @@ fn ReadDirectory(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
     unsafe {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.sysGetdents64),
-            uint(fd),
+            uint(bit[64](fd)),
             uint(data.Ptr),
             data.Len,
         )
@@ -260,7 +267,7 @@ fn Access(path: string, mode: int) Result[void, LinuxError] {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.sysAccess),
             uint(encodedPath[0].Ptr),
-            uint(mode),
+            uint(bit[64](mode)),
         )
         if result < 0 {
             return Err(_linuxError(-result))
@@ -281,7 +288,7 @@ fn CreateDirectory(path: string, permissions: int) Result[void, LinuxError] {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.sysMkdir),
             uint(encodedPath[0].Ptr),
-            uint(permissions),
+            uint(bit[64](permissions)),
         )
         if result < 0 {
             return Err(_linuxError(-result))
@@ -361,7 +368,7 @@ fn Truncate(fd: int, size: uint) Result[void, LinuxError] {
     unsafe {
         let result := amd64.RawSyscall(
             uint(amd64.SysCall.sysFtruncate),
-            uint(fd),
+            uint(bit[64](fd)),
             size,
         )
         if result < 0 {
@@ -373,7 +380,7 @@ fn Truncate(fd: int, size: uint) Result[void, LinuxError] {
 
 fn Close(fd: int) Result[void, LinuxError] {
     unsafe {
-        let result := amd64.RawSyscall(uint(amd64.SysCall.Close), uint(fd))
+        let result := amd64.RawSyscall(uint(amd64.SysCall.Close), uint(bit[64](fd)))
 
         if result < 0 {
             return Err(_linuxError(-result))

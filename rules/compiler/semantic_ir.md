@@ -622,6 +622,16 @@ address/resource identity where bound
 | `register.hw.shadow_observe` / `shadow_intent` / `shadow_invalidate` | instance/shadow group → updated knowledge / pending intent | software shadow state |
 | `register.hw.commit` | instance/shadow group, pending intents, verified plan → completion or failure | hardware operation only when intents are pending |
 
+§ 21(6) *Register bit-pattern conversions (MD-110, 2026-10-25; `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md` § 7).* The detached value family also has three pure operations:
+
+| Operation | Inputs → outcome | Effects |
+|---|---|---|
+| `register.value.fits-bits` | resolved primitive integer, destination `RegisterTypeID` and width `N` → bool satisfying the bit-pattern fit rule (`registers.md` § 12.3) | pure |
+| `register.value.from-bits` | resolved integer, established fit proof (`constant`, `source-domain`, or `guarded` by a dominating successful `fits-bits` of the same operand and destination) → detached `T` | pure on its verified success path |
+| `register.value.to-bits` | detached `T`, signed or unsigned integer result of width `W >= N` → integer: zero-extended or sign-extended from bit `N-1` | pure, total |
+
+`from-bits` is exact and never an unchecked truncation. A runtime-checked conversion branches on `fits-bits`: the false edge reaches the already resolved checked-conversion failure continuation, before any register value exists. `bit[N](x)` stays the integer bit extraction (§ 59) and is not lowered through `from-bits`. All three operations keep the nominal identity, source and result types and widths (resolved through the `CompilationPlan` for target-sized integers), the signedness of the integer endpoint, the proof or interpretation, and provenance. None touches a hardware binding, resource or physical access plan.
+
 Value operations keep `RegisterTypeID`, field-path identities, bit width/offset, allocation order, byte-order contract at serialization boundaries, field value type, enum/unit/range facts and provenance. Hardware operations additionally keep or losslessly reference the identity, field, request, transfer, safety, effect, shadow, authority, failure and trace data of the correction's § 10(2). Builders consume Sema's immutable resolved plans and never re-derive hardware meaning from syntax. The verifier checks category, type and field identity, payload presence, value-width and enum facts, the linkage between resource and instance, effect and plan capability, and that no ordinary Place root is fabricated for a physical resource. It is not a second planner.
 
 ---
@@ -1525,6 +1535,8 @@ address-space conversion
 § 59(3) A conversion retains source/target type, validation mode, runtime-check requirement, unsafe/trust status, and source provenance.
 
 § 59(4) Lower stages may not invent implicit conversions.
+
+§ 59(5) *Register bit-pattern conversions (MD-110, 2026-10-25).* Explicit `T(integer)` and `IntegerType(register)` for a detached register are the register value operations of § 21(6). Their validation mode is the bit-pattern fit rule, a source-domain or constant proof, or a guarded runtime check with a failure edge. Register-to-integer is total for `W >= N`. Neither is a representation reinterpretation of native memory or bytes.
 
 ---
 

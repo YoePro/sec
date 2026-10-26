@@ -54,6 +54,13 @@ func TestClosureSnapshotsDetachPlaceTypes(t *testing.T) {
 			}
 			return summary.Captures
 		}},
+		{"creation-list", func() []CaptureRecord {
+			creations := analyzer.ClosureCreations()
+			if len(creations) != 1 {
+				t.Fatalf("creation count: %d", len(creations))
+			}
+			return creations[0].Captures
+		}},
 	}
 	for _, query := range queries {
 		t.Run(query.name, func(t *testing.T) {

@@ -403,7 +403,10 @@ fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
         Some(highValue) => {
             match low {
                 Some(lowValue) => {
-                    return Ok(byte(uint(highValue) * 16 + uint(lowValue)))
+                    let decoded := try byte(uint(highValue) * 16 + uint(lowValue)) {
+                        Err(_) => return Err(PercentError.InvalidEscape(index))
+                    }
+                    return Ok(decoded)
                 }
                 None => {
                 }

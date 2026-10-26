@@ -33,7 +33,7 @@ func TestAnalysePresentationModes(t *testing.T) {
 		t.Fatalf("--all differs from the default:\n%s\n---\n%s", allOutput, stdout)
 	}
 	info, _, _ := runCLIForDiagnostics(t, "analyse", "--info", analyseAdvisoryFixture)
-	for _, want := range []string{"analysis summary:", "analyses: all (pitfalls, parameter-usage, stack)", "not run alone: data-races", "scope: whole program", "depth: deep", "results: 0 errors, 0 unproven, 0 warnings, 2 advisory", "limitations: none"} {
+	for _, want := range []string{"analysis summary:", "analyses: all (pitfalls, parameter-usage, stack, closures)", "not run alone: data-races", "scope: whole program", "depth: deep", "results: 0 errors, 0 unproven, 0 warnings, 2 advisory", "limitations: none"} {
 		if !strings.Contains(info, want) {
 			t.Errorf("--info lacks %q:\n%s", want, info)
 		}

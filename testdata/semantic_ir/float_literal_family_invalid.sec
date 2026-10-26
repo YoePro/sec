@@ -1,0 +1,13 @@
+module main
+
+fn Signed() float32 {
+    return 10i
+}
+
+fn Unsigned() float64 {
+    return 10u
+}
+
+fn Decimal() float32 {
+    return -1.5m
+}

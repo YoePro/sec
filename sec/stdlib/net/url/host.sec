@@ -226,9 +226,9 @@ impl Host {
                 None => return Err(ParseError.InvalidPercentEncoding(index))
             }
 
-            let decoded := byte(
-                uint(high) * 16 + uint(low),
-            )
+            let decoded := try byte(uint(high) * 16 + uint(low)) {
+                Err(_) => return Err(ParseError.InvalidPercentEncoding(index))
+            }
 
             // RFC 3986 normalization permits percent-encoded unreserved
             // characters to become their literal representation.

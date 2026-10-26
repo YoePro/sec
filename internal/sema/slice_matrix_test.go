@@ -87,7 +87,7 @@ func TestSliceSourceMatrixValid(t *testing.T) {
 func TestSliceSourceMatrixInvalid(t *testing.T) {
 	expected := map[string]string{
 		"Negative": "slice lower bound must be non-negative", "Descending": "descending slice range", "Bounds": "inclusive slice upper bound",
-		"SharedToMutable": "cannot create mutable reference to immutable place", "MutableCopy": "cannot copy move-only value",
+		"SharedToMutable": "shared reference never grants mutation authority", "MutableCopy": "cannot copy move-only value",
 		"MovedHolder": "cannot borrow unavailable place", "DiscardedHolder": "cannot borrow unavailable place",
 		"StaticOverlap": "while it is already borrowed", "DynamicOverlap": "while it is already borrowed", "EmptyIndex": "slice index 0 is out of bounds",
 		"LocalDirect": "cannot return reference to local variable values", "LocalEmpty": "cannot return reference to local variable values",

@@ -1,0 +1,13 @@
+module main
+
+fn Choose(left: ref mut int[], right: ref mut int[], first: bool) ref mut int[] {
+    if first { return left }
+    return right
+}
+
+fn Assign(first: bool) void {
+    let mut data := [1, 2, 3, 4]
+    let left := ref mut data[..<2]
+    let right := ref mut data[2..<4]
+    Choose(left, right, first)[0] = 7
+}

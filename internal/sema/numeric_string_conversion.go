@@ -1,6 +1,26 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"fmt"
+
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+	"sec/internal/lexer"
+)
+
+// reportUnavailableConversion reports a missing relation independently of
+// checked-conversion failure. A named string receives explicit materialization
+// guidance rather than an implicit numeric formatting step.
+// Rules: rules/types/types.md — "Explicit conversions", "Numeric-to-text conversion";
+// rules/tooling/diagnostics.md — § 2(6), § 3(6).
+func (a *Analyzer) reportUnavailableConversion(token lexer.Token, target, value Type) {
+	help := "Use a source value for which the target type defines an explicit conversion; try cannot create a missing conversion relation."
+	if target.Kind == StringType && target.Named && isNumericType(value) {
+		help = fmt.Sprintf("Materialize text explicitly: use `try %s(number.ToString())`, or `%s(try number.ToString())` when the outer conversion is infallible. Handle StringError and any independent target contract failure.", typeDisplayName(target), typeDisplayName(target))
+	}
+	a.addErrorAtTokenWithMetadata(token, diagnostics.ConversionUnavailable, help,
+		"cannot convert %s to %s", typeDisplayName(value), typeDisplayName(target))
+}
 
 // numericStringConversionType types the explicit conversion
 // string(numericValue) (MD-051, 2026-10-17): it is the no-argument numeric

@@ -39,9 +39,9 @@ extern "C" fn puts(text: RawPtr[byte]) int
 let Limit := 5
 
 fn Work(values: ref int[], table: map[string, int], out: ref mut int[4]) int[2] {
-    let a := 9
+    let a     := 9
     let mut b := 9
-    let c: int := 9
+    let c:     int := 9
     let mut d: int
     let e := 9, f := "hello", g := true
     int mut: j
@@ -52,10 +52,10 @@ fn Work(values: ref int[], table: map[string, int], out: ref mut int[4]) int[2] 
         q := 1,
         r := 2,
     )
-    let s: list[int] := list[int] {}
+    let s: list[int]          := list[int] {}
     let t: RawPtr[byte]
     let u: vector[float, 3]
-    let v: Option[int] := None
+    let v: Option[int]        := None
     let w: Result[int, error] := Ok(1)
     let x: fn(int) bool
     return [1, 2]

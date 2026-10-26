@@ -1762,6 +1762,12 @@ The explicit conversion `string(numericValue)` resolves to this same operation
 application (`types.md`, "Numeric-to-text conversion"). It is not the
 array/slice-to-string constructor cast rejected below.
 
+This relation targets primitive `string` only. Named string types do not
+inherit it (MD-093): `Name(number)` is unavailable. Prefer the explicit sequence
+`try Name(number.ToString())`, with `StringError` for materialization and any
+independent `ConversionError.Contract` validation under the ordinary `try`
+boundary (`types.md`, "Numeric-to-text conversion").
+
 ---
 
 # `char.ToString()` and `rune.ToString()`

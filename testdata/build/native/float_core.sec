@@ -1,0 +1,79 @@
+module main
+
+// P20 core floating members on the native track (core-library.md § 9;
+// sec-mlir-dialect_package20.md §§ 28–36): Abs, NaN-propagating Min/Max,
+// classification, Floor/Ceiling/Truncate/Round with signed zero, and the
+// associated properties, for float64, float32 and plain float. Returns the
+// number of the first failing check, or 0.
+
+fn IsNegativeZero(x: float64) bool {
+    return x == 0.0 && (1.0 / x) < 0.0
+}
+
+fn IsNegativeZero32(x: float32) bool {
+    return x == 0.0 && (1.0 / x) < 0.0
+}
+
+fn main() int {
+    let nan := float64.NaN
+    let inf := float64.Infinity
+    let negZero: float64 := -0.0
+    let zero: float64 := 0.0
+    let one: float64 := 1.0
+    let two: float64 := 2.0
+    let a: float64 := -2.5
+    let b: float64 := 2.5
+    let c: float64 := 3.5
+    let d: float64 := -2.7
+    let e: float64 := -0.5
+    let f: float64 := -0.4
+    let huge: float64 := 1.0e300
+    let tiny: float64 := 4.9e-324
+    if a.Abs() != 2.5 || IsNegativeZero(negZero.Abs()) || float64.NegativeInfinity.Abs() != inf {
+        return 1
+    }
+    if one.Min(two) != 1.0 || one.Max(two) != 2.0 || !nan.Min(one).IsNaN() || !one.Max(nan).IsNaN() {
+        return 2
+    }
+    if !IsNegativeZero(negZero.Min(zero)) || IsNegativeZero(negZero.Max(zero)) {
+        return 3
+    }
+    if !nan.IsNaN() || nan.IsFinite() || !inf.IsInfinite() || inf.IsNaN() || inf.IsFinite() {
+        return 4
+    }
+    if !one.IsNormal() || zero.IsNormal() || !tiny.IsSubnormal() || tiny.IsNormal() || zero.IsSubnormal() {
+        return 5
+    }
+    if b.Floor() != 2.0 || a.Floor() != -3.0 || b.Ceiling() != 3.0 || a.Ceiling() != -2.0 {
+        return 6
+    }
+    if d.Truncate() != -2.0 || !IsNegativeZero(e.Ceiling()) || !IsNegativeZero(e.Truncate()) {
+        return 7
+    }
+    if b.Round() != 2.0 || c.Round() != 4.0 || a.Round() != -2.0 || !IsNegativeZero(f.Round()) {
+        return 8
+    }
+    if huge.Floor() != huge || inf.Round() != inf || !nan.Floor().IsNaN() {
+        return 9
+    }
+    if !(float64.Max > 1.0e308) || !(float64.Min < -1.0e308) || !(one + float64.Epsilon > one) || one + float64.Epsilon / two != one {
+        return 10
+    }
+    let half32: float32 := 0.5
+    let x32: float32 := -1.5
+    let negZero32: float32 := -0.0
+    if x32.Round() != -2.0 || half32.Round() != 0.0 || !IsNegativeZero32(negZero32.Floor()) || x32.Abs() != 1.5 {
+        return 11
+    }
+    if !float32.Epsilon.IsNormal() || float32.NaN.IsFinite() || !(float32.Max > 3.0e38) {
+        return 12
+    }
+    let plain: float := -7.25
+    if plain.Floor() != -8.0 || plain.Ceiling() != -7.0 || !plain.IsNormal() {
+        return 13
+    }
+    if int32.Max != 2147483647 || int8.Min != -128 || uint8.Bits != 8 || int64.Bits != 64 {
+        return 14
+    }
+    return 0
+}

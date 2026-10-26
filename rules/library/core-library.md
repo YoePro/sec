@@ -747,16 +747,22 @@ int256
 
 ## 7.1 Intrinsic associated members
 
+Spelling (decided 2026-10-26): numeric associated properties use the canonical
+PascalCase spellings of `compiler_known_members.md` ("Fundamental numeric
+associated properties"): `Min`, `Max`, `Bits` here and in § 8.1, and `Min`,
+`Max`, `Epsilon`, `Infinity`, `NegativeInfinity`, `NaN` in § 9.1. No lowercase
+migration spelling is accepted.
+
 ```sec
-type property min: T {
+type property Min: T {
     get
 }
 
-type property max: T {
+type property Max: T {
     get
 }
 
-type property bits: uint {
+type property Bits: uint {
     get
 }
 ```
@@ -831,15 +837,15 @@ byte
 ## 8.1 Intrinsic associated members
 
 ```sec
-type property min: T {
+type property Min: T {
     get
 }
 
-type property max: T {
+type property Max: T {
     get
 }
 
-type property bits: uint {
+type property Bits: uint {
     get
 }
 ```
@@ -895,27 +901,27 @@ float64
 ## 9.1 Intrinsic associated members
 
 ```sec
-type property min: T {
+type property Min: T {
     get
 }
 
-type property max: T {
+type property Max: T {
     get
 }
 
-type property epsilon: T {
+type property Epsilon: T {
     get
 }
 
-type property infinity: T {
+type property Infinity: T {
     get
 }
 
-type property negativeInfinity: T {
+type property NegativeInfinity: T {
     get
 }
 
-type property nan: T {
+type property NaN: T {
     get
 }
 ```
@@ -1252,6 +1258,15 @@ no-argument `ToString()` — same default formatting, same
 `Result[string, StringError]` result and failure — and has no format overload
 (`types.md`, "Numeric-to-text conversion", MD-051, 2026-10-17).
 
+This primitive `string(number)` convenience is not inherited by named string
+types (MD-093, 2026-10-26). For `type Name string`, `Name(number)` is invalid,
+including under `try`. Prefer `try Name(number.ToString())`: first materialize
+text with its `StringError` channel, then perform the ordinary nominal
+conversion and any independently fallible `ConversionError.Contract` checks.
+`Name(try number.ToString())` is valid only when the outer conversion is
+infallible or is separately protected. General `try` boundaries and declared
+error-channel compatibility remain defined by `errorhandling.md` §§ 11–14.
+
 ## 15.1 `StringError`
 
 `StringError` is the one compiler-known failure family of text. Every
@@ -1345,7 +1360,7 @@ Examples:
 Speed.IsZero() -> bool
 Speed.Abs() -> Result[Speed, OverflowError]
 Speed.Min(other: Speed) -> Speed
-CustomerID.ToString() -> string
+CustomerID.ToString() -> Result[string, StringError]
 ```
 
 Not automatically inherited:
@@ -1354,6 +1369,10 @@ Not automatically inherited:
 - operations whose result would silently become the raw underlying type,
 - operations that violate a range or unit contract,
 - operations that would permit invalid cross-domain arithmetic.
+
+In particular, primitive numeric-to-text conversion into `string` does not
+authorize direct conversion into a named string type. Materialization and
+nominal validation remain explicit, ordered operations (§ 15; MD-093).
 
 ## 16.2 Sema substitution
 

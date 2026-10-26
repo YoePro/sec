@@ -12,14 +12,17 @@ import (
 // represent every value the source may hold (ConversionError).
 const TryFailureConversion TryFailureKind = "conversion"
 
-// ConversionFailureKind names the intrinsic ConversionError variant a
-// checked scalar conversion can produce.
+// ConversionFailureKind names the ConversionError variant a checked
+// conversion can produce, retaining declared contracts as a separate category.
 type ConversionFailureKind string
 
 const (
 	ConversionFailureOutOfRange    ConversionFailureKind = "OutOfRange"
 	ConversionFailureInvalidScalar ConversionFailureKind = "InvalidScalar"
 	ConversionFailurePrecisionLoss ConversionFailureKind = "PrecisionLoss"
+	// ConversionFailureContract is declared named-string validation, not an
+	// intrinsic numeric-domain check. Its try point stays TryFailureContract.
+	ConversionFailureContract ConversionFailureKind = "Contract"
 )
 
 // checkedConversion records one explicit conversion that is legal but may
@@ -45,6 +48,16 @@ type checkedConversion struct {
 //   - rules/platform/ffi.md — §8 "C-to-Sec and Sec-to-C scalar conversions"
 //   - rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md — §2.5, §4.1–4.8
 func (a *Analyzer) recordCheckedConversion(call *ast.CallExpression, target, source Type) {
+	// MD-093: a separately fallible named-string conversion needs its own
+	// protection; an inner try around ToString does not protect this call.
+	if call != nil && target.Kind == StringType && target.Named && len(target.Contracts) > 0 {
+		if a.runtimeContractConversion(call) {
+			a.checkedConversions[call] = checkedConversion{source: source, target: target, failure: ConversionFailureContract}
+		} else {
+			delete(a.checkedConversions, call)
+		}
+		return
+	}
 	if call == nil || len(call.Arguments) != 1 || len(target.Contracts) > 0 ||
 		hasUnitSemantics(target) || hasUnitSemantics(source) {
 		return
@@ -62,12 +75,13 @@ func (a *Analyzer) recordCheckedConversion(call *ast.CallExpression, target, sou
 	} else {
 		delete(a.fallibleConversionRelations, call)
 	}
-	// Only conversions involving a c:: scalar must be protected today
-	// (ffi.md §8). For Sec-only scalars the same rule in types.md cannot be
-	// enforced yet: platform syscall wrappers pass signed values in unsigned
-	// registers, which needs the bit-reinterpretation operation that
-	// missing-decisions.yaml MD-056 tracks. Their try is already accepted.
-	if !isForeignCScalar(target) && !isForeignCScalar(source) {
+	// Every conversion that may fail requires try, for Sec-only scalars
+	// (types.md "Explicit conversions") as for c:: scalars (ffi.md §8).
+	// Deliberate low-bit reinterpretation, such as signed values passed in
+	// unsigned syscall register words, uses bit[N](value) (MD-056).
+	if plan, ok := a.resolvedIntegerConversions[call]; ok && plan.Exact {
+		// Proven exact for the selected CompilationPlan, or for every
+		// supported width without one (MD-104).
 		delete(a.checkedConversions, call)
 		return
 	}
@@ -205,7 +219,10 @@ func conversionDomainMayFailAt(target, source Type) (ConversionFailureKind, bool
 // proves the value fits). Nested Sec-only conversions stay outside the
 // failure set until MD-056 allows their try requirement to be enforced.
 func (a *Analyzer) appendCheckedConversionPoint(points []TryFailurePoint, call ast.Expression, root bool) []TryFailurePoint {
-	_, checked := a.checkedConversions[call]
+	conversion, checked := a.checkedConversions[call]
+	if checked && conversion.failure == ConversionFailureContract {
+		return points // The ordinary contract point owns this failure.
+	}
 	_, relation := a.fallibleConversionRelations[call]
 	if !checked && !(relation && root) {
 		return points
@@ -221,6 +238,9 @@ func (a *Analyzer) CheckedConversionOf(call *ast.CallExpression) (ConversionFail
 		return "", false
 	}
 	conversion, ok := a.checkedConversions[call]
+	if ok && conversion.failure == ConversionFailureContract {
+		return "", false // Not an intrinsic scalar conversion.
+	}
 	return conversion.failure, ok
 }
 

@@ -165,6 +165,9 @@ func (a *Analyzer) resolveContractFailureEffect(call *ast.CallExpression) {
 	if a.summaryPass || call == nil {
 		return
 	}
+	// Both expression try and fallible assignment protect the declared
+	// contract check; an inner-only try around its argument does not (MD-093).
+	a.protectedCheckedConversions[call] = true
 	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicContract, call.Token)
 }
 

@@ -541,6 +541,22 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitSemanticIntegerOperation(operation, "sec.float.binary", "kind", string(operation.FloatBinary), values)
 	case semantic.OpFloatCompare:
 		return e.emitSemanticIntegerOperation(operation, "sec.float.cmp", "predicate", string(operation.IntegerCompare), values)
+	case semantic.OpFloatClampChecked:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.clamp_checked", "", "", values)
+	case semantic.OpNumericConvertChecked:
+		return e.emitSemanticIntegerOperation(operation, "sec.numeric.convert_checked", "failure", operation.ConversionFailure, values)
+	case semantic.OpFloatAbs:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.abs", "", "", values)
+	case semantic.OpFloatMinimum:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.minimum", "", "", values)
+	case semantic.OpFloatMaximum:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.maximum", "", "", values)
+	case semantic.OpFloatClassify:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.classify", "kind", operation.FloatCore, values)
+	case semantic.OpFloatRound:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.round", "kind", operation.FloatCore, values)
+	case semantic.OpFloatProperty:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.property", "kind", operation.FloatCore, values)
 	case semantic.OpArithmeticFailure:
 		if len(operation.Operands) != 1 {
 			return fmt.Errorf("invalid arithmetic failure operand")

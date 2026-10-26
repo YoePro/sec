@@ -365,6 +365,9 @@ which must never collapse into one undifferentiated conversion error:
    diagnostic. No runtime `Result` error represents an illegal relationship
    between orthogonal types (`int("hello")` when no `string -> int` conversion
    exists).
+   The same distinction applies to `type Name string`: direct numeric
+   `Name(number)` has no relation (MD-093), even under `try`. Explicit text
+   materialization must precede the available `string -> Name` relation.
 2. **Intrinsic target-domain failure.** A defined conversion may fail because the
    runtime source value cannot form a valid value of the underlying primitive or
    scalar type: overflow or non-representability, forbidden precision loss, an

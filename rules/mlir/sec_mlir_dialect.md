@@ -2105,6 +2105,7 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.static.global`, `sec.static.load`, `sec.static.store` | static storage (P15 places, `rules/declarations/static.md`) | 2026-10-18 |
 | `sec.const.float {bits}`, `sec.float.neg`, `sec.float.binary`, `sec.float.cmp` | P20 §§ 20–26, 63–65, 73–77 (`lowering.sec-mlir-package20`) | 2026-10-18 |
 | `!sec.register<T>`, `!sec.hw_instance<T>`, `sec.register.extract`, `sec.register.update`, `sec.hw.bind`, `sec.hw.observe`, `sec.hw.request_write`, `sec.hw.shadow_observe`, `sec.hw.shadow_intent`, `sec.hw.shadow_invalidate`, `sec.hw.commit` | MD-077 § 19 (v11.41.1 below); P15-42/42a | 2026-10-22 (specification; implementation tracked in governance) |
+| `sec.register.fits_bits`, `sec.register.from_bits`, `sec.register.to_bits` | MD-110 § 8 (v11.41.2 below); P15-42 | 2026-10-25 (specification; implementation tracked in governance) |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
@@ -2161,6 +2162,30 @@ These may reference immutable module-scoped plan records, which must exist and s
 - The verifier checks preservation of the established contracts: operand and result types, required attributes, field width, range and enum facts, instance and resource bindings, plan and target eligibility, fault edges and effect declarations. A missing plan or capability is a fail-closed diagnostic.
 - `emit-sec-mlir` may emit these operations only once their complete parse, print and verify contract is implemented. Physical lowering stays capability-gated per endpoint kind.
 
+### v11.41.2 Register bit-pattern conversions (MD-110 early admission)
+
+Installed 2026-10-25 from `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md` § 8, after v11.41.1. Schema 12 inherits it verbatim, schemas 1–10 reject it, and the default emitted schema is unchanged. The register type remains MD-077's `!sec.register<"module::TypeName">`.
+
+**Mapping.**
+- `register.value.fits-bits` → `sec.register.fits_bits`
+- `register.value.from-bits` → `sec.register.from_bits`
+- `register.value.to-bits` → `sec.register.to_bits`
+
+**Operations.**
+- **`sec.register.fits_bits`** takes one resolved scalar-integer operand and a canonical destination register type-identity attribute, and returns `i1`. Its predicate is exactly the bit-pattern fit rule (`registers.md` § 12.3): `0 <= x <= 2^N-1` for unsigned or non-negative sources, and `-2^(N-1) <= x` for negative signed sources. It is never a plain unsigned range test, and it has no side effects.
+- **`sec.register.from_bits`** takes one resolved primitive-integer operand and produces `!sec.register<T>`, resolving `T` and its `N` in the module register-definition table. It performs no byte-order or endian transform. It carries the mandatory discardable `sec.register_fit_proof = {basis = "constant" | "source-domain" | "guarded"}`, with exactly that one field:
+  - `constant`: the operand is a verifiable constant that fits;
+  - `source-domain`: every value of the operand's resolved type fits;
+  - `guarded`: the true edge of a `sec.register.fits_bits` on the same SSA value and register type dominates the conversion on every path, and its false edge reaches the resolved checked-conversion failure.
+
+  The verifier rejects a missing or unknown basis, mismatched operands, absent evidence, wrong control flow and an unresolved target integer width. The attribute transports proof; it cannot create it.
+- **`sec.register.to_bits`** takes one `!sec.register<T>` and produces a signed or unsigned integer of width `W >= N`: zero-extended for an unsigned result, sign-extended from bit `N-1` for a signed one. It is pure and total, with no proof and no error successor. A narrower or non-integer result is rejected.
+
+**Shared rules.**
+- **Representation.** The Sec dialect boundary uses the public `siW` / `uiW` scalar representations. Later signless lowering preserves the bits and carries the signed interpretation; it must not infer the interpretation from a bare `iW`.
+- **What these operations are not.** They are detached, effect-free value computations: never byte serialization, native-memory copies, hardware loads or stores, or an illegal signed-to-signless `arith.bitcast`.
+- **Admission.** C++ registration, round trips, verifiers, the Go emitter, the version gate and the lowering-support manifest must agree on these spellings before any of them is claimed. `from_bits` depends on the register-definition table spelling, which is still undecided (MD-114).
+
 
 ---
 
@@ -2168,7 +2193,7 @@ These may reference immutable module-scoped plan records, which must exist and s
 
 ## v12.1 Version history
 
-Schema 12 inherits the MD-077 register and hardware admission of v11.41.1 verbatim (2026-10-22).
+Schema 12 inherits the MD-077 register and hardware admission of v11.41.1 verbatim (2026-10-22). It likewise inherits the MD-110 register bit-pattern conversions of v11.41.2 (2026-10-25).
 
 ```text
 v1   dialect foundation

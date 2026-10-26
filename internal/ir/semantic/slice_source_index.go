@@ -98,13 +98,14 @@ func (fb *functionBuilder) lowerSliceIndexRead(expr *ast.IndexExpression, plan s
 }
 
 // lowerSliceIndexWrite establishes the destination Place before evaluating
-// the RHS and commits a trivial replacement through P15 PlaceWrite.
-// Rules: rules/foundations/operators.md — "Assignment evaluation order";
+// the RHS and commits a trivial replacement through P15 PlaceWrite. A compound
+// write reads that same Place once and applies Sema's checked integer operator.
+// Rules: rules/foundations/operators.md — "Assignment evaluation order", "Compound assignment", "Compound arithmetic failure";
 // rules/compiler/semantic_ir.md — §126.19–20;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§50–58.
 func (fb *functionBuilder) lowerSliceIndexWrite(stmt *ast.AssignmentStatement, index *ast.IndexExpression, plan sema.ResolvedSliceIndexPlan) error {
-	if stmt.Operator != "=" || plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect || !plan.Mutable || !sema.TriviallyDestructible(plan.ElementType) || sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial {
-		return fb.unsupported("compound or non-trivial slice element replacement (P17)", stmt.Token)
+	if plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect || !plan.Mutable || !sema.TriviallyDestructible(plan.ElementType) || sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial {
+		return fb.unsupported("non-trivial slice element replacement (P17)", stmt.Token)
 	}
 	place, err := fb.lowerSliceElementPlace(index, plan)
 	if err != nil {
@@ -114,7 +115,17 @@ func (fb *functionBuilder) lowerSliceIndexWrite(stmt *ast.AssignmentStatement, i
 	if !package14TrivialValue(fb.owner.module, typ.Element) {
 		return fb.unsupported("slice element replacement outside the P15 trivial value surface (P17/P16-36)", stmt.Token)
 	}
-	value, err := fb.buildExpr(stmt.Value, typ.Element)
+	var value builtValue
+	if stmt.Operator == "=" {
+		value, err = fb.buildExpr(stmt.Value, typ.Element)
+	} else {
+		resolved, ok := fb.owner.analyzer.ResolvedCompoundAssignmentOf(stmt)
+		if !ok {
+			return fb.unsupported("slice compound assignment without a resolved integer operator", stmt.Token)
+		}
+		current := fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: location(stmt.Token)}, typ.Element)
+		value, err = fb.buildCompoundValue(stmt, resolved, current)
+	}
 	if err != nil {
 		return err
 	}

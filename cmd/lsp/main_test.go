@@ -3780,7 +3780,9 @@ func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
 	}
 
 	valueSource := strings.Replace(source, `value.IndexOf("=")`, "value.", 1)
-	valueOffset := strings.Index(valueSource, "value.") + len("value.")
+	// The untyped `let n := value.` site: the earlier typed
+	// `let bytes: uint := value.SizeOf` filters to uint members.
+	valueOffset := strings.Index(valueSource, "let n := value.") + len("let n := value.")
 	valueItems := completeSource(uri, valueSource, valueOffset)
 	assertCompletionLabels(t, valueItems, []string{
 		"ByteAt", "Compare", "Contains", "Empty", "EndsWith",
@@ -4401,8 +4403,8 @@ return 0
 
 TokenType (
     ILLEGAL := "ILLEGAL",
-    EOF := "EOF",
-    IDENT := "IDENT",
+    EOF     := "EOF",
+    IDENT   := "IDENT",
 )
 
 fn main() int {

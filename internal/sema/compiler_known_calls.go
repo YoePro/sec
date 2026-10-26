@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"strings"
+
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 )
@@ -40,7 +42,7 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 			return Type{}, expressionValue{}, false
 		}
 		if root := compilerKnownReceiverRoot(memberExpr.Object); root != nil {
-			if _, isValue := a.symbols[root.Value]; !isValue {
+			if _, isValue := a.symbols[root.Value]; !isValue && !a.staticCompilerKnownPropertyReceiver(memberExpr.Object) {
 				return Type{}, expressionValue{}, false
 			}
 		}
@@ -100,6 +102,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	}
 	if lookupType.Kind == RawPtrType || lookupType.Name == "Arena" {
 		return Type{}, expressionValue{}, false
+	}
+	if floatCoreReceiver(lookupType) && strings.HasPrefix(member.ID, "CKM-FLOAT-") {
+		return a.inferFloatCoreCall(expr, lookupType, member)
 	}
 	switch member.Name {
 	case "Ok", "Err":

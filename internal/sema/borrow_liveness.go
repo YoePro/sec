@@ -126,7 +126,11 @@ func (a *Analyzer) identifierUseOf(node any) identifierUse {
 }
 
 // holderUsedLater reports whether name may still be used from the statement
-// the innermost frame points at (inclusive) onward.
+// the innermost frame points at (inclusive) onward. A structural function
+// exit in that suffix excludes enclosing continuations, after checking all
+// operands for dependencies. Loop-control exits remain subject to backedges.
+// Rules: rules/memory/borrowing.md — §8.1(7),(9)–(14);
+// rules/corrections/applied/md065-path-exact-borrow-end-correction-20261021.md — §§2–4,6(1).
 func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 	if len(a.statementFrames) == 0 {
 		return true
@@ -164,6 +168,13 @@ func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 		for _, later := range frame.block.Statements[from:] {
 			if a.identifierUseOf(later).names[name] {
 				return true
+			}
+			// Only the shared structural no-fallthrough query is safe here:
+			// later statements may not have resolved flow facts yet. It
+			// excludes break/continue, whose loop continuation must remain
+			// accounted for by the enclosing-frame checks above.
+			if statementDefinitelyReturns(later) {
+				return false
 			}
 		}
 	}

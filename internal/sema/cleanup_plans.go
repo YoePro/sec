@@ -90,6 +90,11 @@ func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (Resol
 		return ResolvedCleanupRegistrationSite{Kind: kind, Action: detached.Action, Scope: detached.Scope, Source: source,
 			Binding: detached.Binding, Place: detached.Place, Destruction: detached.Destruction}
 	}
+	for _, parameter := range a.ownedCleanupParameters {
+		if parameter.registration.Invocation == invocation {
+			plan.Registrations = append(plan.Registrations, site(CleanupRegisterParameter, parameter.registration, parameter.source))
+		}
+	}
 	for stmt, registration := range a.ownedCleanupInitializations {
 		if registration.Invocation == invocation {
 			plan.Registrations = append(plan.Registrations, site(CleanupRegisterOwned, registration, stmt.Name.Token))

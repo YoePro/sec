@@ -607,6 +607,11 @@ negativeInfinity
 nan
 ```
 
+Amendment 2026-10-26: these are the property kinds. The source spellings are
+the canonical PascalCase associated properties `T.Min`, `T.Max`, `T.Epsilon`,
+`T.Infinity`, `T.NegativeInfinity` and `T.NaN` (`compiler_known_members.md`,
+`core-library.md` § 9.1); the Semantic IR kinds stay those of § 68.
+
 Definitions:
 
 ```text

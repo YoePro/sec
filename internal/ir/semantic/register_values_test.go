@@ -115,14 +115,56 @@ fn main() int {
 	}
 }
 
+// MD-110 §§ 3–5, 7: exact integer-to-register conversions lower to
+// register.value.from-bits with their constant, source-domain or
+// bit-extraction proof, and register-to-integer conversions to
+// register.value.to-bits with the target's signedness.
+func TestRegisterBitPatternConversions(t *testing.T) {
+	module, err := buildPackage15Source(t, registerValueSource+`
+fn Build(raw: uint32, small: int16, wide: uint64) Header {
+    let a := Header(-1)
+    let b := Header(small)
+    let c := Header(bit[32](wide))
+    discard a
+    discard b
+    return c
+}
+
+fn Read(h: Header) int64 {
+    let u := uint32(h)
+    discard u
+    return int64(h)
+}
+
+fn main() int {
+    return 0
+}
+`, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := Format(module)
+	for _, want := range []string{"proof=constant", "proof=source-domain", "proof=bit-extraction", "register.value.to-bits", "signed=false", "signed=true"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "register.value.fits-bits") {
+		t.Fatalf("exact conversions need no runtime fit predicate:\n%s", text)
+	}
+}
+
 // MD-077 § 9(4), § 11(4) and MD-110: operations without an admitted
 // Semantic IR representation fail closed with a specific diagnostic.
 func TestRegisterValueBoundariesFailClosed(t *testing.T) {
 	for name, body := range map[string]string{
 		"conversion": `
-fn Make(raw: uint32) bool {
-    let h := Header(raw)
-    return h.Flag
+fn Make(raw: uint64) Result[bool, ArithmeticError] {
+    let h := try Header(raw)
+    return Ok(h.Flag)
 }
 `,
 		"hardware": `
@@ -149,7 +191,7 @@ impl Header {
 }
 `,
 	} {
-		want := map[string]string{"conversion": "integer-to-register conversion Header(...)", "hardware": "MD-077", "read": "hardware register operation read-register on Header"}
+		want := map[string]string{"conversion": "checked integer-to-register conversion Header(...)", "hardware": "MD-077", "read": "hardware register operation read-register on Header"}
 		t.Run(name, func(t *testing.T) {
 			_, err := buildPackage15Source(t, registerValueSource+body+"\nfn main() int {\n    return 0\n}\n", "")
 			if err == nil {
@@ -210,5 +252,69 @@ fn main() int {
 		if strings.Contains(body, "register.hw") {
 			t.Fatalf("%s on a software receiver must not contain hardware operations:\n%s", name, body)
 		}
+	}
+}
+
+// MD-110 § 7(3): a from-bits proof must match its evidence; a forged basis,
+// an unguarded checked conversion or a too-narrow to-bits is rejected.
+func TestRegisterBitPatternConversionProofsVerify(t *testing.T) {
+	source := registerValueSource + `
+fn Build(small: int16, wide: uint64) Header {
+    let b := Header(small)
+    discard b
+    return Header(bit[32](wide))
+}
+
+fn Read(h: Header) uint32 {
+    return uint32(h)
+}
+
+fn main() int {
+    return 0
+}
+`
+	for name, tc := range map[string]struct {
+		mutate func(*Operation)
+		want   string
+	}{
+		"constant": {func(op *Operation) {
+			if op.RegisterConversion.Basis == "source-domain" {
+				op.RegisterConversion.Basis = "constant"
+			}
+		}, "constant proof without a fitting constant"},
+		"guarded": {func(op *Operation) {
+			if op.RegisterConversion.Basis == "source-domain" {
+				op.RegisterConversion.Basis = "guarded"
+			}
+		}, "guarded proof without a dominating successful fits-bits"},
+		"extraction": {func(op *Operation) {
+			if op.RegisterConversion.Basis == "source-domain" {
+				op.RegisterConversion.Basis = "bit-extraction"
+			}
+		}, "bit-extraction proof without an extraction"},
+		"signedness": {func(op *Operation) {
+			if op.Kind == OpRegisterValueToBits {
+				op.RegisterConversion.Signed = true
+			}
+		}, "result must be an integer of its recorded signedness"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			module, err := buildPackage15Source(t, source, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, fn := range module.Functions {
+				for _, block := range fn.Blocks {
+					for index := range block.Operations {
+						if block.Operations[index].RegisterConversion != nil {
+							tc.mutate(&block.Operations[index])
+						}
+					}
+				}
+			}
+			if err := Verify(module); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+		})
 	}
 }

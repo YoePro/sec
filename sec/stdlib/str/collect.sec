@@ -458,8 +458,12 @@ fn FromByteArrayLossy(value: ref byte[]) Result[string, CollectionError] {
             continue
         }
 
-        // A complete, valid Unicode scalar value.
-        try builder.Append(rune(scalar))
+        // A complete, valid Unicode scalar value; a value outside the
+        // scalar range is replaced like a malformed sequence (MD-056).
+        let decodedRune := try rune(scalar) {
+            Err(_) => 65533r
+        }
+        try builder.Append(decodedRune)
         index += width
     }
 

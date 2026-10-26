@@ -351,7 +351,7 @@ Implemented:
 - unambiguous `func` to `fn` normalization;
 - canonical `@noCopy` line placement through the shared formatter;
 - protection against rewriting a normal identifier or call named `func`;
-- whole-document replacement edits;
+- minimal enclosing document-formatting edits from the shared formatter, with unchanged prefix/suffix excluded and UTF-16 positions;
 - format-on-save enabled by default in the VS Code extension.
 
 ### Completion

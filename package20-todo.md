@@ -158,17 +158,46 @@ argument) and through a sign prefix (`-1.5`); compound assignment on floats
 resolves; `decimal % decimal` and decimal mixed with another numeric family no
 longer type silently as invalid. CTE parity is not audited yet.
 
-- [ ] P20-10 — Audit lexer/parser and context shaping for `g` literals,
+- [x] P20-10 — Audit lexer/parser and context shaping for `g` literals,
   unsuffixed float contexts, integer/base-prefixed forms, source spelling,
   direct-width rounding, overflow/underflow, and signed zero. Ensure CTE uses
   exactly the same rules (§§11–19, 82).
-- [ ] P20-11 — Publish immutable resolved float-operation facts: common type,
+  Completed 2026-10-26 (Codex): parser retains exact source spelling even
+  when its convenience float64 value underflows/rounds. Sema now shapes g
+  literals in explicit-width contexts (including signs and chosen call
+  parameters), refreshes stale sign-operator facts, admits unsuffixed integer
+  forms in float contexts and preserves explicit non-float family boundaries.
+  CTE and Semantic IR share direct-width source rounding; CTE retains negative
+  zero through sign application and rechecking. Source overflow rejects rather
+  than materializing infinity. Context handling extracted from analyzer.go into
+  numeric_literal_context.go. Evidence: P20-29 matrix and native float_literals.
+
+- [x] P20-11 — Publish immutable resolved float-operation facts: common type,
   nearest-even policy, no contraction/fast-math, truncation remainder and the
   exact source comparison predicate (§§20–27).
+  Completed 2026-10-26 (Codex): `ResolvedFloatOperation` is a value-only
+  snapshot published alongside successful operator/compound-assignment facts.
+  It retains common source type, selected binary width (explicitly unknown for
+  planless platform float), source operator, canonical comparison predicate,
+  nearest-even/no-fast-math/no-contraction/subnormal-preserving policy and
+  truncation remainder. Read-only expression/assignment APIs detach all facts;
+  source-backed tests cover all 13 kinds and five compound kinds for all three
+  primitive float types, all analysis depths and no-plan/32/64-bit plans.
+
 - [ ] P20-12 — Add compiler-known property and method facts for `min`, `max`,
   `epsilon`, infinities, NaN, `Abs`, `Min`, `Max`, `Clamp`, classification and
   `Floor`/`Ceiling`/`Truncate`/`Round`; keep `SquareRoot` explicitly outside
   the lowering surface (§§28–38).
+
+  Partial 2026-10-26 (Claude): owner decided PascalCase spellings
+  (`core-library.md` §§ 7.1/8.1/9.1, note in P20 § 28). Sema resolves
+  `T.Min/Max/Epsilon/Infinity/NegativeInfinity/NaN` and the methods `Abs`,
+  `Min`, `Max`, `Clamp` (Result[T, RangeError]), `IsFinite/IsInfinite/IsNaN/
+  IsNormal/IsSubnormal`, `Floor/Ceiling/Truncate/Round` on float, float32 and
+  float64 (`internal/sema/float_core.go`, registry IDs `CKM-FLOAT-*`), with
+  same-type argument and arity checks, a PascalCase misspelling diagnostic,
+  and static-property receivers (`float64.NegativeInfinity.Abs()`).
+  Remaining: `SquareRoot` (no `MathError` yet, § 37) and named/unit floats.
 - [ ] P20-13 — Implement a detached, read-only resolved numeric-conversion
   plan for all P20 binary-float pairs, integer widths through 256 bits, and
   float-to-bool. Carry selected-plan width, exactness proof, runtime-check
@@ -184,10 +213,27 @@ longer type silently as invalid. CTE parity is not audited yet.
 
 ## D. Complete Semantic IR
 
+
+  Partial 2026-10-26 (Claude): checked built-in integer conversions under
+  `try` lower through the existing failure-set router: Sema's
+  `TryFailureConversion` point gets `numeric.convert-checked` (candidate,
+  failed; static `OutOfRange`), the failure edge builds the payload-less
+  core `ConversionError.OutOfRange` and propagates or reaches local handlers,
+  and the IR verifier requires every candidate use to sit behind the false
+  edge of its own failed flag (`internal/ir/semantic/integer_conversion.go`,
+  `checked_conversion_test.go`). Remaining: rune `InvalidScalar`, float
+  conversions and their reason mapping (§ 72).
 - [ ] P20-16 — Extend the early float subset with explicit operations and
   verifier rules for Abs, NaN-propagating Min/Max, checked Clamp,
   classification, rounding, properties, exact conversion, checked conversion,
   reason mapping and float-to-bool (§§63–72).
+
+  Partial 2026-10-26 (Claude): `float.abs`, `float.minimum`, `float.maximum`,
+  `float.classify`, `float.round` and `float.property` with kinds and a local
+  verifier (`internal/ir/semantic/float_ops.go`); integer `Min/Max/Bits`
+  build exact `const.int`. Clamp (2026-10-26) is `float.clamp-checked`
+  (value, failed) building Err(RangeError.InvalidRange) or Ok; the value is
+  consumed only on success. Remaining: conversions, float-to-bool.
 - [ ] P20-17 — Make float-operation metadata explicit and verified: resolved
   binary format, nearest-even policy, no fast-math, no contraction, preserved
   subnormals, comparison predicate, truncation remainder and source scalar
@@ -209,9 +255,20 @@ longer type silently as invalid. CTE parity is not audited yet.
 - [ ] P20-21 — Extend the Go emitter to emit every verified P20 operation from
   Semantic IR facts only. It must write canonical float bits and never reparse
   literal text (§§74–76).
-- [ ] P20-22 — Add `--sec-verify-float-semantics` to reject invalid formats,
+
+  Partial 2026-10-26 (Claude): emitter writes `sec.float.abs/minimum/maximum/
+  classify/round/property`; ODS ops and verifiers in SecOps.td/SecOps.cpp,
+  admitted early in schema 11 like the arithmetic subset; Clamp emits
+  `sec.float.clamp_checked`. Remaining: conversions, schema-16 gating.
+- [x] P20-22 — Add `--sec-verify-float-semantics` to reject invalid formats,
   payloads, non-nearest-even policy, fast-math, contraction/denormal weakening,
   invalid predicates/remainder/method properties and malformed Clamp (§81).
+  Completed 2026-10-26 (Codex): standalone module verifier and the same gate
+  before `sec-lower-floats`; registered operation validation plus strict inherited
+  policies, canonical bits and success-confined Clamp candidates. Analysis lit
+  cases cover positive/negative operation, policy and CFG cases. Legacy dialect
+  round-tripping remains available without claiming schema-16 acceptance.
+
 - [ ] P20-23 — Add `--sec-verify-numeric-conversions` to validate supported
   domains, exact-versus-checked classification, canonical error mapping,
   reason invariants, candidate dominance, guard ordering and try compatibility
@@ -226,42 +283,95 @@ longer type silently as invalid. CTE parity is not audited yet.
 
   Done 2026-10-18: `sec-lower-floats` (`mlir/lib/Conversion/SecToLLVM/Floats.cpp`)
   turns `sec.const.float {bits}` into `arith.constant` without reparsing the
-  lexeme, `float.binary` into `addf/subf/mulf/divf/remf` (no fastmath flags) and
+  lexeme, `float.binary` into `addf/subf/mulf/divf` (no fastmath flags)
+  and exact integer/CF significand reduction for truncation remainder and
   `float.cmp` into `cmpf oeq/une/olt/ole/ogt/oge`; scalar layout gives plain
   float f32/f64 by plan (MD-014). Evidence: `floats.mlir`,
   `invalid-float-ops.mlir`, native fixture `floats.sec`. The LLVM IR is now
   compiled by the same-build `llc` and only linked by clang (system clang 21
   rejected the newer textual float constants).
-- [ ] P20-25 — Lower properties, Abs, Min/Max, Clamp, classification and
+- [x] P20-25 — Lower properties, Abs, Min/Max, Clamp, classification and
   rounding to standard `arith`/`math`/`cf`, retaining NaN, signed-zero and
   subnormal semantics without a mandatory runtime library (§§78, 80).
+
+  Completed 2026-10-26 (Claude implementation, Codex audit/execution):
+  `sec-lower-floats` lowers the core members
+  with Arith only (no runtime library or libm call): abs/classify by bitcast
+  and field masks (§ 78), minimum/maximum to `arith.minimumf/maximumf` (§ 36),
+  rounding through a |x| < 2^p guarded fptosi/sitofp that keeps signed zero,
+  NaN and infinities, and properties to exact APFloat constants. Evidence:
+  lit `float-core.mlir`, `invalid-float-ops.mlir`, native
+  `testdata/build/native/float_core.sec` (float64/float32/plain float).
+  Clamp lowers via cmpf uno/ogt and minimumf/maximumf (lit `float-clamp.mlir`).
+  Verified by native `float_core_matrix` for all three primitive types and
+  45 dialect-native Clamp cases (including NaN bounds/input, invalid/equal
+  bounds, signed zeros and infinities). The native harness links no math
+  library; public Result/union materialization is not claimed. Target
+  capability checks belong to P20-27 and remain open there.
 - [ ] P20-26 — Lower checked numeric conversion plans to total guarded CFG.
   No `fptosi`, `fptoui`, narrowing or integer-to-float cast may execute before
   its required proof/guards. Map failure deterministically to `ConversionError`
   and existing try control flow (§§48–54, 79).
+
+  Partial 2026-10-26 (Claude): `sec.numeric.convert_checked` (ODS + verifier)
+  lowers in `sec-lower-checked-integers`: the source is extended one bit beyond
+  both widths by its signedness and compared with the target domain; the
+  candidate is the exact width change, used only on success. Evidence: lit
+  `convert-checked.mlir`, verifier negatives in `invalid-conversion-proof.mlir`,
+  `cmd/compiler` emit-sec-mlir test over the core `ConversionError`. Native
+  execution waits for union/Result lowering (ConversionError is a union).
 - [ ] P20-27 — Add target capability checks for binary32/binary64,
   nearest-even, preserved subnormals, required comparison/remainder semantics
   and signed zero. Unsupported targets reject the operation/profile rather
   than weakening Sec semantics (§§6, 9, 83).
-- [ ] P20-28 — Register P20 support with `sec-check-lowering-support`, retain
+- [x] P20-28 — Register P20 support with `sec-check-lowering-support`, retain
   clear unsupported-lowering boundaries for incomplete surfaces, and verify
   there is no alternate or legacy backend route (§§79–84).
 
-  Partial 2026-10-18: `sec.const.float`, `sec.float.neg`, `.binary` and `.cmp`
-  are registered; core methods and conversions still fail at the gate.
+  Completed 2026-10-26 (Codex): all eleven currently represented Sec float
+  operations (constants, arithmetic/comparison and core members including
+  Clamp) are registered through one focused support classifier. Canonical bits
+  are required at native-track entry; legacy lexeme-only constants receive
+  `[unsupported-lowering]` before rewriting. Unsupported Sec operations receive
+  the same explicit category. Lit covers full float registration, both the
+  standalone gate and the unified native pipeline, decimal/decimal128 rejection
+  and rejection of unimplemented binary-float conversions/float-to-bool by the
+  current schema verifier. Checked integer conversions remain independently
+  admitted; full float conversions, schema 16 and target capabilities remain
+  their separate package points. Driver audit confirms only the one native
+  `sec-lower-to-llvm` route (MD-101), with no alternate/legacy backend route.
 
 ## G. Required test matrix
 
-- [ ] P20-29 — Add parser/Sema/IR tests for all literal forms, direct f32/f64
+- [x] P20-29 — Add parser/Sema/IR tests for all literal forms, direct f32/f64
   rounding, no-double-rounding witnesses, subnormal/underflow/overflow and
   negative zero (§85).
-- [ ] P20-30 — Add source, Semantic IR, Sec MLIR and native tests for every
+  Completed 2026-10-26 (Codex): shared source fixture has 63 literal cases
+  across float32/float64/plain float, plus local/call/operand contexts. Sema CTE
+  and Semantic IR tests run on both selected 32/64-bit plans using independent
+  rational oracles. Cases include g/unsuffixed fractional/exponent/integer/base
+  forms, separators, signed zero, signed underflow, subnormals, maximum finite
+  binary32 and decimal/integer-form no-double-rounding witnesses. Dedicated
+  overflow and explicit-family fixtures actually reject. The native fixture
+  checks direct rounding and negative zero through executable generation.
+
+- [x] P20-30 — Add source, Semantic IR, Sec MLIR and native tests for every
   arithmetic and comparison kind across float32/float64/plain float, including
   NaN, infinity, signed zero, remainder and `!=` unordered behavior (§86).
 
-  Partial 2026-10-18: `float_operators_test.go`, `float_ops_test.go`,
-  `floats.mlir` and the native `floats.sec` cover the operators and IEEE edge
-  cases on a 64-bit plan; a 32-bit plan native run is not available.
+  Completed 2026-10-26 (Codex): `float_operator_matrix.sec` exercises all
+  five arithmetic and six comparison kinds, unary signs, both NaN operand
+  orders, signed zeros, infinities, overflow and gradual underflow for each
+  primitive source type. Functions take runtime operands; no constant-only
+  remainder acceptance. Source/IR/emitter tests verify the same matrix on
+  both selected 32/64-bit plans; native execution covers f32/f64/plain float
+  on the hosted 64-bit target (no 32-bit native execution claim).
+
+  The runtime matrix exposed an undeclared fmod/fmodf linker dependency behind
+  arith.remf. Fixed with bounded exact integer significand reduction and CF in
+  FloatRemainder.cpp, preserving truncation remainder, subnormals and x's zero
+  sign. All 584 independent edge/random differential cases execute through
+  the native track without a math library. NaN payload identity is not assumed.
 - [ ] P20-31 — Test properties, Abs/Min/Max/Clamp, all classification cases
   and rounding ties/signs/non-finite values (§87).
 - [ ] P20-32 — Test conversions at 2^24/2^53 boundaries; signed/unsigned

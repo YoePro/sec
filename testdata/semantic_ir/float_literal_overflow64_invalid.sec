@@ -1,0 +1,5 @@
+module main
+
+fn Overflow() float64 {
+    return 1e400g
+}

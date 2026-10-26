@@ -1,0 +1,28 @@
+module main
+
+type Figure union {
+    Rect { Width: int32, Height: int32, Label: int32 }
+    Dot(int32)
+    Empty
+}
+
+fn Area(s: Figure) int32 {
+    return match s {
+        Rect { Width, Height: h } where Width > 0 => Width * h
+        Figure.Rect { Height } => Height
+        Dot(v) => v
+        _ => 0
+    }
+}
+
+fn Scaled(s: Figure) int32 {
+    return match s {
+        Rect(r) where r.Width > 0 => r.Width * r.Height
+        Dot(v) => v + 1
+        _ => 0
+    }
+}
+
+fn main() int {
+    return 0
+}

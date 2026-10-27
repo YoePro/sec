@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-29
-- **Last updated:** 2026-10-21
+- **Last updated:** 2026-10-27 (MD-117 pack-carried references, § 14.1(4))
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/lifetime_analysis.md`
@@ -428,6 +428,8 @@ fn Invalid() ref Value {
 ```
 
 **§ 14.1(3)** The compiler must reject this even if optimization could physically preserve the bytes.
+
+**§ 14.1(4)** (MD-117) The ephemeral native variadic pack is invocation-local storage: a reference into storage owned by the pack cannot be returned, while a reference carried by a pack element and originating in caller-owned storage follows § 14.2 per position (`rules/memory/references.md` § 9(11)).
 
 ### § 14.2 Parameter-derived result
 

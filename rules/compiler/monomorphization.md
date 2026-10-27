@@ -2,7 +2,7 @@
 
 - Status: Canonical normative rulebook
 - Created: 2026-09-04
-- Last updated: 2026-09-04
+- Last updated: 2026-10-27 (MD-117 type-pack specialization identity, § 9.1)
 - Document revision: 1.0
 - Language version: Sec 0.1
 - Canonical path: `rules/compiler/monomorphization.md`
@@ -377,6 +377,8 @@ fn(int32, int32) int32
 ```
 
 Specialization preserves the callable's canonical parameter ownership modes and typed variadic shape. Monomorphization does not normalize a borrowed, forced-consuming, or typed variadic parameter into a different source-level callable contract.
+
+A heterogeneous type pack `[...Types]` (`rules/declarations/generics.md` § 16A, MD-117) specializes on its ordered concrete type sequence: `(string, int)`, `(int, string)` and the empty pack are distinct concrete callables, with nominal identities and the pack's by-value/shared/exclusive mode preserved. No runtime type dictionary, erased pack ABI or implicit boxing is introduced; specializations share machine code only where these rules prove identical observable semantics, and cache reuse fails closed when the specialization or relevant target facts differ.
 
 ### 9.2 Concrete generic types
 

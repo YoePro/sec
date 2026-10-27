@@ -10,6 +10,11 @@
 namespace sec::detail {
 using namespace mlir;
 
+// Check module-local static/root/storage consistency without interpreting names.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.3 (MD-116 §4(6)).
+LogicalResult verifyStaticPlaceIdentity(Operation *operation);
+
+
 // Validate the canonical stability vocabulary independently of pinning.
 // Rules: rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
 // section 3(5).

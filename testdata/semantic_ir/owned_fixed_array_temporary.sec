@@ -1,0 +1,12 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+
+fn Drop() void {
+    Make()
+}
+
+fn Make() Handle[1] {
+    return [Handle { id: 1 }]
+}

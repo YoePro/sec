@@ -1240,6 +1240,29 @@ address-taken storage remains high-level
 no physical pointer/reference representation is chosen
 ```
 
+---
+
+## v11.29 Static Place roots (MD-116)
+
+Added 2026-10-27 (`rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`; dialect v11.41.3).
+- **Emission.** The Go emitter lowers Semantic IR `place.static-root` to `sec.place.static`, with `global` naming the static's `sec.static.global` and Place root, storage identity and address space copied from the producer.
+- **Static declarations.** Every emitted `sec.static.global` carries `sec.static_id` (the Semantic IR `StaticID`) and mirrors `Static.AddressTaken` as `sec.address_taken = true`. `sec.static.load`, `sec.static.store` and `sec.place.static` resolve through the same declaration.
+- **Returned origins.** A returned reference borrowed from a static Place is summarized as `static@N`, with `N` the explicit ID.
+- **Reference-dependent statics.** They stay high-level through P5, P6 and P8 (MD-087). `sec-lower-static-storage` lowers scalar-only statics as before and rejects any reference-dependent static it cannot represent. It never erases the Place, synthesizes a raw pointer or duplicates storage.
+- **Failure.** Unsupported emission fails closed with no partial output.
+- **Inheritance.** Schema 12 inherits this section unchanged.
+
+---
+
+## v11.30 Detached register values (MD-114)
+
+Added 2026-10-27 (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`; dialect v11.41.1a).
+- **Register table.** The Go emitter writes `sec.registers` deterministically from the verified Semantic IR `Module.Registers` table, in its first-use order. Every field is included (reserved ones too), with its ordinal, logical offset, width, resolved type, effective access and shadow policy and unit identity. Definitions are never fabricated from operation-local types or guessed offsets.
+- **Extract and update.** `register.value.extract` / `update` lower to `sec.register.extract` / `update`. Their resolved `RegisterFieldID` steps become `sec.field_path`, either as one-element paths per nested operation or as a proven composed path. Paths are never synthesized from source text.
+- **Write proof.** `RegisterWriteProof` becomes `sec.write_proof` with the same basis and exact bounds. An update without an established proof is rejected, never emitted as an unchecked mask.
+- **MD-110 conversions.** They resolve width through the same table. The Semantic IR basis `bit-extraction` has no MLIR spelling yet (MD-110 § 8(4)), so such conversions fail closed.
+- **Hardware and unsupported cases.** Hardware operations stay with MD-077 / MD-111. Unrepresentable categories fail with no partial output.
+- **Inheritance.** Schema 12 inherits this section unchanged.
 
 ---
 
@@ -1726,3 +1749,16 @@ returned origin metadata survives
 owning T[] remains distinct
 no physical slice descriptor is chosen
 ```
+
+---
+
+## v12.32 Returned slice range origins (MD-115)
+
+Added 2026-10-27 (`rules/corrections/applied/MD-115-returned-slice-origin-projections-correction-20261027.md`; dialect v12.34). This amends v12.20.
+- **Range source.** Sema's resolved slice plans (`StaticSliceRange`, `SliceRangeID`, candidate origins) are the only source of a returned range. The builder never re-derives one from source expressions.
+- **Exact ranges.** A statically normalized sub-range is emitted as `[A..<B]` relative to the original eligible origin. Nested exact ranges compose by arbitrary-precision addition.
+- **Dynamic ranges.** A genuinely dynamic bound yields `[?]`, while the dynamic range checks and guards stay in the executable IR.
+- **Full-open reborrows.** They keep the current origin, whole or narrowed.
+- **Gaps fail closed.** An exact range that cannot yet be transported or verified keeps the function unsupported and is never weakened to `[?]` or the bare root. A compiler-local `SliceRangeID` is never serialized as a fabricated bound.
+- **Schema selection.** Emission that needs these projections selects schema 12 explicitly or is rejected.
+- **Unchanged.** Reference, epoch, pin and address-stability facts stay in their existing metadata.

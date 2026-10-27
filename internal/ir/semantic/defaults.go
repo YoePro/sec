@@ -81,7 +81,8 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 	case sema.ArrayDefault:
 		// SEC-MLIR Package 14 sections 24-27: array defaults remain one compact
 		// semantic operation. Zero length never queries or constructs an element;
-		// positive lengths are restricted to the infallible trivial P14 subset.
+		// positive lengths use resolved infallible defaults. P14 retains its
+		// trivial subset; P17 adds ownership and compact destruction (§65).
 		length, fixed := sema.FixedArrayLength(typ)
 		if typ.Kind != sema.ArrayType || typ.Element == nil || !fixed {
 			return builtValue{}, fb.unsupported("dynamic or malformed array default", lexer.Token{})
@@ -90,7 +91,7 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 			return builtValue{}, fmt.Errorf("array default length fact mismatch for %s", typ.Name)
 		}
 		if length.Sign() != 0 {
-			if resolution.ArrayElementDefault == nil || sema.CopyClassificationOf(*typ.Element) != sema.CopyTrivial || !sema.TriviallyDestructible(*typ.Element) {
+			if resolution.ArrayElementDefault == nil || (fb.owner.maxPackage < ownershipLoweringPackage && (sema.CopyClassificationOf(*typ.Element) != sema.CopyTrivial || !sema.TriviallyDestructible(*typ.Element))) {
 				return builtValue{}, fb.unsupported("non-trivial fixed-array default for "+typ.Name, lexer.Token{})
 			}
 		}
@@ -98,10 +99,17 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 		if elementErr != nil {
 			return builtValue{}, elementErr
 		}
-		return fb.result(Operation{
+		op := Operation{
 			Kind: OpArrayDefault, ArrayElementType: elementType,
 			ArrayLength: length.String(), Location: loc,
-		}, typeID), nil
+		}
+		if fb.owner.maxPackage >= ownershipLoweringPackage && (sema.CopyClassificationOf(typ) != sema.CopyTrivial || !sema.TriviallyDestructible(typ)) {
+			value := fb.newValue(typeID, OwnershipOwned, loc)
+			op.Results = []Value{value}
+			fb.emit(op)
+			return builtValue{id: value.ID, typ: typeID}, nil
+		}
+		return fb.result(op, typeID), nil
 	}
 	return builtValue{}, fb.unsupported("resolved default "+string(resolution.Kind)+" for "+typ.Name, lexer.Token{})
 }

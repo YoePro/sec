@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-10-21
+- **Last updated:** 2026-10-27 (MD-117 pack arguments, § 15.5)
 - **Document revision:** 2.4
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/borrowing.md`
@@ -510,6 +510,14 @@ let right := ref mut pair.Right
 **§ 15.4(4)** A call with one mutable-reference argument and another overlapping shared/reference/direct-access argument is invalid when their live call ranges overlap.
 
 **§ 15.4(5)** Failure while evaluating a later argument must not manufacture a borrow state inconsistent with the actual argument expressions already evaluated. Cleanup and ownership-transfer commit remain governed by the function/error/destruction rulebooks.
+
+### § 15.5 Variadic pack arguments (MD-117)
+
+**§ 15.5(1)** Each expanded argument of a `...ref Types` or `...ref mut Types` pack (`rules/declarations/functions.md` § 38A(3)) is an ordinary shared or exclusive call argument: §§ 15.2–15.4 apply per position, including implicit call-site borrowing.
+
+**§ 15.5(2)** A `...ref mut Types` pack may hold several mutable references only when every pair is proven non-overlapping for the call's live range; a conflicting call is rejected before entering the callee.
+
+**§ 15.5(3)** Forwarding a mutable-reference pack reborrows exclusively and never copies a `ref mut`; a `for ref mut` iteration over such a pack reborrows each referent without moving the reference holder out of the pack.
 
 ---
 

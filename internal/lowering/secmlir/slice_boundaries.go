@@ -50,6 +50,16 @@ func (e *emitter) containsSlice(id semantic.TypeID, active map[semantic.TypeID]b
 func (e *emitter) validateSliceBoundaries() error {
 	contains := func(id semantic.TypeID) bool { return e.containsSlice(id, map[semantic.TypeID]bool{}) }
 	for _, f := range e.module.Functions {
+		// MD-115 §6(5): range summaries cannot bypass schema selection even
+		// when the only represented producer is a direct-reference call.
+		for _, origin := range f.ReturnOrigins {
+			for _, step := range origin.Path {
+				if step.Kind == semantic.ReturnOriginSlice && e.schemaVersion < 12 {
+					return &UnsupportedLoweringError{Feature: "returned slice range requires schema 12", Function: f.ID}
+				}
+			}
+		}
+
 		if !f.Extern {
 			continue
 		}

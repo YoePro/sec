@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -155,7 +154,7 @@ func TestPackage16LowersReturnedSlices(t *testing.T) {
 			}
 		}
 	}
-	// A returned sub-slice needs a slice projection spelling (MD-115).
+	// MD-115 supplies the schema-12 range projection.
 	_, err = buildPackage16Source(t, `
 module main
 
@@ -163,8 +162,7 @@ fn Window(values: ref int[]) ref int[] {
     return ref values[1..<2]
 }
 `, 64)
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "MD-115") {
+	if err != nil {
 		t.Fatalf("sub-slice return = %v", err)
 	}
 }

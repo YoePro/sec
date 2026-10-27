@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-21 (explicit move at ordinary value arguments, §§ 8.1(4–5))
+- **Last updated:** 2026-10-27 (MD-117 variadic pack arguments, § 8.3(5)); 2026-10-21 (explicit move at ordinary value arguments, §§ 8.1(4–5))
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/copy_move.md`
@@ -371,6 +371,8 @@ Consume(CreateBuffer())
 **§ 8.3(3)** If a later argument fails before outer call entry, an earlier caller binding reserved for that outer call must remain owned by the caller.
 
 **§ 8.3(4)** Ownership effects performed inside evaluation of an earlier argument expression are not rolled back.
+
+**§ 8.3(5)** (MD-117) Each expanded argument of a native variadic pack follows §§ 8.1–8.3: a named move-only source needs `<-`, a fresh temporary does not. The whole-pack consuming spread `<-values...` transfers a complete owned parameter pack as one transaction committed with the call and invalidates the source pack; no single element can be moved out of a pack (`rules/declarations/functions.md` §§ 34, 38A(7); `rules/declarations/spread.md` § 4.4).
 
 ---
 

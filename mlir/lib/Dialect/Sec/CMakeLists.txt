@@ -3,6 +3,7 @@ add_mlir_dialect_library(SecMLIRDialect
   SecDialect.cpp
   SecTypes.cpp
   SecOps.cpp
+  StaticPlaceIdentities.cpp
   ReferenceBoundaries.cpp
   SliceOps.cpp
   StructOps.cpp

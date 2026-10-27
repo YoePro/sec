@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-16
-- **Last updated:** 2026-09-27
+- **Last updated:** 2026-10-27 (MD-117 native type packs are not C varargs, § 26)
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/ffi.md`
@@ -940,6 +940,13 @@ A bare final `...` is permitted only for C foreign variadic signatures and C fun
 A C variadic declaration must be `unsafe extern` because the fixed signature cannot express all caller obligations.
 
 The bare `...` marker must be final.
+
+Native heterogeneous variadic type packs (`fn F[...Types](values: ...Types)`,
+`rules/declarations/functions.md` § 38A, MD-117) are native Sec packs, not C
+varargs: they have no `va_list`, no C default promotions and no foreign ABI,
+and no Sec spread reaches a C vararg. A direct foreign variadic call keeps every
+unsafe, ABI-compatibility and promotion requirement of §§ 26–27; no `fmt`
+usage relaxes them.
 
 ## 27. C variadic arguments
 

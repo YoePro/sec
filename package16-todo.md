@@ -712,20 +712,34 @@ sources unless an actual synchronized migration requires them.
   exposed and fixed generic multi-argument successor syntax: cf operands now
   precede their shared type list. The cohesive printer lives in branch_targets.go.
   This closes the unambiguous forwarding work, not the whole P16-26 checklist.
-- [ ] P16-27 — Extend returned-origin/range verification using the represented P15
+- [x] P16-27 — Extend returned-origin/range verification using the represented P15
   return contracts. Add deterministic printing and defensive clones of slice
   metadata, with no physical descriptor vocabulary (amendment §§22,25–26).
 
-  Progress 2026-10-23: native return-origin tracing no longer erases a narrowed
-  slice range by following borrow/reborrow operand zero. Whole-open reborrows
-  retain the existing parameter origin; bounded/start-only/explicit-bound
-  slice returns fail closed on MD-115, including through shared copy, mutable
-  move and direct-call results. Direct element-reference `[*]` projections
-  remain supported. The two `schema12-slice-return-ranges.mlir` fixtures and
-  the Go real-tool matrix cover verification before/after P6, deterministic
-  round trips and failed invocations without stdout or an output artifact.
-  This aligns the native boundary with the existing source/IR gate; the
-  missing range projection decision still prevents closing P16-27.
+  Completed 2026-10-27 after MD-115 (dialect v12.34, lowering v12.32;
+  Semantic IR §§45(12a),126.22(1)). The existing ReturnOriginStep algebra now
+  carries an exact arbitrary-precision half-open `[A..<B]` range or a genuinely
+  indeterminate `[?]` range. Producer/transport/composition detach big integers;
+  the existing Semantic IR and schema-12 printers use the canonical spelling.
+  Source-relative exact nested ranges compose by addition; copies, moves,
+  reborrows and direct calls preserve narrowing. Full-open reborrows preserve
+  the current origin, including a prior range. The native MD-085 tracer proves
+  endpoints from represented normalize/check SSA and preserves source/guard
+  identity, rather than trusting return metadata. Its existing block-argument,
+  finite-alternative and anchored-loop tracing remains fail-closed where no
+  external origin or supported structural proof exists. Typed paths reject
+  non-sequences, mismatched result elements and authority escalation. Schemas
+  1–11 reject new range projections; default emission remains schema 11.
+
+  Coverage: `return_origin_ranges_test.go` in Semantic IR and the emitter;
+  `testdata/semantic_ir/slice_range_returns.sec`; native grammar, typed-negative
+  and exact/unknown copy/move/call/loop fixtures. Exact, empty, nested, inclusive,
+  omitted/dynamic endpoints, alternatives, huge endpoints and defensive-copy
+  tests pass, as do source-to-schema-12 round trips on 32/64 plans through all
+  four slice/reference verifiers before/after P6. Forged metadata is rejected
+  without output. Other P16-26/P16-36 CFG/holder limitations and physical slice
+  lowering retain their own owners; no P16 final acceptance is claimed.
+
 - [x] P16-28 — Add positive/negative white-box IR tests, including mismatched SSA,
   misplaced guards, stale validation caught as a spatial error, missing proofs,
   widened reborrows, mutable copies and uses after borrow end (§§129,136).
@@ -951,7 +965,13 @@ sources unless an actual synchronized migration requires them.
   - **Nested automatic ends (2026-10-26).** Sema-published slice-holder endpoints inside nested statement lists now produce their own `ref.end-borrow` markers. A focused post-build CFG pass tracks only which published ends have executed, resets at a fresh SSA definition and removes redundant join candidates. At a mixed join before any real instruction it splits uniformly live incoming edges and preserves their arguments; more complex unresolved layouts fail clearly at P16-36/MD-065. `slice_branch_ends.sec` covers shared/mutable branches, mixed joins, nested and terminal branches and iteration-local redefinitions. IR tests traverse each reachable path to require exactly one end before owner writes and deterministic builds on 32/64 plans; native schema-12 round trips pass all four verifiers before/after P6. Required future uses still prevent release, and a forged endpoint lifetime emits no bytes. The pre-fix fixture had no end at either branch's owner write; the mixed form ended only after those writes at the merge.
   - **Structural early-return liveness (2026-10-26).** Sema now stops the existing suffix-use scan at a structurally proven function exit after checking its operands and dependencies, so an early-return branch does not inherit unreachable future uses from the outer continuation. The same shared structural termination predicate is used without relying on unresolved future flow facts; break/continue do not incorrectly terminate the search. `borrow_return_liveness_test.go` verifies separate nested and continuing endpoints on both target plans. Extended `slice_branch_ends.sec` and its IR/native matrices cover shared/mutable, nested and branch-unused early-return cases, exactly one resolved end per path before owner writes, deterministic builds and native schema-12 round trips through all four verifiers before/after P6. Returning the holder itself, deferred uses and loopback dependencies retain conflicts (`slice_early_return_liveness_invalid.sec`). No new IR endpoint inference or dialect text is involved.
   - **Transparent nested mixed joins (2026-10-26).** A mixed incoming path may now be traced backward through parameter-free blocks containing only an unconditional branch. `slice_borrow_end_edges.go` first plans the complete set of uniformly live incoming edges without mutation; `slice_borrow_ends.go` then places the existing Sema-published marker on those edges, retaining original branch arguments. It crosses no real instruction or parameter definition, and cycles remain a named unsupported boundary. `Transparent`/`DeepTransparent` in `slice_branch_ends.sec` previously failed the P16-36/MD-065 edge-schedule gate; they now pass exact once-per-path end/owner-write checks, deterministic builds and 32/64 native schema-12 round trips through all four verifiers before/after P6. Focused negative planner tests preserve instruction/parameter/cycle boundaries and verify no CFG change on rejected planning.
-  - **Remaining.** Projected holders (a slice in a struct field, which needs P17 aggregates with references), sub-slice returns (MD-115), non-structural termination/loop-control schedules and mixed CFG paths crossing real instructions, parameter definitions or cycles. Direct P15 reference endpoints keep their own implementation boundary.
+  - **MD-115 completed (2026-10-27).** Source-returned fixed-array/slice
+    subranges now carry canonical exact `[A..<B]` or genuinely dynamic `[?]`
+    origins through Semantic IR and explicit schema 12, including empty ranges,
+    nested composition, copies/moves, call results and outer full-open reborrows.
+    P16-27 is checked above; broader holder/CFG and physical lowering work stays
+    open. This supersedes the historical MD-115 gates in earlier progress notes.
+  - **Remaining.** Projected holders (a slice in a struct field, which needs P17 aggregates with references), non-structural termination/loop-control schedules and mixed CFG paths crossing real instructions, parameter definitions or cycles. Direct P15 reference endpoints keep their own implementation boundary.
 - [x] P16-37 — Add source-to-IR tests for every supported path and every deferred
   dependency. Prove operand order, SSA reuse, no redundant proven checks, no
   aggregate copies, no partial modules and unchanged predecessor paths (§§129–137).

@@ -115,7 +115,8 @@ func validateReferenceFacts(ref *semantic.ReferenceMetadata, function semantic.F
 
 // returnOriginsText prints the returned-reference origin summary with the
 // canonical Semantic IR origin spelling: param#N, receiver or static@N,
-// followed by .field#N, [K] and [*] steps.
+// followed by .field#N, [K], [*] and schema-12 [A..<B]/[?] steps.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.7,v12.34 (MD-084/115).
 func returnOriginsText(origins []semantic.ReturnOrigin) string {
 	parts := make([]string, 0, len(origins))
 	for _, origin := range origins {
@@ -130,6 +131,12 @@ func returnOriginsText(origins []semantic.ReturnOrigin) string {
 		}
 		for _, step := range origin.Path {
 			switch {
+			case step.Kind == semantic.ReturnOriginSlice:
+				if step.UnknownRange {
+					text.WriteString("[?]")
+				} else {
+					fmt.Fprintf(&text, "[%s..<%s]", step.Start, step.EndExclusive)
+				}
 			case step.Kind == semantic.ReturnOriginField:
 				fmt.Fprintf(&text, ".field#%d", step.Field)
 			case step.Index != nil:
@@ -200,7 +207,17 @@ func (e *emitter) emitPlaceReference(function *semantic.Function, operation sema
 		fmt.Fprintf(&e.out, "\"sec.place.storage\"(%s) <{%s}> : (!sec.storage<%s>) -> ", storageName(storage.ID), properties, elementType)
 		return e.finishResultOperation(operation)
 	case semantic.OpPlaceStaticRoot:
-		return &UnsupportedLoweringError{Feature: "static Place roots", Function: function.ID}
+		// MD-116: a zero-operand root naming the static's sec.static.global,
+		// whose explicit sec.static_id the return-origin verifier reads.
+		properties, err := rootProperties()
+		if err != nil {
+			return err
+		}
+		if err := e.emitResult(operation); err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.place.static\"() <{global = @%s, %s}> : () -> ", staticSymbol(operation.Static), properties)
+		return e.finishResultOperation(operation)
 	case semantic.OpPlaceField:
 		if err := e.emitResult(operation); err != nil {
 			return err

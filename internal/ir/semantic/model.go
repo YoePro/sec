@@ -327,14 +327,20 @@ type ReturnOriginStepKind string
 const (
 	ReturnOriginField   ReturnOriginStepKind = "field"
 	ReturnOriginElement ReturnOriginStepKind = "element"
+	ReturnOriginSlice   ReturnOriginStepKind = "slice"
 )
 
 // ReturnOriginStep is a stored-field projection (by P13 field identity) or a
-// fixed-array element projection (constant Index, or nil for a dynamic one).
+// fixed-array element projection (constant Index, or nil for a dynamic one),
+// or an exact/unknown slice interval (semantic_ir.md §45(12a), MD-115).
 type ReturnOriginStep struct {
 	Kind  ReturnOriginStepKind
 	Field StructFieldID
 	Index *big.Int
+	// MD-115 §5: a slice step is either exact (both bounds) or unknown
+	// (UnknownRange and neither bound). Integers are detached on transport.
+	Start, EndExclusive *big.Int
+	UnknownRange        bool
 }
 
 // ReturnOrigin is one possible origin of a returned reference: a parameter

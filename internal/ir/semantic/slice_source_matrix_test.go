@@ -122,7 +122,6 @@ func TestPackage16SourceDependencyMatrix(t *testing.T) {
 			{"slice_try_recovery.sec", "slice recovery holder joins"},
 			{"slice_try_mixed.sec", "heterogeneous failure set"},
 			{"slice_index_reference_element.sec", "P15 trivial value surface"},
-			{"package16_unsupported/returned_subslice.sec", "MD-115"},
 			{"package16_unsupported/projected_holder.sec", "P16-36"},
 			{"package16_unsupported/text_value_element.sec", "P15 trivial value surface"},
 			{"package16_unsupported/nontrivial_replacement.sec", "custom free lifecycle destruction"},

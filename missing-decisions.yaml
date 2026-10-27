@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-25"
+updated: "2026-10-27"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -261,8 +261,21 @@ decisions:
       generated sources are skipped, and how malformed files are reported.
       `sec fmt` therefore accepts explicit files only. Decide the directory
       and project selection rules.
+      Decided 2026-10-27 (owner; rules/corrections/MD-099-MD-100-MD-037-
+      formatter-alignment-and-selection-correction.md §§ 5-8): explicit file
+      and directory paths are traversed recursively without following links.
+      All exact .sec files are selected, tests and internal/ included.
+      Hidden directories, testdata/ and the project bin/ are skipped, and a
+      nested project manifest is a boundary error. Paths are deduplicated
+      and sorted with a full preflight before writes. A malformed file stays
+      unchanged, is reported and makes the run fail. formatter.md
+      §§ 28(9)-28(14), projects.md § 6(12) and lsp.md synchronized.
+      Implemented in cmd/compiler/fmt_selection.go and runFmtCommand
+      (TestFmtSelectsProjectDirectories, TestFmtDirectoryPreflight,
+      TestFmtDirectoryKeepsMalformedFiles). Remove once governance is
+      synchronized.
     classification: localized
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-039
     area: compound-string-append-failure-policy
@@ -485,8 +498,24 @@ decisions:
       or decimal), and whether reading them is compile-time constant. Until
       then the frontend rejects `<U>.Kind` and the other non-text metadata
       with an explanatory error instead of inventing a type.
+      Decided 2026-10-27 (owner; rules/corrections/md062-unit-metadata-value-
+      types-correction-20261027.md): all 16 members (14 fields plus implicit
+      Name/Category) are typed compile-time values; six closed core enums
+      UnitKind/UnitSystem/UnitOrigin/UnitTransform/UnitCategory/UnitStatus
+      (Kind/System/Origin may also be user enums, keeping their nominal type);
+      opaque UnitDimension with AxisCount, IsDimensionless, == and !=;
+      Scale/Offset/LogBase/LogFactor read as decimal (Scale is the nearest-
+      even projection of the exact rational), Reference as decimal or
+      decimal<V>; linear Scale may be negative but not zero; legacy bare
+      metadata names migrate to the enums. Synchronized: units.md "Unit
+      metadata value types" (1)-(11) and the Status/Scale/System/defaults/
+      validation/LSP/formatter/IR sections, core-library.md § 27,
+      grammar.md (unit metadata), compiler_known_members.md registry,
+      operators.md "Unit dimension equality", types.md Units,
+      compile_time_evaluation.md § 15(5). Implementation pending under
+      frontend.units-v2; MD-048 and MD-066 stay open.
     classification: localized
-    status: open
+    status: decided-implementation-pending
   - id: MD-066
     area: decimal-operator-result-scale
     rulebooks:
@@ -675,8 +704,16 @@ decisions:
       decided. Its name suggests character access while it returns one byte of
       a possibly multi-byte scalar. Decide its future (keep, rename, deprecate
       in favour of ByteAt/RuneAt, or redefine).
+      Decided 2026-10-27 (owner; rules/corrections/MD-092-string-CharAt-byte-
+      alias-correction.md): CharAt stays as a permanent public alias of
+      char(self.ByteAt(index)) over UTF-8 byte indexes below SizeOf, with
+      ByteAt's panic. It is not deprecated and has no rune semantics.
+      core-library.md §§ 5.3/5.7 synchronized. sec/core/string.sec now
+      delegates to ByteAt; TestCompilerCoreStringCharAtIsByteAlias covers
+      the types. Runtime byte equality waits for string lowering on the
+      native track. Remove once governance is synchronized.
     classification: localized
-    status: open
+    status: decided-implementation-pending
   - id: MD-095
     area: atomic-capability-requirement-keys
     rulebooks:
@@ -725,40 +762,8 @@ decisions:
       Unknown deferred to lowering except in interrupt contexts.
     classification: blocking
     status: open
-  - id: MD-099
-    area: formatter-trailing-comment-column-padding-limit
-    rulebooks:
-      - rules/tooling/formatter.md
-    description: >-
-      Open question found 2026-10-17. § 9(10) says an alignment group whose
-      required padding exceeds the maximum drops its candidate alignment
-      columns, and § 9(9) forbids large gaps merely to align a far-right
-      comment. The `=`/type columns honor the limit, but the trailing-comment
-      column (alignDeclarationTrailingComments) has no limit, so a group can
-      end up with unaligned values but comments pushed far right (bootstrap
-      lexer.sec "// Logical" group). Decide whether the trailing-comment
-      column must also obey max_alignment_padding (and then be dropped
-      together with the value column), or keep aligning comments
-      independently. Current behaviour is unchanged.
-    classification: localized
-    status: open
-  - id: MD-100
-    area: formatter-enum-values-always-aligned
-    rulebooks:
-      - rules/tooling/formatter.md
-    description: >-
-      User decision 2026-10-17: enum explicit values must always stand in
-      one column (and trailing comments in their own column); dropping the
-      `=` alignment to single spaces when § 9(10) padding is exceeded is
-      wrong for enums. formatter.md § 15(4) now makes enum value alignment
-      mandatory and exempt from the padding limit, and § 9(10) names the
-      exemption. Open follow-up: whether struct fields, parameters, named
-      types and register fields should get the same exemption (they still
-      drop alignment beyond max_alignment_padding), and whether MD-098's
-      max_alignment_padding setting is still wanted now that enums no longer
-      depend on it.
-    classification: localized
-    status: open
+
+
   - id: MD-101
     area: single-compilation-track-sec-mlir-to-llvm
     rulebooks:
@@ -1126,65 +1131,19 @@ decisions:
       #sec.register_write_proof<"typed" | "constant" | "interval", low, high>`
       mirroring Semantic IR. Decide: accept, amend or replace this text, so
       that it can be installed in v11.41.1 and its snapshot together.
+      Decided 2026-10-27 (owner; rules/corrections/MD-114-canonical-
+      register-value-mlir-contract-correction.md): the proposal is accepted
+      with typed attributes; write proof keys are basis/low/high with
+      arbitrary-precision decimal bounds, and MD-110 conversions resolve
+      width through the same table. Rulebooks synchronized 2026-10-27
+      (sec_mlir_dialect.md v11.41.1a and v11.41 table, v11 dialect and
+      lowering snapshots, sec_mlir_lowering.md v11.30, semantic_ir.md
+      § 21(7), package15 amendment, P15-42 note). The MD-110 `bit-extraction`
+      MLIR basis stays with MD-110. Kept open until the dialect attributes,
+      verifiers and Go emission pass their acceptance tests.
     classification: localized
-    status: open
-  - id: MD-115
-    area: returned-slice-origin-projection
-    rulebooks:
-      - rules/mlir/packages/sec-mlir-dialect_package16.md
-      - rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
-      - rules/mlir/sec_mlir_dialect.md
-      - rules/compiler/semantic_ir.md
-    description: >-
-      Open 2026-10-23 (raised while implementing P16-36/P16-27). Package 16
-      §§ 66-67 let a function return a slice derived from a parameter and
-      require the return summary to keep the normalized range when it is
-      statically expressible, or to degrade it conservatively. MD-084 § 4
-      fixes the sec.return_origins grammar (root, `.field#N`, `[K]`, `[*]`)
-      and § 4(6) requires an explicit schema amendment for a new projection
-      kind; none exists for a slice range. Returning a holder, a copy, a
-      call result or a reborrow of its complete extent needs no new spelling
-      and is implemented (slice_source_returns.sec); `return ref
-      values[1..<3]` (a fixed-array or slice parameter's sub-range) is
-      rejected fail-closed. Proposal: add `"[" unsigned "..<" unsigned "]"`
-      for an exact static half-open range relative to the projected source
-      and `"[..]"` for a range that is not statically expressible (the
-      caller then treats the result as overlapping the full source extent,
-      § 67), mirrored by a Semantic IR ReturnOriginSlice step; the MLIR
-      ReturnOriginTracer follows slice.borrow-*/reborrow-* to them. Decide:
-      accept, amend or replace these spellings, and whether the epoch,
-      address-stability and pin data § 66 lists need fields beyond the
-      existing caller-side reference facts.
-    classification: localized
-    status: open
-  - id: MD-116
-    area: sec-mlir-static-place-root-text-contract
-    rulebooks:
-      - rules/compiler/semantic_ir.md
-      - rules/mlir/sec_mlir_dialect.md
-      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
-      - rules/mlir/packages/sec-mlir-dialect_package15.md
-      - rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md
-    description: >-
-      Open 2026-10-25 while closing P15-42/42a/47. Semantic IR already has
-      static declarations, OpPlaceStaticRoot and static@N return origins
-      (semantic_ir.md section 28); the schema-11 early admissions include
-      sec.static.global/load/store. No schema-11 or inherited schema-12
-      operation specifies a Place rooted at that static symbol, however.
-      sec.place.storage consumes local storage declarations, and the native
-      return-origin verifier explicitly rejects static@N without a static
-      Place root. Decide the admitted operation name, static-symbol operand
-      or property, how its type/authority and address-taken/storage facts
-      relate to sec.static.global, and the canonical mapping from a
-      resolved static identity to both that symbol and static@N. The Go
-      emitter and native verifier currently reject static Place roots;
-      scalar static load/store support does not complete the reference
-      chain. This is distinct from MD-081 (which static reference
-      initializers are legal), MD-111 (addressed memory/endpoint facts)
-      and MD-114 (register serialization). No static Place spelling is
-      invented pending the explicit schema contract required by MD-084.
-    classification: localized
-    status: open
+    status: decided-implementation-pending
+
   - id: MD-117
     area: stdlib-formatting-heterogeneous-argument-model
     rulebooks:
@@ -1230,5 +1189,62 @@ decisions:
       `fmt.Printf` contract. The primary future governance owner is
       governance/stdlib.yaml; types, sema, lowering and ffi are affected only
       through the chosen design rather than as duplicate owners.
+
+      Language mechanism decided 2026-10-26
+      (rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md):
+      heterogeneous native variadic type packs `[...Types]` with
+      `...Types` / `...ref Types` / `...ref mut Types`, statically known
+      heterogeneous arity, ordinary `for` iteration with unchanged binding
+      modes, non-consuming `values...` plus whole-pack consuming
+      `<-values...`, caller-origin reference return under the ordinary
+      provenance model, ordered-type-sequence specialization identity and
+      Semantic IR facts; no `fmt`-specific language rule. Rulebooks
+      synchronized 2026-10-27 (functions.md § 33 example and § 38A,
+      generics.md §§ 16/16A/31, spread.md § 4.4, flowcontrol_for.md § 13A,
+      references.md § 9(11), borrowing.md § 15.5, lifetime_analysis.md
+      § 14.1(4), copy_move.md § 8.3(5), semantic_ir.md § 27A,
+      monomorphization.md § 9.1, generics_lowering.md §§ 3/7, stdlib.md fmt,
+      core-library.md § 15, ffi.md § 26; package25 § 22 amendment and
+      P25-27a). Kept open per the correction's § 14(7) until governance and
+      the parser/Sema/IR/lowering/tooling implementation pass their tests.
+      The public fmt API and format contract moved to MD-118; the
+      dereference spelling of pack-carried references to MD-119.
     classification: architectural
+    status: decided-implementation-pending
+
+  - id: MD-118
+    area: stdlib-fmt-public-api
+    rulebooks:
+      - rules/library/stdlib.md
+      - rules/library/core-library.md
+    description: >-
+      Split from MD-117 on 2026-10-27 (MD-117 correction §§ 1(5), 14(7)). The
+      language now supplies heterogeneous native variadic type packs
+      (functions.md § 38A), so a statically typed `fmt.Printf("…", s, i, b)`
+      can be written as an ordinary generic function. Decide the public `fmt`
+      surface: function names and signatures (output versus text
+      materialization), the format grammar, literal-format validation and
+      runtime-invalid-format behavior, the result/error contract
+      (StringError, IO errors), output destinations, allocation and
+      materialization, and which builtin and user-defined types participate
+      through which existing operation (for example ToString) — without any
+      `fmt`-specific language rule, implicit `any`, boxing or structural
+      FormatArg interface. Governance owner: governance/stdlib.yaml.
+    classification: constraining
+    status: open
+
+  - id: MD-119
+    area: pack-carried-reference-dereference-spelling
+    rulebooks:
+      - rules/memory/references.md
+      - rules/declarations/functions.md
+    description: >-
+      Split from MD-117 on 2026-10-27 (MD-117 correction § 8(6)). MD-117
+      decides which caller-origin references carried by a `...ref Types` /
+      `...ref mut Types` pack may be returned or forwarded, but explicitly not
+      how the access is spelled: `value`, `*value` or another form. Decide the
+      dereference expression rule for pack elements (and whether it differs
+      from ordinary reference parameters) in the references/expressions
+      rulebook, without changing the MD-117 provenance decision.
+    classification: localized
     status: open

@@ -205,6 +205,29 @@ require moving individual elements out of the source.
 Passing references remains explicit according to ordinary call and borrowing
 syntax; spread does not invent implicit borrows.
 
+### 4.4 Whole-pack consuming spread (MD-117)
+
+Decided 2026-10-26 (`rules/declarations/functions.md` § 38A(7)).
+
+(1) `<-values...` is the one consuming spread form: it is legal only for a
+complete, currently owned native variadic parameter pack, homogeneous `...T` or
+heterogeneous `...Types`, in a call argument list whose destination accepts the
+whole expanded sequence with valid concrete types and ownership modes.
+
+(2) The transfer is one logical transaction that commits with the call
+(`functions.md` § 18) and invalidates the source pack afterwards.
+
+(3) It does not permit `<-values[0]`, partial pack consumption, or a consuming
+spread of fixed arrays, slices, lists, tuples or structs, nor a consuming spread
+in any other context; the non-consuming policy of § 4.3, § 5 and § 6 and the
+no-partial-moves rule are unchanged.
+
+(4) A heterogeneous pack (`[...Types]`) may also be forwarded with ordinary
+non-consuming `values...` when every element is copyable or a compatible shared
+reference; mutable-reference elements are reborrowed exclusively only when every
+borrow and overlap proof succeeds. A runtime-length source never infers a
+heterogeneous pack.
+
 ---
 
 ## 5. Fixed-array literal spread

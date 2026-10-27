@@ -2105,7 +2105,9 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.static.global`, `sec.static.load`, `sec.static.store` | static storage (P15 places, `rules/declarations/static.md`) | 2026-10-18 |
 | `sec.const.float {bits}`, `sec.float.neg`, `sec.float.binary`, `sec.float.cmp` | P20 §§ 20–26, 63–65, 73–77 (`lowering.sec-mlir-package20`) | 2026-10-18 |
 | `!sec.register<T>`, `!sec.hw_instance<T>`, `sec.register.extract`, `sec.register.update`, `sec.hw.bind`, `sec.hw.observe`, `sec.hw.request_write`, `sec.hw.shadow_observe`, `sec.hw.shadow_intent`, `sec.hw.shadow_invalidate`, `sec.hw.commit` | MD-077 § 19 (v11.41.1 below); P15-42/42a | 2026-10-22 (specification; implementation tracked in governance) |
+| `sec.registers` (`#sec.register_def`, `#sec.register_field`), `sec.field_path`, `sec.write_proof` (`#sec.register_write_proof`) | MD-114 (v11.41.1a below); P15-42 | 2026-10-27 (specification; implementation tracked in governance) |
 | `sec.register.fits_bits`, `sec.register.from_bits`, `sec.register.to_bits` | MD-110 § 8 (v11.41.2 below); P15-42 | 2026-10-25 (specification; implementation tracked in governance) |
+| `sec.place.static`; `sec.static_id` and `sec.address_taken = true` on `sec.static.global` | MD-116 (v11.41.3 below); P15-42/42a/47 | 2026-10-27 (specification; implementation tracked in governance) |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
@@ -2162,6 +2164,58 @@ These may reference immutable module-scoped plan records, which must exist and s
 - The verifier checks preservation of the established contracts: operand and result types, required attributes, field width, range and enum facts, instance and resource bindings, plan and target eligibility, fault edges and effect declarations. A missing plan or capability is a fail-closed diagnostic.
 - `emit-sec-mlir` may emit these operations only once their complete parse, print and verify contract is implemented. Physical lowering stays capability-gated per endpoint kind.
 
+#### v11.41.1a MD-114 amendment — register table, field paths and write proofs
+
+Installed 2026-10-27 from `rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`. It spells the module register-definition table, `sec.field_path` and the update proof that v11.41.1 requires. This amendment covers only the detached value operations and the MD-110 width lookup. It is an explicit schema-11 early admission: schema 12 inherits it unchanged, and schemas 1–10 reject these constructs. It adds no source syntax, physical layout, ABI, byte swap or hardware access. Hardware records, endpoints and access plans stay with MD-111, and a register table never makes a `sec.hw.*` operation acceptable.
+
+**Module table `sec.registers`.** A module that uses any register type has exactly one module attribute `sec.registers`: an `ArrayAttr` of the typed attribute `#sec.register_def<...>`. A module without register types may omit it, and `sec.registers = []` is an explicit empty table. A module that uses register types may not omit it, and no table is ever assembled from operation names.
+- **Record fields.** `#sec.register_def<identity = ..., width = ..., order = ..., byte_order = ..., fields = [...]>`:
+  - `identity`: the nonempty, complete nominal identity used in `!sec.register<"...">`;
+  - `width`: the positive logical bit width;
+  - `order`: `"lsb-first"` or `"msb-first"`, always emitted explicitly;
+  - `byte_order`: `"little-endian"` or `"big-endian"`, present only when explicitly resolved. It is omitted when byte order is contextual and is never a host guess;
+  - `fields`: every declared field, including reserved ones, in declaration order.
+- **Uniqueness and order.** Each identity occurs once, even if it is used in several functions or nested in several registers. Identities are case-sensitive and nominal, so equal layout never means equal identity. The table follows the deterministic first-use order of the Semantic IR register table, never hash or alphabetical order.
+- **Rejection.** Duplicate or conflicting definitions, a referenced type without a definition, missing mandatory keys and unknown keys are all rejected.
+
+**Field records `#sec.register_field<ordinal, name, offset, width, type, access, shadow, unit, reserved>`.** Keys are printed in that order, and `unit` is present only when applicable.
+- **`ordinal`.** A nonnegative i32. Ordinals are contiguous `0..count-1` in declaration order, reserved fields included.
+- **`name`.** The declared name, or `"_"` for a reserved field. `reserved` is `true` exactly for those fields. Nonreserved names are unique within a register, and a reserved field is never addressable.
+- **Layout.** `offset` is the lowest logical bit, with bit 0 the LSB, and `width` is positive. The intervals `[offset, offset + width)` lie inside the register, never overlap, and together cover its whole width. They must agree with the declaration-order allocation for the register's `order`, and an offset is never read as MSB-relative.
+- **`type`.** The resolved value type:
+  - a one-bit `bit` field is `i1`;
+  - a `bit[N]` field with `N >= 2` uses the smallest standard unsigned carrier (8 to 256 bits), with the field's `N`-bit range as its contract;
+  - a bit-backed enum keeps its nominal enum type;
+  - a nested register is `!sec.register<"...">`, with its own definition in the table and exactly matching width.
+
+  No serializer replaces any of these with an arbitrary same-width integer. Nested layouts that are cyclic or inconsistent are rejected. A nested register keeps its own `order` and `byte_order`, with no implicit byte swap.
+- **`access` and `shadow`.** `access` is the effective access spelling of `registers.md` § 11: `read-write`, `read-only`, `write-only`, `read-clear`, `read-set` or `write-one/zero-{clear,set,toggle}`. `shadow` is the effective boolean policy after defaults are applied. Unknown spellings are rejected. On detached values both are layout metadata and have no side effects.
+- **`unit`.** The canonical unit identity resolved by Sema, never a display abbreviation. A type, unit or enum identity that the schema cannot represent fails with an unsupported-lowering diagnostic instead of being erased.
+
+**`sec.field_path`.** This is a required, nonempty `ArrayAttr` of i32 ordinals on `sec.register.extract` and `sec.register.update`. The first ordinal selects a field of the operand's register, and each later ordinal selects a field of the nested register selected by the previous step. A step into a scalar field, an unknown ordinal, a reserved field or a missing nested definition is rejected. The verifier composes the effective slice from the table. Bit offsets, source names and addresses never stand in for ordinals, and equal-width slices are never interchangeable. Whole-register conversions, copies and moves carry no field path. An empty path is never used as a stand-in for them.
+
+**Operation typing.**
+- **`sec.register.extract`** takes one `!sec.register<T>` operand and produces the leaf field's exact type. It has no `sec.write_proof`.
+- **`sec.register.update`** takes the original register and a replacement of the leaf field's exact type, and returns the same `!sec.register<T>`. Only the selected slice changes; every other bit, including reserved bits, is preserved.
+- **Purity.** Both operations are pure: they never bind, read, write, observe or commit hardware. A field's hardware access contract does not forbid a detached operation. Ordinary value mutability and the field-write fit rules still apply.
+- **Nested fields.** A nested path, or the equivalent sequence of one-level typed operations, keeps every intermediate nominal identity and the evaluation order.
+
+**`sec.write_proof`.** This attribute is required on `sec.register.update` and is the typed `#sec.register_write_proof<basis = ..., low = ..., high = ...>`, which serializes Semantic IR `RegisterWriteProof`:
+- `basis = "typed"` has no bounds. It is allowed only when the replacement already has the exact `bool`, bit-backed enum or nested register type. A plain unsigned carrier never qualifies: `uint8` does not prove that a `bit[3]` value fits.
+- `basis = "constant"` requires `low == high`, equal to the proven constant of the replacement and within the field's interval. The verifier checks it against the represented constant and never accepts the text alone.
+- `basis = "interval"` requires the certified inclusive range `0 <= low <= high <= 2^width - 1` that the producer transported from Sema. It adds no runtime check or failure edge.
+- Bounds are canonical arbitrary-precision decimal strings: no sign, whitespace or redundant leading zeros, compared without truncation. Missing or extra bounds, an unknown basis, reversed or out-of-field bounds, and a proof that belongs to another field, operand, register or unit are all rejected.
+- This proof is distinct from MD-110's `sec.register_fit_proof`, and the two are never interchanged.
+
+**MD-110 lookup.** `sec.register.fits_bits`, `sec.register.from_bits` and `sec.register.to_bits` resolve their register identity and width through the same `sec.registers` table and never through a guessed integer type. Their names, bases (`constant`, `source-domain`, `guarded`) and semantics are unchanged. The Semantic IR basis `bit-extraction` still has no MLIR spelling (MD-110 § 8(4)). It is reconciled under MD-110 and is never emitted as an invented fourth basis.
+
+**Verification and preservation.**
+- **Attributes.** Both attributes are registered TableGen attributes with exact key names, omission of optional keys and canonical print order. A dictionary that merely looks similar is not accepted.
+- **Module verifier.** It checks identities, definition presence, widths, field layout, allocation and byte order, field types, policy spellings and nesting.
+- **Operation verifiers.** They check arity, types, the path, reserved-field exclusion, effects and the shape and value of the proof.
+- **Passes.** Passes keep register nominal identity and never strip a table that is still referenced. A table may be regenerated only if it is derived deterministically and completely from the verified semantic identities, with no reordering, renumbering or reserved-bit loss. Layout and proof facts are removed only after a verified lowering has discharged them.
+- **Failure.** A failed verification or an unsupported register operation publishes no partial output and never falls back to plain integer operations.
+
 ### v11.41.2 Register bit-pattern conversions (MD-110 early admission)
 
 Installed 2026-10-25 from `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md` § 8, after v11.41.1. Schema 12 inherits it verbatim, schemas 1–10 reject it, and the default emitted schema is unchanged. The register type remains MD-077's `!sec.register<"module::TypeName">`.
@@ -2184,7 +2238,48 @@ Installed 2026-10-25 from `rules/corrections/applied/md110-register-bit-pattern-
 **Shared rules.**
 - **Representation.** The Sec dialect boundary uses the public `siW` / `uiW` scalar representations. Later signless lowering preserves the bits and carries the signed interpretation; it must not infer the interpretation from a bare `iW`.
 - **What these operations are not.** They are detached, effect-free value computations: never byte serialization, native-memory copies, hardware loads or stores, or an illegal signed-to-signless `arith.bitcast`.
-- **Admission.** C++ registration, round trips, verifiers, the Go emitter, the version gate and the lowering-support manifest must agree on these spellings before any of them is claimed. `from_bits` depends on the register-definition table spelling, which is still undecided (MD-114).
+- **Admission.** C++ registration, round trips, verifiers, the Go emitter, the version gate and the lowering-support manifest must agree on these spellings before any of them is claimed. `from_bits` resolves its register type and width through the MD-114 `sec.registers` table (v11.41.1a, decided 2026-10-27).
+
+### v11.41.3 Static Place roots and static identity (MD-116)
+
+Installed 2026-10-27 from `rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`, after v11.41.2. Schema 12 inherits it unchanged, schemas 1–10 reject it, and the default emitted schema is unchanged. It is the MLIR form of the Semantic IR `place.static-root` (`semantic_ir.md` §§ 10(12), 28(6)). It adds no source syntax, initialization policy, TLS rule, pointer layout or static ABI.
+
+**Three identities.** They are independent and never derived from one another:
+- the module-local `StaticID` selects one `Static` in the Semantic IR module (module-level or function-local `static let`);
+- the Place's `PlaceRootID` and `StorageIdentityID` keep their P15 meaning;
+- the `sec.static.global` symbol (for example `@sec_static_1`) is only a name. No verifier parses its suffix or `sec.source_name` to infer an identity.
+
+**Declaration attributes.**
+- Every `sec.static.global` emitted in schema 11 or later carries the discardable `sec.static_id = N : i32`, where `N` is the nonzero Semantic IR `StaticID` read as an unsigned 32-bit identity. IDs and symbols are unique in a module and deterministic for one verified Semantic IR module.
+- A static that is reference-addressable carries the MD-084 marker `sec.address_taken = true`, mirroring `Static.AddressTaken`. Every global targeted by a `sec.place.static` must carry it; an explicit `false` does not satisfy the requirement.
+- A legacy scalar-only global without `sec.static_id` is accepted only through a documented compatibility path, and no `sec.place.static` or `static@N` may refer to it. A missing, zero, duplicated, truncated or mismatched ID on a referenced static is an error, never a default.
+- `StaticID` is module-scoped. Equal IDs in different modules never denote the same storage, and an imported static origin that cannot be linked to its owning module's verified declaration fails closed. No cross-module ABI is introduced.
+
+**`sec.place.static`.**
+
+```mlir
+%place = "sec.place.static"() <{
+  global = @sec_static_1,
+  place_root_id = 12 : i32,
+  storage_identity = 7 : i32,
+  address_space = "ordinary"
+}> : () -> !sec.place<si32, "ro">
+```
+
+- No SSA operands and one result, `!sec.place<T, "ro" | "rw">`. `T` is exactly the element type of the selected global at the same stage; P6 resolves both together.
+- `global` is a `FlatSymbolRefAttr` that resolves to exactly one `sec.static.global`. `place_root_id`, `storage_identity` and `address_space` use the existing P15 representation and vocabulary, and are independent of the static ID.
+- `"rw"` requires `is_mutable = true`. A mutable static may also yield `"ro"` under a Sema-granted shared borrow, and `"ro"` establishes no thread safety.
+- It denotes the existing storage that `sec.static.load` / `store` name by the same symbol and ID. It creates no initialization, backing store, temporary, pointer, allocation or indirection, does not load the value and performs no I/O.
+- Function-local statics are lowered to one module-level global and are never reinitialized per call. Places rooted at the same static keep the same storage identity, and conflicting root or storage claims are rejected.
+- A nonordinary or `target:` address space is admitted only when the CompilationPlan and the schema can represent and verify it, and is never mapped to `ordinary`. MMIO and hardware endpoints stay with MD-111 / MD-114.
+
+**Returned static origins.** `static@N` (MD-084 grammar, unchanged) names `StaticID` N. The MD-085 tracer recognizes `sec.place.static` as a root, resolves `global`, reads the explicit `sec.static_id` and records `static@N`; projections, borrows, reborrows, copies, moves, block arguments and verified calls follow v11.37. A `static@N` string without a traceable static root, an absent ID or a foreign module's ID is rejected. A static origin is provenance only, never permission for a borrow Sema did not grant. A `!sec.place` never escapes as a returned value.
+
+**Verification and passes.**
+- The operation verifier checks operand and result counts, the Place type, symbol resolution and kind, type equality, mutability, root metadata types, the address space and the address-taken marker. The module verifier checks `sec.static_id` presence and uniqueness for identity-bearing statics.
+- `--sec-verify-places` accepts the operation as a legal zero-operand Place root. `--sec-verify-borrow-semantics` applies static return-origin tracing, and `--sec-verify-reference-guards` keeps its guard requirements; static lifetime is never blanket `proven` validity.
+- P5 never discharges an address-taken static, P6 resolves its scalar types consistently and P8 keeps its Place and reference wrappers (MD-087). `sec-lower-static-storage` keeps lowering scalar-only statics and rejects a reference-dependent static it cannot represent instead of erasing the Place.
+- Failed verification or unsupported emission publishes no partial MLIR.
 
 
 ---
@@ -2740,3 +2835,41 @@ owning T[] is not represented as slice
 schema-v11 regressions remain valid
 no physical descriptor layout is selected
 ```
+
+---
+
+## v12.34 Returned slice range origins (MD-115)
+
+Installed 2026-10-27 from `rules/corrections/applied/MD-115-returned-slice-origin-projections-correction-20261027.md`. This is a schema-12 amendment to the MD-084 `sec.return_origins` grammar (v11.7 amendment). Schemas 1–11 must reject the two new projections, and existing root and element projections stay valid in schema 12. It adds no source syntax, runtime slice tag, descriptor layout, ABI or error kind.
+
+**Grammar.** In schema 12 the projection rule gains exactly two alternatives:
+
+```ebnf
+projection := ".field#" unsigned32 | "[" unsigned32 "]" | "[*]"
+            | "[" natural "..<" natural "]"
+            | "[?]"
+natural    := "0" | nonzero_digit digit*   // arbitrary precision
+```
+
+- **`[A..<B]`** is an exact half-open range `[A, B)` relative to the immediately preceding origin's current view, with `0 <= A <= B`. The endpoints are arbitrary-precision decimals with no sign, whitespace, leading zeros or separators. The parser keeps their exact values (for example as APInt) and never narrows them to the `uint32_t` used for legacy IDs and indexes. It may reject resource-exhausting input with an explicit diagnostic, but never truncates.
+- **`[?]`** is some valid sub-range of the preceding view whose bounds are not statically expressible. It may be empty or whole and proves no disjointness or narrower bound. It keeps the origin and its containment and is a statement about spatial precision only.
+- **Not synonyms.** `[..]` is not a metadata projection: an unprojected root such as `param#0` already means the unchanged whole current view. `[*]` stays a single element at an unknown index. A range projection keeps a sequence or view, while an element projection yields an element; neither substitutes for the other, and no parser rewrites `[?]` as `[*]` or as a bare root.
+- The MD-084 rules on case, whitespace, duplicates, deterministic order and rejecting malformed entries all apply. There is no second attribute such as `sec.slice_return_origins`.
+
+**Typing and composition.**
+- A range applies only to a fixed-array or slice view that admits narrowing, and yields a slice view of the same element type. A following element projection must keep the range and its verified bounds, and may fail closed until the whole chain is supported.
+- Authority may be kept or reduced but never increased.
+- An exact empty range such as `[2..<2]` keeps all storage, lifetime, epoch and pin dependencies.
+- Exact nested ranges compose by source-relative addition with arbitrary precision: `[10..<20]` then `[2..<5]` gives `[12..<15]`. The summary records the normalized range relative to the original origin.
+- A full-open reborrow keeps the current origin: `param#0` stays `param#0`, and `param#0[12..<15]` stays narrowed.
+- A genuinely dynamic bound becomes `[?]`. An implementation or verifier gap is not permission to weaken a range Sema established exactly; that path stays unsupported.
+- Distinct candidate origins, such as one exact and one unknown, remain distinct.
+
+**Verification (extends v11.37 / MD-085).**
+- For `sec.slice.borrow_shared` / `borrow_mut` / `reborrow_shared` / `reborrow_mut`, the tracer reads the normalized start and length operands and the source. An exact claim must be proved from the represented SSA range operations, never from the attribute text.
+- `[?]` is accepted only when the represented operations prove containment within an eligible source and the return is otherwise permitted. It never hides a local origin, a missing guard, forged storage or escalated authority.
+- An outer full-open operation never erases an inner narrowing.
+- Direct calls substitute the caller's actual input path and compose ranges. A callee's `param#0[?]` is never treated as exact, and callee and caller statics are never conflated.
+- Unsupported CFG relations, unvalidated callee summaries and unrepresentable projections fail closed. A local-array slice is rejected whatever its annotation.
+
+Reference validity, lifetime, storage identity, address stability, epoch, pin and address space stay in `sec.reference` and slice metadata, and are not duplicated in the range suffix. Range checks, `RangeError`, `try` and evaluation order are unchanged; the metadata performs no check of its own. Emitting a returned sub-range requires schema 12 through explicit schema selection, or the emission is rejected. The schema is never upgraded silently, and schema-12 suffixes are never embedded in schema 11.

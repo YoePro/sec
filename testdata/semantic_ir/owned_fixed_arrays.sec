@@ -1,0 +1,76 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Build() Handle[2] {
+    return [Make(1), Make(2)]
+}
+
+fn Relay(-> values: Handle[2]) Handle[2] {
+    return <-values
+}
+
+fn ImplicitReturn(-> values: Handle[2]) Handle[2] {
+    return values
+}
+
+fn Sink(-> values: Handle[2]) void {}
+
+fn Local() void {
+    let values := Build()
+    let moved :<- values
+    Sink(<-moved)
+}
+
+fn Elements() Handle[2] {
+    let first := Make(1)
+    let second := Make(2)
+    return [<-first, <-second]
+}
+
+fn ForwardedElements() Handle[2] {
+    let first := Make(1)
+    let second := Make(2)
+    return [first, second]
+}
+
+fn Mutable() void {
+    let mut values := Build()
+    values = Build()
+    Sink(<-values)
+}
+
+fn Nested() void {
+    let values := [[Make(1), Make(2)], [Make(3), Make(4)]]
+}
+
+fn Defaulted() void {
+    let mut values: Handle[2]
+}
+
+fn Empty() void {
+    let mut values: Handle[0]
+}
+
+fn Large() void {
+    let mut values: Handle[1000000]
+}
+
+fn Borrow() uint {
+    let mut values := Build()
+    let view := ref values[0]
+    discard view
+    return values.Len
+}
+
+fn BorrowHolders() void {
+    let mut value := 1
+    let first := [ref mut value]
+    let second :<- first
+    discard second
+}

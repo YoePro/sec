@@ -1,0 +1,21 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+enum Failure error { Missing }
+
+fn Partial(fail: bool) Result[uint, Failure] {
+    let values := [Make(1), try Maybe(fail)]
+    return Ok(2u)
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Maybe(fail: bool) Result[Handle, Failure] {
+    if fail {
+        return Err(Failure.Missing)
+    }
+    return Ok(Make(2))
+}

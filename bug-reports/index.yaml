@@ -1,0 +1,441 @@
+schema_version: 1
+purpose: >-
+  Canonical ledger for incoming, open, and fixed implementation bug reports.
+  Report files live in open/ until a fix has validation evidence, then move to
+  fixed/ while their ledger entry remains here.
+status_values:
+  open: Report received or triaged; no verified fix is recorded.
+  fixed: Fix and appropriate validation evidence are recorded; report moved to fixed/.
+reports:
+  - id: BUG-000001
+    source_id: NSV-01
+    title: Contextual set example declares conflicting names in one scope
+    status: open
+    severity: medium
+    kind: normative-self-contradiction
+    reported: "2026-10-27"
+    report: open/sec_names_scopes_visibility_audit_2026-10-27.md
+    area: frontend-names-scopes-visibility
+    rulebooks:
+      - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/lexical_structure.md
+    governance:
+      - frontend.names-scopes-visibility
+      - frontend.lexical-structure
+    evidence: >-
+      Confirmed by static audit: the contextual set example is marked valid
+      while declaring both a variable and a function named set in one scope,
+      contrary to the one-namespace-per-scope rule.
+
+  - id: BUG-000002
+    source_id: NSV-02
+    title: Names and scopes implementation-status section contradicts set rules
+    status: open
+    severity: medium
+    kind: rulebook-governance-consistency
+    reported: "2026-10-27"
+    report: open/sec_names_scopes_visibility_audit_2026-10-27.md
+    area: frontend-names-scopes-visibility
+    rulebooks:
+      - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/lexical_structure.md
+    governance:
+      - frontend.names-scopes-visibility
+      - frontend.lexical-structure
+    evidence: >-
+      Confirmed by static audit: section 23 says contextual set parsing must
+      not allow set declarations, while the active rules explicitly allow the
+      contextual identifier; the section also leaves implemented work stale.
+
+  - id: BUG-000003
+    source_id: NSV-03
+    title: Module-level variables leak through a shared analyzer symbol table
+    status: open
+    severity: high
+    kind: implementation-bug
+    reported: "2026-10-27"
+    report: open/sec_names_scopes_visibility_audit_2026-10-27.md
+    area: frontend-names-scopes-visibility
+    rulebooks:
+      - rules/foundations/names_scopes_visibility.md
+    governance:
+      - frontend.names-scopes-visibility
+    existing_tracking: >-
+      Already tracked as the remaining module-variable scoping defect in
+      frontend.names-scopes-visibility; this report must not create another
+      governance integration.
+    evidence: >-
+      Static audit identifies a module-qualified namespace check alongside a
+      shared name-only symbol table, which can cause false duplicate errors or
+      incorrect cross-module name resolution. No fresh local reproduction was
+      run by the audit.
+
+  - id: BUG-000004
+    source_id: NSV-04
+    title: Contextual set regression test permits unrelated parameter shadowing
+    status: open
+    severity: low
+    kind: regression-test-quality
+    reported: "2026-10-27"
+    report: open/sec_names_scopes_visibility_audit_2026-10-27.md
+    area: frontend-names-scopes-visibility
+    rulebooks:
+      - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/lexical_structure.md
+    governance:
+      - frontend.names-scopes-visibility
+      - frontend.lexical-structure
+    evidence: >-
+      Confirmed by static audit: the test checks only that the reserved-name
+      diagnostic is absent even though its fixture introduces a local binding
+      that shadows a parameter, so an unrelated analysis error can be hidden.
+
+  - id: BUG-000005
+    source_id: NSV-05
+    title: Lexical structure rulebook refers to retired implementation ledger
+    status: open
+    severity: low
+    kind: rulebook-governance-consistency
+    reported: "2026-10-27"
+    report: open/sec_lexical_structure_audit_2026-10-27.md
+    area: frontend-lexical-structure
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+    governance:
+      - frontend.lexical-structure
+      - governance.source-rulebook-traceability
+    evidence: >-
+      Confirmed by static audit: lexical_structure.md sections 24 and 26 name
+      the retired implementation-status.yaml instead of governance/lexer.yaml
+      and the governance index.
+
+  - id: BUG-000006
+    source_id: NSV-06
+    title: Lexical LF exception implies unavailable formatter configuration
+    status: open
+    severity: low
+    kind: rulebook-formatter-contract
+    reported: "2026-10-27"
+    report: open/sec_lexical_structure_audit_2026-10-27.md
+    area: tooling-formatter
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+      - rules/tooling/formatter.md
+    governance:
+      - tooling.formatter-v2
+      - frontend.lexical-structure
+    evidence: >-
+      Confirmed wording discrepancy: lexical_structure.md permits an explicit
+      future configuration to preserve another line-ending convention, but the
+      current formatter contract and implementation normalize output to LF.
+      No runtime formatter error is asserted.
+
+  - id: BUG-000007
+    source_id: NSV-07
+    title: _100 is simultaneously shown as an invalid literal and valid identifier
+    status: open
+    severity: medium
+    kind: normative-self-contradiction
+    reported: "2026-10-27"
+    report: open/sec_lexical_structure_audit_2026-10-27.md
+    area: frontend-lexical-structure
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+    governance:
+      - frontend.lexical-structure
+    evidence: >-
+      Confirmed by static audit: identifier rules admit an underscore followed
+      by digits and the lexer takes _100 through its identifier path, while a
+      numeric-literal example incorrectly lists the same spelling as invalid.
+
+  - id: BUG-000008
+    source_id: NSV-08
+    title: Base literal continuation after a family suffix uses the wrong diagnostic
+    status: open
+    severity: medium
+    kind: lexer-diagnostic-bug
+    reported: "2026-10-27"
+    report: open/sec_lexical_structure_audit_2026-10-27.md
+    area: frontend-lexical-structure
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+      - rules/tooling/diagnostics.md
+    governance:
+      - frontend.lexical-structure
+      - errors.diagnostics
+    evidence: >-
+      Statically derived but not execution-verified: after a valid suffix in
+      0b1u2, the lexer tests the following digit as if it were still part of
+      the base digits and selects L1011. The audit expects malformed-base
+      literal L1010, while 0b102 without a suffix should retain L1011.
+
+  - id: BUG-000009
+    source_id: NSV-09
+    title: try set example omits its mandatory error type
+    status: fixed
+    severity: medium
+    kind: rulebook-example
+    reported: "2026-10-27"
+    report: fixed/sec_grammar_audit_2026-10-27.md
+    area: frontend-properties
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/declarations/properties.md
+    governance:
+      - frontend.properties
+      - frontend.grammar-conformance
+    evidence: >-
+      The impl example used try set value without the TypeReference required by
+      the FallibleSetter production and properties.md section 6.
+    resolution: >-
+      Corrected the grammar example to use try set value SpeedError. This is a
+      documentation-only correction; no parser or semantic behavior changed.
+    verification: >-
+      Cross-checked against the canonical FallibleSetter production and
+      properties.md section 6. Commit reference pending.
+
+  - id: BUG-000010
+    source_id: NSV-10
+    title: Event capacity grammar restricted a constant expression to a literal
+    status: fixed
+    severity: medium
+    kind: rulebook-grammar
+    reported: "2026-10-27"
+    report: fixed/sec_grammar_audit_2026-10-27.md
+    area: frontend-grammar-conformance
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/concurrency/events.md
+    governance:
+      - frontend.grammar-conformance
+    evidence: >-
+      The parser/Sema implementation and grammar-conformance integration already
+      evaluate Event and EventStorage capacity as a compile-time expression,
+      while grammar.md said IntegerConstant.
+    resolution: >-
+      Changed both grammar productions to ConstantExpression while retaining
+      the existing compile-time-known and greater-than-zero semantic rule.
+    verification: >-
+      Cross-checked against frontend.grammar-conformance and events.md; no
+      executable behavior changed. Commit reference pending.
+
+  - id: BUG-000011
+    source_id: NSV-11
+    title: Select timeout example used an untyped duration
+    status: fixed
+    severity: low
+    kind: rulebook-example
+    reported: "2026-10-27"
+    report: fixed/sec_grammar_audit_2026-10-27.md
+    area: frontend-grammar-conformance
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/concurrency/select.md
+    governance:
+      - frontend.grammar-conformance
+      - concurrency.select-v2
+    evidence: >-
+      The select example used after 10 although the canonical select rule
+      requires a duration expression.
+    resolution: >-
+      Corrected the example to after 10<ms>. No parser or semantic behavior
+      changed.
+    verification: >-
+      Cross-checked against the select duration contract. Commit reference
+      pending.
+
+  - id: BUG-000012
+    source_id: NSV-12
+    title: Register grammar omitted implemented modifier and field-access forms
+    status: fixed
+    severity: medium
+    kind: rulebook-grammar-governance-sync
+    reported: "2026-10-27"
+    report: fixed/sec_grammar_audit_2026-10-27.md
+    area: frontend-registers
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/declarations/registers.md
+    governance:
+      - frontend.registers
+      - frontend.grammar-conformance
+    evidence: >-
+      The parser already accepts arbitrary-order register header modifier
+      classes and access-before-shadow field modifiers, but grammar.md omitted
+      shadow policies and field access and treated hyphenated forms as one
+      contextual token.
+    resolution: >-
+      Added parser-faithful productions for register header modifiers, hyphen
+      token spelling, field access, and shadow policy, with cardinality and
+      ordering constraints stated in prose.
+    verification: >-
+      Cross-checked against internal/parser/register_header.go and the
+      canonical register rulebook. Commit reference pending.
+
+  - id: BUG-000013
+    source_id: NSV-13
+    title: Grammar governance baseline described a retired mixed-status model
+    status: fixed
+    severity: low
+    kind: governance-metadata
+    reported: "2026-10-27"
+    report: fixed/sec_grammar_audit_2026-10-27.md
+    area: frontend-grammar-conformance
+    rulebooks:
+      - rules/foundations/grammar.md
+    governance:
+      - frontend.grammar-conformance
+    evidence: >-
+      document_baseline still said grammar.md mixed a retired
+      implementation-status snapshot with newer decisions despite the
+      integration record documenting the 2026-10-05 status migration.
+    resolution: >-
+      Replaced the stale note with the current ownership model: the historic
+      review date remains context, implementation state belongs in governance,
+      and grammar.md must synchronize with specialist rulebooks.
+    verification: >-
+      Cross-checked against the grammar.md status migration integration record.
+      Commit reference pending.
+
+  - id: BUG-000014
+    source_id: NSV-14
+    title: Foreign grammar productions were unreachable from canonical roots
+    status: fixed
+    severity: medium
+    kind: grammar-production-reachability
+    reported: "2026-10-27"
+    report: fixed/sec_grammar_audit_2026-10-27.md
+    area: frontend-ffi
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/platform/ffi.md
+    governance:
+      - frontend.ffi-v2
+      - frontend.grammar-conformance
+    evidence: >-
+      ForeignTypeDeclaration, ForeignTypeReference, and
+      ForeignCallbackExpression had no path from TopLevelDeclaration,
+      TypeReference, and PrimaryExpression; foreign data also used a bare C
+      token instead of the established string-literal ABI spelling.
+    resolution: >-
+      Added the three canonical reachability paths and a ForeignABI
+      StringLiteral production, while explicitly preserving the current C-only
+      semantic restriction and the separately tracked FFI implementation work.
+    verification: >-
+      Cross-checked against grammar.md extern syntax, ffi.md, and
+      frontend.ffi-v2. No FFI implementation status changed. Commit reference
+      pending.
+
+  - id: BUG-000015
+    source_id: NSV-21
+    title: Attribute completion omits MD-030 callable-body placements
+    status: open
+    severity: medium
+    kind: lsp-completion-bug
+    reported: "2026-10-27"
+    report: open/sec_attributes_audit_2026-10-27.md
+    area: frontend-attributes
+    rulebooks:
+      - rules/foundations/attributes.md
+      - rules/tooling/lsp.md
+      - rules/corrections/applied/md030-no-panic-attribute-placement-correction-20261017.md
+    governance:
+      - frontend.attributes-v2
+    existing_tracking: >-
+      The attributes integration already owns attribute LSP completion and its
+      required target-validity test; this report narrows the missing MD-030
+      placements without creating another integration.
+    evidence: >-
+      Static audit: the LSP target classifier and parser registry projection
+      cover function, method, extern, type, enum, and ordinary let targets but
+      not init, free, property accessors, or a directly lambda-initializing
+      local let as required by MD-030. No new test execution was reported.
+
+  - id: BUG-000016
+    source_id: NSV-22
+    title: Selection attributes can be accepted then silently lost from the AST
+    status: open
+    severity: high
+    kind: parser-ast-sema-soundness-bug
+    reported: "2026-10-27"
+    report: open/sec_attributes_audit_2026-10-27.md
+    area: frontend-attributes
+    rulebooks:
+      - rules/foundations/attributes.md
+      - rules/compiler/compile_time_evaluation.md
+    governance:
+      - frontend.attributes-v2
+    existing_tracking: >-
+      Canonical @target and @when selection is already remaining work in
+      frontend.attributes-v2. The repair must add a fail-closed attachment
+      invariant and record its implementation under that owner, not create a
+      parallel selection integration.
+    evidence: >-
+      Static audit identifies allowed top-level selection attributes that are
+      validated by the parser but not retained on ImportStatement or
+      LetGroupStatement, so Sema cannot reject their currently unimplemented
+      selection semantics. The import outcome still needs execution coverage.
+
+  - id: BUG-000017
+    source_id: NSV-23
+    title: Selection attributes are accepted on an impl method
+    status: open
+    severity: medium
+    kind: parser-target-validation-bug
+    reported: "2026-10-27"
+    report: open/sec_attributes_audit_2026-10-27.md
+    area: frontend-attributes
+    rulebooks:
+      - rules/foundations/attributes.md
+    governance:
+      - frontend.attributes-v2
+    existing_tracking: >-
+      The general attribute parser and target-level validation are owned by
+      frontend.attributes-v2; fix the top-level-only enforcement there.
+    evidence: >-
+      Static audit traces attributeOnAnyTopLevel through member attachment and
+      LSP AllowedOn, allowing @target and @when on a method even though the
+      normative targets are file or top-level declarations. No reproduction
+      command was run by the audit.
+
+  - id: BUG-000018
+    source_id: NSV-24
+    title: Attributes governance is stale for MD-030 and contradictory for noBlock
+    status: open
+    severity: medium
+    kind: governance-status-consistency
+    reported: "2026-10-27"
+    report: open/sec_attributes_audit_2026-10-27.md
+    area: frontend-attributes
+    rulebooks:
+      - rules/foundations/attributes.md
+      - rules/corrections/applied/md030-no-panic-attribute-placement-correction-20261017.md
+    governance:
+      - frontend.attributes-v2
+    evidence: >-
+      Static audit finds that frontend.attributes-v2 omits its implemented
+      MD-030 parser/Sema/test slice and states both that @noBlock is not
+      implemented and that its transitive verifier is implemented. The latter
+      requires reconciliation with the intended distinction between parsing
+      availability and semantic verification.
+
+  - id: BUG-000019
+    source_id: NSV-25
+    title: Attributes rulebook overview and appendix omit canonical facts
+    status: open
+    severity: low
+    kind: rulebook-editorial-consistency
+    reported: "2026-10-27"
+    report: open/sec_attributes_audit_2026-10-27.md
+    area: frontend-attributes
+    rulebooks:
+      - rules/foundations/attributes.md
+      - rules/corrections/applied/md030-no-panic-attribute-placement-correction-20261017.md
+      - rules/platform/ffi.md
+    governance:
+      - frontend.attributes-v2
+    evidence: >-
+      Static audit identifies the four-versus-five category count, missing
+      @link_name argument and appendix entries, and stale target summaries for
+      callable guarantees. This is a documentation consistency issue; it does
+      not introduce new language semantics.

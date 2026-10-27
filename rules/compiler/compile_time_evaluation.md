@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-06
-- Last updated: 2026-09-06
-- Document revision: 1.0
+- Last updated: 2026-10-27 (§ 15(5), MD-062 unit metadata reads)
+- Document revision: 1.1
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/compile_time_evaluation.md`
 - Replaces: No canonical rulebook. This rulebook closes the previously planned compile-time-evaluation area.
@@ -404,6 +404,8 @@ generic declarations.
 § 15(3) `compile_time_evaluation.md` does not invent source syntax for layout, type, target, or reflection queries.
 
 § 15(4) Compiler-internal semantic queries that are not Sec declarations must be documented as compiler services rather than represented by invented pseudo-Sec declarations.
+
+§ 15(5) Unit metadata reads `<U>.Member` (`rules/types/units.md`, "Unit metadata value types"; MD-062, 2026-10-27) are compiler-known facts exposed this way. Each yields a typed compile-time value of its public type (`string`, `bool`, `decimal`, `decimal<V>`, a unit metadata enum or user enum, or `UnitDimension`), the same value in CTE and runtime code, and needs no runtime unit lookup. The `decimal` read of `Scale` is the deterministic projection defined there; CTE never feeds it back into exact unit semantics.
 
 ---
 

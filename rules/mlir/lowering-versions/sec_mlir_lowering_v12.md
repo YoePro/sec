@@ -508,3 +508,12 @@ returned origin metadata survives
 owning T[] remains distinct
 no physical slice descriptor is chosen
 ```
+
+---
+
+## Amendments (2026-10-27)
+
+Historical numbering is preserved. The consolidated `rules/mlir/sec_mlir_lowering.md` amendments take precedence where they conflict:
+
+- **MD-115** (v12.32): a returned sub-range of a parameter's array or slice serializes Sema's normalized range as `[A..<B]`, or `[?]` when a bound is genuinely dynamic, in `sec.return_origins`. Emission selects schema 12 explicitly or rejects the function, and never weakens an exact range to work around a gap (`rules/corrections/applied/MD-115-returned-slice-origin-projections-correction-20261027.md`).
+- **MD-116**: static Place roots from lowering v11.29 are inherited unchanged.

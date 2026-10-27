@@ -1009,7 +1009,7 @@ func TestPackage14ArrayOperationVerifierMatrix(t *testing.T) {
 		{
 			name: "element bad action",
 			mutate: func(module *Module) {
-				module.Functions[0].Blocks[0].Operations[1].ArrayActions[0] = ArrayActionCopyTrivial
+				module.Functions[0].Blocks[0].Operations[1].ArrayActions[0] = ArrayActionBorrowShared
 			},
 			wantError: "element segment 0 mismatch",
 		},

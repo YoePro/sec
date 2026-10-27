@@ -491,6 +491,15 @@ def Sec_PlaceStorageOp : Sec_Op<"place.storage", [Pure]> {
   let hasVerifier = 1;
 }
 
+// Place root over an existing address-taken static (MD-116; dialect
+// v11.41.3). It names the sec.static.global by symbol and creates no storage.
+def Sec_PlaceStaticOp : Sec_Op<"place.static", [Pure]> {
+  let summary = "Place root over address-taken static storage";
+  let arguments = !con(Sec_PlaceRootMetadata, (ins FlatSymbolRefAttr:$global));
+  let results = (outs AnyType:$place);
+  let hasVerifier = 1;
+}
+
 def Sec_PlaceFieldOp : Sec_Op<"place.field", [Pure]> {
   let summary = "Project a stored struct field Place";
   let arguments = (ins I32Attr:$field, AnyType:$base);

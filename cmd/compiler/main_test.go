@@ -405,6 +405,41 @@ fn IsBlank(value: string) bool {
 	}
 }
 
+// CharAt is a permanent byte-indexed alias of char(ByteAt(index)); ByteAt,
+// CharAt and RuneAt keep their own result types (MD-092 § 7(3)-(4)).
+// Runtime equality over ASCII, NUL, high and continuation bytes waits for
+// string lowering on the native track.
+//
+// Rules:
+//   - rules/library/core-library.md — §§ 5.3, 5.7
+func TestCompilerCoreStringCharAtIsByteAlias(t *testing.T) {
+	source := `module main
+
+fn Same(text: string, index: uint) bool {
+	let asChar: char := text.CharAt(index)
+	let asByte: byte := text.ByteAt(index)
+	let asRune: rune := text.RuneAt(0)
+	return asChar == char(asByte) && asRune == asRune
+}
+`
+	program := parser.New(lexer.New(source)).ParseProgram()
+	resolveCoreLibrary(program)
+	if errors := sema.NewAnalyzer().Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(CharAt alias) errors: %v", errors)
+	}
+	wrong := `module main
+
+fn Wrong(text: string) rune {
+	return text.CharAt(0)
+}
+`
+	program = parser.New(lexer.New(wrong)).ParseProgram()
+	resolveCoreLibrary(program)
+	if errors := sema.NewAnalyzer().Analyze(program); len(errors) == 0 {
+		t.Fatal("CharAt result converted implicitly to rune")
+	}
+}
+
 func TestCompilerLoadsCoreRuneAndStringConversionAPI(t *testing.T) {
 	source := `module main
 

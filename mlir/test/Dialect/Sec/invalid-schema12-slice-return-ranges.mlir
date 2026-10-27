@@ -1,6 +1,6 @@
 // RUN: sec-mlir-opt %s --sec-verify-places --sec-verify-reference-guards --sec-verify-borrow-semantics -split-input-file -verify-diagnostics -o /dev/null
 // RUN: sec-mlir-opt %s --sec-resolve-scalar-layout --sec-verify-places --sec-verify-reference-guards --sec-verify-borrow-semantics -split-input-file -verify-diagnostics -o /dev/null
-// P16 sections 66-67 and MD-084 section 4(6); no invented MD-115 spelling.
+// MD-115: a whole-origin label must not hide an actual subrange.
 module attributes {
   sec.dialect_version = 12 : i32,
   sec.semantic_ir_version = 1 : i32,
@@ -20,7 +20,7 @@ module attributes {
     %end = "sec.const.int"() <{value = "3"}> : () -> !sec.uint
     %s, %n = "sec.slice.range_normalize"(%total, %start, %end) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_shared"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice<si32>, !sec.uint, !sec.uint) -> !sec.slice<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %child : !sec.slice<si32>
   }
 }
@@ -47,7 +47,7 @@ module attributes {
     %s, %n = "sec.slice.range_normalize"(%total, %start, %end) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_shared"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice<si32>, !sec.uint, !sec.uint) -> !sec.slice<si32>
     %wrapped = "sec.slice.copy_shared"(%child) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}> : (!sec.slice<si32>) -> !sec.slice<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %wrapped : !sec.slice<si32>
   }
 }
@@ -75,7 +75,7 @@ module attributes {
     %s, %n = "sec.slice.range_normalize"(%total, %start, %end) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_shared"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice<si32>, !sec.uint, !sec.uint) -> !sec.slice<si32>
     %called = "sec.call.direct"(%child) <{callee = @pass}> {sec.argument_actions = ["shared-reference"], sec.reference = {borrow_id = 3 : i32, lifetime_id = 3 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}} : (!sec.slice<si32>) -> !sec.slice<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %called : !sec.slice<si32>
   }
 }
@@ -100,7 +100,7 @@ module attributes {
     %start = "sec.const.int"() <{value = "1"}> : () -> !sec.uint
     %s, %n = "sec.slice.range_normalize"(%total, %start) <{start_present = true, end_present = false, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_shared"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice<si32>, !sec.uint, !sec.uint) -> !sec.slice<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %child : !sec.slice<si32>
   }
 }
@@ -125,7 +125,7 @@ module attributes {
     %start = "sec.const.int"() <{value = "0"}> : () -> !sec.uint
     %s, %n = "sec.slice.range_normalize"(%total, %start, %total) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_shared"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice<si32>, !sec.uint, !sec.uint) -> !sec.slice<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %child : !sec.slice<si32>
   }
 }
@@ -151,7 +151,7 @@ module attributes {
     %end = "sec.const.int"() <{value = "3"}> : () -> !sec.uint
     %s, %n = "sec.slice.range_normalize"(%total, %start, %end) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_mut"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice_mut<si32>, !sec.uint, !sec.uint) -> !sec.slice_mut<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %child : !sec.slice_mut<si32>
   }
 }
@@ -178,7 +178,7 @@ module attributes {
     %s, %n = "sec.slice.range_normalize"(%total, %start, %end) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_mut"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice_mut<si32>, !sec.uint, !sec.uint) -> !sec.slice_mut<si32>
     %wrapped = "sec.slice.move_mut"(%child) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}> : (!sec.slice_mut<si32>) -> !sec.slice_mut<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %wrapped : !sec.slice_mut<si32>
   }
 }
@@ -206,7 +206,7 @@ module attributes {
     %s, %n = "sec.slice.range_normalize"(%total, %start, %end) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_mut"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice_mut<si32>, !sec.uint, !sec.uint) -> !sec.slice_mut<si32>
     %called = "sec.call.direct"(%child) <{callee = @pass}> {sec.argument_actions = ["mutable-reference"], sec.reference = {borrow_id = 3 : i32, lifetime_id = 3 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}} : (!sec.slice_mut<si32>) -> !sec.slice_mut<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %called : !sec.slice_mut<si32>
   }
 }
@@ -231,7 +231,7 @@ module attributes {
     %start = "sec.const.int"() <{value = "1"}> : () -> !sec.uint
     %s, %n = "sec.slice.range_normalize"(%total, %start) <{start_present = true, end_present = false, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_mut"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice_mut<si32>, !sec.uint, !sec.uint) -> !sec.slice_mut<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %child : !sec.slice_mut<si32>
   }
 }
@@ -256,7 +256,7 @@ module attributes {
     %start = "sec.const.int"() <{value = "0"}> : () -> !sec.uint
     %s, %n = "sec.slice.range_normalize"(%total, %start, %total) <{start_present = true, end_present = true, end_exclusive = true, start_signed = false, end_signed = false, proof_kind = "contract"}> : (!sec.uint, !sec.uint, !sec.uint) -> (!sec.uint, !sec.uint)
     %child = "sec.slice.reborrow_mut"(%source, %s, %n) <{borrow_id = 2 : i32, lifetime_id = 2 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter", source_borrow = 1 : i32}> : (!sec.slice_mut<si32>, !sec.uint, !sec.uint) -> !sec.slice_mut<si32>
-    // expected-error@+1 {{returned sub-slice origin requires an explicit slice-range projection (MD-115)}}
+    // expected-error@+1 {{which sec.return_origins does not list}}
     return %child : !sec.slice_mut<si32>
   }
 }

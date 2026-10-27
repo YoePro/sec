@@ -354,6 +354,11 @@ func (fb *functionBuilder) moveOwnedLocal(identifier *ast.Identifier, binding se
 	if !ok || !ownedLocalMoveLowerable(plan) {
 		return builtValue{}, false, nil
 	}
+	if sema.TriviallyDestructible(plan.Source.Type) {
+		// E.g. a whole array of mutable borrow holders moves ownership but
+		// has no referent-destruction registration to cancel (P17 §15).
+		return fb.result(Operation{Kind: OpOwnMove, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{}, Location: location(identifier.Token)}, value.typ), true, nil
+	}
 	action, tracked := fb.trackedActions[binding]
 	if !tracked {
 		return builtValue{}, true, fb.unsupported("P17 move of an owned value without a tracked registration", identifier.Token)

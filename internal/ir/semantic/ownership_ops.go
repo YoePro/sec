@@ -359,7 +359,7 @@ func verifyOwnershipOperation(module *Module, op Operation, values map[ValueID]V
 
 // verifyOwnershipFlow rejects a use of an SSA value after an own.*
 // operation consumed it in the same block, and a second consumption.
-func verifyOwnershipFlow(fn *Function) error {
+func verifyOwnershipFlow(module *Module, fn *Function) error {
 	for _, block := range fn.Blocks {
 		consumed := map[ValueID]OpKind{}
 		for _, op := range block.Operations {
@@ -367,7 +367,9 @@ func verifyOwnershipFlow(fn *Function) error {
 				if by, gone := consumed[operand]; gone {
 					return fmt.Errorf("%%%d is used by %s after %s consumed it", operand, op.Kind, by)
 				}
-				if consumesOwnership(op, index) {
+				arrayTransfer := op.Kind == OpArrayConstruct && index < len(op.ArraySegmentKinds) && op.ArraySegmentKinds[index] == ArraySegmentElement &&
+					(op.ArrayActions[index] == ArrayActionMove || op.ArrayActions[index] == ArrayActionConstructDirect && ArrayConstructionNeedsOwnership(module, op))
+				if consumesOwnership(op, index) || arrayTransfer {
 					consumed[operand] = op.Kind
 				}
 			}

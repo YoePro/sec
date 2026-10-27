@@ -215,6 +215,11 @@ func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool 
 		// so again after the merge would lose the relevant Place context.
 		return false
 	}
+	if plan, ok := a.resolvedTransferPlans[expr]; ok && plan.Site == TransferSiteConstruction && plan.Action == TransferMove {
+		// Array element construction has already validated and committed this
+		// transfer before evaluating the next element (destruction.md §14.2).
+		return false
+	}
 	typ, ok := a.expressionTypes[expr]
 	if !ok || typ.Kind == InvalidType {
 		return false

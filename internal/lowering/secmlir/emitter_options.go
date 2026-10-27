@@ -61,6 +61,9 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := e.validatePackage14ArrayBoundaries(); err != nil {
 		return nil, err
 	}
+	if err := validateArrayOwnershipSchema(module); err != nil {
+		return nil, err
+	}
 	if err := e.validateSliceBoundaries(); err != nil {
 		return nil, err
 	}

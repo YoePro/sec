@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -106,7 +105,7 @@ func TestPackage16ReturnedSliceSources(t *testing.T) {
 }
 
 // Source authority, reservation and escape errors remain Sema errors; a
-// narrowed returned origin retains its named MD-115 gate and no partial IR.
+// narrowed returned origin retains its MD-115 range projection.
 // Rules: rules/memory/borrowing.md — §§4,15,22;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§14–19,43,66–67;
 // rules/corrections/applied/md084-schema11-reference-metadata-correction-20261021.md — §4(6).
@@ -130,9 +129,8 @@ func TestPackage16ReturnedSourceRestrictions(t *testing.T) {
 			t.Fatal(err)
 		}
 		module, err = buildPackage16Source(t, string(narrow), width)
-		var unsupported *UnsupportedFeatureError
-		if module != nil || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "MD-115") {
-			t.Fatalf("lost sub-slice capability gate: %v", err)
+		if module == nil || err != nil {
+			t.Fatalf("sub-slice return: %v", err)
 		}
 	}
 }

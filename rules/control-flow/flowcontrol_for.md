@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-16
-- **Last updated:** 2026-10-18 (MD-057 borrowed iterator views)
+- **Last updated:** 2026-10-27 (MD-117 heterogeneous variadic packs, § 13A)
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_for.md`
@@ -471,6 +471,26 @@ Contains
 An ordinary member named `Next` does not establish iteration. Section 37 defines
 the sole user-type participation point: explicit conformance to the
 compiler-known `Iterator[T]` interface.
+
+### 13A. Heterogeneous variadic packs (MD-117)
+
+Decided 2026-10-26 (`rules/declarations/functions.md` § 38A(5)).
+
+(1) A native variadic parameter pack, homogeneous `...T` or heterogeneous
+`...Types`, is a compiler-known iterable category. For a heterogeneous pack the
+compiler expands the iterations type-aware: each iteration binds an element of
+its own concrete type. There is no `for static` form.
+
+(2) The loop binding modes of §§ 4–7 apply unchanged. A by-value binding is legal
+only for an implicitly copyable element and never silently borrows or moves a
+move-only element out of the pack; `for ref value` observes; `for ref mut value`
+reborrows the referent of a `ref mut` element exclusively without moving the
+reference holder out.
+
+(3) `break`, `continue`, `return`, `defer`, `try`, `panic`, evaluation order,
+borrow live ranges and cleanup keep their observable semantics; an iteration whose
+body is not reached executes no side effects. Expansion and unrolling are
+implementation techniques, not source-level control flow.
 
 ---
 

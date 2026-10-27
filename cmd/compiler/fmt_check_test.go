@@ -46,11 +46,12 @@ func TestFmtCheckCLI(t *testing.T) {
 		{"all changed files", []string{"--check", dirty, clean, dirtyCRLF}, 1, []string{dirty + ": format.noncanonical-source:", dirtyCRLF + ": format.noncanonical-source:"}},
 		{"option after path", []string{dirty, "--check"}, 1, []string{dirty + ": format.noncanonical-source:"}},
 		{"end of options", []string{"--check", "--", clean}, 0, nil},
-		{"no files", []string{"--check"}, 1, []string{"expected at least one source file"}},
+		{"no files", []string{"--check"}, 1, []string{"expected at least one source file or directory"}},
 		{"unknown option", []string{dirty, "--bogus"}, 1, []string{"unknown fmt option: --bogus"}},
 		{"fix check reports corrections", []string{"--check", "--fix", clean}, 0, nil},
 		{"missing file", []string{"--check", filepath.Join(dir, "missing.sec")}, 1, []string{"missing.sec"}},
-		{"directory unsupported", []string{"--check", dir}, 1, []string{"not a regular source file"}},
+		// MD-037: a directory is scanned recursively and checked without writes.
+		{"directory", []string{"--check", dir}, 1, []string{dirtyCRLF + ": format.noncanonical-source:", dirty + ": format.noncanonical-source:"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

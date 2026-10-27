@@ -1546,12 +1546,10 @@ func staticSymbol(id semantic.StaticID) string {
 }
 
 // emitStaticGlobal publishes one static-duration storage location with its
-// exact compile-time initial value (semantic_ir.md § 28; static.md).
-// Address-taken statics stay behind the Place boundary.
+// exact compile-time initial value (semantic_ir.md § 28; static.md). It
+// carries the explicit StaticID, and an address-taken static the marker its
+// Place roots require (MD-116 §§ 2(4), 4(3)).
 func (e *emitter) emitStaticGlobal(static semantic.Static) error {
-	if static.AddressTaken {
-		return &UnsupportedLoweringError{Feature: "address-taken static storage"}
-	}
 	typ, err := e.typeText(static.Type)
 	if err != nil {
 		return err
@@ -1565,7 +1563,11 @@ func (e *emitter) emitStaticGlobal(static semantic.Static) error {
 	default:
 		return &UnsupportedLoweringError{Feature: "static storage without a scalar constant initializer"}
 	}
-	fmt.Fprintf(&e.out, "  \"sec.static.global\"() <{initial = %s, is_mutable = %t, sym_name = %s, type = %s}> {sec.source_name = %s} : () -> ()\n",
-		mlirString(initial), static.Mutable, mlirString(staticSymbol(static.ID)), typ, mlirString(static.Name))
+	addressTaken := ""
+	if static.AddressTaken {
+		addressTaken = "sec.address_taken = true, "
+	}
+	fmt.Fprintf(&e.out, "  \"sec.static.global\"() <{initial = %s, is_mutable = %t, sym_name = %s, type = %s}> {%ssec.source_name = %s, sec.static_id = %d : i32} : () -> ()\n",
+		mlirString(initial), static.Mutable, mlirString(staticSymbol(static.ID)), typ, addressTaken, mlirString(static.Name), static.ID)
 	return nil
 }

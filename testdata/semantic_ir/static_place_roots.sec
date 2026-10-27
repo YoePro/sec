@@ -1,0 +1,33 @@
+module main
+
+let shared: int := 7
+let mut counter: int32 := 0
+let mut untouched: int := 1
+
+fn Fixed() ref int {
+    return ref shared
+}
+
+fn Counter() ref mut int32 {
+    return ref mut counter
+}
+
+fn Forward() ref int {
+    return Fixed()
+}
+
+fn Local() int {
+    static let mut calls: int := 0
+    let r := ref mut calls
+    *r += 1
+    return *r
+}
+
+fn main() int {
+    let fixed := Fixed()
+    let c := Counter()
+    *c = 2
+    return *fixed + Local() + untouched - 8
+}
+
+fn Again() ref int { return ref shared }

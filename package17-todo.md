@@ -643,9 +643,27 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-37 — Lower move-only active union/Result/Option payload bindings only
   on the predecessor's proven variant path, updating container partial state.
   Keep borrowed bindings on P15 and respect MD-031 handler emission limits.
-- [ ] P17-38 — Lower non-trivial whole fixed-array ownership and destruction.
+- [x] P17-38 — Lower non-trivial whole fixed-array ownership and destruction.
   Extend resolved ordinary element actions; preserve spread copy rules and the
   unsupported partial element-move boundary, including runtime indexes.
+
+  Completed 2026-10-27 in this section's source → Semantic IR scope:
+  ordinary elements retain resolved direct/move actions, including terminal
+  aggregate forwarding; each committed source move precedes the next element.
+  Whole local/parameter/return/call transfers, mutable replacement and nested
+  arrays use canonical ownership and cleanup plans. Fresh defaults retain compact
+  exact counts (including zero and one million elements), with reverse element
+  destruction represented by the existing array destruction plan. P15 indexed
+  borrows and whole moves of arrays holding mutable references preserve their
+  non-owning element destruction. Spread still copies only admitted trivial
+  elements; static/runtime indexed partial move-out remains rejected.
+  Tests: `owned_arrays_test.go`, `array_literal_ownership_test.go` and
+  `array_ownership_boundary_test.go`, with source fixtures in
+  `testdata/semantic_ir/owned_fixed_arrays*.sec` and
+  `testdata/sema/owned_fixed_arrays_invalid.sec`.
+  Failed/partial construction (P17-16), unbound temporary cleanup (P17-40)
+  and schema-13 emission (P17-45 onward) retain explicit unsupported boundaries;
+  predecessor schemas never silently emit the new ownership construction.
 - [ ] P17-39 — Prepare fallible RHS ownership before replacement. Failure leaves
   the destination and old cleanup intact; success terminates the old incarnation
   once, installs the new value and registers its obligation at that point.

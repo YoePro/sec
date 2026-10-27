@@ -62,9 +62,17 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 		for _, projection := range source.Projections {
 			switch projection.Canonical() {
 			case sema.CanonicalProjectionSlice:
-				// MD-084 § 4(6): a slice projection needs an explicit
-				// return-origin spelling (P16 §§ 66–67).
-				return nil, fb.unsupported("returned sub-slice origin without a return-origin slice projection spelling (MD-115)", decl.Token)
+				sequence, found := fb.owner.module.Types.Lookup(current)
+				if !found || sequence.Kind != TypeArray && sequence.Kind != TypeSharedSlice && sequence.Kind != TypeMutableSlice {
+					return nil, fb.unsupported("returned slice range of a non-sequence", decl.Token)
+				}
+				step := ReturnOriginStep{Kind: ReturnOriginSlice, UnknownRange: true}
+				if projection.SliceStart != nil && projection.SliceEnd != nil {
+					step.UnknownRange = false
+					step.Start, step.EndExclusive = cloneBigInt(projection.SliceStart), cloneBigInt(projection.SliceEnd)
+				}
+				origin.Path = appendReturnOriginPath(origin.Path, []ReturnOriginStep{step})
+				current = fb.owner.module.Types.Intern(Type{Kind: TypeSharedSlice, Element: sequence.Element})
 			case sema.CanonicalProjectionField:
 				definition, found := fb.owner.structDefinition(current)
 				if !found {
@@ -105,6 +113,8 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 	return origins, nil
 }
 
+// formatReturnOrigins prints canonical root/path metadata without losing ranges.
+// Rules: rules/compiler/semantic_ir.md — §45(12a); rules/mlir/sec_mlir_dialect.md — v12.34.
 func formatReturnOrigins(origins []ReturnOrigin) string {
 	parts := make([]string, 0, len(origins))
 	for _, origin := range origins {
@@ -118,6 +128,12 @@ func formatReturnOrigins(origins []ReturnOrigin) string {
 		}
 		for _, step := range origin.Path {
 			switch {
+			case step.Kind == ReturnOriginSlice:
+				if step.UnknownRange {
+					text.WriteString("[?]")
+				} else {
+					fmt.Fprintf(&text, "[%s..<%s]", step.Start, step.EndExclusive)
+				}
 			case step.Kind == ReturnOriginField:
 				fmt.Fprintf(&text, ".field#%d", step.Field)
 			case step.Index != nil:
@@ -149,6 +165,16 @@ func verifyReturnOrigins(module *Module, fn *Function) error {
 	}
 	if len(fn.ReturnOrigins) == 0 {
 		return fmt.Errorf("function returning a reference has no returned-reference origin summary")
+	}
+	for _, origin := range fn.ReturnOrigins {
+		for _, step := range origin.Path {
+			if step.Kind == ReturnOriginSlice && (step.UnknownRange && (step.Start != nil || step.EndExclusive != nil) || !step.UnknownRange && (step.Start == nil || step.EndExclusive == nil || step.Start.Sign() < 0 || step.Start.Cmp(step.EndExclusive) > 0)) {
+				return fmt.Errorf("invalid returned slice range")
+			}
+		}
+		if err := verifyReturnOriginRangeType(module, fn, origin, returned); err != nil {
+			return err
+		}
 	}
 	definitions := map[ValueID]Operation{}
 	parameters := map[ValueID]int{}
@@ -189,6 +215,7 @@ func verifyReturnOrigins(module *Module, fn *Function) error {
 // whose references it may derive from, with the projection path below each:
 // through copies, moves, reborrows, dereferences and field/element Places,
 // and through a call whose callee summary maps its result to arguments.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.37,v12.34 (MD-085/115).
 func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, parameters map[ValueID]int, functions map[FunctionID]*Function, depth int) ([]ReturnOrigin, bool) {
 	var reversed []ReturnOriginStep
 	finish := func(origins []ReturnOrigin) []ReturnOrigin {
@@ -197,7 +224,7 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 			suffix[i] = reversed[len(reversed)-1-i]
 		}
 		for index := range origins {
-			origins[index].Path = append(append([]ReturnOriginStep(nil), origins[index].Path...), suffix...)
+			origins[index].Path = appendReturnOriginPath(origins[index].Path, suffix)
 		}
 		return origins
 	}
@@ -206,7 +233,7 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 			return finish([]ReturnOrigin{{Kind: ReturnOriginParameter, Parameter: index}}), true
 		}
 		op, ok := definitions[value]
-		if !ok || len(op.Operands) == 0 && op.Kind != OpPlaceStaticRoot {
+		if !ok || len(op.Operands) == 0 && op.Kind != OpPlaceStaticRoot && op.Kind != OpDirectCall {
 			return nil, false
 		}
 		switch op.Kind {
@@ -220,12 +247,13 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 		case OpSliceElementPlace:
 			reversed = append(reversed, ReturnOriginStep{Kind: ReturnOriginElement})
 			value = op.Operands[0]
-		case OpSliceReborrowShared, OpSliceReborrowMutable:
-			// Only a reborrow of the complete extent keeps the source's
-			// origin without a slice projection (P16 §§ 66–67, MD-115).
-			normalize, ok := definitions[op.Operands[1]]
-			if !ok || normalize.Kind != OpSliceRangeNormalize || normalize.SliceRange == nil || normalize.SliceRange.ProofKind != SliceRangeProofOpenBound {
+		case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable:
+			step, unchanged, ok := returnedSliceRange(op, definitions, functions)
+			if !ok {
 				return nil, false
+			}
+			if !unchanged {
+				reversed = append(reversed, step)
 			}
 			value = op.Operands[0]
 		case OpPlaceField:
@@ -247,6 +275,13 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 			}
 			var origins []ReturnOrigin
 			for _, calleeOrigin := range callee.ReturnOrigins {
+				// A static origin names the same module's static at every
+				// call site (MD-116 § 6(4)); it maps to no argument.
+				if calleeOrigin.Kind == ReturnOriginStatic {
+					origins = append(origins, ReturnOrigin{Kind: ReturnOriginStatic, Static: calleeOrigin.Static,
+						Path: appendReturnOriginPath(nil, calleeOrigin.Path)})
+					continue
+				}
 				if calleeOrigin.Parameter >= len(op.Operands) {
 					return nil, false
 				}
@@ -255,7 +290,7 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 					return nil, false
 				}
 				for _, origin := range argument {
-					origin.Path = append(append([]ReturnOriginStep(nil), origin.Path...), calleeOrigin.Path...)
+					origin.Path = appendReturnOriginPath(origin.Path, calleeOrigin.Path)
 					origins = append(origins, origin)
 				}
 			}
@@ -266,6 +301,8 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 	}
 }
 
+// returnOriginListed compares detached canonical paths by exact numeric value.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.37,v12.34 (MD-085/115).
 func returnOriginListed(origins []ReturnOrigin, kind ReturnOriginKind, static StaticID, parameter int, path []ReturnOriginStep) bool {
 	for _, origin := range origins {
 		if origin.Parameter != parameter || len(origin.Path) != len(path) {
@@ -277,7 +314,7 @@ func returnOriginListed(origins []ReturnOrigin, kind ReturnOriginKind, static St
 		same := true
 		for index, step := range origin.Path {
 			other := path[index]
-			if step.Kind != other.Kind || step.Field != other.Field || (step.Index == nil) != (other.Index == nil) || step.Index != nil && step.Index.Cmp(other.Index) != 0 {
+			if step.Kind != other.Kind || step.Field != other.Field || step.UnknownRange != other.UnknownRange || !equalOriginInteger(step.Start, other.Start) || !equalOriginInteger(step.EndExclusive, other.EndExclusive) || (step.Index == nil) != (other.Index == nil) || step.Index != nil && step.Index.Cmp(other.Index) != 0 {
 				same = false
 				break
 			}

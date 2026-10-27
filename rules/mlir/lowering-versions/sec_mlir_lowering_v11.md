@@ -427,3 +427,5 @@ Historical numbering is preserved. The consolidated `rules/mlir/sec_mlir_lowerin
 
 - **MD-084** (v11.7): metadata transport and preservation.
 - **MD-087** (v11.18–v11.20): the authoritative storage query, reference-bearing calls, and selective P8 lowering with legal, verified integer-representation transitions.
+- **MD-116** (v11.29, 2026-10-27): `place.static-root` is emitted as `sec.place.static` against the static's `sec.static.global`, which carries `sec.static_id` and `sec.address_taken = true`. Reference-dependent statics stay high-level through P5/P6/P8. `sec-lower-static-storage` rejects any such static it cannot represent, and schema 12 inherits this (`rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`).
+- **MD-114** (v11.30, 2026-10-27): Semantic IR `Module.Registers`, `RegisterDefinition`, `RegisterFieldDefinition`, `RegisterFieldID` steps and `RegisterWriteProof` map exactly to `sec.registers`, `sec.field_path` and `sec.write_proof`. No names or bit layout are reconstructed after Sema (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`).

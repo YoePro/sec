@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -313,6 +313,8 @@ compiler-known projection
 § 10(10) A reference may depend on an invalidation domain whose semantic identity is independent of address; a validity epoch describes one live incarnation of that domain.
 
 § 10(11) Struct fields and fixed-array elements can be borrowed without copying the whole aggregate. Dynamic fixed-array element Places require the fixed-array bounds semantics, evaluated on one array Place and one index. A union payload Place is valid only under the active-variant proof for the same union storage. Physical offsets are not selected.
+
+§ 10(12) *Static Place roots (MD-116, 2026-10-27; `rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`).* A `place.static-root` names a `Static` by its module-local `StaticID`. It keeps its own independent `PlaceRootID` and `StorageIdentityID`. None of the three is derived from another, from a source name or from a symbol. In Sec MLIR the root is `sec.place.static` (dialect v11.41.3), a zero-operand root that creates no storage, temporary or pointer and reads no value.
 
 ---
 
@@ -634,6 +636,13 @@ address/resource identity where bound
 
 Value operations keep `RegisterTypeID`, field-path identities, bit width/offset, allocation order, byte-order contract at serialization boundaries, field value type, enum/unit/range facts and provenance. Hardware operations additionally keep or losslessly reference the identity, field, request, transfer, safety, effect, shadow, authority, failure and trace data of the correction's § 10(2). Builders consume Sema's immutable resolved plans and never re-derive hardware meaning from syntax. The verifier checks category, type and field identity, payload presence, value-width and enum facts, the linkage between resource and instance, effect and plan capability, and that no ordinary Place root is fabricated for a physical resource. It is not a second planner.
 
+§ 21(7) *Register MLIR serialization (MD-114, 2026-10-27; `rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`).* The detached value facts of §§ 21(4)–21(6) are serialized as follows (dialect v11.41.1a; lowering v11.30):
+- the module register table, field definitions with their ordinals, offsets, types, effective access, shadow and units, and reserved fields become `sec.registers`;
+- the resolved field steps become `sec.field_path`;
+- `RegisterWriteProof` becomes `sec.write_proof` (`typed`, `constant` or `interval`).
+
+Semantic IR remains the source of truth. Lowering reconstructs no names, layout or proofs, and the `bit-extraction` conversion basis keeps failing closed in MLIR until MD-110 is reconciled.
+
 ---
 
 ## § 22 Enums
@@ -740,6 +749,14 @@ no hidden allocation
 
 § 27(4) Lowering must not introduce semantic heap allocation merely to materialize a pack.
 
+### § 27A Heterogeneous variadic type packs (MD-117)
+
+§ 27A(1) For a function using a type pack `[...Types]` (`rules/declarations/functions.md` § 38A), Semantic IR preserves at least: the type-pack generic parameter, its ordered resolved type sequence and resolved pack length; each expanded value's concrete type, source position, by-value/shared/exclusive mode and origin; source-order evaluation, spread provenance and the call-transfer-commit boundary; whole-pack ownership transfer and source invalidation (`<-values...`) versus non-consuming spread; the non-escaping pack lifetime, referent lifetime/provenance and return-origin sets; statically expanded loop iterations with their source-level control-flow effects; per-element copy/move/borrow/destruction obligations; and a canonical specialization identity sufficient for incremental compatibility.
+
+§ 27A(2) These facts are verified before lowering. MLIR/LLVM may choose registers, stack slots, direct arguments or other legal physical representations, but never reinterpret source ownership or control flow from the machine representation.
+
+§ 27A(3) A CompilationPlan or target ABI may affect lowering and reuse compatibility, never the pack's semantic type identity; cache reuse fails closed when the specialization or relevant target facts differ.
+
 ---
 
 ## § 28 Static storage and associated values
@@ -765,6 +782,11 @@ StaticProperty
 § 28(4) Static members never become instance fields.
 
 § 28(5) Static initialization semantics must not imply hidden runtime startup/lazy functions unless the owning rule explicitly requires them.
+
+§ 28(6) *Static identity (MD-116, 2026-10-27).* Every `Static` has a nonzero module-local `StaticID` and an `AddressTaken` fact.
+- Lowering emits them on the static's single `sec.static.global` as `sec.static_id` and, for a referenced static, `sec.address_taken = true`. Static loads, stores and Place roots resolve through that same declaration.
+- A function-local `static let` remains one static and never becomes per-call storage.
+- A `static@N` return origin names `StaticID` N in its own module. Equal IDs in different modules never alias, and an imported static origin that cannot be linked fails closed.
 
 ---
 
@@ -1162,6 +1184,11 @@ source location
 § 45(11) After a CFG merge a reference may carry a finite compile-time set of possible origins, which implies no runtime provenance tag. A reborrow that needs precise provenance may be rejected when the origin set becomes unknown.
 
 § 45(12) Function metadata preserves enough origin information to instantiate returned-reference facts at call sites; returning a local-origin direct reference remains invalid.
+
+§ 45(12a) *Return-origin steps (MD-115, MD-116; 2026-10-27).* `ReturnOrigin` is the only return-origin representation. It has a root (a parameter, the receiver, or `static@N` with N the `StaticID` of § 28(6)) and an ordered `ReturnOriginStep` path.
+- Besides field and element steps, the path may contain a slice-range step. That step has exactly one of two cases: `ExactRange(start, endExclusive)`, with arbitrary-precision bounds `0 <= start <= endExclusive`, or `UnknownRange`, which carries no bounds.
+- Steps are detached, immutable facts. Big integers are deep-copied on publication, query and clone. Equality, printing and caching compare canonical values, never pointer identity.
+- Ranges come from Sema's slice plans. Exact nested ranges are normalized relative to the original origin (§ 126.22).
 
 § 45(13) The `CompilationPlan` records the logical epoch policy (default 64 bits); the source reference type does not include epoch width.
 
@@ -3350,6 +3377,13 @@ epoch/address-stability/pin dependencies
 ```
 
 Returning local-origin slices remains invalid.
+
+§ 126.22(1) *Canonical range origins (MD-115, 2026-10-27; `rules/corrections/applied/MD-115-returned-slice-origin-projections-correction-20261027.md`).*
+- **Known range.** The known normalized range is the `ExactRange` step of § 45(12a), serialized `[A..<B]`.
+- **Unknown range.** The conservative unknown range is `UnknownRange`, serialized `[?]`. It is used only when a bound is genuinely not statically expressible. It keeps the origin and its containment, and proves no disjointness.
+- **Whole views.** An unchanged whole view is the bare origin. A full-open reborrow keeps any existing narrowing.
+- **No weakening.** An exact range that Sema established is never weakened because a later stage cannot yet carry it. That path stays unsupported.
+- **What is not serialized.** A compiler-local `SliceRangeID` is never serialized as a bound. Epoch, address-stability and pin facts stay in reference metadata, not in the range step.
 
 ---
 

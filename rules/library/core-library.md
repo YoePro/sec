@@ -568,6 +568,7 @@ impl string {
     fn RuneAt(index: uint) rune
     fn GetByte(index: uint) Result[byte, IndexError]
     fn ByteAt(index: uint) byte
+    fn CharAt(index: uint) char
 
     fn Trim() string
     fn TrimStart() string
@@ -684,10 +685,19 @@ Slice(start, end)         GetRune(index)            RuneAt(index)
    is not below `self.Len`.
 
 The separately named byte-access members `GetByte(index)`, `ByteAt(index)` and
-the existing byte-oriented `CharAt(index)` use **UTF-8 byte indexes** below
-`self.SizeOf` and are documented as access to encoded bytes. Whether `CharAt`
-is renamed or redesigned is not decided. No writable string byte reference
+`CharAt(index)` use **UTF-8 byte indexes** below `self.SizeOf` and are
+documented as access to encoded bytes. No writable string byte reference
 exists.
+
+`CharAt(index)` is a permanent public convenience alias (MD-092, decided
+2026-10-27; `rules/corrections/MD-092-string-CharAt-byte-alias-correction.md`).
+For every index it behaves exactly as `char(self.ByteAt(index))`:
+- **Result.** It returns one encoded byte as a `char` with value `0..255`. It does not decode a scalar, inspect adjacent bytes or normalize, and its result never converts implicitly to `rune`.
+- **Index domain.** Every byte index below `self.SizeOf` is valid, continuation bytes included. `self.Len` is not the bound.
+- **Out of range.** An index at or beyond `SizeOf` has exactly `ByteAt`'s panic. There is no second bounds policy and no `Result`.
+- **Behavior.** It is read-only, does not allocate and has no special ownership or lifetime behavior.
+- **Delegation.** `ByteAt` remains the single authority for byte retrieval, and `CharAt` delegates to it.
+- **Callers.** The member is neither deprecated nor scheduled for removal, and calling it raises no diagnostic. Callers that scan encoded ASCII bytes may use it, while callers that scan scalars use the rune members.
 
 Implementations may scan UTF-8 bytes internally, including byte-based
 substring matching and lazy iterators that keep byte and rune counters without
@@ -1266,6 +1276,11 @@ conversion and any independently fallible `ConversionError.Contract` checks.
 `Name(try number.ToString())` is valid only when the outer conversion is
 infallible or is separately protected. General `try` boundaries and declared
 error-channel compatibility remain defined by `errorhandling.md` §§ 11–14.
+
+Higher-level formatting with heterogeneous arguments builds on the general
+heterogeneous native variadic type packs (`rules/declarations/functions.md`
+§ 38A, MD-117); core defines no formatting-only argument rule, and the public
+`fmt` surface is decided separately (MD-118).
 
 ## 15.1 `StringError`
 
@@ -2059,3 +2074,223 @@ The Sec 0.1 surface—`Pass`, `Fail`, `Skip`, `Log`, `Expect`, `Require`,
 `rules/tooling/testing.md`. The compiler owns the test-context identity and
 boundary effects while ordinary value, equality, error, ownership, and cleanup
 semantics remain governed by their canonical rulebooks.
+
+# 27. Unit metadata types (MD-062)
+
+The value types of unit metadata reads (`rules/types/units.md`, "Unit
+metadata value types") are public `sec/core` declarations
+(`rules/corrections/md062-unit-metadata-value-types-correction-20261027.md`
+§§ 3, 7, 12(1)–12(2)). They resolve as ordinary nominal types with ordinary
+enum equality, `match` and constant evaluation; the compiler registers exactly
+these identities and creates no parallel synthetic symbols for them. Each
+variant's documentation comment precedes the variant.
+
+## 27.1 `UnitKind`
+
+Kind of quantity. The catalog grows only through deliberate additions to this
+declaration; a `Kind:` value may also be a member of any declared user enum.
+
+```sec
+enum UnitKind {
+    // Kind has not been supplied or otherwise established.
+    Unknown
+
+    // A declared miscellaneous quantity without a narrower standard kind.
+    Other
+
+    // SI base quantities.
+    Length
+    Mass
+    Time
+    ElectricCurrent
+    ThermodynamicTemperature
+    AmountOfSubstance
+    LuminousIntensity
+
+    // General quantities.
+    Count
+    Ratio
+    Probability
+    MonetaryAmount
+    InformationAmount
+    InformationRate
+
+    // Geometry.
+    Area
+    Volume
+    PlaneAngle
+    SolidAngle
+
+    // Motion.
+    Speed
+    Velocity
+    Acceleration
+    Jerk
+    RotationalFrequency
+    AngularVelocity
+    AngularAcceleration
+
+    // Mechanics.
+    Force
+    Pressure
+    Stress
+    MassDensity
+    Energy
+    Work
+    Heat
+    Torque
+    Power
+    ApparentPower
+    ReactivePower
+
+    // Time-dependent quantities.
+    Frequency
+    MassFlowRate
+    VolumeFlowRate
+
+    // Electricity and magnetism.
+    ElectricCharge
+    ElectricPotential
+    ElectromotiveForce
+    ElectricFieldStrength
+    ElectricalResistance
+    ElectricalConductance
+    ElectricalImpedance
+    ElectricalReactance
+    Capacitance
+    Inductance
+    MagneticFieldStrength
+    MagneticFlux
+    MagneticFluxDensity
+
+    // Thermodynamics.
+    Entropy
+    HeatCapacity
+    SpecificHeatCapacity
+    ThermalConductivity
+
+    // Chemistry.
+    Concentration
+    AmountConcentration
+    CatalyticActivity
+
+    // Photometry.
+    LuminousFlux
+    Illuminance
+    Luminance
+
+    // Radiation.
+    Radioactivity
+    AbsorbedDose
+    DoseEquivalent
+}
+```
+
+## 27.2 `UnitSystem`
+
+Descriptive system metadata. A shared system never proves convertibility.
+
+```sec
+enum UnitSystem {
+    // No system was explicitly supplied.
+    Unspecified
+
+    // An explicitly miscellaneous system.
+    Other
+
+    // International System of Units.
+    SI
+
+    // Centimetre-gram-second and its electromagnetic variants.
+    CGS
+    CGSGaussian
+    CGSElectrostatic
+    CGSElectromagnetic
+
+    // International Electrotechnical Commission conventions.
+    IEC
+
+    // Customary and specialist systems.
+    Imperial
+    USCustomary
+    Nautical
+    Astronomical
+    Natural
+    Planck
+    Atomic
+    Currency
+    Domain
+
+    // Historical systems and regional/period measurements.
+    Historical
+}
+```
+
+## 27.3 `UnitOrigin`
+
+`Zero` and `One` are declared coordinate conventions, not proof of a shared
+physical datum.
+
+```sec
+enum UnitOrigin {
+    // No physical/coordinate origin was supplied.
+    None
+
+    // A declared zero-origin coordinate convention.
+    Zero
+
+    // A declared one-origin coordinate convention.
+    One
+
+    // Absolute zero for compatible thermodynamic point quantities.
+    AbsoluteZero
+}
+```
+
+## 27.4 `UnitTransform`, `UnitCategory` and `UnitStatus`
+
+These three are closed: metadata must use their members, never a user enum.
+`UnitCategory` is the type of the implicit `<U>.Category`; it adds no
+`Category:` metadata key. Historical provenance is `UnitSystem.Historical`,
+not a status.
+
+```sec
+enum UnitTransform {
+    Linear
+    Affine
+    Logarithmic
+}
+
+enum UnitCategory {
+    Physical
+    Currency
+    Information
+    Ratio
+    Other
+}
+
+enum UnitStatus {
+    Active
+    Deprecated
+    Obsolete
+}
+```
+
+## 27.5 `UnitDimension`
+
+`UnitDimension` is a compiler-provided opaque nominal value type in `sec/core`,
+not a user-writable struct. Its complete public Sec 0.1 surface is:
+
+| Member / operation | Signature | Meaning |
+| --- | --- | --- |
+| `AxisCount` | read-only property `AxisCount: uint` | number of non-zero axes |
+| `IsDimensionless` | read-only property `IsDimensionless: bool` | the normalized axis set is empty |
+| `==` | `(UnitDimension, UnitDimension) -> bool` | exact normalized-dimension equality |
+| `!=` | `(UnitDimension, UnitDimension) -> bool` | negation of `==` |
+
+It has no constructor, literal, default value, setter, index, iterator,
+ordering, arithmetic, implicit conversion or special `ToString`. Its private
+representation is not published as source, and no illustrative constructor
+bodies are declared. Equality semantics, axis identity and runtime
+requirements are defined in `rules/types/units.md`, "Unit metadata value
+types" (7).

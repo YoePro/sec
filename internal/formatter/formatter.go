@@ -271,7 +271,7 @@ func format(text string, options Options) string {
 	// rules/tooling/formatter.md, Alignment groups and General trailing-comment
 	// alignment. Run after indentation so CLI and LSP observe identical visual
 	// columns and comment text never participates in structural indentation.
-	out = alignDeclarationTrailingComments(out, options.indentationWidth())
+	out = alignDeclarationTrailingComments(out, options.indentationWidth(), options.maximumAlignmentPadding())
 	result := strings.Join(out, "\n")
 	result = formatExecutableBlocks(result, options.indentationWidth())
 	result = formatCSTRoles(result, options.maximumAlignmentPadding())
@@ -280,7 +280,7 @@ func format(text string, options Options) string {
 	// The role pass may widen field, register, and named-type columns; align
 	// trailing comments again against those final columns so a second
 	// formatting pass is a fixed point (rules/tooling/formatter.md §29).
-	result = strings.Join(alignDeclarationTrailingComments(strings.Split(result, "\n"), options.indentationWidth()), "\n")
+	result = strings.Join(alignDeclarationTrailingComments(strings.Split(result, "\n"), options.indentationWidth(), options.maximumAlignmentPadding()), "\n")
 	result = formatCSTBlockComments(result)
 	result = formatCSTLineComments(result)
 	if hadFinal || result != "" {

@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-22 (MD-077 field carriers cross-reference)
-- **Document revision:** 2.3
+- **Last updated:** 2026-10-27 (MD-062 unit metadata types cross-reference)
+- **Document revision:** 2.4
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
 - **Implementation governance:** `governance/types.yaml`
@@ -1968,6 +1968,15 @@ defaults to `decimal`.
 
 The complete unit declaration, structural algebra, Kind, transform, conversion,
 and system rules are defined by `units.md`.
+
+Unit metadata reads `<U>.Member` have the typed results defined in
+`units.md`, "Unit metadata value types" (MD-062, 2026-10-27). They introduce
+the core types `UnitKind`, `UnitSystem`, `UnitOrigin`, `UnitTransform`,
+`UnitCategory` and `UnitStatus` (ordinary closed enums) and `UnitDimension`
+(an opaque, immutable, copyable, non-defaultable compiler-known value type
+with only `AxisCount`, `IsDimensionless`, `==` and `!=`), declared in
+`rules/library/core-library.md` § 27. None of them makes types first-class
+values or adds reflection.
 
 Named unit types remain distinct according to their unit semantics.
 

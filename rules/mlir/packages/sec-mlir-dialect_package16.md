@@ -1658,6 +1658,14 @@ Do not fabricate a narrower range.
 Caller-side borrow analysis may treat an unknown returned range as potentially
 overlapping the full source extent.
 
+**Amendment MD-115 (2026-10-27) for §§ 66–67.** The spellings are as follows (dialect v12.34; lowering v12.32; Semantic IR §§ 45(12a), 126.22(1)):
+- **Exact range.** A statically expressible range is the arbitrary-precision half-open projection `[A..<B]`, relative to the original origin after exact composition.
+- **Degraded range.** The conservative degradation of § 67 is `[?]`. It is never `[..]`, never the bare root and never `[*]`.
+- **Exact claims.** The MD-085 tracer proves an exact claim from the represented range operations.
+- **What stays elsewhere.** The epoch, address-stability and pin facts listed in § 66 stay in the existing reference metadata, not in the projection.
+- **No weakening.** An exact range Sema established is never weakened to `[?]` to work around an emitter or verifier gap.
+- **Correction file.** `rules/corrections/applied/MD-115-returned-slice-origin-projections-correction-20261027.md`.
+
 ---
 
 # 68. Arena/epoch slices

@@ -649,7 +649,7 @@ public:
     target.addDynamicallyLegalOp<sec::CallDirectOp, sec::CallForeignOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addDynamicallyLegalOp<
-        sec::PlaceValueOp, sec::PlaceFieldOp, sec::PlaceArrayIndexInBoundsOp,
+        sec::PlaceValueOp, sec::PlaceStaticOp, sec::PlaceFieldOp, sec::PlaceArrayIndexInBoundsOp,
         sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp, sec::PlaceDerefOp,
         sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
         sec::RefBorrowMutOp, sec::RefCopySharedOp, sec::RefMoveOp,
@@ -743,6 +743,7 @@ public:
              // SEC-MLIR Package 15 section 32: Place and reference operations
              // take part in scalar resolution unchanged apart from types.
              sec::PlaceValueOp::getOperationName(),
+             sec::PlaceStaticOp::getOperationName(),
              sec::PlaceStorageOp::getOperationName(),
              sec::PlaceFieldOp::getOperationName(),
              sec::PlaceArrayIndexInBoundsOp::getOperationName(),
@@ -777,7 +778,15 @@ public:
     populateReturnOpTypeConversionPattern(patterns, typeConverter);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns))))
-      signalPassFailure();
+      return signalPassFailure();
+    // A static declaration resolves together with its loads, stores and
+    // Place roots, so the root's element type stays the declaration's
+    // (MD-116 § 3(3)).
+    module.walk([&](sec::StaticGlobalOp global) {
+      Type resolved = typeConverter.convertType(global.getType());
+      if (resolved && resolved != global.getType())
+        global.setType(resolved);
+    });
   }
 
 private:

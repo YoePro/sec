@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-10-18 (MD-057 clarification)
+- **Last updated:** 2026-10-27 (MD-117 heterogeneous type packs, § 16A)
 - **Document revision:** 2.3
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
@@ -575,6 +575,24 @@ when the concrete `T` is copyable. Each variadic instantiation has one concrete
 element type. `-> values: ...T` is invalid. Monomorphization preserves both
 parameter ownership mode and variadic shape in the concrete callable identity.
 
+The one-concrete-element statement applies to ordinary `[T]`-based homogeneous
+variadics; a heterogeneous type pack `[...Types]` is the distinct model of
+§ 16A (MD-117).
+
+### 16A. Heterogeneous type packs (MD-117)
+
+Decided 2026-10-26 (`rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md`; normative call, ownership and lifetime rules in `rules/declarations/functions.md` § 38A).
+
+(1) A generic parameter written `[...Types]` is a type pack: an ordered sequence of zero or more concrete types inferred from ordinary concrete call arguments and statically known pack spreads. `Types` is an ordinary identifier, not a keyword.
+
+(2) A function or method declares at most one type pack, at the end of its generic parameter list, used by at most one native variadic parameter `...Types`, `...ref Types` or `...ref mut Types` at the end of its value-parameter list. Packs in fields, return-type packs, nested generic argument lists and explicit pack literals are not introduced.
+
+(3) The ordered concrete type sequence, with nominal identities and the parameter mode, is part of the concrete callable identity: `(string, int)`, `(int, string)` and the empty pack are distinct specializations.
+
+(4) Each operation applied to a pack element must be valid for that concrete element through an existing operation, method, overload or satisfied constraint; there is no implicit structural interface such as `FormatArg`.
+
+(5) Type packs add no runtime generic dispatch, type erasure, implicit boxing or runtime type dictionary; § 31 continues to exclude those.
+
 ## 17. Defaultability
 
 A generic parameter has no implicit defaultability guarantee.
@@ -906,8 +924,9 @@ The following are not part of the Sec 0.1 generic model:
 - type erasure;
 - implicit boxing;
 - higher-kinded types;
-- generic parameter packs;
-- variadic type-parameter lists;
+- generic parameter packs other than one trailing heterogeneous type pack
+  `[...Types]` (§ 16A, MD-117);
+- variadic type-parameter lists other than that type pack;
 - generic argument holes;
 - automatic structural constraints inferred from member names;
 - automatic interface implementation;

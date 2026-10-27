@@ -440,7 +440,18 @@ equally named roots of different declarations stay distinct alternatives
 
   Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Static roots (2026-10-16, with P15-42a): `ref` / `ref mut` of a module static or function-local static lowers to `place.static-root @N` with the static's authority, marks the static address-taken and carries Sema's static-storage facts (`TestPackage15LowersStaticPlaceRoots`). Remaining: addressed (fixed-address/MMIO) roots, blocked by MD-077 (no Semantic IR register types or operations are specified; Semantic IR rejects every register access).
   MD-077 (decided 2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md`): addressed roots split by binding category. Ordinary addressed storage becomes a Place root. A hardware register binding becomes a `register.hw.bind` resource/instance root of type `HardwareInstance[T]`, never a Place, with no `ref` to physical bits. The schema is `sec_mlir_dialect.md` v11.41.1. P15-42/42a stays open until MD-077 steps 2–5 are implemented.
-  Current closure boundary (2026-10-25): ordinary addressed roots require MD-111 endpoint/region facts; hardware operation serialization requires MD-114. Detached register/hardware-instance types exist, so the earlier statement that no register IR types exist is historical. Static reference emission is independently blocked by MD-116 (no admitted static Place root text/identity mapping). None is waived by the evidence tasks below.
+  Current closure boundary (2026-10-25): ordinary addressed roots require MD-111 endpoint/region facts; hardware operation serialization requires MD-114. Detached register/hardware-instance types exist, so the earlier statement that no register IR types exist is historical. MD-116 static reference emission and identity verification are implemented (2026-10-27); physical reference-dependent static lowering remains separate. None is waived by the evidence tasks below.
+
+  2026-10-27:
+  - MD-116 is decided and implemented; see P15-42a.
+  - MD-114 is decided (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`; dialect v11.41.1a, lowering v11.30, Semantic IR § 21(7)). It defines the `sec.registers` table with typed `#sec.register_def` / `#sec.register_field`, `sec.field_path` (i32 ordinals) and `sec.write_proof` (`typed` / `constant` / `interval`).
+  - Remaining implementation for detached register values, in the order of correction § 10:
+    1. TableGen attributes and module-table verification;
+    2. `sec.register.extract` / `update` with their path and proof verifiers, the version gate and round trips;
+    3. MD-110 width lookup through the table;
+    4. Go emission from `Module.Registers`;
+    5. the § 11 matrix.
+  - The `bit-extraction` conversion basis stays an MD-110 reconciliation item. Hardware operations stay with MD-111.
 
 - [ ] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
   static (module-level), thread-local and addressed (fixed-address binding,
@@ -469,6 +480,34 @@ equally named roots of different declarations stay distinct alternatives
   - addressed storage (fixed-address register/MMIO bindings) and its Place roots;
   - thread-local storage: Sec 0.1 has no thread-local static syntax, only `ThreadLocal[T]` owning a TLS key (static.md § 4);
   - aggregate and compile-time-evaluated (non-literal) static initializers.
+
+  MD-116 (decided 2026-10-27, `rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`; dialect v11.41.3, lowering v11.29) specifies the MLIR form of a static Place root. That form covers P15-42 static roots and P15-47 static return origins as well:
+  - `place.static-root` emits as zero-operand `sec.place.static {global, place_root_id, storage_identity, address_space}`;
+  - every `sec.static.global` carries `sec.static_id` (the Semantic IR `StaticID`) and, when referenced, `sec.address_taken = true`;
+  - `static@N` names that ID.
+
+  Implemented 2026-10-27:
+  - **Native dialect.** `sec.place.static` is registered with its own verifier, which checks symbol resolution and kind, type equality, mutability, the required `sec.static_id` and `sec.address_taken = true`, and the root metadata. `sec.static_id` is a nonzero i32 on `sec.static.global` only, duplicates are rejected, and the schema-11 Place gate rejects the operation in schemas 1–10.
+  - **Tracing.** `VerifyReturnOrigins` traces the root to `static@N` from the explicit ID and checks a declared `static@N` against an address-taken static with that ID, including projections against the static's type. Same-module call results forward the callee's static origin; a body-less callee fails closed.
+  - **Lowering passes.** P6 resolves the static declaration together with its roots, P5 and P8 keep both high-level, and `sec-lower-static-storage` rejects address-taken statics.
+  - **Identity consistency (2026-10-27).** Module-wide Semantic IR checks
+    and native operation verification reject contradictory storage/address-space
+    facts for repeated roots, storage aliasing between distinct statics and reuse
+    of a PlaceRootID for different statics. These identities remain independent;
+    multiple roots of the same static may retain distinct root IDs. Source
+    regression fixtures are in `testdata/semantic_ir/static_place_roots.sec`,
+    including repeated references and a function-local static; both schemas
+    11/12 pass the 32/64 pipeline. Forged Semantic IR emits no bytes.
+  - **Go emitter.** It writes `sec.static_id` on every static, `sec.address_taken = true` when Semantic IR marks the static, and `sec.place.static` for `place.static-root`.
+  - **Semantic IR tracer.** It now follows a zero-argument call returning a static origin instead of mapping that origin to parameter 0.
+  - **Tests.**
+    - Lit: `Dialect/Sec/invalid-schema11-place-static.mlir`, `Analysis/verify-static-place-roots.mlir` (including a round trip), `Analysis/invalid-static-return-origins.mlir`, `Conversion/SecToCore/schema11-static-place-root.mlir`.
+    - Go: `TestPackage15EmitsStaticPlaceRoots`, from source on 32-bit and 64-bit plans, checking determinism and running the P15 verifier and P5/P6/P8 pipeline.
+
+  Remaining:
+  - static field and element projections, once aggregate statics exist (only integer and bool statics are representable today);
+  - cross-module static origins, which fail closed;
+  - physical lowering of reference-dependent statics.
 - [x] P15-43 — Lower direct field/subfield borrows via Place projections;
   demonstrate that P13 struct values are neither loaded nor copied solely to
   create a reference. Keep properties out of field-Place lowering.

@@ -1,0 +1,46 @@
+module main
+
+fn Fixed(values: ref int[8]) ref int[] { return ref values[1..<3] }
+fn Exact(values: ref int[]) ref int[] { return ref values[1..<3] }
+fn Empty(values: ref int[]) ref int[] { return ref values[2..<2] }
+fn Mutable(values: ref mut int[]) ref mut int[] { return ref mut values[1..<3] }
+fn Reduced(values: ref mut int[]) ref int[] { return ref values[1..<3] }
+fn Dynamic(values: ref int[], start: uint, end: uint) ref int[] { return ref values[start..<end] }
+fn StartOnly(values: ref int[], start: uint) ref int[] { return ref values[start..] }
+fn Same(values: ref int[]) ref int[] { return values }
+fn Full(values: ref int[]) ref int[] {
+    let part := ref values[1..<3]
+    return ref Same(part)[..]
+}
+fn Nested(values: ref int[]) ref int[] {
+    let part := ref values[10..<20]
+    return ref part[2..<5]
+}
+fn Called(values: ref int[]) ref int[] {
+    let part := ref values[10..<20]
+    return Exact(part)
+}
+fn Inclusive(values: ref int[]) ref int[] { return ref values[1..2] }
+fn Copied(values: ref int[]) ref int[] {
+    let part := ref values[1..<3]
+    let copy := part
+    return copy
+}
+
+fn NestedStart(values: ref int[]) ref int[] {
+    let part := ref values[10..<20]
+    return ref part[2..]
+}
+fn Alternatives(values: ref int[], choose: bool) ref int[] {
+    if choose { return ref values[1..<3] }
+    return ref values[4..<6]
+}
+fn EndOnly(values: ref int[]) ref int[] { return ref values[..<3] }
+
+fn CallStart(values: ref int[]) ref int[] {
+    let part := Exact(values)
+    return ref part[1..]
+}
+
+type Box struct { Values: int[8] }
+fn Field(value: ref Box) ref int[] { return ref value.Values[1..<3] }

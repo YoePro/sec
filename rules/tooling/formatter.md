@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
+- **Last updated:** 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
@@ -162,7 +162,7 @@ compact
 
 § 4(13) Preferred line width is a target, not a source-language limit. An unbreakable or deliberately preserved construct may exceed it.
 
-§ 4(14) The maximum alignment padding is the project setting `max_alignment_padding`, a number of spaces in `1..1024`. When it is omitted the default is four indentation widths; with the default indentation width this is sixteen spaces. A project whose ordinary, non-exempt declaration groups — for example eligible struct fields or `let` declarations whose names differ greatly in length — need a wider column may raise it so the group keeps one aligned column instead of § 9(10) dropping the alignment. Wide enum member names are not a reason to raise it: enum explicit-value groups are always aligned regardless of the limit (§ 15(4), MD-100). Zero, negative, out-of-range and non-integer values are rejected by manifest validation, never read as disabling alignment; there is no `sec fmt` command-line override, and `sec init` writes the key only as the commented example `# max_alignment_padding = 16`. This setting does not decide whether the trailing-comment column is separately capped (MD-099) (MD-098, decided 2026-10-18). Adding the key does not change the canonical output of a project that omits it, so it requires no new `format_version`.
+§ 4(14) The maximum alignment padding is the project setting `max_alignment_padding`, a number of spaces in `1..1024`. When it is omitted the default is four indentation widths; with the default indentation width this is sixteen spaces. A project whose ordinary, non-exempt declaration groups — for example eligible struct fields or `let` declarations whose names differ greatly in length — need a wider column may raise it so the group keeps one aligned column instead of § 9(10) dropping the alignment. Wide enum member names are not a reason to raise it: enum explicit-value groups are always aligned regardless of the limit (§ 15(4), MD-100). Zero, negative, out-of-range and non-integer values are rejected by manifest validation, never read as disabling alignment; there is no `sec fmt` command-line override, and `sec init` writes the key only as the commented example `# max_alignment_padding = 16`. The same cap applies to the trailing-comment column of every non-exempt group (§ 12(6), MD-099, decided 2026-10-27) (MD-098, decided 2026-10-18). Adding the key does not change the canonical output of a project that omits it, so it requires no new `format_version`.
 
 § 4(15) All configuration that changes canonical source bytes is project-owned. Personal editor preferences must not silently produce a different canonical project source form.
 
@@ -447,6 +447,8 @@ The spacing before a trailing comment is never hard-coded independently of that 
 
 § 9(10) If required alignment padding exceeds the configured maximum alignment padding, the formatter drops candidate alignment columns for the complete contiguous group rather than producing extreme spacing. Enum value groups are exempt (§ 15(4)).
 
+§ 9(10a) *Per-column decisions (MD-099, 2026-10-27).* The limit is decided separately for each candidate column of a group, and the trailing-comment column is one of those columns. Dropping only the comment column keeps an otherwise legal type or initializer column. A column that was already dropped is never recreated by a later pass, including the trailing-comment pass. Struct fields, bindings, parameters, register fields, named types and other non-enum groups have no exemption from the limit.
+
 § 9(11) Properties with bodies are behavioral declarations and are not horizontally aligned across separate property declarations.
 
 § 9(12) Functions and methods are not horizontally aligned against neighboring functions or methods.
@@ -540,6 +542,12 @@ let ready :=
 § 12(5) A blank line, standalone comment, or incompatible declaration terminates trailing-comment alignment. A trailing comment itself does not terminate it.
 
 § 12(6) Trailing-comment alignment obeys the maximum alignment padding rule.
+
+§ 12(6a) *Group-wide comment-column cap (MD-099, 2026-10-27; `rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md` § 2).* The candidate comment column is decided for each non-exempt group as follows:
+- **Candidate column.** It lies one space after the widest formatted code cell of the group. Every row counts, including rows without a comment and any columns already accepted. The text of a comment never moves the column.
+- **Rejection.** If any commented row would need more padding than the effective `max_alignment_padding`, the column is rejected for the whole group. Padding exactly equal to the cap is allowed.
+- **After rejection.** Every trailing comment then follows its code after one space. No subset of rows is aligned, and no ad hoc gaps remain.
+- **Scope.** This applies to `//` comments and to trailing single-line `/* ... */` comments (§ 12(9a)) alike. Enum explicit-value groups are exempt (§ 15(4a)).
 
 § 12(7) The formatter does not aggressively reflow ordinary `//` prose.
 
@@ -709,6 +717,8 @@ declarations in source order
 § 15(3) Struct fields use the ordinary declaration alignment rules of § 9.
 
 § 15(4) Enum explicit-value assignments align their `=` anchors when they form a homogeneous contiguous group and the grammar uses `=` for that declaration form. An enum value group is always aligned: the § 9(10) maximum alignment padding does not apply to it, so members of very different name lengths still share one value column, and their trailing comments — `//` and trailing single-line `/* ... */` alike (§ 12(9a)) — share one comment column after the widest value cell (§ 9(8b)). Only a blank line, a standalone comment, an implicit member or a declaration boundary ends the group (MD-100, user decision 2026-10-17).
+
+§ 15(4a) *Scope of the enum exemption (MD-100, decided 2026-10-27).* The mandatory alignment of § 15(4) and its uncapped comment column apply only to enum explicit-value groups. Struct fields, named and typed bindings, function and method parameters, register fields, named-type declarations and every other group keep the ordinary candidate-column rules and the cap of §§ 9(10), 12(6a). `max_alignment_padding` keeps its domain, default and ownership (§ 4(14)). There is no `enum_alignment` setting, separate comment-padding option or source directive.
 
 § 15(5) Documentation comments remain before the member or variant they document and break alignment groups when appropriate.
 
@@ -1836,6 +1846,46 @@ type Point struct {
 § 28(7) Diagnostics for a foreign or historical syntax form should show canonical Sec syntax when the intended correction is unambiguous.
 
 § 28(8) The formatter must not claim semantic validity merely because formatting succeeded.
+
+§ 28(9) *Path selection (MD-037, decided 2026-10-27; `rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md` §§ 5–8).* `sec fmt` and `sec fmt --check` expand their paths in the same way. Each path is a Sec source file or a directory that is traversed recursively:
+
+```sh
+sec fmt source.sec
+sec fmt src/
+sec fmt .
+sec fmt --check .
+sec fmt src/ tests/example_test.sec
+```
+
+`.` is the explicit request to scan the current directory. Nothing is scanned without being requested, and an empty path list stays an error. The per-file formatter, `--stdin`, `--fix` and `--` are unchanged.
+
+§ 28(10) *Directory selection.*
+- **What a scan selects.** It selects files whose names end exactly in `.sec`, based only on the explicit filesystem subtree. Imports, Target, `@when`, Variant, SourceSelection and the CompilationPlan play no part, so unused modules are included. `*_test.sec` files and ordinary `internal/` modules are included as well.
+- **Excluded subtrees.** A scan skips the project-reserved `.sec/` and `bin/` directories, `.git/`, `.hg/`, `.svn/`, recognized dependency or vendor and generated-output locations, hidden directories and `testdata/`.
+- **No guessing.** A file is never treated as generated or vendored because of its name or content, and a normal directory called `internal` is never excluded.
+- **Explicit files.** A file named explicitly is formatted even when it lies in an excluded directory or is a fixture.
+- **Never traversed.** Non-Sec files are never touched.
+- **Symbolic links.** Traversal never follows links. An explicitly named link is rejected with a diagnostic.
+- **Installed sources.** The installed standard library, platform libraries, caches and compiler sources are formatted only when they lie inside an explicitly selected subtree and are not excluded as managed external data.
+
+§ 28(11) *Project boundaries.*
+- **Configuration.** A scan that starts inside a project takes its configuration from that project's root (`projects.md`).
+- **Nested projects.** A nested project manifest is reported as a boundary conflict, never adopted.
+- **Standalone scans.** A scan outside any project uses formatter defaults plus explicit overrides, never a nearby project's configuration.
+- **Path errors.** Missing paths, paths that are neither files nor directories, and unreadable paths are diagnostics.
+- **Empty directories.** A directory without eligible files completes without edits.
+
+§ 28(12) *Deterministic selection.* All arguments are expanded before any write. Paths are normalized to lexical absolute paths, deduplicated, and sorted by normalized path without locale collation or dependence on filesystem order. Diagnostics keep a stable display path. Overlapping arguments, such as `sec fmt . src/file.sec`, format each file once. The selection is frozen for the invocation, and paths that appear during the run are not added.
+
+§ 28(13) *Preflight and writes.*
+- **Configuration.** Effective options are resolved per file under §§ 4(18)–4(23).
+- **Preflight.** Selection, readability, manifest and configuration validation all finish before any file is modified. An invalid key or value, an incompatible format version or a boundary conflict fails the invocation with no writes.
+- **Writing.** Only selected files that formatted successfully are written, in deterministic order, with the existing safe replacement and their permissions preserved. `sec.toml` is never rewritten.
+- **Malformed files in bulk mode.** A malformed file is left completely unchanged and reported (§ 25), and the remaining valid files are still processed. The exit status is nonzero if any selected file could not be fully formatted. The LSP keeps its own § 25 behavior.
+- **`--check`.** This mode never writes. It reports, deterministically, every file that would change (`format.noncanonical-source`) and every malformed file (`format.malformed-source`), and returns nonzero if any exist or preflight fails.
+- **Language correction.** Directory mode never enables `--fix` implicitly.
+
+§ 28(14) MD-099, MD-100 and MD-037 repair, clarify or select files without changing a valid file's canonical bytes under its published rules, so `format_version` stays `1` (§ 4(4)).
 
 ---
 

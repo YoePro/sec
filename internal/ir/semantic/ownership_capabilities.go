@@ -41,6 +41,13 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				// Whole-local replacement/reinitialization lowers through
 				// own.replace-place / own.initialize-place (P17-28); the
 				// builder rejects conditional and partial previous values.
+			case *ast.ExpressionStatement:
+				if typ, ok := analyzer.ResolvedTypeOf(node.Expression); ok && typ.Kind == sema.ArrayType && !sema.TriviallyDestructible(typ) {
+					if _, fixed := sema.FixedArrayLength(typ); fixed {
+						feature = "P17 owned fixed-array temporary cleanup (P17-40)"
+						at = location(node.Token)
+					}
+				}
 			case *ast.DeferStatement:
 				if _, ok := analyzer.ResolvedDeferPlanOf(node); ok {
 					feature = "P17 deferred cleanup registration and execution (P17-33)"
@@ -73,8 +80,22 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 }
 
 // ownedLocalMoveLowerable reports a transfer the P17 producers lower: a move
-// of a whole local binding at a return or a local initialization.
+// of a whole local binding into a return, local, call or owning construction.
 func ownedLocalMoveLowerable(plan sema.ResolvedTransferPlan) bool {
 	return plan.Action == sema.TransferMove && len(plan.Source.Projections) == 0 && !plan.Partial &&
-		(plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument)
+		(plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction)
+}
+
+// ArrayConstructionNeedsOwnership exposes the canonical type-table boundary
+// to schema emitters: ordinary P14 array actions cannot erase P17 ownership.
+// It reads verified type facts; it does not infer source copy semantics.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 65–67, 79;
+// rules/mlir/dialect-versions/sec_mlir_dialect_v13.md — ownership actions.
+func ArrayConstructionNeedsOwnership(module *Module, op Operation) bool {
+	if op.Kind != OpArrayConstruct && op.Kind != OpArrayDefault {
+		return false
+	}
+	return ownedCopyClass(module, op.ArrayElementType) != "trivial" ||
+		!trivialDestruction(module, op.ArrayElementType) ||
+		len(op.Results) == 1 && op.Results[0].Ownership == OwnershipOwned
 }

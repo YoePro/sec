@@ -308,6 +308,15 @@ struct LowerStaticStoragePass
     SmallVector<sec::StaticGlobalOp> globals;
     module.walk([&](sec::StaticGlobalOp op) { globals.push_back(op); });
     for (sec::StaticGlobalOp global : globals) {
+      // A reference-dependent static keeps its Place until the physical
+      // reference representation exists; it is rejected, never erased
+      // (MD-116 § 7(6)).
+      auto addressTaken = global->getAttrOfType<BoolAttr>("sec.address_taken");
+      if (addressTaken && addressTaken.getValue()) {
+        global.emitError() << "the Sec MLIR -> LLVM track does not lower "
+                              "reference-dependent static storage yet";
+        return signalPassFailure();
+      }
       Type type = resolvedStaticType(global.getType(), indexBits);
       if (!type) {
         global.emitError() << "the Sec MLIR -> LLVM track does not lower static "

@@ -2,7 +2,7 @@
 
 - **Status:** Canonical normative rulebook
 - **Created:** 2026-09-04
-- **Last updated:** 2026-09-04
+- **Last updated:** 2026-10-27 (MD-117 type packs, §§ 3, 7)
 - **Document revision:** 1.1
 - **Language version:** Sec 0.1
 - **Canonical path:** `rules/compiler/generics_lowering.md`
@@ -59,7 +59,9 @@ CanonicalConcreteTypeIdentity
 ```
 
 Lowering must not define a second identity formula or merge semantically
-distinct specializations merely because representations match. Concrete
+distinct specializations merely because representations match. For a
+heterogeneous type pack `[...Types]` (MD-117) the ordered concrete type sequence
+is part of `OrderedConcreteGenericArguments`. Concrete
 callable and storage binary identities remain governed by linking, ABI, static,
 and monomorphization rules as applicable.
 
@@ -135,7 +137,9 @@ Semantic IR must preserve enough information to identify:
 - ordered concrete generic arguments;
 - the canonical concrete identity;
 - substituted concrete member and payload types;
-- source and instantiation provenance.
+- source and instantiation provenance;
+- for a type pack, its ordered resolved type sequence and length
+  (`rules/compiler/semantic_ir.md` § 27A, MD-117).
 
 Representation-independent template IR, when present, must remain distinct from
 executable concrete IR.

@@ -160,26 +160,39 @@ func processYAMLFile(path string, stats *Stats) error {
 }
 
 func printResults(out io.Writer, stats Stats, verbose bool) {
+	if stats.Files == 0 {
+		fmt.Fprintln(out, "No YAML files found.")
+		return
+	}
 	fmt.Fprintln(out, "\nIMPLEMENTATION STATISTICS")
 	fmt.Fprintf(out, "YAML files read:             %d\n", stats.Files)
 	fmt.Fprintf(out, "Total integrations:          %d\n", stats.TotalObjects)
-	fmt.Fprintln(out, "\nIntegration statuses:")
-	for _, status := range []string{"implemented", "partial", "planned"} {
-		fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
-	}
-	for _, status := range sortedKeys(stats.StatusCounts) {
-		if status != "implemented" && status != "partial" && status != "planned" {
+
+	if stats.TotalObjects > 0 {
+		fmt.Fprintln(out, "\nIntegration statuses:")
+		for _, status := range []string{"implemented", "partial", "planned"} {
 			fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
 		}
+		for _, status := range sortedKeys(stats.StatusCounts) {
+			if status != "implemented" && status != "partial" && status != "planned" {
+				fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
+			}
+		}
+	} else {
+		fmt.Fprintln(out, "\nNo integrations found.")
 	}
 
 	tot := stats.TotalImplemented + stats.TotalRemaining + stats.TotalPartial
-	fmt.Fprintln(out, "\nChecklist items:")
-	fmt.Fprintf(out, "  Implemented:               %5d  (%2.1f%%)\n", stats.TotalImplemented, (float64(stats.TotalImplemented) / float64(tot) * 100))
-	fmt.Fprintf(out, "  Remaining:                 %5d  (%2.1f%%)\n", stats.TotalRemaining, (float64(stats.TotalRemaining) / float64(tot) * 100))
-	fmt.Fprintf(out, "  Partial:                   %5d  ( %2.1f%%)\n", stats.TotalPartial, (float64(stats.TotalPartial) / float64(tot) * 100))
-	fmt.Fprintf(out, "--------------------------------------------\n")
-	fmt.Fprintf(out, "  Total:                     %5d\n", tot)
+	if tot > 0 {
+		fmt.Fprintln(out, "\nChecklist items:")
+		fmt.Fprintf(out, "  Implemented:               %5d  (%2.1f%%)\n", stats.TotalImplemented, (float64(stats.TotalImplemented) / float64(tot) * 100))
+		fmt.Fprintf(out, "  Remaining:                 %5d  (%2.1f%%)\n", stats.TotalRemaining, (float64(stats.TotalRemaining) / float64(tot) * 100))
+		fmt.Fprintf(out, "  Partial:                   %5d  ( %2.1f%%)\n", stats.TotalPartial, (float64(stats.TotalPartial) / float64(tot) * 100))
+		fmt.Fprintf(out, "--------------------------------------------\n")
+		fmt.Fprintf(out, "  Total:                     %5d\n", tot)
+	} else {
+		fmt.Fprintln(out, "\nNo checklist items found.")
+	}
 	if stats.LibraryObjects > 0 {
 		fmt.Fprintf(out, "\nNot counted (library, not compiler implementation): %d integrations in %s\n", stats.LibraryObjects, strings.Join(stats.LibraryFiles, ", "))
 	}

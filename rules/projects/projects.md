@@ -347,6 +347,8 @@ ProjectManifest {
 
 § 6(11) `[format].max_alignment_padding` is a project-owned integer number of spaces in `1..1024` (`formatter.md` § 4(14)); `0`, negative, out-of-range and non-integer values are manifest errors. When it is omitted the formatter uses four times `indentation_width` (16 by default), so adding the key requires no new `format_version`. It has no `sec fmt` command-line override, and `sec init` writes it only as the commented example `# max_alignment_padding = 16` (MD-098, 2026-10-18).
 
+§ 6(12) A directory scan by `sec fmt` uses the project root and manifest of this rulebook as its configuration boundary, and skips the reserved `.sec/` and `bin/` subtrees (`formatter.md` §§ 28(9)–28(13), MD-037, 2026-10-27). File selection for formatting is not the compilation source graph and does not change what a module or Target contains.
+
 ---
 
 ## § 7. `[project]`

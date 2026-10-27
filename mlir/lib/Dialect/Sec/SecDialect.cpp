@@ -371,10 +371,21 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
            (isReferenceValueType(operation->getResult(0).getType()) ||
             isa<SliceElementPlaceOp>(operation));
   };
-  if (name == "sec.address_taken") {
-    if (!isa<StorageDeclareOp>(operation))
+  // MD-116 § 2(4): the explicit nonzero module-local StaticID of a static.
+  if (name == "sec.static_id") {
+    auto integer = dyn_cast<IntegerAttr>(value);
+    auto type = integer ? dyn_cast<IntegerType>(integer.getType())
+                        : IntegerType{};
+    if (!isa<StaticGlobalOp>(operation) || !integer || !type ||
+        type.getWidth() != 32 || integer.getValue().isZero())
       return operation->emitError(
-          "sec.address_taken annotates sec.storage.declare");
+          "sec.static_id must be a nonzero i32 on sec.static.global");
+    return success();
+  }
+  if (name == "sec.address_taken") {
+    if (!isa<StorageDeclareOp, StaticGlobalOp>(operation))
+      return operation->emitError(
+          "sec.address_taken annotates sec.storage.declare or sec.static.global");
     // MD-084 section 2(4): absence means no marker; false is not a marker.
     if (failed(requireBool())) return failure();
     if (!cast<BoolAttr>(value).getValue())
@@ -452,11 +463,18 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     llvm::StringSet<> seen;
     for (Attribute origin : array) {
       StringRef text = cast<StringAttr>(origin).getValue();
-      if (!sec::parseReturnOrigin(text))
+      auto parsedOrigin = sec::parseReturnOrigin(text);
+      if (!parsedOrigin)
         return operation->emitError()
                << "sec.return_origins entry \"" << text
                << "\" is not a canonical origin (param#N, receiver or "
                   "static@N followed by .field#N, [N] or [*] projections)";
+      // MD-115 §1(4),§6(5): only schema 12 admits range projections.
+      auto module = operation->getParentOfType<ModuleOp>();
+      auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr();
+      if ((!version || version.getInt() < 12) && llvm::any_of(parsedOrigin->projections, [](const sec::ReturnOriginProjection &p) {
+          return p.kind == sec::ReturnOriginProjection::Kind::Range || p.kind == sec::ReturnOriginProjection::Kind::UnknownRange;
+        })) return operation->emitError("returned slice range projections require schema 12");
       if (!seen.insert(text).second)
         return operation->emitError()
                << "sec.return_origins contains duplicate entry \"" << text

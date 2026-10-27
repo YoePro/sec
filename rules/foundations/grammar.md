@@ -261,6 +261,7 @@ Selective and wildcard imports are not part of Sec 0.1.
 ```text
 TopLevelDeclaration
     ::= TypeDeclaration
+      | ForeignTypeDeclaration
       | UnitDeclaration
       | EnumDeclaration
       | InterfaceDeclaration
@@ -887,18 +888,26 @@ RegisterTypeDeclaration
     ::= "type" Identifier
         Contextual("register")
         "[" IntegerConstant "]"
-        [ RegisterAllocationOrder ]
-        [ RegisterByteOrder ]
+        { RegisterTypeModifier }
         RegisterBody
         [ ImplementsClause ]
 
+RegisterTypeModifier
+    ::= RegisterAllocationOrder
+      | RegisterByteOrder
+      | RegisterShadowPolicy
+
 RegisterAllocationOrder
-    ::= Contextual("lsb-first")
-      | Contextual("msb-first")
+    ::= Contextual("lsb") "-" Contextual("first")
+      | Contextual("msb") "-" Contextual("first")
 
 RegisterByteOrder
-    ::= Contextual("little-endian")
-      | Contextual("big-endian")
+    ::= Contextual("little") "-" Contextual("endian")
+      | Contextual("big") "-" Contextual("endian")
+
+RegisterShadowPolicy
+    ::= Contextual("shadow")
+      | Contextual("noshadow")
 
 RegisterBody
     ::= "{" [ RegisterField
@@ -911,6 +920,21 @@ RegisterFieldSeparator
 
 RegisterField
     ::= RegisterFieldName ":" RegisterFieldType
+        [ RegisterFieldAccess ]
+        [ RegisterShadowPolicy ]
+
+RegisterFieldAccess
+    ::= Contextual("read") "-" Contextual("write")
+      | Contextual("read") "-" Contextual("only")
+      | Contextual("write") "-" Contextual("only")
+      | Contextual("write") "-" Contextual("one") "-" Contextual("clear")
+      | Contextual("write") "-" Contextual("one") "-" Contextual("set")
+      | Contextual("write") "-" Contextual("one") "-" Contextual("toggle")
+      | Contextual("write") "-" Contextual("zero") "-" Contextual("clear")
+      | Contextual("write") "-" Contextual("zero") "-" Contextual("set")
+      | Contextual("write") "-" Contextual("zero") "-" Contextual("toggle")
+      | Contextual("read") "-" Contextual("clear")
+      | Contextual("read") "-" Contextual("set")
 
 RegisterFieldName
     ::= Identifier
@@ -934,8 +958,15 @@ type MotorProtocol register[8] {
 }
 ```
 
-The allocation and byte-order modifiers are independent and may both be
-present:
+The allocation order, byte order, and shadow policy modifiers are independent:
+each modifier class may occur at most once, their source order is irrelevant,
+and duplicate or conflicting modifiers are errors. `noshadow` is the default.
+At field level, an optional access modifier precedes the optional shadow
+policy; each may occur at most once. The default field access is `read-write`.
+The semantic meaning of these modifiers belongs to
+`rules/declarations/registers.md`.
+
+The allocation and byte-order modifiers may both be present:
 
 ```sec
 type PacketWord register[16] msb-first big-endian {
@@ -1014,6 +1045,15 @@ UnitMetadataDeclaration
 
 PascalCase is canonical. Case and underscore tolerant parsing may remain as a
 Sec 0.1 migration aid.
+
+`Name` and `Category` are not contextual metadata names: they are implicit
+read-only members of a named unit, and `Name:` or `Category:` inside
+`impl <U>` is rejected by semantic analysis. `IsBaseunit` and similar
+spellings are not aliases of `BaseUnit`. Enum-backed values are canonically
+qualified members (`Kind: UnitKind.Length`); legacy bare names stay accepted
+in this context only (MD-062, `rules/types/units.md`, "Unit metadata value
+types" (5)). Metadata reads use the existing qualified unit member access
+`<U>.Member`; the grammar is otherwise unchanged.
 
 ---
 
@@ -1168,7 +1208,7 @@ impl Vehicle {
             return _speed
         }
 
-        try set value {
+        try set value SpeedError {
             _speed = value
         }
     }
@@ -1441,9 +1481,12 @@ Foreign data declarations and types additionally use:
 
 ```text
 ForeignTypeDeclaration
-    ::= "extern" "C" "type" Identifier "struct" [ ForeignStructBody ]
-      | "extern" "C" "type" Identifier "union" ForeignUnionBody
-      | "extern" "C" "type" Identifier "enum" ForeignEnumBody
+    ::= "extern" ForeignABI "type" Identifier "struct" [ ForeignStructBody ]
+      | "extern" ForeignABI "type" Identifier "union" ForeignUnionBody
+      | "extern" ForeignABI "type" Identifier "enum" ForeignEnumBody
+
+ForeignABI
+    ::= StringLiteral
 
 ForeignTypeReference
     ::= "c" "::" Identifier { "::" Identifier }
@@ -1456,6 +1499,10 @@ ForeignCallbackExpression
 
 `c::` is the only C qualification prefix; the capitalized `C::` form is not Sec
 0.1 syntax. `::` is a single token with no whitespace inside or around it.
+Sec 0.1 foreign data declarations currently require the ABI string `"C"`; the
+grammar preserves the source-level string-literal spelling and Sema enforces
+that current ABI restriction. Foreign forms remain subject to the support
+boundary in `rules/platform/ffi.md`.
 Fundamental names and target-defined binding names are distinguished during
 semantic resolution; the production grants no permission to use an arbitrarily
 spelled C type without a real binding (MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 2.8).
@@ -2296,7 +2343,7 @@ select {
         discard result
     }
 
-    after 10 => {
+    after 10<ms> => {
     }
 
     default => {
@@ -2443,6 +2490,7 @@ PrimaryExpression
       | RefExpression
       | MoveExpression
       | RuntimeCallExpression
+      | ForeignCallbackExpression
       | PrefixExpression
 ```
 
@@ -3218,6 +3266,7 @@ Canonical overview:
 TypeReference
     ::= ReferenceType
       | FunctionType
+      | ForeignTypeReference
       | UnitOnlyType
       | ParenthesizedType
       | NamedTypeReference TypeSuffixes
@@ -3478,10 +3527,10 @@ Complete dimension and capacity validation belongs to Sema.
 
 ```text
 EventType
-    ::= "Event" "[" TypeReference [ "," IntegerConstant ] "]"
+    ::= "Event" "[" TypeReference [ "," ConstantExpression ] "]"
 
 EventStorageType
-    ::= "EventStorage" "[" TypeReference [ "," IntegerConstant ] "]"
+    ::= "EventStorage" "[" TypeReference [ "," ConstantExpression ] "]"
 ```
 
 Examples:

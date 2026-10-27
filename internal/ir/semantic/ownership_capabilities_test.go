@@ -43,9 +43,9 @@ func TestPackage17CapabilityPreservesPredecessors(t *testing.T) {
 func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 	for _, test := range []struct{ fixture, module, feature string }{
 		// Owned locals, scope cleanup and whole-local moves lower since
-		// P17-35/P17-42; these fixtures' next boundaries are a non-trivial
-		// array literal element and a P18 dynamic array.
-		{"sema/cleanup_initializations.sec", "main", "non-trivial array literal element"},
+		// P17-35/P17-42, and whole fixed arrays since P17-38; these
+		// fixtures now reach their later cleanup and P18 boundaries.
+		{"sema/cleanup_initializations.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_defer.sec", "cleanup", "deferred cleanup"},
 		{"semantic_ir/package17_boundary_transfer.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_discard.sec", "main", "cleanup cancellation"},

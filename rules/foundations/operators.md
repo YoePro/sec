@@ -2241,6 +2241,30 @@ integer representation is the same.
 
 Enums do not derive ordered comparison in Sec 0.1.
 
+The unit metadata enums (`UnitKind`, `UnitSystem`, `UnitOrigin`,
+`UnitTransform`, `UnitCategory`, `UnitStatus`) and user enums read through
+`<U>.Kind`, `<U>.System` or `<U>.Origin` follow this rule unchanged: a member
+of one enum never compares with a same-spelled member of another (MD-062).
+
+---
+
+# Unit dimension equality
+
+`UnitDimension` (`rules/library/core-library.md` § 27.5) supports exactly:
+
+```text
+==
+!=
+```
+
+on two `UnitDimension` operands, with `bool` results. These are
+compiler-defined operators resolved for this compiler-known nominal type, not
+user operator overloads. `a == b` is true iff the two normalized dimensions
+have identical axis identities and exponents; `!=` is its negation. Ordered
+comparison and arithmetic on `UnitDimension` are errors. The exact semantics
+and runtime requirements are in `rules/types/units.md`, "Unit metadata value
+types" (7) (MD-062, 2026-10-27).
+
 ---
 
 # Array equality

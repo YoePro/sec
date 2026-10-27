@@ -56,6 +56,9 @@ func Verify(module *Module) error {
 		}
 		functions[fn.ID] = fn
 	}
+	if err := verifyStaticPlaceIdentities(module); err != nil {
+		return err
+	}
 	for _, fn := range module.Functions {
 		if err := verifyFunction(module, fn, functions); err != nil {
 			return fmt.Errorf("function %s: %w", fn.ID, err)
@@ -537,7 +540,7 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyPlaceReferenceFunction(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
-	if err := verifyOwnershipFlow(fn); err != nil {
+	if err := verifyOwnershipFlow(module, fn); err != nil {
 		return err
 	}
 	if err := verifySubobjectState(module, fn); err != nil {
@@ -1041,7 +1044,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("unsafe struct.replace-field")
 		}
 	case OpArrayConstruct:
-		if err := verifyArrayConstruct(module.Types, op, values); err != nil {
+		if err := verifyArrayConstruct(module, op, values); err != nil {
 			return err
 		}
 	case OpArrayDefault:
@@ -1115,7 +1118,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	return nil
 }
 
-func verifyArrayConstruct(types *TypeTable, op Operation, values map[ValueID]Value) error {
+func verifyArrayConstruct(module *Module, op Operation, values map[ValueID]Value) error {
+	types := module.Types
 	if len(op.Results) != 1 ||
 		len(op.ArraySegmentKinds) != len(op.Operands) ||
 		len(op.ArraySegmentLengths) != len(op.Operands) ||
@@ -1142,17 +1146,26 @@ func verifyArrayConstruct(types *TypeTable, op Operation, values map[ValueID]Val
 		operandType := values[operand].Type
 		switch op.ArraySegmentKinds[index] {
 		case ArraySegmentElement:
-			if op.ArrayActions[index] != ArrayActionConstructDirect || op.ArraySegmentLengths[index] != "1" || operandType != op.ArrayElementType {
+			if (op.ArrayActions[index] != ArrayActionConstructDirect && op.ArrayActions[index] != ArrayActionCopyTrivial && op.ArrayActions[index] != ArrayActionMove) || op.ArraySegmentLengths[index] != "1" || operandType != op.ArrayElementType {
 				return fmt.Errorf("array.construct element segment %d mismatch", index)
+			}
+			if op.ArrayActions[index] == ArrayActionCopyTrivial && (ownedCopyClass(module, operandType) != "trivial" || !trivialDestruction(module, operandType)) {
+				return fmt.Errorf("array.construct cannot copy non-trivial element %d", index)
 			}
 		case ArraySegmentRange:
 			if op.ArrayActions[index] != ArrayActionConstructDirect || operandType != op.ArrayElementType {
 				return fmt.Errorf("array.construct range segment %d mismatch", index)
 			}
+			if !package14TrivialValue(module, op.ArrayElementType) {
+				return fmt.Errorf("array.construct range requires copy-trivial numeric elements")
+			}
 		case ArraySegmentSpread:
 			spread, ok := types.Lookup(operandType)
 			if !ok || spread.Kind != TypeArray || spread.Element != op.ArrayElementType || spread.Length != op.ArraySegmentLengths[index] || op.ArrayActions[index] != ArrayActionCopyTrivial {
 				return fmt.Errorf("array.construct spread segment %d mismatch", index)
+			}
+			if ownedCopyClass(module, op.ArrayElementType) != "trivial" || !trivialDestruction(module, op.ArrayElementType) {
+				return fmt.Errorf("array.construct spread requires copy-trivial elements")
 			}
 		default:
 			return fmt.Errorf("array.construct segment %d has invalid kind", index)
@@ -1357,7 +1370,7 @@ func arrayElementDefaultable(module *Module, id TypeID) bool {
 		return ok && (length.Sign() == 0 || arrayElementDefaultable(module, typ.Element))
 	case TypeStruct:
 		definition, ok := structDefinition(module, id)
-		return ok && definition.Defaultable && definition.CopyClassification == "trivial" && definition.TriviallyDestructible
+		return ok && definition.Defaultable
 	default:
 		return false
 	}

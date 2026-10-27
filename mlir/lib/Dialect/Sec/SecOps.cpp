@@ -990,6 +990,34 @@ LogicalResult PlaceStorageOp::verify() {
                                  getAddressSpace());
 }
 
+// A static Place root resolves its symbol to exactly one sec.static.global
+// carrying an explicit sec.static_id and the address-taken marker, with the
+// same element type and no more authority than the declaration (MD-116 §§ 3-5).
+LogicalResult PlaceStaticOp::verify() {
+  auto place = requirePlace(*this, getPlace().getType(), "result");
+  if (failed(place))
+    return failure();
+  Operation *symbol =
+      SymbolTable::lookupNearestSymbolFrom(*this, getGlobalAttr());
+  auto global = dyn_cast_or_null<StaticGlobalOp>(symbol);
+  if (!global)
+    return emitOpError("global must name a sec.static.global");
+  // P6 resolves the declaration and its roots together (MD-116 § 3(3)).
+  if (place->getElementType() != global.getType())
+    return emitOpError("Place element type must match the static's type");
+  if (isReadWrite(*place) && !global.getIsMutable())
+    return emitOpError("a rw Place root requires a mutable static");
+  if (!global->getAttrOfType<IntegerAttr>("sec.static_id"))
+    return emitOpError("the referenced static requires sec.static_id");
+  auto addressTaken = global->getAttrOfType<BoolAttr>("sec.address_taken");
+  if (!addressTaken || !addressTaken.getValue())
+    return emitOpError(
+        "the referenced static requires sec.address_taken = true");
+  if (failed(verifyPlaceRootMetadata(*this, getPlaceRootId(), getStorageIdentity(),
+                                     getAddressSpace()))) return failure();
+  return verifyStaticPlaceIdentity(*this);
+}
+
 LogicalResult PlaceFieldOp::verify() {
   auto base = requirePlace(*this, getBase().getType(), "base");
   auto place = requirePlace(*this, getPlace().getType(), "result");
@@ -1230,6 +1258,16 @@ LogicalResult StaticGlobalOp::verify() {
     if (digits.empty() || !llvm::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }))
       return emitOpError("integer static requires a decimal initial value");
   }
+  // sec.static_id is the module-local StaticID; two statics never share it
+  // (MD-116 § 2(4)). Only earlier siblings are compared so a duplicate is
+  // reported once.
+  if (auto id = (*this)->getAttrOfType<IntegerAttr>("sec.static_id"))
+    for (Operation *sibling = (*this)->getPrevNode(); sibling;
+         sibling = sibling->getPrevNode())
+      if (auto other = dyn_cast<StaticGlobalOp>(sibling))
+        if (auto otherID = other->getAttrOfType<IntegerAttr>("sec.static_id");
+            otherID && otherID.getInt() == id.getInt())
+          return emitOpError() << "duplicate sec.static_id " << id.getInt();
   return success();
 }
 

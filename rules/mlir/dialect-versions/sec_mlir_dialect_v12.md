@@ -568,3 +568,12 @@ owning T[] is not represented as slice
 schema-v11 regressions remain valid
 no physical descriptor layout is selected
 ```
+
+---
+
+## Amendments (2026-10-27)
+
+Historical numbering is preserved. The consolidated `rules/mlir/sec_mlir_dialect.md` amendments take precedence where they conflict:
+
+- **MD-115** (v12.34): schema 12 extends the MD-084 `sec.return_origins` projection grammar with an exact arbitrary-precision half-open range `[A..<B]` and an indeterminate range `[?]`. These are distinct from the unchanged root, from source `[..]` and from the element projection `[*]`. Exact claims are proved by the MD-085 tracer from the represented slice range operations, and schemas 1–11 reject both projections (`rules/corrections/applied/MD-115-returned-slice-origin-projections-correction-20261027.md`).
+- **MD-116** (inherited from v11.41.3): `sec.place.static`, `sec.static_id` and the static `sec.address_taken` marker apply unchanged in schema 12 (`rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`).

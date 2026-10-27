@@ -3096,6 +3096,47 @@ The `Iterator[T]` interface and `for` behavior are defined by
 Semantic IR, lowering, and tooling consume the exact Sema-selected method. A
 member named `Next` without explicit conformance never acquires this identity.
 
+## Unit metadata members
+
+Read-only value members of a named unit `<U>` (MD-062, 2026-10-27; types,
+defaults and diagnostics in `rules/types/units.md`, "Unit metadata value
+types"):
+
+```text
+Name        string           implicit
+Category    UnitCategory     implicit
+LongName    string
+Symbol      string
+BaseUnit    bool
+Status      UnitStatus
+Dimension   UnitDimension
+Kind        concrete enum type of the value
+Scale       decimal
+System      concrete enum type of the value
+Transform   UnitTransform
+Offset      decimal
+Origin      concrete enum type of the value
+LogBase     decimal
+LogFactor   decimal
+Reference   decimal or decimal<V>
+```
+
+Each has a stable registry ID; legacy migration spellings of metadata keys
+do not become separate entries. These are value members only: `<U>.Name(...)`
+still resolves an ordinary unit function. Structural unit expressions have
+none of them.
+
+## `UnitDimension`
+
+```text
+AxisCount        read-only property, uint
+IsDimensionless  read-only property, bool
+==, !=           compiler-defined equality (rules/foundations/operators.md)
+```
+
+No other members, constructors or operators exist
+(`rules/library/core-library.md` § 27.5).
+
 Other compiler-known entries may exist when owned by their canonical
 rulebooks.
 

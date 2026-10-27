@@ -1,0 +1,32 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+
+fn Make() Handle {
+    return Handle { id: 1 }
+}
+
+fn Duplicate() void {
+    let source := Make()
+    let values := [<-source, <-source]
+}
+
+fn CopyElement() void {
+    let source := Make()
+    let values: Handle[1] := [source]
+}
+
+fn Spread(-> values: Handle[2]) Handle[2] {
+    return [values...]
+}
+
+fn StaticMove(-> values: Handle[2]) Handle {
+    let item :<- values[0]
+    return item
+}
+
+fn RuntimeMove(-> values: Handle[2], index: uint) Handle {
+    let item :<- values[index]
+    return item
+}

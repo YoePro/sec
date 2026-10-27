@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-18
-- **Last updated:** 2026-10-13
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-27 (MD-062 unit metadata value types)
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/units.md`
 - **Replaces:** `rules/types/units.txt`
@@ -184,10 +184,10 @@ type Volt uint
 impl <Volt> {
     LongName: "Volt"
     Symbol: "V"
-    Kind: electric_potential
+    Kind: UnitKind.ElectricPotential
     Dimension: [mass^1, length^2, time^-3, electric_current^-1]
     Scale: 1
-    System: SI
+    System: UnitSystem.SI
 }
 
 impl Volt {
@@ -212,10 +212,9 @@ impl Volt {
 - A bare unit name is never a unit reference: `impl rpm`, `rpm(hz)` and a type
   written `rpm` are errors whose help names the `<rpm>` spelling.
 
-Of the unit metadata, `<U>.Symbol` and `<U>.LongName` are readable as
-`string`. The value types of the other metadata (`Kind`, `Dimension`, `Scale`,
-`System`, `BaseUnit`, `Status` and the transform fields) are not defined in
-Sec 0.1 (`missing-decisions.yaml` MD-062), so reading them is an error.
+Every unit metadata member, plus the implicit `Name` and `Category`, is
+readable as `<U>.Member` with the exact value type given in "Unit metadata
+value types" below (MD-062, 2026-10-27).
 
 ---
 
@@ -300,7 +299,7 @@ impl <KiB> {
     Symbol: "KiB"
     Dimension: [information^1]
     Scale: 8192
-    System: IEC
+    System: UnitSystem.IEC
 }
 ```
 
@@ -465,13 +464,13 @@ What semantic quantity does this value represent?
 Units may declare:
 
 ```sec
-Kind: energy
+Kind: UnitKind.Energy
 ```
 
 or:
 
 ```sec
-Kind: torque
+Kind: UnitKind.Torque
 ```
 
 Two units may have the same dimension while having different Kinds.
@@ -490,11 +489,11 @@ Another important example is:
 ```text
 Hz
     Dimension: [time^-1]
-    Kind: frequency
+    Kind: UnitKind.Frequency
 
 rpm
     Dimension: [time^-1]
-    Kind: rotational_frequency
+    Kind: UnitKind.RotationalFrequency
 ```
 
 A fixed numeric relationship may exist while the Kinds remain intentionally
@@ -505,7 +504,9 @@ different.
 `Kind` metadata is optional in Sec 0.1 so that existing catalogs and local units
 can migrate incrementally.
 
-If omitted, the unit's Kind is `unknown`.
+If omitted, the unit's Kind is `UnitKind.Unknown`. `Kind` may also name a
+member of a user-declared enum ("Unit metadata value types" (4)); `Unknown` is
+an absence marker, never a compatibility fact.
 
 Unknown Kind must not be used as evidence that two different named units are
 implicitly semantically compatible.
@@ -543,19 +544,17 @@ operand's Kind where the operation is semantically valid.
 
 `System` is descriptive and conversion metadata for a named unit system.
 
-Examples include:
+The standard systems are the members of the core enum `UnitSystem`
+(`rules/library/core-library.md` § 27): `Unspecified`, `Other`, `SI`, `CGS`,
+`CGSGaussian`, `CGSElectrostatic`, `CGSElectromagnetic`, `IEC`, `Imperial`,
+`USCustomary`, `Nautical`, `Astronomical`, `Natural`, `Planck`, `Atomic`,
+`Currency`, `Domain` and `Historical`. `System` may also name a member of a
+user-declared enum. Historical units (for example region- or period-specific
+aln, famn and cubit) keep distinct unit identities and their declared
+transforms; their provenance is `UnitSystem.Historical`, not a status.
 
-```text
-SI
-Imperial
-USCustomary
-IEC
-Currency
-Domain
-Other
-```
-
-System does not determine dimensional compatibility.
+A matching system never proves fixed convertibility or a currency exchange
+relationship. System does not determine dimensional compatibility.
 
 Two units from different systems may be dimensionally compatible.
 Two units in the same system may represent completely different dimensions.
@@ -577,10 +576,10 @@ unit mps physical
 impl <mps> {
     LongName: "Meter per second"
     Symbol: "m/s"
-    Kind: velocity
+    Kind: UnitKind.Velocity
     Dimension: [length^1, time^-1]
     Scale: 1
-    System: SI
+    System: UnitSystem.SI
 }
 ```
 
@@ -821,6 +820,13 @@ Reference
 The parser may accept older case/underscore variants for migration, but
 canonical generated and formatted metadata spelling is PascalCase.
 
+`Name` and `Category` are not metadata fields: they are implicit,
+declaration-derived members, and writing `Name:` or `Category:` inside
+`impl <U>` is an error ("Unit metadata value types" (6)). A metadata key
+defined twice for one unit, including through migration spellings that
+normalize to the same key or across several `impl <U>` blocks, is an error
+naming both declarations.
+
 ### `LongName`
 
 Human-readable unit name.
@@ -834,23 +840,26 @@ The symbol does not define source identity.
 ### `BaseUnit`
 
 Marks a unit as the catalog's canonical/base unit where the unit system uses that
-concept.
+concept. `BaseUnit` is the only spelling; there is no `IsBaseunit`,
+`IsBaseUnit` or `IsBase` alias.
 
 ### `Status`
 
-Allowed values:
+Allowed values are the members of the closed core enum `UnitStatus`:
 
 ```text
-active
-deprecated
-obsolete
+UnitStatus.Active
+UnitStatus.Deprecated
+UnitStatus.Obsolete
 ```
 
 Default:
 
 ```text
-active
+UnitStatus.Active
 ```
+
+Historical provenance is not a status: a historical unit may be `Active`.
 
 Use of deprecated or obsolete units may produce diagnostics according to the
 normal diagnostic policy.
@@ -867,8 +876,14 @@ Optional semantic quantity kind.
 
 The linear scale relative to the canonical quantity representation.
 
-`Scale` must be a positive, non-zero compile-time numeric expression.
-Exact rational forms are preferred where practical.
+For a linear unit, `Scale` must be a non-zero compile-time numeric
+expression; positive and negative values are valid (MD-062, superseding the
+former strictly-positive rule). A negative scale reverses coordinate
+direction: conversion ratios, value intervals and range proofs must handle the
+sign, including swapping interval endpoints. A zero scale is invalid because
+it is not invertible. Negative scales on affine units remain under MD-048.
+Exact rational forms are preferred where practical; the compiler keeps the
+exact rational for unit algebra.
 
 ### `System`
 
@@ -878,6 +893,211 @@ Named unit system metadata.
 
 `Transform`, `Offset`, `Origin`, `LogBase`, `LogFactor`, and `Reference` are
 defined below.
+
+---
+
+## Unit metadata value types
+
+This section integrates MD-062
+(`rules/corrections/md062-unit-metadata-value-types-correction-20261027.md`,
+§§ 1–16). Paragraph numbers are stable.
+
+**(1) Observation surface.** A named unit `<U>` exposes exactly 16 read-only
+metadata members: the 14 metadata fields above plus the implicit `Name` and
+`Category`. Each read is an immutable, typed, compile-time-known value that
+may be constant-folded or materialized in ordinary runtime code. Reads never
+depend on a mutable runtime unit registry, a runtime lookup by unit spelling,
+or metadata attached to quantity values. Public projection is distinct from
+the compiler's exact unit semantics; in particular the `decimal` projection of
+`Scale` never replaces the exact rational used for conversions.
+
+| `<U>` member | Value type | Source | When omitted |
+| --- | --- | --- | --- |
+| `Name` | `string` | declaration identifier | always available |
+| `Category` | `UnitCategory` | declaration category | `UnitCategory.Other` |
+| `LongName` | `string` | `LongName:` | compile-time error on read |
+| `Symbol` | `string` | `Symbol:` | compile-time error on read |
+| `BaseUnit` | `bool` | `BaseUnit:` | `false` |
+| `Status` | `UnitStatus` | `Status:` | `UnitStatus.Active` |
+| `Dimension` | `UnitDimension` | `Dimension:` or category default | (8); error on read if not established |
+| `Kind` | concrete enum type of its value | `Kind:` | `UnitKind.Unknown` |
+| `Scale` | `decimal` | `Scale:` | `1` for linear units; (9) |
+| `System` | concrete enum type of its value | `System:` | `UnitSystem.Unspecified` |
+| `Transform` | `UnitTransform` | `Transform:` | `UnitTransform.Linear` |
+| `Offset` | `decimal` | `Offset:` | `0` for linear units; affine requires it |
+| `Origin` | concrete enum type of its value | `Origin:` | `UnitOrigin.None` |
+| `LogBase` | `decimal` | `LogBase:` | compile-time error on read |
+| `LogFactor` | `decimal` | `LogFactor:` | compile-time error on read |
+| `Reference` | `decimal` or `decimal<V>` | `Reference:` | compile-time error on read |
+
+**(2) Named units only.** Reads require a resolvable named unit. A structural
+expression such as `<m/s>` has no `Name`, `Category` or other public
+metadata: `<m/s>.Name` and `<m/s>.Dimension` are errors, although the compiler
+still knows its dimension for unit algebra. The optional default numeric
+carrier (`uint` in `unit Item uint other`) is not a member; `<U>.DefaultNumericType`
+or any other seventeenth member is an error. Source, import and declaration
+order never change a member's type or value.
+
+**(3) Core enums.** `UnitKind`, `UnitSystem`, `UnitOrigin`, `UnitTransform`,
+`UnitCategory` and `UnitStatus` are ordinary nominal closed Sec enums declared
+in `sec/core` (`rules/library/core-library.md` § 27), with ordinary enum
+equality and `match`. No shadow enum types exist in Sema, Semantic IR, the LSP
+or the standard library. `Unknown`, `Unspecified` and `None` are absence
+markers: they never establish compatibility between units, and they are not
+collapsed into `Other`. `UnitOrigin.Zero` and `UnitOrigin.One` are declared
+coordinate conventions, not proof of a shared physical datum; origin
+compatibility stays with point semantics and MD-048. Extending `UnitKind` or
+`UnitSystem` is a deliberate change to the core declaration, never an open
+enum.
+
+**(4) User enum values.** `Kind:`, `System:` and `Origin:` may name a
+compile-time-known member of any ordinary declared enum. The read keeps that
+enum's exact nominal type, identified by canonical module and declaration
+identity, not by spelling: `LaboratoryKind.ParticleFlux` and
+`OtherKind.ParticleFlux` are distinct, and a user member named `Energy` is not
+`UnitKind.Energy`. Runtime enum variables, strings, integers, `any` and
+reflection are not valid metadata values. `Transform:`, `Category` and
+`Status:` accept only their core enums.
+
+```sec
+enum LaboratoryKind {
+    ParticleFlux
+    ReactionRate
+}
+
+unit Flux uint other
+
+impl <Flux> {
+    Kind: LaboratoryKind.ParticleFlux
+}
+
+let selected := <Flux>.Kind // LaboratoryKind
+```
+
+**(5) Canonical spelling and migration.** Newly written enum-backed metadata
+uses qualified members such as `Kind: UnitKind.Length`,
+`System: UnitSystem.SI` and `Transform: UnitTransform.Logarithmic`. Legacy
+bare names in Sec 0.1 catalogs (`Kind: energy`, `Kind: temperature`,
+`Transform: logarithmic`, `System: SI`, `Origin: absolute_zero`,
+`Status: active`) remain accepted during the 0.1 migration and normalize to
+the standard enum members; `temperature` maps to
+`UnitKind.ThermodynamicTemperature`. The implementation keeps one canonical
+migration table built from the actual `sec/core`, `sec/stdlib/unit` and
+fixture vocabulary, with a test per entry. A bare token with no unambiguous
+mapping is a migration diagnostic asking for `CustomEnum.Member`; the compiler
+never invents a standard member or searches user enums by member name. The
+migration is contextual to unit metadata and adds no keywords, implicit enum
+conversions or case-insensitive enum lookup elsewhere. The formatter rewrites
+legacy names only under a documented policy that preserves the resolved
+meaning.
+
+**(6) `Name` and `Category`.** `Name` is the declaration identifier (not
+`LongName`, `Symbol`, an import alias or an internal ID) and does not change
+with the importing module. `Category` is the declared category, or
+`UnitCategory.Other` when omitted; the `unit` declaration grammar and its
+category tokens are unchanged. `<U>.Name` is the value member;
+`<U>.Name(...)` still calls a unit function of that name if one is legally
+declared, and resolution must keep the two forms apart rather than shadow
+either.
+
+**(7) `UnitDimension`.** `UnitDimension` is a public, nominal, compiler-known,
+opaque, immutable, copyable `sec/core` value type. Its complete Sec 0.1 public
+surface is the read-only properties `AxisCount: uint` (number of non-zero
+axes) and `IsDimensionless: bool` (the normalized axis set is empty), and the
+operators `==` and `!=` on two `UnitDimension` operands
+(`rules/foundations/operators.md`). There are no constructors, literals,
+writable fields, setters, `Get...` methods, indexing, iteration, ordering,
+arithmetic or implicit conversions, and no special `ToString`. It is not
+defaultable, has no destructor or owned resource, may be stored in aggregates
+and passed or returned by value, needs no heap allocation, and has no
+guaranteed FFI layout.
+
+A dimension is a finite map from semantic axis identity to non-zero
+mathematical integer exponent; multiplication adds and division subtracts
+exponents and zero entries are erased, so spelling and iteration order are
+irrelevant. `a == b` holds iff both maps have the same axis identities with the
+same exponents; it is independent of unit name, category, Kind, scale, system,
+transform, point/difference role and storage. Equal dimensions (energy and
+torque) never make units interchangeable.
+
+The SI base axes (`length`, `mass`, `time`, `electric_current`,
+`thermodynamic_temperature`, `amount_of_substance`, `luminous_intensity`) and
+`information` have fixed compiler-known identities. A user or domain axis is
+identified by its defining `ModuleIdentity` and declared name: two modules
+using the same spelling create distinct axes, while one exported axis reached
+through different import aliases stays one axis. Sema, module surfaces,
+incremental facts and serialization compare resolved identities. No new axis
+declaration syntax exists; `Dimension: [axis^exponent, ...]` keeps its form,
+qualified axes must resolve against accessible metadata, each exponent is a
+non-zero compile-time integer, duplicate resolved axes are rejected, and
+exponent overflow is a deterministic diagnostic, never wrapping.
+
+Runtime equality must stay correct for parameters and aggregate fields. It may
+use statically materialized descriptors or collision-free canonical IDs;
+hash-only equality without collision checking and pointer identity without
+guaranteed global interning are invalid. Equality across modules and separate
+compilation is semantic and uses the selected `CompilationPlan`.
+
+```sec
+let length := <m>.Dimension
+let sameLength := length == <km>.Dimension    // true
+let count := <mps>.Dimension.AxisCount        // 2
+let empty := <dB>.Dimension.IsDimensionless   // true
+
+fn SameDimension(left: UnitDimension, right: UnitDimension) bool {
+    return left == right
+}
+```
+
+**(8) Omitted `Dimension`.** The category defaults in "Compiler-known
+defaults by category" apply. For a `physical` unit with no `Dimension:` the
+dimension is unknown: that is an absence of knowledge, not a `UnitDimension`
+value, not dimensionless, and not an `Option`; reading `<U>.Dimension` is a
+source-positioned error. A declared `Dimension: []` (or an omitted one on a
+`ratio` unit) is an ordinary dimensionless value with `AxisCount == 0`.
+
+**(9) Numeric members.** `Scale`, `Offset`, `LogBase` and `LogFactor` read as
+`decimal`. `Reference` reads as `decimal` for a dimensionless reference and as
+`decimal<V>` for a reference quantity in linear unit `V` (`Reference: 1`,
+`Reference: 0.001<W>`); its concrete type is resolved statically and its unit
+identity is kept. Omitted `Scale` of a linear unit is exactly `1` and omitted
+`Offset` of a linear unit is `0`; an affine point unit must still declare
+`Scale`, `Offset` and `Origin`, and reading a logarithmic unit's missing
+`Scale` or `Offset` never fabricates linear semantics. There is no universal
+`Reference > 0` rule: the admissible domain, including zero as a divisor and
+negative references, belongs to MD-048.
+
+The `decimal` read of `Scale` projects the exact rational to the nearest
+representable `decimal`, breaking exact ties with `RoundingMode.NearestEven`.
+It is one deterministic projection, independent of host, target, iteration
+order and optimization flags, and is not a rounding permission for unit
+conversion, the other numeric members or decimal arithmetic (MD-066 keeps
+operator result scale). The approximate value never feeds back into exact unit
+semantics. When an accepted value cannot be represented in its public type
+under the governing numeric contract, the read or materialization fails with a
+source-positioned diagnostic; the declaration is not altered.
+
+**(10) Defaults and diagnostics.** Defaults are typed immutable constants, not
+optional, deferred or runtime-fetched values. Missing `LongName` or `Symbol`
+is an error only on read; declarations without them stay valid. `LogBase`,
+`LogFactor` and `Reference` have no defaults, and a logarithmic declaration
+missing any of them is a declaration error even when nothing reads it; the
+two errors are reported independently. `UnitOrigin.None` never satisfies a
+required origin. Explicit malformed, mistyped, duplicate, unknown or
+non-constant metadata is always diagnosed and never replaced by a default.
+Metadata reads cannot be assigned, mutably addressed or set.
+
+**(11) Resolution.** The member name is resolved after the named unit; one of
+the 16 names yields the field's typed constant, reused from the facts bound
+during analysis rather than reparsed. Enum-typed members compare only with the
+same nominal enum type. Compile-time and runtime uses give the same values,
+and runtime functions may take `UnitDimension`, enum, `decimal` and
+`decimal<V>` values without re-resolving the unit. The members are registered
+through the compiler-known member registry
+(`rules/compiler/compiler_known_members.md`, "Unit metadata members"), and
+`UnitDimension` equality through ordinary operator resolution, not a user
+operator. Unit metadata stays correct when a unit shares its spelling with an
+ordinary type and when it is imported under a module alias.
 
 ---
 
@@ -926,14 +1146,15 @@ unit mm physical
 impl <mm> {
     LongName: "Millimeter"
     Symbol: "mm"
-    Kind: length
+    Kind: UnitKind.Length
     Dimension: [length^1]
     Scale: 1 / 1000
-    System: SI
+    System: UnitSystem.SI
 }
 ```
 
-`Transform: linear` may be written explicitly but is normally omitted.
+`Transform: UnitTransform.Linear` may be written explicitly but is normally
+omitted.
 
 ---
 
@@ -968,7 +1189,7 @@ A logarithmic unit uses transform metadata instead of pretending that ordinary
 Canonical metadata includes:
 
 ```text
-Transform: logarithmic
+Transform: UnitTransform.Logarithmic
 LogBase
 LogFactor
 Reference
@@ -992,12 +1213,12 @@ impl <dB> {
     LongName: "Decibel"
     Symbol: "dB"
     Dimension: []
-    Kind: ratio
-    Transform: logarithmic
+    Kind: UnitKind.Ratio
+    Transform: UnitTransform.Logarithmic
     LogBase: 10
     LogFactor: 10
     Reference: 1
-    System: Other
+    System: UnitSystem.Other
 }
 ```
 
@@ -1031,12 +1252,12 @@ Example concept:
 
 ```text
 Kelvin
-    Transform: linear
-    Origin: absolute_zero
+    Transform: UnitTransform.Linear
+    Origin: UnitOrigin.AbsoluteZero
 
 Celsius
-    Transform: affine
-    Origin: absolute_zero
+    Transform: UnitTransform.Affine
+    Origin: UnitOrigin.AbsoluteZero
 ```
 
 `Offset` defines the coordinate displacement; `Origin` defines the semantic
@@ -1101,9 +1322,9 @@ impl <percent> {
     LongName: "Percent"
     Symbol: "%"
     Dimension: []
-    Kind: ratio
+    Kind: UnitKind.Ratio
     Scale: 1 / 100
-    System: Other
+    System: UnitSystem.Other
 }
 ```
 
@@ -1200,10 +1421,10 @@ unit KiB uint information
 impl <KiB> {
     LongName: "Kibibyte"
     Symbol: "KiB"
-    Kind: information_amount
+    Kind: UnitKind.InformationAmount
     Dimension: [information^1]
     Scale: 8192
-    System: IEC
+    System: UnitSystem.IEC
 }
 ```
 
@@ -1394,17 +1615,17 @@ unit Hz physical
 unit rpm physical
 
 impl <Hz> {
-    Kind: frequency
+    Kind: UnitKind.Frequency
     Dimension: [time^-1]
     Scale: 1
-    System: SI
+    System: UnitSystem.SI
 }
 
 impl <rpm> {
-    Kind: rotational_frequency
+    Kind: UnitKind.RotationalFrequency
     Dimension: [time^-1]
     Scale: 1 / 60
-    System: Other
+    System: UnitSystem.Other
 
     fn rpm(hz: <Hz>) <rpm> {
         return decimal<rpm>(hz * 60)
@@ -1601,6 +1822,12 @@ warnings and deprecated/obsolete unit use.
 For an incompatible operation, tooling should show the semantic reason, not only
 the underlying numeric type mismatch.
 
+Hover on a metadata read shows the concrete result type from "Unit metadata
+value types", including a user enum type for custom `Kind`, `System` or
+`Origin`, never a generic enum or `any`. Completion on a `UnitDimension`
+offers exactly `AxisCount` and `IsDimensionless`. A missing-metadata
+diagnostic explains how to declare or correct the value.
+
 ---
 
 ## Formatter requirements
@@ -1625,7 +1852,14 @@ The formatter must not:
 - replace a named unit with a structural expression;
 - reorder factors merely to match the compiler's internal canonical form;
 - change unit identity;
-- invent a conversion.
+- invent a conversion;
+- rewrite exact written numeric metadata such as `Scale: 1 / 60`;
+- rename `BaseUnit` or emit `IsBaseunit`.
+
+The formatter recognizes typed metadata values such as `UnitKind.Energy` and
+legacy bare names in unit metadata, stays idempotent, and rewrites a legacy
+name only under the documented migration policy ("Unit metadata value types"
+(5)).
 
 Semantic canonicalization belongs to the compiler, not source rewriting.
 
@@ -1673,6 +1907,16 @@ metadata that no longer affects runtime behavior.
 
 LLVM or target code must never be asked to rediscover source-language units from
 numeric representation.
+
+For metadata reads, Semantic IR keeps the resolved member, the unit
+declaration, the concrete enum identity, the normalized dimension and whether
+a numeric value is exact or the projected `decimal` read. Lowering may fold or
+materialize read-only constants only after legality, precision and identity
+checks are discharged. Sec MLIR and target lowering support `UnitDimension`
+values and both equality predicates when they escape compile-time evaluation,
+with a finite static representation and no heap allocation or mutable global
+registry. A path that cannot lower them fails with
+`[unsupported-lowering]`, never by discarding metadata.
 
 ---
 
@@ -1729,10 +1973,28 @@ other with no Dimension
     -> unique semantic axis derived from named unit identity
 
 no Transform
-    -> linear
+    -> UnitTransform.Linear
 
 no Status
-    -> active
+    -> UnitStatus.Active
+
+no Kind
+    -> UnitKind.Unknown
+
+no System
+    -> UnitSystem.Unspecified
+
+no Origin
+    -> UnitOrigin.None (observable only; never satisfies a required origin)
+
+no BaseUnit
+    -> false
+
+no Scale on a linear unit
+    -> 1
+
+no Offset on a linear unit
+    -> 0
 ```
 
 The compiler must not synthesize:
@@ -1752,7 +2014,11 @@ The compiler must validate unit metadata before using it for algebra.
 
 At minimum:
 
-- `Scale` is positive and non-zero where required;
+- `Scale` is non-zero for linear units (negative is valid; MD-062);
+- enum-backed metadata names a member of the field's permitted enum (core
+  `UnitTransform`, `UnitStatus`; any declared enum for `Kind`, `System`,
+  `Origin`), or a legacy name in the migration table;
+- no metadata key is defined twice and `Name:`/`Category:` are not declared;
 - Dimension exponents are non-zero compile-time integers;
 - duplicate Dimension axes are rejected;
 - `Transform` is one of the compiler-known transform modes;

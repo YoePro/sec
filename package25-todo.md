@@ -249,6 +249,15 @@ name mangling or a raw-to-safe-reference conversion.
   calls, C function-pointer calls, callback creation, native typed variadics
   and C varargs. Preserve source function type, Result/error channels,
   parameter names/ordinals and semantic evaluation order.
+- [ ] P25-27a — MD-117 (added 2026-10-27): classify heterogeneous native
+  variadic type packs (`[...Types]` with `...Types` / `...ref Types` /
+  `...ref mut Types`) position by position as ordinary native parameters of
+  each concrete specialization's ordered element types and modes; include the
+  ordered type sequence in callable identity, `ABISignature` and fingerprint;
+  keep homogeneous runtime-length `...T` transport; never route either through
+  C varargs, `va_list`, promotions, boxing, erasure or heap allocation; treat
+  `<-values...` as a call-committed ownership transfer, not ABI transport
+  (package25 § 22 amendment; functions.md § 38A; Semantic IR § 27A).
 - [ ] P25-28 — Add read-only `CallABIPlanRef` after successful resolution. Do
   not rewrite source `sec.call`/function signature into physical parts in
   Semantic IR; ABI materialization begins only at the P25 Sec MLIR boundary.

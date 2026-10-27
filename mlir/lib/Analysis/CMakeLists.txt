@@ -2,6 +2,7 @@ add_mlir_library(SecMLIRAnalysis
   VerifyFloatSemantics.cpp
   VerifyCheckedIntegerGuards.cpp
   VerifyPlaceReferences.cpp
+  VerifyReturnOrigins.cpp
   VerifyReferenceTransfers.cpp
   VerifySliceGuards.cpp
   VerifySliceReferences.cpp

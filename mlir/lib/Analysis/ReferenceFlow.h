@@ -89,6 +89,10 @@ inline bool sameSource(Value left, Value right) {
 }
 
 
+// Check canonical source roots and exact/conservative return-range paths.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.37,v12.34 (MD-085/115).
+LogicalResult verifyReturnOrigins(func::FuncOp function);
+
 // Integrate represented slice identities, transfers and lifetimes into P15.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§84–86,116.
 LogicalResult verifySliceReferences(func::FuncOp function);

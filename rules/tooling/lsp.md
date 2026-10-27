@@ -130,6 +130,8 @@ sec fmt --fix
 
 LSP formatting resolves its effective options through the same configuration code as `sec fmt`: the document's project `.sec/sec.toml` `[format]` table, or the formatter defaults for a stand-alone file. An invalid configuration produces no edit (`formatter.md` § 4(18)–(22); MD-036/MD-054, 2026-10-12).
 
+The `sec fmt` directory selection and bulk malformed-file policy (`formatter.md` §§ 28(9)–28(13), MD-037) apply only to the CLI. The LSP formats the open document with the same formatter and configuration, under its own § 25 behavior.
+
 The LSP may expose all formatter functionality or a negotiated subset.
 
 It must not contain an independent formatter implementation.

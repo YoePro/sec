@@ -1563,7 +1563,16 @@ It exists only to make addressable semantics explicit before physical lowering.
 
 P15 owns the root identity, the prohibition on direct hardware borrows, the typing of `HardwareInstance[T]` and the faithful production of the register operations. Missing target capabilities fail closed. The schema representation is `sec_mlir_dialect.md` v11.41.1 (`rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 12, 19).
 
-**Amendment MD-110 (2026-10-25).** The detached register value family also includes the pure bit-pattern conversions `register.value.fits-bits` / `from-bits` / `to-bits` (Semantic IR § 21(6)) and their MLIR `sec.register.fits_bits` / `from_bits` / `to_bits` (dialect v11.41.2). They never touch hardware roots or Places (`rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md`).
+**Amendment MD-110 (2026-10-25).** The detached register value family also includes the pure bit-pattern conversions `register.value.fits-bits` / `from-bits` / `to-bits` (Semantic IR § 21(6)) and their MLIR `sec.register.fits_bits` / `from_bits` / `to_bits` (dialect v11.41.2). They never touch hardware roots or Places (`rules/corrections/MD-110-register-bit-pattern-conversion-ir-20261025.md`, kept open until its implementation acceptance).
+
+**Amendment MD-114 (2026-10-27) for P15-42.** Detached register values serialize through the module table `sec.registers` (typed `#sec.register_def` / `#sec.register_field`), `sec.field_path` on `sec.register.extract` / `update`, and `sec.write_proof` on `update` (dialect v11.41.1a; lowering v11.30). The MD-110 conversions read width from the same table. Hardware endpoints, resources and plans stay with MD-111 (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`).
+
+**Amendment MD-116 (2026-10-27) for P15-42/42a/47.** A static root lowers to `sec.place.static` (dialect v11.41.3; lowering v11.29), a zero-operand Place root over the static's `sec.static.global`.
+- That global carries the explicit module-local `sec.static_id` and, when referenced, `sec.address_taken = true`.
+- `static@N` in `sec.return_origins` names that ID, never `place_root_id`, `storage_identity` or a parsed symbol suffix.
+- The three P15 verifiers accept the root and trace static return origins through it.
+- Reference-dependent statics stay high-level through P5/P6/P8.
+- No physical layout, ABI or new source permission follows (`rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`).
 
 # 64. Place root from semantic storage
 

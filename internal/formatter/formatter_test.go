@@ -736,11 +736,13 @@ URL: string = "https://example.test/a//b", // URL
     Name: string, // display
 
     // Network settings.
-    Endpoint: string,                          // endpoint
-    VeryLongTimeoutName: int,                  // timeout
+    Endpoint: string, // endpoint
+    VeryLongTimeoutName: int, // timeout
     URL: string = "https://example.test/a//b", // URL
 }
 `
+	// The second group's comment column would need 26 spaces, beyond the
+	// default cap of 16, so its comments keep one space (MD-099).
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("local trailing-comment groups were formatted incorrectly:\n%s\nwant:\n%s", got, want)
 	}

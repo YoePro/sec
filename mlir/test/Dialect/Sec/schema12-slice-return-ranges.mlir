@@ -22,7 +22,7 @@ module attributes {
   ^exit(%forwarded: !sec.slice<si32>):
     return %forwarded : !sec.slice<si32>
   }
-  func.func @element_origin(%source: !sec.slice<si32> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}}) -> !sec.ref<si32> attributes {sec.return_origins = ["param#0[*]"]} {
+  func.func @element_origin(%source: !sec.slice<si32> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}}) -> !sec.ref<si32> attributes {sec.return_origins = ["param#0[1..<3][*]"]} {
     %total = "sec.slice.len"(%source) : (!sec.slice<si32>) -> !sec.uint
     %start = "sec.const.int"() <{value = "1"}> : () -> !sec.uint
     %end = "sec.const.int"() <{value = "3"}> : () -> !sec.uint

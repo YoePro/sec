@@ -332,7 +332,7 @@ integrations:
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
     implemented:
-      - "2026-10-26: completed the whole declaration-alignment extension (§ 9(1)–(10)): parser-owned CST binding name/type/initializer roles drive compatible let, type-first and parenthesized named-value groups, including static/mutable declarations, := and :<- and attached line/block comments. Existing struct/register field type/tag, callable parameter and named-type tables cover the other declaration families. Columns use structural anchors, the colon binds left, primary/secondary padding candidates fall back per group, and blank lines, standalone/inline comments, multiple bindings on one line, incompatible rows and multiline expressions delimit safe groups. Golden tests preserve syntax/literal/comment tokens, cover widths 2/4/6, both styles, cap fallback and idempotence, and compare exact CLI/LSP output. Nominal trailing-comment alignment now consumes the configured indentation width and lives in trailing_comment_alignment.go. MD-099's independent comment-padding policy and MD-100's possible further exemptions remain unchanged; neither blocks this extension under the current rules."
+      - "2026-10-26: completed the whole declaration-alignment extension (§ 9(1)–(10)): parser-owned CST binding name/type/initializer roles drive compatible let, type-first and parenthesized named-value groups, including static/mutable declarations, := and :<- and attached line/block comments. Existing struct/register field type/tag, callable parameter and named-type tables cover the other declaration families. Columns use structural anchors, the colon binds left, primary/secondary padding candidates fall back per group, and blank lines, standalone/inline comments, multiple bindings on one line, incompatible rows and multiline expressions delimit safe groups. Golden tests preserve syntax/literal/comment tokens, cover widths 2/4/6, both styles, cap fallback and idempotence, and compare exact CLI/LSP output. Nominal trailing-comment alignment now consumes the configured indentation width and lives in trailing_comment_alignment.go. MD-099/MD-100 are completed on 2026-10-27 under tooling.formatter-v2: comment caps apply to ordinary groups and only explicit enum-value runs are exempt."
       - align trailing comments in consecutive struct, enum, register, union, and equivalent nominal declaration items to one visual column
       - place the aligned comment column at least four spaces after the widest code item in its local group
       - end groups at blank lines, standalone or documentation comments, multiline items, and nested block boundaries
@@ -413,7 +413,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-10-26"
+    revised: "2026-10-27"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-09-23
     summary: Tracks conformance of the shared Sec formatter to formatter revision 2.1. The repository has a usable but primarily bespoke, line-oriented CLI/LSP formatter plus a lexical CST foundation that is not yet its primary engine. The formatter must migrate to a CST-driven architecture while preserving existing behavior, then complete the configured, grammar-aware formatting and correction contract.
@@ -456,6 +456,8 @@ integrations:
       - internal/formatter/edits.go
       - cmd/lsp/format_document.go
     tests:
+      - internal/formatter/comment_column_cap_test.go
+      - testdata/formatter/enum_comment_boundaries.sec
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
       - internal/cst/roles_test.go
@@ -483,6 +485,7 @@ integrations:
       - internal/formatter/edits_test.go
       - cmd/lsp/format_document_test.go
     implemented:
+      - "MD-099/MD-100 completed (2026-10-27): ordinary trailing line/block-comment columns honor effective max_alignment_padding group-wide, including uncommented rows when finding the widest preceding cell. At-cap alignment is retained; over-cap comments use one structural space without discarding a legal primary column or restoring one previously dropped. Long comment text does not widen the starting column. Only compatible explicit-value enum runs ignore the cap; implicit enum members, blank lines and standalone comments delimit those runs. The final nominal comment pass now splits explicit/implicit enum runs so an implicit member cannot disable the mandatory exception for adjacent explicit groups, while implicit runs keep ordinary capped alignment. Shared formatter/configuration/CLI/LSP tests pass; format_version remains 1 and no new setting is introduced. MD-037 directory-selection closure is separate."
       - >-
         One shared formatter implementation serves sec fmt and LSP document
         formatting; LSP does not maintain an independent formatting grammar.
@@ -675,7 +678,7 @@ integrations:
       - "§ 6(4) single-line parameters (fixed 2026-10-03): parameters of a single-line callable parameter list (functions, methods, interface requirements, extern declarations, lambdas) get exactly one space between colon and type; previously only multiline lists were touched, so `source:      ref mut Reader` was preserved (TestFormatNormalizesSingleLineParameterSpacing)"
       - "MD-013 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 5, 2026-10-03): register fields, including reserved `_` fields, carry the shared StructFieldColon/StructFieldTypeStart CST anchors (for `bit`, `bit[N]`, and named field types) and align through the same structural field engine as struct fields; a trailing comment no longer ends a field alignment group, while blank lines and standalone comments still do; trailing comments occupy the next structural column one standard space (structuralColumnSpacing) after the widest code cell instead of a hard-coded four-space gutter; every repository .sec file remains idempotent"
       - "enum trailing comments (fixed 2026-10-17, § 9(8), § 9(8b), § 15(4)): a trailing comment no longer splits an enum `=` alignment group (only a comment after the line break, a blank line or a brace does), so values stay in one column; a single-line block comment ending a line after code is a trailing comment like `//` and shares the comment column in every declaration table (MD-097 decided 2026-10-18 and integrated as formatter.md § 12(9a)); TestFormatEnumTrailingCommentsKeepValueAndCommentColumns"
-      - "max_alignment_padding (2026-10-17, § 4(5), § 4(14), § 9(10); MD-098 decided 2026-10-18, formatter.md § 4(14) corrected to non-enum groups and projects.md § 6(11); TestMaxAlignmentPaddingDomain covers 1/1024 and rejects 0/-1/1025/1.5/true and any CLI override, TestDefaultMaximumAlignmentPaddingFollowsIndentation the 2/4/6 defaults, TestInitDocumentsFormattingDefaults the commented init example): the [format] table accepts max_alignment_padding = 1..1024 spaces, replacing the four-indentation-width default for every alignment engine (struct fields, parameters, enum values, named types); omitted keeps the default; shared by sec fmt and LSP through formatconfig; TestFormatEnumAlignmentHonorsConfiguredMaximumPadding and formatconfig table tests. The trailing-comment column still ignores the limit (MD-099 open)"
+      - "max_alignment_padding (2026-10-17, § 4(5), § 4(14), § 9(10); MD-098 decided 2026-10-18, formatter.md § 4(14) corrected to non-enum groups and projects.md § 6(11); TestMaxAlignmentPaddingDomain covers 1/1024 and rejects 0/-1/1025/1.5/true and any CLI override, TestDefaultMaximumAlignmentPaddingFollowsIndentation the 2/4/6 defaults, TestInitDocumentsFormattingDefaults the commented init example): the [format] table accepts max_alignment_padding = 1..1024 spaces, replacing the four-indentation-width default for every alignment engine (struct fields, parameters, enum values, named types); omitted keeps the default; shared by sec fmt and LSP through formatconfig; TestFormatEnumAlignmentHonorsConfiguredMaximumPadding and formatconfig table tests. The former MD-099 comment-column discrepancy is fixed on 2026-10-27; comment columns obey the cap and only explicit enum-value groups are exempt"
       - "enum values always aligned (2026-10-17, § 15(4), § 9(10); MD-100 user decision): enum `=` groups ignore the padding limit, so wide tables such as bootstrap lexer.sec TokenType keep one value column and one comment column with default settings; TestFormatWideEnumTableKeepsValueAndCommentColumns, TestFormatAlignsEnumValuesBeyondMaximumPadding"
       - "literal preservation (fixed 2026-10-03, § 29): the line-oriented delimiter, call, split, assertion, trailing-comment, and indentation scanners skip string, raw-string, character, and interpolated-string literals by exact lexer token spans (internal/formatter/literal_spans.go) instead of a private quote toggle, so braces and quotes inside nested interpolation expressions no longer rewrite literal text (`{value}` to `{ value }`) or drop the indentation of every following line"
       - "MD-032 switch label column (2026-10-12, formatter.md § 18(7), § 18(10a)): case/default labels sit one configured indentation level inside switch, their bodies one further level and the closing brace aligns with switch; verified for indentation widths 2, 4 and 6, nested switches and idempotence (TestFormatSwitchLabelsFollowConfiguredIndentation); the § 18(7) example and the switch examples of flowcontrol_switch.md, flowcontrol_while.md and grammar.md follow the decided layout"
@@ -1014,6 +1017,12 @@ integrations:
       - semantic normalization of numeric or string literals
       - automatic ownership, mutability, error-policy, or control-flow changes
     verification:
+      - command: go test ./internal/formatter ./internal/formatconfig -count=1
+        result: passed on 2026-10-27 after MD-099/MD-100; exact-cap and over-cap comment columns, ordinary/enum cases, implicit-member boundaries, preserved text and idempotence covered
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Format|Fmt|Alignment|HeaderSpacing' -count=1
+        result: passed on 2026-10-27 after MD-099/MD-100; shared CLI/LSP formatting, project configuration and existing golden/continuation/header regressions remain green
+      - command: go vet ./internal/formatter ./internal/formatconfig ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-27 after MD-099/MD-100
       - command: go test ./internal/cst ./internal/formatter ./cmd/lsp ./cmd/compiler -run "Format|Formatting|MinimalEdit|Fmt" -count=1
         result: passed on 2026-10-26 with GOCACHE set; minimal enclosing edits reconstruct golden canonical output, use UTF-16 positions after non-BMP characters, protect CRLF boundaries, handle snapshot/disk input and are idempotent; existing CLI/LSP formatting tests passed
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/cst ./internal/formatter -count=1; GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -run "^(TestFmtCheckAfterFormatting|TestFmtCommandUsesProjectFormatConfiguration|TestLSPFormattingUsesProjectFormatConfiguration|TestFormatSourceIndentsGroupedImports)$" -count=1

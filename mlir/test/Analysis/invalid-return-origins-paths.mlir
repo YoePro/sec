@@ -4,7 +4,7 @@
 // element, a missing dynamic projection, a bare root that does not cover a
 // projected path, a callee summary that excludes the actual operand, a call
 // without a callee summary (the former all-arguments fallback), a static
-// root, a receiver on a function without one, and an inadmissible projection.
+// root with no address-taken static of that ID (MD-116), a receiver on a function without one, and an inadmissible projection.
 
 // -----
 
@@ -64,7 +64,7 @@ func.func @no_callee_summary(%a: !sec.ref<!sec.int> {sec.reference = {borrow_id 
 }
 // -----
 
-// expected-error@+1 {{names a static root, which has no schema-11 Place root}}
+// expected-error@+1 {{must name an address-taken static with that sec.static_id}}
 func.func @static_root(%p: !sec.ref<!sec.struct<identity = "main::Pair", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "left", type = !sec.int, tags = []>, #sec.struct_field<ordinal = 1, name = "right", type = !sec.int, tags = []>]>> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}}) -> !sec.ref<!sec.int> attributes {sec.extern = false, sec.return_origins = ["static@3"]} {
   %whole = "sec.place.deref"(%p) : (!sec.ref<!sec.struct<identity = "main::Pair", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "left", type = !sec.int, tags = []>, #sec.struct_field<ordinal = 1, name = "right", type = !sec.int, tags = []>]>>) -> !sec.place<!sec.struct<identity = "main::Pair", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "left", type = !sec.int, tags = []>, #sec.struct_field<ordinal = 1, name = "right", type = !sec.int, tags = []>]>, "ro">
   %field = "sec.place.field"(%whole) <{field = 0 : i32}> : (!sec.place<!sec.struct<identity = "main::Pair", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "left", type = !sec.int, tags = []>, #sec.struct_field<ordinal = 1, name = "right", type = !sec.int, tags = []>]>, "ro">) -> !sec.place<!sec.int, "ro">

@@ -226,27 +226,19 @@ impl string {
     /**
      * Returns the encoded UTF-8 byte at the given byte index as a char.
      *
-     * This is byte access, not character or rune access: index is a UTF-8
-     * byte index and a non-ASCII scalar spans several chars. Whether CharAt
-     * is renamed or redesigned is not decided (MD-050/MD-071 correction § 3(5)).
+     * Equivalent to char(self.ByteAt(index)). This is byte access, not
+     * Unicode-scalar decoding: a non-ASCII scalar spans several chars and
+     * every byte, continuation bytes included, is addressable (MD-092).
      *
      * Parameters:
-     * - index: Zero-based UTF-8 byte index (not a rune index).
+     * - index: Zero-based UTF-8 byte index below self.SizeOf (not a rune index).
      * Panics:
-     * When index is not below self.SizeOf.
+     * When index is not below self.SizeOf, as for ByteAt.
+     * Allocation:
+     * Does not allocate.
      */
     fn CharAt(index: uint) char {
-        if index >= self.SizeOf {
-            panic "String index is out of bounds"
-        }
-
-        unsafe {
-            return char(self.Ptr.Offset(try int(index) {
-                Err(_) => {
-                    panic "String index is out of bounds"
-                }
-            }).Read())
-        }
+        return char(self.ByteAt(index))
     }
 
     /**

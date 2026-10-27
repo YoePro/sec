@@ -136,10 +136,9 @@ func bindingAlignmentRows(document cst.Document) []bindingAlignmentRow {
 }
 
 // alignBindingGroup lays out primary type and secondary initializer columns,
-// dropping each over-budget candidate for the whole group. Comment columns
-// retain the existing trailing-comment policy; MD-099's separate padding-cap
-// decision is not inferred from this extension.
-// Rules: rules/tooling/formatter.md — § 9(8a)–(10), § 12(4)–(6).
+// dropping each over-budget candidate, the trailing-comment column included,
+// for the whole group.
+// Rules: rules/tooling/formatter.md — § 9(8a)–(10a), § 12(4)–(6a).
 func alignBindingGroup(document cst.Document, group []bindingAlignmentRow, maxPadding int) []formatterReplacement {
 	if len(group) < 2 {
 		return nil
@@ -196,15 +195,27 @@ func alignBindingGroup(document cst.Document, group []bindingAlignmentRow, maxPa
 	}
 	align(anchors, true)
 	// Include rows without comments in the width of the preceding code cell.
+	// The comment column obeys the same cap as the code columns; when any
+	// commented row would exceed it, every comment keeps one space (MD-099).
 	commentColumn := 0
 	for i, row := range group {
 		commentColumn = max(commentColumn, elementEndColumn(document.Elements[row.last])+shifts[i]+1)
 	}
+	dropComments := false
+	for i, row := range group {
+		if row.comment >= 0 && commentColumn-elementEndColumn(document.Elements[row.last])-shifts[i] > maxPadding {
+			dropComments = true
+		}
+	}
 	for i, row := range group {
 		if row.comment >= 0 {
+			padding := 1
+			if !dropComments {
+				padding = commentColumn - elementEndColumn(document.Elements[row.last]) - shifts[i]
+			}
 			replacements = append(replacements, formatterReplacement{
 				start: document.Elements[row.last].Span.End, end: document.Elements[row.comment].Span.Start,
-				text: strings.Repeat(" ", commentColumn-elementEndColumn(document.Elements[row.last])-shifts[i]),
+				text: strings.Repeat(" ", padding),
 			})
 		}
 	}

@@ -1,0 +1,10 @@
+type States enum {
+A = 0, // First
+LongFirst = 100, // Long first
+Implicit, // Separator
+B = 101, /* Second */
+MuchLongerSecond = 1000, /* Long second */
+
+C = 1001, // Third
+LongThird = 1002, // Long third
+}

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-10-21 (MD-076 call-lifetime temporary borrows)
+- **Last updated:** 2026-10-27 (MD-117 heterogeneous variadic type packs, § 38A; § 33 example)
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions.txt`
@@ -980,8 +980,10 @@ fn ConsumeAll(values: ...Resource) void {
     ...
 }
 
-ConsumeAll(first, second)
+ConsumeAll(<-first, <-second)
 ```
+
+`<-` is required for each **named** move-only argument (`rules/memory/copy_move.md` § 8.1); a fresh temporary such as `ConsumeAll(CreateResource())` uses the ordinary fresh-value rule and needs no marker. This is a consistency correction of the example (MD-117 § 12), not a new move rule.
 
 After successful call entry, `first` and `second` are consumed if `Resource` is move-only.
 
@@ -1061,6 +1063,8 @@ Therefore `->` and `...` do not combine in one parameter declaration.
 
 This is an explicit Sec 0.1 rule, not a postponed syntax.
 
+Whole-pack transfer is a **call-site** operation, `<-values...`, defined in § 38A(7) (MD-117 § 3(6)); it is not a parameter mode.
+
 ## 37. Variadic overload resolution
 
 Variadic shape participates in callable matching.
@@ -1121,6 +1125,59 @@ do not accept `ref`/`ref mut` directly, and do not support Sec spread.
 `fn`/`mut fn`/`-> fn`. `c::callback(callable)` adapts only an environment-free,
 reusable callable with an exact foreign-facing signature; capturing, mutable,
 and consuming callables are rejected in Sec 0.1.
+
+## 38A. Heterogeneous variadic type packs (MD-117)
+
+Decided 2026-10-26 (`rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md`). This section supplements §§ 28–38; homogeneous `name: ...T` keeps every rule above unchanged (§ 38A(1)(4)).
+
+**§ 38A(1) Purpose.** (1) Sec 0.1 supports heterogeneous native variadic arguments in ordinary statically typed functions and methods: a call may supply zero or more values of different concrete types without implicit `any`, type erasure, boxing, dynamic reflection or C varargs. (2) It is a general language feature equally available to user code, stdlib and core; no formatter name, `fmt.Printf` declaration or other stdlib API receives privileged call semantics. (3) Callers write the natural call; the compiler establishes the static type, ownership, lifetime and control-flow guarantees itself, without redundant caller boilerplate. (4) Homogeneous `name: ...T`, where `T` is one concrete type, remains valid and is not reinterpreted as heterogeneous. (5) The public `fmt` API, its formatting grammar, validation/error contracts, output and materialization are a separate stdlib specification (MD-118) and add no `fmt`-specific language behavior.
+
+**§ 38A(2) Type-pack declaration.** (1) A heterogeneous type-pack parameter is written `[...Types]`; `[T]` remains one type:
+
+```sec
+fn Trace[...Types](values: ...Types) void {
+    // Each argument retains its concrete type.
+}
+```
+
+(2) `Types` is an ordinary programmer-chosen identifier, not a keyword or builtin type; the prefix `...` in the generic parameter list makes it an ordered sequence of zero or more types. (3) For arguments of types `string`, `int` and `bool` the inferred pack identity is the ordered sequence `(string, int, bool)`, preserving order, nominal identity, reference kind and every other relevant semantic distinction. (4) An empty pack is valid. A type pack is a compile-time generic entity, not a dynamic type, tuple object, storable container, source-level array or first-class runtime type descriptor. (5) A function or method declares at most one type pack, at the end of its generic parameter list, and at most one corresponding native variadic parameter, at the end of its value-parameter list; packs in fields, return-type packs and nested generic argument lists are not introduced. (6) Packs are inferred from ordinary concrete call arguments and statically known pack spreads; there is no runtime pack value and no pack-literal syntax.
+
+**§ 38A(3) Parameter modes.** (1) Three forms exist:
+
+```sec
+fn ReceiveOwned[...Types](values: ...Types) void {
+}
+
+fn ReceiveShared[...Types](values: ...ref Types) void {
+}
+
+fn ReceiveMutable[...Types](values: ...ref mut Types) void {
+}
+```
+
+(2) They are pointwise ordinary parameter modes: `...Types` is by-value (copy or ownership transfer as each concrete type requires), `...ref Types` a shared borrow and `...ref mut Types` an exclusive mutable borrow per expanded argument. (3) Call-site implicit borrowing, explicit `<-` for transfers from named move-only values, temporary lifetimes and mutable exclusivity apply to each expanded argument. (4) A `...ref mut Types` pack may hold several mutable references only when the ordinary non-overlap and lifetime proofs hold; a conflicting call is rejected before entering the callee. (5) The pack structure stays read-only (§ 31); mutating a referent through a granted `ref mut` does not permit mutating, resizing or rearranging the pack. (6) `-> values: ...T` and `-> values: ...Types` remain invalid (§ 36).
+
+**§ 38A(4) Invocation, arity and inference.** (1) Calls use ordinary argument syntax, `Trace("Hello", 42, true)`. (2) For a heterogeneous pack the expanded argument count and every position's concrete type must be statically known at the call site after legal spread expansion; values may be computed at run time. (3) A homogeneous `...T` keeps its runtime-length spread (§ 35). A runtime-length source cannot infer a heterogeneous pack and is never converted into `any` or a type-erased sequence. (4) Each argument is checked against its concrete receiving mode with ordinary literal-context typing and explicit conversions; no implicit coercion among unrelated types is introduced. (5) Overload resolution is unchanged (§ 37): an otherwise equivalent fixed-arity candidate is preferred, return type never selects, there is no runtime dispatch and ambiguity is an error. (6) A generic body must be valid for each demanded concrete specialization; each operation on a pack element needs an existing operation, method, overload or satisfied constraint for that concrete element. There is no implicit structural `FormatArg` interface or `Printf` exemption.
+
+**§ 38A(5) Pack value, indexing and iteration.** (1) A heterogeneous pack is an ephemeral compiler-known parameter pack with `values.Len`, ordered access and iteration; it promises no contiguity and has no `values.Ptr` (§ 30). (2) `values.Len` is compile-time-known for a heterogeneous specialization, including the empty pack; an index selecting a position with a concrete static type must be compile-time-known, and a runtime index never yields a fictitious universal type. (3) `for` needs no `static` keyword: for a heterogeneous pack the compiler expands iterations type-aware (`rules/control-flow/flowcontrol_for.md` § 13A); ordinary iterables keep runtime iteration, with the same observable behavior. (4) Loop bindings keep their meaning: `for value` (by value, legal only when the element is implicitly copyable), `for ref value` and `for ref mut value`. (5) `for value` never silently borrows a move-only value nor moves it out of the pack; a specialization requiring an unavailable copy is invalid; use `for ref value`. (6) In a pack of `ref T` ordinary shared reference/reborrow rules apply; in a pack of `ref mut T`, `for ref mut value` may exclusively reborrow the referent without moving the reference holder out; no nested `ref ref T` is manufactured by loop syntax. (7) `break`, `continue`, `return`, `defer`, `try`, `panic`, source-order evaluation, borrow live ranges and deterministic cleanup keep their observable semantics; static expansion and unrolling are implementation techniques, and an iteration whose body is not reached executes no side effects.
+
+**§ 38A(6) Evaluation, transfer commit and destruction.** (1) Arguments and spread sources are evaluated exactly once in left-to-right order, which the expanded sequence preserves (§ 17). (2) The call-transfer-commit rule (§ 18) holds: ownership transfer into callee-owned parameters commits only after every argument was prepared; a failed preparation leaves no partial transfer or stale moved state, and completed temporaries are cleaned normally. (3) After call entry each owned element has one owner and one destruction responsibility; every remaining owned element is destroyed exactly once on ordinary and error exits in the existing deterministic order; borrowed referents are not destroyed by the pack. (4) Static expansion never duplicates argument evaluation, implicit moves, allocators, visible operations or destruction, and the pack needs no hidden heap allocation (§ 29).
+
+**§ 38A(7) Spread and whole-pack consuming spread.** (1) Postfix `values...` stays non-consuming (`rules/declarations/spread.md`): it copies copyable values or passes/reborrows compatible references, and never extracts move-only elements or violates exclusivity. (2) The explicitly consuming call-site form is:
+
+```sec
+fn Forward[...Types](values: ...Types) void {
+    TakeAll(<-values...)
+}
+```
+
+(3) `<-values...` is legal only for a complete, currently owned native variadic parameter pack; the target must accept the whole expanded sequence with valid concrete types and ownership modes; the transfer is one logical transaction that invalidates the source pack after successful call-transfer commit. (4) It never permits `<-values[0]`, partial pack consumption, consuming spread of arrays, slices, lists, tuples or structs, or a consuming spread operator elsewhere (§ 34). (5) Transferring a complete pack keeps one owner per element without a partially moved pack state; moving one element would need per-position availability, iteration and cleanup state that the ephemeral pack contract does not define. (6) Shared-reference packs may be forwarded with ordinary `values...`; mutable-reference forwarding reborrows exclusively only when every borrow and overlap proof succeeds and never copies a `ref mut`. (7) `<-values...` applies equally to homogeneous and heterogeneous owned packs.
+
+**§ 38A(8) Lifetime and returned-reference provenance.** (1) The pack cannot escape the invocation, be stored or be captured by an escaping closure, and a reference into storage owned by the pack cannot escape (§ 32). (2) A reference carried by a pack is distinct from a reference to the pack's own storage: a shared or mutable reference originating in caller-owned storage may be returned or forwarded when the compiler proves that the referent's lifetime, storage validity and borrow authority outlive it. (3) Such proofs use the ordinary returned-reference provenance model, including finite caller-side origin sets and per-position projections; no lifetime annotation is introduced. (4) Returning `ref mut T` preserves the exclusive grant and rejects overlapping usable mutable authority; a mutable reborrow used for a returned reference is related to the original caller-side borrow, never a new owner. (5) No common return type is synthesized; a runtime selection among different element types never becomes `any` or a universal reference. (6) Whether an access is spelled `value`, `*value` or otherwise is not decided here (MD-119).
+
+**§ 38A(9) Specialization and Semantic IR.** (1) The ordered concrete type sequence is part of the canonical specialization identity: `(string, int)` and `(int, string)` are distinct, as are empty and nonempty packs, with nominal identities and parameter modes preserved (`rules/compiler/monomorphization.md`). (2) There is no runtime type dictionary, erased pack ABI or implicit boxing; specializations share machine code only where monomorphization proves identical observable semantics. (3) Semantic IR records the facts listed in `rules/compiler/semantic_ir.md` § 27A, verified before lowering. (4) A CompilationPlan or target ABI may affect lowering and reuse, never the pack's semantic identity; reuse fails closed when the specialization or relevant target facts differ.
+
+**§ 38A(10) Diagnostics, tooling and FFI.** (1) Diagnostics name the failing pack position and concrete type and say whether the error concerns inference, a runtime-length heterogeneous spread, a forbidden element move, an unauthorized mutable borrow, an expired lifetime, failed returned-reference provenance, invalid whole-pack consumption or an unsupported operation in a specialization. (2) An error in a concrete expansion names the template location and the concrete instantiation or argument position, may suggest `for ref`, `for ref mut`, `<-values...` or an ordinary conversion, and never suggests a hidden `any` or boxing workaround. (3) The parser, CST, formatter, LSP, hover, signature help and diagnostics registry understand `[...Types]`, `...ref Types`, `...ref mut Types`, pack inference and `<-values...` without changing array or spread grammar. (4) No new diagnostic ID is reserved by MD-117; IDs come from the central registry. (5) Ordinary heterogeneous parameters on `main` introduce no different pack system; process-entry argument supply stays with the entry-point and platform contracts. (6) Native type packs are not C variadics (§ 38); direct foreign variadic calls keep their unsafe, ABI-compatible and promotion rules.
 
 ## 39. Recursion
 

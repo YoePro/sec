@@ -976,6 +976,13 @@ Formatting and formatted output.
 
 It may use compiler-known format validation and optimized formatting paths.
 
+Heterogeneous formatting arguments use the general language facility of
+heterogeneous native variadic type packs (`rules/declarations/functions.md`
+§ 38A, MD-117); `fmt` receives no privileged call semantics, implicit `any`,
+boxing or structural `FormatArg` interface. Its public API, format grammar,
+validation, error, output and materialization contracts are a separate
+stdlib decision (MD-118).
+
 ## io
 
 General I/O interfaces and operations.

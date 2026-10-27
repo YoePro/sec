@@ -373,9 +373,11 @@ integrations:
     document_baseline:
       review_date: "2026-08-01"
       note: >-
-        grammar.md has later point synchronizations, so its current text mixes
-        the older reviewed implementation-status snapshot with newer normative
-        decisions. Later specialized rulebooks take precedence on conflicts.
+        The review date is retained as historical context only. The retired
+        implementation-status sections were removed on 2026-10-05; current
+        implementation status belongs in owning governance fragments. grammar.md
+        is the consolidated syntax contract and must remain synchronized with
+        specialized rulebooks that own feature semantics.
     repository_baseline: c515862
     summary: >-
       Tracks cross-cutting grammar conformance and legacy compatibility/recovery

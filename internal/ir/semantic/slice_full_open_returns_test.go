@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -58,9 +57,8 @@ func TestPackage16FullOpenReturns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rejected, err := buildPackage16Source(t, string(narrow), width)
-		var unsupported *UnsupportedFeatureError
-		if rejected != nil || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "MD-115") {
+		narrowed, err := buildPackage16Source(t, string(narrow), width)
+		if err != nil || !strings.Contains(Format(narrowed), "returns-from=[param#0[1..<3]]") {
 			t.Fatalf("erased narrowed origin: %v", err)
 		}
 	}

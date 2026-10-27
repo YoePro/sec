@@ -300,7 +300,7 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 	// defer owned parameter cleanup for arrays whose elements are not trivially
 	// destructible. Reject after the body so a more specific unsupported array
 	// operation encountered there remains the primary boundary diagnostic.
-	if b.maxPackage >= 14 && !resolved.Extern {
+	if b.maxPackage >= 14 && b.maxPackage < ownershipLoweringPackage && !resolved.Extern {
 		for _, parameter := range resolved.Parameters {
 			if _, fixed := sema.FixedArrayLength(parameter.Type); fixed && !sema.TriviallyDestructible(parameter.Type) {
 				return fb.unsupported("non-trivial fixed-array parameter destruction", decl.Token)
@@ -1698,7 +1698,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if !ok {
 			return builtValue{}, fmt.Errorf("binding %d has no IR value", fact.ID)
 		}
-		if _, fixed := sema.FixedArrayLength(fact.Type); fixed && sema.CopyClassificationOf(fact.Type) != sema.CopyTrivial {
+		if _, fixed := sema.FixedArrayLength(fact.Type); fixed && sema.CopyClassificationOf(fact.Type) != sema.CopyTrivial && fb.owner.maxPackage < ownershipLoweringPackage {
 			return builtValue{}, fb.unsupported("non-trivial fixed-array value transfer", e.Token)
 		}
 		if owned, isOwned := fb.ownedStorages[fact.ID]; isOwned {
@@ -1849,6 +1849,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md sections 29 and 65
 //   - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md — "Array length"
+//   - rules/mlir/packages/sec-mlir-dialect_package17.md — §65 whole-array observation without copying
 func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, resultType TypeID) (builtValue, error) {
 	receiverType, ok := fb.owner.analyzer.ResolvedTypeOf(expr.Object)
 	if !ok {
@@ -1857,6 +1858,14 @@ func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, res
 	length, fixed := sema.FixedArrayLength(receiverType)
 	if !fixed {
 		return builtValue{}, fb.unsupported("non-fixed array Len", expr.Token)
+	}
+	if fb.owner.maxPackage >= ownershipLoweringPackage && !sema.TriviallyDestructible(receiverType) {
+		if _, binding := expr.Object.(*ast.Identifier); !binding {
+			return builtValue{}, fb.unsupported("owned fixed-array temporary observation cleanup (P17-40)", expr.Token)
+		}
+		// Sema proved this stable binding available. Fixed length is a pure
+		// observation, so neither load nor copy a non-trivial owned array.
+		return fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(length), Location: location(expr.Property.Token)}, resultType), nil
 	}
 	arrayType, err := fb.owner.internType(receiverType)
 	if err != nil {
@@ -1873,93 +1882,6 @@ func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, res
 		Kind: OpArrayLength, Operands: []ValueID{receiver.id},
 		ArrayLength: length.String(), Location: location(expr.Property.Token),
 	}, resultType), nil
-}
-
-// buildArrayLiteral consumes the compact compiler-owned plan required by
-// rules/mlir/packages/sec-mlir-dialect_package14.md sections 14-23 and 62-63.
-// It emits one segment per source entry and never expands a spread by N.
-func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType TypeID) (builtValue, error) {
-	plan, ok := fb.owner.analyzer.ResolvedArrayLiteralPlanOf(expr)
-	if !ok || plan.Length == nil {
-		return builtValue{}, fb.unsupported("unresolved array literal", expr.Token)
-	}
-	if sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial || !sema.TriviallyDestructible(plan.ElementType) {
-		return builtValue{}, fb.unsupported("non-trivial array literal element", expr.Token)
-	}
-	resolvedResult, resultOK := fb.owner.module.Types.Lookup(resultType)
-	if !resultOK || resolvedResult.Kind != TypeArray || resolvedResult.Length != plan.Length.String() {
-		return builtValue{}, fmt.Errorf("array literal result type disagrees with resolved plan")
-	}
-	elementType := resolvedResult.Element
-	op := Operation{
-		Kind: OpArrayConstruct, ArrayElementType: elementType,
-		ArrayLength: plan.Length.String(), Location: location(expr.Token),
-	}
-	for _, entry := range plan.Entries {
-		if entry.SourceIndex < 0 || entry.SourceIndex >= len(expr.Elements) || entry.Length == nil {
-			return builtValue{}, fmt.Errorf("array literal plan has invalid source entry")
-		}
-		source := expr.Elements[entry.SourceIndex]
-		expected := elementType
-		kind := ArraySegmentElement
-		action := ArrayActionConstructDirect
-		if entry.Kind == sema.ArrayLiteralRange {
-			// One compact segment per source range: its operand is the
-			// constant lower bound, its length the value count. An empty
-			// exclusive segment contributes nothing.
-			if entry.Length.Sign() == 0 {
-				continue
-			}
-			if entry.RangeLower == nil {
-				return builtValue{}, fmt.Errorf("array literal range segment has no lower bound")
-			}
-			lower := fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(entry.RangeLower), Location: location(expressionToken(source))}, elementType)
-			op.Operands = append(op.Operands, lower.id)
-			op.ArraySegmentKinds = append(op.ArraySegmentKinds, ArraySegmentRange)
-			op.ArraySegmentLengths = append(op.ArraySegmentLengths, entry.Length.String())
-			op.ArrayActions = append(op.ArrayActions, ArrayActionConstructDirect)
-			continue
-		}
-		if entry.Kind == sema.ArrayLiteralSpread {
-			spread, spreadOK := source.(*ast.SpreadExpression)
-			resolvedAction, supported := semanticArraySpreadAction(entry.Action)
-			if !spreadOK || !supported {
-				return builtValue{}, fb.unsupported("non-trivial array spread action "+string(entry.Action), expressionToken(source))
-			}
-			source = spread.Value
-			var internErr error
-			expected, internErr = fb.owner.internType(entry.Type)
-			if internErr != nil {
-				return builtValue{}, internErr
-			}
-			kind = ArraySegmentSpread
-			action = resolvedAction
-		} else if entry.Kind != sema.ArrayLiteralElement || entry.Action != sema.ArrayTransferConstructDirect {
-			return builtValue{}, fb.unsupported("non-trivial array element action "+string(entry.Action), expressionToken(source))
-		}
-		value, buildErr := fb.buildExpr(source, expected)
-		if buildErr != nil {
-			return builtValue{}, buildErr
-		}
-		op.Operands = append(op.Operands, value.id)
-		op.ArraySegmentKinds = append(op.ArraySegmentKinds, kind)
-		op.ArraySegmentLengths = append(op.ArraySegmentLengths, entry.Length.String())
-		op.ArrayActions = append(op.ArrayActions, action)
-	}
-	return fb.result(op, resultType), nil
-}
-
-// semanticArraySpreadAction admits only the transfer represented by Package 14
-// and keeps semantic copy, move and borrow actions visible for later packages.
-//
-// Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 21, 89, 103
-//   - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md — "Array construction"
-func semanticArraySpreadAction(action sema.ResolvedArrayTransferAction) (ArrayTransferAction, bool) {
-	if action == sema.ArrayTransferCopyTrivial {
-		return ArrayActionCopyTrivial, true
-	}
-	return "", false
 }
 
 // buildArrayIndexRead implements

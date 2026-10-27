@@ -199,8 +199,9 @@ func (e *formatCheckError) Error() string {
 	return strings.Join(lines, "\n")
 }
 
-// runFmtCommand formats explicit files in place, checks them without writes,
-// or formats standard input to standard output.
+// runFmtCommand formats explicit files and recursively selected directories
+// in place (MD-037), checks them without writes, or formats standard input to
+// standard output.
 // Check differences return an error so the CLI exits non-zero after reporting
 // all affected files. LSP uses the same formatter.
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt <path>` and
@@ -260,45 +261,40 @@ func runFmtCommand(args []string) error {
 		return formatStdinWithOptions(os.Stdin, os.Stdout, settings.Options)
 	}
 	if len(paths) == 0 {
-		return fmt.Errorf("expected at least one source file")
+		return fmt.Errorf("expected at least one source file or directory")
 	}
-	options := make([]secformatter.Options, len(paths))
-	for index, path := range paths {
-		settings, err := formatconfig.ForSource(path, overrides)
+	// Preflight (formatter.md § 28(13)): select and read every file and
+	// resolve every configuration before the first write.
+	selected, err := selectFmtSources(paths)
+	if err != nil {
+		return err
+	}
+	options := make([]secformatter.Options, len(selected))
+	for index, file := range selected {
+		settings, err := formatconfig.ForSource(file.absolute, overrides)
 		if err != nil {
 			return err
 		}
 		options[index] = settings.Options
 	}
+	// A malformed file is left unchanged and reported, and its valid
+	// siblings are still formatted.
 	var changed, malformed []string
-	for index, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("%s is not a regular source file", path)
-		}
-		input, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-		result := secformatter.Format(secformatter.Source{Text: string(input)}, options[index])
+	for index, file := range selected {
+		result := secformatter.Format(secformatter.Source{Text: string(file.input)}, options[index])
 		if result.Malformed {
-			if check {
-				malformed = append(malformed, path)
-			}
+			malformed = append(malformed, file.display)
 			continue
 		}
 		formatted := result.Text
-		if formatted == string(input) {
+		if formatted == string(file.input) {
 			continue
 		}
 		if check {
-			changed = append(changed, path)
+			changed = append(changed, file.display)
 			continue
 		}
-		if err := replaceFormattedFile(path, []byte(formatted), info.Mode().Perm()); err != nil {
+		if err := replaceFormattedFile(file.absolute, []byte(formatted), file.mode); err != nil {
 			return err
 		}
 	}

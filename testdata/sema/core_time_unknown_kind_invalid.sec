@@ -1,0 +1,12 @@
+module main
+
+unit ClockTick physical
+
+impl <ClockTick> {
+    Dimension: [time^1]
+    Scale: 1
+}
+
+fn Wrong(value: uint128<ClockTick>) uint128<s> {
+    return value
+}

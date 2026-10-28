@@ -1,6 +1,9 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+	"sec/internal/lexer"
+)
 
 // resolveTypeReference resolves nominal identity, generic arguments, storage
 // shape and units without losing inherited named-list default facts.
@@ -152,7 +155,7 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 	if definition, exists := a.typeDefinitionTokens[name]; exists {
-		a.bindDefinition(ref.Token, definition)
+		a.bindDefinition(typeReferenceNominalToken(ref), definition)
 	}
 	if !a.canAccessDeclaredName(typ.Name, typ.Module) {
 		a.addErrorAtToken(ref.Token, "type %s is not accessible from module %s", ref.Name, a.currentModule)
@@ -242,4 +245,16 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		}
 	}
 	return typ, true
+}
+
+// typeReferenceNominalToken selects the parser-retained terminal identifier
+// instead of a module qualifier or ref keyword. Synthesized references without
+// that source anchor retain the existing fallback token behavior.
+// Rules: rules/tooling/lsp.md — "Navigation and references";
+// rules/projects/modules.md — §§7–9; rules/types/types.md — "Safe references".
+func typeReferenceNominalToken(ref *ast.TypeReference) lexer.Token {
+	if validDefinitionToken(ref.NameToken) {
+		return ref.NameToken
+	}
+	return ref.Token
 }

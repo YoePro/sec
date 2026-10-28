@@ -2213,6 +2213,11 @@ Sec 0.1 `match`; use `switch` or `if`. Enum-member patterns remain valid
 resolved finite-domain patterns. Struct-like destructuring is shallow, allows
 partial binding without `..`, and does not introduce recursive patterns.
 
+A bare `QualifiedIdentifier` naming a payload-bearing union variant is a valid
+variant-only pattern (MD-029): it selects the variant without extracting the
+payload. A `Result` subject's `Err(...)` arm uses `ErrPattern` from "Try
+expression".
+
 Examples:
 
 ```sec
@@ -2996,7 +3001,44 @@ TryHandlerBody
     ::= Expression
       | ReturnStatement
       | Block
+
+ErrPattern
+    ::= "Err" "(" ErrorSelection ")"
+
+ErrorSelection
+    ::= "_"
+      | Identifier
+      | QualifiedErrorVariant [ ErrorVariantPayloadPattern ]
+      | ContextualErrorVariant [ ErrorVariantPayloadPattern ]
+
+QualifiedErrorVariant
+    ::= QualifiedIdentifier "." Identifier
+
+ContextualErrorVariant
+    ::= "." Identifier
+
+ErrorVariantPayloadPattern
+    ::= "(" PatternArgument ")"
+      | "{" [ FieldPattern { "," FieldPattern } [ "," ] ] "}"
 ```
+
+`ErrPattern` (MD-029) is shared by `try` handlers and by `Err(...)` arms of a
+`Result` `match`; both use the same selection and binding semantics
+(`rules/errors/errorhandling.md`). An unadorned `Identifier` binds the whole
+error and is never an inferred variant. A variant-only shorthand always has a
+leading dot. `ContextualErrorVariant` is valid only when the protected failure
+channel or `Result[T, E]` subject already supplies one unambiguous closed
+concrete error type `E`; it is unavailable for the open root `error` and for
+heterogeneous contexts, and it is an additive form activated in Sec 0.1.2 (owner
+choice 2026-10-28).
+`ErrorVariantPayloadPattern` admissibility follows the resolved variant: `(...)`
+for a single payload, `{...}` for shallow struct-like fields, and no suffix for
+a variant-only selection, which is valid even when the variant carries a
+payload. Destructuring is one level deep; `PatternArgument` and `FieldPattern`
+are the productions of "Match patterns" and do not become recursive. The braces
+inside `Err(.NotFound { Path: path })` are a field pattern, distinct from the
+braces of a handler list, `match` body or arm body; parser recovery and the
+formatter preserve that distinction.
 
 Examples:
 
@@ -3997,7 +4039,6 @@ diagnostics.md
 parser_recovery.md
 semantic_ir.md
 language-rulebook-status.md
-rules_implementations.txt
 ```
 
 Planned files remain references to future canonical closure work.

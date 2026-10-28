@@ -33,6 +33,7 @@ integrations:
 
   - id: semantic-ir.core-v2
     area: canonical-semantic-ir-model-and-verifier
+    revised: "2026-10-28"
     status: partial
     repository_baseline: 998d8d1
     implemented:
@@ -44,6 +45,7 @@ integrations:
       - "static storage in the compilation track (2026-10-18, user decision: globals for all statics): emit-sec-mlir publishes each module static as sec.static.global (symbol, type, exact initial value, is_mutable) and accesses as sec.static.load/store; scalar layout and integer lowering convert the access types and sec-lower-static-storage emits internal LLVM globals (constant when immutable) accessed through llvm.mlir.addressof; Semantic IR lowers compound assignment to a mutable static as load/operator/store. MD-116 (2026-10-27) implements high-level static Place roots and origins in schemas 11/12; physical lowering of reference-dependent statics remains unsupported. Tests: TestStaticStorageEmitRoutes, TestNativeTrackBuildsAndRuns/statics, lit Conversion/SecToLLVM/static-storage-and-panic.mlir"
       - "static methods (2026-10-12, impl.md §§ 11, 13; semantic_ir.md §§ 60-61): every `static fn` of a non-generic impl block in the requested module lowers as an ordinary function under its qualified Target.Name identity (Sema ResolvedMethodForDeclaration), and a resolved static-method call is a direct call to it, including calls between methods; Sec MLIR emits them as qualified functions; instance method calls report the explicit `instance method call` boundary and static methods of generic implementations stay unsupported (TestStaticMethodsLowerAsDirectCalls, TestMethodLoweringBoundaries, TestStaticMethodsEmitAsQualifiedFunctions)"
     remaining:
+      - "MD-117 Semantic IR: represent and verify ordered pack types/length, expanded concrete value modes/source positions, spread origins, call-transfer commit, whole-pack invalidation, non-escape/returned-reference facts, per-position loop/control-flow expansion and copy/move/borrow/destruction obligations before physical lowering (semantic_ir.md §27A; correction §9(3))."
       - "instance methods (since 2026-10-12, package 15): shared and mutable receivers lower as an explicit ref/ref mut `self` parameter with field reads/writes and receiver passing (sec-mlir-package15 P15-47); remaining are consuming receivers (by-value move), `self` used as a value, reborrowing a mutable `self` for nested calls, temporary receivers without a Place (needed by try-chain-intermediate-lowering), and generic implementations through specialization identities"
       - add thread-local and addressed (fixed-address binding, register/MMIO) storage classes to Semantic IR storage, with initialization, mutability, address-stability and memory-space facts and verifier rules (identified 2026-10-11 by SEC-MLIR-P15 P15-42; static storage done 2026-10-16), and extend static initializers beyond scalar literals
       - add/normalize canonical Place identity and state records
@@ -607,7 +609,7 @@ integrations:
     status: partial
     implementation_phase: canonical-place-model-migration
     integrated: "2026-09-10"
-    revised: "2026-10-27"
+    revised: "2026-10-28"
     baseline:
       repository_head: 2c67853ee31358a9a8a486aa11fba57c6b6a7270
       tree: 225922f80c0537e8c2b21e3388d6a068cbb032ee
@@ -664,7 +666,18 @@ integrations:
       - internal/sema/reference_call_arguments.go
       - internal/ir/semantic/static_place_identities.go
       - mlir/lib/Dialect/Sec/StaticPlaceIdentities.cpp
+      - internal/ir/semantic/register_write_evidence.go
+      - internal/lowering/secmlir/register_values.go
+      - mlir/lib/Dialect/Sec/RegisterContracts.cpp
+      - mlir/lib/Dialect/Sec/RegisterWriteEvidence.cpp
+      - mlir/lib/Dialect/Sec/RegisterConversions.cpp
     tests:
+      - internal/lowering/secmlir/register_values_test.go
+      - cmd/compiler/register_emission_test.go
+      - testdata/semantic_ir/register_detached_values.sec
+      - testdata/semantic_ir/register_bit_extraction_boundary.sec
+      - mlir/test/Dialect/Sec/md114-register-contracts.mlir
+      - mlir/test/Dialect/Sec/invalid-md114-register-contracts.mlir
       - internal/ir/semantic/static_place_identities_test.go
       - internal/lowering/secmlir/static_place_roots_test.go
       - testdata/semantic_ir/static_place_roots.sec
@@ -694,6 +707,8 @@ integrations:
       - testdata/sema/reference_shared_call_retained_invalid.sec
       - testdata/sema/reference_shared_call_types_invalid.sec
     implemented:
+      - "MD-114 detached register integration (2026-10-28): typed #sec.register_def/#sec.register_field/#sec.register_write_proof attributes, the single canonical first-use sec.registers table, nominal sec.field_path extract/update operations and strict table/path/carrier/proof verification are installed in schemas 11/12. Required names/flags/ordinals, allocation-order coverage including reserved bits, nested nominal definitions/cycles, byte-order omission/domain and standard unsigned carriers are checked. Go emission serializes verified IR facts directly. Numeric writes require represented constant, extraction/type/mask or dominating immutable-SSA comparison evidence; unsupported proof transport fails before emission, while Sema-approved inspection IR remains available. Native verification preserves those facts through P5/P6/P8 bridges and rejects metadata-only forgeries. Source/public CLI tests cover bool, bit-backed enums, nested registers, all standard carriers through 256 bits, explicit little/big byte order, reserved fields, typed/constant/interval writes and deterministic 32/64 schema-11/12 round trips. Units without a quantity representation fail closed rather than losing identity. Physical register representation and hardware access remain outside this implementation."
+      - "MD-110 shared-table conversion subset (2026-10-28): register.from_bits constant/source-domain proofs (including negative constants under the bit-pattern fit rule) and register.to_bits signed/unsigned results resolve width from the same MD-114 table, with exact P6 scalar resolution and P8 preservation. fits_bits/guarded transport remains blocked on its unspecified destination-identity attribute spelling; bit-extraction conversion proof transport retains its separately recorded MD-110 gap. No fourth proof basis or hardware authority is invented."
       - "MD-116 completed (2026-10-27): source-approved module/function-local scalar static references emit zero-operand sec.place.static roots linked to sec.static.global by symbol, with explicit nonzero module-local sec.static_id and address-taken facts. StaticID, PlaceRootID and storage identity remain independent; module-wide Semantic IR checks and native operation verification reject conflicting repeated-root storage/address-space facts and identity aliasing between distinct statics. Same-module static return origins are verified from declaration IDs through copies, branches and calls; imported linkage stays closed. Source tests cover deterministic 32/64 emission in schemas 11 and 12, P5/P6/P8 preservation and malformed Semantic IR emitting no bytes. Physical reference-dependent static lowering remains unsupported, as required; this does not close addressed roots, aggregate/non-literal static initialization or P15 final acceptance."
       - "MD-085 (2026-10-22, rules/corrections/applied/md085-return-origin-verification-correction-20261021.md): --sec-verify-borrow-semantics verifies return origins path-aware. It checks summaries against the canonical grammar and parameter referent types, traces fields, proven-safe constant [K], dynamic [*] and slice views through joins, instantiates the callee's own sec.return_origins at direct calls (no all-arguments fallback), and requires exact inclusion. Static roots, receivers of non-methods and union payloads are rejected (lit return-origins-paths.mlir, invalid-return-origins-paths.mlir; P15/P16 Go fixtures)."
       - "MD-087 (2026-10-22, rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md): --sec-lower-checked-integers is selective. It lowers representable integer computation in modules that contain Places, references or slices, keeps their operations and facts, materializes exact-width siN/uiN <-> iN unrealized-cast bridges at Place, storage and call boundaries, and rejects any other surviving bridge. P5 (sec::isReferenceDependentStorage) and P6 (reference-bearing sec.call.direct, discardable call attributes preserved) were audited as conforming (TestCheckedIntegerLoweringCoexistsWithReferences 32/64; lit schema11-reference-scalar-layout.mlir, schema12-slice-architecture.mlir, invalid-reference-bridges.mlir)."
@@ -752,7 +767,7 @@ integrations:
       - "P15-47 shared direct-reference call reborrows (2026-10-25): ref mut T may grant ref T at a selected direct call with identical nominal referent type. Sema retains source type for exact-overload ranking and runs normal ownership/overlap checks; the existing P15 producer emits a distinct shared reborrow and preserves the mutable parent and returned shared dependencies. Focused source/IR/negative fixtures and the schema-11 pipeline pass at both widths. The type-compatibility call oracle was corrected to the normative call rule; storage initialization, explicit conversion and authority upgrades remain separate restrictions."
       - "P15-69/70/71/72/73/74 (2026-10-25): all 56 section-155 criteria have focused evidence mappings, all 46 section-156 report topics are covered in order, isolated full Go/vet/whitespace/YAML execution is recorded with failures intact, full native and adjacent-schema runs pass, and all 12 source-to-schema-11 pipeline cases pass. See rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md and sec-mlir-dialect_package15-implementation-report.md. Governance remains partial; final P15-75 acceptance and unresolved producer/MD/optimization boundaries are not closed by evidence collection."
     remaining:
-      - "P15-42/P15-42a: complete static/addressed storage and root producers. MD-116 static scalar declarations, schema-11/12 Place roots, consistent storage/root metadata and static@N tracing are implemented and verified. Ordinary addressed/hardware roots need MD-111 endpoint/region facts; MD-077 register/hardware operation serialization needs MD-114. Register/hardware-instance types are already implemented. Aggregate/non-literal static initializers and remaining storage classes retain their explicit producer boundaries; MD-081 is the separate static-reference-initializer decision."
+      - "P15-42/P15-42a: complete static/addressed storage and root producers. MD-116 static scalar declarations, schema-11/12 Place roots, consistent storage/root metadata and static@N tracing are implemented and verified. Ordinary addressed/hardware roots need MD-111 endpoint/region facts; MD-114 detached register table/extract/update emission is implemented; MD-110 retains fits_bits destination-attribute and bit-extraction proof transport, and MD-111 retains hardware operation/endpoint plans. Unrepresented quantity types and additional arithmetic/CFG numeric-write evidence remain explicit unsupported transport boundaries, not permission to trust forged bounds. Register/hardware-instance types are already implemented. Aggregate/non-literal static initializers and remaining storage classes retain their explicit producer boundaries; MD-081 is the separate static-reference-initializer decision."
       - "P15-47: finish remaining generic/consuming receiver producers and unrepresented root-dependent returned-reference paths, without selecting a physical ABI or copying ref mut. Ordinary parameters, implicit Place borrows, shared/mutable passing, MD-076 temporaries and returned input/subfield/call summaries are implemented; named mutable-to-shared direct call reborrows now pass Sema, IR and schema-11 verification on both widths. Static return paths are implemented under MD-116; addressed return paths retain the P15-42/42a and MD-111 dependencies."
       - "P15-75 final acceptance: close remaining producers/MD boundaries and rerun acceptance, current-tree full Go/vet, native suite, rulebook status and unique governance ownership. P15-69/70/71/72/73/74 mapping/execution/reporting tasks are complete, but full Go acceptance remains false: seven test failures reproduce on clean HEAD; the outdated call oracle was corrected and revalidated separately after the full snapshot. The retired empty-fragment index references have been repaired; current governance validation passes. Status must remain partial."
       - "MD-061 section 6 optimization matrix: Semantic IR to Sec MLIR to MLIR/LLVM differential and negative-IR tests (last-use then parent mutation, overlapping/disjoint reborrows, escapes, epoch checks, relocation, cleanup, MMIO/atomics/FFI, false noalias/lifetime). High-level reborrow/guard tests and wrapper-preserving pipelines do not replace this unimplemented physical optimization matrix."
@@ -762,6 +777,14 @@ integrations:
       - owning dynamic-array backing-storage transitions remain P18 work (package18-todo.md; frontend.dynamic-array-public-api); this is distinct from existing Sema dynamic-array semantics
       - stable/weak handles, safe-reference/RawPtr conversions, physical reference layout and LLVM lowering, physical epochs, pinning and concurrent invalidation remain outside the implemented P15 core; P24 owns physical layout, call ABI remains separate, and semantic-ir.raw-pointers provides distinct raw values without conversions or an executable Sec MLIR route
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-10-28 after MD-114 detached register tables, field operations, evidence verification and shared-table conversion subset
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run 'DetachedRegisters|NativeTrack' -count=1
+        result: passed on 2026-10-28; actual public emit-sec-mlir register inspection and existing native execution/unsupported-feature regressions
+      - command: cmake --build build/sec-mlir -j 2; llvm-lit -sv build/sec-mlir/test
+        result: passed on 2026-10-28; 186/186 native fixtures, including typed tables, composed paths, proof/table forgeries, old schemas and predecessor P15/P16 regressions
+      - command: go vet ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler
+        result: passed on 2026-10-28 after MD-114
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
         result: passed on 2026-10-27 for MD-116 after static identity consistency checks, including deterministic schema-11/12 source emission on 32/64 plans and malformed identity rejection with no output
       - command: cmake --build build/sec-mlir -j 2; llvm-lit -sv build/sec-mlir/test
@@ -2535,21 +2558,23 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: planned
     integrated: "2026-10-16"
-    revised: "2026-10-16"
+    revised: "2026-10-28"
     summary: >-
-      Package documents installed 2026-10-16; no P21 compiler feature is
-      implemented. Exact decimal/decimal128 constants, operator plans, checked
-      arithmetic with a (candidate, failed, reason) failure CFG, comparison,
-      core methods, conversions with RoundingMode, schema-17 dialect and
-      lowering-v17 passes. Operator scale (D1), the decimal operator error type
-      (D2) and the decimal128 member surface (D3) are open decisions MD-066,
-      MD-067 and MD-068; work that needs them must stay rejected as
-      normative-decision-blocked. Schema 17 depends on schema 16 (P20); the
-      compiler emits schema 11 (since P15-50, 2026-10-16) and the canonical
-      dialect/lowering books are at version 11.
+      P21 normative package documents are installed; its complete executable
+      decimal pipeline is not accepted. MD-066/067/068 settled D1/D2/D3 on
+      2026-10-28: signed public scale and fallible exact setter, operator scale
+      and division policy, core ArithmeticError mapping and decimal128's
+      mirrored public API. Only normative blocks are released. Core/API,
+      frontend/CTE, Semantic IR, checked error CFG, schema-17 verification and
+      physical lowering remain implementation work, in the correction's numbered
+      order. Existing earlier-schema decimal constants and Claude's ongoing
+      Scale migration do not imply P21 completion. P20/schema-16 prerequisites
+      remain; high-level schema 11/12 inspection is not an authorization to emit
+      schema 17 or to skip P15-P20 dependencies.
     predecessors:
       - SEC-MLIR-P20 (schema 16, not implemented)
     rules:
+      - rules/corrections/md066-md067-md068-decimal-correction-20261028.md
       - rules/mlir/packages/sec-mlir-dialect_package21.md
       - rules/mlir/packages/sec-mlir-dialect_package21.yaml
       - rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md
@@ -2566,15 +2591,40 @@ integrations:
       - rules/errors/errorhandling.md
       - rules/types/units.md
     known_holes:
-      - "fixed 2026-10-16 (was a known hole): CKM-DECIMAL-SCALE is now the value property Scale: uint8 of decimal (core-library.md § 10.1) with the core spelling scale accepted as a legacy name (MD-082 decided 2026-10-18 and integrated in core-library.md § 10.1 and the compiler_known_members.md legacy-spelling list; writes to Scale and every other compiler-known property are now rejected (TestDecimalScaleLegacySpellingSharesMemberID)), no longer a type-qualified static property returning int, and decimal128 has no such member until MD-068 (TestDecimalScaleIsAUint8ValueProperty)"
+      - "fixed 2026-10-28 (MD-066 § 3(7), P20 §§ 11-19): well-formed unsuffixed decimal literals beyond host float64 parse and retain exact coefficients/scales through declared/inferred bindings into Semantic IR (1e400, 1.2500e400, 1e-400). Sema validates binary literals from exact source after final context/overload shaping at the selected float32/float64 width; mandatory S1175 carries source span and help. Unit-bearing literals publish their resolved carrier width. Regression matrix covers both target plans, signs, integer-form g, arguments, operators, comparisons, arrays, fields, quantities, selected overloads, subnormals and underflow; CLI check verifies acceptance/rejection without backend tools (TestResolvedFloatLiteralRanges, TestUnsuffixedDecimalBeyondBinaryRange, TestCheckFloatLiteralRangeBoundary). This does not close the broader bounded exponent audit, operator lowering or schema-17 gates."
+      - "Historical 2026-10-16/MD-082 Scale baseline: decimal Scale became an instance property with legacy scale spelling, then typed uint8 and readonly; decimal128 lacked the member. Superseded normatively by MD-066/MD-068 on 2026-10-28: both Scale properties are int32 with a fallible exact try setter reporting PrecisionError."
+      - "fixed 2026-10-28 (MD-066 §§ 2(2)-2(5), Sema): CKM-DECIMAL-SCALE is int32 and decimal128 has its own CKM-DECIMAL128-SCALE; `try value.Scale = s` requires try and a mutable unborrowed place and propagates PrecisionError (core fallback type); Semantic IR names the setter and fails closed (TestDecimalScaleIsAnInt32ValueProperty, TestDecimalScaleSetterIsFallible, TestDecimalScaleAccessFailsClosed)"
+      - "fixed 2026-10-28 (MD-066 §§ 6(1), 6(4)-6(5)): a decimal / or % (also /= and %=) whose divisor Sema proves zero is a compile-time error S1024/S1025 even under try; proofs cover decimal/integer literals, signs, immutable decimal bindings and exact +, -, * of them, while parameters and mutable bindings keep the runtime path (TestDecimalProvablyZeroDivisor, TestDecimalProvablyZeroDivisorCompound)"
+      - "fixed 2026-10-28 (MD-067 §§ 7(1), 7(6), 7(9), 12(7)): ArithmeticError has exactly five variants (ScaleOverflow, PrecisionExhausted appended) in the Sema builtin and a new exact trusted core declaration in sec/core/error.sec that keeps the builtin identity; exhaustive handlers need all five or Err(_), Overflow is no supervariant; the Semantic IR and sec.core_error.is_variant verifiers accept exactly the five (schema < 7 legacy exhaustiveness unchanged) (TestArithmeticErrorHasFiveVariants, package10/try-plan/failure-set tests, lit md067-arithmetic-error-variants.mlir, invalid-md067-arithmetic-error-variant.mlir)"
+      - "fixed 2026-10-28 (MD-066 §§ 2(2), 3(5), 3(7)): decimal literals keep the signed int32 scale their spelling implies (1e3m scale -3, 1.20m scale 2) through shared constant.DecimalLiteral/FitDecimal used by Sema and Semantic IR; a too-wide coefficient moves only to the closest exact coarser scale, the asymmetric signed coefficient domain applies, an unrepresentable literal gets a specific diagnostic, `m` literals beyond the float64 range parse, DecimalConstant.Scale is int32 and the sec.const.decimal verifier accepts negative scales (TestDecimalLiteralValueUsesLexeme, TestDecimalLiteralFitsTargetWidth, TestDecimalLiteralWidthDiagnostic, TestDecimalLiteralConstantsKeepSpelledScale, lit md066-decimal-signed-scale.mlir)"
       - "fixed 2026-10-16 (was a known hole): decimal literal facts (internal/sema DecimalValue) carry an exact arbitrary-precision coefficient, so decimal128 literals beyond int64 are represented exactly (P21 sync § 8); a literal initializes decimal only if its coefficient fits i64 and decimal128 only if it fits i128 (layout.md components); decimal range checks compare exact values, which also fixes a wrong descending-range error for ranges such as 9.95..10.0 whose raw coefficients compared 995 > 100 (TestDecimalLiteralValueUsesLexeme, TestDecimalLiteralsAreExactAndWidthChecked)"
       - "corrected by P22 (rules/mlir/normative-sync/sec_p20_p21_conversion_compatibility_package22.md): P20/P21 conversions must not introduce NumericConversionError; MD-012 already settled the canonical `ConversionError` (OutOfRange, InvalidScalar, PrecisionLoss, ScaleOverflow, NonFinite, Contract(ContractError)) declared in sec/core/error.sec (verified 2026-10-16); P21's NumericConversionError references map to ConversionError"
       - "P21 compatibility audit § 2: P20 assumes binary64 `float`, superseded by MD-014 (target-sized float: f32 on 32-bit, f64 on 64-bit); P20 plans and tests must follow MD-014 before P21 conversions"
     notes:
+      - "2026-10-28: the existing SEC-MLIR-P21-D1/D2/D3 entries in sec-mlir-dialect_package21.yaml are already decided and reference the accepted correction. Governance follows those same gates; no parallel IDs or blanket implementation acceptance are added."
       - "verified 2026-10-16: the package's claim that sec/core/decimal.sec declares `ToString() string` is stale; it already returns Result[string, StringError] (body is a TODO stub)"
     remaining:
-      - "stage 1: baseline corrections (scale type, wide literal coefficients, ConversionError mapping per P22 compatibility note, P20 MD-014 float width)"
-      - "stages 2-9: exact constants, resolved operator plans, checked arithmetic and failure CFG, comparison/core methods, conversion/rounding, schema-17 dialect/verifiers, lowering/verifiers, regression and target matrix — operator scale, error and decimal128 member work gated on MD-066..MD-068"
+      - "stage 1 remainder: ConversionError mapping per the P22 compatibility note and P20 MD-014 target-sized float width in decimal/float conversion plans"
+      - "MD-066 §§ 3-4 operator result scale: immutable ResolvedDecimalOperatorPlan with preferred scale (max/sum), nearest exact legal scale, exact zero scale clamping, exact remainder via truncated quotient and scale-independent comparison"
+      - "MD-066 § 5 rounded decimal division: nearest-even at the finest admissible int32 scale keeping the whole-number part, carry fallback, underflow-to-zero classification; a rounded quotient is a success"
+      - "MD-066 §§ 6(2)-6(3) runtime decimal checks: decimal arithmetic is not yet a checked runtime operation in Sema (no RuntimeCheck/panic effect, so `try x / y` on decimals is rejected); a runtime zero divisor must panic with DivisionByZero, or yield ArithmeticError.DivisionByZero under try"
+      - "MD-067 §§ 7(3)-7(5) decimal failure classification: most-specific ScaleOverflow/PrecisionExhausted/Overflow selection by mathematical cause in decimal operator plans, and the decimal failure-reason to ArithmeticError variant mapping (needs the decimal operator plans above; integer operations never produce the decimal variants)"
+      - MD-066 § 2(4) Scale getter and transactional try-set lowering (exact rescale or PrecisionError with the receiver unchanged); Semantic IR currently rejects both
+      - "MD-066/MD-068 §§ 8-10 core members for decimal and decimal128: IsInteger/IsZero/IsPositive/IsNegative/Sign properties, RoundTo(scale[, mode]), Rescale, Normalize, Floor/Ceiling/Truncate/Round, ToInt*/ToFloat*, ToString R/G/F/N/E with separators; add sec/core/decimal128.sec and registry entries"
+      - "stages 6-9: schema-17 dialect types/ops/verifiers, physical decimal lowering and verifiers, DEC-01..DEC-22 differential target matrix (32/64-bit), retaining predecessor/schema and capability rejection"
+    verification:
+      - command: go run ./cmd/yamlstatus check
+        result: passed on 2026-10-28 after normative gate synchronization; package D1/D2/D3 entries reviewed as decided with implementation pending. This is governance validation, not P21 compiler/runtime acceptance.
+      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/... ./cmd/lsp/... ./cmd/compiler/... -count=1 and cmake --build build/sec-mlir --target check-sec-mlir
+        result: 2026-10-28 after the MD-066 Scale and literal-scale work; 36 packages ok, lit 187/187; only the pre-existing failures remain (collectionshape x3, temporal TestRepresentedMutexCallsDoNotInventUnitOverloads, typecompatibility TestLegacyNumericStringConversions, cmd/compiler MD-109 io x2). Remaining split into concrete MD-066/067/068 items (2 to 9).
+      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/... ./cmd/lsp/... ./cmd/compiler/... -count=1 and cmake --build build/sec-mlir --target check-sec-mlir
+        result: 2026-10-28 after MD-067 ArithmeticError variants; 36 packages ok, lit 189/189; real core loads the exact error.sec declaration; only the same pre-existing failures remain. The MD-067 remaining item narrowed to decimal classification/mapping (count unchanged).
+      - command: go test ./internal/... ./cmd/compiler/... -count=1; go test ./cmd/lsp -count=1 rerun
+        result: 2026-10-28 after the MD-066 § 6(1) provably-zero decimal divisor; 35 internal/compiler packages ok, cmd/lsp ok on rerun (the first run hit a transient build failure while concurrent LSP files were being added); only the same pre-existing failures remain. The MD-066 § 6 remaining item narrowed to the runtime checks (count unchanged).
+      - command: go test ./internal/sema ./internal/sema/constant ./internal/ir/semantic ./internal/ast ./internal/diagnostics -count=1; targeted parser numeric/literal tests; targeted compiler float-boundary/catalog tests; go vet ./internal/ast ./internal/sema ./internal/diagnostics ./internal/ir/semantic
+        result: passed 2026-10-28 for MD-066 unsuffixed literal range boundary; added AST and exact IR regressions also passed separately. P21 remaining 9 to 8 with no replacement remaining item. Native/schema-17 lowering was not changed or claimed.
+      - command: go test ./cmd/lsp -run 'TestDiagnosticBatch|TestLSPTarget|TestTypeDefinitionComponents|TestTarget' -count=1 -timeout=60s
+        result: passed 2026-10-28 (3.93s). Full cmd/lsp suite was stopped for stack diagnosis after 358s in TestTryAssignmentFlowPresentation / prepareGraphSyntaxOrigins before the new literal validation hook; full-suite acceptance is not claimed.
 
   - id: lowering.sec-mlir-checked-integer-arith
     area: mlir-dialect-conversion
@@ -2637,6 +2687,7 @@ integrations:
 
   - id: lowering.abi-model
     area: platform-and-lowering
+    revised: "2026-10-28"
     status: planned
     integrated: "2026-08-16"
     document_revision: "1"
@@ -2649,6 +2700,7 @@ integrations:
       fingerprints, and separate-compilation compatibility without duplicating
       FFI legality or source ownership semantics.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/mlir/packages/sec-mlir-dialect_package25.md
       - rules/mlir/packages/sec-mlir-dialect_package25.yaml
       - rules/mlir/packages/sec-mlir-dialect_package25_decision-index.md
@@ -2669,6 +2721,7 @@ integrations:
       - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
     remaining:
+      - "MD-117 P25-27a: classify fully concrete heterogeneous native pack parameter/call sequences through CallABIPlan with canonical specialization and CompilationPlan compatibility; no universal erased pack ABI, implicit heap storage or C-vararg promotions. Keep native packs distinct from unsafe foreign varargs and retain P24/P25 readiness gates (package25-todo.md P25-27a; correction §§9,11)."
       - "SEC-MLIR-P25 (callable ABI classification and foreign representation boundary, schema/lowering v21) installed 2026-10-16, not implemented: one immutable ABIModel per CompilationPlan, CallABIPlan, Semantic IR callable/foreign ABI intent and v21 sec.abi.* dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package25.md, sec_callable_abi_sync_package25.md, sec_semantic_ir_callable_abi_package25.md, sec_mlir_dialect_v21.md, sec_mlir_lowering_v21.md); depends on P24 resolved layouts; no new P25 decision; gated by MD-019, MD-021, MD-045 and MD-052; applied MD-020, MD-023 and MD-024 are to be implemented, not reopened"
       - add canonical ABIIdentity and ABIModel selection to CompilationPlan and make downstream consumers use that resolved model instead of inferring ABI behavior from OS, architecture, target triple, host, or backend defaults
       - resolve Sec, C, and system calling-convention families independently and allow system to reuse C only where the active CompilationPlan explicitly declares physical equivalence

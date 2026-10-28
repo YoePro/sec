@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-10-27 (MD-117 heterogeneous variadic type packs, § 38A; § 33 example)
-- **Document revision:** 2.0
+- **Last updated:** 2026-10-28 (§ 20 `Some(value)` payload in overload elimination, MD-102); 2026-10-27 (MD-117 heterogeneous variadic type packs, § 38A; § 33 example)
+- **Document revision:** 2.1
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions.txt`
 - **Canonical path:** `rules/declarations/functions.md`
@@ -601,6 +601,20 @@ A non-variadic candidate is preferred over an otherwise equally ranked variadic 
 This prevents a catch-all variadic overload from unnecessarily replacing a more specific fixed-arity overload.
 
 Ownership mode must not be chosen through surprising overload resolution.
+
+A `Some(value)` argument contributes its payload type to candidate
+elimination exactly like an ordinary argument (MD-102): a candidate expecting
+`Option[U]` is viable only when the payload can legally initialize `U` under
+the existing contextual-literal, compatibility and explicit-conversion rules.
+`Store(Some(42))` selects `Option[int]` over `Option[string]`. For candidates
+such as `Option[int32]` and `Option[int64]` the ordinary literal ranking
+decides, or the call is ambiguous and the diagnostic names both candidate
+types and suggests explicit typing; there is no `Some`-specific precedence.
+Selection is deterministic and independent of declaration order, examines
+payload types and static constraints only, and evaluates the payload exactly
+once in the ordinary argument order (§ 17); a failed overload choice performs
+no runtime evaluation. Call ownership follows the ordinary rules
+(`rules/types/types.md` "Contextual and self-inferred `Some(value)`").
 
 ## 21. Generic functions and methods
 

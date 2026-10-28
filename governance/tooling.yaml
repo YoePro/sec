@@ -146,9 +146,11 @@ integrations:
   - id: tooling.copy-move
     area: formatter-lsp-diagnostics-analysis
     status: partial
-    revised: "2026-10-12"
+    revised: "2026-10-28"
     evidence:
       code:
+        - internal/cst/ownership_roles.go
+        - internal/formatter/token_spacing.go
         - internal/sema/ownership_use_diagnostics.go
         - internal/sema/availability_diagnostics.go
         - internal/sema/analyzer_result_projection.go
@@ -159,6 +161,11 @@ integrations:
         - internal/sema/analyzer_let_bindings.go
         - internal/sema/analyzer_inference.go
       tests:
+        - internal/formatter/ownership_markers_test.go
+        - cmd/compiler/fmt_ownership_test.go
+        - cmd/lsp/format_ownership_test.go
+        - testdata/formatter/ownership_markers.sec
+        - testdata/formatter/ownership_markers.expected.sec
         - internal/sema/ownership_use_diagnostics_test.go
         - cmd/compiler/ownership_use_diagnostics_test.go
         - cmd/lsp/ownership_use_diagnostics_test.go
@@ -181,6 +188,7 @@ integrations:
       - rules/tooling/diagnostics.md
       - rules/analysis/escape_analysis.md
     implemented:
+      - "2026-10-28: completed consuming-syntax formatting through the shared formatter, CLI and LSP. Parser-owned roles attach capture(...) to its keyword, separate the following fn and its return type, and retain consuming parameters, call/union/Option/Result/struct/array payload markers, projected operands, mixed copy/move captures and optional return <-value. Formatting never infers a move for an ordinary call, fresh temporary, copy capture or unmarked return. Golden and AST ownership snapshots cover 2/4/6-space indentation, LF/CRLF, ordinary/fix modes, comments/literals, malformed-region preservation and idempotence; actual CLI check/write/check and applied LSP edits produce the same golden bytes. This closes the formatting item; richer ownership inspection and proven-safe fixes remain separate items below."
       - Formatter preserves established :<- and <- move operators.
       - LSP exposes initial move-related semantic facts and selected S1007 quick fixes.
       - Frontend already reports several move/copy safety errors with related source locations.
@@ -188,7 +196,6 @@ integrations:
       - S1007 explains missing explicit transfer to consuming parameters and owning struct/union/Option/Result payloads, suggests the source-specific <- marker, and links API ownership contracts and source ownership origins. Local Ok/Err payloads use the shared construction validation; invalid inferred and named-union construction does not commit a source move or cascade use-after-move diagnostics.
       - Use-after-ownership diagnostics explain the affected value, earlier ownership-ending action and why the later use cannot access an owned value. Canonical definite, partial and conditional state drives repair guidance and source links; Result.Ok()/Err() retain projection-specific inspection advice and the registered S1088 identity. CLI and LSP share these facts without automatic ownership repairs.
     remaining:
-      - format and expose explicit consuming argument/payload syntax everywhere, capture(<-value), and optional return <-value
       - integrate reverse escape/parameter-usage advice for large valid copies without turning performance advice into ownership errors
       - surface copy classification, operation at cursor, move origin, destination, availability, consuming parameter, partial aggregate state, and consequence preview
       - make automatic <- fixes conditional on proof that later source uses and borrow/destruction rules remain valid
@@ -200,6 +207,12 @@ integrations:
       - large-copy advisory references known size/use facts and never changes program validity
       - use-after-Result.Ok()/Err() diagnostic identifies the consuming projection call
     verification:
+      - command: go test ./internal/formatter ./internal/cst -count=1
+        result: passed on 2026-10-28; full shared formatter/CST suites, including consuming-syntax conformance and AST ownership preservation
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Format|Ownership|HeaderSpacing|Alignment' -count=1
+        result: passed on 2026-10-28; shared CLI/LSP formatting and existing ownership regressions; expanded final payload fixture separately revalidated with -run OwnershipMarkers
+      - command: go vet ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-28; tooling.copy-move remaining 4 to 3, tooling.yaml remaining 42 to 41
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-12; all three complete suites passed with shared ownership-use mentorship, mandatory Result-projection use-after-move IDs and related operation/source-owner locations
       - command: go vet ./...

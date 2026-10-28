@@ -1,0 +1,5 @@
+module main
+
+fn Broken() void {
+let value :=
+}

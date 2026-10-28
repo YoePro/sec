@@ -48,6 +48,8 @@ fn Divide(left: int, right: int) int {
     Err(ArithmeticError.Overflow) => 1
     Err(ArithmeticError.DivisionByZero) => 2
     Err(ArithmeticError.InvalidShift) => 3
+    Err(ArithmeticError.ScaleOverflow) => 4
+    Err(ArithmeticError.PrecisionExhausted) => 5
   }
 }
 `, 10)
@@ -57,8 +59,9 @@ fn Divide(left: int, right: int) int {
 	if err := Verify(module); err != nil {
 		t.Fatal(err)
 	}
+	// MD-067: five ArithmeticError variants; the last is the unmatched route.
 	function := module.Functions[0]
-	if countOperations(function, OpCoreErrorIsVariant) != 2 {
+	if countOperations(function, OpCoreErrorIsVariant) != 4 {
 		t.Fatalf("exhaustive final variant should be the unmatched route: %s", Format(module))
 	}
 	foundImplicitSuccess := false

@@ -34,7 +34,7 @@ before acceptance work starts.
 |---|---|---|
 | Active types | `decimal` and `decimal128` are active Sema and Semantic IR kinds; wide integer types remain active. | Preserve both decimal kinds end-to-end; do not demote `decimal128` to planned or emulate either through binary float. |
 | Exact literals | Sema parses decimal values with `big.Int` coefficients and width checks; Semantic IR retains `DecimalConstant` coefficient, scale and lexeme. | Credit exact constant infrastructure, then make publication immutable and complete bounded exponent/scale diagnostics. |
-| Scale surface | Decimal `Scale` is a read-only `uint8` compiler-known property, with a regression test; `decimal128` members remain withheld. | The old package-YAML `int` bug is already corrected. Do not expose decimal128 members before D3. |
+| Scale surface | Decimal `Scale` is a read-only `uint8` compiler-known property, with a regression test; `decimal128` members remain withheld. | The old package-YAML `int` bug is already corrected. Since MD-066/MD-068 (2026-10-28) the canonical surface is `Scale: int32` with getter and `try set` on both `decimal` and `decimal128`; the `uint8` property is now a divergence to correct (P21-17, P21-19). |
 | Existing semantics | Sema resolves decimal arithmetic, truncation remainder, comparisons, unit carriers, defaults and some exact constant evaluation. | These are frontend facts, not proof of approved checked arithmetic, D1 scale policy, D2 error CFG, schema 17, or native lowering. |
 | Existing IR/emission | `TypeDecimal`, `TypeDecimal128` and `const.decimal` emit high-level types and constants. | Reuse them; add P21 operations only from immutable resolved plans. |
 | Core string surface | `sec/core/decimal.sec` declares fallible `ToString() Result[string, StringError]`, but its body is a stub. | Retain the correct signature; string materialization remains outside P21. |
@@ -67,16 +67,23 @@ sec/core/rounding.sec
    selected plan rather than assuming f64.
 3. **Rounding:** reuse the six existing `RoundingMode` cases. A legal explicit
    mode is applied once to the exact mathematical value after unit conversion;
-   no implicit rounding or binary-float intermediate is permitted.
-4. **D1 (MD-066) — scale/canonicalization:** observable result-scale policy and the
-   public scale domain are not approved. This blocks scale-sensitive operator
-   plans, `RoundTo`, `Rescale`, and final public-scale validation.
-5. **D2 (MD-067) — arithmetic error:** no exact common error type/priority for failing
-   decimal arithmetic is approved. This blocks checked operator reason values,
-   error CFG and handler integration.
-6. **D3 (MD-068) — decimal128 core members:** the public decimal128 member surface is
-   not approved. This blocks member declarations, compiler-known registry
-   entries and lowering for those members.
+   no implicit rounding or binary-float intermediate is permitted. The one
+   exception is decimal division (MD-066 § 5), which rounds an inexact
+   quotient once with nearest-even.
+4. **D1 (MD-066) — scale/canonicalization:** decided 2026-10-28
+   (`rules/corrections/md066-md067-md068-decimal-correction-20261028.md`).
+   The public scale is `int32` with a fallible exact setter; operations
+   select the exact scale closest to their preferred scale; division alone
+   rounds (nearest-even, finest admissible scale); a provably zero decimal
+   divisor is a compile-time error. Owners: `types.md` "Decimal scale",
+   `operators.md` "Decimal arithmetic", `core-library.md` §§ 10.1, 10.5.
+5. **D2 (MD-067) — arithmetic error:** decided 2026-10-28. No
+   `DecimalArithmeticError`; `core::ArithmeticError` gains `ScaleOverflow`
+   and `PrecisionExhausted`, chosen by the most-specific-applicable-error
+   rule (`errorhandling.md` § 3.4, `core-library.md` § 20.1).
+6. **D3 (MD-068) — decimal128 core members:** decided 2026-10-28.
+   `decimal128` mirrors the complete `decimal` member family
+   (`core-library.md` § 10.4). `Parse()` and `ToUInt*` stay deferred.
 7. **One compilation track:** P21 widens only Sec MLIR → standard MLIR → LLVM.
    The historical legacy-path requirement is not permission to restore a
    parallel backend.
@@ -107,9 +114,11 @@ open.
   overwriting canonical rulebooks with package snapshots.
 - [ ] P21-04 — Update P21 text and planning to the current `ConversionError`,
   MD-014 float width, MD-047 rounding contract and one-track architecture.
-- [ ] P21-05 — Confirm D1–D3 in `missing-decisions.yaml`; update their owner
+- [x] P21-05 — Confirm D1–D3 in `missing-decisions.yaml`; update their owner
   entries if evidence has changed, but do not implement gated semantics before
-  a normative decision is applied.
+  a normative decision is applied. Done 2026-10-28: MD-066/MD-067/MD-068 are
+  `decided-implementation-pending` and synchronized into their owning
+  rulebooks; implementation follows the correction's § 13(3) step order.
 - [ ] P21-06 — Create or update the sole `lowering.sec-mlir-package21`
   integration in `governance/lowering.yaml` with exact gates, dependencies,
   evidence, partial state and deferrals; validate with `yamlstatus`.
@@ -138,6 +147,8 @@ open.
 - [x] P21-10 — Expose decimal `Scale` as the authoritative read-only `uint8`
   property; withhold decimal128 members until D3. The core `ToString` signature
   is fallible and correct, while its string-producing body remains outside P21.
+  *Superseded 2026-10-28 (MD-066):* the property must become `int32` with a
+  transactional `try set`; that change is tracked by P21-17.
 
   Current anchors: `internal/sema/compiler_known_members.go`,
   `internal/sema/decimal_scale_member_test.go`, and `sec/core/decimal.sec`.
@@ -164,6 +175,11 @@ open.
   `m`-suffixed, exponent and base-prefixed forms; add bounded deterministic
   diagnostics for extreme input without `strings.Repeat`, host-width overflow
   or float parsing (§§7–8).
+
+  Verified 2026-10-28: the unsuffixed host-float64 parse gate is removed.
+  Exact large/tiny decimal literals reach Semantic IR; resolved binary literal
+  ranges are checked in Sema after context shaping with mandatory S1175.
+  The broader extreme-input/exponent audit remains part of P21-13.
 - [ ] P21-14 — Correct all remaining stale decimal assumptions in package YAML,
   comments and governance: old int64 literal limits, old `Scale: int`, old
   NumericConversionError, fixed-f64 plain float and the retired legacy track.
@@ -179,24 +195,35 @@ open.
 
 ## D. Normative-decision-gated semantic work
 
-- [ ] P21-17 — **Blocked on D1.** After approval, implement a stable result
-  scale/canonicalization policy, public scale-domain validation, zero behavior,
-  exact trailing-zero reduction and scale-policy identity for all plans
-  (§§13, 16–17, 21–22).
-- [ ] P21-18 — **Blocked on D2.** After approval, define the exact arithmetic
-  failure type, reason domain, priority and conversion into Result/try/panic
-  behavior. Do not substitute `ArithmeticError`, `PrecisionError` or an
-  inferred union (§§14, 18–19).
-- [ ] P21-19 — **Blocked on D3.** After approval, add only the accepted
-  decimal128 core declarations, compiler-known IDs, synthetic navigation,
-  LSP presentation and tests (§§11, 15, 21).
+- [ ] P21-17 — **D1 decided 2026-10-28 (MD-066); unblocked.** Implement the
+  preferred-scale/nearest-exact-scale policy, the `int32` public scale with
+  its transactional `try set`, zero behavior, literal scale, rounded division
+  and provably-zero-divisor rejection for all plans (§§13, 16–17, 21–22).
+  Partial 2026-10-28: Sema `Scale: int32` (decimal and decimal128 identities)
+  with a checked `try set` reporting `PrecisionError`; Semantic IR
+  `DecimalConstant.Scale` and the `sec.const.decimal` verifier accept negative
+  scales (lit `md066-decimal-signed-scale.mlir`). Getter/setter lowering fails
+  closed. Literal scale done 2026-10-28 (signed spelled scale, shared
+  `constant.DecimalLiteral`/`FitDecimal`, width diagnostic). Operator scale
+  plans, rounded division and the zero-divisor rule remain; the concrete list
+  is in governance `lowering.sec-mlir-package21`.
+- [ ] P21-18 — **D2 decided 2026-10-28 (MD-067); unblocked.** Map decimal
+  failures onto `core::ArithmeticError` (adding `ScaleOverflow` and
+  `PrecisionExhausted`) by the most-specific-applicable-error rule, and into
+  Result/try/panic behavior. No `DecimalArithmeticError`, no `PrecisionError`
+  for operators, no inferred union (§§14, 18–19).
+- [ ] P21-19 — **D3 decided 2026-10-28 (MD-068); unblocked.** Add the
+  decimal128 core declarations mirroring `decimal` (`core-library.md` § 10.4),
+  compiler-known IDs, synthetic navigation, LSP presentation and tests
+  (§§11, 15, 21).
 - [ ] P21-20 — After D1/D2, publish immutable `ResolvedDecimalOperatorPlan`
   and `ResolvedDecimalMemberPlan` carrying exact operands/type, approved scale
   policy, error identity, source order, copy/effect facts and guard status.
 - [ ] P21-21 — After D1/D2, implement unary and binary checked decimal
   operations with arbitrary-precision add/sub/mul/div/rem algorithms, exact
-  rational division termination checks, truncation remainder and no implicit
-  rounding (§§16–19).
+  rational division termination checks, truncation remainder, no implicit
+  rounding outside division, and MD-066 § 5 nearest-even rounding of an
+  inexact quotient (§§16–19).
 - [ ] P21-22 — Implement exact numeric comparison independent of stored scale;
   lower only the already accepted decimal core methods. `Abs`, `Clamp`,
   `RoundTo` and `Rescale` preserve their individually declared error contracts
@@ -245,7 +272,7 @@ open.
 - [ ] P21-33 — After D1/D2, test add/sub/mul/div/rem, terminating and
   nonterminating quotients, zero divisor, negative remainder, numeric equality
   across scales and named/unit-bearing cases (§§16–20, 36).
-- [ ] P21-34 — Test decimal core members, `Scale: uint8`, error contracts,
+- [ ] P21-34 — Test decimal core members, `Scale: int32` with `try set`, error contracts,
   all rounding modes and any approved decimal128 parity surface (§§21–22, 37).
 - [ ] P21-35 — Test conversions through all active integer widths, 32/64-bit
   plain float, fixed float widths, nonfinite values, exactness, rounding,
@@ -266,6 +293,8 @@ open.
   as full decimal lowering (§41).
 - [ ] P21-39 — Do not begin acceptance gate B until D1, D2 and D3 are each
   normatively approved and synchronized into their owning rulebooks (§42).
+  Approval and synchronization were completed 2026-10-28; gate B now waits on
+  implementation evidence only.
 - [ ] P21-40 — Update governance, language-rulebook status, missing decisions,
   package status and P20 compatibility evidence with exact implemented,
   blocked, deferred and unsupported states.

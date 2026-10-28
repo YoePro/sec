@@ -1,0 +1,46 @@
+module formatting
+
+type Packet struct {
+    Value: int,
+}
+
+fn Own(->value: int) int {
+    return <-value
+}
+
+fn Build(->first: int, ->second: int, ->third: int) int {
+    let ordinary := 3
+    let copied   := ordinary
+    let packet   := Packet { Value: <-first }
+    let option   := Some(<-second)
+    let result   := Ok(<-copied)
+    let closure := capture(<-third, ordinary) fn() int {
+        return third + ordinary
+    }
+    let many := capture(
+        <-packet,
+        option,
+        result,
+    ) fn() int {
+        return 1
+    }
+    return Own(<-ordinary)
+}
+
+fn Project(->packet: Packet) int {
+    return <-packet.Value
+}
+
+fn Plain(value: int) int {
+    return value
+}
+
+fn Containers(->first: int, ->second: int, ->third: int, ->fourth: int) void {
+    let values  := [<-first]
+    let failure := Err(<-second)
+    let tagged  := Choice.Value(<-third)
+    Send(
+        <-fourth,
+        Create(),
+    )
+}

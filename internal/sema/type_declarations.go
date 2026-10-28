@@ -97,8 +97,12 @@ func isCoreBuiltinDeclaration(name string) bool {
 	if len(ipcErrorVariants(name)) != 0 || len(commandIOModeVariants(name)) != 0 {
 		return true
 	}
+	// rules/library/core-library.md — § 27 (MD-062).
+	if len(unitMetadataEnumVariants(name)) != 0 {
+		return true
+	}
 	switch name {
-	case "IndexError", "RangeError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
+	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
 		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError":
 		return true
 	default:
@@ -279,6 +283,12 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		return typ
 	}
 	if typ, canonical := a.compareExchangeResultFromDeclaration(enum); canonical {
+		return typ
+	}
+	if typ, canonical := a.unitMetadataEnumFromDeclaration(enum); canonical {
+		return typ
+	}
+	if typ, canonical := a.arithmeticErrorFromDeclaration(enum); canonical {
 		return typ
 	}
 	underlying := a.types["int"]

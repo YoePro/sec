@@ -163,7 +163,7 @@ impl Volt {
 
 // Legacy unqualified unit references are rejected with the <Unit> spelling
 // as help: `impl Unit`, a bare unit conversion call and a bare unit type.
-// Unit metadata without a Sec 0.1 value type cannot be read.
+// Reading `<rpm>.Kind` is valid since MD-062 (UnitKind.Unknown when absent).
 func TestLegacyUnqualifiedUnitReferencesAreRejected(t *testing.T) {
 	source := `module main
 unit rpm physical
@@ -184,7 +184,6 @@ fn Use(value: decimal<rpm>) void {
 		"impl rpm does not name an ordinary type; rpm is a unit",
 		"rpm is a unit, not a function or type",
 		"rpm is a unit, not a type",
-		"unit metadata <rpm>.Kind has no value type in Sec 0.1",
 	}
 	if len(errors) != len(wants) {
 		t.Fatalf("want %d errors, got %+v", len(wants), errors)
@@ -194,7 +193,7 @@ fn Use(value: decimal<rpm>) void {
 		for _, err := range errors {
 			if strings.Contains(err.Message, want) {
 				found = true
-				if want != wants[3] && !strings.Contains(err.Help, "<rpm>") {
+				if !strings.Contains(err.Help, "<rpm>") {
 					t.Errorf("%q lacks <rpm> help: %q", want, err.Help)
 				}
 			}

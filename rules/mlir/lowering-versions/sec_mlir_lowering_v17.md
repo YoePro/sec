@@ -1,9 +1,9 @@
 # Sec MLIR Lowering — v17 Decimal Amendment
 
-- **Status:** Proposed lowering v17 amendment (not yet active)
+- **Status:** Proposed lowering v17 amendment (not yet active); its D1–D3 gates were decided 2026-10-28 (MD-066/MD-067/MD-068)
 - **Created:** 2026-10-16
-- **Last updated:** 2026-10-16
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-28 (division rounding, int32 scale, ArithmeticError mapping)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical repository path (proposed):** `rules/mlir/lowering-versions/sec_mlir_lowering_v17.md`
 - **Package:** `SEC-MLIR-P21`
@@ -25,7 +25,7 @@ Use exact big-integer/rational reference semantics to define lowering. Checked t
 
 ## § 4. Division and remainder
 
-For division, reduce exact rational and check terminating decimal representability using factors 2 and 5; never round implicitly. For remainder calculate truncation quotient and exact remainder; handle negative signs per `operators.md`, divisor zero via the accepted error contract. No binary `arith.divf`, `arith.remf` or nearest-remainder helper.
+For division, reduce exact rational and check terminating decimal representability using factors 2 and 5; never round implicitly. *Superseded in part 2026-10-28 (MD-066 § 5):* when the exact quotient has no representation, lowering implements the rounding Sema planned: one nearest-even rounding from the exact quotient at the finest admissible signed `int32` scale that keeps the whole-number part, falling back to the next coarser scale on a rounding carry. Lowering does not choose the scale independently, never double-rounds, saturates or wraps, and a rounded quotient takes the success branch. For remainder calculate truncation quotient and exact remainder; handle negative signs per `operators.md`, divisor zero via the accepted error contract. No binary `arith.divf`, `arith.remf` or nearest-remainder helper.
 
 ## § 5. Comparison
 
@@ -41,7 +41,7 @@ Use resolved compiler-known IDs, not source method spellings. Documented decimal
 
 ## § 8. Failure branches
 
-Run verified checked decimal guard before downstream lowering. Branch `failed=true` to error/panic, `false` to success. Result candidate never used on failure. Map specific error only by approved D2 type, reuse P10/P11 handlers; don't widen errors or change panic effects in a backend.
+Run verified checked decimal guard before downstream lowering. Branch `failed=true` to error/panic, `false` to success. Result candidate never used on failure. Map specific error only by approved D2 type, reuse P10/P11 handlers; don't widen errors or change panic effects in a backend. D2 (MD-067) maps decimal reasons to `core::ArithmeticError` (`DivisionByZero`, `ScaleOverflow`, `PrecisionExhausted`, `Overflow`). A runtime zero divisor without `try` reaches the panic endpoint with reason `DivisionByZero`; a provably zero divisor never reaches lowering because Sema rejects it.
 
 ## § 9. Pass registration
 
@@ -60,8 +60,8 @@ CompilationPlan resolves i64/i128 and i32 layout, alignment, ABI, and helper ava
 
 ## § 11. Verification and differential tests
 
-Use a host-independent arbitrary-precision reference evaluator; test 64/128 boundaries, scale 0 and 255 under approved D1, exact fractions, nonterminating division, large exponents, negative remainder, 32/64-bit target width interaction, round modes, and active 128/256-bit integer conversions. Compare constant folding vs helper runtime behavior and MLIR parse/print. Capture actual commands and outputs.
+Use a host-independent arbitrary-precision reference evaluator; test 64/128 boundaries, negative, zero and `int32`-boundary scales under the approved D1, exact fractions, rounded nonterminating division, large exponents, negative remainder, 32/64-bit target width interaction, round modes, and active 128/256-bit integer conversions. Compare constant folding vs helper runtime behavior and MLIR parse/print. Capture actual commands and outputs.
 
 ## § 12. No unsupported shortcuts
 
-Forbidden: silently converting decimal operations to binary float; choosing a scale in lowering; lossy coeff truncation; treating decimal128 as not active; converting scale i32 to uint8 without validation; emitting guessed DecimalArithmeticError; declaring public decimal128 methods before D3; automatically appending a hidden allocation context; calling `malloc` without an approved ABI.
+Forbidden: silently converting decimal operations to binary float; choosing a scale in lowering; lossy coeff truncation; treating decimal128 as not active; narrowing the `int32` scale to any other type; emitting any DecimalArithmeticError (rejected by MD-067); declaring `decimal128` methods beyond the MD-068 mirror of `decimal`; rounding any decimal operation other than division; automatically appending a hidden allocation context; calling `malloc` without an approved ABI.

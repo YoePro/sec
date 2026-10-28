@@ -6,7 +6,8 @@ import (
 )
 
 // applyOwnershipSpacingRoles attaches consuming parameters and move captures
-// to their parsed binding. It grants no role to legacy or unparsed markers.
+// to their parsed binding and retains the capture/lambda boundary.
+// It grants no role to legacy or unparsed markers.
 // Rules: rules/tooling/formatter.md — §§21(2–7),31(8);
 // rules/corrections/applied/formatter-ownership-v2-correction-20260826.md — "Correction".
 func (d *Document) applyOwnershipSpacingRoles(node any, indexes map[concreteTokenKey]int, mark func(lexer.Token, Role)) {
@@ -36,6 +37,15 @@ func (d *Document) applyOwnershipSpacingRoles(node any, indexes map[concreteToke
 			break
 		}
 	case *ast.LambdaExpression:
+		// A capture list stays attached to capture and separated from fn;
+		// the lambda return type follows its parameter list with one space.
+		// Rules: rules/tooling/formatter.md — §16(10–13).
+		if node.CaptureOpen.Type == lexer.LPAREN {
+			mark(node.Token, SpacedBefore)
+		}
+		if node.ReturnType != nil && !node.ReturnType.Invalid {
+			mark(typeReferenceFirstToken(node.ReturnType), SpacedBefore)
+		}
 		for _, capture := range node.Captures {
 			if capture.Mode == ast.LambdaCaptureMove && capture.Name != nil && capture.Token.Type == lexer.MOVE_ASSIGN {
 				mark(capture.Token, PrefixOperator)

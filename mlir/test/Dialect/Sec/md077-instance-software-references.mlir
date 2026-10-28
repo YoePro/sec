@@ -1,6 +1,7 @@
 // RUN: sec-mlir-opt %s | sec-mlir-opt | FileCheck %s
 // MD-077 sections 3(5), 19(10): software Places may be borrowed normally.
 module attributes {
+  sec.registers = [#sec.register_def<identity = "device::Control", width = 8, order = "lsb-first", fields = [#sec.register_field<ordinal = 0, name = "Raw", offset = 0, width = 8, type = ui8, access = "read-write", shadow = false, reserved = false>]>],
   sec.dialect_version = 11 : i32,
   sec.semantic_ir_version = 1 : i32,
   sec.module_id = "md077-software-references",

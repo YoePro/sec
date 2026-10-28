@@ -1,9 +1,9 @@
 # P21 Normative Synchronization — Decimal, Precision and October Corrections
 
-- **Status:** Proposed normative amendment — D1–D3 require acceptance
+- **Status:** D1–D3 decided 2026-10-28 by `rules/corrections/md066-md067-md068-decimal-correction-20261028.md` (MD-066/MD-067/MD-068); the decided semantics are owned by the canonical rulebooks; implementation pending
 - **Created:** 2026-10-16
-- **Last updated:** 2026-10-16
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-28 (D1–D3 decided; unapproved recommendations superseded)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical repository path (proposed):** `rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md`
 - **Package:** `SEC-MLIR-P21`
@@ -21,45 +21,53 @@ Reviewed `rules/types/types.md`, `rules/foundations/operators.md`, `rules/memory
 
 ## § 3. Confirmed core members
 
-`decimal.scale: uint8`, `Abs()->Result[decimal,OverflowError]`, `RoundTo(uint8)->Result[decimal,PrecisionError]`, `Rescale(uint8)->Result[decimal,PrecisionError]`, and the other §10 members remain canonical. Compiler registry's `Scale: int` is a bug. Core's `decimal.ToString() string` stub is inconsistent with `Result[string,StringError]`. Do not silently use either implementation as language authority.
+*Superseded 2026-10-28 (MD-066/MD-068).* The canonical surface is now `rules/library/core-library.md` §§ 10.1–10.7: `Scale: int32` with getter and `try set` reporting `PrecisionError`, `RoundTo(int32)`/`RoundTo(int32, RoundingMode)`/`Rescale(int32)`, properties `IsInteger`, `IsZero`, `IsPositive`, `IsNegative`, `Sign`, `Normalize()`, `ToInt*`/`ToFloat*` and three `ToString` overloads, mirrored by `decimal128`. The former `uint8` scale is rejected. The compiler registry's `Scale: int` remains an identified bug (it must become `int32`), and core's `decimal.ToString() string` stub remains inconsistent with `Result[string,StringError]`. Neither implementation is language authority.
 
 ## § 4. Confirmed rounding and errors
 
-Only `RoundingMode` from `sec/core/rounding.sec` is canonical. An explicit `T(value, mode)` conversion rounds once after exact mathematics. Existing `PrecisionError` variants are exactly `PrecisionLoss`, `ScaleOverflow`, `PrecisionExhausted`. `ArithmeticError` exists for generic checked arithmetic; it must not be silently widened or repurposed to hide precision errors. P20's `NumericConversionError` remains the requested checked-conversion type, subject to declaration synchronization.
+Only `RoundingMode` from `sec/core/rounding.sec` is canonical. An explicit `T(value, mode)` conversion rounds once after exact mathematics. Existing `PrecisionError` variants are exactly `PrecisionLoss`, `ScaleOverflow`, `PrecisionExhausted`. `ArithmeticError` is the error of checked built-in arithmetic; MD-067 (2026-10-28) appends exactly `ScaleOverflow` and `PrecisionExhausted` to its three variants for decimal operators, selected by the most-specific-applicable-error rule. It is not widened any other way, and `PrecisionError` stays the error of explicit scale and rounding operations. P20's `NumericConversionError` remains the requested checked-conversion type, subject to declaration synchronization.
 
-## § 5. D1 — public decimal scale policy (PROPOSED, requires decision)
+## § 5. D1 — public decimal scale policy (DECIDED 2026-10-28, MD-066)
 
-**Unresolved:** Current rules do not lock post-operator scale selection, exact normalization policy, or the range that the physical i32 scale may validly contain relative to the public `uint8` property.
+**Decision:** The public scale is a signed `int32` over its whole interval; negative scales are legal and the `0..255`/`uint8` recommendation is rejected. Each operation has a preferred scale (add/sub/div/rem: the maximum input scale; multiply: the sum), and a nonzero exact result takes the exact scale closest to it; exact zero keeps the preferred scale, clamped to `int32`. Literals keep their source scale when representable. `Scale` has a fallible exact `try set`; `Rescale` never rounds; `RoundTo` rounds once; `Normalize()` strips exact trailing zeros. Division alone rounds automatically, with nearest-even at the finest admissible scale when no exact result exists. A provably zero decimal divisor is a compile-time error.
 
-**Recommended:** Treat source-valid scale as `0..255`; retain literal scale where representable; for add/sub/remainder prefer max input scale, for multiply prefer the sum, and strip only exact coefficient trailing zeros when required for representability; do not round. For division choose a representable exact scale deterministically using the algorithm in the implementation package. Zero preserves preferred operation scale when valid. Always expose the resulting value's semantic scale as `uint8`.
+**Owners:** `rules/types/types.md` "Decimal scale"; `rules/foundations/operators.md` "Decimal arithmetic", "Decimal division", "Decimal division and remainder by zero"; `rules/library/core-library.md` §§ 10.1, 10.5. The former recommendation in this section is superseded.
 
-**Approval required before:** operator-scale-sensitive results, `.scale` correction implementation beyond type, RoundTo/Rescale final behavior, runtime value validation. Record decision ID in rulebook and governance.
+## § 6. D2 — decimal operator error type (DECIDED 2026-10-28, MD-067)
 
-## § 6. D2 — decimal operator error type (PROPOSED, requires decision)
-
-**Unresolved:** One decimal operator may fail both arithmetically and by precision/scale; current rulebooks demand one exact error type for `try` and do not identify a canonical combined type.
-
-**Recommended new core declaration (requires explicit approval):**
+**Decision:** No `DecimalArithmeticError` is introduced; the former recommendation is rejected. Decimal operators reuse `core::ArithmeticError`, which gains exactly `ScaleOverflow` and `PrecisionExhausted`:
 
 ```sec
-enum DecimalArithmeticError error {
+// Failures of checked built-in arithmetic operations.
+enum ArithmeticError error {
+    // Arithmetic overflow not described by a more specific applicable variant.
     Overflow
+
+    // Division or remainder was attempted with a zero divisor.
     DivisionByZero
-    PrecisionLoss
+
+    // A shift count is invalid for the selected integer type.
+    InvalidShift
+
+    // No valid signed decimal scale can represent the mathematical result.
     ScaleOverflow
+
+    // Exact decimal digits exceed the selected coefficient's capacity.
     PrecisionExhausted
 }
 ```
 
-Fallible naked decimal arithmetic propagates exactly this type. Existing `OverflowError` and `PrecisionError` method contracts stay unchanged. No inferred error unions or arbitrary wrapping. Recommend deterministic failure priority: zero divisor, impossible scale, coefficient overflow, precision loss. Confirm variant set and priority before coding.
+Selection follows the most-specific-applicable-error rule, classified by mathematical cause rather than check order; a rounded quotient is no failure. `OverflowError`, `PrecisionError`, `RangeError`, `DivisionByZeroError` and `ConversionError` keep their method contracts and are not aliases. The schema-17 `!sec.decimal_failure_reason` may remain a compiler-internal reason domain, but `sec.decimal.error_from_reason` must construct `ArithmeticError` with these five variants.
 
-## § 7. D3 — decimal128 public members (PROPOSED, requires decision)
+**Owners:** `rules/library/core-library.md` § 20.1; `rules/errors/errorhandling.md` § 3.4; `rules/foundations/operators.md` "Decimal arithmetic failures"; `rules/compiler/semantic_ir.md` § 58(7).
 
-Core §10 documents the full `decimal` surface but not the complete `decimal128` public surface. Recommend an exact mirrored `impl decimal128` member set (appropriate `decimal128` result/argument types), including `scale: uint8`, fallible `Abs`, `RoundTo`, and `Rescale`, with comments preceding each public declaration. **Do not invent or advertise those APIs before approval.** Ordinary active `decimal128` scalar operators/conversions are unaffected.
+## § 7. D3 — decimal128 public members (DECIDED 2026-10-28, MD-068)
+
+**Decision:** `decimal128` has exactly the public members of `decimal`, with `decimal128` substituted in receiver, operand and result positions, including `Scale: int32` with `try set`. The complete inventory is `rules/library/core-library.md` § 10.4, with a comment before every declaration; `sec/core/decimal128.sec` is to be added. `Parse()` and `ToUInt*` remain deferred for both types.
 
 ## § 8. Exact literal and arithmetic intermediate
 
-The builder must retain exact coefficient/exponent/scale source facts and use arbitrary-precision intermediate arithmetic. No Sema `int64` truncation for `decimal128`. A permitted operation returns an exact mathematical decimal only when a representable coefficient/scale pair exists; unchecked approximation is not permitted. `1/3` is not a finite base-10 quotient; its failure is not “out of memory” or an implicit rounded success.
+The builder must retain exact coefficient/exponent/scale source facts and use arbitrary-precision intermediate arithmetic. No Sema `int64` truncation for `decimal128`. `+`, `-`, `*`, `%` and unary minus return an exact mathematical decimal only when a representable coefficient/scale pair exists; otherwise they fail. *Superseded in part 2026-10-28 (MD-066 § 5):* `1/3` is no longer a failure. Decimal division rounds a nonterminating or over-precise quotient once with nearest-even at the finest admissible scale and returns it as an ordinary successful value (`1m / 3m == 0.3333333333333333333`, scale 19).
 
 ## § 9. October float compatibility notice
 
@@ -67,4 +75,4 @@ The October MD-014 correction makes **plain `float` target-sized** (f32 on a 32-
 
 ## § 10. Safe application order
 
-Merge approved D1–D3 into their owning canonical books without renumbering existing section/paragraph IDs. Update compiler-known member metadata and core declarations, then the Semantic IR rulebook, dialect snapshot, lowering snapshot, and only then the implementation package/YAML status. Do not overwrite canonical schema 11 directly with v17 without satisfying and integrating intermediate package amendments. Preserve legacy YAML history and avoid duplicate governance IDs.
+D1–D3 were merged into their owning canonical books on 2026-10-28. Merge any further approved amendment into its owning canonical book without renumbering existing section/paragraph IDs. Update compiler-known member metadata and core declarations, then the Semantic IR rulebook, dialect snapshot, lowering snapshot, and only then the implementation package/YAML status. Do not overwrite canonical schema 11 directly with v17 without satisfying and integrating intermediate package amendments. Preserve legacy YAML history and avoid duplicate governance IDs.

@@ -68,6 +68,15 @@ func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual
 		a.addErrorAtTokenWithMetadata(token, "", "write "+literal.Token.Lexeme+"t for a char literal, or char("+literal.Token.Lexeme+") for an explicit conversion; integer literals do not shape to char", format, args...)
 		return
 	}
+	// MD-066 § 3(7): name the representability failure of a decimal literal
+	// instead of reporting decimal against decimal.
+	if expected.Kind == DecimalType && actual.Kind == DecimalType && isNumericLiteral(expr) {
+		bits := decimalCoefficientBits(expected)
+		a.addErrorAtTokenWithMetadata(token, "",
+			fmt.Sprintf("a %s literal needs an exact value with a signed %d-bit coefficient and an int32 scale; only exact trailing zeros may move to a coarser scale, so write fewer significant digits or use decimal128", typeDisplayName(expected), bits),
+			"decimal literal %s has no exact %s representation", expr.String(), typeDisplayName(expected))
+		return
+	}
 	if help := missingTryHelp(expected, actual, expr); help != "" {
 		a.addErrorAtTokenWithMetadata(token, "", help, format, args...)
 		return

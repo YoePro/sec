@@ -153,11 +153,14 @@ func staticUnitConversionPlan(source, target UnitSemantics, carrier Type) (UnitC
 // conversion, so a proven plan cannot overflow, truncate, or round.
 //
 // Binary floating-point carriers use the selected-width lattice proof and finite
-// source bounds rather than the integer interval proof.
+// source bounds rather than the integer interval proof. A negative factor
+// (a negative linear Scale) reverses the interval, so its converted bounds
+// swap.
 //
 // Rules:
 //   - rules/types/units.md — "No hidden precision loss": overflow and truncation are never hidden
 //   - rules/types/units.md — "Exact fixed conversions": representable without hidden loss in the chosen carrier
+//   - rules/types/units.md — "Unit metadata" `Scale` (MD-062 § 9(2), 12(5))
 func (a *Analyzer) valueAwareUnitConversionPlan(source, target UnitSemantics, carrier Type, targetType Type, expr ast.Expression) (UnitConversionPlan, bool) {
 	if carrier.Kind == FloatType {
 		return a.floatingUnitConversionPlan(source, target, carrier, targetType, expr)
@@ -166,7 +169,7 @@ func (a *Analyzer) valueAwareUnitConversionPlan(source, target UnitSemantics, ca
 		return UnitConversionPlan{}, false
 	}
 	factor, offset, ok := unitConversionCoordinates(source, target)
-	if !ok || !offset.IsInt() || factor.Sign() <= 0 {
+	if !ok || !offset.IsInt() || factor.Sign() == 0 {
 		return UnitConversionPlan{}, false
 	}
 	minimum, maximum, known := a.integerInterval(expr)
@@ -188,6 +191,9 @@ func (a *Analyzer) valueAwareUnitConversionPlan(source, target UnitSemantics, ca
 		return scaled.Add(scaled, offset.Num())
 	}
 	low, high := convert(minimum), convert(maximum)
+	if factor.Sign() < 0 {
+		low, high = high, low
+	}
 	admittedMinimum, admittedMaximum, bounded := integerTypeInterval(targetType)
 	if !bounded || low.Cmp(admittedMinimum) < 0 || high.Cmp(admittedMaximum) > 0 {
 		return UnitConversionPlan{}, false
@@ -313,7 +319,7 @@ func (a *Analyzer) implicitUnitConversionRejection(target, value Type, expr ast.
 		return general
 	}
 	factor, offset, ok := unitConversionCoordinates(effectiveUnitSemantics(value), effectiveUnitSemantics(target))
-	if !ok || factor.Sign() <= 0 {
+	if !ok || factor.Sign() == 0 {
 		return general
 	}
 	minimum, maximum, known := a.integerInterval(expr)
@@ -357,6 +363,10 @@ func (a *Analyzer) floatingUnitConversionPlan(source, target UnitSemantics, carr
 	}
 	convertedLower := new(big.Rat).Add(new(big.Rat).Mul(lower, factor), offset)
 	convertedUpper := new(big.Rat).Add(new(big.Rat).Mul(upper, factor), offset)
+	// A negative factor (MD-062 § 9(2)) reverses the converted interval.
+	if factor.Sign() < 0 {
+		convertedLower, convertedUpper = convertedUpper, convertedLower
+	}
 	for _, contract := range targetType.Contracts {
 		if r, ok := contract.(RangeContract); ok {
 			if r.ExactMin != nil && convertedLower.Cmp(r.ExactMin) < 0 || r.ExactMax != nil && (convertedUpper.Cmp(r.ExactMax) > 0 || r.Exclusive && convertedUpper.Cmp(r.ExactMax) == 0) {

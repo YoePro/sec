@@ -656,4 +656,27 @@ def Sec_FailReferenceGenerationOp : Sec_Op<"fail.reference_generation", [Termina
 
 include "sec/Dialect/Sec/SecSliceOps.td"
 
+// MD-114 §6: pure detached values; no hardware or physical representation.
+def Sec_RegisterExtractOp : Sec_Op<"register.extract", [Pure]> {
+  let arguments = (ins AnyType:$source);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+def Sec_RegisterUpdateOp : Sec_Op<"register.update", [Pure]> {
+  let arguments = (ins AnyType:$source, AnyType:$replacement);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+// MD-110 exact detached conversions share MD-114's canonical table.
+def Sec_RegisterFromBitsOp : Sec_Op<"register.from_bits", [Pure]> {
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+def Sec_RegisterToBitsOp : Sec_Op<"register.to_bits", [Pure]> {
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
 #endif // SEC_DIALECT_SEC_OPS_TD

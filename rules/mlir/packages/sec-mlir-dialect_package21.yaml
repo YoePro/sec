@@ -16,7 +16,7 @@ package:
   dialect_schema_dependency: 16
   canonical_dialect_currently_observed: 11
   lowering_target: 17
-  status: implementation package; normative D1-D3 pending
+  status: implementation package; normative D1-D3 decided 2026-10-28 (MD-066/MD-067/MD-068); implementation pending
 file_destinations:
 - source: sec-mlir-dialect_package21.md
   destination: rules/mlir/packages/sec-mlir-dialect_package21.md
@@ -67,8 +67,8 @@ locked_facts:
   - AwayFromZero
   - Ceil
   - Floor
-  implicit_rounding: false
-  core_decimal_scale_type: uint8
+  implicit_rounding: false  # except decimal division (MD-066 § 5): nearest-even at the finest admissible scale
+  core_decimal_scale_type: int32  # MD-066 (2026-10-28); getter and try set PrecisionError
   precision_error:
   - PrecisionLoss
   - ScaleOverflow
@@ -80,20 +80,25 @@ locked_facts:
 normative_decision_gates:
 - id: SEC-MLIR-P21-D1
   area: arithmetic result scale/canonicalization and public scale domain
-  status: proposal; approval required
+  status: decided 2026-10-28 (MD-066); normative block released; implementation pending
+  decision: rules/corrections/md066-md067-md068-decimal-correction-20261028.md §§ 2-6, 8
+  summary: int32 public scale with fallible exact setter; preferred scale with nearest exact fallback; division alone rounds (nearest-even, finest admissible scale); provably zero decimal divisor is a compile-time error
   blocks:
   - operator scale-sensitive lowering
   - RoundTo/Rescale policy
   - public scale validation
 - id: SEC-MLIR-P21-D2
   area: single exact decimal arithmetic operator error type/priority
-  status: proposal; approval required
-  recommended: DecimalArithmeticError error enum
+  status: decided 2026-10-28 (MD-067); normative block released; implementation pending
+  decision: rules/corrections/md066-md067-md068-decimal-correction-20261028.md § 7
+  summary: no DecimalArithmeticError (recommendation rejected); core::ArithmeticError gains ScaleOverflow and PrecisionExhausted; most specific applicable variant by mathematical cause
   blocks:
   - operator error CFG/try implementation
 - id: SEC-MLIR-P21-D3
   area: complete decimal128 public core member surface
-  status: proposal; approval required
+  status: decided 2026-10-28 (MD-068); normative block released; implementation pending
+  decision: rules/corrections/md066-md067-md068-decimal-correction-20261028.md § 9
+  summary: decimal128 mirrors the complete decimal member family (core-library.md § 10.4)
   blocks:
   - decimal128 method registry and public declaration generation
 observed_implementation_bugs:
@@ -104,7 +109,7 @@ observed_implementation_bugs:
 - id: SEC-MLIR-P21-B2
   severity: medium
   description: internal/sema/compiler_known_members.go registers Decimal Scale as int; rulebook requires
-    uint8.
+    int32 with a fallible setter (MD-066, 2026-10-28; formerly uint8).
 - id: SEC-MLIR-P21-B3
   severity: medium
   description: sec/core/decimal.sec ToString() string stub conflicts with Result[string,StringError]
@@ -148,9 +153,9 @@ passes:
 prohibited:
 - binary float decimal arithmetic
 - silent loss of precision
-- invented public decimal128 API
-- unapproved scale policy
-- unapproved error type
+- decimal128 API beyond the MD-068 mirror of decimal
+- scale policy other than MD-066
+- decimal error type other than core::ArithmeticError (MD-067)
 - host int64 range as decimal128 limit
 - hidden allocation
 - mandatory runtime
@@ -158,9 +163,9 @@ prohibited:
 tests:
 - exact literal parsing
 - i64 and i128 coefficient bounds
-- scale public uint8
+- scale public int32 getter and try set (MD-066)
 - checked arithmetic
-- terminating/nonterminating quotient
+- terminating/nonterminating quotient (rounded nonterminating quotient succeeds, MD-066 § 5)
 - truncation remainder
 - all rounding modes
 - exact conversions across active integer widths

@@ -497,6 +497,10 @@ func (i *Identifier) String() string {
 //	ref byte[]
 type TypeReference struct {
 	Token lexer.Token
+	// NameToken retains the final real nominal identifier, separate from
+	// qualification and ref/container wrappers, for source navigation.
+	// Rules: rules/tooling/lsp.md — "Navigation and references"; rules/foundations/grammar.md — TypeReference.
+	NameToken lexer.Token
 	// ForeignSeparators holds the ':' tokens of every `::` in a c::
 	// foreign-qualified type name (rules/platform/ffi.md §5-6).
 	ForeignSeparators []lexer.Token
@@ -575,13 +579,17 @@ const (
 )
 
 type UnitExpression struct {
-	Token    lexer.Token
-	Kind     UnitExpressionKind
-	Name     string
-	Left     *UnitExpression
-	Right    *UnitExpression
-	Exponent int
-	Source   string
+	// NameToken is the final identifier of a named unit, retained separately
+	// from its first qualifier for navigation/rename. Rules: rules/projects/modules.md §§7–9;
+	// rules/tooling/lsp.md — "Navigation and references", "Rename".
+	NameToken lexer.Token
+	Token     lexer.Token
+	Kind      UnitExpressionKind
+	Name      string
+	Left      *UnitExpression
+	Right     *UnitExpression
+	Exponent  int
+	Source    string
 }
 
 func (u *UnitExpression) String() string {
@@ -812,6 +820,11 @@ func ParseIntegerLiteralInt64(lexeme string) (int64, bool) {
 	return value.Int64(), true
 }
 
+// ParseFloatLiteralFloat64 decodes an approximate AST presentation while
+// retaining syntax validation; the token lexeme remains the semantic source.
+// Range validity belongs to the resolved decimal or binary target in Sema.
+// Rules: rules/foundations/lexical_structure.md — §12.9;
+// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
 	digits, suffix := SplitNumericLiteralSuffix(lexeme)
 	if suffix == "i" || suffix == "u" || suffix == "t" || suffix == "r" || digits == "" {
@@ -829,7 +842,15 @@ func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
 			return value, true
 		}
 	}
+	// The float64 value is only an approximate presentation of the literal;
+	// its exact spelling stays authoritative. Decimal literals (including
+	// unsuffixed ones) must not be bounded by host float64. Sema checks
+	// binary literals against their resolved width after context shaping.
+	// Rules: rules/types/types.md — "Exact decimal types" (MD-066 § 3(7)).
 	value, err := strconv.ParseFloat(digits, 64)
+	if numError, isNumError := err.(*strconv.NumError); isNumError && numError.Err == strconv.ErrRange {
+		return value, true
+	}
 	return value, err == nil
 }
 

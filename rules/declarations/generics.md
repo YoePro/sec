@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-10-27 (MD-117 heterogeneous type packs, § 16A)
-- **Document revision:** 2.3
+- **Last updated:** 2026-10-28 (§ 18.1 `Some(value)` payload inference, MD-102); 2026-10-27 (MD-117 heterogeneous type packs, § 16A)
+- **Document revision:** 2.4
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
 - **Canonical path:** `rules/declarations/generics.md`
@@ -638,6 +638,48 @@ let result: Target := Convert(source)
 may use the expected result type to infer a result-related generic parameter when the signature provides that relationship.
 
 If inference cannot uniquely determine a parameter, the call is invalid and the programmer must supply more generic arguments or ordinary type context.
+
+### 18.1 `Some(value)` payloads (MD-102)
+
+A `Some(value)` argument for a parameter of type `Option[T]` supplies `T` from
+its payload when the payload has enough type information under the ordinary
+inference rules:
+
+```sec
+fn Process[T](value: Option[T]) void {
+}
+
+Process(Some(42)) // T = int.
+
+fn Unwrap[T](value: Option[T], fallback: T) T {
+    match value {
+        Some(item) => return item
+        None => return fallback
+    }
+}
+
+let result := Unwrap(Some(42), 0) // T = int.
+```
+
+Inference considers all supplied arguments and constraints. A payload-derived
+type must agree with every other inference source, explicit generic argument,
+required interface or contract and the selected overload; otherwise the call
+is rejected with a focused incompatibility diagnostic.
+
+`None` carries no payload: `Process(None)` cannot infer `T` without other
+context, while `Unwrap(None, 0)` may infer `T` from the fallback argument under
+the existing compatibility and contextual-inference rules. An independently
+unknown payload (bare `None`, empty `[]` or `null` without an expected type) is
+never turned into an arbitrary `T`; the diagnostic explains the missing
+evidence.
+
+A successful substitution is only a typing result. Construction and call
+transfer still pass the ordinary ownership, borrow and lifetime checks: no
+implicit move from a reusable non-copyable Place, invented copy, concealed
+reborrow, lifetime extension, unauthorized mutable borrow or escape of a
+short-lived reference (`rules/types/types.md` "Contextual and self-inferred
+`Some(value)`";
+`rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 12).
 
 ## 19. Explicit generic arguments
 

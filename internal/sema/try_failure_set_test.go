@@ -137,7 +137,7 @@ fn Use(values: int[], index: uint, amount: int) Result[int, IndexError] {
         Err(IndexError.OutOfBounds) => 0
     }
     return Ok(value)
-}`, want: []string{"try handlers leave ArithmeticError.Overflow, ArithmeticError.DivisionByZero, ArithmeticError.InvalidShift unhandled; they would propagate with return Err, but this function returns Result[int, IndexError]; add Err(_) => ... or map ArithmeticError to IndexError"}},
+}`, want: []string{"try handlers leave ArithmeticError.Overflow, ArithmeticError.DivisionByZero, ArithmeticError.InvalidShift, ArithmeticError.ScaleOverflow, ArithmeticError.PrecisionExhausted unhandled; they would propagate with return Err, but this function returns Result[int, IndexError]; add Err(_) => ... or map ArithmeticError to IndexError"}},
 		{name: "pattern outside the set", body: `
 fn Use(values: int[], index: uint, amount: int) int {
     return try values[index] + amount {

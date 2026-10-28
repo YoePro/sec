@@ -13,7 +13,7 @@ import (
 //
 // Rules:
 //   - rules/compiler/parser_recovery.md — "Union recovery"
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/declarations/unions.md — §3.2 "Single unnamed payload"
 func (p *Parser) parseUnionVariantPayload(variantToken lexer.Token) *ast.TypeReference {
 	if !isTypeStart(p.peekToken.Type) {

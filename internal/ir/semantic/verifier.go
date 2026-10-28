@@ -624,6 +624,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	if err := verifySliceValueFacts(module.Types, op); err != nil {
 		return err
 	}
+	if err := verifyUnitMetadataOperation(op); err != nil {
+		return err
+	}
 	for _, result := range op.Results {
 		if isRawPointerType(module.Types, result.Type) && op.Reference != nil {
 			return fmt.Errorf("raw-pointer result %%%d carries safe-reference facts", result.ID)
@@ -1393,7 +1396,9 @@ func validStructOrigin(origin StructFieldOrigin) bool {
 }
 
 func validArithmeticErrorVariant(variant string) bool {
-	return variant == "Overflow" || variant == "DivisionByZero" || variant == "InvalidShift"
+	// MD-067: the five canonical variants of core::ArithmeticError.
+	return variant == "Overflow" || variant == "DivisionByZero" || variant == "InvalidShift" ||
+		variant == "ScaleOverflow" || variant == "PrecisionExhausted"
 }
 
 func validCheckedResults(types *TypeTable, op Operation, values map[ValueID]Value, operands int) bool {

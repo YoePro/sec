@@ -84,6 +84,7 @@ integrations:
       - set, add, remove, move, verify, repath and new edit exact integrations, print a unified diff, write only with -write, and fail closed on unknown, ambiguous or out-of-range targets
       - check validates the ledger (loading, fragment header, index.yaml fragment list, unique IDs, id/status, status vocabulary, verification items, checklist item shapes, merged list items) with file, line and integration ID, and edit commands refuse changes that add a problem; its first run found and fixed 24 problems
       - "library scope (2026-10-10): index.yaml fragments with implementation_scope: library (stdlib.yaml) are not compiler implementation; yamlstatus statistics exclude their integrations and checklist items, report them on a separate Not counted line, and keep their points selectable"
+      - "HTML reporting (-html): a complete escaped document using the sec-lang.com manual layout, shared stylesheet/logo, navigation/sidebar/breadcrumb/footer, compiler-only overview and progress, separate integration/checklist/metadata tables and explicit library exclusion. Embedded html/template keeps markup separate from Go; no plain-text prefix or printf interpretation of generated percentages. Source-backed CLI tests cover report output, escaping, empty states, stable metadata ordering and unchanged library scope; text-statistics regression uses nonempty input and current labels."
     remaining:
       - "-paths: report code, tests and rules paths that do not exist (IDEAS.md section 2)"
       - "-uses PATH: list integrations referencing a file (IDEAS.md section 3)"
@@ -104,13 +105,18 @@ integrations:
       - cmd/yamlstatus/hazards.go
       - cmd/yamlstatus/edit.go
       - cmd/yamlstatus/check.go
+      - cmd/yamlstatus/html_endpoint.go
+      - cmd/yamlstatus/html_endpoint.html
     tests:
       - cmd/yamlstatus/main_test.go
       - cmd/yamlstatus/selection_test.go
       - cmd/yamlstatus/edit_test.go
       - cmd/yamlstatus/check_test.go
       - cmd/yamlstatus/library_scope_test.go
+      - cmd/yamlstatus/html_endpoint_test.go
     verification:
+      - command: go test ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus; go run ./cmd/yamlstatus check
+        result: passed 2026-10-28 after HTML reporting cleanup; generated report visually inspected in headless Firefox at desktop (1440px) and mobile (390px) widths against sec-lang.com/stdlib.html. CLI emits only HTML, escapes governance text and preserves compiler/library counts; 0 structural governance problems. Existing text-output test now uses nonempty statistics and current labels.
       - command: go run ./cmd/yamlstatus check; git log --name-status -- governance/concurrency_events.yaml governance/concurrency_spawn.yaml
         result: "2026-10-25: 0 problems in 45 fragments after reconciling index.yaml with commit 82de384. Both deleted fragments contained integrations: []; their stale registry entries carried no implementation records. Existing nonempty ownership fragments are preserved; no replacement placeholder fragments were created."
       - command: go run ./cmd/yamlstatus check

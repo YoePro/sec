@@ -431,14 +431,14 @@ impl <Packet> {
 
 unit SEK decimal other
 impl <SEK> {
-    dimension: [currency.SEK^1]
+    dimension: [SEK^1]
     scale: 1
     system: Currency
 }
 
 unit EUR decimal other
 impl <EUR> {
-    dimension: [currency.EUR^1]
+    dimension: [EUR^1]
     scale: 1
     system: Currency
 }
@@ -459,7 +459,7 @@ impl <PacketsPerSecond> {
 
 unit SEKPerItem decimal other
 impl <SEKPerItem> {
-    dimension: [currency.SEK^1, item^-1]
+    dimension: [SEK^1, item^-1]
     scale: 1
     system: Domain
 }

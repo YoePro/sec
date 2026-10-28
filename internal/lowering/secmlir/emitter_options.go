@@ -48,6 +48,12 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := semantic.Verify(module); err != nil {
 		return nil, fmt.Errorf("verify Semantic IR: %w", err)
 	}
+	if err := semantic.VerifyRegisterEmissionEvidence(module); err != nil {
+		return nil, &UnsupportedLoweringError{Feature: "register field-write SSA proof transport: " + err.Error()}
+	}
+	if err := validateRegisterConversionTransport(module); err != nil {
+		return nil, err
+	}
 	if err := plan.Validate(); err != nil {
 		return nil, fmt.Errorf("validate scalar plan: %w", err)
 	}

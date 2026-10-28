@@ -8,6 +8,7 @@ import (
 
 	"sec/internal/layout"
 	"sec/internal/lexer"
+	"sec/internal/sema/constant"
 	"sec/internal/sema/membership"
 )
 
@@ -32,11 +33,14 @@ const (
 	FloatType   TypeKind = "float"
 	DecimalType TypeKind = "decimal"
 	EnumType    TypeKind = "enum"
-	UnionType   TypeKind = "union"
-	StringType  TypeKind = "string"
-	CharType    TypeKind = "char"
-	RuneType    TypeKind = "rune"
-	RawPtrType  TypeKind = "rawptr"
+	// UnitDimensionType is the opaque compiler-known UnitDimension value
+	// (rules/library/core-library.md § 27.5, MD-062).
+	UnitDimensionType TypeKind = "unit-dimension"
+	UnionType         TypeKind = "union"
+	StringType        TypeKind = "string"
+	CharType          TypeKind = "char"
+	RuneType          TypeKind = "rune"
+	RawPtrType        TypeKind = "rawptr"
 	// HardwareInstanceType is the compiler-known HardwareInstance[T]: the
 	// software implementation instance of a hardware-bound register type T
 	// (MD-077; rules/platform/hardware-register-access.md § 2).
@@ -583,7 +587,9 @@ type UnitSemantics struct {
 }
 
 type UnitDefinition struct {
-	Name                 string
+	Name string
+	// Module is the defining module, which owns the unit's domain axes.
+	Module               string
 	LongName             string
 	Symbol               string
 	Category             UnitCategory
@@ -605,7 +611,21 @@ type UnitDefinition struct {
 	LogFactor            string
 	LogFactorValue       *big.Rat
 	Reference            string
-	Token                lexer.Token
+	// MD-062 typed metadata facts (rules/types/units.md, "Unit metadata
+	// value types"): the declared enum members of Kind, System and Origin,
+	// the exact Reference value and its unit (empty when dimensionless), and
+	// the normalized keys that were validly declared.
+	KindEnum       UnitMetadataEnum
+	SystemEnum     UnitMetadataEnum
+	OriginEnum     UnitMetadataEnum
+	ReferenceValue *big.Rat
+	ReferenceUnit  string
+	Declared       map[string]bool
+	// MetadataTokens retains accepted declaration provenance for navigation;
+	// implicit/defaulted metadata falls back to the unit declaration Token.
+	// Rules: rules/types/units.md — "LSP requirements"; MD-062 §12(9).
+	MetadataTokens map[string]lexer.Token
+	Token          lexer.Token
 }
 
 type Function struct {
@@ -719,7 +739,7 @@ func (d Dimension) Div(other Dimension) Dimension {
 
 func (d Dimension) HasCurrencyBase() bool {
 	for name := range d.Base {
-		runes := []rune(name)
+		runes := []rune(unitAxisLocalName(name))
 		if len(runes) > 0 && unicode.IsUpper(runes[0]) {
 			return true
 		}
@@ -867,11 +887,12 @@ func (RegexContract) contractNode() {}
 
 // DecimalValue is the exact value of a decimal literal: Coefficient ×
 // 10^-Scale, with an arbitrary-precision coefficient so decimal128 literals
-// are represented exactly (P21 sync § 8). Whether it fits a target decimal
+// are represented exactly (P21 sync § 8) and the signed int32 scale implied
+// by the literal's spelling (MD-066 § 3(7)). Whether it fits a target decimal
 // type is checked separately (decimal: i64 coefficient, decimal128: i128).
 type DecimalValue struct {
 	Coefficient *big.Int
-	Scale       uint8
+	Scale       int32
 }
 
 // Sign returns -1, 0 or +1.
@@ -882,7 +903,10 @@ func (value DecimalValue) Sign() int {
 	return value.Coefficient.Sign()
 }
 
-// Cmp compares two decimal values exactly, independent of their scales.
+// Cmp compares two decimal values exactly, independent of their scales. It
+// compares orders of magnitude first, so scales far apart never materialize a
+// large power of ten.
+// Rules: rules/foundations/operators.md — "Numeric ordering" (`1.2m == 1.20m`).
 func (value DecimalValue) Cmp(other DecimalValue) int {
 	left, right := new(big.Int), new(big.Int)
 	if value.Coefficient != nil {
@@ -891,23 +915,37 @@ func (value DecimalValue) Cmp(other DecimalValue) int {
 	if other.Coefficient != nil {
 		right.Set(other.Coefficient)
 	}
+	if sign := left.Sign() - right.Sign(); sign != 0 || left.Sign() == 0 {
+		return max(-1, min(1, sign))
+	}
+	// Equal nonzero signs: the magnitude order is digits - scale.
+	leftOrder := int64(len(new(big.Int).Abs(left).String())) - int64(value.Scale)
+	rightOrder := int64(len(new(big.Int).Abs(right).String())) - int64(other.Scale)
+	if leftOrder != rightOrder {
+		if (leftOrder > rightOrder) == (left.Sign() > 0) {
+			return 1
+		}
+		return -1
+	}
+	// Same order: the scale difference equals the digit-count difference.
 	if value.Scale < other.Scale {
-		left.Mul(left, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(other.Scale-value.Scale)), nil))
+		left.Mul(left, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(other.Scale)-int64(value.Scale)), nil))
 	} else if other.Scale < value.Scale {
-		right.Mul(right, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(value.Scale-other.Scale)), nil))
+		right.Mul(right, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(value.Scale)-int64(other.Scale)), nil))
 	}
 	return left.Cmp(right)
 }
 
-// fitsCoefficientBits reports whether the coefficient fits a signed
-// two's-complement integer of the given width.
+// fitsCoefficientBits reports whether the literal value has an exact
+// representation with a coefficient in a signed integer of the given width,
+// stripping exact trailing zeros to a coarser scale when its spelled scale
+// does not fit (MD-066 § 3(7)).
 func (value DecimalValue) fitsCoefficientBits(bits uint) bool {
 	if value.Coefficient == nil {
 		return true
 	}
-	limit := new(big.Int).Lsh(big.NewInt(1), bits-1)
-	minimum := new(big.Int).Neg(limit)
-	return value.Coefficient.Cmp(minimum) >= 0 && value.Coefficient.Cmp(limit) < 0
+	_, _, ok := constant.FitDecimal(value.Coefficient, int64(value.Scale), int(bits))
+	return ok
 }
 
 // decimalCoefficientBits is the coefficient width of a decimal type
@@ -928,6 +966,9 @@ type Symbol struct {
 	mutexAcquisition *mutexAcquisition
 	// FloatingConstant is an immutable finite value in this binding's unit coordinates.
 	FloatingConstant *big.Rat
+	// DecimalConstant is the exact value of an immutable decimal binding
+	// whose initializer is a compile-time known decimal (MD-066 § 6(1)).
+	DecimalConstant *big.Rat
 	// QuantityConstant is the exact value of an immutable unit-bearing
 	// binding in its own unit coordinates (rules/types/temporal.md,
 	// "Conversion of time quantities to duration").
@@ -1037,12 +1078,15 @@ func newBuiltinTypes() map[string]Type {
 			EnumValues: []string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"},
 			EnumConsts: builtinEnumConsts([]string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"}),
 		},
+		// The one error of checked built-in arithmetic; ScaleOverflow and
+		// PrecisionExhausted are its decimal variants (MD-067). Rules:
+		// rules/library/core-library.md — § 20.1; sec/core/error.sec.
 		"ArithmeticError": {
 			Name:       "ArithmeticError",
 			Kind:       EnumType,
 			Underlying: "uint",
-			EnumValues: []string{"Overflow", "DivisionByZero", "InvalidShift"},
-			EnumConsts: builtinEnumConsts([]string{"Overflow", "DivisionByZero", "InvalidShift"}),
+			EnumValues: []string{"Overflow", "DivisionByZero", "InvalidShift", "ScaleOverflow", "PrecisionExhausted"},
+			EnumConsts: builtinEnumConsts([]string{"Overflow", "DivisionByZero", "InvalidShift", "ScaleOverflow", "PrecisionExhausted"}),
 		},
 		// FormatError and StringError are the compiler-known text failure
 		// families: every ToString and every runtime string materialization
@@ -1084,6 +1128,15 @@ func newBuiltinTypes() map[string]Type {
 			EnumValues:  []string{"InvalidRange", "StartAfterEnd", "OutOfBounds"},
 			EnumConsts:  builtinEnumConsts([]string{"InvalidRange", "StartAfterEnd", "OutOfBounds"}),
 			EnumDefault: "InvalidRange",
+		},
+		// The exact scaling and rounding failure of decimal Scale, RoundTo
+		// and Rescale. Rules: rules/library/core-library.md — §§ 10.5, 20.1.
+		"PrecisionError": {
+			Name: "PrecisionError", Module: "core", Named: true, Declared: true,
+			Kind: EnumType, Underlying: "int", ErrorAssignable: true,
+			EnumValues:  []string{"PrecisionLoss", "ScaleOverflow", "PrecisionExhausted"},
+			EnumConsts:  builtinEnumConsts([]string{"PrecisionLoss", "ScaleOverflow", "PrecisionExhausted"}),
+			EnumDefault: "PrecisionLoss",
 		},
 		"EnumValueError": {
 			Name:        "EnumValueError",
@@ -1312,6 +1365,11 @@ func newBuiltinTypes() map[string]Type {
 	for _, name := range []string{"CommandInputMode", "CommandOutputMode"} {
 		types[name] = builtinCommandIOModeType(name)
 	}
+	// rules/library/core-library.md — § 27: unit metadata enums (MD-062).
+	for _, name := range []string{"UnitKind", "UnitSystem", "UnitOrigin", "UnitTransform", "UnitCategory", "UnitStatus"} {
+		types[name] = builtinUnitMetadataEnumType(name)
+	}
+	types["UnitDimension"] = Type{Name: "UnitDimension", Module: "core", Kind: UnitDimensionType, Named: true, Declared: true}
 
 	for name, typ := range types {
 		typ.Intrinsic = true
@@ -1628,15 +1686,18 @@ func compilerKnownRequiresDestruction(typ Type) bool {
 	}
 }
 
+// typeDestructionKey identifies a concrete nominal instantiation when guarding
+// recursive trait derivation. A declaration-only key incorrectly treats
+// Option[Option[int]] (and nested generic structs/unions) as self recursion,
+// hiding both copyability and owned cleanup in the inner instantiation.
+// Rules: rules/types/types.md — "Generic and parameterized types";
+// rules/memory/copy_move.md — §§4.1–4.3;
+// rules/memory/destruction.md — §3.3(1–3).
 func typeDestructionKey(typ Type) string {
 	if typ.Module != "" || typ.Name != "" {
-		return typ.Module + "." + typ.Name
+		return canonicalTypeIdentity(typ)
 	}
 	return ""
-}
-
-func CopyClassificationOf(typ Type) CopyClassification {
-	return copyClassificationOf(typ, map[string]bool{})
 }
 
 func EqualityComparable(typ Type) bool {
@@ -1657,7 +1718,8 @@ func equalityComparable(typ Type, visiting map[string]bool) bool {
 		RuneType,
 		StringType,
 		EnumType,
-		RawPtrType:
+		RawPtrType,
+		UnitDimensionType:
 		return true
 	case ReferenceType:
 		return typ.Element != nil && typ.Element.Kind != SliceType
@@ -1708,161 +1770,4 @@ func equalityComparable(typ Type, visiting map[string]bool) bool {
 	default:
 		return false
 	}
-}
-
-func TriviallyCopyable(typ Type) bool {
-	return CopyClassificationOf(typ) == CopyTrivial
-}
-
-func MoveOnly(typ Type) bool {
-	return CopyClassificationOf(typ) == CopyMoveOnly
-}
-
-func requiresOwnershipTransfer(typ Type) bool {
-	switch CopyClassificationOf(typ) {
-	case CopyMoveOnly, CopyNonCopyable, CopyConditional:
-		return true
-	default:
-		return false
-	}
-}
-
-func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification {
-	// Canonical @noCopy guards and standalone Contexts are movable owners,
-	// never implicitly copyable values.
-	// Rules: rules/concurrency/mutex.md — §§6(2–4),8(1–4),28.
-	if typ.Intrinsic && typ.Kind == StructType && (typ.Name == "MutexGuard" || typ.Name == "Context") {
-		return CopyMoveOnly
-	}
-	if typ.ExplicitlyNonCopyable {
-		return CopyNonCopyable
-	}
-	// MD-025.1 (copy_move.md § 3): a nominal type whose implementation
-	// defines custom free is MoveOnly regardless of its fields; an implicit
-	// copy would run free twice for one resource. Containing aggregates
-	// inherit this through the ordinary derivation below.
-	if typ.CustomFree {
-		return CopyMoveOnly
-	}
-	switch typ.Kind {
-	case InvalidType, VoidType, NeverType:
-		return CopyNonCopyable
-	case HardwareInstanceType:
-		// MD-077 § 3(5): copying or moving an instance never duplicates
-		// hardware authority; the instance is borrowed, not copied.
-		return CopyNonCopyable
-	case AnyType:
-		return CopyConditional
-	case BoolType,
-		IntType,
-		UintType,
-		FloatType,
-		DecimalType,
-		CharType,
-		RuneType,
-		RawPtrType,
-		FunctionType,
-		InterfaceType,
-		RegisterType,
-		EnumType,
-		StringType,
-		SliceType:
-		return CopyTrivial
-	case ReferenceType:
-		if typ.ReferenceMutable {
-			return CopyMoveOnly
-		}
-		return CopyTrivial
-	case StructType:
-		switch typ.Name {
-		case "Task",
-			"Thread",
-			"Arena",
-			"MutexGuard",
-			"Subscription",
-			"Channel",
-			"Sender",
-			"Receiver",
-			"MessageTicket":
-			return CopyMoveOnly
-		case "Mutex",
-			"Atomic",
-			"ThreadLocal",
-			"Event",
-			"EventStorage",
-			"ChannelOptions",
-			"SenderID":
-			return CopyNonCopyable
-		}
-		key := typeDestructionKey(typ)
-		if key != "" {
-			if visiting[key] {
-				return CopyConditional
-			}
-			visiting[key] = true
-			defer delete(visiting, key)
-		}
-		fields := make([]Type, 0, len(typ.Fields))
-		for _, field := range typ.Fields {
-			fields = append(fields, field.Type)
-		}
-		return aggregateCopyClassification(fields, visiting)
-	case GenericType:
-		return CopyConditional
-	case ArrayType:
-		// rules/collections/collections.md; correction26.md: an owning
-		// dynamic array transfers its allocation regardless of element traits.
-		if arrayShapeOf(typ) == ArrayShapeDynamic {
-			return CopyMoveOnly
-		}
-		if typ.Element == nil {
-			return CopyTrivial
-		}
-		return aggregateCopyClassification([]Type{*typ.Element}, visiting)
-	case ResultType:
-		return aggregateCopyClassification(typ.TypeArgs, visiting)
-	case UnionType:
-		key := typeDestructionKey(typ)
-		if key != "" {
-			if visiting[key] {
-				return CopyConditional
-			}
-			visiting[key] = true
-			defer delete(visiting, key)
-		}
-		parts := []Type{}
-		for _, variant := range typ.UnionVariants {
-			if variant.Payload != nil {
-				parts = append(parts, *variant.Payload)
-			}
-			for _, field := range variant.PayloadFields {
-				parts = append(parts, field.Type)
-			}
-		}
-		return aggregateCopyClassification(parts, visiting)
-	default:
-		return CopyNonCopyable
-	}
-}
-
-func aggregateCopyClassification(parts []Type, visiting map[string]bool) CopyClassification {
-	result := CopyTrivial
-	for _, part := range parts {
-		classification := copyClassificationOf(part, visiting)
-		switch classification {
-		case CopyMoveOnly:
-			return CopyMoveOnly
-		case CopyNonCopyable:
-			return CopyNonCopyable
-		case CopyConditional:
-			if result == CopyTrivial {
-				result = CopyConditional
-			}
-		case CopySemantic:
-			if result == CopyTrivial {
-				result = CopySemantic
-			}
-		}
-	}
-	return result
 }

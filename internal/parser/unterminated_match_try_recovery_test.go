@@ -13,8 +13,8 @@ import (
 // remaining invalid ParseResults that cannot proceed to code generation.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
-//   - rules/compiler/parser_recovery.md — "Other specialized unterminated constructs can still return nil"
+//   - rules/compiler/parser_recovery.md — "Block recovery"
+//   - rules/compiler/parser_recovery.md — "Nil use"
 func TestUnterminatedMatchAndTryBlocksRetainPartialChildren(t *testing.T) {
 	for _, test := range []struct {
 		name       string

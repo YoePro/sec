@@ -110,6 +110,15 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return canUntypedNumericInitializeNominal(target, value, expr)
 	}
 
+	// MD-066 § 3(7): a decimal literal, suffixed or untyped, needs an exact
+	// legal representation (int32 scale, coefficient of the target width).
+	if target.Kind == DecimalType && value.Kind == DecimalType && isNumericLiteral(expr) {
+		literal, ok := decimalLiteralValue(expr)
+		if !ok || !literal.fitsCoefficientBits(decimalCoefficientBits(target)) {
+			return false
+		}
+	}
+
 	if target.Kind == value.Kind {
 		if isNumericType(target) && isNumericType(value) {
 			if isNumericLiteral(expr) {

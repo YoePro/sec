@@ -239,16 +239,15 @@ fn Store(value: Option[int]) void {
 fn Store(value: Option[string]) void {
 }
 
-fn Unwrap[T](value: Option[T], fallback: T) T {
-    return fallback
+fn Process[T](value: Option[T]) void {
 }
 
 fn Calls() int {
     discard Pick(Some("text"))
     discard Plain(Some(1))
     discard Plain(None)
-    Store(Some(1))
-    discard Unwrap(Some(1), 0)
+    Store(None)
+    Process(None)
     return Pick(None())
 }
 `)
@@ -256,8 +255,8 @@ fn Calls() int {
 		"payload must be int, got string",
 		"argument 1 to Plain must be int, got Some(1) (an Option value)",
 		"argument 1 to Plain must be int, got None (an Option value)",
-		"ambiguous call to Store: Some(1) could be Option[int] or Option[string]",
-		"cannot infer generic arguments for Unwrap",
+		"ambiguous call to Store: None could be Option[int] or Option[string]",
+		"cannot infer generic arguments for Process",
 		"None is not a function and takes no arguments",
 	} {
 		found := false

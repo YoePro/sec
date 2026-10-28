@@ -1,0 +1,15 @@
+module catalog
+
+type Item struct {
+    value: int,
+}
+
+enum Failure error {
+    Invalid,
+}
+
+type Box[T] struct {
+    value: T,
+}
+
+type Number int

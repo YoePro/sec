@@ -2,74 +2,77 @@ schema_version: 1
 area: lifetime
 purpose: Lifetime, reference validity, borrowing, copy/move, and destruction.
 integrations:
-  - id: "frontend.lifetime-analysis"
-    area: "frontend-lifetime-provenance-dataflow"
-    status: "partial"
+  - id: frontend.lifetime-analysis
+    area: frontend-lifetime-provenance-dataflow
+    revised: "2026-10-28"
+    status: partial
     integrated: "2026-08-29"
     document_revision: "2.0"
-    repository_baseline: "fafd8cb"
+    repository_baseline: fafd8cb
     rules:
-      - "rules/memory/lifetime_analysis.md"
-      - "rules/memory/ownership.md"
-      - "rules/memory/borrowing.md"
-      - "rules/memory/destruction.md"
-      - "rules/memory/copy_move.md"
-      - "rules/memory/reference_model.md"
-      - "rules/memory/storage.md"
-      - "rules/analysis/escape_analysis.md"
-      - "rules/control-flow/defer.md"
-      - "rules/platform/hardware-register-access.md"
-      - "rules/platform/fixed-address-bindings.md"
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/memory/copy_move.md
+      - rules/memory/reference_model.md
+      - rules/memory/storage.md
+      - rules/analysis/escape_analysis.md
+      - rules/control-flow/defer.md
+      - rules/platform/hardware-register-access.md
+      - rules/platform/fixed-address-bindings.md
     code:
-      - "internal/sema/analyzer.go"
-      - "internal/sema/place.go"
-      - "internal/sema/types.go"
-      - "internal/sema/escape_analysis.go"
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/types.go
+      - internal/sema/escape_analysis.go
     tests:
-      - "internal/sema/lifetime_test.go"
-      - "internal/sema/copy_move_test.go"
-      - "internal/sema/analyzer_test.go"
-      - "internal/sema/escape_analysis_test.go"
+      - internal/sema/lifetime_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/escape_analysis_test.go
     implemented:
-      - "reference origin metadata for local bindings, parameters, direct local aliases, slices, fields, constant/dynamic indices, and selected aggregate-contained paths"
-      - "rejection of returned references to ordinary local function storage, including selected Result payload, aggregate, and lambda escape paths"
-      - "caller-owned parameter origins and direct function/method returned-reference summaries with declaration-order-independent fixed point"
-      - "symbolic parameter, receiver, projection, finite multi-source, aggregate return-origin summaries and supported transitive direct-call instantiation"
-      - "Place-sensitive borrow/move interactions and control-flow joins across if/switch/select/match and for/while including continue/break state"
-      - "finite path-disjunctive reference-origin sets with deterministic conservative unknown-origin fallback"
-      - "nested field-sensitive reference origins for locally constructed structs and fixed arrays"
-      - "aggregate reference-origin preservation through whole-value transfer/replacement for supported forms"
-      - "arena generation metadata and rejection of arena-backed references/slices after reset, with conservative branch/loop generation merging"
-      - "selected closure/reference escape rejection and explicit capture facts"
-      - "delayed defer root uses preventing earlier incompatible move/discard"
-      - "match branch-scoped ref/ref mut payload provenance for named unions and Result variants"
+      - reference origin metadata for local bindings, parameters, direct local aliases, slices, fields, constant/dynamic indices, and selected aggregate-contained paths
+      - rejection of returned references to ordinary local function storage, including selected Result payload, aggregate, and lambda escape paths
+      - caller-owned parameter origins and direct function/method returned-reference summaries with declaration-order-independent fixed point
+      - symbolic parameter, receiver, projection, finite multi-source, aggregate return-origin summaries and supported transitive direct-call instantiation
+      - Place-sensitive borrow/move interactions and control-flow joins across if/switch/select/match and for/while including continue/break state
+      - finite path-disjunctive reference-origin sets with deterministic conservative unknown-origin fallback
+      - nested field-sensitive reference origins for locally constructed structs and fixed arrays
+      - aggregate reference-origin preservation through whole-value transfer/replacement for supported forms
+      - arena generation metadata and rejection of arena-backed references/slices after reset, with conservative branch/loop generation merging
+      - selected closure/reference escape rejection and explicit capture facts
+      - delayed defer root uses preventing earlier incompatible move/discard
+      - match branch-scoped ref/ref mut payload provenance for named unions and Result variants
     remaining:
-      - "replace remaining legacy lifetime-analysis bookkeeping with canonical ownership-v2 availability, borrowing-v2 live-range, destruction-v2 cleanup, storage, reference-model, and escape-analysis facts rather than parallel state"
-      - "complete non-lexical final-use lifetime solving for every holder/reborrow/capture/defer dependency"
-      - "complete recursive aggregate, dynamic container, symbolic slice/range, imported/opaque, and foreign provenance propagation"
-      - "complete ConditionallyAvailable path refinement integration with safe reference/view creation while keeping is available separate from borrow/generation/platform validity"
-      - "complete destruction/replacement/deallocation/remap invalidation effects on every live reference and reference-containing aggregate"
-      - "complete closure/callback retention lifetime validation across indirect calls and escaping environments"
-      - "integrate runtime hardware mapping/view ownership and lifetime dependencies, fixed-address storage contracts, remap invalidation, and mapping-versus-device-liveness separation"
-      - "complete generic and interface returned-reference relationships and opaque/bodyless lifetime contracts without introducing source lifetime names"
-      - "complete FFI retain/no-retain and returned-borrow lifetime contracts"
-      - "produce canonical mentor diagnostics with source/cause paths for every lifetime failure"
+      - "MD-117 pack lifetime/provenance: distinguish expiring owned pack storage from caller-origin references carried at each position; reject pack/owned-element escape, preserve finite returned-origin alternatives and exclusive grants across forwarding, without runtime type erasure or hidden source lifetime annotations (lifetime_analysis.md §14.1(4); references.md §9(11); correction §8)."
+      - replace remaining legacy lifetime-analysis bookkeeping with canonical ownership-v2 availability, borrowing-v2 live-range, destruction-v2 cleanup, storage, reference-model, and escape-analysis facts rather than parallel state
+      - complete non-lexical final-use lifetime solving for every holder/reborrow/capture/defer dependency
+      - complete recursive aggregate, dynamic container, symbolic slice/range, imported/opaque, and foreign provenance propagation
+      - complete ConditionallyAvailable path refinement integration with safe reference/view creation while keeping is available separate from borrow/generation/platform validity
+      - complete destruction/replacement/deallocation/remap invalidation effects on every live reference and reference-containing aggregate
+      - complete closure/callback retention lifetime validation across indirect calls and escaping environments
+      - integrate runtime hardware mapping/view ownership and lifetime dependencies, fixed-address storage contracts, remap invalidation, and mapping-versus-device-liveness separation
+      - complete generic and interface returned-reference relationships and opaque/bodyless lifetime contracts without introducing source lifetime names
+      - complete FFI retain/no-retain and returned-borrow lifetime contracts
+      - produce canonical mentor diagnostics with source/cause paths for every lifetime failure
     required_tests:
-      - "borrow ends after final proven use and later owner move is accepted"
-      - "copied shared-reference holder keeps referent lifetime dependency live"
-      - "moved ref mut holder transfers lifetime/borrow obligation"
-      - "returned local and temporary references rejected"
-      - "single-source parameter and receiver returned references accepted and summarized"
-      - "multi-source returned reference is conservatively bounded or rejected"
-      - "partial move ends only the moved field value lifetime"
-      - "field reinitialization begins a new field lifetime"
-      - "branch termination removes dead-path lifetime constraint"
-      - "loop fixed point rejects later-iteration stale reference/use"
-      - "defer extends required local/reference lifetime until deferred execution"
-      - "ConditionallyAvailable ownership state does not by itself authorize borrow/reference use"
-      - "arena reset invalidates prior generation references"
-      - "RawPtr copy does not extend pointee lifetime"
-      - "no hidden local-to-heap promotion repairs escaping references"
+      - borrow ends after final proven use and later owner move is accepted
+      - copied shared-reference holder keeps referent lifetime dependency live
+      - moved ref mut holder transfers lifetime/borrow obligation
+      - returned local and temporary references rejected
+      - single-source parameter and receiver returned references accepted and summarized
+      - multi-source returned reference is conservatively bounded or rejected
+      - partial move ends only the moved field value lifetime
+      - field reinitialization begins a new field lifetime
+      - branch termination removes dead-path lifetime constraint
+      - loop fixed point rejects later-iteration stale reference/use
+      - defer extends required local/reference lifetime until deferred execution
+      - ConditionallyAvailable ownership state does not by itself authorize borrow/reference use
+      - arena reset invalidates prior generation references
+      - RawPtr copy does not extend pointee lifetime
+      - no hidden local-to-heap promotion repairs escaping references
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
@@ -77,7 +80,7 @@ integrations:
     integrated: "2026-08-26"
     document_revision: "2.0"
     revised: "2026-10-02"
-    repository_baseline: "b3315f6"
+    repository_baseline: b3315f6
     replaces: pre-v2 rules/memory/ownership.md
     summary: >-
       Tracks ownership revision 2.0. The existing frontend has structured Place
@@ -88,10 +91,10 @@ integrations:
       preserve partial/conditional masks, explicit outer-call moves require
       Place-sensitive pending reservations, and runtime ownership state may be
       required by any ownership-dependent operation. The frontend does not yet
-      implement the revision-2 canonical Availability
-      dimension, explicit reusable-source moves in every owning payload,
-      complete dynamic availability refinement, discard
-      convergence, conditional cleanup/replacement, or static-ownership policy.
+      implement the revision-2 canonical Availability dimension, explicit
+      reusable-source moves in every owning payload, complete dynamic
+      availability refinement, discard convergence, conditional
+      cleanup/replacement, or static-ownership policy.
     rules:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
@@ -140,10 +143,8 @@ integrations:
       - lexer, parser, AST, formatter, Sema, and initial LSP support for declaration and assignment move forms
       - named-source implicit copy rejection for compiler-known and @noCopy move-only values in direct declaration and assignment paths
       - intrinsically transferring returns reject ordinary indexed extraction of non-copyable collection elements with canonical ownership code, source range, and corrective help shared by CLI and LSP
-      - terminal return ownership context propagates recursively through aggregate, Option, Result, union, and
-        value-producing match construction while ordinary calls retain their declared argument ownership modes
-      - reusable move-only aggregate and union/Option payload sources require explicit <- outside terminal returns;
-        fresh temporaries remain marker-free and explicit terminal markers are ownership-equivalent
+      - terminal return ownership context propagates recursively through aggregate, Option, Result, union, and value-producing match construction while ordinary calls retain their declared argument ownership modes
+      - reusable move-only aggregate and union/Option payload sources require explicit <- outside terminal returns; fresh temporaries remain marker-free and explicit terminal markers are ownership-equivalent
       - selected nested field moves, sibling use, whole-aggregate rejection, and mutable field reinitialization
       - projection-sensitive ownership facts across branches, matches, switches, selects, and loops, with a conservative pre-v2 merge model
       - borrow validation before supported moves and overlapping self-move diagnostics
@@ -314,14 +315,16 @@ integrations:
         result: passed on 2026-09-22 with capture-mode AST preservation, legacy syntax rejection, copy-only plain capture, explicit outer-source consumption, and independent environment availability
       - command: go test ./internal/sema -run 'UnavailablePlaceDiagnostics|AvailabilityReasonsDoNotBlock|BorrowCreationRejectsUnavailable|PlaceBranchMerge|MoveInOneBranch' -count=1
         result: passed on 2026-10-02 with conditional, nested-conditional, mixed-reason, definite, partial, and conditionally partial reads and borrows plus refinement, discard convergence, reinitialization, and repair after joins
+
   - id: frontend.copy-move
     area: frontend-copy-move
     status: partial
     integrated: "2026-08-28"
     document_revision: "2.0"
-    revised: "2026-09-24"
+    revised: "2026-10-28"
     repository_baseline: 069c111
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
       - rules/platform/volatile.md
@@ -352,7 +355,7 @@ integrations:
       - internal/lexer/lexer_test.go
     implemented:
       - Recursive CopyClassification/CopyClassificationOf support including trivial, semantic, conditional, move-only, and explicitly non-copyable classes.
-      - '@noCopy is already recognized as a type-level copy prohibition in current frontend classification.'
+      - "@noCopy is already recognized as a type-level copy prohibition in current frontend classification."
       - Explicit :<- and <- parsing/AST/Sema support for established declaration and assignment forms.
       - Place-sensitive move tracking for roots, nested fields, selected union payloads, static slice intervals, and local alias provenance.
       - Reinitialization of supported moved/discarded Places and field-sensitive aggregate restoration.
@@ -366,6 +369,7 @@ integrations:
       - Consuming Result projections reject borrowed receivers and reject a potentially active non-retained payload carrying a non-discardable obligation.
       - Explicit ownership moves reject addressed volatile/MMIO roots and their projections, while an ordinary read into local inline storage produces a snapshot that follows normal copy/move rules.
     remaining:
+      - "MD-117 owned-pack transfer/cleanup: commit whole-pack consumption only after successful preparation of all arguments, invalidate the source pack once, roll back failed preparation, and destroy each remaining owned element exactly once on every exit; never destroy borrowed referents or allow individual element move-out (copy_move.md §8.3(5); correction §§6,7)."
       - "result-borrowed-projections: implement non-consuming Result.OkRef/ErrRef with shared-borrow lifetime tracking"
       - "result-projection-state-proof: permit a non-discardable alternate payload only when control-flow proves that Result state unreachable"
       - "result-projection-semantic-ir-and-lowering: retain the selected payload, destroy the active alternate exactly once, and preserve consumption facts downstream"
@@ -375,8 +379,8 @@ integrations:
     required_tests:
       - ordinary by-value parameter copies a copyable reusable argument and leaves the source available
       - ordinary by-value parameter rejects a reusable @noCopy/move-only argument instead of consuming it implicitly
-      - -> parameter with reusable source rejects Consume(resource) and accepts Consume(<-resource)
-      - -> parameter accepts a fresh temporary without synthetic <- boilerplate
+      - "-> parameter with reusable source rejects Consume(resource) and accepts Consume(<-resource)"
+      - "-> parameter accepts a fresh temporary without synthetic <- boilerplate"
       - Some(resource) rejects reusable move-only source while Some(<-resource) consumes it
       - "struct owning field rejects plain reusable move-only source and accepts Field: <-resource"
       - non-terminal Ok(resource) rejects reusable move-only source while Ok(<-resource) is valid
@@ -387,7 +391,7 @@ integrations:
       - ordinary calls and illegal indexed, borrowed, volatile, MMIO, or unavailable extraction do not inherit terminal structural forwarding
       - caller receives fresh move-only function result with ordinary initialization and no marker
       - capture(value) copies only copyable sources; capture(<-value) consumes reusable source
-      - '@noCopy forbids copy but still permits explicit move'
+      - "@noCopy forbids copy but still permits explicit move"
       - explicit move of a copyable source makes the source unavailable
       - volatile source read produces ordinary snapshot; later copy of snapshot performs no extra volatile access
       - attempted :<- or <- ownership move from physical volatile/MMIO Place is rejected
@@ -408,6 +412,7 @@ integrations:
         result: passed on 2026-09-24 after the Result projection increment
       - command: go vet ./...
         result: passed on 2026-09-24 after the Result projection increment
+
   - id: frontend.destruction
     area: frontend-destruction-and-cleanup-analysis
     status: partial
@@ -462,36 +467,36 @@ integrations:
       - Current frontend distinguishes several moved, returned, discarded, detached, released, and consuming-projection reasons for related diagnostics.
       - Discard of an already unavailable discardable local or tracked field Place is accepted as a frontend no-op without a second read or destruction action; later ordinary use remains unavailable.
       - Supported discard, move, and replacement paths reject invalidation while an overlapping borrow or deferred use requires the Place to remain valid.
-      - "Custom free parses as the parameterless impl lifecycle member `free { ... }` with a dedicated AST node, document symbol, keyword highlighting, and canonical formatting; `free()` and other malformed forms recover as invalid members, top-level free is rejected as impl-only, and `value.free` is rejected as a non-callable lifecycle member."
-      - "Sema registers at most one free per type across its primary and extending impl blocks before type resolution (S1084, also rejecting interface targets), marks the type CustomFree so it and every aggregate or concrete generic instance containing it are non-trivially destructible, and analyzes the body as a void lifecycle member keyed outside the method namespace with exclusive mutable authority over self."
-      - "Inside free, defer is rejected (S1086), a return value is rejected by the void body contract, and consuming, transferring, or discarding complete self is rejected (S1087)."
+      - Custom free parses as the parameterless impl lifecycle member `free { ... }` with a dedicated AST node, document symbol, keyword highlighting, and canonical formatting; `free()` and other malformed forms recover as invalid members, top-level free is rejected as impl-only, and `value.free` is rejected as a non-callable lifecycle member.
+      - Sema registers at most one free per type across its primary and extending impl blocks before type resolution (S1084, also rejecting interface targets), marks the type CustomFree so it and every aggregate or concrete generic instance containing it are non-trivially destructible, and analyzes the body as a void lifecycle member keyed outside the method namespace with exclusive mutable authority over self.
+      - Inside free, defer is rejected (S1086), a return value is rejected by the void body contract, and consuming, transferring, or discarding complete self is rejected (S1087).
       - "Ownership transfer out of any field of a custom-free value is rejected with S1085 naming the custom-free type and pointing at its free declaration: explicit moves, implicit transfers, Result consuming projections, and union payload moves, for ordinary locals, nested holders, ordinary methods, and self inside free; moving the complete value remains valid."
-      - "Semantic IR rejects any program declaring custom free as unsupported custom free lifecycle destruction instead of silently dropping the destructor."
+      - Semantic IR rejects any program declaring custom free as unsupported custom free lifecycle destruction instead of silently dropping the destructor.
       - "MD-025 (2026-10-15, rules/corrections/applied/md025-custom-free-correction-20261015.md): a type whose merged implementation defines free is MoveOnly (copy_move.md § 3.5(6)) and owning aggregates, arrays, Option and generic instances inherit it, including free declared in a later impl extends; S1007 names the custom-free cause. discard of an owned field or nested owned sub-Place of a custom-free value is rejected with S1085 like a partial move (ownership.md § 19, destruction.md § 10.3(3)); inside free, discarding a nontrivially destroyed field of self is reported as the provable double release of destruction.md § 15.4(4)-(5). free on a unit is rejected, register targets are accepted, bare return in free is accepted on any path and return of a value is rejected with a dedicated message (destruction.md § 15.7(1a)) (TestCustomFreeTypesAreMoveOnly, TestCustomFreeFieldDiscardFollowsPartialMoveRules, TestCustomFreeTargetsAndEarlyReturn). MD-025.3 (grammar status text) was already correct in this repository."
     remaining:
-      - 'destruction-classification-completion: derive custom-free, imported/foreign owner, concrete interface, generic-instantiation, and every remaining compiler-known lifecycle classification from canonical resolved facts'
-      - 'general-cleanup-responsibility: replace narrow File/Directory must-closed tracking with general exact-once destruction responsibility for every non-trivial owned value'
-      - 'availability-integration: consume ownership-v2 Available/PartiallyAvailable/Unavailable/ConditionallyAvailable plus separate UnavailableReason/provenance when computing cleanup'
-      - 'partial-aggregate-destruction: recursively destroy exactly still-owned Available sub-Places and skip moved/discarded/uninitialized sub-Places'
-      - 'conditional-destruction: preserve branch/path-specific ownership and statically eliminate conditional cleanup whenever possible'
-      - 'discard-convergence: implement explicit conditional availability/destruction plans, backend no-double-destruction, and new cleanup registration after reinitialization'
-      - 'replacement-reinitialization: distinguish Available replacement from Unavailable reinitialization and ConditionallyAvailable mixed replacement/reinitialization with pre-commit semantic validation'
+      - "destruction-classification-completion: derive custom-free, imported/foreign owner, concrete interface, generic-instantiation, and every remaining compiler-known lifecycle classification from canonical resolved facts"
+      - "general-cleanup-responsibility: replace narrow File/Directory must-closed tracking with general exact-once destruction responsibility for every non-trivial owned value"
+      - "availability-integration: consume ownership-v2 Available/PartiallyAvailable/Unavailable/ConditionallyAvailable plus separate UnavailableReason/provenance when computing cleanup"
+      - "partial-aggregate-destruction: recursively destroy exactly still-owned Available sub-Places and skip moved/discarded/uninitialized sub-Places"
+      - "conditional-destruction: preserve branch/path-specific ownership and statically eliminate conditional cleanup whenever possible"
+      - "discard-convergence: implement explicit conditional availability/destruction plans, backend no-double-destruction, and new cleanup registration after reinitialization"
+      - "replacement-reinitialization: distinguish Available replacement from Unavailable reinitialization and ConditionallyAvailable mixed replacement/reinitialization with pre-commit semantic validation"
       - "custom-free-release-effects: § 15.4(4) proofs beyond discard of self fields inside free need trusted release/consume effect summaries with resource identity and provenance (MD-025 § 6(7)); opaque FFI or named functions are never treated as proven releases, and a new effect annotation would need its own MD"
       - "custom-free lowering: Semantic IR still rejects custom free; the ordered free-body / early-return / field-cleanup / storage-cleanup sequence of destruction.md §§ 15.5, 15.7(1a) awaits destruction lowering (free-field-cleanup)"
-      - 'custom-free-escape: reject storing or returning references to self or its fields beyond the free body once reference-escape summaries cover lifecycle members'
-      - 'free-field-cleanup: model free body followed by remaining initialized owned-field destruction without duplicate release'
-      - 'construction-failure-cleanup: track staged init field/resource acquisition and clean only successfully initialized obligations without invoking completed-value free'
-      - 'defer-unified-order: model automatic destruction and defer registration in one source-ordered LIFO cleanup plan while preserving earliest legal destruction'
-      - 'result-option-union-cleanup: destroy only active retained payloads and integrate moved-out payload state'
-      - 'result-projection-cleanup: preserve the implemented Result.Ok()/Err() ownership consumption through retained-payload transfer and inactive-side destruction/end semantics'
-      - 'try-return-cleanup: integrate bodyless try, partial handlers, handler-produced failures, and return try with exact transferred-payload exclusion from local cleanup'
-      - 'ffi-allocator-authority: preserve release/deallocator authority and accepted-ownership state for foreign transfers'
-      - 'volatile-boundary: ensure ending local snapshots never creates additional volatile/MMIO accesses or hardware reset/clear behavior'
-      - 'static-global-destruction: defer to canonical ProgramShutdownPlan/TargetProfile support instead of applying the old blanket global-destruction restriction'
+      - "custom-free-escape: reject storing or returning references to self or its fields beyond the free body once reference-escape summaries cover lifecycle members"
+      - "free-field-cleanup: model free body followed by remaining initialized owned-field destruction without duplicate release"
+      - "construction-failure-cleanup: track staged init field/resource acquisition and clean only successfully initialized obligations without invoking completed-value free"
+      - "defer-unified-order: model automatic destruction and defer registration in one source-ordered LIFO cleanup plan while preserving earliest legal destruction"
+      - "result-option-union-cleanup: destroy only active retained payloads and integrate moved-out payload state"
+      - "result-projection-cleanup: preserve the implemented Result.Ok()/Err() ownership consumption through retained-payload transfer and inactive-side destruction/end semantics"
+      - "try-return-cleanup: integrate bodyless try, partial handlers, handler-produced failures, and return try with exact transferred-payload exclusion from local cleanup"
+      - "ffi-allocator-authority: preserve release/deallocator authority and accepted-ownership state for foreign transfers"
+      - "volatile-boundary: ensure ending local snapshots never creates additional volatile/MMIO accesses or hardware reset/clear behavior"
+      - "static-global-destruction: defer to canonical ProgramShutdownPlan/TargetProfile support instead of applying the old blanket global-destruction restriction"
     required_tests:
       - trivial scalar has no required runtime destruction operation
       - opaque compiler-known lifecycle owners are non-trivially destructible and propagate that classification through aggregates
-      - '@noCopy without cleanup-bearing fields remains trivially destructible'
+      - "@noCopy without cleanup-bearing fields remains trivially destructible"
       - non-trivial local is destroyed exactly once
       - locals clean in reverse successful registration order when lifetimes otherwise overlap
       - struct fields destroy in reverse declaration order
@@ -539,6 +544,7 @@ integrations:
         result: passed on 2026-09-24 after the destruction-classification increment
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./internal/ir/semantic ./cmd/lsp -run 'Free|CustomFree|Package13' -count=1
         result: passed on 2026-10-02 with free parsing and recovery, duplicate and interface targets, body restrictions, partial-move rejection across locals, holders, methods, and free, non-trivial destruction propagation, formatting, LSP outline and diagnostics, and the Semantic IR guard
+
   - id: sema.place-analysis
     area: frontend-analysis
     status: partial
@@ -621,14 +627,15 @@ integrations:
       - general destruction responsibility and conditional cleanup-state lattices beyond close-tracked resources
       - persisted summary metadata, function-value calls, recursive summary cycles, and all generic reference calls
       - Semantic IR copy, move, replacement, and destruction operations
+
   - id: sema.resource-cleanup-state
     area: frontend-analysis
     status: partial
     integrated: "2026-08-07"
     summary: >-
-      Tracks the compile-time must-closed state of local io.File and io.Directory
-      resources across branches and loop control-flow edges without runtime
-      ownership tables or cleanup tracking.
+      Tracks the compile-time must-closed state of local io.File and
+      io.Directory resources across branches and loop control-flow edges without
+      runtime ownership tables or cleanup tracking.
     rules:
       - rules/memory/destruction.md
       - rules/memory/ownership.md
@@ -660,52 +667,54 @@ integrations:
       - conditional and partial aggregate cleanup state
       - explicit cleanup regions and terminal ownership actions in Semantic IR
       - destruction and cleanup lowering before LLVM translation
-  - id: "frontend.borrowing"
-    area: "frontend-borrowing-place-liveness"
-    status: "partial"
+
+  - id: frontend.borrowing
+    area: frontend-borrowing-place-liveness
+    status: partial
     integrated: "2026-08-28"
     document_revision: "2.0"
-    revised: "2026-09-30"
-    repository_baseline: "069c111"
+    revised: "2026-10-28"
+    repository_baseline: 069c111
     rules:
-      - "rules/memory/borrowing.md"
-      - "rules/memory/ownership.md"
-      - "rules/memory/copy_move.md"
-      - "rules/memory/reference_model.md"
-      - "rules/declarations/functions.md"
-      - "rules/declarations/lambda-functions.md"
-      - "rules/control-flow/flowcontrol_match.md"
-      - "rules/control-flow/defer.md"
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/memory/borrowing.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/reference_model.md
+      - rules/declarations/functions.md
+      - rules/declarations/lambda-functions.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/control-flow/defer.md
     code:
-      - "internal/sema/analyzer.go"
-      - "internal/sema/analyzer_defer.go"
-      - "internal/sema/analyzer_lifetime.go"
-      - "internal/sema/place.go"
-      - "internal/sema/types.go"
-      - "internal/ast/ast.go"
-      - "internal/parser/parser.go"
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_defer.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/place.go
+      - internal/sema/types.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
     tests:
-      - "internal/sema/analyzer_test.go"
-      - "internal/sema/analyzer_defer_test.go"
-      - "internal/sema/analyzer_call_borrow_test.go"
-      - "internal/sema/analyzer_lifetime_test.go"
-      - "internal/sema/copy_move_test.go"
-      - "internal/sema/lifetime_test.go"
-      - "internal/parser/parser_test.go"
+      - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_defer_test.go
+      - internal/sema/analyzer_call_borrow_test.go
+      - internal/sema/analyzer_lifetime_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/lifetime_test.go
+      - internal/parser/parser_test.go
     implemented:
-      - "ref and ref mut parameter parsing/type representation and call-site borrow handling."
-      - "Place-sensitive active borrow tracking with fields, properties, constant/dynamic indices, slices, dereference, and union payload projections."
-      - "Shared/shared coexistence, exclusive mutable conflicts, immutable-owner mutable-borrow rejection, owner read blocking during mutable borrow, owner mutation blocking during shared/mutable borrow, and move blocking during overlapping borrows."
-      - "Local reference-holder tracking, holder reassignment, shared-reference copy provenance, mutable-reference move holder transfer, and aggregate-contained reference-origin preservation."
-      - "Call reborrow behavior for ref mut parameters without consuming the caller's mutable-reference holder."
+      - ref and ref mut parameter parsing/type representation and call-site borrow handling.
+      - Place-sensitive active borrow tracking with fields, properties, constant/dynamic indices, slices, dereference, and union payload projections.
+      - Shared/shared coexistence, exclusive mutable conflicts, immutable-owner mutable-borrow rejection, owner read blocking during mutable borrow, owner mutation blocking during shared/mutable borrow, and move blocking during overlapping borrows.
+      - Local reference-holder tracking, holder reassignment, shared-reference copy provenance, mutable-reference move holder transfer, and aggregate-contained reference-origin preservation.
+      - Call reborrow behavior for ref mut parameters without consuming the caller's mutable-reference holder.
       - "2026-10-22: moving a reference-parameter holder (`let moved :<- pair`) no longer makes the referent unavailable through the new holder (referentOfMovedHolder); the moved holder itself stays unavailable. An owned Place implicitly borrowed for a ref parameter is the instantiated origin of the call's returned reference, so `*Field(pair)` lowers and `return Field(local)` reports the precise local escape (S1128) instead of unknown provenance. Last-required-use ends publish binding, preceding statement and depths (ReferenceLifetimeEnd) for MD-065 placement."
       - "2026-10-21 (MD-076, rules/corrections/applied/md076-call-lifetime-temporary-borrows-correction-20261021.md): fresh owned temporaries are borrowable as call arguments and method receivers, shared or mutable, including chains (borrowing.md § 5.4). Sema publishes a Temporary implicit borrow plan with its own Place root and storage identity, gives returned references the symbolic origin `$temporary:<site>` (local to the full expression), rejects retaining such a reference in a let, assignment or field store and returning it (S1128), and keeps explicit `ref Temporary()` rejected (S1168). A mutating method on a projected receiver now checks the receiver Place's authority, and a rejected mutable or consuming receiver always reports an error (previously the call became silently invalid)."
-      - "Disjoint struct fields, distinct constant array indices, normalized static slice intervals, empty ranges, and conservative dynamic-index/symbolic-range overlap."
-      - "Branch and loop borrow joins, loop-carried conflict diagnostics, break/continue handling, finite reference-origin alternative sets, and deterministic conservative widening."
-      - "Match whole-payload ref/ref mut Place borrowing with guard/arm scope, mutability checks, overlapping-borrow validation, and several escape rejections."
+      - Disjoint struct fields, distinct constant array indices, normalized static slice intervals, empty ranges, and conservative dynamic-index/symbolic-range overlap.
+      - Branch and loop borrow joins, loop-carried conflict diagnostics, break/continue handling, finite reference-origin alternative sets, and deterministic conservative widening.
+      - Match whole-payload ref/ref mut Place borrowing with guard/arm scope, mutability checks, overlapping-borrow validation, and several escape rejections.
       - "Place-sensitive defer dependencies distinguish ordinary late value reads from retained reference-holder authority: overlapping ownership invalidation is rejected, disjoint sibling Places remain usable, reference holders cannot be moved or rebound before deferred dereference, and ordinary later value assignment remains observable by defer."
-      - "Declaration-order-independent direct function/method returned-reference origin summaries and supported transitive call-site origin instantiation."
-      - "Borrow creation now rejects uninitialized, wholly unavailable, partially available whole, and unresolved ConditionallyAvailable Places before registering a borrow; disjoint available sub-Places remain legal, is available branch refinement permits borrowing, and independent active-borrow authority checks still apply."
+      - Declaration-order-independent direct function/method returned-reference origin summaries and supported transitive call-site origin instantiation.
+      - Borrow creation now rejects uninitialized, wholly unavailable, partially available whole, and unresolved ConditionallyAvailable Places before registering a borrow; disjoint available sub-Places remain legal, is available branch refinement permits borrowing, and independent active-borrow authority checks still apply.
       - "Selected reference parameters now create left-to-right call-bounded Place reservations for direct calls: overlapping mutable/mutable, mutable/shared, and mutable/later-direct-read argument combinations are rejected, existing lexical borrows remain authoritative, and shared/shared or proven-disjoint field arguments remain valid without leaking reservations past the call."
       - "explicit ref outside calls (2026-10-16, closes the known hole verified 2026-10-11): an owned value where a direct reference is required is rejected with S1169 borrowing.explicit-ref-required (identity awaiting confirmation as MD-080 decided 2026-10-18: canonical help 'Only call arguments may borrow implicitly. / Write `ref value` or `ref mut value` ...' (TestExplicitRefRequiredCanonicalHelp); references.md § 5(10), borrowing.md § 15.2(5), diagnostics.md § 24(4d)) in typed lets, module initializers, assignments (including through ref mut parameters), returns and struct field initializers, so the explicit borrow is origin-tracked and local escapes are caught by S1128/S1129 (borrowing.md §§ 5.1, 15.2; references.md § 5). Before, `out.value = x` and `return x` for a local x created dangling references unnoticed. Call arguments keep their marker-free borrow; slice views keep their own conversion rules. A static initializer may now borrow static storage (`let mut slot: ref int := ref shared`), awaiting confirmation as MD-081 (TestImplicitBorrowOutsideCallsIsRejected)"
       - "call-returned reference holders (2026-10-16): a holder of a reference returned by a call gets its origin roots from the instantiated callee summary, so its argument borrow ends at the holder's last use; the origin root itself (a reference parameter borrowed through) no longer counts as a derived copy that keeps the holder live — confirmed by MD-069 (2026-10-16, borrowing.md § 8.1(7a)-(7c), lifetime_analysis.md § 14.7; TestCallReturnedReferenceHolderEndsAtLastUse, TestMD069OriginRootAndLastUse)"
@@ -714,6 +723,7 @@ integrations:
       - "explicit reborrow (MD-061, 2026-10-15, borrowing.md § 11.4, rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md): `ref r` / `ref mut r` over a reference holder is typed ref T / ref mut T at the single Sema resolution point (ResolvedReferencePlanOf already marks it a reborrow), `ref mut` over a shared holder is rejected with the elevation explanation, and each legal explicit reborrow emits the configurable Information diagnostic A2005 ownership.explicit-reborrow without suggesting to borrow the owner instead (TestExplicitReborrowTypesAndInformation)"
       - "non-lexical final use for plain reference holders (MD-061 § 4, borrowing.md § 8.1(7)): before each statement the analyzer ends the borrows of a local ref/ref mut holder that is not named in the remaining statements of its block or enclosing blocks (statement-level if/match separate paths; any other enclosing statement counts in full), anywhere in an enclosing loop declared outside the holder, or in any defer body or lambda, and when no other live local shares its reference origin without its own borrow record; uses are found by a reflective AST walk so no node type is missed (TestBorrowEndsAtLastRequiredUse). Conflict tests that relied on lexical borrows now keep their holder live with a later use"
     remaining:
+      - "MD-117 pointwise pack borrowing: prove shared/exclusive argument and iteration reborrows, disjoint mutable grants and fresh-temporary call reservations, retaining caller referent authority instead of copying ref mut or inventing ref ref T (borrowing.md §15.5; correction §§3,5,8). Dereference source spelling remains the separate MD-119 decision."
       - "non-lexical-final-use remainder: plain ref/ref mut holders end at their last required use (2026-10-15); views, slices, structs and other aggregates holding references, closure captures and holders sharing an origin with an untracked derived reference still keep lexical borrows (conservative, borrowing.md § 8.1(6)/(8))"
       - "complete-holder-graph: model every shared-reference copy, nested aggregate holder, closure capture, returned reference, view/slice, and derived reborrow so borrow end occurs only when all surviving dependencies end"
       - "nested-reborrow-authority remainder: explicit `ref r`/`ref mut r` reborrows are typed and ordered (2026-10-15); parent suspension and restoration still rely on the child's own borrow record rather than an explicit parent/child authority graph"
@@ -735,35 +745,35 @@ integrations:
       - command: go test ./internal/sema -run 'TestCallBoundedArgumentBorrow' -count=1
         result: passed on 2026-09-30 with mutable/mutable, mutable/shared, mutable/direct-read, existing lexical borrow, shared/shared, disjoint-field, and post-call release coverage
     required_tests:
-      - "multiple shared borrows of overlapping Place accepted"
-      - "shared plus overlapping mutable borrow rejected"
-      - "two overlapping mutable borrows rejected"
-      - "mutable borrow from immutable Place rejected"
-      - "owner read rejected during overlapping mutable borrow"
-      - "owner mutation/replacement rejected during overlapping shared or mutable borrow"
-      - "borrow can end before lexical scope exit after final proven use"
-      - "copied shared-reference holder keeps borrow live after original holder final use"
-      - "moving ref mut holder transfers borrow and moved-from holder becomes unavailable"
-      - "ref mut argument to ref mut parameter reborrows and caller reference is usable after call"
-      - "shared reborrow from ref mut blocks parent mutation only for child borrow live range"
-      - "disjoint struct-field mutable borrows accepted"
-      - "whole aggregate borrow overlaps every field"
-      - "distinct constant indices accepted; dynamic indices conservative"
-      - "disjoint static slice intervals accepted and empty interval borrows no elements"
-      - "symbolic slice overlap remains conservative unless proven"
-      - "borrow from Unavailable Place rejected"
-      - "borrow from ConditionallyAvailable Place rejected until is available/control-flow refinement proves Available"
-      - "is available does not bypass active mutable/shared borrow conflict"
-      - "move/discard/destruction/replacement rejected while overlapping borrow live"
-      - "proven disjoint sibling move remains valid while another field is borrowed"
-      - "outer holder borrow retained on one branch remains active after merge"
-      - "branch-local holder ends before merge and terminating branch does not pollute later borrow state"
-      - "loop-carried borrow conflicts are detected across backedge and related to prior-iteration origin"
-      - "Some(ref value) and Some(ref mut value) obey arm/guard scope and subject authority"
-      - "guard-false match candidate borrow ends before next arm"
-      - "borrowed match subject cannot transfer move-only payload ownership"
-      - "capture(ref value) cannot escape referent lifetime"
-      - "capture(ref mut value) blocks conflicting outer access and remains move-only"
-      - "defer future use blocks earlier invalidating move/discard/destruction"
-      - "extern ref/ref mut call-bounded borrow cannot be retained absent explicit retention contract"
-      - "generation/epoch validity check does not permit otherwise conflicting borrow"
+      - multiple shared borrows of overlapping Place accepted
+      - shared plus overlapping mutable borrow rejected
+      - two overlapping mutable borrows rejected
+      - mutable borrow from immutable Place rejected
+      - owner read rejected during overlapping mutable borrow
+      - owner mutation/replacement rejected during overlapping shared or mutable borrow
+      - borrow can end before lexical scope exit after final proven use
+      - copied shared-reference holder keeps borrow live after original holder final use
+      - moving ref mut holder transfers borrow and moved-from holder becomes unavailable
+      - ref mut argument to ref mut parameter reborrows and caller reference is usable after call
+      - shared reborrow from ref mut blocks parent mutation only for child borrow live range
+      - disjoint struct-field mutable borrows accepted
+      - whole aggregate borrow overlaps every field
+      - distinct constant indices accepted; dynamic indices conservative
+      - disjoint static slice intervals accepted and empty interval borrows no elements
+      - symbolic slice overlap remains conservative unless proven
+      - borrow from Unavailable Place rejected
+      - borrow from ConditionallyAvailable Place rejected until is available/control-flow refinement proves Available
+      - is available does not bypass active mutable/shared borrow conflict
+      - move/discard/destruction/replacement rejected while overlapping borrow live
+      - proven disjoint sibling move remains valid while another field is borrowed
+      - outer holder borrow retained on one branch remains active after merge
+      - branch-local holder ends before merge and terminating branch does not pollute later borrow state
+      - loop-carried borrow conflicts are detected across backedge and related to prior-iteration origin
+      - Some(ref value) and Some(ref mut value) obey arm/guard scope and subject authority
+      - guard-false match candidate borrow ends before next arm
+      - borrowed match subject cannot transfer move-only payload ownership
+      - capture(ref value) cannot escape referent lifetime
+      - capture(ref mut value) blocks conflicting outer access and remains move-only
+      - defer future use blocks earlier invalidating move/discard/destruction
+      - extern ref/ref mut call-bounded borrow cannot be retained absent explicit retention contract
+      - generation/epoch validity check does not permit otherwise conflicting borrow

@@ -151,6 +151,9 @@ func (e *emitter) typeContainsFixedArray(id semantic.TypeID, visiting map[semant
 
 func (e *emitter) emitModule() error {
 	e.out.WriteString("module attributes {")
+	if err := e.emitRegisterTable(); err != nil {
+		return err
+	}
 	fmt.Fprintf(&e.out, "sec.dialect_version = %d : i32, ", e.schemaVersion)
 	fmt.Fprintf(&e.out, "sec.semantic_ir_version = %d : i32, ", semantic.Version)
 	fmt.Fprintf(&e.out, "sec.module_id = %s, ", mlirString(e.module.Identity))
@@ -293,6 +296,10 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 func (e *emitter) emitOperation(function *semantic.Function, operation semantic.Operation, values map[semantic.ValueID]semantic.Value, storages map[semantic.StorageID]semantic.Storage) error {
 	e.out.WriteString("    ")
 	switch operation.Kind {
+	case semantic.OpRegisterValueFitsBits, semantic.OpRegisterValueFromBits, semantic.OpRegisterValueToBits:
+		return e.emitRegisterConversion(operation, values)
+	case semantic.OpRegisterValueExtract, semantic.OpRegisterValueUpdate:
+		return e.emitRegisterValue(operation, values)
 	case semantic.OpConstInt:
 		if err := e.emitResult(operation); err != nil {
 			return err
@@ -1187,6 +1194,8 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 		} else if typeValue.BitWidth == 32 || typeValue.BitWidth == 64 {
 			text = fmt.Sprintf("f%d", typeValue.BitWidth)
 		}
+	case semantic.TypeRegister:
+		text = fmt.Sprintf("!sec.register<%s>", mlirString(typeValue.Identity))
 	case semantic.TypeNamed:
 		base, err := e.typeText(typeValue.Base)
 		if err != nil {

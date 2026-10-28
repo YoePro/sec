@@ -1,0 +1,90 @@
+module main
+
+enum Mode bit[2] { Off = 0, On = 1 }
+type Inner register[4] {
+    Low: bit[2],
+    High: bit[2],
+}
+type Header register[32] msb-first {
+    Flag: bit,
+    Small: bit[2],
+    Wide: bit[12] shadow,
+    Mode: Mode,
+    Nested: Inner,
+    _: bit[11],
+}
+fn Read(h: Header) uint16 {
+    discard h.Flag
+    discard h.Mode
+    discard h.Nested.Low
+    return h.Wide
+}
+fn Write(h: Header, other: Header, narrow: uint8) Header {
+    let mut b := h
+    b.Flag = 1
+    b.Small = 3
+    b.Wide = other.Wide
+    b.Mode = Mode.On
+    b.Nested.High = other.Small
+    if narrow < 16 { b.Wide = narrow }
+    return b
+}
+
+type W8 register[8] { Value: bit[8], }
+fn Read8(x: W8) uint8 { return x.Value }
+fn Update8(x: W8, y: W8) W8 {
+    let mut z := x
+    z.Value = y.Value
+    return z
+}
+
+type W16 register[16] { Value: bit[16], }
+fn Read16(x: W16) uint16 { return x.Value }
+fn Update16(x: W16, y: W16) W16 {
+    let mut z := x
+    z.Value = y.Value
+    return z
+}
+
+type W32 register[32] { Value: bit[32], }
+fn Read32(x: W32) uint32 { return x.Value }
+fn Update32(x: W32, y: W32) W32 {
+    let mut z := x
+    z.Value = y.Value
+    return z
+}
+
+type W64 register[64] { Value: bit[64], }
+fn Read64(x: W64) uint64 { return x.Value }
+fn Update64(x: W64, y: W64) W64 {
+    let mut z := x
+    z.Value = y.Value
+    return z
+}
+
+type W128 register[128] { Value: bit[128], }
+fn Read128(x: W128) uint128 { return x.Value }
+fn Update128(x: W128, y: W128) W128 {
+    let mut z := x
+    z.Value = y.Value
+    return z
+}
+
+type W256 register[256] { Value: bit[256], }
+fn Read256(x: W256) uint256 { return x.Value }
+fn Update256(x: W256, y: W256) W256 {
+    let mut z := x
+    z.Value = y.Value
+    return z
+}
+
+type Other8 register[8] big-endian { Value: bit[8], }
+fn Other(x: Other8) uint8 { return x.Value }
+type Little register[8] little-endian { Value: bit[8], }
+fn LittleRead(x: Little) uint8 { return x.Value }
+
+fn FromConstant() Header { return Header(17) }
+fn FromNegative() Header { return Header(-1) }
+fn FromDomain(x: uint8) Header { return Header(x) }
+fn ToUnsigned(x: Header) uint32 { return uint32(x) }
+fn ToSigned(x: Header) int64 { return int64(x) }

@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-17
-- **Last updated:** 2026-09-03
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-28 (§§ 5, 8, 25A, 28 reachable-state exhaustiveness, proven-inactive arms and payload-bearing variant patterns, MD-029/MD-042); 2026-09-03
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_match.md`
 - **Replaces:** `rules/control-flow/flowcontrol_match.txt`
@@ -159,6 +159,37 @@ match option {
 
 because `Some` values for which the guard is false remain uncovered.
 
+**Reachable-state exhaustiveness (MD-042).** When authoritative analysis soundly
+proves that the subject can only be in a smaller variant set at the match
+point, only that set needs coverage:
+
+```sec
+type Figure union {
+    Dot
+    Line(int)
+    Circle(int)
+}
+
+let figure := Figure.Dot
+
+// Exhaustive because the subject is proven to be Figure.Dot here.
+match figure {
+    Dot => DrawDot()
+}
+```
+
+The proof must hold for the actual subject: immutable known value facts,
+trusted path refinements and applicable compiler-known provenance. Mutation,
+reassignment, aliases, foreign or dynamic calls, property reads with unproved
+stability, invalidated flow assumptions and unknown results conservatively
+widen or invalidate it; the declaration's initial value is never used after it
+may have changed. Without a sound proof, exhaustiveness uses the whole domain
+of the resolved subject type, including every legal union/enum/`Result`/`Option`
+case, a reachable `empty` state and the unknown encodings of open bit-backed
+enums (§ 27). Absence of proof is not a license to omit arms. Guard semantics
+are unchanged: a guarded arm is not complete coverage merely because its
+variant is known. Arms excluded only by such a proof are legal (§ 25A).
+
 ---
 
 ## 6. Catch-all pattern
@@ -255,6 +286,27 @@ match direction {
 Namespace qualification follows the normal name-resolution rules.
 
 Variant spelling is resolved semantically. The backend must not infer variant identity from textual names.
+
+A **bare variant pattern** is also valid for a variant that carries a payload
+(MD-029). It selects every value of that variant without extracting the
+payload; it is not a test that the payload is empty or default:
+
+```sec
+match figure {
+    Figure.Rectangle => HandleRectangle()
+    Figure.Circle => HandleCircle()
+}
+```
+
+An unguarded bare variant contributes full coverage of that variant; a guarded
+one contributes only the guarded subset. Because data exists but is not
+inspected, the compiler issues a configurable **Information** diagnostic by
+default that names the payload type or fields and suggests a binding form.
+`Variant(_)` for a single payload and `Variant {}` for a struct-like payload
+state deliberate non-binding and suppress only that information; they never
+waive ownership, destructor or non-discardability obligations (§ 15). The same
+rule applies to `Err(...)` error variants (`rules/errors/errorhandling.md`
+§ 15.3).
 
 ---
 
@@ -822,6 +874,51 @@ match option {
 }
 ```
 
+## 25A. Proven-inactive arms (MD-042)
+
+A correctly typed arm for a variant that is impossible **solely because of the
+subject's proven current state** (§ 5) is **legal**. It may be kept for
+clarity, reviewability or a future broader value source. The compiler reports
+it with a default **Information** diagnostic that explains the proof, not with
+an error:
+
+```sec
+match figure {
+    Dot => DrawDot()
+    Line(length) => DrawLine(length)      // Legal; provably inactive here.
+    Circle(radius) => DrawCircle(radius) // Legal; provably inactive here.
+}
+```
+
+An inactive arm must still be syntactically valid, name a declared variant,
+use a valid binding shape, type-check its guard and body and respect ownership
+and lifetime obligations.
+
+Proven inactivity differs from source-order redundancy. The compiler
+distinguishes:
+
+1. a structurally invalid, duplicate or earlier-covered arm — **Error** (this
+   section above, `S3003`);
+2. a valid arm excluded only by a proven subject state — **Information**;
+3. an arm not proven excluded — no inactivity diagnostic.
+
+The classification does not depend on whether lowering later removes the arm.
+The formatter never removes inactive arms.
+
+The declared error type and the errors a specific expression can produce are
+distinct facts. Widening a core error enum does not make every operation able
+to produce every new variant: a `try` whose failures provably arise only from
+an integer division may keep a legally typed
+`Err(ArithmeticError.PrecisionExhausted)` handler as informationally inactive.
+A protected subtree with further calls or failure-producing operands must
+include every reachable failure source, and a declaration such as
+`fn Calculate() Result[int, ArithmeticError]` proves nothing about which
+variants its implementation can produce. Failure provenance restricts the
+active error set only when it is complete and sound; it is a semantic proof,
+not an ABI property or an inference from a variant name.
+
+Rules: `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 8–10.
+
 ---
 
 ## 26. Ordinary enums
@@ -918,8 +1015,12 @@ Concrete-variant arms before an `Err(error)` arm are valid.
 
 The variant must belong to the subject's own error type. Enum error variants
 are compared by their underlying value class, like ordinary enum arms. A
-payload-carrying union error variant cannot be selected this way, because Sec
-0.1 has no nested payload pattern; bind the error with `Err(name)` instead.
+payload-carrying union error variant may be selected as a bare variant, with
+its single payload bound (`Err(FileError.NotFound(info))`) or with shallow
+field destructuring (`Err(FileError.NotFound { Path: path })`); destructuring
+is one level deep (MD-029; `rules/errors/errorhandling.md` §§ 15.3, 27.2b).
+With one unambiguous closed concrete error type the contextual
+`Err(.Variant...)` spelling is also valid (activated in Sec 0.1.2).
 
 This is an explicit, deliberately narrow Sec 0.1 Result/error refinement
 exception to the restricted nested-pattern model (§ 32). It is not a general

@@ -1,0 +1,38 @@
+module main
+
+type Bytes int[]
+
+fn Shared(data: ref Bytes) void {}
+fn Mutable(data: ref mut Bytes) void {}
+fn Generic[T](data: ref T) void {}
+fn Overloaded(data: ref Bytes, flag: bool) void {}
+fn Overloaded(data: ref string, flag: int) void {}
+type Reader struct { value: int }
+impl Reader {
+    fn Read(data: ref Bytes) void {}
+}
+fn Calls(values: Bytes, reader: Reader) void {
+    Shared(<-values)
+    Shared(values)
+    Mutable(<-values)
+    Mutable(values)
+    Generic(<-values)
+    Generic(values)
+    Overloaded(<-values, true)
+    Overloaded(values, true)
+    reader.Read(<-values)
+    reader.Read(values)
+    discard values
+}
+fn Materializers(bytes: byte[], runes: rune[]) void {
+    discard string.FromByteArray(<-bytes)
+    discard bytes
+    discard string.FromRuneArray(<-runes)
+    discard runes
+}
+fn Mixed(->first: Bytes, data: ref Bytes) void {}
+fn NoPartialCommit(first: Bytes, second: Bytes) void {
+    Mixed(<-first, <-second)
+    Shared(first)
+    Shared(second)
+}

@@ -1,0 +1,64 @@
+module sample
+
+enum Domain {
+    Flow,
+}
+
+unit flow physical
+impl <flow> {
+    long_name: "Flow"
+    Symbol: "f"
+    BaseUnit: true
+    Status: active
+    Dimension: [length^1]
+    Kind: Domain.Flow
+    Scale: 1 / 3
+    System: SI
+    Origin: none
+    Transform: linear
+}
+
+unit point physical
+impl <point> {
+    Dimension: [thermodynamic_temperature^1]
+    Kind: temperature
+    Transform: affine
+    Scale: 1
+    Offset: 273.15
+    Origin: absolute_zero
+}
+
+unit logarithm ratio
+impl <logarithm> {
+    Transform: logarithmic
+    LogBase: 10
+    LogFactor: 10
+    Reference: 1
+}
+
+unit plain other
+
+fn Read() void {
+    let name := <plain>.Name
+    let category := <plain>.Category
+    let longName := <flow>.LongName
+    let symbol := <flow>.Symbol
+    let base := <flow>.BaseUnit
+    let status := <flow>.Status
+    let dimension := <flow>.Dimension
+    let kind := <flow>.Kind
+    let scale := <flow>.Scale
+    let system := <flow>.System
+    let origin := <flow>.Origin
+    let transform := <flow>.Transform
+    let offset := <point>.Offset
+    let logBase := <logarithm>.LogBase
+    let logFactor := <logarithm>.LogFactor
+    let reference := <logarithm>.Reference
+    let defaultKind := <plain>.Kind
+    let defaultScale := <plain>.Scale
+    let defaultDimension := <plain>.Dimension
+    let axisCount := dimension.AxisCount
+    let dimensionless := dimension.IsDimensionless
+    let kindAgain := <flow>.Kind
+}

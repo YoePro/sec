@@ -8,6 +8,24 @@ enum DivisionByZeroError error {
     DivisionByZero,
 }
 
+// Failures of checked built-in arithmetic operations.
+enum ArithmeticError error {
+    // Arithmetic overflow not described by a more specific applicable variant.
+    Overflow,
+
+    // Division or remainder was attempted with a zero divisor.
+    DivisionByZero,
+
+    // A shift count is invalid for the selected integer type.
+    InvalidShift,
+
+    // No valid signed decimal scale can represent the mathematical result.
+    ScaleOverflow,
+
+    // Exact decimal digits exceed the selected coefficient's capacity.
+    PrecisionExhausted,
+}
+
 enum DateError error {
     InvalidDate,
     OutOfRange,

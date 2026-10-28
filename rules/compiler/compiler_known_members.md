@@ -464,10 +464,13 @@ The canonical Sec 0.1 public spellings are:
 .Scale
 ```
 
-`.scale` / `.Scale` is the `uint8` instance property of a `decimal` value
-(`core-library.md` § 10.1; MD-082, 2026-10-18); both resolve to
-`CKM-DECIMAL-SCALE`. New examples, generated declarations and hover use
-`.Scale`; `decimal128` gets no member until MD-068.
+`.scale` / `.Scale` is the `int32` instance property of a `decimal` value,
+with an infallible getter and a fallible `try set` reporting `PrecisionError`
+(`core-library.md` § 10.1; MD-082, 2026-10-18; MD-066, 2026-10-28, which
+replaces the former `uint8` type). Both spellings resolve to the one identity
+`CKM-DECIMAL-SCALE`. `decimal128` has the same property with its own single
+identity (MD-068). New examples, generated declarations and hover use
+`.Scale`.
 
 Lowercase spellings are classified as migration spellings.
 
@@ -2335,6 +2338,15 @@ Scale
 are compiler-known only when the decimal rulebook defines them as stable public
 semantics.
 
+`decimal.Scale` and `decimal128.Scale` are such members (MD-066/MD-068,
+2026-10-28): each has one canonical identity of type `int32` with getter and
+fallible setter semantics, and the lowercase `scale` is only a migration
+alias of that identity. The registry must not keep the former `uint8` or
+`int` result type. The remaining `decimal`/`decimal128` members of
+`core-library.md` §§ 10.2 and 10.4 resolve through ordinary core member
+lookup with identical signatures for both types; tooling must not advertise a
+`decimal128` member that has no implementation or gate-aware diagnostic.
+
 Internal coefficient layout is not exposed merely because the compiler knows
 it.
 
@@ -2834,6 +2846,31 @@ SizeOf
     compiler-known property or global type query
     result for linux/amd64: 16 bytes
 ```
+
+## User-facing symbol names
+
+Ordinary tooling presentation uses the resolved public source name and
+concrete receiver type, for example `list[Customer].Append` or `string.Len`.
+The stable `CKM-`, `CKF-` and `CKV-` identities remain semantic and transport
+facts; they must not substitute for a user-facing name. Stable diagnostic
+codes are unaffected.
+
+The shared compiler registry supplies these display facts. Consumers must not
+maintain a second ID-to-label inventory or recover a name by decoding an ID.
+Receiver type arguments and the member signature come from the already
+resolved registry entry. A descriptive receiver pattern is not a concrete
+receiver type and must not be presented as one.
+
+Global functions and value intrinsics use their canonical source spelling.
+Presentation never grants access to an internal or unavailable operation;
+visibility, effects, unsafe requirements and target/profile availability still
+come from the original resolved semantic entry.
+
+If a public name or signature is unavailable, tooling uses an explicit,
+readable fallback rather than an implementation ID or an invented source
+signature. An unavailable contextual parameter list does not establish a
+zero-argument function. A context-dependent result remains distinguishable
+from a known `void` result.
 
 ---
 

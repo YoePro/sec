@@ -1,9 +1,9 @@
 # MD-114 — Canonical Sec MLIR register-definition, field-path, and field-write-proof contract
 
 - **Decision:** MD-114 — `sec-mlir-register-value-text-contract`
-- **Status:** **Owner-approved — normative correction pending repository integration and implementation**
+- **Status:** **Normatively integrated; detached table/field operations implemented 2026-10-28; complete acceptance retains MD-110 dependencies**
 - **Created:** 2026-10-27
-- **Last updated:** 2026-10-27
+- **Last updated:** 2026-10-28
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Reference repository:** `YoePro/sec`, `main` at `5426af6cf8cce6fe85ff897b97050dfd330ef4fe` (2026-10-26)

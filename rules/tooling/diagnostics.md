@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-10-18
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
 - **Replaces:** `rules/tooling/diagnostics.txt`
@@ -1015,6 +1015,15 @@ Write `ref value` or `ref mut value` to create an explicit reference.
 ```
 
 The occurrence message names the required reference type and the source Place and distinguishes `ref` from `ref mut`. Origin and lifetime errors of the explicit borrow remain independent diagnostics and are not hidden by S1169 (MD-080, 2026-10-18).
+
+§ 24(4e) Two advisory identities are required by MD-029/MD-042 and are allocated in the registry when implemented, with a stable ID, symbolic name, canonical English message, structured arguments, default severity `Information` (configurable under § 18(4a)), optional help and LSP code. `S3001` and `S3003` are **not** reused with a changed severity; genuinely erroneous reachability keeps its mandatory identities (§ 21(6) applies only where the owning rule requires reachability, and `flowcontrol_match.md` § 25A states that proven-inactive arms do not):
+
+- an **inactive-arm** identity for a valid `match` arm or `try` handler excluded only by a proven subject state or complete failure provenance. The occurrence carries the pattern location, resolved subject type, excluded variant and proof reason, and where available a related location for the assignment or condition establishing the active variant;
+- an **omitted-payload** identity for a bare variant pattern that selects a payload-bearing variant without binding its payload. It names the payload type or fields and suggests a binding form and the explicit `Variant {}` / `Variant(_)` spelling.
+
+Equivalent proof occurrences are grouped or deduplicated as this rulebook prescribes. CLI, JSON and LSP publish the same identity and proof information. Quick fixes, if offered, are optional and driven by semantic facts; the formatter never removes an inactive arm (MD-029/MD-042, `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 10).
+
+§ 24(4f) `S1157` keeps its identity for a call of the compiler-known `None` variant: `None()` is invalid Option construction, and the message explains that `None` takes no arguments and is not a function. A legitimate user-defined function is never labelled as the Option absence variant, and a valid `Some(value)` with Option context or an independently typeable payload never produces `S1157` (MD-102, same correction §§ 11(2), 14).
 
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 

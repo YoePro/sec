@@ -429,6 +429,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 		out.WriteByte(']')
 	}
+	out.WriteString(formatUnitMetadata(op.UnitMetadata))
 	if len(op.Results) > 0 {
 		out.WriteString(" : ")
 		for index, result := range op.Results {

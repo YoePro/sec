@@ -1,0 +1,13 @@
+module main
+import q "catalog"
+
+enum Domain {
+    Local,
+}
+
+fn Read() void {
+    let declaredName := <q.flow>.Name
+    let kind := <q.flow>.Kind
+    let title := <q.flow>.LongName
+    let defaultScale := <q.plain>.Scale
+}

@@ -987,23 +987,41 @@ let h := 0x8m
 	}
 }
 
+// A decimal literal keeps the signed int32 scale its exact spelling implies
+// (fractional digits minus exponent); only a scale outside int32 moves to the
+// closest exact legal scale, and an impossible one is rejected (MD-066).
+//
+// Rules:
+//   - rules/types/types.md — "Decimal scale"
+//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(6), 3(7), 14 DEC-02/DEC-03
 func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 	tests := []struct {
 		input       string
 		coefficient string
-		scale       uint8
+		scale       int32
 	}{
 		{"3.14", "314", 2},
 		{".1", "1", 1},
 		{"-0.5", "-5", 1},
 		{"100", "100", 0},
+		{"1.20", "120", 2},
+		{"0.000", "0", 3},
 		{"1.25e-3", "125", 5},
-		{"1.5e2", "150", 0},
-		{".5E+4", "5000", 0},
+		{"1.5e2", "15", -1},
+		{".5E+4", "5", -3},
+		{"1e3", "1", -3},
 		{"1_234.5_678", "12345678", 4},
-		{"1.25e1_0", "12500000000", 0},
+		{"1.25e1_0", "125", -8},
 		// Beyond int64: exact for decimal128 (P21 sync § 8).
 		{"123456789012345678901234567890.5", "1234567890123456789012345678905", 1},
+		// int32 scale boundaries: a scale above int32.Max strips an exact
+		// trailing zero; zero clamps to the boundary.
+		{"1e-2147483647", "1", 2147483647},
+		{"100e-2147483647", "100", 2147483647},
+		{"10e-2147483648", "1", 2147483647},
+		{"0e-2147483648", "0", 2147483647},
+		{"1e2147483647m", "1", -2147483647},
+		{"1e400m", "1", -400},
 	}
 
 	for _, tt := range tests {
@@ -1017,6 +1035,11 @@ func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 				t.Fatalf("wrong decimal value. got=%s scale %d want=%s scale %d", got.Coefficient, got.Scale, tt.coefficient, tt.scale)
 			}
 		})
+	}
+	for _, input := range []string{"1e-2147483648", "123e-2147483648"} {
+		if value, ok := decimalLiteralValue(parseExpressionSource(t, input)); ok {
+			t.Errorf("%s has no legal int32 scale, got %s scale %d", input, value.Coefficient, value.Scale)
+		}
 	}
 }
 
@@ -1578,7 +1601,7 @@ let p: <Packet> := 3u
 	if unit := analyzer.units["Packet"]; unit.Category != OtherUnit {
 		t.Fatalf("Packet should be an other unit. got=%q", unit.Category)
 	}
-	if packet.Dimension.Base["Packet"] != 1 {
+	if packet.Dimension.Base[unitAxisKey(analyzer.units["Packet"].Module, "Packet")] != 1 {
 		t.Fatalf("Packet should keep semantic base dimension. got=%+v", packet.Dimension)
 	}
 }
@@ -1648,7 +1671,7 @@ let power: <hp> := 10g
 	if horsepower.LongName != "Horsepower" || horsepower.Symbol != "hp" || horsepower.IsBaseUnit {
 		t.Fatalf("wrong hp descriptive metadata: %+v", horsepower)
 	}
-	if horsepower.Status != StatusDeprecated || horsepower.System != "Imperial" || horsepower.Scale != "735.49875g" {
+	if horsepower.Status != StatusDeprecated || horsepower.System != "UnitSystem.Imperial" || horsepower.Scale != "735.49875g" {
 		t.Fatalf("wrong hp semantic metadata: %+v", horsepower)
 	}
 
@@ -1705,10 +1728,10 @@ unit Packet
 	if unit := analyzer.units["Octet"]; unit.Category != InformationUnit || unit.Dimension.Base["information"] != 1 {
 		t.Fatalf("information default=%+v", unit)
 	}
-	if unit := analyzer.units["EUR"]; unit.Category != CurrencyUnit || unit.Dimension.Base["EUR"] != 1 {
+	if unit := analyzer.units["EUR"]; unit.Category != CurrencyUnit || unit.Dimension.Base[unitAxisKey(unit.Module, "EUR")] != 1 {
 		t.Fatalf("currency default=%+v", unit)
 	}
-	if unit := analyzer.units["Packet"]; unit.Category != OtherUnit || unit.Dimension.Base["Packet"] != 1 {
+	if unit := analyzer.units["Packet"]; unit.Category != OtherUnit || unit.Dimension.Base[unitAxisKey(unit.Module, "Packet")] != 1 {
 		t.Fatalf("other default=%+v", unit)
 	}
 	if unit := analyzer.units["Percent"]; !unit.DimensionEstablished {
@@ -1759,13 +1782,14 @@ let identity: <widget/widget> := 1
 `
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
-	if speed := analyzer.symbols["speed"].Type; speed.Kind != DecimalType || speed.Dimension.Base["widget"] != 1 || speed.Dimension.Base["tick"] != -1 {
+	widgetAxis, tickAxis := unitAxisKey(analyzer.units["widget"].Module, "widget"), unitAxisKey(analyzer.units["tick"].Module, "tick")
+	if speed := analyzer.symbols["speed"].Type; speed.Kind != DecimalType || speed.Dimension.Base[widgetAxis] != 1 || speed.Dimension.Base[tickAxis] != -1 {
 		t.Fatalf("speed type=%+v", speed)
 	}
-	if acceleration := analyzer.symbols["acceleration"].Type; acceleration.Dimension.Base["tick"] != -2 {
+	if acceleration := analyzer.symbols["acceleration"].Type; acceleration.Dimension.Base[tickAxis] != -2 {
 		t.Fatalf("acceleration type=%+v", acceleration)
 	}
-	if grouped := analyzer.symbols["grouped"].Type; grouped.Kind != FloatType || grouped.Dimension.Base["widget"] != 2 || grouped.Dimension.Base["tick"] != -2 {
+	if grouped := analyzer.symbols["grouped"].Type; grouped.Kind != FloatType || grouped.Dimension.Base[widgetAxis] != 2 || grouped.Dimension.Base[tickAxis] != -2 {
 		t.Fatalf("grouped type=%+v", grouped)
 	}
 	if identity := analyzer.symbols["identity"].Type; identity.Kind != DecimalType || !identity.Dimension.IsZero() {
@@ -1796,11 +1820,11 @@ impl <Decibel> {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 	celsius := analyzer.units["Celsius"]
-	if celsius.Kind != "temperature" || celsius.Transform != AffineUnitTransform || celsius.Offset != "273.15" || celsius.Origin != "absolute_zero" {
+	if celsius.Kind != "UnitKind.ThermodynamicTemperature" || celsius.Transform != AffineUnitTransform || celsius.Offset != "273.15" || celsius.Origin != "UnitOrigin.AbsoluteZero" {
 		t.Fatalf("Celsius metadata=%+v", celsius)
 	}
 	decibel := analyzer.units["Decibel"]
-	if decibel.Kind != "ratio" || decibel.Transform != LogarithmicUnitTransform || decibel.LogBase != "10" || decibel.LogFactor != "10" || decibel.Reference != "1" {
+	if decibel.Kind != "UnitKind.Ratio" || decibel.Transform != LogarithmicUnitTransform || decibel.LogBase != "10" || decibel.LogFactor != "10" || decibel.Reference != "1" {
 		t.Fatalf("Decibel metadata=%+v", decibel)
 	}
 }
@@ -2894,7 +2918,7 @@ impl <m> {
 }
 impl <s> {
  Dimension: [time^1]
- Kind: duration
+ Kind: time
  Scale: 1
 }
 impl <Speed> {

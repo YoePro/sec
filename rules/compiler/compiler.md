@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-09-03
+- Last updated: 2026-10-28 (§ 55(4) invalid source never crashes the compiler, from the retired rules_implementations.txt); 2026-09-03
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/compiler.md`
@@ -1238,6 +1238,8 @@ target-dependent semantic validation.
 § 55(2) The frontend produces verified semantic facts/Semantic IR, not target machine instructions.
 
 § 55(3) Frontend components share canonical workspace/project/plan state.
+
+§ 55(4) Invalid Sec source, including malformed, incomplete or semantically invalid input, is reported through diagnostics and never causes a compiler panic, crash, uncontrolled hang or internal corruption. A panic or internal compiler error is reserved for compiler states that earlier verified phases should have made impossible (`compiler_pipeline.md` § 2(8)); it reports an internal defect, not a source error (`compiler_testing.md` § 8(3)). Inputs whose required facts are invalid or unknown are represented explicitly so dependent checks do not cascade, while independent errors remain reported (`parser_recovery.md`, `tooling/diagnostics.md`).
 
 ---
 

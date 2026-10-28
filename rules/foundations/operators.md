@@ -261,6 +261,9 @@ The following are not yet implemented completely:
 - complete deterministic arithmetic-failure lowering;
 - float `%`;
 - decimal `%`;
+- decimal result-scale selection, rounded division, provably-zero-divisor
+  rejection and the `ScaleOverflow`/`PrecisionExhausted` classification
+  (MD-066/MD-067, 2026-10-28);
 - fixed-array and slice membership Semantic IR and lowering;
 - materialization of accepted compile-time string concatenation as one folded
   constant before Semantic IR/lowering;
@@ -1535,23 +1538,154 @@ The result uses the common resolved floating type.
 # Decimal arithmetic
 
 Decimal arithmetic follows exact decimal semantics and the selected decimal
-type's precision and scale rules.
+type's precision and scale rules (MD-066/MD-067, 2026-10-28,
+`rules/corrections/md066-md067-md068-decimal-correction-20261028.md`).
 
 Operations are checked.
 
-A decimal operation may fail when:
+`+`, `-`, `*`, `%` and unary minus produce the exact mathematical result or
+fail. Division is the only decimal operator that may approximate its result
+automatically, and only as defined in "Decimal division" below. No other
+operator, implicit conversion or unit conversion gains a rounding permission
+from that rule.
+
+Each result is computed exactly before its representation is selected. No
+host binary float, fixed host 64-bit intermediate or overflow-driven
+arithmetic defines the result. A decimal result never widens from `decimal`
+to `decimal128` and never converts to binary float.
+
+## Decimal result scale
+
+The value of a decimal is `coefficient × 10^(-scale)`, with a signed
+`i64` (`decimal`) or `i128` (`decimal128`) coefficient and a signed `int32`
+scale (`rules/memory/layout.md` § 19; `core-library.md` § 10.1).
+
+Each operation has a preferred scale `P`, computed without wrapping:
+
+| Operation | Preferred scale `P` |
+|---|---|
+| `a + b`, `a - b` | `max(a.Scale, b.Scale)` |
+| `a * b` | `a.Scale + b.Scale` |
+| `a / b` | `max(a.Scale, b.Scale)` |
+| `a % b` | `max(a.Scale, b.Scale)` |
+
+For a nonzero exactly representable result `V`, the exact scales at which an
+integer coefficient in the actual signed coefficient domain represents `V`
+form a contiguous interval `[S_min(V), S_max(V)]` within `int32`. The
+selected scale is the member closest to `P`:
 
 ```text
-division by zero
-result is outside representable range
-required scale or precision is not representable
-rounding is required but not allowed by the operation
+resultScale = clamp(P, S_min(V), S_max(V))
 ```
 
-Failure must be deterministic and represented according to the decimal and
-fallible-expression rules.
+`clamp` here is mathematical, not `decimal.Clamp()`. When `P` lies inside the
+interval it is kept; trailing coefficient zeros are not stripped
+gratuitously. An operation is not rejected merely because its preferred
+coefficient overflows when another exact scale exists. The coefficient domain
+is the real asymmetric signed one: `-2^63` and `-2^127` are valid
+coefficients.
 
-Decimal arithmetic must not silently convert to binary float.
+An exact zero result has coefficient zero and keeps `P`, clamped to
+`int32.Min` or `int32.Max` when `P` lies outside `int32`; zero never fails
+because an intermediate preferred scale, such as a product's scale sum, is out
+of range.
+
+When no exact representable coefficient/scale pair exists, `+`, `-`, `*`,
+`%` and unary minus fail as described in "Decimal arithmetic failures".
+
+Equality and ordering compare mathematical values: `1.2m == 1.20m`. Scale is
+not part of equality or ordering, and comparison never goes through binary
+floating point.
+
+Compound assignments use the same numerical policy as the corresponding
+binary operator, with exactly-once operand evaluation and the owning
+assignment rules for transactional updates.
+
+## Decimal division
+
+The quotient is computed exactly. When it has an exact representation in the
+selected decimal type, the result-scale rule above applies; an exact finite
+quotient is never rounded or padded with extra digits.
+
+When no exact representation exists, whether the quotient is nonterminating
+or merely needs more digits than the coefficient holds, division rounds:
+
+- it selects the finest signed `int32` scale whose correctly rounded
+  coefficient fits the signed coefficient domain and keeps the whole-number
+  part;
+- it rounds once from the exact quotient with `RoundingMode.NearestEven`, an
+  exact midpoint selecting the even coefficient;
+- if the rounding carry makes the coefficient unrepresentable, the next
+  coarser admissible scale is tried; there is no wrapping, saturation, host
+  float intermediate or double rounding.
+
+The whole-number magnitude takes precedence over fractional precision: the
+scale is never coarsened so far that significant whole-number digits are
+lost. An ordinary carry from rounding the fraction, such as a value just below
+`1` rounding to `1`, is allowed. When no admissible representation keeps the
+whole-number digits, division fails with the most specific `ArithmeticError`.
+A quotient with zero whole-number part may round to zero when no nonzero
+candidate is representable.
+
+A nonzero quotient that rounds to zero keeps the selected rounding scale; the
+exact-zero preferred-scale rule applies only to an exactly zero quotient.
+
+Representative `decimal` results:
+
+| Operation | Value | Result scale | Reason |
+|---|---|---:|---|
+| `1m / 3m` | `0.3333333333333333333` | 19 | Nonterminating; maximal precision. |
+| `2m / 3m` | `0.6666666666666666667` | 19 | Nonterminating; nearest-even rounding. |
+| `1000000000m / 3m` | `333333333.3333333333` | 10 | Nine whole digits; the remaining coefficient capacity is fractional. |
+| `1m / 8m` | `0.125` | 3 | Exactly representable; no padding. |
+
+`decimal128` uses the same algorithm with its 128-bit coefficient; the
+default precision never depends on the target.
+
+A rounded quotient is an ordinary successful value. It is not `PrecisionLoss`
+and needs no `try` because it is inexact; `try` concerns only real failure
+paths such as a runtime zero divisor or an unrepresentable whole-number part.
+
+## Decimal division and remainder by zero
+
+When the compiler proves that the divisor of decimal `/` or `%` is zero, the
+expression is a compile-time error, with or without `try`. Compilation stops
+before successful code generation and reports the source location with a
+repair hint. This rule concerns a provably zero decimal divisor only; it does
+not make every provably failing runtime check a compile-time error.
+
+Otherwise the divisor is checked at run time. A zero divisor in the ordinary
+operation reaches the non-returning panic endpoint with reason
+`DivisionByZero`. Under `try a / b` or `try a % b` the failure is
+`ArithmeticError.DivisionByZero` through ordinary `Result` propagation, with
+no panic at that point.
+
+A proof that the divisor is nonzero may remove the check. The compiler never
+assumes nonzero merely because ordinary division is written or because a
+constant could not be evaluated in an optional compile-time context.
+
+## Decimal arithmetic failures
+
+Decimal operators report `ArithmeticError`, choosing the most specific
+applicable variant (`rules/errors/errorhandling.md` § 3.4):
+
+| Semantic failure | Error |
+|---|---|
+| Runtime division or remainder by zero under `try` | `ArithmeticError.DivisionByZero` |
+| A finite exact result needs a scale outside `int32` while the coefficient precision suffices | `ArithmeticError.ScaleOverflow` |
+| An exact result needs more significant coefficient digits than the signed coefficient holds at any allowable exact scale | `ArithmeticError.PrecisionExhausted` |
+| Any other unrepresentable outcome with no narrower applicable variant | `ArithmeticError.Overflow` |
+| An inexact quotient successfully rounded by "Decimal division" | No failure |
+
+For an exactly representable finite decimal value, classification uses the
+minimal exact coefficient after removing all factors of ten (for
+classification only): if it does not fit the signed coefficient,
+`PrecisionExhausted`; otherwise, if no `int32` scale represents the value,
+`ScaleOverflow`; any remaining failure is `Overflow`. A rounded division that
+cannot keep its whole-number part classifies the failed constraint the same
+way. A nonterminating quotient is never `PrecisionExhausted` or
+`PrecisionLoss` merely for being nonterminating. A runtime zero divisor is
+detected before any quotient or remainder is attempted.
 
 ---
 
@@ -1566,10 +1700,13 @@ quotient = trunc(left / right)
 remainder = left - quotient * right
 ```
 
-A decimal remainder is exact when representable.
+`quotient` is the exact mathematical integer truncated toward zero. It is
+never obtained from the rounded public quotient of decimal division, and
+`remainder` is computed exactly. Its scale follows "Decimal result scale".
 
-A zero divisor or unrepresentable result causes deterministic arithmetic
-failure.
+A decimal remainder is exact when representable; an unrepresentable remainder
+fails as in "Decimal arithmetic failures", and a zero divisor follows
+"Decimal division and remainder by zero".
 
 The result type follows the resolved decimal compatibility rules.
 
@@ -4178,7 +4315,20 @@ zero divisor
 precision failure
 range failure
 compound remainder
+preferred and fallback result scale for + - * %
+exact division without padding (1m / 8m has Scale 3)
+rounded division at the finest scale (1m / 3m, 2m / 3m, 1000000000m / 3m)
+signed coefficient minimum and rounding carry
+division underflow to rounded zero versus exact zero
+provably zero divisor is a compile-time error, with and without try
+runtime zero divisor: panic versus ArithmeticError.DivisionByZero
+remainder with a repeating quotient uses the exact truncated quotient
+ScaleOverflow, PrecisionExhausted and Overflow classification
+comparison ignores scale (1.2m == 1.20m)
 ```
+
+The complete conformance matrix is DEC-01 to DEC-22 in
+`rules/corrections/md066-md067-md068-decimal-correction-20261028.md` § 14.
 
 ## Shift tests
 
@@ -4345,7 +4495,6 @@ compiler_pipeline.md
 diagnostics.md
 lsp.md
 language-rulebook-status.md
-rules_implementations.txt
 ```
 
 Files that do not yet exist remain planned dependencies.
@@ -4366,7 +4515,7 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules_implementations.txt
+governance/sema.yaml (frontend.operators-v2)
 ```
 
 Mark the document as written.

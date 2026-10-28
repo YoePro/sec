@@ -13,11 +13,22 @@ func (a *Analyzer) ResolvedEnumCaseOf(expr *ast.MemberExpression) (ResolvedEnumC
 	if a == nil || expr == nil || expr.Property == nil {
 		return ResolvedEnumCase{}, false
 	}
+	// `<U>.Kind` is a unit metadata read even when its enum has a member of
+	// the same spelling (MD-062 § 11(2)).
+	if _, unit := expr.Object.(*ast.UnitReferenceExpression); unit {
+		return ResolvedEnumCase{}, false
+	}
 	typ, ok := a.ResolvedTypeOf(expr)
 	if !ok || typ.Kind != EnumType {
 		return ResolvedEnumCase{}, false
 	}
-	value, ok := typ.EnumConsts[expr.Property.Value]
+	return enumCaseNamed(typ, expr.Property.Value)
+}
+
+// enumCaseNamed resolves the declared case of an enum type by member name.
+// Rules: rules/declarations/enums.md — §§ 4, 7.
+func enumCaseNamed(typ Type, member string) (ResolvedEnumCase, bool) {
+	value, ok := typ.EnumConsts[member]
 	if !ok {
 		return ResolvedEnumCase{}, false
 	}

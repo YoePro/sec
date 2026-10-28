@@ -254,6 +254,12 @@ for specific variants.
 Do not emit new `!sec.core_error`/`sec.core_error.is_variant` operations for
 ArithmeticError.
 
+Since MD-067 (2026-10-28) the enum has five variants: `Overflow`,
+`DivisionByZero`, `InvalidShift`, `ScaleOverflow` and `PrecisionExhausted`.
+Its cases, ordinals and reason-to-variant mapping come from the one core
+declaration (`core-library.md` § 20.1); integer operations never produce the
+two decimal variants, and no parallel decimal error enum is emitted.
+
 ---
 
 # 14. Legacy schema compatibility

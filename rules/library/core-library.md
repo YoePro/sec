@@ -690,7 +690,7 @@ documented as access to encoded bytes. No writable string byte reference
 exists.
 
 `CharAt(index)` is a permanent public convenience alias (MD-092, decided
-2026-10-27; `rules/corrections/MD-092-string-CharAt-byte-alias-correction.md`).
+2026-10-27; `rules/corrections/applied/MD-092-string-CharAt-byte-alias-correction-20261028.md`).
 For every index it behaves exactly as `char(self.ByteAt(index))`:
 - **Result.** It returns one encoded byte as a `char` with value `0..255`. It does not decode a scalar, inspect adjacent bytes or normalize, and its result never converts implicitly to `rune`.
 - **Index domain.** Every byte index below `self.SizeOf` is valid, continuation bytes included. `self.Len` is not the bound.
@@ -986,50 +986,155 @@ unsafe property ptr: RawPtr[decimal] {
     get
 }
 
-property Scale: uint8 {
+// Observes the signed decimal scale or changes it exactly.
+property Scale: int32 {
     get
+    try set requestedScale PrecisionError
 }
 ```
 
-`Scale` is the canonical spelling of the read-only `uint8` instance property
-of a `decimal` value; it is not a static `decimal.Scale` on the type
-namespace. The lowercase `scale` is a temporary migration spelling resolving
-to the same member (`compiler_known_members.md`, "Legacy lowercase member
-spellings"). It does not exist on `decimal128` until MD-068 is decided
-(MD-082, 2026-10-18).
+`Scale` is the canonical spelling of the `int32` instance property of a
+`decimal` value; it is not a static `decimal.Scale` on the type namespace and
+not a method. Its domain is the whole signed interval `int32.Min ...
+int32.Max`; negative scales are legal (MD-066, 2026-10-28, superseding the
+former `uint8` property). The lowercase `scale` is a temporary migration
+spelling resolving to the same member (`compiler_known_members.md`, "Legacy
+lowercase member spellings"); it is not a second property or field.
 
-The internal coefficient representation must not be exposed as a public member
-unless the representation becomes a permanent language guarantee.
+The getter is infallible. A successful `try value.Scale = requestedScale`
+leaves the mathematical value unchanged and commits exactly the requested
+scale, updating the coefficient accordingly. If exact rescaling is impossible
+the assignment fails with `PrecisionError` and neither coefficient nor scale
+changes. The receiver must be a mutable, assignable place; a read-only `let`
+may read `Scale` but not set it, and assignment without `try` is invalid
+(`rules/errors/errorhandling.md` § 24). The setter never rounds.
+
+The representation `decimal = { signed i64 coefficient, signed i32 scale }`
+is fixed by `rules/memory/layout.md` § 19 and is not target-sized. The
+coefficient is nevertheless not public: no `Coefficient` member and no
+representation constructors or accessors exist. The universal unsafe `.ptr`
+follows the ordinary pointer and addressability rules and is not an API to
+bypass the scalar invariant.
 
 ## 10.2 Required methods
 
+The following signatures are the complete approved public `decimal` member
+family together with § 10.1 (MD-068, 2026-10-28). They are normative
+signatures; core source provides valid bodies or the compiler-known intrinsic
+boundary, with a documentation comment immediately before every member.
+
 ```sec
 impl decimal {
+    // Reports whether the mathematical value is integral.
+    property IsInteger: bool { get }
+
+    // Reports whether the mathematical value is zero.
+    property IsZero: bool { get }
+
+    // Reports whether the mathematical value is greater than zero.
+    property IsPositive: bool { get }
+
+    // Reports whether the mathematical value is less than zero.
+    property IsNegative: bool { get }
+
+    // Returns -1, 0, or 1 according to the mathematical sign.
+    property Sign: int { get }
+
+    // Formats the invariant, scale-preserving round-trip representation.
     fn ToString() Result[string, StringError]
+
+    // Formats using an explicit invariant format code.
     fn ToString(format: string) Result[string, StringError]
 
+    // Formats using explicit decimal and grouping separators.
+    fn ToString(format: string, decimalSeparator: string, groupSeparator: string) Result[string, StringError]
+
+    // Returns the mathematical absolute value, or an overflow error.
     fn Abs() Result[decimal, OverflowError]
 
+    // Returns the lesser numeric operand, retaining this receiver on a tie.
     fn Min(other: decimal) decimal
-    fn Max(other: decimal) decimal
-    fn Clamp(
-        minimum: decimal,
-        maximum: decimal,
-    ) Result[decimal, RangeError]
 
+    // Returns the greater numeric operand, retaining this receiver on a tie.
+    fn Max(other: decimal) decimal
+
+    // Restricts the value to an inclusive, validated numeric interval.
+    fn Clamp(minimum: decimal, maximum: decimal) Result[decimal, RangeError]
+
+    // Returns the greatest mathematical integer not exceeding this value.
     fn Floor() decimal
+
+    // Returns the least mathematical integer not below this value.
     fn Ceiling() decimal
+
+    // Returns the whole-number value truncated toward zero.
     fn Truncate() decimal
+
+    // Rounds to a mathematical integer using nearest-even.
     fn Round() decimal
 
-    fn RoundTo(scale: uint8) Result[decimal, PrecisionError]
-    fn Rescale(scale: uint8) Result[decimal, PrecisionError]
+    // Rounds to the exact requested output scale using nearest-even.
+    fn RoundTo(scale: int32) Result[decimal, PrecisionError]
 
-    fn IsInteger() bool
-    fn IsZero() bool
-    fn Sign() int
+    // Rounds once to the exact requested scale using the given mode.
+    fn RoundTo(scale: int32, mode: RoundingMode) Result[decimal, PrecisionError]
+
+    // Changes output scale exactly, never rounding.
+    fn Rescale(scale: int32) Result[decimal, PrecisionError]
+
+    // Removes exact trailing coefficient zeros without changing the value.
+    fn Normalize() decimal
+
+    // Converts to target-sized int without inexact rounding.
+    fn ToInt() Result[int, ConversionError]
+
+    // Converts to target-sized int using an explicit rounding policy.
+    fn ToInt(mode: RoundingMode) Result[int, ConversionError]
+
+    // Converts to fixed-width int32 without inexact rounding.
+    fn ToInt32() Result[int32, ConversionError]
+
+    // Converts to fixed-width int32 using the requested rounding policy.
+    fn ToInt32(mode: RoundingMode) Result[int32, ConversionError]
+
+    // Converts to fixed-width int64 without inexact rounding.
+    fn ToInt64() Result[int64, ConversionError]
+
+    // Converts to fixed-width int64 using the requested rounding policy.
+    fn ToInt64(mode: RoundingMode) Result[int64, ConversionError]
+
+    // Converts to fixed-width int128 without inexact rounding.
+    fn ToInt128() Result[int128, ConversionError]
+
+    // Converts to fixed-width int128 using the requested rounding policy.
+    fn ToInt128(mode: RoundingMode) Result[int128, ConversionError]
+
+    // Converts to target-sized binary float using nearest-even.
+    fn ToFloat() Result[float, ConversionError]
+
+    // Converts to target-sized binary float using an explicit rounding mode.
+    fn ToFloat(mode: RoundingMode) Result[float, ConversionError]
+
+    // Converts to binary float32 using nearest-even.
+    fn ToFloat32() Result[float32, ConversionError]
+
+    // Converts to binary float32 using an explicit rounding mode.
+    fn ToFloat32(mode: RoundingMode) Result[float32, ConversionError]
+
+    // Converts to binary float64 using nearest-even.
+    fn ToFloat64() Result[float64, ConversionError]
+
+    // Converts to binary float64 using an explicit rounding mode.
+    fn ToFloat64(mode: RoundingMode) Result[float64, ConversionError]
 }
 ```
+
+`IsInteger`, `IsZero`, `IsPositive`, `IsNegative` and `Sign` are read-only
+properties, read without parentheses: a parameterless query of value state is
+a property, while a transformation is a method even without arguments
+(`Normalize()`, `Round()`, `Abs()`). The former method forms `IsInteger()`,
+`IsZero()` and `Sign()` are superseded. No `IsEven`/`IsOdd` member exists on
+`decimal`, and no `As*` alias of the `To*` conversions exists.
 
 ## 10.3 Rounding modes
 
@@ -1057,6 +1162,233 @@ the time-quantity conversion `duration(q, mode)` in
 `rules/types/temporal.md` § 5.6. An ordinary `math.Round()` belongs to
 `stdlib/math` and consumes this enum; its overload family is specified by the
 `stdlib/math` rulebook, not here, and no other rounding enum exists.
+
+## 10.4 `decimal128`
+
+`decimal128` is an independent built-in type, not an alias of `decimal`, not
+a binary float and not a silent promotion target. Its representation is
+`{ signed i128 coefficient, signed i32 scale }` (`rules/memory/layout.md`
+§ 19). Its public core members mirror §§ 10.1–10.2 exactly, with every
+receiver, operand and result use of `decimal` replaced by `decimal128`
+(MD-068, 2026-10-28). The complete inventory is:
+
+```sec
+impl decimal128 {
+    // Observes the signed decimal scale or changes it exactly.
+    property Scale: int32 {
+        get
+        try set requestedScale PrecisionError
+    }
+
+    // Reports whether the mathematical value is integral.
+    property IsInteger: bool { get }
+
+    // Reports whether the mathematical value is zero.
+    property IsZero: bool { get }
+
+    // Reports whether the mathematical value is greater than zero.
+    property IsPositive: bool { get }
+
+    // Reports whether the mathematical value is less than zero.
+    property IsNegative: bool { get }
+
+    // Returns -1, 0, or 1 according to the mathematical sign.
+    property Sign: int { get }
+
+    // Formats the invariant, scale-preserving round-trip representation.
+    fn ToString() Result[string, StringError]
+
+    // Formats using an explicit invariant format code.
+    fn ToString(format: string) Result[string, StringError]
+
+    // Formats using explicit decimal and grouping separators.
+    fn ToString(format: string, decimalSeparator: string, groupSeparator: string) Result[string, StringError]
+
+    // Returns the mathematical absolute value, or an overflow error.
+    fn Abs() Result[decimal128, OverflowError]
+
+    // Returns the lesser numeric operand, retaining this receiver on a tie.
+    fn Min(other: decimal128) decimal128
+
+    // Returns the greater numeric operand, retaining this receiver on a tie.
+    fn Max(other: decimal128) decimal128
+
+    // Restricts the value to an inclusive, validated numeric interval.
+    fn Clamp(minimum: decimal128, maximum: decimal128) Result[decimal128, RangeError]
+
+    // Returns the greatest mathematical integer not exceeding this value.
+    fn Floor() decimal128
+
+    // Returns the least mathematical integer not below this value.
+    fn Ceiling() decimal128
+
+    // Returns the whole-number value truncated toward zero.
+    fn Truncate() decimal128
+
+    // Rounds to a mathematical integer using nearest-even.
+    fn Round() decimal128
+
+    // Rounds to the exact requested output scale using nearest-even.
+    fn RoundTo(scale: int32) Result[decimal128, PrecisionError]
+
+    // Rounds once to the exact requested scale using the given mode.
+    fn RoundTo(scale: int32, mode: RoundingMode) Result[decimal128, PrecisionError]
+
+    // Changes output scale exactly, never rounding.
+    fn Rescale(scale: int32) Result[decimal128, PrecisionError]
+
+    // Removes exact trailing coefficient zeros without changing the value.
+    fn Normalize() decimal128
+
+    // Converts to target-sized int without inexact rounding.
+    fn ToInt() Result[int, ConversionError]
+
+    // Converts to target-sized int using an explicit rounding policy.
+    fn ToInt(mode: RoundingMode) Result[int, ConversionError]
+
+    // Converts to fixed-width int32 without inexact rounding.
+    fn ToInt32() Result[int32, ConversionError]
+
+    // Converts to fixed-width int32 using the requested rounding policy.
+    fn ToInt32(mode: RoundingMode) Result[int32, ConversionError]
+
+    // Converts to fixed-width int64 without inexact rounding.
+    fn ToInt64() Result[int64, ConversionError]
+
+    // Converts to fixed-width int64 using the requested rounding policy.
+    fn ToInt64(mode: RoundingMode) Result[int64, ConversionError]
+
+    // Converts to fixed-width int128 without inexact rounding.
+    fn ToInt128() Result[int128, ConversionError]
+
+    // Converts to fixed-width int128 using the requested rounding policy.
+    fn ToInt128(mode: RoundingMode) Result[int128, ConversionError]
+
+    // Converts to target-sized binary float using nearest-even.
+    fn ToFloat() Result[float, ConversionError]
+
+    // Converts to target-sized binary float using an explicit rounding mode.
+    fn ToFloat(mode: RoundingMode) Result[float, ConversionError]
+
+    // Converts to binary float32 using nearest-even.
+    fn ToFloat32() Result[float32, ConversionError]
+
+    // Converts to binary float32 using an explicit rounding mode.
+    fn ToFloat32(mode: RoundingMode) Result[float32, ConversionError]
+
+    // Converts to binary float64 using nearest-even.
+    fn ToFloat64() Result[float64, ConversionError]
+
+    // Converts to binary float64 using an explicit rounding mode.
+    fn ToFloat64(mode: RoundingMode) Result[float64, ConversionError]
+}
+```
+
+The declarations belong in the trusted core source (`sec/core/decimal128.sec`)
+and the compiler-known registry with the same signatures as `decimal`; no
+member may be advertised by tooling without implementation or a gate-aware
+diagnostic.
+
+## 10.5 Scale, rounding and value members
+
+(1) `Rescale(scale)` returns a new value with exactly the requested scale and
+unchanged mathematical value, or a `PrecisionError`; it never rounds. The
+`Scale` setter applies the same exact criterion transactionally to a mutable
+receiver.
+
+(2) `RoundTo(scale)` and `RoundTo(scale, mode)` return a new value with exactly
+the requested scale, or a `PrecisionError`. The one-argument form uses
+`RoundingMode.NearestEven`; the mode is applied once to the original
+mathematical value. The receiver is not mutated.
+
+(3) `PrecisionError` keeps its members (§ 20.1):
+
+| Variant | Applies when |
+|---|---|
+| `PrecisionLoss` | An operation requiring exact scaling would need a non-integer coefficient at the requested scale. |
+| `PrecisionExhausted` | The required (exact, or once-rounded) coefficient at the explicitly requested scale does not fit the signed coefficient width. |
+| `ScaleOverflow` | An operation requires a representational scale outside the signed `int32` domain; a valid explicit `int32` target scale alone does not cause it. |
+
+`RoundTo` never reports `PrecisionLoss` merely because it rounds. `Rescale`
+and the `Scale` setter report `PrecisionLoss` for a non-integral desired
+coefficient and `PrecisionExhausted` when the exact integral coefficient would
+overflow. Zero can be rescaled or rounded to every legal `int32` scale.
+
+(4) `Floor()`, `Ceiling()`, `Truncate()` and `Round()` return the same decimal
+type directly; `Round()` uses nearest-even. Their whole-number result prefers
+scale zero and otherwise the nearest valid exact scale.
+
+(5) `Normalize()` is infallible and nonmutating: it removes exact trailing
+coefficient zeros while decreasing the scale, stopping at `int32.Min`, without
+changing the value. Any zero normalizes to coefficient zero and scale zero.
+Normalization is never applied implicitly to a result that should keep its
+preferred or requested scale.
+
+(6) `Min(other)` and `Max(other)` compare numeric values and return one
+operand's unchanged representation; on mathematical equality the receiver
+wins. `Clamp(minimum, maximum)` uses an inclusive interval, returns
+`RangeError.InvalidRange` when `minimum > maximum`, returns the receiver
+unchanged inside the range (including equality at a bound), and otherwise
+returns the selected bound with its own coefficient and scale. Numerically
+equal bounds are valid.
+
+(7) `Abs()` preserves the scale and returns `Result[..., OverflowError]`,
+because the minimum negative coefficient has no positive counterpart. It never
+changes scale to avoid the error. `Min`/`Max` are infallible.
+
+## 10.6 Conversion members
+
+(1) `ToInt*` and `ToFloat*` are the only decimal convenience conversions.
+`ToInt()` returns target-sized `int`; `ToInt32`, `ToInt64` and `ToInt128` have
+fixed widths. Without a `RoundingMode` they require an exact integral value
+and otherwise return `ConversionError.PrecisionLoss` or
+`ConversionError.OutOfRange`; with a mode the integer is computed by one
+rounding of the exact value and range-checked afterwards.
+
+(2) `ToFloat()` returns target-sized binary `float` (MD-014); `ToFloat32` and
+`ToFloat64` have fixed widths. They round with nearest-even by default or the
+explicit mode, computed from the exact decimal rational, never from a
+truncated intermediate or a host float. An unrepresentable value fails with
+`ConversionError` rather than becoming infinity; underflow follows the
+selected mode's binary rules.
+
+(3) These members do not redefine the explicit `TargetType(value)` and
+`TargetType(value, mode)` conversion grammar (`rules/types/units.md`
+"Explicit rounding"), and no implicit conversion is inferred from them.
+
+(4) `Parse()` and unsigned `ToUInt*` conversions are deferred to a separate
+decision and are not part of the core surface (MD-066/MD-067/MD-068 § 10(9)).
+
+## 10.7 Formatting
+
+The three `ToString` overloads are deterministic and independent of the host
+locale:
+
+| Format | Meaning |
+|---|---|
+| `R` (and default `ToString()`) | Invariant, exact, scale-preserving round-trip text; exponent notation when needed to avoid pathological size; restoring the value restores `Scale`. |
+| `G` | General compact numeric text; redundant trailing zeros need not be kept. |
+| `F<n>` | A fixed number of fractional digits for display. |
+| `N<n>` | Fixed digits with whole-part grouping in threes. |
+| `E<n>` | Scientific notation with the given display precision. |
+
+`ToString(format, decimalSeparator, groupSeparator)` takes explicit separator
+strings; the grouping separator may be empty:
+
+```sec
+let value := 1234567.50m
+let us := try value.ToString("N2", ".", ",")
+let eu := try value.ToString("N2", ",", ".")
+let spaced := try value.ToString("N2", ",", " ")
+// us     == "1,234,567.50"
+// eu     == "1.234.567,50"
+// spaced == "1 234 567,50"
+```
+
+Display precision may round the rendered text with nearest-even; it never
+mutates the value or its `Scale`. `R` never loses value or scale information.
+Invalid format strings follow the `StringError`/`FormatError` contract, and
+`string(numericValue)` uses the default `ToString()` formatting (MD-051).
 
 ---
 
@@ -1675,10 +2007,22 @@ enum DivisionByZeroError {
     DivisionByZero
 }
 
-enum ArithmeticError {
+// Failures of checked built-in arithmetic operations.
+enum ArithmeticError error {
+    // Arithmetic overflow not described by a more specific applicable variant.
     Overflow
+
+    // Division or remainder was attempted with a zero divisor.
     DivisionByZero
+
+    // A shift count is invalid for the selected integer type.
     InvalidShift
+
+    // No valid signed decimal scale can represent the mathematical result.
+    ScaleOverflow
+
+    // Exact decimal digits exceed the selected coefficient's capacity.
+    PrecisionExhausted
 }
 
 enum EnumValueError {
@@ -1729,6 +2073,19 @@ enum AllocationError {
     InvalidAlignment
 }
 ```
+
+`ArithmeticError` is the one canonical error of checked built-in arithmetic
+for integers and decimals (MD-067, 2026-10-28). `ScaleOverflow` and
+`PrecisionExhausted` are its decimal-specific variants; no
+`DecimalArithmeticError` exists. It stays a closed fieldless enum, not a
+payload union. `Overflow` is not a supervariant: it does not match
+`ScaleOverflow` or `PrecisionExhausted`, and exhaustive matches must cover all
+five variants or use `Err(_)`. Operations that cannot produce a decimal
+variant never emit it. `OverflowError`, `DivisionByZeroError`, `RangeError`,
+`PrecisionError` and `ConversionError` remain distinct nominal types and are
+not aliases of `ArithmeticError`. Variant selection follows the
+most-specific-applicable-error rule (`rules/errors/errorhandling.md` § 3.4) and
+the decimal mapping in `rules/foundations/operators.md` "Decimal arithmetic".
 
 This is a minimum list.
 

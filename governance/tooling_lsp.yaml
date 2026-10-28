@@ -146,6 +146,7 @@ integrations:
     area: tooling-lsp
     status: partial
     integrated: "2026-10-03"
+    revised: "2026-10-28"
     summary: >-
       Implements the initial textDocument/typeDefinition protocol surface as a
       thin projection of Sema-resolved binding and expression types plus their
@@ -155,26 +156,43 @@ integrations:
       - rules/foundations/names_scopes_visibility.md
       - rules/projects/modules.md
     code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/type_references.go
+      - internal/sema/type_navigation.go
       - cmd/lsp/main.go
       - cmd/lsp/type_definition.go
       - cmd/lsp/request_queue.go
       - internal/sema/semantic_facts.go
     tests:
+      - cmd/lsp/type_definition_components_test.go
+      - testdata/lsp/type_components/catalog.sec
+      - testdata/lsp/type_components/use.sec
+      - testdata/lsp/type_components/unresolved_invalid.sec
       - cmd/lsp/type_definition_test.go
     implemented:
       - initialize advertises typeDefinitionProvider and textDocument/typeDefinition returns ordinary LSP locations
       - the request is classified as read-only analysis so formatting priority does not reorder it across document synchronization
       - local and parameter bindings navigate through ResolvedBindingAt to their exact nominal source type declaration
       - member expressions and callable result expressions navigate through ResolvedTypeOf rather than token spelling
-      - direct type references map their Sema-bound declaration back to the resolved semantic type
+      - direct and explicitly selected component type references use Sema-bound nominal declaration provenance without scanning the exposed type table
       - same-module declarations in another source file retain the declaring URI and exact token range
       - compiler-known scalar types without a source declaration return no fabricated location
+      - "Type-component navigation completed 2026-10-28: parser TypeReference.NameToken retains the final real nominal identifier across qualification, ref/container nesting and expression-derived conversion/constructor references. Sema binds that token to its nominal declaration and exposes one readonly source-provenance query; LSP prioritizes an explicitly selected type component without a spelling lookup or wrapper/element guess. Actual imported catalog fixtures cover generic constructors/arguments, Result/Option, ref/ref mut, fixed/dynamic arrays, slices, list/map/set, vector/matrix/tensor/tensor_view and nested combinations. Negative cases preserve no-target behavior for unresolved qualified types despite a same-spelled local type, module qualifiers and shape extents; whole compound bindings do not arbitrarily select an element. Generic constraints/inferred specialization facts and future shared-workspace provenance remain separate existing items."
     remaining:
-      - navigate deliberately selected component types inside generic, Result, Option, reference, collection, and shaped compound types
       - cover generic parameter constraints and specialized type arguments without inventing one target for an ambiguous compound type
       - integrate generated, platform-selected, dependency, and target-variant sources through the future shared workspace symbol index
       - implement the separately required textDocument/implementation and semantic rename surfaces
     verification:
+      - command: go test ./cmd/lsp -run 'TypeDefinition|UnitMetadata|Rename|CompilerKnown.*Definition' -count=1
+        result: passed on 2026-10-28; all compound component cases, unresolved/qualifier/extent/whole-value guards and existing metadata/rename/compiler-known navigation regressions
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-10-28; complete Sema suite after terminal type-name source binding
+      - command: go test ./internal/parser -run 'Type|Generic|Reference|Function' -count=1
+        result: passed on 2026-10-28 for type/reference/generic/function parsing and recovery regressions
+      - command: go vet ./internal/parser ./internal/sema ./cmd/lsp
+        result: passed on 2026-10-28; tooling.lsp-type-definition-navigation remaining 4 to 3, tooling_lsp.yaml remaining 27 to 26
       - command: go test ./cmd/lsp -run 'TestTypeDefinition' -count=1
         result: passed on 2026-10-03 for protocol advertisement/dispatch, local bindings, parameters, members, call results, direct type references, same-module cross-file navigation, and source-less builtins
 
@@ -752,3 +770,44 @@ integrations:
     verification:
       - command: go test ./cmd/lsp ./internal/sema -count=1
         result: passed on 2026-10-09; both regression tests fail without the fix
+
+  - id: tooling.lsp-compiler-known-friendly-names
+    area: tooling-lsp-user-facing-symbol-presentation
+    status: partial
+    revised: "2026-10-28"
+    summary: >-
+      User-requested friendly presentation of compiler-known symbols in the
+      language server and editor. Ordinary UI should show public Sec names,
+      concrete receivers and signatures such as list[int].Append or string.Len
+      rather than CKM-/CKF-/CKV- implementation identifiers. Stable registry
+      identities remain internal semantic/transport facts; this entry owns
+      presentation, not a second member registry or changes to source spelling,
+      lookup, visibility or diagnostic codes.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/compiler/compiler_known_members.md
+    code:
+      - cmd/lsp/compiler_known_hover.go
+      - cmd/lsp/compiler_known_definition.go
+      - cmd/lsp/signature_help.go
+      - internal/sema/compiler_known_synthetic.go
+      - vscode/src/extension.ts
+      - internal/sema/compiler_known_display.go
+    tests:
+      - cmd/lsp/compiler_known_definition_test.go
+      - internal/sema/compiler_known_display_test.go
+    implemented:
+      - "Shared presentation facts (2026-10-28): CompilerKnownDisplayFacts and DisplayFacts() on canonical member/function/value registry records provide source Name, receiver-qualified Label, readable Kind, concrete Receiver, Signature and ResultType. Uses existing receiver-instantiated signature metadata and canonical names instead of an ID-to-label inventory; descriptive receiver patterns never become concrete type labels. Missing names/types/signatures remain explicit readable fallbacks, contextual len/fill arity is not fabricated as zero arguments, known unsafe property signatures keep unsafe, and queries preserve IDs, visibility/effects and instance metadata. User-facing naming contract is normative under compiler_known_members.md LSP and indexed in language-rulebook-status.md. Tests cover actual CKM/CKF/CKV catalogs, nominal/nested receivers, internal values, missing/transport-only records and unchanged semantic metadata. Ordinary LSP renderer and synthetic editor migration remain the two separately tracked remaining items."
+    remaining:
+      - "Ordinary LSP presentation: replace visible compiler-known identifiers in hover and shared documentation used by completion/signature help and any related hint/action labels with friendly names and concrete signatures. Audit these renderers so IDs do not leak through fallback names, generated documentation or secondary text; preserve useful type/effect/unsafe/availability information and stable diagnostic codes."
+      - "Synthetic definitions and editor navigation: show friendly member/receiver names in generated definition text, link labels and editor-visible document titles/filenames instead of CKM-/CKF-/CKV- labels. Keep definitions clearly synthetic and read-only, with stable identity resolution, receiver-instance cache isolation and existing core visibility restrictions; update the VS Code presentation/content-provider integration where needed."
+    required_tests:
+      - Hover, completion and signature documentation show public names with resolved generic receiver types and do not display raw compiler-known IDs in ordinary UI.
+      - Synthetic definitions, navigation labels and editor-visible document names use friendly names while internal lookup and receiver-instance identity remain correct.
+      - Properties, methods, functions and value intrinsics cover CKM/CKF/CKV identities; aliases and unavailable display facts never fall back to raw IDs or guessed semantics.
+      - No semantic lookup, source naming, diagnostic identity, visibility or read-only behavior changes as a side effect of presentation.
+    verification:
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1; go test ./cmd/lsp -run "CompilerKnown|SignatureHelp" -count=1 -timeout=60s; go vet ./internal/sema ./cmd/lsp
+        result: passed 2026-10-28 for the complete shared-display-facts point; full suites 17.7s/3.6s/1.6s and focused LSP 12.8s. Additional fallback/nominal/unsafe tests passed on targeted rerun. Remaining 3 to 2 under this ID and 29 to 28 in tooling_lsp.yaml, with no replacement remaining item. Editor-facing renderer/title migration is not claimed.
+      - command: go run ./cmd/yamlstatus check
+        result: planned work recorded on 2026-10-28 after source inspection confirmed raw member.ID in compilerKnownMemberHover, ID-based synthetic URI basenames and IDs in existing synthetic-definition expectations; no implementation claim

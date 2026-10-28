@@ -1,0 +1,197 @@
+module core
+
+// Rulebook: library/core-library.md § 27; types/units.md "Unit metadata
+// value types" (MD-062).
+
+/**
+ * Kind of quantity read through `<U>.Kind`.
+ *
+ * Description:
+ *   Unknown marks absent Kind metadata and never proves compatibility.
+ *   A `Kind:` value may also be a member of any declared enum.
+ */
+enum UnitKind {
+    // Kind has not been supplied or otherwise established.
+    Unknown
+
+    // A declared miscellaneous quantity without a narrower standard kind.
+    Other
+
+    // SI base quantities.
+    Length
+    Mass
+    Time
+    ElectricCurrent
+    ThermodynamicTemperature
+    AmountOfSubstance
+    LuminousIntensity
+
+    // General quantities.
+    Count
+    Ratio
+    Probability
+    MonetaryAmount
+    InformationAmount
+    InformationRate
+
+    // Geometry.
+    Area
+    Volume
+    PlaneAngle
+    SolidAngle
+
+    // Motion.
+    Speed
+    Velocity
+    Acceleration
+    Jerk
+    RotationalFrequency
+    AngularVelocity
+    AngularAcceleration
+
+    // Mechanics.
+    Force
+    Pressure
+    Stress
+    MassDensity
+    Energy
+    Work
+    Heat
+    Torque
+    Power
+    ApparentPower
+    ReactivePower
+
+    // Time-dependent quantities.
+    Frequency
+    MassFlowRate
+    VolumeFlowRate
+
+    // Electricity and magnetism.
+    ElectricCharge
+    ElectricPotential
+    ElectromotiveForce
+    ElectricFieldStrength
+    ElectricalResistance
+    ElectricalConductance
+    ElectricalImpedance
+    ElectricalReactance
+    Capacitance
+    Inductance
+    MagneticFieldStrength
+    MagneticFlux
+    MagneticFluxDensity
+
+    // Thermodynamics.
+    Entropy
+    HeatCapacity
+    SpecificHeatCapacity
+    ThermalConductivity
+
+    // Chemistry.
+    Concentration
+    AmountConcentration
+    CatalyticActivity
+
+    // Photometry.
+    LuminousFlux
+    Illuminance
+    Luminance
+
+    // Radiation.
+    Radioactivity
+    AbsorbedDose
+    DoseEquivalent
+}
+
+/**
+ * Unit system read through `<U>.System`.
+ *
+ * Description:
+ *   Descriptive metadata; a shared system never proves convertibility.
+ */
+enum UnitSystem {
+    // No system was explicitly supplied.
+    Unspecified
+
+    // An explicitly miscellaneous system.
+    Other
+
+    // International System of Units.
+    SI
+
+    // Centimetre-gram-second and its electromagnetic variants.
+    CGS
+    CGSGaussian
+    CGSElectrostatic
+    CGSElectromagnetic
+
+    // International Electrotechnical Commission conventions.
+    IEC
+
+    // Customary and specialist systems.
+    Imperial
+    USCustomary
+    Nautical
+    Astronomical
+    Natural
+    Planck
+    Atomic
+    Currency
+    Domain
+
+    // Historical systems and regional/period measurements.
+    Historical
+}
+
+/**
+ * Coordinate origin read through `<U>.Origin`.
+ *
+ * Description:
+ *   Zero and One are declared conventions, not proof of a shared datum.
+ */
+enum UnitOrigin {
+    // No physical/coordinate origin was supplied.
+    None
+
+    // A declared zero-origin coordinate convention.
+    Zero
+
+    // A declared one-origin coordinate convention.
+    One
+
+    // Absolute zero for compatible thermodynamic point quantities.
+    AbsoluteZero
+}
+
+/**
+ * Transform mode read through `<U>.Transform`.
+ */
+enum UnitTransform {
+    Linear
+    Affine
+    Logarithmic
+}
+
+/**
+ * Declaration category read through the implicit `<U>.Category`.
+ */
+enum UnitCategory {
+    Physical
+    Currency
+    Information
+    Ratio
+    Other
+}
+
+/**
+ * Catalog lifecycle read through `<U>.Status`.
+ *
+ * Description:
+ *   Historical provenance is UnitSystem.Historical, not a status.
+ */
+enum UnitStatus {
+    Active
+    Deprecated
+    Obsolete
+}

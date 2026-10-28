@@ -1,66 +1,35 @@
 # Parser Recovery
 
-## Status
-
-This document is the canonical parser-recovery rulebook for Sec.
-
-It defines:
-
-- parser behavior after invalid or incomplete source;
-- recovery invariants;
-- recovery diagnostics;
-- virtual missing tokens;
-- invalid AST nodes;
-- synchronization boundaries;
-- context-specific recovery;
-- interaction with Sema, formatter, and LSP;
-- current implementation status;
-- implementation requirements and tests.
-
-This document does not redefine the canonical grammar.
-
-Canonical syntax is defined by:
-
-```text
-grammar.md
-lexical_structure.md
-operators.md
-```
-
-Specialized rulebooks define semantic validity after parsing.
-
-Repository baseline reviewed:
-
-```text
-branch: main
-review date: 2026-08-07
-```
-
-The repository may contain small unpublished changes after this review.
-
-Such changes may update an implementation-status item, but they do not override
-the normative recovery rules in this document.
+- **Status:** Normative
+- **Created:** 2026-08-07
+- **Last updated:** 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/sec-compiler-rulebooks-modernization-pass1-20261028.md`)
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/compiler/parser_recovery.md`
+- **Repository baseline reviewed:** `7be8777`
+- **Implementation governance:** `governance/parser.yaml` (`frontend.parser-recovery-result`, `frontend.grammar-conformance`, `frontend.parser-long-term`)
+- **Accepted grammar owners:** `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/foundations/operators.md` and the specialized feature rulebooks
+- **Related rulebooks:** `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`, `rules/tooling/formatter.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/compiler.md`, `rules/types/types.md`, `rules/declarations/functions.md`, `rules/declarations/struct.md`, `rules/declarations/enums.md`, `rules/declarations/unions.md`, `rules/declarations/interfaces.md`, `rules/declarations/impl.md`, `rules/declarations/properties.md`, `rules/collections/collections.md`, `rules/control-flow/flowcontrol_if.md`, `rules/control-flow/flowcontrol_for.md`, `rules/control-flow/flowcontrol_while.md`, `rules/control-flow/flowcontrol_switch.md`, `rules/control-flow/flowcontrol_match.md`, `rules/errors/errorhandling.md`, `rules/errors/panic.md`, `rules/platform/inline_assembly.md`
 
 ---
 
-# Purpose
+## § 1 Purpose
 
-The Sec parser must remain useful when source code is:
+§ 1(1) The Sec parser must remain useful when source code is:
 
 ```text
 incomplete
 temporarily malformed during editing
 written with one local syntax mistake
-using reserved syntax
-using compatibility syntax
+using reserved or legacy syntax
 truncated at end of file
 damaged inside one declaration or block
 ```
 
-A syntax error should not normally prevent the parser from finding later valid
+§ 1(2) A syntax error should not normally prevent the parser from finding later valid
 declarations and statements.
 
-Recovery exists to:
+§ 1(3) Recovery exists to:
 
 - report the primary syntax problem;
 - preserve as much source structure as possible;
@@ -69,16 +38,27 @@ Recovery exists to:
 - support LSP features on incomplete files;
 - support formatter and refactoring tools without inventing semantics.
 
-Recovery does not make invalid source valid.
+§ 1(4) Recovery does not make invalid source valid.
+
+§ 1(5) Parser recovery describes the treatment of incomplete and malformed source
+syntax under the selected Sec language version. It must not broaden or narrow
+the accepted grammar independently of `rules/foundations/grammar.md` or a
+specialized active feature rulebook. On conflict, accepted grammar and semantic
+validity are determined by those owners; this rulebook owns source
+preservation, diagnostic recovery and parser progress.
+
+§ 1(6) This rulebook does not record implementation status. Implemented, partial and
+remaining recovery work is tracked by the governance entries named in the
+header.
 
 ---
 
-# Core recovery principle
+## § 2 Core recovery principle
 
-> Recovery may preserve incomplete syntax, but it must never silently reinterpret
-> invalid source as a different valid program.
+§ 2(1) Recovery may preserve incomplete syntax, but it must never silently reinterpret
+invalid source as a different valid program.
 
-Example:
+§ 2(2) Example:
 
 ```sec
 fn Add(left int, right: int) int {
@@ -86,11 +66,11 @@ fn Add(left int, right: int) int {
 }
 ```
 
-The parser may identify that `:` is missing after `left`.
+§ 2(3) The parser may identify that `:` is missing after `left`.
 
-It may create a virtual missing colon and continue parsing the parameter.
+§ 2(4) It may create a virtual missing colon and continue parsing the parameter.
 
-It must not reinterpret:
+§ 2(5) It must not reinterpret:
 
 ```sec
 left int
@@ -100,38 +80,25 @@ as another declaration form.
 
 ---
 
-# Compiler result
+## § 3 Compiler result
 
-The parser should return a parse result even when syntax errors exist.
+§ 3(1) The parser returns a parse result even when syntax errors exist (§ 8).
 
-Conceptual result:
-
-```go
-type ParseResult struct {
-    Program     *ast.Program
-    Diagnostics []Diagnostic
-    HasErrors   bool
-    Fatal       bool
-}
-```
-
-Exact Go names may differ.
-
-A normal batch compilation must not proceed to code generation when parser
+§ 3(2) A normal batch compilation must not proceed to code generation when parser
 errors exist.
 
-Tooling may continue with partial semantic analysis of valid subtrees.
+§ 3(3) Tooling may continue with partial semantic analysis of valid subtrees.
 
 ---
 
-# Terminology
+## § 4 Terminology
 
-## Syntax error
+### § 4.1 Syntax error
 
-A syntax error is source that cannot be parsed as canonical or accepted
-compatibility syntax.
+§ 4.1(1) A syntax error is source that cannot be parsed as canonical syntax of the
+selected language version.
 
-Examples:
+§ 4.1(2) Examples:
 
 ```text
 missing delimiter
@@ -145,16 +112,16 @@ misplaced keyword
 assignment in expression position
 ```
 
-## Recovery
+### § 4.2 Recovery
 
-Recovery is the parser's controlled continuation after a syntax error.
+§ 4.2(1) Recovery is the parser's controlled continuation after a syntax error.
 
-## Repair
+### § 4.3 Repair
 
-A repair is the parser's internal model of the smallest assumed correction
+§ 4.3(1) A repair is the parser's internal model of the smallest assumed correction
 needed to continue.
 
-A repair may be:
+§ 4.3(2) A repair may be:
 
 ```text
 insert one missing structural token
@@ -163,26 +130,26 @@ skip a malformed region
 close a truncated construct at end of file
 ```
 
-The parser does not modify the user's source.
+§ 4.3(3) The parser does not modify the user's source.
 
-## Virtual token
+### § 4.4 Virtual token
 
-A virtual token represents a required token missing from source.
+§ 4.4(1) A virtual token represents a required token missing from source.
 
-Example:
+§ 4.4(2) Example:
 
 ```text
 MissingToken(":")
 ```
 
-A virtual token has a zero-width source position.
+§ 4.4(3) A virtual token has a zero-width source position.
 
-## Synchronization point
+### § 4.5 Synchronization point
 
-A synchronization point is a token or grammar boundary where parsing can safely
+§ 4.5(1) A synchronization point is a token or grammar boundary where parsing can safely
 resume.
 
-Examples:
+§ 4.5(2) Examples:
 
 ```text
 next top-level declaration
@@ -193,28 +160,28 @@ next switch case
 next impl member
 ```
 
-## Invalid node
+### § 4.6 Invalid node
 
-An invalid node is an AST node preserving malformed source and partial children.
+§ 4.6(1) An invalid node is an AST node preserving malformed source and partial children.
 
-It is not a valid semantic construct.
+§ 4.6(2) It is not a valid semantic construct.
 
-## Cascading diagnostic
+### § 4.7 Cascading diagnostic
 
-A cascading diagnostic is a secondary error caused only by an earlier syntax
+§ 4.7(1) A cascading diagnostic is a secondary error caused only by an earlier syntax
 error and poor recovery.
 
-## Fatal parser failure
+### § 4.8 Fatal parser failure
 
-A fatal parser failure means the parser cannot safely continue.
+§ 4.8(1) A fatal parser failure means the parser cannot safely continue.
 
-Ordinary source syntax errors are not fatal.
+§ 4.8(2) Ordinary source syntax errors are not fatal.
 
 ---
 
-# Recovery goals
+## § 5 Recovery goals
 
-The parser should:
+§ 5(1) The parser should:
 
 1. always make progress;
 2. preserve source order;
@@ -231,9 +198,9 @@ The parser should:
 
 ---
 
-# Non-goals
+## § 6 Non-goals
 
-Sec 0.1 recovery does not require:
+§ 6(1) Sec 0.1 recovery does not require:
 
 ```text
 global minimum-edit repair
@@ -246,31 +213,31 @@ full incremental parsing
 perfect formatting of arbitrary broken source
 ```
 
-A later parser may use a more advanced repair algorithm.
+§ 6(2) A later parser may use a more advanced repair algorithm.
 
-The observable invariants in this document must remain unchanged.
+§ 6(3) The observable invariants in this document must remain unchanged.
 
 ---
 
-# Recovery invariants
+## § 7 Recovery invariants
 
-## Progress
+### § 7.1 Progress
 
-Every parser loop must either:
+§ 7.1(1) Every parser loop must either:
 
 - consume at least one real token;
 - insert one bounded virtual token and change parser state;
 - return to its caller;
 - stop at end of file.
 
-No recovery path may repeatedly inspect the same token in the same state.
+§ 7.1(2) No recovery path may repeatedly inspect the same token in the same state.
 
-## Enclosing-boundary safety
+### § 7.2 Enclosing-boundary safety
 
-Recovery inside a construct must not consume the closing delimiter belonging to
+§ 7.2(1) Recovery inside a construct must not consume the closing delimiter belonging to
 an outer construct.
 
-Example:
+§ 7.2(2) Example:
 
 ```sec
 fn Test() void {
@@ -282,36 +249,36 @@ fn Test() void {
 }
 ```
 
-Argument-list recovery may stop before `return` or the function `}`.
+§ 7.2(3) Argument-list recovery may stop before `return` or the function `}`.
 
-It must not consume the complete function body looking for `)`.
+§ 7.2(4) It must not consume the complete function body looking for `)`.
 
-## No silent reinterpretation
+### § 7.3 No silent reinterpretation
 
-A repair must not change the likely grammatical category of source without a
+§ 7.3(1) A repair must not change the likely grammatical category of source without a
 diagnostic.
 
-Invalid:
+§ 7.3(2) Invalid:
 
 ```sec
 while running = true {
 }
 ```
 
-The parser may preserve `running` as a partial condition for tooling.
+§ 7.3(3) The parser may preserve `running` as a partial condition for tooling.
 
-It must emit an error for assignment in condition position.
+§ 7.3(4) It must emit an error for assignment in condition position.
 
-It must not compile the source as though the user wrote:
+§ 7.3(5) It must not compile the source as though the user wrote:
 
 ```sec
 while running {
 }
 ```
 
-## No semantic repair
+### § 7.4 No semantic repair
 
-The parser must not decide:
+§ 7.4(1) The parser must not decide:
 
 ```text
 which type was intended
@@ -322,9 +289,9 @@ whether a value should be copied or moved
 whether a contract should succeed
 ```
 
-## Determinism
+### § 7.5 Determinism
 
-Given the same token stream and parser version, recovery must produce:
+§ 7.5(1) Given the same token stream and parser version, recovery must produce:
 
 ```text
 the same diagnostics
@@ -333,11 +300,11 @@ the same virtual tokens
 the same synchronization result
 ```
 
-## Bounded damage
+### § 7.6 Bounded damage
 
-One malformed member should not normally invalidate later siblings.
+§ 7.6(1) One malformed member should not normally invalidate later siblings.
 
-Examples:
+§ 7.6(2) Examples:
 
 ```text
 one struct field
@@ -350,614 +317,100 @@ one impl member
 one top-level declaration
 ```
 
-## Error blocks code generation
+### § 7.7 Error blocks code generation
 
-A recovered AST is not proof of a valid program.
+§ 7.7(1) A recovered AST is not proof of a valid program.
 
-Any parser diagnostic with error severity blocks ordinary lowering and code
+§ 7.7(2) Any parser diagnostic with error severity blocks ordinary lowering and code
 generation.
 
 ---
 
-# Current implementation status
+## § 8 Parse result
 
-## Implemented
-
-The current parser already implements several important recovery foundations.
-
-### Parser continues after errors
-
-`ParseProgram` continues until EOF.
-
-When a parse function returns `nil`, the parser calls `skipStatement()` and
-attempts to resume at a statement-start token or a closing brace.
-
-Statement blocks use the same general pattern.
-
-### Error and warning collection
-
-The parser currently collects:
-
-```go
-errors   []string
-warnings []string
-```
-
-and exposes:
-
-```go
-Errors() []string
-Warnings() []string
-```
-
-The canonical migration API now returns:
-
-```go
-type ParseResult struct {
-    Program     *ast.Program
-    Diagnostics []Diagnostic
-    Warnings    []string
-    Recovery    []RecoveryEvent
-    HasErrors   bool
-    Fatal       bool
-}
-```
-
-`ParseProgram`, `Errors`, `Warnings`, and `Diagnostics` remain compatibility
-APIs while compiler and tooling consumers migrate. Central CLI and LSP parse
-paths consume `ParseResult`.
-
-### Speculative parsing rollback
-
-Typed-declaration lookahead snapshots:
+§ 8(1) The parser returns one result for each parsed source. The result contains:
 
 ```text
-lexer state
-current token
-lookahead token
-error count
-warning count
+the partial program
+structured diagnostics
+recovery events
+whether any error was reported
+whether parsing failed fatally
 ```
 
-and restores them after speculative parsing.
-
-This prevents diagnostics from a rejected speculative branch from escaping.
-
-### Existing invalid statement node
-
-The AST currently contains:
-
-```go
-type InvalidStatement struct {
-    Token   lexer.Token
-    Message string
-}
-```
-
-It is used for selected invalid or reserved statement forms.
-
-Failed top-level statements and failed statements in ordinary function/block
-bodies are also retained as `InvalidStatement` nodes with diagnostic ID,
-message, start/end tokens, and skipped-token count.
-
-Examples include:
-
-```text
-unsupported `free`
-unexpected `else`
-```
-
-Malformed declaration-shaped top-level input is retained separately as
-`InvalidDeclaration`. Disallowed or malformed `impl` entries are retained as
-`InvalidMember`, including their recovery range, while their existing semantic
-diagnostic phase remains unchanged.
-
-### Initial invalid expression and type retention
-
-The AST now contains `InvalidExpression` with recovery metadata. Pratt-parser
-failures without a prefix parser retain this node instead of returning only
-`nil`.
-
-`TypeReference` can be marked invalid and carry the same recovery metadata.
-This is wired for parenthesized, reference, function, prefix sequence,
-qualified-name, unit-only, unit-annotated, and postfix bracket type paths.
-Malformed qualified and unit forms preserve their parsed name/unit source
-facts while remaining explicitly invalid. The postfix family includes fixed arrays,
-collection/shaped constructors, `Event`/`EventStorage`, and ordinary generic
-arguments; completed inner arguments remain attached and a reliable closing
-bracket is consumed when available so the following declaration survives.
-Composite function and prefix-sequence references propagate retained invalid
-parameter, return, or element types to the outer reference. Malformed array
-length and collection/shaped constant expressions likewise retain the outer
-shape as invalid rather than allowing a valid-looking composite type.
-Remaining specialized type parsers still require migration.
-
-Sema maps these invalid nodes directly to its invalid/error type and does not
-invent dependent semantics.
-
-### Initial recovery event stream
-
-The parser records structured recovery events for:
-
-```text
-unambiguous virtual missing-token insertion
-statement-level skipped token ranges
-malformed impl-member skipped ranges
-malformed match-arm and try-handler skipped ranges
-malformed struct-field, switch-clause, and select-branch skipped ranges
-compiler-directive, generic-parameter, declaration-rest, malformed for-header,
-attribute-argument, property-remainder, and balanced-block skipped ranges
-```
-
-Diagnostics and their associated events carry a stable recovery context and
-episode number. Integrated contexts distinguish top-level, ordinary block,
-declaration-member, match-arm, and try-handler recovery.
-
-Speculative parser rollback also removes repair events associated with rolled
-back diagnostics and reconstructs deduplication and episode numbering state.
-
-### Diagnostic limit
-
-The parser emits at most 100 diagnostics for one parse. When the cap is reached,
-the final diagnostic is the stable `P2015` recovery-limit diagnostic and later
-parser diagnostics are suppressed. Speculative rollback restores the limit
-state when the speculative diagnostics are discarded.
-
-### Brace-depth skipping
-
-The parser has brace-aware helpers including:
-
-```text
-skipCurrentBlock
-skipBraceBlock
-skipPropertyRemainder
-```
-
-These avoid stopping at the first nested closing brace.
-
-### Target directive recovery
-
-Malformed `#target(...)` syntax can skip to the closing parenthesis.
-
-### Generic parameter recovery
-
-Malformed generic parameter lists can skip toward:
-
-```text
-]
-{
-(
-EOF
-```
-
-### Malformed loop-header recovery
-
-A malformed `for` header can skip to its body brace and still parse the body.
-
-The current tests verify recovery after:
-
-```text
-condition-only for syntax
-C-style for syntax
-missing iterable syntax
-```
-
-### Switch recovery
-
-Malformed switch clauses can synchronize at:
-
-```text
-case
-default
-}
-EOF
-```
-
-The parser can continue to later cases.
-
-It also gives a focused diagnostic when `||` is used where comma-separated case
-items were likely intended.
-
-### Select recovery
-
-Malformed select branches can synchronize toward:
-
-```text
-after
-default
-probable identifier branch
-await branch
-}
-EOF
-```
-
-### Struct field recovery
-
-Malformed struct declaration fields can synchronize at:
-
-```text
-,
-}
-EOF
-```
-
-The current tests verify that:
-
-- a missing field colon produces one error;
-- a later comma-separated field is retained;
-- later top-level declarations are retained.
-
-### Impl-member recovery
-
-Malformed impl members use:
-
-```text
-brace depth
-source line change
-known impl member starts
-closing impl brace
-```
-
-to locate a later member.
-
-### Try-handler closing-brace recovery
-
-The parser detects selected statement starts after a try handler block and can
-report a missing `}` while preserving the following statement.
-
-The current tests verify that a following `return` remains in the function body.
-
-### Unexpected else recovery
-
-An `else` without a matching `if` produces an invalid statement.
-
-When followed by a block, the parser consumes that block so its contents do not
-become unrelated outer statements.
-
-### Unterminated block diagnostics
-
-Several parser paths detect EOF before a required closing brace and report an
-unterminated construct.
-
-Ordinary statement blocks retain their parsed statements at EOF, including
-empty blocks, nested blocks, and previously recovered invalid statements.
-Their enclosing function and control-flow nodes remain available to tooling.
-Unterminated switch bodies also retain their subject, parsed case clauses,
-default clause, and clause bodies, including an empty switch at EOF.
-Unterminated match blocks retain their subject and ordered parsed or recovered
-arms. Unterminated try-handler blocks retain the protected expression and
-ordered parsed or recovered handlers. Their enclosing expression, return or
-declaration remains available to tooling.
-The unterminated-block error still blocks ordinary code generation.
-
----
-
-# Partly implemented
-
-## Structured diagnostics are initially implemented
-
-The parser now retains compatibility string errors and parallel structured
-diagnostics carrying:
-
-```text
-diagnostic ID
-message
-primary token
-expected tokens
-unexpected token
-```
-
-Speculative rollback removes both representations transactionally.
-
-Initial focused paths use `P2002`, `P2003`, `P2007`, `P2008`, `P2011` and
-`P2013`. Most parser call sites still use fallback `P2001` and do not yet
-provide canonical source ranges, related locations, recovery events or fixes.
-
-A parser error is generally only:
-
-```text
-formatted message
-embedded line and column
-```
-
-The diagnostics registry contains the general parser ID:
-
-```text
-P2001 parser.syntax-error
-```
-
-but individual parser errors are not emitted as structured diagnostics with
-stable IDs, ranges, expected tokens, related locations, or fixes.
-
-## AST recovery nodes remain incomplete
-
-The parser now retains `InvalidStatement`, `InvalidDeclaration`,
-`InvalidExpression`, `InvalidPattern`, `InvalidMember`, and invalid
-`TypeReference` nodes with recovery metadata on integrated paths.
-
-Canonical AST representation is still absent for:
-
-```text
-missing token
-skipped token range
-```
-
-Many recoverable parse functions therefore return `nil`.
-
-Returning `nil` loses local syntax structure and forces broader skipping.
-
-## General synchronization set is incomplete
-
-The current `isStatementStart` helper omits several valid statement or
-declaration starts.
-
-Examples include some of:
-
-```text
-#
-unit
-extern
-try
-discard
-cancel
-else
-fallthrough
-spawn
-await
-@
-ref
-self
-[
-comments
-```
-
-Some forms are reached through identifiers or type lookahead and cannot be
-represented by a simple token-only set.
-
-The current general `skipStatement()` can therefore skip too far.
-
-## Match-arm recovery is partial
-
-Malformed match arms are retained with `InvalidPattern`, and recovery stops
-before a likely pattern on a later line or the closing brace. Parenthesis,
-bracket, and brace depth is respected locally. Grammar-derived synchronization
-and same-line sibling recovery remain pending.
-
-## Try-handler recovery is partial
-
-Malformed try handlers are retained with `InvalidPattern`, and the same local,
-delimiter-aware sibling synchronization preserves likely later handlers.
-
-The special missing-closing-brace detection recognizes only a subset of
-possible following statement starts.
-
-## Missing tokens are not represented
-
-The parser can diagnose a missing token but does not preserve a virtual token in
-the AST.
-
-Tooling cannot reliably distinguish:
-
-```text
-token present in source
-token assumed by recovery
-token absent and node abandoned
-```
-
-## Skipped tokens are only partly preserved
-
-General statement recovery and the migrated delimiter-aware helpers record the
-skipped token range. These currently include impl members, match/try siblings,
-struct fields, switch/select entries, compiler directives, generic parameters,
-declaration tails, malformed for headers, attribute arguments, property
-remainders, and balanced blocks. Other specialized helpers still advance
-without recording it.
-
-Formatter, LSP, and diagnostics cannot always reconstruct the malformed region
-from AST data alone.
-
-## Source spans are incomplete
-
-Lexer tokens currently contain:
-
-```text
-file
-line
-column
-lexeme
-token type
-```
-
-They do not carry canonical start and end offsets.
-
-Accurate zero-width insertion ranges and multi-token diagnostic ranges therefore
-need additional source-position support.
-
-## Recovery episodes and cascading-diagnostic suppression are partial
-
-The parser starts a numbered episode at the first diagnostic and ends it at
-integrated stable statement, member, arm, handler, delimiter, or skip
-boundaries. Diagnostics with identical ID, primary token range, and recovery
-context are deduplicated. A second diagnostic at the same primary location and
-context within the active episode is suppressed as a same-cause cascade.
-
-Broader causal suppression across different token locations and full context
-coverage for every specialized parser remain pending.
-
-## Other specialized unterminated constructs can still return nil
-
-Some remaining specialized parsers can still report an unterminated construct
-and then return `nil`. Ordinary statement blocks, switch/select bodies, match
-arm lists, and try-handler lists now retain their partial contents.
-
-This can discard otherwise useful partial block contents.
-
-## Assignment-condition recovery
-
-Assignment in a `while` condition emits structured `P2013` as an error and
-blocks batch compilation. The recovered node currently preserves the left
-expression while retaining and reporting the unexpected assignment token.
-
-## Comments are not consistently retained
-
-Top-level comments may become AST nodes.
-
-Many block parsers skip comments.
-
-A recovered formatter or documentation tool therefore lacks one consistent
-full-fidelity source model.
-
-## Recovery and Sema are not formally separated
-
-There is no canonical rule for:
-
-```text
-whether Sema visits an invalid node
-what type an invalid expression has
-whether an invalid declaration introduces a symbol
-how ownership state flows past invalid syntax
-which diagnostics are suppressed beneath invalid syntax
-```
-
----
-
-# Not implemented
-
-The following canonical recovery infrastructure is not yet implemented fully:
-
-```text
-MissingToken representation
-SkippedTokenRange representation
-ErrorType propagation
-delimiter-stack migration for remaining specialized helpers
-shared grammar-derived synchronization sets
-cross-location recovery-cascade suppression
-full-fidelity malformed-source token retention
-safe-fix metadata
-recovery-aware formatter behavior
-recovery-aware LSP completion context
-property-based recovery tests
-mutation-based recovery tests
-parser progress assertions
-```
-
----
-
-# Parse result
-
-The parser should return one result object.
-
-Conceptual form:
-
-```go
-type ParseResult struct {
-    Program     *ast.Program
-    Diagnostics []diagnostics.Diagnostic
-    Recovery    []RecoveryEvent
-    HasErrors   bool
-    Fatal       bool
-}
-```
-
-The exact package layout may differ.
-
-The result must distinguish:
+§ 8(2) The result must distinguish:
 
 ```text
 valid parse with no diagnostics
-valid parse with compatibility warning
+valid parse with an advisory diagnostic
 recovered parse with errors
 fatal parser failure
 ```
 
----
-
-# Structured parser diagnostic
-
-Conceptual diagnostic:
-
-```go
-type Diagnostic struct {
-    ID              string
-    Severity        Severity
-    Message         string
-    PrimaryRange    SourceRange
-    Related         []RelatedLocation
-    ExpectedTokens  []lexer.TokenType
-    UnexpectedToken *lexer.Token
-    Fixes           []Fix
-}
-```
-
-Parser code must not embed the only copy of source location into a message
-string.
-
-Human-readable messages may still include token spellings.
+§ 8(3) These are observable contract fields. The implementation language, package
+and field names are not normative.
 
 ---
 
-# Parser diagnostic IDs
+## § 9 Structured parser diagnostic
 
-Existing:
+§ 9(1) A parser diagnostic is structured data with:
 
 ```text
-P2001 parser.syntax-error
+stable registered ID
+severity from the diagnostic registry
+message
+primary source range
+related locations
+expected tokens where known
+the unexpected token where present
+safe fixes where justified
 ```
 
-`P2001` remains the fallback for an unclassified parser error.
+§ 9(2) Parser code must not embed the only copy of a source location into a message
+string.
 
-Add stable focused parser diagnostics.
-
-Recommended initial allocation:
-
-| ID | Symbolic name | Purpose |
-|---|---|---|
-| `P2001` | `parser.syntax-error` | fallback parser error |
-| `P2002` | `parser.missing-token` | one required token is absent |
-| `P2003` | `parser.unexpected-token` | token is invalid in current context |
-| `P2004` | `parser.unterminated-delimiter` | `)`, `]`, or `}` missing before EOF or boundary |
-| `P2005` | `parser.invalid-declaration` | declaration cannot be completed |
-| `P2006` | `parser.invalid-statement` | statement cannot be completed |
-| `P2007` | `parser.invalid-expression` | expression cannot be completed |
-| `P2008` | `parser.invalid-type-reference` | type reference cannot be completed |
-| `P2009` | `parser.invalid-pattern` | match or handler pattern cannot be completed |
-| `P2010` | `parser.missing-separator` | comma or other separator is absent |
-| `P2011` | `parser.misplaced-keyword` | keyword is valid only in another grammar context |
-| `P2012` | `parser.reserved-syntax` | reserved spelling has no implemented form |
-| `P2013` | `parser.invalid-assignment-expression` | assignment appears where expression is required |
-| `P2014` | `parser.chained-comparison` | comparison chaining is invalid |
-| `P2015` | `parser.recovery-limit` | parser stopped issuing additional syntax diagnostics |
-| `P2016` | `parser.unexpected-end-of-file` | source ends before required construct completion |
-| `P2017` | `parser.invalid-block-member` | declaration or statement is invalid in a body |
-| `P2018` | `parser.compatibility-syntax` | accepted noncanonical syntax requires migration |
-| `P2019` | `parser.unimplemented-function` | ordinary function signature has no body; retains signature and provides return-sensitive help |
-
-IDs identify parser rules, not severity.
-
-Compatibility syntax may default to warning or information.
-
-Mandatory syntax violations remain errors.
+§ 9(3) Human-readable messages may still include token spellings.
 
 ---
 
-# Recovery event
+## § 10 Parser diagnostic IDs
 
-A recovery event records what the parser did after a diagnostic.
+§ 10(1) Parser diagnostics have stable registered IDs in the `P2xxx` namespace,
+structured primary ranges, related locations, notes and help as defined by
+`rules/tooling/diagnostics.md`. The registered catalog (`sec diagnostics`) is
+the authority for each ID, symbolic name, default severity and
+mandatory/configurable status; this rulebook does not allocate or redefine
+them.
 
-Conceptual form:
+§ 10(2) `P2001` / `parser.syntax-error` is the fallback for a parser error that has no
+focused classification.
 
-```go
-type RecoveryEvent struct {
-    DiagnosticID string
-    Context      RecoveryContext
-    Unexpected   lexer.Token
-    Inserted     []MissingToken
-    Skipped      []lexer.Token
-    ResumeToken  lexer.Token
-}
+§ 10(3) IDs identify parser rules, not severity.
+
+§ 10(4) Mandatory syntax violations remain errors. A legacy or noncanonical form that
+has a focused registered diagnostic is reported with that ID (§ 70).
+
+§ 10(5) A recovery event records the parser's treatment of invalid syntax. It does not
+insert a valid token into the actual source or change the program's semantic
+status.
+
+---
+
+## § 11 Recovery event
+
+§ 11(1) A recovery event records what the parser did after a diagnostic:
+
+```text
+the diagnostic it belongs to
+the recovery context
+the unexpected token
+virtual tokens inserted
+tokens or source ranges skipped
+the token where parsing resumed
 ```
 
-Recovery events support:
+§ 11(2) Recovery events support:
 
 ```text
 debugging
@@ -965,21 +418,21 @@ tests
 LSP behavior
 formatter behavior
 parser telemetry
-bootstrap comparison
+comparison between parser implementations
 ```
 
-They do not become source-language semantics.
+§ 11(3) They do not become source-language semantics.
 
 ---
 
-# Virtual missing tokens
+## § 12 Virtual missing tokens
 
-## Purpose
+### § 12.1 Purpose
 
-A missing token allows the parser to preserve a surrounding node without
+§ 12.1(1) A missing token allows the parser to preserve a surrounding node without
 pretending that the source contained the token.
 
-Example:
+§ 12.1(2) Example:
 
 ```sec
 type Point struct {
@@ -988,7 +441,7 @@ type Point struct {
 }
 ```
 
-Recovery may create:
+§ 12.1(3) Recovery may create:
 
 ```text
 StructField
@@ -997,19 +450,17 @@ StructField
     type: int
 ```
 
-## Representation
+### § 12.2 Representation
 
-Conceptual form:
+§ 12.2(1) A missing token records:
 
-```go
-type MissingToken struct {
-    Expected lexer.TokenType
-    Anchor   SourcePosition
-    Before   lexer.Token
-}
+```text
+the expected token kind
+its insertion anchor position
+the real token it precedes
 ```
 
-A missing token:
+§ 12.2(2) A missing token:
 
 - has zero width;
 - records the expected token kind;
@@ -1019,12 +470,12 @@ A missing token:
 - is never printed as though present in source;
 - may support an explicit code action.
 
-## Safe insertion categories
+### § 12.3 Safe insertion categories
 
-The parser may insert one missing structural token when the expected choice is
+§ 12.3(1) The parser may insert one missing structural token when the expected choice is
 unique and local.
 
-Typical safe categories:
+§ 12.3(2) Typical safe categories:
 
 ```text
 :
@@ -1037,11 +488,11 @@ in
 {
 ```
 
-The exact insertion is context-dependent.
+§ 12.3(3) The exact insertion is context-dependent.
 
-## Tokens not guessed
+### § 12.4 Tokens not guessed
 
-Recovery must not invent:
+§ 12.4(1) Recovery must not invent:
 
 ```text
 identifier
@@ -1056,66 +507,66 @@ import path
 function body expression
 ```
 
-When such content is missing, create an invalid node and synchronize.
+§ 12.4(2) When such content is missing, create an invalid node and synchronize.
 
-## No repeated insertion
+### § 12.5 No repeated insertion
 
-At one source position, the parser must not repeatedly insert the same token
+§ 12.5(1) At one source position, the parser must not repeatedly insert the same token
 without consuming input or returning.
 
 ---
 
-# Unexpected token handling
+## § 13 Unexpected token handling
 
-## Single-token deletion
+### § 13.1 Single-token deletion
 
-The parser may skip one unexpected punctuation token when:
+§ 13.1(1) The parser may skip one unexpected punctuation token when:
 
 - the surrounding grammar is otherwise unambiguous;
 - skipping does not cross a delimiter boundary;
 - the token is preserved in recovery metadata;
 - one diagnostic is emitted.
 
-Example:
+§ 13.1(2) Example:
 
 ```sec
 Call(first,, second)
 ```
 
-The second comma may be skipped.
+§ 13.1(3) The second comma may be skipped.
 
-## Keyword deletion
+### § 13.2 Keyword deletion
 
-The parser should not silently delete a keyword that can begin another
+§ 13.2(1) The parser should not silently delete a keyword that can begin another
 declaration or statement.
 
-It should synchronize before that keyword when possible.
+§ 13.2(2) It should synchronize before that keyword when possible.
 
-## Token substitution
+### § 13.3 Token substitution
 
-The parser does not silently substitute one real token for another.
+§ 13.3(1) The parser does not silently substitute one real token for another.
 
-Example:
+§ 13.3(2) Example:
 
 ```sec
 Value: 10
 ```
 
-inside an enum may be accepted as explicit compatibility syntax and diagnosed
-accordingly.
+inside an enum is invalid legacy syntax diagnosed with `P2028`
+(§ 38).
 
-That is not ordinary recovery substitution.
+§ 13.3(3) That is not ordinary recovery substitution.
 
 ---
 
-# Invalid AST nodes
+## § 14 Invalid AST nodes
 
-Recoverable malformed source should normally produce an invalid node rather than
+§ 14(1) Recoverable malformed source should normally produce an invalid node rather than
 `nil`.
 
-## Required node families
+### § 14.1 Required node families
 
-Add:
+§ 14.1(1) Add:
 
 ```text
 InvalidDeclaration
@@ -1126,24 +577,20 @@ InvalidPattern
 InvalidMember
 ```
 
-`InvalidStatement` already exists and should be extended.
+### § 14.2 Common recovery metadata
 
-## Common recovery metadata
+§ 14.2(1) Recovery metadata records:
 
-Conceptual form:
-
-```go
-type RecoveryInfo struct {
-    DiagnosticID string
-    Unexpected   *lexer.Token
-    Expected     []lexer.TokenType
-    Inserted     []MissingToken
-    Skipped      []lexer.Token
-    Range        SourceRange
-}
+```text
+the diagnostic ID
+the unexpected token
+the expected tokens
+virtual tokens inserted
+tokens skipped
+the source range
 ```
 
-Each invalid node should retain:
+§ 14.2(2) Each invalid node should retain:
 
 ```text
 start token
@@ -1153,9 +600,9 @@ successfully parsed children
 raw or skipped tokens
 ```
 
-## Invalid declaration
+### § 14.3 Invalid declaration
 
-An invalid declaration may retain:
+§ 14.3(1) An invalid declaration may retain:
 
 ```text
 declaration keyword
@@ -1165,9 +612,9 @@ partial type
 partial body
 ```
 
-## Invalid expression
+### § 14.4 Invalid expression
 
-An invalid expression may retain:
+§ 14.4(1) An invalid expression may retain:
 
 ```text
 left operand
@@ -1177,9 +624,9 @@ opening delimiter
 parsed arguments
 ```
 
-## Invalid type reference
+### § 14.5 Invalid type reference
 
-An invalid type reference may retain:
+§ 14.5(1) An invalid type reference may retain:
 
 ```text
 base name
@@ -1189,9 +636,9 @@ reference modifier
 unit annotation
 ```
 
-## Invalid pattern
+### § 14.6 Invalid pattern
 
-An invalid pattern may retain:
+§ 14.6(1) An invalid pattern may retain:
 
 ```text
 variant name
@@ -1199,31 +646,31 @@ partial payload binding
 guard
 ```
 
-## Nil use
+### § 14.7 Nil use
 
-A parse function may return `nil` only when:
+§ 14.7(1) A parse function may return `nil` only when:
 
 - its caller has not committed to that grammar alternative;
 - speculative parsing is being rolled back;
 - a fatal parser invariant prevents node construction.
 
-After a construct has been committed, recoverable errors should produce a
+§ 14.7(2) After a construct has been committed, recoverable errors should produce a
 partial or invalid node.
 
 ---
 
-# Error type
+## § 15 Error type
 
-Sema should assign invalid expressions and invalid type references an internal
+§ 15(1) Sema should assign invalid expressions and invalid type references an internal
 error type.
 
-Conceptual:
+§ 15(2) Conceptual:
 
 ```text
 ErrorType
 ```
 
-`ErrorType`:
+§ 15(3) `ErrorType`:
 
 - is not a user-visible Sec type;
 - is compatible enough to prevent cascades;
@@ -1235,35 +682,35 @@ ErrorType
 
 ---
 
-# Parser error episodes
+## § 16 Parser error episodes
 
-A recovery episode begins when the parser emits a primary syntax diagnostic.
+§ 16(1) A recovery episode begins when the parser emits a primary syntax diagnostic.
 
-It ends when the parser:
+§ 16(2) It ends when the parser:
 
 - reaches a synchronization point;
 - successfully consumes the expected closing delimiter;
 - completes the current invalid node;
 - returns to a stable caller boundary.
 
-Within one episode, secondary diagnostics caused solely by the same missing
+§ 16(3) Within one episode, secondary diagnostics caused solely by the same missing
 token should be suppressed.
 
-Example:
+§ 16(4) Example:
 
 ```sec
 fn Test(value int result: int) void {
 }
 ```
 
-The parser should not emit independent errors for every token after the first
+§ 16(5) The parser should not emit independent errors for every token after the first
 missing parameter punctuation if one local repair explains them.
 
 ---
 
-# Diagnostic deduplication
+## § 17 Diagnostic deduplication
 
-Diagnostics with the same:
+§ 17(1) Diagnostics with the same:
 
 ```text
 ID
@@ -1273,23 +720,23 @@ recovery context
 
 should not be emitted more than once.
 
-Speculative parse diagnostics must be rolled back entirely.
+§ 17(2) Speculative parse diagnostics must be rolled back entirely.
 
-A diagnostic from an abandoned parser branch must never reach the user.
+§ 17(3) A diagnostic from an abandoned parser branch must never reach the user.
 
 ---
 
-# Diagnostic limit
+## § 18 Diagnostic limit
 
-The parser should cap syntax diagnostics per file.
+§ 18(1) The parser should cap syntax diagnostics per file.
 
-Recommended default:
+§ 18(2) Recommended default:
 
 ```text
 100 parser errors
 ```
 
-After the cap:
+§ 18(3) After the cap:
 
 - emit `P2015 parser.recovery-limit` once;
 - continue only enough to find EOF safely;
@@ -1297,13 +744,13 @@ After the cap:
 - still return the partial program;
 - mark the result as containing errors.
 
-The cap is an implementation policy, not source-language semantics.
+§ 18(4) The cap is an implementation policy, not source-language semantics.
 
 ---
 
-# Fatal conditions
+## § 19 Fatal conditions
 
-The parser may mark a result fatal only for conditions such as:
+§ 19(1) The parser may mark a result fatal only for conditions such as:
 
 ```text
 lexer fails to advance
@@ -1313,13 +760,13 @@ internal parser invariant violation
 resource exhaustion
 ```
 
-An unterminated user block or malformed expression is not fatal.
+§ 19(2) An unterminated user block or malformed expression is not fatal.
 
 ---
 
-# Delimiter tracking
+## § 20 Delimiter tracking
 
-Recovery must track nesting for:
+§ 20(1) Recovery must track nesting for:
 
 ```text
 (...)
@@ -1327,10 +774,10 @@ Recovery must track nesting for:
 {...}
 ```
 
-A context recovery function must ignore synchronization tokens inside deeper
+§ 20(2) A context recovery function must ignore synchronization tokens inside deeper
 nested delimiters.
 
-Example:
+§ 20(3) Example:
 
 ```sec
 Call(
@@ -1339,12 +786,12 @@ Call(
 )
 ```
 
-The comma inside `Other(...)` is not a synchronization comma for the outer
+§ 20(4) The comma inside `Other(...)` is not a synchronization comma for the outer
 argument if recovery is currently inside the nested call.
 
-## Mismatched closer
+### § 20.1 Mismatched closer
 
-When the parser expects one closer and finds another:
+§ 20.1(1) When the parser expects one closer and finds another:
 
 ```sec
 Call(value]
@@ -1359,13 +806,13 @@ it should:
 
 ---
 
-# Synchronization model
+## § 21 Synchronization model
 
-Synchronization sets are grammar-context-specific.
+§ 21(1) Synchronization sets are grammar-context-specific.
 
-Do not use one global panic-mode set for every parse failure.
+§ 21(2) Do not use one global panic-mode set for every parse failure.
 
-Each parser context must define:
+§ 21(3) Each parser context must define:
 
 ```text
 hard boundaries
@@ -1377,14 +824,15 @@ tokens that must not be consumed
 
 ---
 
-# Compilation-unit synchronization
+## § 22 Compilation-unit synchronization
 
-## Hard boundaries
+### § 22.1 Hard boundaries
 
-At top level, recover toward:
+§ 22.1(1) At top level, recover toward:
 
 ```text
-#target start
+@target / @when attribute-set start
+legacy #target start (compatibility form, compiler.md § 15)
 module
 import
 type
@@ -1401,23 +849,25 @@ unsafe
 EOF
 ```
 
-Contextual top-level declarations may require predicate-based detection.
+§ 22.1(2) Contextual top-level declarations may require predicate-based detection.
 
-## Rule
+### § 22.2 Rule
 
-A malformed top-level declaration must not consume the next probable top-level
+§ 22.2(1) A malformed top-level declaration must not consume the next probable top-level
 declaration at brace depth zero.
 
-## Current implementation gap
+### § 22.3 Grammar-derived start sets
 
-The current `isStatementStart` list is incomplete and should be replaced by
-grammar-derived declaration and statement predicates.
+§ 22.3(1) Declaration and statement start sets used for synchronization come from
+canonical grammar and lexer metadata, not from an independently maintained
+list that becomes stale when new syntax is introduced. `#target` is a legacy
+compatibility form and is not advertised as canonical source syntax.
 
 ---
 
-# General statement synchronization
+## § 23 General statement synchronization
 
-Within a block, synchronize toward:
+§ 23(1) Within a block, synchronize toward:
 
 ```text
 }
@@ -1450,10 +900,10 @@ comment
 EOF
 ```
 
-Because identifiers can begin either expressions or typed declarations,
+§ 23(2) Because identifiers can begin either expressions or typed declarations,
 statement synchronization cannot be only a static token set.
 
-Use:
+§ 23(3) Use:
 
 ```text
 token kind
@@ -1463,15 +913,15 @@ typed-declaration lookahead
 current grammar context
 ```
 
-## Same-block requirement
+### § 23.1 Same-block requirement
 
-A synchronization candidate must be at the current block's delimiter depth.
+§ 23.1(1) A synchronization candidate must be at the current block's delimiter depth.
 
 ---
 
-# Block recovery
+## § 24 Block recovery
 
-When a block is missing `}`:
+§ 24(1) When a block is missing `}`:
 
 - preserve parsed statements;
 - create a virtual missing `}`;
@@ -1480,21 +930,21 @@ When a block is missing `}`:
   is reliable;
 - stop at EOF otherwise.
 
-Do not discard the partial block by returning `nil`.
+§ 24(2) Do not discard the partial block by returning `nil`.
 
-## Function boundary heuristic
+### § 24.1 Function boundary heuristic
 
-At module scope, a probable top-level declaration at brace depth zero may close
+§ 24.1(1) At module scope, a probable top-level declaration at brace depth zero may close
 a truncated function block virtually.
 
-This heuristic is permitted only when the parser can prove it is no longer
+§ 24.1(2) This heuristic is permitted only when the parser can prove it is no longer
 inside a nested delimiter.
 
 ---
 
-# Declaration-header recovery
+## § 25 Declaration-header recovery
 
-Declaration headers include:
+§ 25(1) Declaration headers include:
 
 ```text
 type
@@ -1509,7 +959,7 @@ static
 extern
 ```
 
-Recover toward:
+§ 25(2) Recover toward:
 
 ```text
 opening body brace
@@ -1519,7 +969,7 @@ closing enclosing brace
 EOF
 ```
 
-A malformed header should produce an invalid declaration preserving:
+§ 25(3) A malformed header should produce an invalid declaration preserving:
 
 ```text
 keyword
@@ -1530,11 +980,11 @@ partial type information
 
 ---
 
-# Import recovery
+## § 26 Import recovery
 
-## Single import
+### § 26.1 Single import
 
-Recover toward:
+§ 26.1(1) Recover toward:
 
 ```text
 string path
@@ -1542,11 +992,11 @@ next top-level declaration
 EOF
 ```
 
-Do not invent an import path.
+§ 26.1(2) Do not invent an import path.
 
-## Import group
+### § 26.2 Import group
 
-Inside `import (...)`, synchronize at:
+§ 26.2(1) Inside `import (...)`, synchronize at:
 
 ```text
 next string literal
@@ -1555,16 +1005,16 @@ probable alias followed by string literal
 EOF
 ```
 
-An invalid import item should not discard later valid import items.
+§ 26.2(2) An invalid import item should not discard later valid import items.
 
-A missing `)` may be inserted before the next top-level declaration at depth
+§ 26.2(3) A missing `)` may be inserted before the next top-level declaration at depth
 zero.
 
 ---
 
-# Compiler-directive recovery
+## § 27 Compiler-directive recovery
 
-Inside `#target(...)`, synchronize at:
+§ 27(1) Inside `#target(...)`, synchronize at:
 
 ```text
 ,
@@ -1573,16 +1023,16 @@ next top-level declaration
 EOF
 ```
 
-Unknown argument names remain part of one invalid directive node.
+§ 27(2) Unknown argument names remain part of one invalid directive node.
 
-Do not interpret malformed directive tokens as ordinary code inside the
+§ 27(3) Do not interpret malformed directive tokens as ordinary code inside the
 directive.
 
 ---
 
-# Generic parameter recovery
+## § 28 Generic parameter recovery
 
-Inside generic parameter declarations, synchronize at:
+§ 28(1) Inside generic parameter declarations, synchronize at:
 
 ```text
 ,
@@ -1595,16 +1045,14 @@ default
 EOF
 ```
 
-A malformed generic parameter should preserve later comma-separated parameters
+§ 28(2) A malformed generic parameter should preserve later comma-separated parameters
 when possible.
-
-The current helper stops at `]`, `{`, or `(` and should be extended.
 
 ---
 
-# Generic argument recovery
+## § 29 Generic argument recovery
 
-Inside generic or collection type arguments, synchronize at:
+§ 29(1) Inside generic or collection type arguments, synchronize at:
 
 ```text
 ,
@@ -1614,7 +1062,7 @@ Inside generic or collection type arguments, synchronize at:
 EOF
 ```
 
-The parser must retain whether an argument position expects:
+§ 29(2) The parser must retain whether an argument position expects:
 
 ```text
 type argument
@@ -1622,13 +1070,13 @@ constant argument
 either, pending Sema
 ```
 
-Do not silently convert an invalid constant argument into a type argument.
+§ 29(3) Do not silently convert an invalid constant argument into a type argument.
 
 ---
 
-# Parameter-list recovery
+## § 30 Parameter-list recovery
 
-Inside a function or lambda parameter list, synchronize at:
+§ 30(1) Inside a function or lambda parameter list, synchronize at:
 
 ```text
 ,
@@ -1638,56 +1086,56 @@ return type start
 EOF
 ```
 
-## Missing colon
+### § 30.1 Missing colon
 
-Example:
+§ 30.1(1) Example:
 
 ```sec
 fn Add(left int, right: int) int {
 }
 ```
 
-When an identifier is followed by a valid type start, insert a virtual `:` and
+§ 30.1(2) When an identifier is followed by a valid type start, insert a virtual `:` and
 continue.
 
-Emit one missing-token diagnostic.
+§ 30.1(3) Emit one missing-token diagnostic.
 
-## Missing parameter name
+### § 30.2 Missing parameter name
 
-Example:
+§ 30.2(1) Example:
 
 ```sec
 fn Add(: int) int {
 }
 ```
 
-Do not invent a name.
+§ 30.2(2) Do not invent a name.
 
-Create an invalid parameter node and synchronize at comma or `)`.
+§ 30.2(3) Create an invalid parameter node and synchronize at comma or `)`.
 
-## Missing type
+### § 30.3 Missing type
 
-Example:
+§ 30.3(1) Example:
 
 ```sec
 fn Add(left:, right: int) int {
 }
 ```
 
-Do not invent a type.
+§ 30.3(2) Do not invent a type.
 
-Create an invalid type reference and synchronize at comma or `)`.
+§ 30.3(3) Create an invalid type reference and synchronize at comma or `)`.
 
-## Missing comma
+### § 30.4 Missing comma
 
-When the next tokens clearly begin another `Identifier ":"` parameter, insert a
+§ 30.4(1) When the next tokens clearly begin another `Identifier ":"` parameter, insert a
 virtual comma.
 
 ---
 
-# Argument-list recovery
+## § 31 Argument-list recovery
 
-Inside a call, synchronize at:
+§ 31(1) Inside a call, synchronize at:
 
 ```text
 ,
@@ -1698,15 +1146,15 @@ Inside a call, synchronize at:
 EOF
 ```
 
-A missing argument expression creates an invalid expression.
+§ 31(2) A missing argument expression creates an invalid expression.
 
-Example:
+§ 31(3) Example:
 
 ```sec
 Call(first, , third)
 ```
 
-The parser should preserve argument positions:
+§ 31(4) The parser should preserve argument positions:
 
 ```text
 first
@@ -1714,13 +1162,13 @@ InvalidExpression
 third
 ```
 
-This is useful for parameter completion.
+§ 31(5) This is useful for parameter completion.
 
 ---
 
-# Array-literal recovery
+## § 32 Array-literal recovery
 
-Inside an array literal, synchronize at:
+§ 32(1) Inside an array literal, synchronize at:
 
 ```text
 ,
@@ -1729,16 +1177,16 @@ Inside an array literal, synchronize at:
 EOF
 ```
 
-Preserve later elements after one malformed element.
+§ 32(2) Preserve later elements after one malformed element.
 
-A missing comma may be inserted only when the next token clearly begins another
+§ 32(3) A missing comma may be inserted only when the next token clearly begins another
 element at the same bracket depth.
 
 ---
 
-# Type-reference recovery
+## § 33 Type-reference recovery
 
-Type-reference recovery must account for:
+§ 33(1) Type-reference recovery must account for:
 
 ```text
 qualified names
@@ -1751,7 +1199,7 @@ function types
 parenthesized types
 ```
 
-Synchronize at grammar boundaries such as:
+§ 33(2) Synchronize at grammar boundaries such as:
 
 ```text
 ,
@@ -1768,16 +1216,16 @@ default
 EOF
 ```
 
-Do not consume an assignment initializer while searching for a missing type
+§ 33(3) Do not consume an assignment initializer while searching for a missing type
 delimiter.
 
 ---
 
-# Type-contract recovery
+## § 34 Type-contract recovery
 
-## Range contract
+### § 34.1 Range contract
 
-Synchronize at:
+§ 34.1(1) Synchronize at:
 
 ```text
 ..
@@ -1789,13 +1237,13 @@ next declaration
 EOF
 ```
 
-At least one bound is required.
+§ 34.1(2) At least one bound is required.
 
-Do not invent a numeric bound.
+§ 34.1(3) Do not invent a numeric bound.
 
-## `in [...]`
+### § 34.2 `in [...]`
 
-Synchronize individual values at:
+§ 34.2(1) Synchronize individual values at:
 
 ```text
 ,
@@ -1805,35 +1253,35 @@ default
 EOF
 ```
 
-Preserve later values.
+§ 34.2(2) Preserve later values.
 
-## Value contract
+### § 34.3 Value contract
 
-For contracts such as `multipleOf`, a missing value creates an invalid
+§ 34.3(1) For contracts such as `multipleOf`, a missing value creates an invalid
 expression attached to the contract.
 
 ---
 
-# Default-clause recovery
+## § 35 Default-clause recovery
 
-After `default`, an expression is required.
+§ 35(1) After `default`, an expression is required.
 
-If absent:
+§ 35(2) If absent:
 
 - create an invalid default expression;
 - retain the type declaration;
 - synchronize at type-body start, next top-level declaration, closing enclosing
   brace, or EOF.
 
-Do not substitute the implicit type default.
+§ 35(3) Do not substitute the implicit type default.
 
-The declaration remains invalid until corrected.
+§ 35(4) The declaration remains invalid until corrected.
 
 ---
 
-# Struct declaration recovery
+## § 36 Struct declaration recovery
 
-Inside a struct body, synchronize at:
+§ 36(1) Inside a struct body, synchronize at:
 
 ```text
 ,
@@ -1842,9 +1290,9 @@ next probable field start on a later line
 EOF
 ```
 
-## Missing field colon
+### § 36.1 Missing field colon
 
-Example:
+§ 36.1(1) Example:
 
 ```sec
 type Point struct {
@@ -1853,38 +1301,36 @@ type Point struct {
 }
 ```
 
-When `int` is a valid type start, create a virtual `:`.
+§ 36.1(2) When `int` is a valid type start, create a virtual `:`.
 
-Preserve the field as a recovered field rather than dropping it.
+§ 36.1(3) Preserve the field as a recovered field rather than dropping it.
 
-The current parser reports the error and may skip the malformed field.
+§ 36.1(4) The malformed field is retained as a recovered field node.
 
-The canonical model retains it as a recovered field node.
+### § 36.2 Missing comma
 
-## Missing comma
+§ 36.2(1) Declared struct fields require commas.
 
-Declared struct fields require commas.
-
-When the next line clearly begins `Identifier ":"`, insert a virtual comma and
+§ 36.2(2) When the next line clearly begins `Identifier ":"`, insert a virtual comma and
 continue.
 
-A comment after the field is trivia and is not a separator; the same proof
+§ 36.2(3) A comment after the field is trivia and is not a separator; the same proof
 applies to the first token after the comment.
 
-The same later-line repair applies to parameters (the next line begins
+§ 36.2(4) The same later-line repair applies to parameters (the next line begins
 `Identifier ":"`, `ref`, or `->`), call arguments, and array literal elements
 (the next line begins an expression). The repair records the token after
 which the virtual comma sits, so the formatter Language Correction
 (`rules/tooling/formatter.md` § 27(37)) and the LSP quick fix insert exactly
 that comma. Same-line adjacency is reported without a repair.
 
-## Invalid field type
+### § 36.3 Invalid field type
 
-Create an invalid type-reference field and synchronize at comma or `}`.
+§ 36.3(1) Create an invalid type-reference field and synchronize at comma or `}`.
 
-## Invalid tag
+### § 36.4 Invalid tag
 
-Preserve:
+§ 36.4(1) Preserve:
 
 ```text
 field name
@@ -1892,19 +1338,19 @@ field type
 raw tag token
 ```
 
-Attach a tag diagnostic.
+§ 36.4(2) Attach a tag diagnostic.
 
-Do not discard the whole struct.
+§ 36.4(3) Do not discard the whole struct.
 
-## Unterminated struct
+### § 36.5 Unterminated struct
 
-Preserve parsed fields and insert a virtual `}` at a safe outer boundary or EOF.
+§ 36.5(1) Preserve parsed fields and insert a virtual `}` at a safe outer boundary or EOF.
 
 ---
 
-# Struct literal recovery
+## § 37 Struct literal recovery
 
-Inside a struct literal, synchronize at:
+§ 37(1) Inside a struct literal, synchronize at:
 
 ```text
 ,
@@ -1913,28 +1359,28 @@ line-start next field
 EOF
 ```
 
-Struct literals permit newline-separated fields according to `grammar.md`.
+§ 37(2) Struct literals permit newline-separated fields according to `grammar.md`.
 
-## Missing colon
+### § 37.1 Missing colon
 
-When the left expression is a simple identifier and the following token starts
+§ 37.1(1) When the left expression is a simple identifier and the following token starts
 an expression, a missing `:` may be inserted.
 
-## Invalid item
+### § 37.2 Invalid item
 
-Preserve an invalid struct-literal item.
+§ 37.2(1) Preserve an invalid struct-literal item.
 
-Do not discard later fields or spreads.
+§ 37.2(2) Do not discard later fields or spreads.
 
-## Missing closing brace
+### § 37.3 Missing closing brace
 
-Preserve parsed items and create a virtual `}` at a reliable enclosing boundary.
+§ 37.3(1) Preserve parsed items and create a virtual `}` at a reliable enclosing boundary.
 
 ---
 
-# Enum recovery
+## § 38 Enum recovery
 
-Inside an enum body, synchronize at:
+§ 38(1) Inside an enum body, synchronize at:
 
 ```text
 ,
@@ -1943,35 +1389,37 @@ line-start next identifier
 EOF
 ```
 
-## Missing value name
+### § 38.1 Missing value name
 
-Create an invalid enum member and continue to the next separator.
+§ 38.1(1) Create an invalid enum member and continue to the next separator.
 
-## Invalid initializer
+### § 38.2 Invalid initializer
 
-Preserve the member name and attach an invalid expression.
+§ 38.2(1) Preserve the member name and attach an invalid expression.
 
-## Colon compatibility
+### § 38.3 Legacy colon initializer
 
-`Value: expression` may be accepted as compatibility syntax.
-
-It must produce the canonical compatibility diagnostic and formatter fix:
+§ 38.3(1) `Value: expression` is invalid legacy syntax. It is reported with the focused
+registered diagnostic `P2028` / `parser.legacy-enum-colon-initializer`, blocks
+artifact publication and is not accepted as a soft warning. Recovery retains
+the member name and the initializer for tooling. An explicitly enabled
+Language Correction (`rules/tooling/formatter.md` §§ 26–27) may rewrite it to:
 
 ```sec
 Value = expression
 ```
 
-It is not ordinary missing-token recovery.
+§ 38.3(2) It is not ordinary missing-token recovery.
 
-## Unterminated enum
+### § 38.4 Unterminated enum
 
-Preserve parsed values and create a virtual `}` at a safe boundary.
+§ 38.4(1) Preserve parsed values and create a virtual `}` at a safe boundary.
 
 ---
 
-# Union recovery
+## § 39 Union recovery
 
-Inside a union body, synchronize at:
+§ 39(1) Inside a union body, synchronize at:
 
 ```text
 ,
@@ -1980,7 +1428,7 @@ line-start next variant name
 EOF
 ```
 
-Preserve:
+§ 39(2) Preserve:
 
 ```text
 variant name
@@ -1988,13 +1436,13 @@ payload opening delimiter
 partial payload type or fields
 ```
 
-A malformed payload must not discard later variants.
+§ 39(3) A malformed payload must not discard later variants.
 
 ---
 
-# Reversed type declaration order
+## § 40 Reversed type declaration order
 
-The parser recognizes declaration-kind-before-name mistakes such as:
+§ 40(1) The parser recognizes declaration-kind-before-name mistakes such as:
 
 ```sec
 type struct User { ... }
@@ -2002,16 +1450,16 @@ type union State { ... }
 type register Status[8] { ... }
 ```
 
-These forms remain syntax errors. The parser emits `P2011` and explains the
+§ 40(2) These forms remain syntax errors. The parser emits `P2011` and explains the
 canonical `type Name kind` order. Because the intended ordering is unique,
 fix-enabled formatting may rewrite them while ordinary formatting preserves
 the invalid source around the diagnostic.
 
 ---
 
-# Register recovery
+## § 41 Register recovery
 
-Inside a register body, synchronize at:
+§ 41(1) Inside a register body, synchronize at:
 
 ```text
 ,
@@ -2020,15 +1468,15 @@ line-start next field or `_`
 EOF
 ```
 
-Preserve field width syntax where parsed.
+§ 41(2) Preserve field width syntax where parsed.
 
-Width-total validation remains Sema's responsibility.
+§ 41(3) Width-total validation remains Sema's responsibility.
 
 ---
 
-# Interface recovery
+## § 42 Interface recovery
 
-Inside an interface body, synchronize at:
+§ 42(1) Inside an interface body, synchronize at:
 
 ```text
 fn
@@ -2038,11 +1486,11 @@ contextual event
 EOF
 ```
 
-An invalid member becomes `InvalidMember`.
+§ 42(2) An invalid member becomes `InvalidMember`.
 
-It must not cause the complete interface declaration to return `nil`.
+§ 42(3) It must not cause the complete interface declaration to return `nil`.
 
-Property requirements synchronize at:
+§ 42(4) Property requirements synchronize at:
 
 ```text
 get
@@ -2052,9 +1500,9 @@ set
 
 ---
 
-# Impl recovery
+## § 43 Impl recovery
 
-Inside an impl body, synchronize at:
+§ 43(1) Inside an impl body, synchronize at:
 
 ```text
 type
@@ -2069,9 +1517,7 @@ static
 EOF
 ```
 
-The current implementation's line- and depth-aware recovery is a useful base.
-
-Expand it to:
+§ 43(2) Impl-member recovery is line- and depth-aware and must:
 
 - preserve invalid members;
 - include every canonical impl-member start;
@@ -2079,14 +1525,14 @@ Expand it to:
 - retain skipped tokens;
 - support nested delimiters.
 
-An invalid local `let` inside impl should remain an invalid member with a
+§ 43(3) An invalid local `let` inside impl should remain an invalid member with a
 structured diagnostic.
 
 ---
 
-# Property recovery
+## § 44 Property recovery
 
-Inside a property body, synchronize at:
+§ 44(1) Inside a property body, synchronize at:
 
 ```text
 get
@@ -2096,28 +1542,28 @@ try set
 EOF
 ```
 
-A malformed getter must not discard a later setter.
+§ 44(2) A malformed getter must not discard a later setter.
 
-A malformed setter must not discard a later getter.
+§ 44(3) A malformed setter must not discard a later getter.
 
-## Missing setter parameter
+### § 44.1 Missing setter parameter
 
-Do not invent the parameter name.
+§ 44.1(1) Do not invent the parameter name.
 
-Create an invalid setter node, consume or preserve its body, and continue at the
+§ 44.1(2) Create an invalid setter node, consume or preserve its body, and continue at the
 next accessor or property `}`.
 
-## Duplicate accessor
+### § 44.2 Duplicate accessor
 
-Duplicate accessors are semantic or structural property errors.
+§ 44.2(1) Duplicate accessors are semantic or structural property errors.
 
-Preserve both accessors so tooling can show both source ranges.
+§ 44.2(2) Preserve both accessors so tooling can show both source ranges.
 
 ---
 
-# Event recovery
+## § 45 Event recovery
 
-Event declarations synchronize at:
+§ 45(1) Event declarations synchronize at:
 
 ```text
 using
@@ -2126,15 +1572,15 @@ next impl member
 EOF
 ```
 
-A missing storage name must not consume the next impl member.
+§ 45(2) A missing storage name must not consume the next impl member.
 
-Do not silently skip an event body unless event-body syntax becomes canonical.
+§ 45(3) Do not silently skip an event body unless event-body syntax becomes canonical.
 
 ---
 
-# Function recovery
+## § 46 Function recovery
 
-Function declaration recovery must preserve as much as possible:
+§ 46(1) Function declaration recovery must preserve as much as possible:
 
 ```text
 name
@@ -2144,35 +1590,35 @@ return type
 body
 ```
 
-## Missing function name
+### § 46.1 Missing function name
 
-Create an invalid declaration.
+§ 46.1(1) Create an invalid declaration.
 
-Synchronize at generic parameters, `(`, return type, body, or next declaration.
+§ 46.1(2) Synchronize at generic parameters, `(`, return type, body, or next declaration.
 
-Do not create a public anonymous named function.
+§ 46.1(3) Do not create a public anonymous named function.
 
-## Missing return type
+### § 46.2 Missing return type
 
-The return type is required.
+§ 46.2(1) The return type is required.
 
-Create an invalid type reference before the body.
+§ 46.2(2) Create an invalid type reference before the body.
 
-Do not infer `void`.
+§ 46.2(3) Do not infer `void`.
 
-## Missing body
+### § 46.3 Missing body
 
-For an ordinary function, create a missing-body diagnostic.
+§ 46.3(1) For an ordinary function, create a missing-body diagnostic.
 
-Do not consume the next top-level declaration as the body.
+§ 46.3(2) Do not consume the next top-level declaration as the body.
 
-Interface and extern declarations follow their specialized rules.
+§ 46.3(3) Interface and extern declarations follow their specialized rules.
 
 ---
 
-# Extern recovery
+## § 47 Extern recovery
 
-Recover around:
+§ 47(1) Recover around:
 
 ```text
 ABI string
@@ -2185,15 +1631,15 @@ next declaration
 EOF
 ```
 
-Do not invent an ABI string.
+§ 47(2) Do not invent an ABI string.
 
-Preserve enough information for FFI diagnostics.
+§ 47(3) Preserve enough information for FFI diagnostics.
 
 ---
 
-# Let-declaration recovery
+## § 48 Let-declaration recovery
 
-Synchronize each declarator at:
+§ 48(1) Synchronize each declarator at:
 
 ```text
 ,
@@ -2202,7 +1648,7 @@ next statement start at same depth
 EOF
 ```
 
-Preserve:
+§ 48(2) Preserve:
 
 ```text
 let token
@@ -2213,27 +1659,27 @@ copy or move initializer operator
 partial initializer
 ```
 
-## Missing name
+### § 48.1 Missing name
 
-Do not invent an identifier.
+§ 48.1(1) Do not invent an identifier.
 
-Create an invalid declarator and continue at comma or statement boundary.
+§ 48.1(2) Create an invalid declarator and continue at comma or statement boundary.
 
-## Missing type after colon
+### § 48.2 Missing type after colon
 
-Create an invalid type reference.
+§ 48.2(1) Create an invalid type reference.
 
-Do not reinterpret the following initializer as a type.
+§ 48.2(2) Do not reinterpret the following initializer as a type.
 
-## Missing initializer for immutable binding
+### § 48.3 Missing initializer for immutable binding
 
-This is a language diagnostic after the declaration shape is parsed.
+§ 48.3(1) This is a language diagnostic after the declaration shape is parsed.
 
-Keep the declaration node.
+§ 48.3(2) Keep the declaration node.
 
-## Copy versus move
+### § 48.4 Copy versus move
 
-Recovery must never replace:
+§ 48.4(1) Recovery must never replace:
 
 ```text
 :=
@@ -2246,9 +1692,9 @@ with another ownership operator silently.
 
 ---
 
-# Type-first declaration recovery
+## § 49 Type-first declaration recovery
 
-Type-first declaration recovery must distinguish:
+§ 49(1) Type-first declaration recovery must distinguish:
 
 ```text
 type reference
@@ -2257,19 +1703,19 @@ colon
 declarator list
 ```
 
-Speculative parsing must remain transactional.
+§ 49(2) Speculative parsing must remain transactional.
 
-When the type-first interpretation fails and expression parsing is viable, the
+§ 49(3) When the type-first interpretation fails and expression parsing is viable, the
 parser may roll back without diagnostics.
 
-After committing at `mut` or `:`, errors produce an invalid declaration rather
+§ 49(4) After committing at `mut` or `:`, errors produce an invalid declaration rather
 than rolling back to expression parsing.
 
 ---
 
-# Assignment recovery
+## § 50 Assignment recovery
 
-Preserve:
+§ 50(1) Preserve:
 
 ```text
 target
@@ -2277,51 +1723,49 @@ operator spelling
 right expression
 ```
 
-## Missing right expression
+### § 50.1 Missing right expression
 
-Create `InvalidExpression` as the source.
+§ 50.1(1) Create `InvalidExpression` as the source.
 
-Do not drop the assignment target.
+§ 50.1(2) Do not drop the assignment target.
 
-## Assignment in expression position
+### § 50.2 Assignment in expression position
 
-Emit:
+§ 50.2(1) Emit:
 
 ```text
 P2013 parser.invalid-assignment-expression
 ```
 
-Do not reinterpret it as only the left expression for compilation.
+§ 50.2(2) Do not reinterpret it as only the left expression for compilation.
 
-The AST may retain an invalid assignment-expression node for tooling.
+§ 50.2(3) The AST may retain an invalid assignment-expression node for tooling.
 
-## Chained assignment
+### § 50.3 Chained assignment
 
-Preserve the first assignment statement and attach an invalid right expression
+§ 50.3(1) Preserve the first assignment statement and attach an invalid right expression
 or dedicated invalid chain node.
 
-Do not assign associativity.
+§ 50.3(2) Do not assign associativity.
 
 ---
 
-# If recovery
+## § 51 If recovery
 
-## Missing condition
+### § 51.1 Missing condition
 
-Create an invalid condition expression.
+§ 51.1(1) Create an invalid condition expression.
 
-Preserve and parse the consequence block.
+§ 51.1(2) Preserve and parse the consequence block.
 
-The current parser preserves an `IfStatement` with a nil condition.
+§ 51.1(3) The recovered `if` keeps an invalid condition expression, never a nil condition.
 
-Canonical AST should use `InvalidExpression` instead of nil.
+### § 51.2 Missing consequence brace
 
-## Missing consequence brace
-
-When a block is clearly intended, create a virtual `{` only when a matching
+§ 51.2(1) When a block is clearly intended, create a virtual `{` only when a matching
 body boundary can be established safely.
 
-Otherwise preserve an invalid if statement and synchronize at:
+§ 51.2(2) Otherwise preserve an invalid if statement and synchronize at:
 
 ```text
 else
@@ -2330,21 +1774,19 @@ next statement
 EOF
 ```
 
-## Else recovery
+### § 51.3 Else recovery
 
-An unmatched `else` remains an invalid statement.
+§ 51.3(1) An unmatched `else` remains an invalid statement.
 
-Its body should be consumed as part of that invalid statement.
+§ 51.3(2) Its body should be consumed as part of that invalid statement.
 
-Do not expose its inner statements at the surrounding scope.
+§ 51.3(3) Do not expose its inner statements at the surrounding scope.
 
 ---
 
-# For recovery
+## § 52 For recovery
 
-The current malformed-header recovery is retained conceptually.
-
-Synchronize at:
+§ 52(1) Synchronize at:
 
 ```text
 in
@@ -2354,50 +1796,55 @@ step
 EOF
 ```
 
-Preserve bindings, iterable, step, and body where parsed.
+§ 52(2) Preserve bindings, iterable, step, and body where parsed.
 
-Unsupported forms receive focused diagnostics:
+§ 52(3) Unsupported forms receive focused diagnostics:
 
 ```text
 condition-only for
 C-style for
 ```
 
-Recovery may still parse their body.
+§ 52(4) Recovery may still parse their body.
 
-It must not compile them as canonical loops.
+§ 52(5) It must not compile them as canonical loops.
 
----
-
-# While recovery
-
-## Missing condition
-
-Use `InvalidExpression`.
-
-Preserve the body.
-
-## Assignment condition
-
-Emit an error, not only a warning.
-
-Preserve the assignment-shaped invalid condition for tooling.
-
-Do not compile using only the left operand.
-
-## Missing block
-
-Synchronize before the next statement or closing outer brace.
+§ 52(6) The infinite loop `for { ... }` and numeric and range iteration are legal
+(`rules/control-flow/flowcontrol_for.md`) and are never reported as unsupported
+forms; "condition-only for" means `for condition { ... }`, whose canonical
+spelling is `while`.
 
 ---
 
-# Switch recovery
+## § 53 While recovery
 
-The existing case/default synchronization is canonical in principle.
+### § 53.1 Missing condition
 
-## Case item
+§ 53.1(1) Use `InvalidExpression`.
 
-A malformed case item should create an invalid case item and continue at:
+§ 53.1(2) Preserve the body.
+
+### § 53.2 Assignment condition
+
+§ 53.2(1) Emit an error, not only a warning.
+
+§ 53.2(2) Preserve the assignment-shaped invalid condition for tooling.
+
+§ 53.2(3) Do not compile using only the left operand.
+
+### § 53.3 Missing block
+
+§ 53.3(1) Synchronize before the next statement or closing outer brace.
+
+---
+
+## § 54 Switch recovery
+
+§ 54(1) The existing case/default synchronization is canonical in principle.
+
+### § 54.1 Case item
+
+§ 54.1(1) A malformed case item should create an invalid case item and continue at:
 
 ```text
 ,
@@ -2408,28 +1855,29 @@ default
 EOF
 ```
 
-## Missing colon
+### § 54.2 Missing colon
 
-When the case item is complete and a statement clearly follows, insert a virtual
+§ 54.2(1) When the case item is complete and a statement clearly follows, insert a virtual
 colon.
 
-## Duplicate default
+### § 54.3 Duplicate default
 
-Preserve every default clause.
+§ 54.3(1) Preserve every default clause.
 
-Sema or parser validation reports duplicates with related locations.
+§ 54.3(2) Sema or parser validation reports duplicates with related locations.
 
-## Default order
+### § 54.4 Default order
 
-A case after default is retained as source but diagnosed as invalid ordering.
+§ 54.4(1) A case after default is retained as source but diagnosed as invalid ordering.
 
 ---
 
-# Match recovery
+## § 55 Match recovery
 
-Match recovery must improve on the current close-brace-only skipping.
+§ 55(1) Match-arm recovery is sibling-aware; it does not skip to the closing brace of
+the `match`.
 
-Synchronize a malformed arm at:
+§ 55(2) Synchronize a malformed arm at:
 
 ```text
 =>
@@ -2438,36 +1886,57 @@ next probable pattern at the same brace depth and a later line
 EOF
 ```
 
-Use a dedicated pattern parser.
+§ 55(3) Use a dedicated pattern parser.
 
-## Missing arrow
+### § 55.1 Missing arrow
 
-When the pattern is complete and the next token begins an arm body, insert a
+§ 55.1(1) When the pattern is complete and the next token begins an arm body, insert a
 virtual `=>`.
 
-## Invalid pattern
+### § 55.2 Invalid pattern
 
-Create `InvalidPattern`.
+§ 55.2(1) Create `InvalidPattern`.
 
-Do not parse the pattern as an unrestricted valid expression.
+§ 55.2(2) Do not parse the pattern as an unrestricted valid expression.
 
-## Invalid body
+### § 55.3 Invalid body
 
-Create `InvalidExpression` or invalid block body while preserving later arms.
+§ 55.3(1) Create `InvalidExpression` or invalid block body while preserving later arms.
 
-## Exhaustiveness
+### § 55.4 Error patterns
 
-Exhaustiveness is Sema's responsibility.
+§ 55.4(1) For `Result`/error patterns recovery distinguishes an `Err` carrier pattern, a
+concretely qualified error variant, a contextually shortened `.Variant` when
+its enclosing error type is known, and an optional single shallow payload or
+field-pattern binding (`rules/foundations/grammar.md` "Try expression",
+`rules/errors/errorhandling.md` § 15.3, MD-029). These source forms are not
+rejected merely because the general nested-pattern grammar remains closed. A
+malformed payload pattern retains the outer `Err` arm or handler, its source
+location and the following arms. A missing or ambiguous qualification is a
+semantic or type-resolution concern unless the syntax itself is malformed. The
+braces of a field pattern inside `Err(...)` are not a handler list, `match`
+body or arm body.
 
-Invalid arms do not count as proof of exhaustiveness.
+### § 55.5 Exhaustiveness
+
+§ 55.5(1) Exhaustiveness is Sema's responsibility.
+
+§ 55.5(2) Invalid arms do not count as proof of exhaustiveness.
+
+§ 55.5(3) Proof that a well-formed arm cannot execute does not make its syntax an invalid
+pattern. Parser recovery never emits an unreachable-arm error from inferred
+active variants. The semantic diagnostic layer distinguishes source-order full
+coverage, which is invalid when the owning match rule says so, from a valid arm
+excluded only by a proven subject state, which is Information under MD-042
+(`rules/control-flow/flowcontrol_match.md` § 25A).
 
 ---
 
-# Try-handler recovery
+## § 56 Try-handler recovery
 
-Try handlers use the same pattern and arm concepts as match.
+§ 56(1) Try handlers use the same pattern and arm concepts as match.
 
-Synchronize at:
+§ 56(2) Synchronize at:
 
 ```text
 =>
@@ -2477,16 +1946,18 @@ next statement outside a missing closing brace
 EOF
 ```
 
-The current special recovery-start list must be replaced by the shared
-statement-start predicate.
+§ 56(3) Handler synchronization uses the shared grammar-derived statement-start
+predicate, not a private start list.
 
-A malformed first handler must not discard later handlers.
+§ 56(4) The error-pattern forms and their recovery follow § 55.
+
+§ 56(5) A malformed first handler must not discard later handlers.
 
 ---
 
-# Return recovery
+## § 57 Return recovery
 
-A return statement ends before:
+§ 57(1) A return statement ends before:
 
 ```text
 }
@@ -2496,22 +1967,22 @@ later-line statement start where no expression continuation exists
 EOF
 ```
 
-A malformed return expression becomes `InvalidExpression`.
+§ 57(2) A malformed return expression becomes `InvalidExpression`.
 
-Do not consume the next statement as part of the return.
+§ 57(3) Do not consume the next statement as part of the return.
 
 ---
 
-# Defer recovery
+## § 58 Defer recovery
 
-After `defer`, canonical forms are:
+§ 58(1) After `defer`, canonical forms are:
 
 ```text
 block
 return
 ```
 
-When neither appears:
+§ 58(2) When neither appears:
 
 - create an invalid defer statement;
 - synchronize at next statement or closing brace;
@@ -2519,11 +1990,11 @@ When neither appears:
 
 ---
 
-# Discard recovery
+## § 59 Discard recovery
 
-After `discard`, an expression is required.
+§ 59(1) After `discard`, an expression is required.
 
-When absent:
+§ 59(2) When absent:
 
 - retain a `DiscardStatement` with `InvalidExpression`;
 - stop before the closing brace or next statement;
@@ -2531,11 +2002,11 @@ When absent:
 
 ---
 
-# Select recovery
+## § 60 Select recovery
 
-The existing branch synchronization is a foundation.
+§ 60(1) The existing branch synchronization is a foundation.
 
-Synchronize at:
+§ 60(2) Synchronize at:
 
 ```text
 =>
@@ -2546,13 +2017,13 @@ next probable branch expression at same depth and later line
 EOF
 ```
 
-## Missing arrow
+### § 60.1 Missing arrow
 
-When the branch operation is complete and a block follows, insert virtual `=>`.
+§ 60.1(1) When the branch operation is complete and a block follows, insert virtual `=>`.
 
-## Invalid binding branch
+### § 60.2 Invalid binding branch
 
-Preserve:
+§ 60.2(1) Preserve:
 
 ```text
 binding name
@@ -2561,26 +2032,26 @@ operation expression
 body
 ```
 
-## Default and timeout
+### § 60.3 Default and timeout
 
-A malformed default or after branch must not discard later branches.
+§ 60.3(1) A malformed default or after branch must not discard later branches.
 
 ---
 
-# Unsafe recovery
+## § 61 Unsafe recovery
 
-A missing unsafe block produces an invalid unsafe statement.
+§ 61(1) A missing unsafe block produces an invalid unsafe statement.
 
-Do not apply unsafe context to following unrelated statements.
+§ 61(2) Do not apply unsafe context to following unrelated statements.
 
-The unsafe context begins only after a real or safely inserted opening brace and
+§ 61(3) The unsafe context begins only after a real or safely inserted opening brace and
 ends at the corresponding real or virtual closing brace.
 
 ---
 
-# Assembly recovery
+## § 62 Assembly recovery
 
-Structured asm recovery must synchronize at:
+§ 62(1) Structured asm recovery must synchronize at:
 
 ```text
 inputs
@@ -2590,7 +2061,7 @@ clobbers
 EOF
 ```
 
-Within a section, synchronize at:
+§ 62(2) Within a section, synchronize at:
 
 ```text
 ,
@@ -2600,17 +2071,17 @@ next section
 EOF
 ```
 
-Preserve the raw template and successfully parsed operands.
+§ 62(3) Preserve the raw template and successfully parsed operands.
 
-Do not let malformed asm consume the rest of the function.
+§ 62(4) Do not let malformed asm consume the rest of the function.
 
 ---
 
-# Expression recovery
+## § 63 Expression recovery
 
-Expression recovery must be precedence-aware.
+§ 63(1) Expression recovery must be precedence-aware.
 
-Synchronization may stop at tokens that cannot continue the current expression:
+§ 63(2) Synchronization may stop at tokens that cannot continue the current expression:
 
 ```text
 ,
@@ -2625,27 +2096,27 @@ statement boundary
 EOF
 ```
 
-The parser must still respect nested delimiters.
+§ 63(3) The parser must still respect nested delimiters.
 
-## Missing prefix operand
+### § 63.1 Missing prefix operand
 
-Example:
+§ 63.1(1) Example:
 
 ```sec
 let value := -
 ```
 
-Create an invalid right operand.
+§ 63.1(2) Create an invalid right operand.
 
-## Missing infix right operand
+### § 63.2 Missing infix right operand
 
-Example:
+§ 63.2(1) Example:
 
 ```sec
 let value := left +
 ```
 
-Preserve:
+§ 63.2(2) Preserve:
 
 ```text
 left
@@ -2653,54 +2124,54 @@ left
 InvalidExpression
 ```
 
-## Unexpected operator
+### § 63.3 Unexpected operator
 
-Example:
+§ 63.3(1) Example:
 
 ```sec
 left + * right
 ```
 
-Do not invent the intended operator.
+§ 63.3(2) Do not invent the intended operator.
 
-Preserve the unexpected operator in the invalid expression.
+§ 63.3(3) Preserve the unexpected operator in the invalid expression.
 
-## Grouped expression
+### § 63.4 Grouped expression
 
-A missing `)` may be inserted before a clear enclosing boundary.
+§ 63.4(1) A missing `)` may be inserted before a clear enclosing boundary.
 
-## Postfix expression
+### § 63.5 Postfix expression
 
-Malformed call, index, slice, generic call, member access, or typed construction
+§ 63.5(1) Malformed call, index, slice, generic call, member access, or typed construction
 should preserve the valid left expression and create an invalid postfix node.
 
 ---
 
-# Member-access recovery
+## § 64 Member-access recovery
 
-Example:
+§ 64(1) Example:
 
 ```sec
 value.
 ```
 
-Do not invent a member name.
+§ 64(2) Do not invent a member name.
 
-Create an invalid member expression and stop at the expression boundary.
+§ 64(3) Create an invalid member expression and stop at the expression boundary.
 
-Example:
+§ 64(4) Example:
 
 ```sec
 value..other
 ```
 
-Do not silently reinterpret range syntax as member access or vice versa.
+§ 64(5) Do not silently reinterpret range syntax as member access or vice versa.
 
 ---
 
-# Index and slice recovery
+## § 65 Index and slice recovery
 
-Inside brackets, synchronize at:
+§ 65(1) Inside brackets, synchronize at:
 
 ```text
 ]
@@ -2710,7 +2181,7 @@ outer expression boundary
 EOF
 ```
 
-Preserve:
+§ 65(2) Preserve:
 
 ```text
 base expression
@@ -2721,80 +2192,106 @@ end expression
 closing token or missing token
 ```
 
-A missing index expression creates `InvalidExpression`.
+§ 65(3) A missing index expression creates `InvalidExpression`.
 
-A missing range bound may be valid depending on slice grammar.
+§ 65(4) A missing range bound may be valid depending on slice grammar.
 
 ---
 
-# Range recovery
+## § 66 Range recovery
 
-Ranges are contextual.
+§ 66(1) Ranges are contextual.
 
-When a range appears where no range is permitted, preserve an invalid expression
+§ 66(2) When a range appears where no range is permitted, preserve an invalid expression
 and emit the contextual range diagnostic.
 
-Do not create a first-class range value in Sec 0.1.
+§ 66(3) Do not create a first-class range value in Sec 0.1.
 
-A malformed range should not consume the next statement while searching for a
+§ 66(4) A malformed range should not consume the next statement while searching for a
 bound.
 
 ---
 
-# Contextual `x` recovery
+## § 67 Contextual `x` recovery
 
-After contextual matrix `x` is implemented:
+§ 67(1) Contextual matrix `x` is an active infix operator (`rules/foundations/operators.md`,
+`rules/foundations/grammar.md`):
 
-- parse it only in valid infix position;
-- preserve ordinary identifier `x`;
-- a missing right operand creates an invalid infix expression;
+- it is parsed as an operator only in valid infix position;
+- an ordinary identifier named `x` keeps its identifier meaning;
+- a missing right operand creates an invalid infix expression that retains the
+  left operand and the operator;
 - recovery must not reclassify an identifier named `x` outside infix context.
 
 ---
 
-# Reserved syntax
+## § 68 Contextual Option constructors
 
-Reserved syntax should receive focused diagnostics.
-
-Examples:
-
-```text
-?
-free
-panic
-assert
-```
-
-Reserved syntax is not an unknown-token lexer failure.
-
-Preserve a dedicated invalid or reserved node where it helps tooling.
-
-`?` remains without Sec 0.1 meaning.
-
-`require` is an ordinary identifier spelling and is not handled by reserved
-syntax recovery outside any future explicitly contextual grammar role.
-
-Recovery must not assume ternary or Rust-style propagation semantics.
+§ 68(1) A syntactically valid one-argument `Some(expression)` is not rejected at parse
+time as an unknown function merely because no `Option` target type is
+immediately available. Semantic analysis determines whether context or the
+payload supplies a legal `Option[T]` and separately validates ownership,
+borrowing and lifetime (`rules/types/types.md` "Contextual and self-inferred
+`Some(value)`", MD-102). `None()` remains a syntactically recognizable but
+invalid use of the absence value and receives the canonical focused diagnostic
+(`S1157`, `rules/tooling/diagnostics.md` § 24(4f)).
 
 ---
 
-# Compatibility syntax
+## § 69 Reserved syntax
 
-Compatibility syntax is parsed intentionally.
+§ 69(1) Reserved and context-restricted spellings receive focused diagnostics, not
+generic token failures (`rules/foundations/grammar.md` "Reserved syntax"):
 
-It is not an error-recovery guess.
+- `?` is reserved and has no meaning in Sec 0.1. Recovery diagnoses it under
+  the selected language version and does not assume ternary or Rust-style
+  propagation semantics. This rulebook does not decide that a later language
+  version may never give `?` a meaning; such syntax is governed by its own
+  future rule.
+- `free` is valid only as the `FreeDeclaration` impl member; elsewhere it is
+  diagnosed in its grammar context.
+- `require` is a general keyword and is not a valid identifier.
 
-Examples currently include selected forms such as:
+§ 69(2) Reserved syntax is not an unknown-token lexer failure.
+
+§ 69(3) Preserve a dedicated invalid or reserved node where it helps tooling.
+
+§ 69(4) Parser synchronization recognizes the active constructs `panic` and `assert`
+(`rules/errors/panic.md`, with their focused assertion diagnostics), the legal
+infinite `for`, the selected source attributes `@target` / `@when`, and
+contextual matrix `x` according to their owning rules. A currently valid
+construct is never treated as reserved merely because an earlier revision of
+this rulebook predated it.
+
+---
+
+## § 70 Legacy and compatibility syntax
+
+§ 70(1) Recognizable legacy Sec syntax is invalid unless an active canonical owner
+explicitly defines a migration exception (`rules/foundations/grammar.md`
+"Canonical syntax and legacy forms", MD-003). A recognized legacy form is not
+made canonical by its recovery representation: it remains a parse or
+validation error and blocks artifact publication.
+
+§ 70(2) Legacy forms receive focused registered diagnostics where the intended
+migration can be determined reliably, for example:
 
 ```text
-enum colon initializers
-standalone `struct Name`
-prefix sequence types
-explicit `ref self`
-assigned named-type syntax
+P2023 parser.legacy-assigned-type
+P2026 parser.prefix-sequence-type
+P2027 parser.future-struct-declaration
+P2028 parser.legacy-enum-colon-initializer
+P2034 parser.legacy-try-match-wrapper
+P2035 parser.removed-uppercase-foreign-qualifier
 ```
 
-Compatibility nodes or diagnostics should record:
+§ 70(3) The registry remains the authority for the complete list
+(§ 10).
+
+§ 70(4) The legacy `#target` directive is a compatibility form governed by
+`rules/compiler/compiler.md` § 15; it is never advertised as canonical syntax.
+
+§ 70(5) Legacy-form diagnostics or nodes record:
 
 ```text
 source form
@@ -2802,19 +2299,18 @@ canonical replacement
 safe-fix range
 ```
 
-A formatter may normalize only when the transformation is proven
-semantics-preserving.
+§ 70(6) Default formatting never converts invalid legacy syntax into canonical syntax.
+A Language Correction (`rules/tooling/formatter.md` §§ 26–27) may rewrite a
+legacy form only where the canonical migration contract proves the correction
+unambiguous and meaning-preserving.
 
 ---
 
-# Speculative parsing
+## § 71 Speculative parsing
 
-Speculative parsing must be transactional.
+§ 71(1) Speculative parsing must be transactional.
 
-The parser currently snapshots lexer position, tokens, error length, and warning
-length for typed-declaration lookahead.
-
-The canonical transaction must include every mutable parser state:
+§ 71(2) The canonical transaction must include every mutable parser state:
 
 ```text
 lexer/token cursor
@@ -2830,12 +2326,12 @@ parser mode flags
 partially appended AST nodes
 ```
 
-## Commit
+### § 71.1 Commit
 
-A speculative branch commits only when its distinguishing grammar token is
+§ 71.1(1) A speculative branch commits only when its distinguishing grammar token is
 confirmed.
 
-Examples:
+§ 71.1(2) Examples:
 
 ```text
 typed declaration colon
@@ -2844,9 +2340,9 @@ generic call followed by call parentheses
 typed declaration group shape
 ```
 
-## Rollback
+### § 71.2 Rollback
 
-Rollback must leave no:
+§ 71.2(1) Rollback must leave no:
 
 ```text
 diagnostic
@@ -2861,11 +2357,11 @@ from the rejected branch.
 
 ---
 
-# Parser context stack
+## § 72 Parser context stack
 
-The parser should maintain explicit recovery contexts.
+§ 72(1) The parser should maintain explicit recovery contexts.
 
-Conceptual values:
+§ 72(2) Conceptual values:
 
 ```text
 CompilationUnit
@@ -2897,7 +2393,7 @@ AsmBody
 AsmSection
 ```
 
-Context drives:
+§ 72(3) Context drives:
 
 ```text
 expected tokens
@@ -2909,9 +2405,9 @@ LSP completion
 
 ---
 
-# Source ranges
+## § 73 Source ranges
 
-Canonical source positions should support:
+§ 73(1) Canonical source positions should support:
 
 ```text
 file
@@ -2923,11 +2419,11 @@ end line
 end column
 ```
 
-The exact internal offset unit must be consistent.
+§ 73(2) The exact internal offset unit must be consistent.
 
-LSP conversion to UTF-16 positions happens at the LSP boundary.
+§ 73(3) LSP conversion to UTF-16 positions happens at the LSP boundary.
 
-A virtual token has:
+§ 73(4) A virtual token has:
 
 ```text
 start == end
@@ -2935,13 +2431,13 @@ start == end
 
 at its insertion anchor.
 
-Skipped source has a real nonempty range.
+§ 73(5) Skipped source has a real nonempty range.
 
 ---
 
-# Token and trivia retention
+## § 74 Token and trivia retention
 
-Recovery must preserve access to:
+§ 74(1) Recovery must preserve access to:
 
 ```text
 all real tokens
@@ -2951,7 +2447,7 @@ skipped tokens
 virtual tokens
 ```
 
-This may be implemented through:
+§ 74(2) This may be implemented through:
 
 ```text
 token buffer
@@ -2959,19 +2455,19 @@ lossless syntax tree
 AST plus recovery ranges and original source
 ```
 
-A fully lossless CST is not mandated for Sec 0.1.
+§ 74(3) A fully lossless CST is not mandated for Sec 0.1.
 
-The chosen model must support formatter and LSP requirements.
+§ 74(4) The chosen model must support formatter and LSP requirements.
 
 ---
 
-# Lexer errors
+## § 75 Lexer errors
 
-An `ILLEGAL` lexer token is not silently skipped.
+§ 75(1) An `ILLEGAL` lexer token is not silently skipped.
 
-The parser should create a lexical diagnostic and preserve the token.
+§ 75(2) The parser should create a lexical diagnostic and preserve the token.
 
-Examples:
+§ 75(3) Examples:
 
 ```text
 unknown character
@@ -2980,27 +2476,27 @@ unterminated string
 invalid character literal
 ```
 
-The lexer must always advance after emitting an illegal token.
+§ 75(4) The lexer must always advance after emitting an illegal token.
 
-If it does not advance, the parser marks a fatal internal failure.
+§ 75(5) If it does not advance, the parser marks a fatal internal failure.
 
 ---
 
-# Interaction with Sema
+## § 76 Interaction with Sema
 
-## Batch compilation
+### § 76.1 Batch compilation
 
-When parser errors exist:
+§ 76.1(1) When parser errors exist:
 
 - compilation fails;
 - code generation is not attempted;
 - Sema may run only to provide additional independent diagnostics where safe.
 
-## Tooling analysis
+### § 76.2 Tooling analysis
 
-For LSP, Sema may analyze valid subtrees.
+§ 76.2(1) For LSP, Sema may analyze valid subtrees.
 
-It must:
+§ 76.2(2) It must:
 
 - skip invalid declarations when symbol identity is unavailable;
 - assign `ErrorType` to invalid expressions and type references;
@@ -3009,17 +2505,17 @@ It must:
 - avoid ownership-state changes caused by invalid expressions;
 - avoid treating virtual syntax as user-confirmed semantic intent.
 
-## Invalid symbols
+### § 76.3 Invalid symbols
 
-An invalid declaration must not introduce a normal visible symbol unless its
+§ 76.3(1) An invalid declaration must not introduce a normal visible symbol unless its
 name and declaration category are unambiguous.
 
-When introduced for tooling, mark it invalid so it cannot participate as a
+§ 76.3(2) When introduced for tooling, mark it invalid so it cannot participate as a
 normal overload or type candidate.
 
-## Ownership
+### § 76.4 Ownership
 
-Invalid syntax does not:
+§ 76.4(1) Invalid syntax does not:
 
 ```text
 move a value
@@ -3030,31 +2526,31 @@ call FFI
 establish a resource state
 ```
 
-Ownership analysis may conservatively mark affected flow unknown for later
+§ 76.4(2) Ownership analysis may conservatively mark affected flow unknown for later
 diagnostic suppression.
 
 ---
 
-# Interaction with formatter
+## § 77 Interaction with formatter
 
-## Valid surrounding code
+### § 77.1 Valid surrounding code
 
-The formatter may format valid regions surrounding an invalid node.
+§ 77.1(1) The formatter may format valid regions surrounding an invalid node.
 
-## Invalid region
+### § 77.2 Invalid region
 
-The ordinary formatter should preserve the original token spelling and order
+§ 77.2(1) The ordinary formatter should preserve the original token spelling and order
 inside an invalid region as much as possible.
 
-It must not print virtual tokens into source automatically.
+§ 77.2(2) It must not print virtual tokens into source automatically.
 
-## Explicit fixes
+### § 77.3 Explicit fixes
 
-A code action may insert a virtual token into source after user selection.
+§ 77.3(1) A code action may insert a virtual token into source after user selection.
 
-## No semantic guessing
+### § 77.4 No semantic guessing
 
-The formatter must not:
+§ 77.4(1) The formatter must not:
 
 ```text
 invent an identifier
@@ -3065,16 +2561,16 @@ choose a type
 delete a malformed declaration
 ```
 
-## Stability
+### § 77.5 Stability
 
-Formatting a recovered file must not move diagnostics to unrelated source
+§ 77.5(1) Formatting a recovered file must not move diagnostics to unrelated source
 locations unnecessarily.
 
 ---
 
-# Interaction with LSP
+## § 78 Interaction with LSP
 
-The LSP should use recovery contexts for:
+§ 78(1) The LSP should use recovery contexts for:
 
 ```text
 completion
@@ -3088,15 +2584,15 @@ outline
 navigation
 ```
 
-## Completion
+### § 78.1 Completion
 
-Examples:
+§ 78.1(1) Examples:
 
 ```sec
 fn Add(left: |
 ```
 
-The context indicates a type is expected.
+§ 78.1(2) The context indicates a type is expected.
 
 ```sec
 Point {
@@ -3104,7 +2600,7 @@ Point {
 }
 ```
 
-The context indicates a struct field or spread is expected.
+§ 78.1(3) The context indicates a struct field or spread is expected.
 
 ```sec
 match value {
@@ -3112,39 +2608,39 @@ match value {
 }
 ```
 
-The context may suggest `=>` and guards.
+§ 78.1(4) The context may suggest `=>` and guards.
 
-## Hover
+### § 78.2 Hover
 
-Hover is available on valid nodes inside a recovered declaration.
+§ 78.2(1) Hover is available on valid nodes inside a recovered declaration.
 
-No fabricated type should be shown for an invalid node.
+§ 78.2(2) No fabricated type should be shown for an invalid node.
 
-## Document symbols
+### § 78.3 Document symbols
 
-A recovered function with a valid name should remain visible in the outline even
+§ 78.3(1) A recovered function with a valid name should remain visible in the outline even
 when its body is malformed.
 
-## Semantic tokens
+### § 78.4 Semantic tokens
 
-Tokens retain lexical classification.
+§ 78.4(1) Tokens retain lexical classification.
 
-Semantic classification is provided only where resolution is reliable.
+§ 78.4(2) Semantic classification is provided only where resolution is reliable.
 
-## Diagnostics
+### § 78.5 Diagnostics
 
-The LSP receives structured ranges and IDs.
+§ 78.5(1) The LSP receives structured ranges and IDs.
 
-It must not parse line and column back out of message strings.
+§ 78.5(2) It must not parse line and column back out of message strings.
 
 ---
 
-# Safe fixes
+## § 79 Safe fixes
 
-A parser diagnostic may carry a machine-applicable fix only when intent is
+§ 79(1) A parser diagnostic may carry a machine-applicable fix only when intent is
 unique.
 
-Typical safe fixes:
+§ 79(2) Typical safe fixes:
 
 ```text
 insert missing `:`
@@ -3158,7 +2654,7 @@ replace C-style for with no automatic fix unless mechanically safe
 remove one duplicated comma
 ```
 
-Not automatically safe:
+§ 79(3) Not automatically safe:
 
 ```text
 invent identifier
@@ -3170,46 +2666,46 @@ choose match variant
 choose function body
 ```
 
-A diagnostic may offer a nonautomatic suggestion without a machine edit.
+§ 79(4) A diagnostic may offer a nonautomatic suggestion without a machine edit.
 
 ---
 
-# Recovery quality rules
+## § 80 Recovery quality rules
 
-## Prefer local repair
+### § 80.1 Prefer local repair
 
-Try one local structural repair before region skipping.
+§ 80.1(1) Try one local structural repair before region skipping.
 
-## Prefer preserving siblings
+### § 80.2 Prefer preserving siblings
 
-A repair preserving later list items or body members is better than abandoning
+§ 80.2(1) A repair preserving later list items or body members is better than abandoning
 the complete parent.
 
-## Prefer fewer assumptions
+### § 80.3 Prefer fewer assumptions
 
-Inserting a missing comma is safer than inventing an expression.
+§ 80.3(1) Inserting a missing comma is safer than inventing an expression.
 
-## Prefer grammar context
+### § 80.4 Prefer grammar context
 
-Use the current grammar production rather than a generic token list.
+§ 80.4(1) Use the current grammar production rather than a generic token list.
 
-## Prefer no cascade
+### § 80.5 Prefer no cascade
 
-After repairing one missing delimiter, suppress errors that are only artifacts
+§ 80.5(1) After repairing one missing delimiter, suppress errors that are only artifacts
 of the same repair.
 
-## Never prefer successful misparse
+### § 80.6 Never prefer successful misparse
 
-A recovered parse that changes the apparent program is worse than an invalid
+§ 80.6(1) A recovered parse that changes the apparent program is worse than an invalid
 node.
 
 ---
 
-# Recovery algorithm
+## § 81 Recovery algorithm
 
-Sec 0.1 may use deterministic recursive-descent recovery.
+§ 81(1) Sec 0.1 may use deterministic recursive-descent recovery.
 
-Recommended order at a failed expectation:
+§ 81(2) Recommended order at a failed expectation:
 
 ```text
 1. If expected token is present, consume it.
@@ -3224,118 +2720,19 @@ Recommended order at a failed expectation:
 7. Guarantee progress before re-entering the same parse loop.
 ```
 
-A global minimum-cost parser repair algorithm is not required.
+§ 81(3) A global minimum-cost parser repair algorithm is not required.
 
 ---
 
-# Current implementation corrections
+## § 82 Conformance requirements
 
-## Replace string diagnostics
+§ 82(1) A conforming parser satisfies the following observable requirements. The
+concrete tests, fixtures, fuzz campaigns and their status are tracked by the
+governance entries named in the header.
 
-Refactor:
+### § 82.1 General invariants
 
-```go
-errors   []string
-warnings []string
-```
-
-toward structured diagnostics.
-
-Compatibility accessors may format strings temporarily for existing tests.
-
-## Extend invalid AST
-
-Keep `InvalidStatement`.
-
-Add the other invalid-node categories and common recovery metadata.
-
-## Replace global statement-start helper
-
-Generate or centralize:
-
-```text
-top-level declaration starts
-block statement starts
-expression starts
-type starts
-impl member starts
-interface member starts
-property accessor starts
-pattern starts
-```
-
-Do not let these tables drift independently from `grammar.md`.
-
-## Preserve partial blocks
-
-Change unterminated-block paths to return partial blocks with a virtual closer
-instead of returning nil.
-
-## Improve arm recovery
-
-Replace `skipMatchArm()` and `skipTryHandler()` with sibling-aware recovery.
-
-## Record skipped ranges
-
-Every skip helper records the skipped tokens or source range.
-
-## Correct while assignment
-
-Implemented for `while`: assignment-in-condition recovery is a structured
-`P2013` parser error.
-
-Do not treat the recovered left operand as a valid complete condition for batch
-compilation.
-
----
-
-# Implementation status matrix
-
-| Recovery area | Current status |
-|---|---|
-| continue to EOF after ordinary parser error | Implemented |
-| string error collection | Implemented |
-| structured parser diagnostics | Partly implemented; compatibility strings retained |
-| general `P2001` registry entry | Implemented |
-| focused parser diagnostic IDs | Registered; initial focused paths wired, broader migration pending |
-| speculative lexer rollback | Implemented |
-| speculative diagnostic rollback | Implemented for strings, structured diagnostics, dedup keys and deterministic episode numbering |
-| speculative recovery-event rollback | Implemented for diagnostic-associated events |
-| `InvalidStatement` | Implemented |
-| invalid declaration node | Implemented for failed top-level declaration-shaped statements |
-| invalid expression node | Implemented for Pratt prefix failures; broader retention pending |
-| invalid type node | Partly implemented through invalid `TypeReference` metadata |
-| invalid pattern node | Implemented for malformed match arms and try handlers |
-| invalid member node | Implemented for disallowed impl members |
-| missing-token node | Not implemented |
-| skipped-token retention | Implemented for general statements and migrated delimiter-aware helpers; remaining specialized helpers pending |
-| struct field synchronization | Implemented, node retention partial |
-| malformed for-header recovery | Implemented |
-| switch case synchronization | Implemented |
-| select branch synchronization | Implemented, including a skipped-token progress guard for malformed headers |
-| impl member synchronization | Delimiter-aware with retained invalid members; start set remains incomplete |
-| target directive synchronization | Implemented |
-| generic parameter synchronization | Implemented, coarse |
-| unexpected else preservation | Implemented |
-| missing try-handler brace recovery | Implemented for selected starts |
-| sibling-aware match-arm recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
-| sibling-aware try-handler recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
-| partial unterminated block retention | Implemented for ordinary statement blocks, switch/select bodies, match arms, and try handlers; other specialized paths remain partial |
-| delimiter stack across all helpers | Shared stack implemented and used by major skip helpers; remaining ad hoc scans pending migration |
-| recovery episode suppression | Implemented at integrated stable boundaries with same-location cascade suppression; broader causal suppression pending |
-| parser diagnostic cap | Implemented at 100 diagnostics with one terminal `P2015` |
-| recovery-aware formatter | Partly implemented or planned |
-| recovery-aware LSP | Partly implemented or planned |
-| progress fuzzing | Not implemented |
-| recovery golden fixtures | Partly implemented |
-
----
-
-# Tests
-
-## General invariants
-
-Every recovery test should verify:
+§ 82.1(1) Recovery behavior is verified for:
 
 ```text
 diagnostic count
@@ -3350,11 +2747,11 @@ parser reaches EOF
 stable AST shape
 ```
 
-## One-error tests
+### § 82.2 One-error tests
 
-For one local error, prefer exactly one primary parser diagnostic.
+§ 82.2(1) For one local error, prefer exactly one primary parser diagnostic.
 
-Examples:
+§ 82.2(2) Examples:
 
 ```text
 missing struct field colon
@@ -3364,9 +2761,9 @@ missing match arrow
 missing closing parenthesis
 ```
 
-## Cascade tests
+### § 82.3 Cascade tests
 
-Verify that one missing token does not produce unrelated errors on:
+§ 82.3(1) Verify that one missing token does not produce unrelated errors on:
 
 ```text
 next field
@@ -3377,9 +2774,9 @@ next arm
 next declaration
 ```
 
-## Progress tests
+### § 82.4 Progress tests
 
-Feed repeated malformed tokens:
+§ 82.4(1) Feed repeated malformed tokens:
 
 ```text
 }}}}}
@@ -3388,22 +2785,22 @@ Feed repeated malformed tokens:
 ++++
 ```
 
-The parser must terminate.
+§ 82.4(2) The parser must terminate.
 
-## Truncation tests
+### § 82.5 Truncation tests
 
-Truncate valid files after every token.
+§ 82.5(1) Truncate valid files after every token.
 
-For every prefix:
+§ 82.5(2) For every prefix:
 
 - parser must not panic;
 - parser must terminate;
 - diagnostics must remain bounded;
 - partial AST must remain internally valid.
 
-## Mutation tests
+### § 82.6 Mutation tests
 
-From valid fixtures:
+§ 82.6(1) From valid fixtures:
 
 ```text
 delete one token
@@ -3413,11 +2810,11 @@ move one closing brace
 insert one keyword
 ```
 
-Verify bounded diagnostics and later-node preservation.
+§ 82.6(2) Verify bounded diagnostics and later-node preservation.
 
-## Fuzz tests
+### § 82.7 Robustness inputs
 
-Fuzz:
+§ 82.7(1) The progress and termination requirements also hold for:
 
 ```text
 lexer input
@@ -3429,11 +2826,11 @@ Unicode identifiers
 unterminated comments and strings
 ```
 
-## Tooling tests
+### § 82.8 Tooling tests
 
-Verify completion and symbols in incomplete source.
+§ 82.8(1) Verify completion and symbols in incomplete source.
 
-Examples:
+§ 82.8(2) Examples:
 
 ```sec
 fn Test(value: |
@@ -3453,76 +2850,17 @@ match value {
 
 ---
 
-# Required recovery fixtures
+## § 83 Implementation independence
 
-Create:
+§ 83(1) No implementation-language package name, struct layout, pass name,
+optimization choice or current status is normative unless an owning compiler
+architecture rule explicitly makes that fact an externally required interface.
+The compiler may organize recovery internally in different ways provided the
+observable contract and the progress and proof invariants of this rulebook are
+preserved.
 
-```text
-parser_recovery_valid_context.sec
-parser_recovery_missing_tokens.sec
-parser_recovery_unexpected_tokens.sec
-parser_recovery_declarations.sec
-parser_recovery_statements.sec
-parser_recovery_expressions.sec
-parser_recovery_types.sec
-parser_recovery_structs.sec
-parser_recovery_impl.sec
-parser_recovery_switch.sec
-parser_recovery_match.sec
-parser_recovery_try.sec
-parser_recovery_select.sec
-parser_recovery_asm.sec
-parser_recovery_truncated.sec
-parser_recovery_cascades.sec
-```
-
-Each malformed example should state:
-
-```sec
-/* Expected primary diagnostic: P....
- * Expected recovery: ...
- * Expected preserved node: ...
- */
-```
-
----
-
-# Parser bootstrap requirements
-
-The Sec implementation of the parser should use the same recovery model.
-
-It must have explicit types for:
-
-```text
-Diagnostic
-RecoveryContext
-RecoveryEvent
-MissingToken
-InvalidExpression
-InvalidStatement
-InvalidDeclaration
-InvalidTypeReference
-InvalidPattern
-```
-
-Parser helper methods should return structured results rather than relying only
-on nullable nodes.
-
-Conceptual form:
-
-```sec
-type ParseNodeResult[T] union {
-    Parsed(T)
-    Recovered(T)
-    Failed
-}
-```
-
-This is illustrative.
-
-The exact bootstrap API may use another explicit type.
-
-The important distinction is:
+§ 83(2) Every parser implementation, including a self-hosted Sec parser, follows the
+same recovery model and distinguishes:
 
 ```text
 valid node
@@ -3532,378 +2870,41 @@ unrecoverable branch failure
 
 ---
 
-# Required synchronization
+## § 84 Design summary
 
-This document must remain synchronized with:
+§ 84(1) Sec uses deterministic, context-specific parser recovery under the selected
+language version.
 
-```text
-grammar.md
-lexical_structure.md
-operators.md
-diagnostics.md
-lsp.md
-formatter.md
-semantic_ir.md
-compiler_pipeline.md
-types.md
-functions.md
-struct.md
-enums.md
-unions.md
-declarations/interfaces.md
-impl.md
-properties.md
-collections.md
-flowcontrol_if.md
-flowcontrol_for.md
-flowcontrol_while.md
-flowcontrol_switch.md
-flowcontrol_match.md
-errorhandling.md
-inline_assembly.md
-language-rulebook-status.md
-rules_implementations.txt
-```
+§ 84(2) The parser returns a partial program after ordinary syntax errors.
 
----
+§ 84(3) Parser errors block normal compilation and code generation.
 
-# Appendix A — Codex implementation plan
+§ 84(4) Tooling may analyze valid subtrees.
 
-## A.1 Add the rulebook
+§ 84(5) Recovery never silently changes invalid source into another valid program.
 
-Implemented.
+§ 84(6) The parser may insert a unique missing structural token virtually.
 
-Add:
+§ 84(7) It does not invent identifiers, expressions, types, or operators.
 
-```text
-rules/compiler/parser_recovery.md
-```
+§ 84(8) Recoverable malformed constructs produce invalid AST nodes rather than nil.
 
-Update:
+§ 84(9) Synchronization respects delimiter depth and grammar context and uses
+grammar-derived start sets.
 
-```text
-language-rulebook-status.md
-rules/compiler/rules_implementations.txt
-```
+§ 84(10) One local syntax cause should normally produce one primary diagnostic with a
+stable registered ID.
 
-Mark the rulebook as Written.
+§ 84(11) Skipped tokens and virtual tokens remain distinguishable from real valid syntax.
 
-Do not mark the recovery implementation complete.
+§ 84(12) Speculative parsing is fully transactional.
 
----
+§ 84(13) Sema uses an internal error type to suppress dependent cascades.
 
-## A.2 Introduce structured parser diagnostics
+§ 84(14) The formatter preserves malformed regions and never makes a semantics-changing
+repair.
 
-Partly implemented. The parser and LSP have a structured compatibility path;
-source ranges, related locations, fixes and broad focused-ID migration remain.
+§ 84(15) The LSP uses recovery context for completion, symbols, and safe fixes.
 
-Replace parser-owned string slices with structured diagnostics.
-
-Keep temporary compatibility formatting for existing tests.
-
-Register the focused parser IDs from this document.
-
-Add:
-
-```text
-primary source range
-expected token set
-unexpected token
-related location
-safe fixes
-```
-
----
-
-## A.3 Add source offsets
-
-Extend lexer tokens or a source map with stable start and end offsets.
-
-Retain line and column.
-
-Use source-map conversion for LSP UTF-16 coordinates.
-
----
-
-## A.4 Add parser context stack
-
-Track the current grammar recovery context.
-
-Use it for:
-
-```text
-diagnostics
-synchronization
-completion
-missing-token insertion
-```
-
----
-
-## A.5 Add delimiter stack
-
-Track `()`, `[]`, and `{}` nesting.
-
-All skip functions must respect the current delimiter depth.
-
-Add parser assertions for underflow and nonprogress.
-
----
-
-## A.6 Add invalid nodes
-
-Add:
-
-```text
-InvalidDeclaration
-InvalidExpression
-InvalidTypeReference
-InvalidPattern
-InvalidMember
-```
-
-Extend `InvalidStatement`.
-
-Add common `RecoveryInfo`.
-
-Update visitors, formatter, Sema, and LSP.
-
----
-
-## A.7 Add virtual tokens
-
-Represent safe missing structural tokens explicitly.
-
-Do not mutate the lexer's real token stream.
-
-Add code-action generation from missing-token metadata.
-
----
-
-## A.8 Centralize grammar start predicates
-
-Create shared definitions for:
-
-```text
-declaration start
-statement start
-expression start
-type start
-pattern start
-impl member start
-interface member start
-property accessor start
-```
-
-Update all parser paths and tests.
-
-This fixes the current incomplete general recovery set.
-
----
-
-## A.9 Preserve partial blocks
-
-Update block parsers to return partial blocks on EOF or a reliable outer
-boundary.
-
-Attach a virtual closing brace and diagnostic.
-
-Do not drop already parsed statements.
-
----
-
-## A.10 Refactor skip helpers
-
-Replace ad hoc functions with context-aware helpers.
-
-Conceptual APIs:
-
-```go
-func (p *Parser) recoverTo(context RecoveryContext, extra ...TokenPredicate)
-func (p *Parser) recoverList(close TokenType, itemStart TokenPredicate)
-func (p *Parser) recoverBlock(memberStart TokenPredicate)
-```
-
-Specialized wrappers may remain.
-
-Every helper records skipped source.
-
----
-
-## A.11 Improve lists
-
-Implement item-preserving recovery for:
-
-```text
-imports
-generic parameters
-type arguments
-parameters
-arguments
-array elements
-struct fields
-struct literal items
-enum values
-union variants
-register fields
-```
-
----
-
-## A.12 Improve arms and branches
-
-Implement sibling-aware recovery for:
-
-```text
-match arms
-try handlers
-switch cases
-select branches
-property accessors
-asm sections
-```
-
-Do not scan directly to the parent closing brace after one malformed sibling.
-
----
-
-## A.13 Correct invalid condition recovery
-
-Implemented for `while` conditions.
-
-Assignment in condition is an error.
-
-Retain partial syntax for tooling.
-
-Block batch compilation.
-
----
-
-## A.14 Integrate Sema
-
-Add `ErrorType`.
-
-Define visitor behavior for every invalid node.
-
-Suppress dependent cascades.
-
-Do not allow invalid nodes into Semantic IR.
-
----
-
-## A.15 Integrate formatter
-
-Preserve malformed regions.
-
-Do not emit virtual tokens automatically.
-
-Support explicit safe fixes.
-
----
-
-## A.16 Integrate LSP
-
-Use recovery contexts for completion and signature help.
-
-Expose structured diagnostics and code actions.
-
-Keep valid document symbols from recovered declarations.
-
----
-
-## A.17 Add recovery limits
-
-Add:
-
-```text
-diagnostic cap
-recovery-event cap if needed
-maximum skipped region accounting
-progress assertions
-```
-
-Emit `P2015` once when the diagnostic cap is reached.
-
----
-
-## A.18 Convert existing tests
-
-Migrate exact string comparisons toward:
-
-```text
-diagnostic ID
-range
-message fragment
-recovery shape
-```
-
-Message text may evolve without breaking semantic diagnostic tests.
-
-Keep selected golden-message tests for user-facing quality.
-
----
-
-## A.19 Add fuzz and mutation tests
-
-Add deterministic seeds reproducing every fixed recovery bug.
-
-Run parser fuzzing in CI with a bounded corpus and time budget.
-
----
-
-## A.20 Recommended implementation order
-
-```text
-1. Add structured source ranges and diagnostics.
-2. Add recovery contexts and centralized start predicates.
-3. Add delimiter tracking and progress assertions.
-4. Add MissingToken and RecoveryInfo.
-5. Add invalid expression/type/declaration/pattern nodes.
-6. Preserve partial unterminated blocks.
-7. Refactor list recovery.
-8. Refactor match, try, switch, select, property, and asm recovery.
-9. Add ErrorType and Sema cascade suppression.
-10. Integrate formatter and LSP.
-11. Add diagnostic cap.
-12. Add truncation, mutation, and fuzz tests.
-```
-
----
-
-# Design summary
-
-Sec uses deterministic, context-specific parser recovery.
-
-The parser returns a partial program after ordinary syntax errors.
-
-Parser errors block normal compilation and code generation.
-
-Tooling may analyze valid subtrees.
-
-Recovery never silently changes invalid source into another valid program.
-
-The parser may insert a unique missing structural token virtually.
-
-It does not invent identifiers, expressions, types, or operators.
-
-Recoverable malformed constructs produce invalid AST nodes rather than nil.
-
-Synchronization respects delimiter depth and grammar context.
-
-One local syntax cause should normally produce one primary diagnostic.
-
-Skipped tokens and virtual tokens remain distinguishable from real valid syntax.
-
-Speculative parsing is fully transactional.
-
-Sema uses an internal error type to suppress dependent cascades.
-
-The formatter preserves malformed regions.
-
-The LSP uses recovery context for completion, symbols, and safe fixes.
-
-The current parser already has useful local recovery for structs, loops,
-switches, selects, impl members, target directives, and selected try errors.
-
-The main implementation work is to make that recovery structured, consistent,
-sibling-preserving, and tooling-aware.
+§ 84(16) Legacy syntax stays invalid, and currently valid constructs are never treated
+as reserved.

@@ -65,4 +65,29 @@ def Sec_StructFieldAttr : Sec_Attr<"StructField", "struct_field"> {
   let genVerifyDecl = 1;
 }
 
+// MD-114 §§2–3,7: one typed module registry and independent field-write proof.
+def Sec_RegisterFieldAttr : Sec_Attr<"RegisterField", "register_field"> {
+  let parameters = (ins "uint32_t":$ordinal, "::mlir::StringAttr":$name,
+    "uint32_t":$offset, "uint32_t":$width, "::mlir::Type":$type,
+    "::mlir::StringAttr":$access, "bool":$shadow,
+    OptionalParameter<"::mlir::StringAttr">:$unit, "bool":$reserved);
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+def Sec_RegisterDefAttr : Sec_Attr<"RegisterDef", "register_def"> {
+  let parameters = (ins "::mlir::StringAttr":$identity, "uint32_t":$width,
+    "::mlir::StringAttr":$order,
+    OptionalParameter<"::mlir::StringAttr">:$byte_order,
+    "::mlir::ArrayAttr":$fields);
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+def Sec_RegisterWriteProofAttr : Sec_Attr<"RegisterWriteProof", "register_write_proof"> {
+  let parameters = (ins "::mlir::StringAttr":$basis,
+    OptionalParameter<"::mlir::StringAttr">:$low,
+    OptionalParameter<"::mlir::StringAttr">:$high);
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
 #endif // SEC_DIALECT_SEC_ATTRIBUTES_TD

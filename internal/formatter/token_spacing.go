@@ -22,6 +22,8 @@ import (
 //   - rules/tooling/formatter.md — §15 named-type headers, contracts, and default clauses
 //   - rules/tooling/formatter.md — §8(1)–(3) same-line opening braces and "} else {"
 //   - rules/tooling/formatter.md — §18(1) control-flow braces, §18(12) canonical loop forms
+//   - rules/tooling/formatter.md — §16(11) attached capture list
+//   - rules/tooling/formatter.md — §22(11–13) token-preserving unit metadata spacing
 //   - rules/tooling/formatter.md — §21(5) consuming call-site marker attachment
 //   - rules/tooling/formatter.md — §25 "Malformed and incomplete source"
 func formatCSTTokenSpacing(text string) string {
@@ -71,10 +73,14 @@ func formatCSTTokenSpacing(text string) string {
 
 // canonicalTokenGap returns the canonical same-line gap between two adjacent
 // tokens, or false when neither token's role determines it.
-// Rules: rules/tooling/formatter.md — §6(4–7),§8(6–8),§11(1,4),§21(5).
+// Rules: rules/tooling/formatter.md — §6(4–7),§8(6–8),§11(1,4),§21(5),§22(11–13).
 func canonicalTokenGap(left, right cst.Element) (string, bool) {
 	switch {
 	case left.HasRole(cst.ForeignQualifierSeparator) || right.HasRole(cst.ForeignQualifierSeparator):
+		return "", true
+	case left.HasRole(cst.UnitMetadataCompactToken) || right.HasRole(cst.UnitMetadataCompactToken):
+		return "", true
+	case right.HasRole(cst.LambdaCaptureListOpen):
 		return "", true
 	case right.HasRole(cst.CompactDelimiterClose) || right.HasRole(cst.SingleLineComma):
 		return "", true
@@ -83,6 +89,11 @@ func canonicalTokenGap(left, right cst.Element) (string, bool) {
 	case left.HasRole(cst.CompactDelimiterOpen):
 		return "", true
 	case left.HasRole(cst.SingleLineComma):
+		return " ", true
+	case left.HasRole(cst.PrefixOperator) && right.HasRole(cst.PrefixOperator) &&
+		left.Token.Type == right.Token.Type && (left.Token.Type == lexer.MINUS || left.Token.Type == lexer.PLUS):
+		// Keep two signs from becoming a different maximal-munch token (--/++).
+		// Rules: rules/tooling/formatter.md §29(2); rules/foundations/lexical_structure.md — operator tokens.
 		return " ", true
 	case left.HasRole(cst.PrefixOperator), right.HasRole(cst.EmptyCollectionLiteralClose):
 		return "", true

@@ -3,6 +3,7 @@ package parser
 import (
 	"strings"
 
+	"sec/internal/ast"
 	"sec/internal/lexer"
 )
 
@@ -11,7 +12,7 @@ import (
 // construct is valid in its enclosing scope. Contextual and legacy recovery
 // forms remain distinguishable from reserved keywords.
 // Rules: rules/foundations/grammar.md — "Parser responsibilities";
-// rules/compiler/parser_recovery.md — "A.8 Centralize grammar start predicates".
+// rules/compiler/parser_recovery.md — "Grammar-derived start sets".
 
 // isInterfaceMemberStart reports tokens that can reliably begin an interface
 // member during later-line recovery, including contextual event requirements.
@@ -56,6 +57,27 @@ func (p *Parser) isUnitMetadataName(name string) bool {
 	default:
 		return false
 	}
+}
+
+// unitImplFieldMessage explains a `Name:` field line inside an impl. In
+// `impl <U>`, `Name` and `Category` are implicit declaration-derived members
+// and `IsBaseunit` spellings are not aliases of `BaseUnit`; any other field
+// is a stored field, which no impl may declare.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Unit metadata inside impl"
+//   - rules/types/units.md — "Unit metadata", "Unit metadata value types" (6) (MD-062)
+func unitImplFieldMessage(target *ast.TypeReference, name string) string {
+	if target == nil || !target.UnitOnly {
+		return "stored fields are not allowed inside impl"
+	}
+	switch normalizeUnitMetadataName(name) {
+	case "name", "category":
+		return name + " is an implicit member of a unit, derived from its unit declaration; it cannot be declared in impl <" + target.Name + ">"
+	case "isbaseunit", "isbase":
+		return name + " is not unit metadata; the canonical key is BaseUnit"
+	}
+	return "stored fields are not allowed inside impl"
 }
 
 // normalizeUnitMetadataName normalizes the accepted case/underscore metadata

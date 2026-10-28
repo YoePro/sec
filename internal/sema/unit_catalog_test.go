@@ -65,8 +65,10 @@ func TestUnitCatalogKinds(t *testing.T) {
 	families := map[string]string{"frequency": "Hz kHz MHz GHz", "rotational_frequency": "rpm", "angular_velocity": "radps rad_s", "angular_acceleration": "radps2", "plane_angle": "rad deg", "solid_angle": "sr", "energy": "J Wh kJ MJ GJ kWh", "torque": "Nm", "power": "W kW MW GW", "apparent_power": "VA", "reactive_power": "var", "radioactivity": "Bq", "absorbed_dose": "Gy", "dose_equivalent": "Sv", "luminous_flux": "lm", "illuminance": "lx phot fc", "luminance": "nit stilb"}
 	for kind, names := range families {
 		for _, name := range strings.Fields(names) {
-			if a.units[name].Kind != kind {
-				t.Errorf("%s: %s want %s", name, a.units[name].Kind, kind)
+			// MD-062: legacy catalog Kind names migrate to UnitKind members.
+			member, _ := unitMetadataLegacyMember("kind", kind)
+			if a.units[name].Kind != "UnitKind."+member || a.units[name].KindEnum.Identity() != "UnitKind."+member {
+				t.Errorf("%s: %s want UnitKind.%s", name, a.units[name].Kind, member)
 			}
 		}
 	}

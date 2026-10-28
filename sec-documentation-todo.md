@@ -419,7 +419,7 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules/compiler/rules_implementations.txt
+governance/ (owning integration entries)
 ```
 
 Required status changes include:
@@ -1142,7 +1142,7 @@ Not a normative source.
 [ ] Design rules/memory/arena.md
 [ ] Write rules/memory/arena.md
 [x] Synchronize language-rulebook-status.md
-[x] Synchronize rules/compiler/rules_implementations.txt
+[x] Synchronize rules/compiler/rules_implementations.txt (retired 2026-10-28; status lives in governance/)
 [ ] Create documentation-closure-inventory.md
 [ ] Classify every remaining planned rulebook
 [ ] Complete required Sec 0.1 normative rulebooks in dependency order

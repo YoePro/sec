@@ -130,6 +130,12 @@ type Analyzer struct {
 	// conversion (rules/types/temporal.md, "Conversion of time quantities to
 	// duration").
 	durationConversions map[ast.Expression]DurationConversionPlan
+	// unitMetadataReads records the resolved value of each `<U>.Member`
+	// metadata read (rules/types/units.md, "Unit metadata value types").
+	unitMetadataReads map[*ast.MemberExpression]UnitMetadataRead
+	// decimalScaleWrites records each accepted `try value.Scale = scale`
+	// (rules/library/core-library.md § 10.1, MD-066).
+	decimalScaleWrites map[*ast.AssignmentStatement]bool
 	// roundedConversions records explicit conversions with a RoundingMode
 	// (MD-047, rules/types/units.md "Explicit rounding").
 	roundedConversions map[ast.Expression]RoundedConversionPlan
@@ -786,6 +792,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
+	a.validateResolvedFloatLiterals()
 	a.resolveRegisterHardwareRequests()
 	a.checkRegisterReceiverRequirements()
 	a.iteratorLoweringProgram = program
@@ -1428,7 +1435,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1480,7 +1487,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if category == "" {
 				category = OtherUnit
 			}
-			dimension, dimensionEstablished := defaultUnitDimension(stmt.Name.Value, category)
+			dimension, dimensionEstablished := defaultUnitDimension(a.currentModule, stmt.Name.Value, category)
 			defaultNumeric := "decimal"
 			status := StatusActive
 			if existing, ok := a.units[stmt.Name.Value]; ok {
@@ -1494,7 +1501,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 					status = existing.Status
 				}
 			}
-			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
+			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Module: a.currentModule, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
 			a.shadowedUnitTypes[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
@@ -1519,7 +1526,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -2108,344 +2115,6 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 			}
 		}
 	}
-}
-
-func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
-	for _, stmt := range program.Statements {
-		if isNilStatement(stmt) {
-			continue
-		}
-		impl, ok := stmt.(*ast.ImplStatement)
-		if !ok || !a.validImplStatements[impl] || impl.Target == nil {
-			continue
-		}
-		// MD-040: only `impl <Unit>` holds unit metadata.
-		if !impl.Target.UnitOnly || !a.shadowedUnitImpls[impl] {
-			continue
-		}
-		unit, ok := a.units[impl.Target.Name]
-		if !ok {
-			continue
-		}
-		changed := false
-		for _, member := range impl.Members {
-			metadata, ok := member.(*ast.UnitMetadataDeclaration)
-			if !ok {
-				continue
-			}
-			value := unitMetadataValueTokens(metadata.Value)
-			switch normalizeUnitMetadataName(metadata.Name) {
-			case "dimension":
-				dimension, ok := parseUnitMetadataDimension(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid dimension metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.Dimension = dimension
-				unit.DimensionEstablished = true
-				changed = true
-			case "system":
-				if len(value) != 1 || value[0].Type != lexer.IDENT {
-					a.addErrorAtToken(metadata.Token, "invalid system metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.System = value[0].Lexeme
-				changed = true
-			case "scale":
-				scale, ok := exactUnitMetadataValue(value)
-				if !ok || scale.Sign() <= 0 {
-					a.addErrorAtToken(metadata.Token, "invalid scale metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.Scale = tokensDisplay(value)
-				unit.ScaleValue = scale
-				changed = true
-			case "longname":
-				text, ok := parseUnitMetadataString(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid long_name metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.LongName = text
-				changed = true
-			case "symbol":
-				text, ok := parseUnitMetadataString(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid symbol metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.Symbol = text
-				changed = true
-			case "baseunit":
-				baseUnit, ok := parseUnitMetadataBool(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid base_unit metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.IsBaseUnit = baseUnit
-				changed = true
-			case "status":
-				status, ok := parseUnitMetadataStatus(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid status metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.Status = status
-				changed = true
-			case "kind":
-				kind, ok := parseUnitMetadataIdentifier(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid Kind metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.Kind = kind
-				changed = true
-			case "transform":
-				transform, ok := parseUnitMetadataTransform(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid Transform metadata for unit %s; expected linear, affine, or logarithmic", impl.Target.Name)
-					continue
-				}
-				unit.Transform = transform
-				changed = true
-			case "offset":
-				unit.Offset, ok = parseUnitMetadataExpression(value)
-				offset, exact := exactUnitMetadataValue(value)
-				if !ok || !exact {
-					a.addErrorAtToken(metadata.Token, "invalid Offset metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.OffsetValue = offset
-				changed = true
-			case "origin":
-				unit.Origin, ok = parseUnitMetadataExpression(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid Origin metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				changed = true
-			case "logbase":
-				unit.LogBase, ok = parseUnitMetadataExpression(value)
-				logBase, exact := exactUnitMetadataValue(value)
-				if !ok || !exact || logBase.Sign() <= 0 || logBase.Cmp(big.NewRat(1, 1)) == 0 {
-					a.addErrorAtToken(metadata.Token, "invalid LogBase metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.LogBaseValue = logBase
-				changed = true
-			case "logfactor":
-				unit.LogFactor, ok = parseUnitMetadataExpression(value)
-				logFactor, exact := exactUnitMetadataValue(value)
-				if !ok || !exact || logFactor.Sign() == 0 {
-					a.addErrorAtToken(metadata.Token, "invalid LogFactor metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				unit.LogFactorValue = logFactor
-				changed = true
-			case "reference":
-				unit.Reference, ok = parseUnitMetadataExpression(value)
-				if !ok {
-					a.addErrorAtToken(metadata.Token, "invalid Reference metadata for unit %s", impl.Target.Name)
-					continue
-				}
-				changed = true
-			}
-		}
-		if unit.Transform == "" {
-			unit.Transform = LinearUnitTransform
-		}
-		a.validateUnitTransformMetadata(impl.Target.Name, impl.Target.Token, unit)
-		if !changed {
-			continue
-		}
-		a.units[impl.Target.Name] = unit
-		typ := a.unitTypeEntry(impl.Target.Name)
-		if typ.Kind != InvalidType {
-			typ.Dimension = unit.Dimension
-			if semantics, dimension, err := resolveNamedUnitSemantics(impl.Target.Name, a.units); err == nil {
-				typ.UnitSemantics = semantics
-				typ.Dimension = dimension
-			}
-			a.storeUnitTypeEntry(impl.Target.Name, typ)
-		}
-	}
-}
-
-func unitMetadataValueTokens(tokens []lexer.Token) []lexer.Token {
-	out := make([]lexer.Token, 0, len(tokens))
-	for _, token := range tokens {
-		if token.Type == lexer.COMMENT {
-			continue
-		}
-		out = append(out, token)
-	}
-	return out
-}
-
-func normalizeUnitMetadataName(name string) string {
-	return strings.ReplaceAll(strings.ToLower(name), "_", "")
-}
-
-// parseUnitMetadataString decodes quoted metadata with Sec's escape grammar
-// while retaining the identifier form accepted by unit metadata declarations.
-//
-// Rules:
-//   - rules/types/units.md — unit metadata
-//   - rules/foundations/lexical_structure.md — §15 "Escapes"
-func parseUnitMetadataString(tokens []lexer.Token) (string, bool) {
-	if len(tokens) != 1 {
-		return "", false
-	}
-	switch tokens[0].Type {
-	case lexer.STRING:
-		value, ok := lexer.DecodeStringLiteral(tokens[0].Lexeme)
-		if !ok {
-			return "", false
-		}
-		return value, true
-	case lexer.IDENT:
-		return tokens[0].Lexeme, true
-	default:
-		return "", false
-	}
-}
-
-func parseUnitMetadataBool(tokens []lexer.Token) (bool, bool) {
-	if len(tokens) != 1 {
-		return false, false
-	}
-	switch tokens[0].Type {
-	case lexer.TRUE:
-		return true, true
-	case lexer.FALSE:
-		return false, true
-	default:
-		return false, false
-	}
-}
-
-func parseUnitMetadataStatus(tokens []lexer.Token) (UnitStatus, bool) {
-	if len(tokens) != 1 || tokens[0].Type != lexer.IDENT {
-		return "", false
-	}
-	status := UnitStatus(tokens[0].Lexeme)
-	switch status {
-	case StatusActive, StatusDeprecated, StatusObsolete:
-		return status, true
-	default:
-		return "", false
-	}
-}
-
-func parseUnitMetadataIdentifier(tokens []lexer.Token) (string, bool) {
-	if len(tokens) != 1 || tokens[0].Type != lexer.IDENT {
-		return "", false
-	}
-	return tokens[0].Lexeme, true
-}
-
-func parseUnitMetadataTransform(tokens []lexer.Token) (UnitTransform, bool) {
-	name, ok := parseUnitMetadataIdentifier(tokens)
-	if !ok {
-		return "", false
-	}
-	transform := UnitTransform(name)
-	switch transform {
-	case LinearUnitTransform, AffineUnitTransform, LogarithmicUnitTransform:
-		return transform, true
-	default:
-		return "", false
-	}
-}
-
-func parseUnitMetadataExpression(tokens []lexer.Token) (string, bool) {
-	if len(tokens) == 0 {
-		return "", false
-	}
-	return tokensDisplay(tokens), true
-}
-
-func (a *Analyzer) validateUnitTransformMetadata(name string, token lexer.Token, unit UnitDefinition) {
-	switch unit.Transform {
-	case AffineUnitTransform:
-		if unit.Scale == "" || unit.Offset == "" || unit.Origin == "" {
-			a.addErrorAtToken(token, "affine unit %s requires Scale, Offset, and Origin metadata", name)
-		}
-	case LogarithmicUnitTransform:
-		if unit.LogBase == "" || unit.LogFactor == "" || unit.Reference == "" {
-			a.addErrorAtToken(token, "logarithmic unit %s requires LogBase, LogFactor, and Reference metadata", name)
-		}
-	}
-}
-
-func tokensDisplay(tokens []lexer.Token) string {
-	parts := make([]string, 0, len(tokens))
-	for _, token := range tokens {
-		parts = append(parts, token.Lexeme)
-	}
-	return strings.Join(parts, " ")
-}
-
-func parseUnitMetadataDimension(tokens []lexer.Token) (Dimension, bool) {
-	if len(tokens) < 2 || tokens[0].Type != lexer.LBRACKET || tokens[len(tokens)-1].Type != lexer.RBRACKET {
-		return Dimension{}, false
-	}
-	dimension := Dimension{Base: map[string]int{}}
-	i := 1
-	for i < len(tokens)-1 {
-		if tokens[i].Type != lexer.IDENT {
-			return Dimension{}, false
-		}
-		axis := tokens[i].Lexeme
-		i++
-		for i+1 < len(tokens)-1 && tokens[i].Type == lexer.DOT && tokens[i+1].Type == lexer.IDENT {
-			axis += "." + tokens[i+1].Lexeme
-			i += 2
-		}
-		if i >= len(tokens)-1 || tokens[i].Type != lexer.BIT_XOR {
-			return Dimension{}, false
-		}
-		i++
-		sign := 1
-		if i < len(tokens)-1 && tokens[i].Type == lexer.MINUS {
-			sign = -1
-			i++
-		}
-		if i >= len(tokens)-1 || tokens[i].Type != lexer.INT {
-			return Dimension{}, false
-		}
-		exponent, ok := parseSmallInt(tokens[i].Lexeme)
-		if !ok || exponent == 0 {
-			return Dimension{}, false
-		}
-		if _, exists := dimension.Base[axis]; exists {
-			return Dimension{}, false
-		}
-		dimension.Base[axis] = sign * exponent
-		i++
-		if i == len(tokens)-1 {
-			break
-		}
-		if tokens[i].Type != lexer.COMMA {
-			return Dimension{}, false
-		}
-		i++
-	}
-	return dimension, true
-}
-
-func parseSmallInt(value string) (int, bool) {
-	n := 0
-	if value == "" {
-		return 0, false
-	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return 0, false
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n, true
 }
 
 func (a *Analyzer) withImplTarget(target string, fn func()) {
@@ -7012,8 +6681,8 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	unitName := stmt.Name.Value
 	unit := a.units[unitName]
 	if unit.Name == "" {
-		dimension, established := defaultUnitDimension(unitName, OtherUnit)
-		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimension, DimensionEstablished: established, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
+		dimension, established := defaultUnitDimension(a.currentModule, unitName, OtherUnit)
+		unit = UnitDefinition{Name: unitName, Module: a.currentModule, Category: OtherUnit, Dimension: dimension, DimensionEstablished: established, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
 	}
 	if stmt.Category != "" {
 		unit.Category = UnitCategory(stmt.Category)
@@ -8965,6 +8634,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	var targetType Type
 	registerField := RegisterField{}
 	registerFieldOK := false
+	decimalScale := false
 	if propertyOK {
 		targetType = property.Type
 		a.bindDefinition(member.Property.Token, property.Token)
@@ -8982,6 +8652,11 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 			a.bindDefinition(member.Property.Token, registerField.Token)
 			a.recordRegisterField(member, objectType)
 			a.recordRegisterWriteTarget(member, stmt)
+		} else if decimalScaleMember(objectType, member) {
+			if !a.checkDecimalScaleWrite(stmt, member, allowFallible) {
+				return
+			}
+			targetType, decimalScale = builtinType("int32"), true
 		} else if a.rejectCompilerKnownPropertyWrite(objectType, member) {
 			return
 		} else {
@@ -9023,7 +8698,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 	place, placeOK := Place{}, false
-	if !staticProperty && !staticSymbolOK {
+	if !staticProperty && !staticSymbolOK && !decimalScale {
 		place, placeOK = a.resolvePlace(member)
 	}
 	if placeOK && !place.Mutable {

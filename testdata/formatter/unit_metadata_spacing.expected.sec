@@ -1,0 +1,59 @@
+module metadata_format
+
+enum LaboratoryKind {
+    Energy,
+}
+
+unit joule physical
+
+impl <joule> {
+    LongName: "joule / work"
+    Symbol: "J"
+    BaseUnit: true
+    Status: UnitStatus.Active
+    Dimension: [mass^1, length^2, time^-2]
+    Kind: LaboratoryKind.Energy
+    Scale: -(1 / 60) // exact ratio; not a decimal approximation
+    System: UnitSystem.SI
+    Transform: UnitTransform.Linear
+}
+
+unit dB ratio
+
+impl <dB> {
+    LongName: "decibel"
+    Symbol: "dB"
+    Kind: ratio
+    System: SI
+    Status: active
+    Transform: logarithmic
+    LogBase: 10
+    LogFactor: 10 / 1
+    Reference: 1 / 3
+}
+
+unit celsius physical
+
+impl <celsius> {
+    Dimension: [thermodynamic_temperature^1]
+    Kind: temperature
+    Transform: affine
+    Scale: (2 + 2) / 4
+    Offset: 273.15
+    Origin: absolute_zero
+}
+
+unit dBJ physical
+
+impl <dBJ> {
+    Dimension: [mass^1, length^2, time^-2]
+    Transform: UnitTransform.Logarithmic
+    LogBase: 10
+    LogFactor: +10
+    Reference: 0.001<joule>
+}
+
+fn Preserve(energy: int) string {
+    let base_unit := energy
+    return "Kind: energy; Scale:1/60; IsBaseunit"
+}

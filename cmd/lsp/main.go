@@ -935,6 +935,9 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 		return nil
 	}
 	definitions := analyzer.DefinitionsAt(use.File, use.Line, use.Column)
+	if read, metadata := analyzer.UnitMetadataReadAt(use.File, use.Line, use.Column); metadata && read.Declaration.Line > 0 {
+		definitions = []lexer.Token{read.Declaration}
+	}
 	if len(definitions) == 0 {
 		if member, compilerKnown := analyzer.CompilerKnownSymbolAt(use.File, use.Line, use.Column); compilerKnown {
 			return []location{compilerKnownDefinitionLocation(member)}
@@ -1107,6 +1110,9 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		}
 		if targetExpr == nil {
 			return []completionItem{}
+		}
+		if items, ok := unitMetadataCompletionItems(analyzer, targetExpr, context.Prefix); ok {
+			return items
 		}
 		// A selector written directly as the returned value completes only
 		// members of the expected return type (user decision 2026-10-03).
@@ -2272,7 +2278,7 @@ func unitQuantityHoverSuffix(typ sema.Type) string {
 		"Point role: `" + string(unit.Role) + "`",
 	}
 	if unit.Kind == "" {
-		lines = append(lines, "Kind: `unknown`")
+		lines = append(lines, "Kind: `UnitKind.Unknown`")
 	} else {
 		lines = append(lines, "Kind: `"+unit.Kind+"`")
 	}
@@ -3508,7 +3514,6 @@ func sortCompletionItems(items []completionItem) {
 		return items[i].Label < items[j].Label
 	})
 }
-
 
 func ownershipCodeActions(uri string, text string, reported []diagnostic) []codeAction {
 	actions := make([]codeAction, 0, len(reported))

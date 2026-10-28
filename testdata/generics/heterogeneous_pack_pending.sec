@@ -1,0 +1,5 @@
+// MD-117 is valid normative syntax; parser implementation is still pending.
+module main
+
+fn Trace[...Types](values: ...Types) void {
+}

@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-27 (MD-062 unit metadata types cross-reference)
-- **Document revision:** 2.4
+- **Last updated:** 2026-10-28 ("Contextual and self-inferred `Some(value)`", MD-102); 2026-10-28 ("Decimal scale", MD-066/MD-067/MD-068)
+- **Document revision:** 2.6
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
 - **Implementation governance:** `governance/types.yaml`
@@ -714,7 +714,19 @@ A decimal literal must be interpreted from its exact source spelling.
 
 It must not first pass through binary floating point.
 
-This rulebook does not define decimal storage layout, helper functions, MLIR representation, or LLVM representation.
+## Decimal scale
+
+The value of a decimal is `coefficient × 10^(-scale)` (MD-066, 2026-10-28). The coefficient is a signed 64-bit integer for `decimal` and a signed 128-bit integer for `decimal128`; neither width is target-sized. The scale is a signed `int32`, and its whole interval `int32.Min ... int32.Max` is valid, including negative scales. The observable scale is the `Scale` instance property (`rules/library/core-library.md` § 10.1).
+
+A decimal literal keeps the scale implied by its exact source spelling when that scale is representable; `1.20m` has scale 2. When it is not, the literal takes the closest exact legal scale, or is a compile-time error when none exists. A literal zero keeps its source scale when valid. Exponent validation stays bounded and never materializes an arbitrarily large `10^N`.
+
+Arithmetic result scales, decimal division rounding and decimal arithmetic errors are defined in `rules/foundations/operators.md` "Decimal arithmetic". Equality and ordering compare mathematical values, so `1.2m == 1.20m`.
+
+`decimal128` is an independent type, not an alias of `decimal`, a binary float or a silent promotion target. Its public core API mirrors `decimal` (`rules/library/core-library.md` § 10.4).
+
+Exact fractions (`rational`) and complex numbers are separate future topics and do not change the `decimal`/`decimal128` contract.
+
+This rulebook does not define decimal helper functions, MLIR representation, or LLVM representation; the storage layout is owned by `rules/memory/layout.md` § 19.
 
 Those are implementation and lowering concerns.
 
@@ -1062,6 +1074,79 @@ Store(None)    // Error: ambiguous overload.
 ```
 
 The same rules apply to ordinary calls, methods, `init(...)` and `new` construction; no new syntax or dynamic overload dispatch is introduced.
+
+## Contextual and self-inferred `Some(value)`
+
+`Some(value)` is the canonical one-payload Option constructor when it resolves
+to the compiler-known `Option[T].Some`, not to a visible ordinary callable named
+`Some` (MD-102, 2026-10-28,
+`rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
+§§ 11–14). It is valid wherever ordinary type resolution establishes its
+`Option[T]` type, and a valid use never produces `S1157`.
+
+An expected `Option[T]` — a typed declaration, assignment, return, call or
+constructor argument — wins as the context in which the payload is validated
+and shaped:
+
+```sec
+fn AcceptOption(value: Option[int]) void {
+}
+
+AcceptOption(Some(42))
+let number: Option[int64] := Some(42)
+```
+
+Unlike `None`, the payload carries type information. In overload resolution it
+eliminates candidates exactly like an ordinary argument: a candidate expecting
+`Option[U]` is viable only if the payload can legally initialize `U` under the
+existing contextual-literal, compatibility and explicit-conversion rules. No
+candidate is chosen merely because its parameter is an `Option`, and there is
+no `Some`-specific precedence; ordinary literal shaping and ranking decide, or
+the call is ambiguous with both candidate types named:
+
+```sec
+fn Store(value: Option[int]) void {
+}
+
+fn Store(value: Option[string]) void {
+}
+
+Store(Some(42)) // Selects the Option[int] overload.
+Store(None)     // Ambiguous unless other arguments/context resolve it.
+```
+
+Without an expected type, `Some(value)` whose payload has an independently
+inferable type `T` has the nominal type `Option[T]`. This is a positive
+inference rule, not an implicit optional conversion of unrelated expressions,
+and it does not bypass literal representability, nominal identity, contracts
+or special type restrictions:
+
+```sec
+let number := Some(42)     // Option[int].
+let name := Some("Alice")  // Option[string].
+let nested := Some(Some(1)) // Option[Option[int]].
+```
+
+A standalone `None` still has no type, and an uncontextualized `Some(None)`
+lacks the inner `Option[T]` type; both are diagnosed unless an expected type
+supplies every unknown nested constructor:
+
+```sec
+let invalid := None                         // Error: Option type cannot be inferred.
+let nested: Option[Option[int]] := Some(None) // Valid.
+```
+
+Nested `Some(Some(value))` typing does not introduce nested match patterns.
+Typing examines payload types and static constraints only; the payload is
+evaluated exactly once in the ordinary evaluation order, and a failed overload
+choice evaluates nothing. Ownership, borrowing and lifetime rules stay binding:
+no implicit move from a reusable non-copyable Place, invented copy, concealed
+reborrow, lifetime extension or escape of a short-lived reference.
+
+`None` is spelled without parentheses. `None()` is invalid Option
+construction and keeps the `S1157` guidance that `None` takes no arguments and
+is not a function. A contextual `None`, `Some(...)`, `[]` or `null` passed to a
+parameter outside its accepted type family is a type error.
 
 ---
 

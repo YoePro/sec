@@ -261,12 +261,23 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	if compilerKnownPointerReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true})
 	}
-	// core-library.md § 10.1 declares the decimal value property
-	// `scale: uint8`; the canonical member spelling is PascalCase with the
-	// core spelling kept as a legacy name, as for Ptr/ptr and Len/len.
-	// decimal128 members wait for MD-068 (P21-D3).
-	if typ.Kind == DecimalType && typ.Name != "decimal128" && typ.Underlying != "decimal128" {
-		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", LegacyNames: []string{"scale"}, Kind: CompilerKnownProperty, Result: builtinType("uint8")})
+	// core-library.md §§ 10.1, 10.4 declare the value property
+	// `Scale: int32` with a fallible exact setter on decimal and decimal128
+	// (MD-066/MD-068); the core spelling scale is a legacy name, as for
+	// Ptr/ptr and Len/len. Each type has one identity.
+	if typ.Kind == DecimalType {
+		id := "CKM-DECIMAL-SCALE"
+		if typ.Name == "decimal128" || typ.Underlying == "decimal128" {
+			id = "CKM-DECIMAL128-SCALE"
+		}
+		members = append(members, CompilerKnownMember{ID: id, Name: "Scale", LegacyNames: []string{"scale"}, Kind: CompilerKnownProperty, Result: builtinType("int32")})
+	}
+	// core-library.md § 27.5 (MD-062): the complete public UnitDimension
+	// surface besides == and !=; no setters, Get methods or legacy spellings.
+	if dereferenceType(typ).Kind == UnitDimensionType {
+		members = append(members,
+			CompilerKnownMember{ID: "CKM-UNITDIMENSION-AXISCOUNT", Name: "AxisCount", Kind: CompilerKnownProperty, Result: uintType},
+			CompilerKnownMember{ID: "CKM-UNITDIMENSION-ISDIMENSIONLESS", Name: "IsDimensionless", Kind: CompilerKnownProperty, Result: boolType})
 	}
 	if compilerKnownValueSizeReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-VALUE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: uintType})

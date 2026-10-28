@@ -12,7 +12,24 @@ func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression,
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if move, explicit := explicitMoveArgument(expr.Arguments[0]); explicit {
-		a.addErrorAtToken(move.Token, "explicit <- argument requires an owning value parameter")
+		element := a.types["rune"]
+		if member.Name == "FromByteArray" {
+			element = a.types["byte"]
+		}
+		sequence := Type{Name: element.Name + "[]", Kind: SliceType, Element: &element}
+		parameter := FunctionParameter{Name: "data", Type: Type{Name: "ref " + sequence.Name, Kind: ReferenceType, Element: &sequence}}
+		function := Function{Name: "string." + member.Name}
+		// Prefer the real trusted-core declaration when it is loaded; a
+		// compiler-only analysis must not fabricate a source location.
+		for _, declared := range a.functions[function.Name] {
+			if len(declared.Parameters) == 1 && a.isTrustedCoreSourceToken(declared.Token) {
+				parameter.Token = declared.Parameters[0].Token
+				parameter.Name = declared.Parameters[0].Name
+				function.Token = declared.Token
+				break
+			}
+		}
+		a.reportMoveIntoBorrowedParameter(move, parameter, function, expr)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	argumentType, _ := a.inferExpression(expr.Arguments[0])

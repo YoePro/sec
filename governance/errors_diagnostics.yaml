@@ -701,21 +701,33 @@ integrations:
         result: passed on 2026-09-30 with registered mandatory S1055 identity, concrete cycle-path messages, actionable indirection help, and valid recursion boundaries
 
   - id: diagnostics.move-into-borrowed-parameter
-    status: planned
+    status: implemented
     summary: >-
-      Improve the ownership diagnostic for an explicit <- argument passed to
-      ref/ref mut. Ordinary selected calls already have a generic rejection;
-      audit specialized calls and provide value/parameter-specific explanations
-      and safe help consistently in CLI and LSP.
+      Explicit moves into selected ref/ref mut parameters produce mandatory
+      S1176 with resolved value/parameter names, borrow type, marker/source
+      range, real declaration link and a marker-free call suggestion. Shared
+      call ownership validation and compiler-known string materializers reject
+      before committing transfers; CLI and LSP preserve the structured error.
     rules:
       - rules/declarations/functions.md
       - rules/memory/borrowing.md
       - rules/memory/copy_move.md
       - rules/tooling/diagnostics.md
-    implemented: []
-    remaining:
-      - "Audit and implement a structured error for myFunc(<-myData) when selected parameter data requires ref bytes (also ref mut). Message: Cannot move 'myData' into borrowed parameter 'data'. Explanation: Parameter 'data' requires 'ref bytes', which borrows the value without transferring ownership. Help: Use 'myFunc(myData)' to borrow the value, or change the parameter to an owning type if ownership transfer is intended. Substitute actual resolved names/types; use a stable diagnostic ID/rule, error severity, primary range on the move argument and related parameter-declaration location. Reject before committing ownership, preserving source availability without spurious follow-up use-after-move errors. Cover ordinary, method, generic/overloaded and compiler-known borrowed calls. Add CLI/LSP tests for names, type, help, locations and recovery; preserve valid marker-free borrowing and explicit transfers to owning parameters. Follow functions.md sections 9-10, borrowing.md section 15 and copy_move.md section 28.1. Changing the signature is explanatory advice, not an automatic API rewrite."
+    implemented:
+      - S1176 ownership.move-into-borrowed-parameter rejects explicit <- at selected borrowed parameters with source/parameter names, resolved ref/ref mut type, source range, error severity, explanation and marker-free call advice. Real parameter declarations are linked, including trusted core string.FromByteArray/FromRuneArray when loaded; builtin-only analysis fabricates no source location. Suggestion uses a detached call AST and preserves other arguments/transfer markers; signature changes remain advice only. Tests cover ordinary, instance method, inferred generic, selected overload, compiler-known borrowed materializers and no partial commit after an earlier owning argument. Rejected calls retain source availability for following legal borrows/discards; valid borrowing and owning transfers remain accepted. Sema, CLI JSON and LSP fixtures verify IDs, help, source ranges, parameter links and recovery.
+    remaining: []
     code:
       - internal/sema/call_ownership.go
       - internal/sema/string_materialization_calls.go
-    revised: "2026-10-25"
+      - internal/sema/borrowed_parameter_diagnostic.go
+      - internal/diagnostics/diagnostics.go
+    revised: "2026-10-28"
+    tests:
+      - internal/sema/move_borrowed_diagnostic_test.go
+      - cmd/compiler/move_borrowed_diagnostic_test.go
+      - cmd/lsp/move_borrowed_diagnostic_test.go
+      - testdata/sema/move_borrowed/calls_valid.sec
+      - testdata/sema/move_borrowed/calls_invalid.sec
+    verification:
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic ./internal/lowering/secmlir -count=1; go test ./cmd/compiler ./cmd/lsp -run TestMoveIntoBorrowedParameter -count=1; go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed 2026-10-28; whole diagnostic integration complete, remaining 1 to 0, errors_diagnostics.yaml 3 to 2. Eight invalid calls get only S1176 without secondary moved-state errors; legal borrowing and explicit owning transfers pass. CLI and LSP retain actual core string parameter links. Final trusted-core provenance guard verified by targeted rerun; no API rewrite or backend change.

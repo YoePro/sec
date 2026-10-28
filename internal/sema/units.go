@@ -461,8 +461,11 @@ func dimensionFromBase(name string, exponent int) Dimension {
 
 // defaultUnitDimension implements the category defaults in rules/types/units.md.
 // correction6.md distinguishes an unresolved physical dimension from known
-// dimensionless and category-derived dimensions.
-func defaultUnitDimension(name string, category UnitCategory) (Dimension, bool) {
+// dimensionless and category-derived dimensions. A currency or other unit
+// gets the unique axis of its named identity in its defining module.
+// Rules: rules/types/units.md — "Compiler-known defaults by category",
+// "Unit metadata value types" (7)–(8) (MD-062).
+func defaultUnitDimension(module, name string, category UnitCategory) (Dimension, bool) {
 	switch category {
 	case RatioUnit:
 		return Dimension{Base: map[string]int{}}, true
@@ -471,7 +474,7 @@ func defaultUnitDimension(name string, category UnitCategory) (Dimension, bool) 
 	case PhysicalUnit:
 		return Dimension{Base: map[string]int{}}, false
 	default:
-		return dimensionFromBase(name, 1), true
+		return dimensionFromBase(unitAxisKey(module, name), 1), true
 	}
 }
 

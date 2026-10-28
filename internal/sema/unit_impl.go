@@ -27,7 +27,16 @@ func (a *Analyzer) registerUnitImplStatement(stmt *ast.ImplStatement) {
 	unit := stmt.Target.Name
 	for _, member := range stmt.Members {
 		switch member := member.(type) {
-		case *ast.UnitMetadataDeclaration, *ast.InvalidStatement, *ast.InvalidMember:
+		case *ast.UnitMetadataDeclaration:
+		case *ast.InvalidStatement:
+			if member.Message != "" && !parserReported(member.Recovery) {
+				a.addErrorAtToken(member.Token, "%s", member.Message)
+			}
+		case *ast.InvalidMember:
+			// A field line such as `Name:` in impl <U> (MD-062 § 6(3)).
+			if member.Message != "" && !parserReported(member.Recovery) {
+				a.addErrorAtToken(member.Token, "%s", member.Message)
+			}
 		case *ast.FreeDeclaration:
 			// MD-025.4: a unit describes measurement semantics, not an
 			// independently destructible instance.
@@ -68,32 +77,46 @@ func (a *Analyzer) analyzeUnitImplBody(stmt *ast.ImplStatement) {
 	}
 }
 
-// inferUnitMemberExpression types `<U>.Member` used as a value: the unit's
-// declared `Symbol` and `LongName` text. A unit function is reached by
+// inferUnitMemberExpression types `<U>.Member` used as a value: one of the
+// 16 typed metadata members of a named unit. A unit function is reached by
 // calling it, `<U>.Name(...)`, through ordinary call resolution.
 //
 // Rules:
 //   - rules/types/units.md — "Unit names and compiler-known names" (qualified unit member access, MD-040)
+//   - rules/types/units.md — "Unit metadata value types" (1), (2), (11) (MD-062)
 func (a *Analyzer) inferUnitMemberExpression(expr *ast.MemberExpression, reference *ast.UnitReferenceExpression) (Type, bool) {
 	if expr.Property == nil {
 		return Type{Kind: InvalidType}, false
 	}
-	unit, ok := a.units[reference.Unit]
+	if reference.UnitExpression != nil && reference.UnitExpression.Kind != ast.UnitExpressionName && isUnitMetadataMember(expr.Property.Value) {
+		a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
+			"unit metadata belongs to named units; declare a named unit with this structure to read its metadata",
+			"%s is a structural unit expression and has no %s metadata", reference.String(), expr.Property.Value)
+		return Type{Kind: InvalidType}, false
+	}
+	name := reference.Unit
+	if reference.UnitExpression != nil && reference.UnitExpression.Kind == ast.UnitExpressionName {
+		name = reference.UnitExpression.Name
+	}
+	unit, ok := a.units[name]
 	if !ok || reference.UnitExpression == nil || reference.UnitExpression.Kind != ast.UnitExpressionName {
 		a.addErrorAtToken(reference.Token, "unknown unit %s", reference.String())
 		return Type{Kind: InvalidType}, false
 	}
-	a.bindDefinition(reference.Token, unit.Token)
-	switch expr.Property.Value {
-	case "Symbol", "LongName":
-		return Type{Name: "string", Kind: StringType}, true
-	case "Kind", "Dimension", "Scale", "System", "BaseUnit", "Status", "Offset", "Origin", "LogBase", "LogFactor", "Reference":
-		a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
-			"Only Symbol and LongName have a Sec 0.1 value type; the value types of the other unit metadata are undecided (missing-decisions.yaml).",
-			"unit metadata %s.%s has no value type in Sec 0.1", reference.String(), expr.Property.Value)
-		return Type{Kind: InvalidType}, false
+	// Bind the real unit identifier, never the '<' delimiter or import alias.
+	// Rules: rules/tooling/lsp.md — "Navigation and references", "Rename".
+	use := reference.UnitExpression.NameToken
+	if use.Type == "" {
+		use = reference.UnitExpression.Token
 	}
-	if _, function := a.functions[unitFunctionKey(reference.Unit, expr.Property.Value)]; function {
+	a.bindDefinition(use, unit.Token)
+	if typ, metadata := a.unitMetadataMemberType(reference, unit, expr.Property); metadata {
+		if typ.Kind == InvalidType {
+			return typ, false
+		}
+		return a.recordUnitMetadataRead(expr, reference, unit, typ)
+	}
+	if _, function := a.functions[unitFunctionKey(name, expr.Property.Value)]; function {
 		a.addErrorAtToken(expr.Property.Token, "unit function %s.%s must be called", reference.String(), expr.Property.Value)
 		return Type{Kind: InvalidType}, false
 	}

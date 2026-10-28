@@ -1,10 +1,10 @@
 # MD-117 — Heterogeneous Native Variadic Type Packs
 
-- **Status:** Normative design decision; canonical rulebooks synchronized 2026-10-27; governance and implementation pending (kept open per § 14(7))
+- **Status:** Normative design decision; canonical rulebooks synchronized 2026-10-27; governance synchronized 2026-10-28; implementation pending (kept open per § 14(7))
 - **Decision ID:** MD-117
 - **Area:** `stdlib-formatting-heterogeneous-argument-model` (language mechanism; library API separate)
 - **Created:** 2026-10-26
-- **Last updated:** 2026-10-26
+- **Last updated:** 2026-10-28
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Document kind:** Cross-rulebook correction / implementation contract

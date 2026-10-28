@@ -1697,5 +1697,138 @@ The following ideas should remain visible while Sec 0.2 develops:
 - blocking/suspension effects
 - compiler-verifiable function contracts
 - result-location / destination semantics
+- numeric type candidates: `float16`, `bfloat16`, `rational`, and `complex` / `Complex[T]`
+- possible advanced numeric types: `BigInt`, `BigUint`, `BigFloat`, and `float128`
+- public language semantics for compiler-internal `never`
 
 These remain ideas to investigate, not commitments.
+
+---
+
+# 28. Numeric type candidates and public `never` semantics
+
+> **Status: candidates for investigation only — not approved language features.**
+>
+> Inclusion here does not decide inclusion in Sec 0.2, source syntax, whether a
+> type is compiler-known or library-defined, its runtime representation, its
+> conversion semantics, or its implementation priority.
+>
+> Heterogeneous variadics are already part of Sec 0.1 and must **not** remain
+> on the Sec 0.2 feature backlog as an unimplemented language facility.
+
+## 28.1 Primary candidates for investigation
+
+| Candidate | Motivation | Open design questions |
+|---|---|---|
+| `float16` | Standard 16-bit binary floating point for compact numeric data, SIMD, and device interchange. | Target support, hardware versus software lowering, arithmetic promotion, literal typing, and conversions. |
+| `bfloat16` | A distinct 16-bit floating-point format useful for machine learning and numerical pipelines. | Whether this is a compiler-known scalar, storage/interchange-only on some targets, and how arithmetic is performed and rounded. |
+| `rational` | Exact fractional arithmetic, including unit scale factors such as `1 / 60`, without decimal approximation. | Runtime numerator/denominator widths versus arbitrary precision, normalization, allocation, overflow, zero denominator, contextual division, and conversions. |
+| `complex` / `Complex[T]` | Complex arithmetic for signal processing, mathematics, engineering, and FFT-style algorithms. | Primitive family versus generic core/library type; supported component types; layout, units, conversion, and operator semantics. |
+
+These four are **high-interest candidates**, not locked choices.
+
+### `rational` and unit `Scale`
+
+The existing 0.1 unit system already uses exact-looking expressions such as
+`Scale: 1 / 60`. The current question originated from typing that property,
+which uses `decimal` in the current model. Investigate whether unit metadata
+should use an exact rational semantic representation, independently of whether
+`rational` becomes a user-storable runtime type.
+
+Possible user-facing behavior, **illustrative only**:
+
+```sec
+let value: rational := 1 / 3
+value.ToString()  // "1/3"
+```
+
+A normalized integer rational may format as `"5"` rather than `"5/1"`.
+
+Conversions to `decimal`, `decimal128`, `float32`, `float64`, and any new float
+formats must respect Sec's existing no-hidden-precision-loss rules. The user
+has suggested investigating properties such as `AsDecimal` and width-specific
+`AsFloat` variants. Whether these are appropriate, and how they express
+rounding/fallibility, remains open; Sec's existing typed conversion mechanism
+must be considered first. Do not silently introduce a second conversion model.
+
+**Do not change `decimal` to store fractions as part of this proposal.** That
+alternative was considered but is not currently preferred. Existing
+`decimal`/`decimal128` semantics should remain exact base-10 decimal semantics.
+
+### `complex`
+
+A type may be proposed under the name `complex`, or by an explicitly typed
+generic form such as `Complex[T]`. Neither spelling nor the status as a
+language primitive is decided. Natural arithmetic requires a separate review
+of operator support; operator overloading is a future discussion and is **not
+implicitly adopted** by adding `complex` to this list.
+
+## 28.2 Additional possible numeric candidates
+
+| Candidate | Motivation | Open design questions |
+|---|---|---|
+| `BigInt` | Arbitrary-precision signed integer arithmetic. | Core versus stdlib; allocation, limits, ownership, serialization, and conversion. |
+| `BigUint` | Arbitrary-precision nonnegative integer arithmetic. | Same issues as `BigInt`, plus whether a separate public type is worthwhile. |
+| `BigFloat` | Floating-point arithmetic with greater or configurable precision. | Precision context, rounding policy, exponent limits, error semantics, and memory use. |
+| `float128` | Wider binary floating-point format and a more symmetrical scalar family. | Actual usefulness beyond symmetry, target portability, ABI, library routines, software fallback, and conversion semantics. |
+
+Their presence here does not decide whether they become built-ins, trusted core
+types, or ordinary standard-library types. In particular, support for large
+numbers must not quietly make ordinary numeric code allocate.
+
+## 28.3 Exposing `never`
+
+`never` is **not** a proposed new compiler-internal concept. The compiler
+already has `NeverType` in semantic analysis, `TypeNever` in Semantic IR, and
+`!sec.never` in the MLIR dialect.
+
+Investigate giving `never` a fully specified public source-language role,
+rather than inventing a new underlying semantic type.
+
+The essential meanings are different:
+
+```text
+None     a real Option value denoting absence
+void     normal completion without a returned value
+never    no possible normal result / uninhabited result type
+```
+
+Potential use cases include terminating functions and expressions, branch
+result typing, exhaustive control flow, and diagnostics. Investigate whether
+`never` may appear explicitly in source declarations, where it may appear in
+type positions, and how it interacts with `panic`, `unreachable`, `return`,
+fallibility, and generic inference.
+
+**No public spelling or permission is approved solely by this entry.**
+
+## 28.4 Ranges and `Interval[T]` are a different question
+
+Sec already supports contextual ranges, membership, iteration, slicing, and
+range contracts. In Sec 0.1 a range is not a general first-class runtime value.
+
+That is distinct from a numerical **interval-arithmetic type**, whose values
+represent sets/bounds of possible numbers and whose operators propagate those
+bounds with mathematically sound rounding.
+
+Do **not** add `Interval[T]` as another missing primitive numeric type based on
+this inventory alone. If genuine interval arithmetic is needed, investigate it
+as a separate library/domain feature. First-class storable ranges are also a
+separate language-design question.
+
+## 28.5 Questions to resolve before accepting any candidate
+
+For each candidate, investigate:
+
+1. Is compiler knowledge necessary, or can a core/stdlib type provide the same semantics?
+2. What are the type identity, generic, unit, and numeric-literal rules?
+3. Which operations are exact, rounded, checked, or otherwise fallible?
+4. What are the representation, ABI, target and FFI requirements?
+5. Can ordinary operations allocate or grow storage, and how is that made visible?
+6. How does the candidate participate in formatting, `ToString()`, and conversions?
+7. What operator behavior is needed, without prejudging the separate operator-overloading design?
+8. Which semantics must exist in compile-time evaluation, and which at runtime?
+9. Can the candidate be implemented and tested consistently across supported targets?
+
+A candidate remains **unresolved** until Sec's owner explicitly decides its
+language/library status and semantics. No implementation task should treat a
+candidate entry as an implicit approval.

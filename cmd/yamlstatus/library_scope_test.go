@@ -35,7 +35,7 @@ fragments:
 		t.Fatalf("library integration not selectable: %d entries", len(stats.Entries))
 	}
 	var out bytes.Buffer
-	printResults(&out, stats, false)
+	printResults(&out, stats, false, false)
 	if !strings.Contains(out.String(), "Not counted (library, not compiler implementation): 1 integrations in stdlib.yaml") {
 		t.Fatalf("output does not report the library fragment:\n%s", out.String())
 	}

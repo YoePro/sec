@@ -51,7 +51,7 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 		case sema.FloatType:
 			return fb.result(Operation{Kind: OpConstFloat, FloatLexeme: resolution.Value.Lexeme, Location: loc}, typeID), nil
 		case sema.DecimalType:
-			decimal, parseErr := parseDecimal(resolution.Value.Lexeme)
+			decimal, parseErr := parseDecimalFor(resolution.Value.Lexeme, fb.decimalBits(typeID))
 			if parseErr != nil {
 				return builtValue{}, parseErr
 			}

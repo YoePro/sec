@@ -1,0 +1,164 @@
+// Actual core time catalog conversions; uint128 retains exact sub-second test values.
+module main
+
+fn Convert_s() bool {
+    let value: uint128<s> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<s> := reverseSource
+    discard restored
+    return <s>.Kind == UnitKind.Time
+}
+
+fn Convert_min() bool {
+    let value: uint128<min> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 60
+    let restored: uint128<min> := reverseSource
+    discard restored
+    return <min>.Kind == UnitKind.Time
+}
+
+fn Convert_h() bool {
+    let value: uint128<h> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 3600
+    let restored: uint128<h> := reverseSource
+    discard restored
+    return <h>.Kind == UnitKind.Time
+}
+
+fn Convert_day() bool {
+    let value: uint128<day> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 86400
+    let restored: uint128<day> := reverseSource
+    discard restored
+    return <day>.Kind == UnitKind.Time
+}
+
+fn Convert_week() bool {
+    let value: uint128<week> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 604800
+    let restored: uint128<week> := reverseSource
+    discard restored
+    return <week>.Kind == UnitKind.Time
+}
+
+fn Convert_ms() bool {
+    let value: uint128<ms> := 1000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<ms> := reverseSource
+    discard restored
+    return <ms>.Kind == UnitKind.Time
+}
+
+fn Convert_us() bool {
+    let value: uint128<us> := 1000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<us> := reverseSource
+    discard restored
+    return <us>.Kind == UnitKind.Time
+}
+
+fn Convert_ns() bool {
+    let value: uint128<ns> := 1000000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<ns> := reverseSource
+    discard restored
+    return <ns>.Kind == UnitKind.Time
+}
+
+fn Convert_ps() bool {
+    let value: uint128<ps> := 1000000000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<ps> := reverseSource
+    discard restored
+    return <ps>.Kind == UnitKind.Time
+}
+
+fn Convert_fs() bool {
+    let value: uint128<fs> := 1000000000000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<fs> := reverseSource
+    discard restored
+    return <fs>.Kind == UnitKind.Time
+}
+
+fn Convert_as() bool {
+    let value: uint128<as> := 1000000000000000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<as> := reverseSource
+    discard restored
+    return <as>.Kind == UnitKind.Time
+}
+
+fn Convert_zs() bool {
+    let value: uint128<zs> := 1000000000000000000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<zs> := reverseSource
+    discard restored
+    return <zs>.Kind == UnitKind.Time
+}
+
+fn Convert_ys() bool {
+    let value: uint128<ys> := 1000000000000000000000000
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 1
+    let restored: uint128<ys> := reverseSource
+    discard restored
+    return <ys>.Kind == UnitKind.Time
+}
+
+fn Convert_mo() bool {
+    let value: uint128<mo> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 2628000
+    let restored: uint128<mo> := reverseSource
+    discard restored
+    return <mo>.Kind == UnitKind.Time
+}
+
+fn Convert_yr() bool {
+    let value: uint128<yr> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 31540000
+    let restored: uint128<yr> := reverseSource
+    discard restored
+    return <yr>.Kind == UnitKind.Time
+}
+
+fn Convert_decade() bool {
+    let value: uint128<decade> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 315400000
+    let restored: uint128<decade> := reverseSource
+    discard restored
+    return <decade>.Kind == UnitKind.Time
+}
+
+fn Convert_century() bool {
+    let value: uint128<century> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 3154000000
+    let restored: uint128<century> := reverseSource
+    discard restored
+    return <century>.Kind == UnitKind.Time
+}
+
+fn Convert_millennia() bool {
+    let value: uint128<millennia> := 1
+    let seconds: uint128<s> := value
+    let reverseSource: uint128<s> := 31540000000
+    let restored: uint128<millennia> := reverseSource
+    discard restored
+    return <millennia>.Kind == UnitKind.Time
+}

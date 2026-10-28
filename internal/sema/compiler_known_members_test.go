@@ -27,7 +27,7 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int], amount: decimal) void {
 	let minimum: int32 := int32.Min
 	let maximum: int32 := int32.Max
 	let bits: uint := int32.Bits
-	let decimalScale: uint8 := amount.Scale
+	let decimalScale: int32 := amount.Scale
 	let formatted: Result[string, StringError] := true.ToString()
 	let encoded: Result[byte[], CollectionError] := text.ToByteArray()
 	let mut bytes: byte[]

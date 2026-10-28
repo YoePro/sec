@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -1538,6 +1538,10 @@ reason: ArithmeticFailureReason
 
 § 58(5) Backend default overflow/UB behavior must not redefine Sec arithmetic.
 
+§ 58(6) Decimal arithmetic (MD-066/MD-067, 2026-10-28) consumes Sema's immutable resolved decimal plan, which carries the concrete decimal type and width, the exact operands and mathematical result basis, the preferred and selected actual scale, the exact versus rounded-division classification, the rounding mode, the divisor-zero proof classification, the specific failure reason, the typed error identity, source provenance and `try`/panic effects. The builder does not reconstruct these decisions.
+
+§ 58(7) Semantic IR preserves the selected scale and the approximation status. A rounded decimal quotient is a successful value and never sets a failure flag. Decimal failure reasons map onto the one `core::ArithmeticError` identity with its five variants `Overflow`, `DivisionByZero`, `InvalidShift`, `ScaleOverflow` and `PrecisionExhausted`; an internal decimal reason may distinguish precision from scale failures before that mapping, but no second nominal decimal error type exists. Verification rejects a decimal representation that uses binary float, loses the selected scale, rounds the quotient again, leaves an error candidate unguarded or invents another error type.
+
 ---
 
 ## § 59 Conversions
@@ -1841,6 +1845,8 @@ cleanup on every edge
 § 71(4) `try` does not catch panic.
 
 § 71(5) Checked arithmetic may enter the same resolved error-handler machinery without constructing an unnecessary temporary `Result`.
+
+§ 71(6) MD-029/MD-042/MD-102 facts (2026-10-28, `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 15, 18(6)). For `try` handlers and `match` arms Semantic IR consumes Sema's immutable error-pattern plan and preserves: the protected carrier or failure context; the concrete error identity where an open `error` channel is narrowed (identity test before variant test before payload access); the variant identity; the payload shape (variant-only, single payload, shallow fields); each selected field binding with its copy/move/borrow action; guard presence; and coverage. A contextual `Err(.Variant...)` reaches IR only as its resolved qualified variant. For MD-042 it preserves the distinction between the declared variant domain, the soundly proven reachable subset with its proof provenance, and source-order coverage; a proven-inactive arm keeps its type-checked body and ownership facts and is not treated as an invalid arm. For MD-102 the chosen concrete `Option[T]` and the payload construction are recorded before IR building. Lowering preserves first-match selection, guard-false continuation, exactly-once subject and payload evaluation, copy/move/borrow actions, destruction obligations and residual `try` propagation; the backend never rediscovers variant names by string comparison or re-infers the error type from an ABI layout. Missing backend support is an explicit capability limitation, never wrong semantics or an undefined payload read.
 
 ---
 

@@ -1,9 +1,9 @@
 # Sec MLIR Dialect — Schema v17 Decimal Amendment
 
-- **Status:** Proposed schema v17 amendment (not yet active)
+- **Status:** Proposed schema v17 amendment (not yet active); its D1–D3 gates were decided 2026-10-28 (MD-066/MD-067/MD-068), which does not activate the schema
 - **Created:** 2026-10-16
-- **Last updated:** 2026-10-16
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-28 (D2 error mapping to ArithmeticError; int32 scale; division rounding)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical repository path (proposed):** `rules/mlir/dialect-versions/sec_mlir_dialect_v17.md`
 - **Package:** `SEC-MLIR-P21`
@@ -23,6 +23,8 @@ Reuse existing `!sec.decimal` and `!sec.decimal128` type identities from earlier
 
 Proposed `!sec.decimal_failure_reason` enum values: `none`, `overflow`, `division-by-zero`, `precision-loss`, `scale-overflow`, `precision-exhausted`. The single error mapping op may exist only after DecimalArithmeticError is approved. Failed flag and reason must agree.
 
+*D2 decided 2026-10-28 (MD-067):* `DecimalArithmeticError` is rejected. `!sec.decimal_failure_reason` may remain a compiler-internal reason domain, but the operator reasons are `none`, `overflow`, `division-by-zero`, `scale-overflow` and `precision-exhausted`. `precision-loss` is not an operator reason: a rounded division quotient is a success with `failed = false` and reason `none`. `sec.decimal.error_from_reason` constructs `!sec.core_error<"core::ArithmeticError">` with the five canonical variants `Overflow`, `DivisionByZero`, `InvalidShift`, `ScaleOverflow` and `PrecisionExhausted`; it never constructs a second nominal decimal error type.
+
 ## § 4. Required operations
 
 ```text
@@ -39,7 +41,7 @@ sec.decimal.convert_checked
 sec.decimal.error_from_reason
 ```
 
-The final op is D2-gated; core method op availability is gated by D3 for decimal128.
+The final op is D2-gated; core method op availability is gated by D3 for decimal128. Both gates are decided (2026-10-28); the ops still require schema v17 installation.
 
 ## § 5. Decimal constant
 
@@ -47,7 +49,7 @@ The final op is D2-gated; core method op availability is gated by D3 for decimal
 
 ## § 6. Unary/binary checked
 
-Unary kinds `plus`, `neg`; binary kinds `add`, `sub`, `mul`, `div`, `rem`. Checked binary result shape: `(decimal candidate, i1 failed, !sec.decimal_failure_reason reason)` **after D2**. Operator attrs include immutable Sema-resolved type, scale-policy identity D1, source operation/provenance, and resolved failure error ID. No implicit widening between decimal kinds.
+Unary kinds `plus`, `neg`; binary kinds `add`, `sub`, `mul`, `div`, `rem`. Checked binary result shape: `(decimal candidate, i1 failed, !sec.decimal_failure_reason reason)` **after D2**. Operator attrs include immutable Sema-resolved type, scale-policy identity D1, source operation/provenance, and resolved failure error ID. No implicit widening between decimal kinds. Under D1 (MD-066) the attrs also carry the preferred and selected signed `int32` result scale and whether a `div` result is exact or rounded (nearest-even); the verifier rejects a lost or changed selected scale and any failure flag on a rounded quotient.
 
 ## § 7. Comparison
 
@@ -55,11 +57,11 @@ Unary kinds `plus`, `neg`; binary kinds `add`, `sub`, `mul`, `div`, `rem`. Check
 
 ## § 8. Scale/core methods
 
-`sec.decimal.scale` returns the type from canonical core declaration (`uint8` for documented decimal), *not the physical i32*. `sec.decimal.core` contains a closed compiler-known ID and exact result/error signature from the accepted registry. Method spelling alone is not its semantic identity.
+`sec.decimal.scale` returns the type from canonical core declaration, which is `int32` for both `decimal` and `decimal128` since MD-066 (2026-10-28; formerly `uint8`). The `Scale` setter is a checked exact rescale reporting `PrecisionError` and leaves the receiver unchanged on failure. `sec.decimal.core` contains a closed compiler-known ID and exact result/error signature from the accepted registry. Method spelling alone is not its semantic identity.
 
 ## § 9. RoundTo/Rescale
 
-Use separate total checked operations for the documented `decimal` signatures, output candidate/error `PrecisionError`; require accepted D1 details. No new public implicit rounding parameters. Explicit typed conversions reuse the existing `RoundingMode` enum and one-rounding contract.
+Use separate total checked operations for the documented `decimal` signatures, output candidate/error `PrecisionError`; require accepted D1 details. No new public implicit rounding parameters. D1 is accepted: the target scale is `int32`, `Rescale` never rounds, `RoundTo(scale)` uses nearest-even and the approved `RoundTo(scale, mode)` overload carries one explicit `RoundingMode`. Explicit typed conversions reuse the existing `RoundingMode` enum and one-rounding contract.
 
 ## § 10. Numeric conversion
 

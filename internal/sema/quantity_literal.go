@@ -36,6 +36,9 @@ func (a *Analyzer) inferQuantityLiteral(expr *ast.QuantityLiteral) (Type, expres
 		a.addErrorAtToken(expr.Token, "quantity literal %s cannot be represented in its carrier %s", expr.String(), typeDisplayName(carrier))
 		return Type{Kind: InvalidType}, display
 	}
+	if carrier.Kind == FloatType {
+		a.contextualNumericLiteralType(expr.Value, literalType, carrier)
+	}
 	return carrier, display
 }
 

@@ -720,7 +720,6 @@ compiler_analysis.md
 compiler_pipeline.md
 semantic_ir.md
 mlir.txt
-rules_implementations.txt
 core-library.md
 core/errors.sec
 ```

@@ -1,0 +1,22 @@
+module main
+import "catalog"
+
+fn Components(
+    generic: catalog.Box[catalog.Item],
+    result: Result[catalog.Item, catalog.Failure],
+    option: Option[catalog.Item],
+    reference: ref catalog.Item,
+    mutable: ref mut catalog.Item,
+    array: catalog.Item[2],
+    dynamic: catalog.Item[],
+    slice: ref catalog.Item[],
+    listValue: list[catalog.Item],
+    mapValue: map[catalog.Number, catalog.Item],
+    setValue: set[catalog.Number],
+    vectorValue: vector[catalog.Number, 3],
+    matrixValue: matrix[catalog.Number, 2, 3],
+    tensorValue: tensor[catalog.Number, 2],
+    view: tensor_view[catalog.Number, 2],
+    nested: Option[list[catalog.Box[catalog.Item]]],
+) void {
+}

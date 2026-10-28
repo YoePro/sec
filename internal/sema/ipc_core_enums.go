@@ -87,6 +87,16 @@ func (a *Analyzer) ipcCoreEnumFromDeclaration(enum *ast.EnumDeclaration) (Type, 
 	if !known || !a.isTrustedCoreBuiltinDeclaration(name, enum.Name.Token) {
 		return Type{}, false
 	}
+	return a.exactCoreEnumDeclaration(enum, typ, "rules/concurrency/ipc.md"), true
+}
+
+// exactCoreEnumDeclaration refines the reserved fallback typ with the
+// declaration and member locations of its trusted core source, which must
+// match the canonical member list exactly; otherwise the fallback is kept
+// and the mismatch is reported against rulebook.
+// Rules: rules/library/core-library.md — compiler-known core declarations.
+func (a *Analyzer) exactCoreEnumDeclaration(enum *ast.EnumDeclaration, typ Type, rulebook string) Type {
+	name := enum.Name.Value
 	values := typ.EnumValues
 	valid := enum.ErrorType == typ.ErrorAssignable && !enum.BitUnderlying && enum.UnderlyingType == nil && len(enum.Attributes) == 0 && len(enum.GenericParameters) == 0 && len(enum.Values) == len(values)
 	if valid {
@@ -102,8 +112,8 @@ func (a *Analyzer) ipcCoreEnumFromDeclaration(enum *ast.EnumDeclaration) (Type, 
 		if typ.ErrorAssignable {
 			kind = "error enum"
 		}
-		a.addErrorAtToken(enum.Name.Token, "%s requires its exact canonical core %s declaration from rules/concurrency/ipc.md", name, kind)
-		return typ, true
+		a.addErrorAtToken(enum.Name.Token, "%s requires its exact canonical core %s declaration from %s", name, kind, rulebook)
+		return typ
 	}
 	typ.DeclarationToken = enum.Name.Token
 	for _, value := range enum.Values {
@@ -112,7 +122,7 @@ func (a *Analyzer) ipcCoreEnumFromDeclaration(enum *ast.EnumDeclaration) (Type, 
 		typ.EnumConsts[value.Name.Value] = member
 		a.recordDefinition(value.Name.Token)
 	}
-	return typ, true
+	return typ
 }
 
 // rejectIPCCoreEnumNonEnum prevents trusted core from replacing a portable enum

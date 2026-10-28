@@ -22,9 +22,12 @@ const (
 	// PostfixMutationAlias marks a statement-only ++ or -- token normalized by
 	// the parser to its canonical compound assignment.
 	PostfixMutationAlias Role = "postfix-mutation-alias"
-	// UnitMetadataName marks a metadata declaration name inside an impl whose
-	// target is a parsed unit declaration.
+	// UnitMetadataName marks a declaration in a parsed named-unit impl,
+	// including a legacy impl whose target is a same-file unit declaration.
 	UnitMetadataName Role = "unit-metadata-name"
+	// UnitMetadataCompactToken marks punctuation within a parsed metadata
+	// value: enum qualification, dimension exponents and Reference unit suffixes.
+	UnitMetadataCompactToken Role = "unit-metadata-compact-token"
 	// UnitExpressionCompactToken marks a real operator or grouping delimiter in
 	// a parser-confirmed structural unit expression.
 	UnitExpressionCompactToken Role = "unit-expression-compact-token"
@@ -490,23 +493,7 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		markGroupPair(open, CallableParameterListOpen, CallableParameterListClose)
 	}
 
-	unitNames := map[string]bool{}
-	for _, statement := range program.Statements {
-		if declaration, ok := statement.(*ast.UnitDeclStatement); ok && declaration.Name != nil {
-			unitNames[declaration.Name.Value] = true
-		}
-	}
-	for _, statement := range program.Statements {
-		implementation, ok := statement.(*ast.ImplStatement)
-		if !ok || implementation.Target == nil || !unitNames[implementation.Target.Name] {
-			continue
-		}
-		for _, member := range implementation.Members {
-			if metadata, ok := member.(*ast.UnitMetadataDeclaration); ok {
-				mark(metadata.Token, UnitMetadataName)
-			}
-		}
-	}
+	d.applyUnitMetadataRoles(program, indexes, mark)
 
 	// markSpacingRoles marks the operator, keyword, and body-brace positions
 	// whose same-line horizontal spacing is canonical.

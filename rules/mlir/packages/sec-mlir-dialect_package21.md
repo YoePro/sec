@@ -1,9 +1,9 @@
 # Sec MLIR Program — Package 21: Exact Decimal Semantic Operations
 
-- **Status:** Implementation package — normative decision gates D1–D3 pending
+- **Status:** Implementation package — normative decision gates D1–D3 decided 2026-10-28 (MD-066/MD-067/MD-068, `rules/corrections/md066-md067-md068-decimal-correction-20261028.md`); implementation pending
 - **Created:** 2026-10-16
-- **Last updated:** 2026-10-16
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-28 (D1–D3 decisions synchronized; superseded recommendations marked)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical repository path (proposed):** `rules/mlir/packages/sec-mlir-dialect_package21.md`
 - **Package:** `SEC-MLIR-P21`
@@ -50,7 +50,7 @@ Do not overwrite the canonical `sec_mlir_dialect.md` or `sec_mlir_lowering.md` w
 
 ## § 3. Observed implementation facts
 
-October `main` includes `internal/sema/constants.go` with `decimalLiteralValue` using a signed `int64` coefficient and `uint8` scale, and a public compiler-known Decimal `Scale` entry returning `int` (`internal/sema/compiler_known_members.go`). Both are incompatible with full wide-decimal support / the canonical `decimal.scale: uint8` core declaration. The existing `sec/core/decimal.sec` exposes an unfinished `ToString() string` stub, contrary to the canonical fallible `Result[string,StringError]` core surface. Treat as identified bugs, not as alternate language rules.
+October `main` includes `internal/sema/constants.go` with `decimalLiteralValue` using a signed `int64` coefficient and `uint8` scale, and a public compiler-known Decimal `Scale` entry returning `int` (`internal/sema/compiler_known_members.go`). Both are incompatible with full wide-decimal support / the canonical `decimal.scale: uint8` core declaration (canonical since 2026-10-28: `Scale: int32` with `try set`, MD-066). The existing `sec/core/decimal.sec` exposes an unfinished `ToString() string` stub, contrary to the canonical fallible `Result[string,StringError]` core surface. Treat as identified bugs, not as alternate language rules.
 
 `sec/core/rounding.sec` already defines the six-case `RoundingMode`. The actual canonical Sec MLIR dialect and lowering rulebooks still identify schema/lowering **11**; uploaded P20 packages specify **16**. P21's **17** is the *next package target*, not a claim that schema 16 is currently emitted.
 
@@ -104,13 +104,19 @@ The verified `rules/library/core-library.md` §10 specifies for `decimal`: unsaf
 
 There is **no separately complete `decimal128` member listing** in that section. P21 must not silently fabricate the public `decimal128` method signatures; the shared operator and conversion semantics are covered, and decimal128 member parity is explicitly D3.
 
+*Updated 2026-10-28 (MD-066/MD-068):* `core-library.md` §§ 10.1–10.7 now define the complete surface: `Scale: int32` with getter and `try set` reporting `PrecisionError`; properties `IsInteger`, `IsZero`, `IsPositive`, `IsNegative`, `Sign`; `RoundTo(int32)`, `RoundTo(int32, RoundingMode)`, `Rescale(int32)`, `Normalize()`; `ToInt*`/`ToFloat*`; three `ToString` overloads; and the mirrored `decimal128` inventory in § 10.4. The `uint8` signatures above are historical.
+
 ## § 12. Decisions requiring normative resolution
 
 The October rules **do not yet specify** (D1) observable result-scale selection/canonicalization for every operator; (D2) one exact error type for decimal operators that can fail by both arithmetic and precision causes; or (D3) an exact complete decimal128 public method surface. The companion synchronization presents concrete recommendations for approval. Do not mark these already decided, invent member shapes, or implement P21 operator behavior requiring them before the rules are accepted. Independent literal/type/representation/checked-conversion infrastructure may proceed.
 
-## § 13. D1 recommended scale policy (not yet locked)
+*Resolved 2026-10-28:* all three gates are decided by `rules/corrections/md066-md067-md068-decimal-correction-20261028.md` and synchronized into their canonical owners. §§ 13–15 below keep the former recommendations only as history, each followed by the decision that supersedes it. Implementation remains pending and follows the correction's § 13(3) step order.
 
-Recommended rule set:
+## § 13. D1 recommended scale policy (decided 2026-10-28, MD-066)
+
+**Decision (supersedes the recommendation below):** the public scale is `int32` over its whole signed interval, negative scales included. Each operation has a preferred scale (add/sub/div/rem: maximum input scale; multiply: the sum), and a nonzero exact result takes the exact scale closest to it within the real asymmetric coefficient domain; exact zero keeps the preferred scale clamped to `int32`. Division alone may round: an inexact quotient rounds once with nearest-even at the finest admissible scale, keeping its whole-number part. A provably zero decimal divisor is a compile-time error. Owners: `types.md` "Decimal scale"; `operators.md` "Decimal arithmetic".
+
+Former recommended rule set (superseded):
 
 - Preserve source literal scale when representable; normalize leading exponent by exact powers of ten only.
 - For add/sub/remainder, prefer `max(left.scale, right.scale)`; for multiply, prefer the sum of operand scales.
@@ -121,9 +127,11 @@ Recommended rule set:
 
 The companion sync marks every item PROPOSED rather than settled.
 
-## § 14. D2 recommended decimal operator error (not yet locked)
+## § 14. D2 recommended decimal operator error (decided 2026-10-28, MD-067)
 
-Proposed single core enum:
+**Decision (supersedes the proposal below):** no `DecimalArithmeticError`. Decimal operators reuse `core::ArithmeticError`, which gains exactly `ScaleOverflow` and `PrecisionExhausted` (five variants). The most specific applicable variant is chosen by mathematical cause, not check order; a rounded quotient is no failure; `PrecisionLoss` is not an operator error. Owners: `core-library.md` § 20.1; `errorhandling.md` § 3.4; `operators.md` "Decimal arithmetic failures".
+
+Former proposed single core enum (rejected):
 
 ```sec
 enum DecimalArithmeticError error {
@@ -137,9 +145,11 @@ enum DecimalArithmeticError error {
 
 A single explicit error identity supports `try left / right` even when failures have multiple categories; no inferred union. Core methods retain their already declared `OverflowError` / `PrecisionError` signatures. Until D2 is approved, do not substitute `ArithmeticError.Overflow` for precision loss or create implicit wrappers. Error priority proposal: division-by-zero → scale impossibility → coefficient overflow → nonterminating/precision loss, with deterministic tests.
 
-## § 15. D3 recommended decimal128 parity (not yet locked)
+## § 15. D3 recommended decimal128 parity (decided 2026-10-28, MD-068)
 
-Recommended `decimal128` core methods mirror the proven decimal methods, replacing `decimal` in return/argument type positions. `scale` remains `uint8` only if D1 confirms its range; `Abs()` and precision-specific method error types retain the narrower existing types. Copy method comments and stable identities into `sec/core/decimal128.sec` and compiler-known member registry **after** approval. This proposal does not make a file already exist.
+**Decision:** `decimal128` mirrors the complete `decimal` member family, including `Scale: int32` with `try set` (`core-library.md` § 10.4). `Parse()` and `ToUInt*` are deferred for both types.
+
+Former recommendation: `decimal128` core methods mirror the proven decimal methods, replacing `decimal` in return/argument type positions. `scale` remains `uint8` only if D1 confirms its range; `Abs()` and precision-specific method error types retain the narrower existing types. Copy method comments and stable identities into `sec/core/decimal128.sec` and compiler-known member registry **after** approval. This proposal does not make a file already exist.
 
 ## § 16. Arithmetic operators in scope
 
@@ -147,11 +157,11 @@ Once D1/D2 are fixed, implement unary `+`, unary `-`, `+`, `-`, `*`, `/`, `%`, a
 
 ## § 17. Exact arithmetic algorithms
 
-Use arbitrary-precision integer/rational computation **before** rounding to target representation. Add/sub align powers of ten; multiply coefficients and accumulate scales; division computes reduced rational quotient and detects whether the reduced denominator contains primes other than 2 or 5; remainder uses `q=trunc(a/b)` and `r=a-q*b` with integer/rational exactness. Validation of representability follows the approved D1 policy. Never implement `%` by a nearest-integer remainder helper. Do not use i64/i128 overflow as intermediate control flow.
+Use arbitrary-precision integer/rational computation **before** rounding to target representation. Add/sub align powers of ten; multiply coefficients and accumulate scales; division computes reduced rational quotient and detects whether the reduced denominator contains primes other than 2 or 5; remainder uses `q=trunc(a/b)` and `r=a-q*b` with integer/rational exactness, never the rounded quotient. Validation of representability follows the approved D1 policy: an inexact quotient is rounded once (nearest-even, finest admissible scale) and succeeds, while `+`, `-`, `*`, `%` stay exact or fail. Never implement `%` by a nearest-integer remainder helper. Do not use i64/i128 overflow as intermediate control flow.
 
 ## § 18. Checked decimal failures
 
-Every dynamic arithmetic operation carries a total checked high-level result and explicit reason. On ordinary failure follow the existing deterministic panic/check endpoint; on fallible `try` failure construct the *approved* exact operator error type. Constant-provable failure follows the current warnings/diagnostics policy of its operation and must **not** silently be rewritten into a runtime success or rounded value. Do not assume the old August statement “every constant error is a fatal compile-time diagnostic”: read the current `operators.md` and runtime-check policy.
+Every dynamic arithmetic operation carries a total checked high-level result and explicit reason. On ordinary failure follow the existing deterministic panic/check endpoint; on fallible `try` failure construct the *approved* exact operator error type. Constant-provable failure follows the current warnings/diagnostics policy of its operation and must **not** silently be rewritten into a runtime success or rounded value. *MD-066 (2026-10-28):* a provably zero decimal divisor is a compile-time error even under `try`, and compilation stops; a successfully rounded quotient is not a failure and sets no failure flag. Do not assume the old August statement “every constant error is a fatal compile-time diagnostic”: read the current `operators.md` and runtime-check policy.
 
 ## § 19. Result and handler integration
 
@@ -163,11 +173,11 @@ Implement `==`, `!=`, `<`, `<=`, `>`, `>=` using exact rational/decimal numeric 
 
 ## § 21. Decimal core methods
 
-Implement already-declared `decimal` methods through compiler-known resolved IDs. `.scale` returns exactly `uint8` after D1 resolution, not `int`. `Abs()` checks minimum representable signed coefficient and retains `OverflowError` (not the proposed operator error). `Min`, `Max`, `Clamp` operate on numeric order, not physical scale. `IsInteger`, `IsZero`, and `Sign` are total and allocation-free. `Floor`, `Ceiling`, `Truncate`, and `Round` must use exact coefficient/scale arithmetic. `RoundTo`/`Rescale` preserve their declared `PrecisionError` and require D1's exact scale/rounding contract before full lowering.
+Implement already-declared `decimal` methods through compiler-known resolved IDs. `.Scale` returns exactly `int32` (D1, MD-066), not `int` or `uint8`, and has a transactional fallible setter. `Abs()` checks minimum representable signed coefficient and retains `OverflowError` (not the proposed operator error). `Min`, `Max`, `Clamp` operate on numeric order, not physical scale. `IsInteger`, `IsZero`, and `Sign` are total and allocation-free. `Floor`, `Ceiling`, `Truncate`, and `Round` must use exact coefficient/scale arithmetic. `RoundTo`/`Rescale` preserve their declared `PrecisionError` and require D1's exact scale/rounding contract before full lowering.
 
 ## § 22. RoundTo versus Rescale proposal
 
-Recommended: `Rescale(target)` changes representation **exactly** or returns `PrecisionError.PrecisionLoss` / `PrecisionExhausted` / `ScaleOverflow` according to the approved rule; it never rounds. `RoundTo(target)` is an explicitly named rounding operation using `RoundingMode.NearestEven` unless a different policy is approved; rounding occurs once on exact value. `Round()` to integer uses nearest-even; `Floor/Ceiling/Truncate` use named directions. Do not silently add `RoundingMode` parameters to those **already exact public signatures** without a separate API decision.
+Recommended: `Rescale(target)` changes representation **exactly** or returns `PrecisionError.PrecisionLoss` / `PrecisionExhausted` / `ScaleOverflow` according to the approved rule; it never rounds. `RoundTo(target)` is an explicitly named rounding operation using `RoundingMode.NearestEven` unless a different policy is approved; rounding occurs once on exact value. `Round()` to integer uses nearest-even; `Floor/Ceiling/Truncate` use named directions. Do not silently add `RoundingMode` parameters to those **already exact public signatures** without a separate API decision. *Decided 2026-10-28 (MD-066 § 8):* `Rescale` is exact and never rounds; `RoundTo(scale)` uses nearest-even and the approved `RoundTo(scale, mode)` overload applies the given mode once; `Floor`/`Ceiling`/`Truncate`/`Round` stay parameterless.
 
 ## § 23. Explicit numeric conversions
 
@@ -278,11 +288,11 @@ Positive: unsuffixed `3.14`; `.5m`; `1e3m`; `0x10m`; `decimal128` literal > i64;
 
 ## § 36. Test: arithmetic and comparison
 
-Operator matrix on decimal and decimal128: +, -, *, /, %, unary ±, compound forms; zero divisor; signed negative remainders; terminating vs nonterminating quotient (`1/2`, `1/4`, `1/3`); different operand scales; same numeric value different scales; coefficient i64/i128 boundaries; sum/product preferred-scale overflow; scale overflow; no automatic rounding; constant/dynamic parity. Assert failure reason/priority only after D2 acceptance.
+Operator matrix on decimal and decimal128: +, -, *, /, %, unary ±, compound forms; zero divisor; signed negative remainders; terminating vs nonterminating quotient (`1/2`, `1/4`, `1/3`); different operand scales; same numeric value different scales; coefficient i64/i128 boundaries; sum/product preferred-scale overflow; scale overflow; no automatic rounding outside division; rounded division (`1/3`, `2/3`, `1000000000/3`) and exact `1/8` with scale 3; constant/dynamic parity. Failure classification follows D2 (MD-067): `ScaleOverflow`, `PrecisionExhausted`, `Overflow`, `DivisionByZero`; see the DEC-01–DEC-22 matrix in the correction § 14.
 
 ## § 37. Test: core decimal
 
-`.scale` exact `uint8` property; numeric min/max/Clamp; Abs of signed minimum coefficient; Floor/Ceiling/Truncate/Round for signs/ties; RoundTo/Rescale with exact, inexact and impossible requested scales; IsZero/IsInteger/Sign; no spontaneous ToString materialization. Test `decimal128` public member parity only after D3 is accepted.
+`.Scale` exact `int32` property with transactional `try set`; numeric min/max/Clamp; Abs of signed minimum coefficient; Floor/Ceiling/Truncate/Round for signs/ties; RoundTo/Rescale with exact, inexact and impossible requested scales; IsZero/IsInteger/Sign; no spontaneous ToString materialization. Test `decimal128` public member parity only after D3 is accepted.
 
 ## § 38. Test: conversion
 
@@ -326,7 +336,7 @@ Only after D1–D3 have been explicitly accepted and synchronized:
 ```text
 [ ] exact arithmetic scale algorithm implemented
 [ ] source-visible .scale policy and target domain locked
-[ ] exact per-operation DecimalArithmeticError or accepted alternative declared
+[ ] ArithmeticError ScaleOverflow/PrecisionExhausted declared and mapped (D2: no DecimalArithmeticError)
 [ ] checked decimal arithmetic and reasons implemented
 [ ] RoundTo/Rescale result scale and error behavior implemented
 [ ] decimal128 exact public core members decided and registered

@@ -330,6 +330,14 @@ const (
 	// types have no conversion relation; try cannot create such a relation.
 	// Rules: rules/types/types.md — "Explicit conversions", "Numeric-to-text conversion".
 	ConversionUnavailable = "S1174"
+	// FloatLiteralOutOfRange rejects a source literal that rounds to infinity
+	// in its resolved binary width, before lowering or constant evaluation.
+	// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §16.
+	FloatLiteralOutOfRange = "S1175"
+	// MoveIntoBorrowedParameter rejects explicit ownership transfer to a
+	// selected reference parameter without consuming the caller's source.
+	// Rules: rules/declarations/functions.md — §§7,9–10; rules/memory/borrowing.md — §15.
+	MoveIntoBorrowedParameter = "S1176"
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -375,6 +383,8 @@ var registry = map[string]Definition{
 	InterfaceByValueParameter:             {ID: InterfaceByValueParameter, Name: "interfaces.by-value-parameter", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	ShapedMetadataLiteralInvalid:          {ID: ShapedMetadataLiteralInvalid, Name: "collections.shaped-metadata-literal", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	ConversionUnavailable:                 {ID: ConversionUnavailable, Name: "types.conversion-unavailable", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	FloatLiteralOutOfRange:                {ID: FloatLiteralOutOfRange, Name: "literal.float-out-of-range", Family: "literal", DefaultSeverity: SeverityError, Mandatory: true},
+	MoveIntoBorrowedParameter:             {ID: MoveIntoBorrowedParameter, Name: "ownership.move-into-borrowed-parameter", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowNonAddressable:                  {ID: BorrowNonAddressable, Name: "borrowing.non-addressable-place", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowSharedConflict:                  {ID: BorrowSharedConflict, Name: "borrowing.shared-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowMutableConflict:                 {ID: BorrowMutableConflict, Name: "borrowing.mutable-conflict", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},

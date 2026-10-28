@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-27"
+updated: "2026-10-28"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -204,8 +204,26 @@ decisions:
       ErrPattern production, whether payload-variant patterns of union errors
       are allowed in try handlers and match arms, and their binding forms, so
       handler reachability for union payload patterns can be implemented.
+      Decided 2026-10-28 (owner; rules/corrections/md029-md042-md102-pattern-
+      reachability-some-correction-20261028.md §§ 2-7, 20(1)): try handlers
+      and Result match arms share one ErrPattern (grammar.md "Try
+      expression"); a concrete union-error variant may bind its single
+      payload (Err(FileError.NotFound(info))) or shallow fields
+      (Err(FileError.NotFound { Path: path })), one level deep; a bare
+      variant matches a payload-bearing variant with a configurable
+      Information diagnostic, suppressed only by explicit `{}`/`(_)`; open
+      `error` narrowing tests identity, then variant, then payload; the
+      contextual Err(.Variant...) form is valid only with one unambiguous
+      closed concrete error type and is activated in Sec 0.1.2 (owner choice
+      2026-10-28); empty field patterns are formatted `{}`.
+      Synchronized: grammar.md, errorhandling.md rev 2.3 §§ 15.3, 20, 27.2b,
+      37.5; flowcontrol_match.md rev 2.2 §§ 8, 28; unions.md rev 2.1 § 9.2a;
+      diagnostics.md § 24(4e); semantic_ir.md § 71(6); formatter.md
+      § 20(11); lsp.md. Implementation pending (baseline 2026-10-28: payload
+      and field Err patterns are S1095, bare payload variants S1152,
+      Err(.X) a parse error); tracked in governance frontend.errorhandling-v2.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-031
     area: sec-mlir-try-handler-metadata
@@ -248,34 +266,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-037
-    area: sec-fmt-directory-and-project-selection
-    rulebooks:
-      - rules/tooling/formatter.md
-      - rules/tooling/lsp.md
-    description: >-
-      The governance asks for recursive and project-wide `sec fmt`, but no
-      rulebook defines the command model for directories: which files are
-      selected (all *.sec, the CompilationPlan source roots, test files,
-      internal directories), whether hidden directories, vendored or
-      generated sources are skipped, and how malformed files are reported.
-      `sec fmt` therefore accepts explicit files only. Decide the directory
-      and project selection rules.
-      Decided 2026-10-27 (owner; rules/corrections/MD-099-MD-100-MD-037-
-      formatter-alignment-and-selection-correction.md §§ 5-8): explicit file
-      and directory paths are traversed recursively without following links.
-      All exact .sec files are selected, tests and internal/ included.
-      Hidden directories, testdata/ and the project bin/ are skipped, and a
-      nested project manifest is a boundary error. Paths are deduplicated
-      and sorted with a full preflight before writes. A malformed file stays
-      unchanged, is reported and makes the run fail. formatter.md
-      §§ 28(9)-28(14), projects.md § 6(12) and lsp.md synchronized.
-      Implemented in cmd/compiler/fmt_selection.go and runFmtCommand
-      (TestFmtSelectsProjectDirectories, TestFmtDirectoryPreflight,
-      TestFmtDirectoryKeepsMalformedFiles). Remove once governance is
-      synchronized.
-    classification: localized
-    status: decided-implementation-pending
 
   - id: MD-039
     area: compound-string-append-failure-policy
@@ -316,8 +306,22 @@ decisions:
       and 3 also need a rule for the remaining arm set. The compiler
       (2026-10-04) decides `is Variant` if-tests from a known active variant
       but treats match arms by declared coverage only.
+      Decided 2026-10-28 (owner; rules/corrections/md029-md042-md102-pattern-
+      reachability-some-correction-20261028.md §§ 8-10, 20(2)): option 3 —
+      a match is exhaustive over the soundly proven reachable states, so
+      `match f { Dot => ... }` is exhaustive; extra correctly typed arms
+      excluded only by the proof stay legal with an Information diagnostic
+      (new advisory identity, not S3001/S3003); duplicate, covered and
+      invalid arms remain errors; mutation, aliases and unknown effects
+      invalidate the proof. Declared error type and operation-specific
+      failure provenance are distinct (an int division cannot produce
+      PrecisionExhausted; a Result[int, ArithmeticError] signature proves
+      nothing). Synchronized: flowcontrol_match.md rev 2.2 §§ 5, 25A;
+      errorhandling.md § 27.2b; diagnostics.md § 24(4e); semantic_ir.md
+      § 71(6); formatter.md § 20(12). Implementation pending; tracked in
+      governance frontend.match-v2.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-044
     area: stack-budget-project-contracts
@@ -513,7 +517,42 @@ decisions:
       grammar.md (unit metadata), compiler_known_members.md registry,
       operators.md "Unit dimension equality", types.md Units,
       compile_time_evaluation.md § 15(5). Implementation pending under
-      frontend.units-v2; MD-048 and MD-066 stay open.
+      frontend.units-v2; MD-048 stays open (MD-066 was decided 2026-10-28).
+      Implemented 2026-10-28 in Sema (steps 1-4): sec/core/unit_metadata.sec
+      enums with exact core identity; typed <U>.Member reads, defaults and
+      diagnostics; legacy migration table; duplicate keys; UnitDimension
+      (AxisCount, IsDimensionless, ==, !=) with module-aware axes; non-zero
+      negative linear Scale with reversed conversion intervals (negative
+      affine Scale rejected pending MD-048).
+      Step 5 (2026-10-28): Sema records each read's resolved value
+      (ResolvedUnitMetadataReadOf: unit, member, enum case, exact rational,
+      decimal projection, dimension); Scale projects to the nearest decimal
+      with ties to even, other decimal members must be exact or the read
+      fails. Semantic IR folds string/bool/enum/decimal reads, and
+      UnitDimension equality/AxisCount/IsDimensionless between direct
+      <U>.Dimension reads, to verified constants with unit-metadata
+      provenance; they reach schema-11 Sec MLIR and native builds (decimal and
+      string constants stop at the existing LLVM-track boundary). LSP hover
+      shows type, value, defaults and the exact Scale; <U>. completes readable
+      members. Metadata definition/type-definition/reference navigation now
+      retains declared/default sources and concrete custom enums through
+      imported aliases and live snapshots (2026-10-28); fixed metadata names
+      reject rename and properties have no fabricated callable signatures.
+      The formatter preserves typed and legacy values; its preservation policy
+      is now documented in formatter.md §§ 22(11)-22(13), with contextual
+      colon/operator spacing, exact token retention and CLI/LSP conformance
+      implemented and verified 2026-10-28. No enum-value rewrite is performed.
+      Remaining, fail closed today: (a) DECISION NEEDED - the Sec MLIR dialect
+      and Semantic IR have no UnitDimension type, constant or equality
+      operation, so a UnitDimension value that escapes folding (local,
+      parameter, field, return) is unsupported; § 7(12)/§ 12(8) allow a
+      static descriptor or collision-free canonical ID but no dialect version
+      specifies the spelling or representation. Proposal for owner review
+      (2026-10-28): MD-062-unit-dimension-representation-proposal.md
+      (recommends a content-addressed static descriptor; decisions D1-D6).
+      (b) <U>.Reference of type
+      decimal<V> waits on unit quantity representation in Semantic IR.
+      (c) Separate-compilation axis identity (module surfaces/serialization).
     classification: localized
     status: decided-implementation-pending
   - id: MD-066
@@ -537,8 +576,44 @@ decisions:
       source scale); and RoundTo/Rescale's final behavior. Blocks
       scale-sensitive operator results, the `.scale` correction beyond its
       type, RoundTo/Rescale and runtime value validation.
+      Decided 2026-10-28 (owner; rules/corrections/md066-md067-md068-decimal-
+      correction-20261028.md §§ 2-6, 8): public Scale is int32 over its whole
+      signed interval (the 0..255/uint8 recommendation is rejected), with an
+      infallible getter and a transactional `try set` reporting
+      PrecisionError; each operation selects the exact scale closest to its
+      preferred scale (add/sub/div/rem: max input scale; mul: the sum) in the
+      real asymmetric coefficient domain; exact zero keeps the preferred scale
+      clamped to int32; literals keep their source scale; division alone
+      rounds an inexact quotient once with nearest-even at the finest
+      admissible scale, keeping the whole-number part (1m / 3m is
+      0.3333333333333333333, scale 19, a success); a provably zero decimal
+      divisor is a compile-time error; Rescale never rounds, RoundTo(scale[,
+      mode]) rounds once, Normalize() strips exact trailing zeros.
+      Synchronized: types.md "Decimal scale" (rev 2.5); operators.md
+      "Decimal arithmetic" (result scale, division, zero divisor, failures),
+      "Decimal remainder", tests; core-library.md §§ 10.1, 10.5;
+      runtime_checks.md (rev 1.1) arithmetic and division sections;
+      semantic_ir.md §§ 58(6)-58(7); units.md MD-062 Scale note; the P21
+      package, YAML gate SEC-MLIR-P21-D1, normative sync § 5, Semantic IR
+      amendment, dialect/lowering v17 and package21-todo.md. Implementation
+      pending (correction § 13(3) steps 3-8); no rounded division yet.
+      Partial 2026-10-28: Sema registers Scale as int32 on decimal
+      (CKM-DECIMAL-SCALE) and decimal128 (CKM-DECIMAL128-SCALE) with a
+      fallible `try set` (PrecisionError, mutable unborrowed place
+      required; core PrecisionError fallback type); Semantic IR and the
+      MLIR const.decimal verifier accept negative int32 scales; the MD-062
+      Scale read projects onto negative scales. Getter/setter lowering fails
+      closed. Literal scale done 2026-10-28: literals keep the signed int32
+      scale their spelling implies (1e3m scale -3), shared by Sema and
+      Semantic IR, moved only to the closest exact legal scale for the
+      target width, with a specific diagnostic when none exists; `m`
+      literals beyond float64 now parse. Remaining items are tracked in
+      governance lowering.sec-mlir-package21 (operator scale plans, rounded
+      division, zero-divisor rule, ArithmeticError variants, Scale lowering,
+      core members incl. decimal128 source, unsuffixed literals beyond
+      float64, schema 17 and physical lowering).
     classification: blocking
-    status: open
+    status: decided-implementation-pending
   - id: MD-067
     area: decimal-operator-error-type
     rulebooks:
@@ -560,8 +635,26 @@ decisions:
       Decide the type, its variant set and the priority. Also gates the
       schema-17 `!sec.decimal_failure_reason` type and
       `sec.decimal.error_from_reason`.
+      Decided 2026-10-28 (owner; md066-md067-md068 correction § 7): no
+      DecimalArithmeticError (the recommendation is rejected). Decimal
+      operators reuse core::ArithmeticError, which gains exactly
+      ScaleOverflow and PrecisionExhausted (five variants, closed fieldless
+      enum). The general rule is the most specific applicable error, chosen
+      by mathematical cause, not check order; Overflow is not a supervariant.
+      A rounded quotient is no failure; PrecisionLoss is not an operator
+      error. OverflowError/PrecisionError/RangeError/DivisionByZeroError/
+      ConversionError stay distinct. Synchronized: core-library.md § 20.1;
+      errorhandling.md § 3.4 (rev 2.2); operators.md "Decimal arithmetic
+      failures"; runtime_checks.md; semantic_ir.md § 58(7);
+      sec_mlir_lowering.md § 13; dialect v17 § 3; P21 gate SEC-MLIR-P21-D2.
+      Implemented 2026-10-28: five-variant enum in the Sema builtin and an
+      exact trusted declaration in sec/core/error.sec, exhaustiveness, and
+      the Semantic IR/MLIR variant verifiers. Remaining (tracked in
+      governance lowering.sec-mlir-package21): most-specific decimal
+      classification and the decimal reason-to-variant mapping, which need
+      the decimal operator plans.
     classification: blocking
-    status: open
+    status: decided-implementation-pending
   - id: MD-068
     area: decimal128-public-members
     rulebooks:
@@ -579,8 +672,23 @@ decisions:
       member set and signatures; until then no decimal128 method may be
       declared or advertised. Ordinary decimal128 operators and conversions
       are not affected.
+      Decided 2026-10-28 (owner; md066-md067-md068 correction §§ 9-10):
+      decimal and decimal128 share one complete member family: Scale: int32
+      (get, try set PrecisionError); properties IsInteger, IsZero,
+      IsPositive, IsNegative, Sign; three ToString overloads (R/G/F/N/E,
+      explicit separators); Abs, Min, Max, Clamp, Floor, Ceiling, Truncate,
+      Round, RoundTo(int32[, RoundingMode]), Rescale(int32), Normalize();
+      ToInt/ToInt32/ToInt64/ToInt128 and ToFloat/ToFloat32/ToFloat64, each
+      with an optional RoundingMode overload. No As* aliases; Parse() and
+      ToUInt* deferred; no IsEven/IsOdd on decimal. Synchronized:
+      core-library.md §§ 10.2, 10.4, 10.6, 10.7; compiler_known_members.md
+      decimal Scale and "Decimal types"; P21 gate SEC-MLIR-P21-D3.
+      Implementation pending (sec/core/decimal128.sec, registry, LSP).
+      Separate core finding (correction § 15, not part of this decision):
+      int.sec declares IsEven/IsOdd/IsPositive/IsNegative as properties,
+      while uint.sec and core-library.md §§ 7-8 use fn IsEven()/IsOdd().
     classification: constraining
-    status: open
+    status: decided-implementation-pending
   - id: MD-073
     area: char-array-conversion-outside-char-domain
     rulebooks:
@@ -692,28 +800,6 @@ decisions:
       boundaries) or moves to rune indexes (removing NotRuneBoundary).
     classification: localized
     status: open
-  - id: MD-092
-    area: string-charat-byte-access-name
-    rulebooks:
-      - rules/library/core-library.md
-    description: >-
-      Open decision (2026-10-17). The MD-050/MD-071/MD-072 correction § 3(5)
-      keeps the existing byte-oriented string.CharAt(index) with a UTF-8 byte
-      index (it returns one encoded byte as a char) and states explicitly that
-      whether CharAt should be renamed, deprecated or redesigned is not
-      decided. Its name suggests character access while it returns one byte of
-      a possibly multi-byte scalar. Decide its future (keep, rename, deprecate
-      in favour of ByteAt/RuneAt, or redefine).
-      Decided 2026-10-27 (owner; rules/corrections/MD-092-string-CharAt-byte-
-      alias-correction.md): CharAt stays as a permanent public alias of
-      char(self.ByteAt(index)) over UTF-8 byte indexes below SizeOf, with
-      ByteAt's panic. It is not deprecated and has no rune semantics.
-      core-library.md §§ 5.3/5.7 synchronized. sec/core/string.sec now
-      delegates to ByteAt; TestCompilerCoreStringCharAtIsByteAlias covers
-      the types. Runtime byte equality waits for string lowering on the
-      native track. Remove once governance is synchronized.
-    classification: localized
-    status: decided-implementation-pending
   - id: MD-095
     area: atomic-capability-requirement-keys
     rulebooks:
@@ -840,8 +926,30 @@ decisions:
       not a function and takes no arguments"); confirm the wording/ID. Also
       fixed: a contextual None/Some/[]/null passed to a parameter outside its
       family was accepted silently and is now reported.
+      Decided 2026-10-28 (owner; rules/corrections/md029-md042-md102-pattern-
+      reachability-some-correction-20261028.md §§ 11-14, 20(3)): (1) yes,
+      the payload eliminates overloads like an ordinary argument, with
+      ordinary literal ranking and no Some-specific precedence; (2) yes,
+      Some(x) supplies T for Option[T] and must agree with every other
+      inference source; (3) yes, Some(x) with an independently inferable
+      payload has type Option[T] (let v := Some(3) is Option[int]); None
+      and uncontextualized Some(None) still need an expected type; a
+      visible user callable named Some wins by ordinary lookup; (4) None()
+      stays under S1157 with the current wording. Synchronized: types.md
+      rev 2.6, functions.md § 20, generics.md § 18.1, diagnostics.md
+      § 24(4f), semantic_ir.md § 71(6), lsp.md. Implementation pending
+      (baseline 2026-10-28: `let n := Some(42)` is S1157, Store(Some(42))
+      is S1147, Unwrap(Some(42), 0) cannot infer); tracked in governance
+      frontend.types-core.
+      Partial 2026-10-28: Sema implements questions (1)-(3)
+      (internal/sema/some_inference.go): payload-based overload
+      elimination, Option[T] generic inference from a Some payload, and
+      the standalone Option[T] type. Remaining: ownership/lifetime tests,
+      recording the selected Option[T] for IR/LSP hover, and the
+      cross-feature regression (frontend.types-core
+      md102-some-ownership-and-facts).
     classification: localized
-    status: open
+    status: decided-implementation-pending
   - id: MD-103
     area: semantic-ir-for-and-switch-lowering
     rulebooks:
@@ -1005,15 +1113,26 @@ decisions:
       semantic_ir.md §§ 21(6)/59(5), sec_mlir_dialect.md v11.41.2 and the v11
       snapshot, P15 note). Kept open per the correction's § 12(6) until Sema,
       Semantic IR and MLIR implementation pass their acceptance checks; the
-      MLIR from_bits additionally waits for the MD-114 register table spelling.
+      former MLIR from_bits table dependency is satisfied by the 2026-10-28
+      MD-114 implementation described below.
       Progress 2026-10-26: Sema (fit rule, constant rejection, proof basis,
       W >= N) and Semantic IR (the three ops, local verifier, dominance-checked
       proofs) implemented and tested; checked (guarded) conversions stay
       fail-closed until try lowering, as checked integer conversions. Open gap
       for the owner: § 4(2) makes T(bit[N](x)) exact, but § 8(4) lists no
       matching MLIR proof basis; Semantic IR records it as proof=bit-extraction
-      and the MLIR spelling needs a decision. Sec MLIR emission not started
-      (MD-114).
+      and the MLIR spelling needs a decision.
+      Progress 2026-10-28 (MD-114): canonical register table and detached
+      field operations are implemented, along with native/Go constant and
+      source-domain from_bits and signed/unsigned to_bits using that table.
+      Newly verified textual gap: MD-110 § 8(2) / dialect v11.41.2 require
+      a canonical destination-register type-identity attribute for fits_bits,
+      but give neither its exact key nor TypeAttr-versus-string representation.
+      sec.register_type_id in v11.41.1 is hardware metadata, not an approved
+      spelling for this pure predicate. Specify that attribute before adding
+      fits_bits/guarded emission; no syntax is invented. This is tracked here
+      rather than creating a duplicate decision. Both remaining conversion
+      transports fail closed without output.
     classification: constraining
     status: decided-implementation-pending
   - id: MD-111
@@ -1139,8 +1258,17 @@ decisions:
       (sec_mlir_dialect.md v11.41.1a and v11.41 table, v11 dialect and
       lowering snapshots, sec_mlir_lowering.md v11.30, semantic_ir.md
       § 21(7), package15 amendment, P15-42 note). The MD-110 `bit-extraction`
-      MLIR basis stays with MD-110. Kept open until the dialect attributes,
-      verifiers and Go emission pass their acceptance tests.
+      MLIR basis stays with MD-110. Progress 2026-10-28: typed registry/field/proof attributes, layout/type/path
+      verification, pure extract/update operations and Go emission now pass
+      source/native tests through P5/P6/P8 in schemas 11/12 on both plans.
+      Constant/source-domain from_bits and signed/unsigned to_bits share the
+      registry. The complete conformance gate remains pending on the MD-110
+      fits_bits destination-attribute spelling and bit-extraction proof
+      transport; hardware endpoints remain MD-111. Unrepresented quantity
+      carriers and additional arithmetic/CFG numeric-write evidence are
+      explicitly rejected before emission under correction §§ 3(8), 7(8).
+      The normative MD-114 decision is settled; no new design choices are
+      requested here and P15 is not promoted.
     classification: localized
     status: decided-implementation-pending
 
@@ -1209,6 +1337,13 @@ decisions:
       the parser/Sema/IR/lowering/tooling implementation pass their tests.
       The public fmt API and format contract moved to MD-118; the
       dereference spelling of pack-carried references to MD-119.
+      Governance synchronized 2026-10-28 under stdlib.fmt (originating
+      dependency), existing generics/functions/spread/for-loop/ownership/
+      lifetime/Semantic IR/ABI owners and frontend.ffi-v2. Feature-specific
+      parser and Sema work stays with frontend.generics-v2 and
+      frontend.functions-v2 rather than duplicate parser/sema integration IDs.
+      A fresh parser probe still rejects [...Types]; implementation remains
+      pending and neither MD-118 nor MD-119 is resolved.
     classification: architectural
     status: decided-implementation-pending
 

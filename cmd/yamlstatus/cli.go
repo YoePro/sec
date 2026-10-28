@@ -26,6 +26,7 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	exclude := flags.String("exclude", "", "Exclude points containing this text (case insensitive)")
 	jsonOutput := flags.Bool("json", false, "Print selected point and integration context as JSON")
 	verbose := flags.Bool("verbose", false, "Show all data otherwise just the most relevant.")
+	html := flags.Bool("html", false, "Return the output as HTML.")
 	flags.Usage = func() {
 		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.")
 		flags.PrintDefaults()
@@ -73,8 +74,10 @@ func runCLI(args []string, out, errOut io.Writer) error {
 		return err
 	}
 	if !selection {
-		fmt.Fprintf(out, "Governance directory: %s\n", *dir)
-		printResults(out, stats, *verbose)
+		if !*html {
+			fmt.Fprintf(out, "Governance directory: %s\n", *dir)
+		}
+		printResults(out, stats, *verbose, *html)
 		return nil
 	}
 	selected, err := selectPoint(stats.Entries, *id, *point, *exclude, *random)

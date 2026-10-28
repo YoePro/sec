@@ -1,0 +1,17 @@
+module main
+
+type Box[T] struct { value: T }
+type Choice[T] union { Value(T), Empty }
+
+fn CopyOption(value: Option[Option[int[]]]) void {
+    let copy := value
+    discard copy
+}
+fn CopyBox(value: Box[Box[int[]]]) void {
+    let copy := value
+    discard copy
+}
+fn CopyUnion(value: Choice[Choice[int[]]]) void {
+    let copy := value
+    discard copy
+}

@@ -1,0 +1,16 @@
+module main
+
+fn Declared() decimal {
+    let value: decimal := 1e400
+    return value
+}
+fn Inferred() decimal {
+    let value := 1e400
+    return value
+}
+fn Wide() decimal128 {
+    return 1.2500e400
+}
+fn Tiny() decimal {
+    return 1e-400
+}

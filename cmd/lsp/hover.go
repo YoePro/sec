@@ -49,6 +49,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}()
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if read, ok := analyzer.UnitMetadataReadAt(token.File, token.Line, token.Column); ok {
+			return unitMetadataHover(tokenRange(text, token), read), true
+		}
 		if hover, ok := compareExchangeResultHoverAt(text, program, analyzer, token); ok {
 			return hover, true
 		}

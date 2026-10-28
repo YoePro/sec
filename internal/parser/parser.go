@@ -3060,7 +3060,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 // Rules:
 //   - rules/foundations/grammar.md — "Interface declaration", InterfaceEvent production
 //   - rules/compiler/parser_recovery.md — "Interface recovery"
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 func (p *Parser) parseInterfaceEvent() *ast.InterfaceEvent {
 	event := &ast.InterfaceEvent{Token: p.curToken}
 	if p.peekToken.Type != lexer.IDENT {
@@ -3123,7 +3123,7 @@ func (p *Parser) recoverInterfaceEventPayload() {
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Implements clause"
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention", "Nil use"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes", "Nil use"
 func (p *Parser) parseImplementsList() []*ast.TypeReference {
 	interfaces := []*ast.TypeReference{}
 
@@ -4974,7 +4974,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 					p.appendImplMember(stmt, documentation, p.parseUnitMetadataDeclaration())
 					continue
 				}
-				message = "stored fields are not allowed inside impl"
+				message = unitImplFieldMessage(stmt.Target, p.curToken.Lexeme)
 			} else if p.isAssignmentOperator(p.peekToken.Type) {
 				message = "executable statements are not allowed inside impl"
 			}
@@ -5065,7 +5065,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 					p.appendImplMember(stmt, documentation, p.parseUnitMetadataDeclaration())
 					continue
 				}
-				message = "stored fields are not allowed inside impl"
+				message = unitImplFieldMessage(stmt.Target, p.curToken.Lexeme)
 			} else if p.curToken.Type == lexer.IDENT && p.isAssignmentOperator(p.peekToken.Type) {
 				message = "executable statements are not allowed inside impl"
 			}
@@ -5497,7 +5497,7 @@ func (p *Parser) skipPropertyRemainder() RecoveryEvent {
 // A parser diagnostic must never leave a valid-looking shortened type behind.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Type-reference grammar", "Unit annotation"
 func (p *Parser) parseTypeReference() *ast.TypeReference {
 	if p.curToken.Type == lexer.REF {
@@ -5559,8 +5559,9 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 	}
 
 	ref := &ast.TypeReference{
-		Token: p.curToken,
-		Name:  p.curToken.Lexeme,
+		Token:     p.curToken,
+		NameToken: p.curToken,
+		Name:      p.curToken.Lexeme,
 	}
 
 	for p.peekToken.Type == lexer.DOT {
@@ -5568,6 +5569,7 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		if !p.expectPeek(lexer.IDENT) {
 			return p.markInvalidTypeReference(ref)
 		}
+		ref.NameToken = p.curToken
 		ref.Name += "." + p.curToken.Lexeme
 	}
 
@@ -5623,7 +5625,7 @@ func (p *Parser) parseReferenceTypeReference() *ast.TypeReference {
 // reference. Composite validity must not hide a diagnosed child failure.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Function type"
 func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
@@ -5717,7 +5719,7 @@ type typeSequenceSuffix struct {
 // nominal type.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 //   - rules/foundations/grammar.md — "Type-reference grammar"
 func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeReference {
@@ -5811,7 +5813,7 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 // invalid by the caller.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Fixed array type", "Owning dynamic array type"
 func applyTypeSequenceSuffixes(ref *ast.TypeReference, suffixes []typeSequenceSuffix) *ast.TypeReference {
 	for i := len(suffixes) - 1; i >= 0; i-- {
@@ -5983,7 +5985,7 @@ func (p *Parser) parseEventTypeReferenceArgs(ref *ast.TypeReference, token lexer
 // and propagates an invalid retained element type to the enclosing reference.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Prefix sequence compatibility types"
 func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
@@ -6154,12 +6156,14 @@ func (p *unitSyntaxParser) parseAtom() (*ast.UnitExpression, error) {
 		return nil, fmt.Errorf("expected a unit name, 1, or parenthesized unit expression")
 	}
 	name := token.Lexeme
+	nameToken := token
 	p.pos++
 	for p.pos+1 < len(p.tokens) && p.tokens[p.pos].Type == lexer.DOT && p.tokens[p.pos+1].Type == lexer.IDENT {
+		nameToken = p.tokens[p.pos+1]
 		name += "." + p.tokens[p.pos+1].Lexeme
 		p.pos += 2
 	}
-	return &ast.UnitExpression{Token: token, Kind: ast.UnitExpressionName, Name: name}, nil
+	return &ast.UnitExpression{Token: token, NameToken: nameToken, Kind: ast.UnitExpressionName, Name: name}, nil
 }
 
 // parseTypeArgs parses a bracketed generic type-argument list, retaining an
@@ -6624,7 +6628,7 @@ func (p *Parser) collectLexerDiagnostics() {
 //
 // Rules:
 //   - rules/compiler/parser_recovery.md — "Lexer errors"
-//   - rules/compiler/parser_recovery.md — "Recovery episodes and cascading-diagnostic suppression"
+//   - rules/compiler/parser_recovery.md — "Parser error episodes"
 //   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (p *Parser) lexerDiagnosticForToken(token lexer.Token) (Diagnostic, bool) {
 	for index := len(p.diagnostics) - 1; index >= 0; index-- {

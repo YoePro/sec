@@ -54,7 +54,7 @@ func (a *Analyzer) inferThreadLocalCall(
 			}},
 			ReturnType: payload,
 		}
-		if !a.validateCallArgumentOwnership(function, expr.Arguments, nil) {
+		if !a.validateCallArgumentOwnership(function, expr.Arguments, nil, expr) {
 			return Type{Kind: InvalidType}, result, true
 		}
 		a.markMovedCallArguments(function, expr.Arguments, nil, false)

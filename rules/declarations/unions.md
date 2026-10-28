@@ -4,8 +4,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-26
-- **Document revision:** 2
+- **Last updated:** 2026-10-28 (§ 9.2a variant-only patterns for payload-bearing variants, MD-029); 2026-08-26
+- **Document revision:** 2.1
 - **Replaces:** unions.txt
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/declarations/unions.md`
@@ -609,6 +609,35 @@ match number {
     Decimal(value) => UseDecimal(value)
 }
 ```
+
+### 9.2a Variant-only patterns for payload-bearing variants
+
+A bare variant pattern is valid for a variant that carries a payload (MD-029,
+2026-10-28, `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
+§ 4). It selects every value of the variant without extracting the payload; it
+does not test for an empty or default payload:
+
+```sec
+match shape {
+    Circle => HandleCircle()
+    Rectangle => HandleRectangle()
+}
+```
+
+An unguarded bare variant covers the whole variant. The compiler issues a
+configurable **Information** diagnostic by default naming the payload type or
+fields and suggesting a binding. Explicit non-binding forms suppress only that
+information:
+
+```sec
+Circle(_) => HandleCircle()       // single payload
+Rectangle {} => HandleRectangle() // struct-like payload
+```
+
+Neither form is an implicit transfer, partial move, silent clone or waiver of
+destructor or non-discardability obligations (§ 9.8). The same rules apply to
+concrete union-error variants in `Err(...)` patterns
+(`rules/errors/errorhandling.md` § 15.3).
 
 ### 9.3 Whole struct-like payload binding
 

@@ -712,7 +712,7 @@ const (
 
 type DecimalConstant struct {
 	Coefficient *big.Int
-	Scale       uint32
+	Scale       int32
 	Lexeme      string
 }
 type BranchTarget struct {
@@ -731,6 +731,9 @@ type Operation struct {
 	FloatLexeme string
 	// Float is const.float's canonical binary payload (package20.md § 18).
 	Float *FloatConstant
+	// UnitMetadata is the provenance of a constant folded from a unit
+	// metadata read (MD-062 § 12(7); unit_metadata.go).
+	UnitMetadata *UnitMetadataFacts
 	// FloatBinary is the kind of float.binary.
 	FloatBinary FloatBinaryKind
 	// FloatCore is the kind of float.classify, float.round or float.property

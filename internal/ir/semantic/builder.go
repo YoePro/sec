@@ -9,6 +9,7 @@ import (
 	"sec/internal/ast"
 	"sec/internal/lexer"
 	"sec/internal/sema"
+	"sec/internal/sema/constant"
 )
 
 type BuildOptions struct {
@@ -1636,7 +1637,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			resolvedType, _ = fb.owner.module.Types.Lookup(resolvedType.Base)
 		}
 		if resolvedType.Kind == TypeDecimal || resolvedType.Kind == TypeDecimal128 {
-			decimal, err := parseDecimal(e.Token.Lexeme)
+			decimal, err := parseDecimalFor(e.Token.Lexeme, fb.decimalBits(typeID))
 			if err != nil {
 				return builtValue{}, err
 			}
@@ -1673,7 +1674,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if t.Kind == TypeFloat {
 			return fb.buildFloatConstant(e.Token.Lexeme, typeID, loc)
 		}
-		decimal, err := parseDecimal(e.Token.Lexeme)
+		decimal, err := parseDecimalFor(e.Token.Lexeme, fb.decimalBits(typeID))
 		if err != nil {
 			return builtValue{}, err
 		}
@@ -1712,6 +1713,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return builtValue{id: bind.value, typ: bind.typ}, nil
 	case *ast.MemberExpression:
+		if value, handled, err := fb.buildUnitMetadataMember(e, typeID); handled {
+			return value, err
+		}
 		if fb.owner.maxPackage >= 14 && e.Property != nil {
 			member, resolved := fb.owner.analyzer.CompilerKnownMemberAt(e.Property.Token.File, e.Property.Token.Line, e.Property.Token.Column)
 			if resolved && member.ID == "CKM-LEN-ARRAY" {
@@ -1795,6 +1799,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		if fb.owner.maxPackage < 7 {
 			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
+		}
+		if value, handled, err := fb.buildUnitDimensionEquality(expr, typeID); handled {
+			return value, err
 		}
 		if value, handled, err := fb.buildBuiltinBooleanEquality(expr); handled {
 			return value, err
@@ -3696,32 +3703,48 @@ func functionID(f sema.Function, types *TypeTable) FunctionID {
 	}
 	return FunctionID(f.Module + "::" + f.Name + "(" + strings.Join(parts, ",") + ")")
 }
+
+// parseDecimal reads an exact decimal literal with no coefficient-width
+// limit; parseDecimalFor fits it to a decimal type.
 func parseDecimal(lexeme string) (DecimalConstant, error) {
-	digits, _ := ast.SplitNumericLiteralSuffix(lexeme)
-	digits = ast.NormalizeNumericLiteralLexeme(digits)
-	negative := strings.HasPrefix(digits, "-")
-	digits = strings.TrimPrefix(digits, "-")
-	parts := strings.Split(digits, ".")
-	if len(parts) > 2 {
-		return DecimalConstant{}, fmt.Errorf("invalid decimal %q", lexeme)
+	return parseDecimalFor(lexeme, 0)
+}
+
+// parseDecimalFor reads a decimal literal exactly as Sema does: the signed
+// int32 scale its spelling implies, moved only to the closest exact legal
+// scale whose coefficient fits bits (64 for decimal, 128 for decimal128, 0
+// for no limit). Integer-form spellings (`0x10m`) have scale 0.
+// Rules: rules/types/types.md — "Decimal scale" (MD-066 § 3(7));
+// rules/memory/layout.md — § 19.
+func parseDecimalFor(lexeme string, bits int) (DecimalConstant, error) {
+	coefficient, scale := (*big.Int)(nil), int64(0)
+	if integer, ok := ast.ParseIntegerFormNumericLiteralLexeme(lexeme); ok {
+		coefficient = integer
+	} else {
+		digits, _ := ast.SplitNumericLiteralSuffix(lexeme)
+		var parsed bool
+		coefficient, scale, parsed = constant.DecimalLiteral(ast.NormalizeNumericLiteralLexeme(digits))
+		if !parsed {
+			return DecimalConstant{}, fmt.Errorf("invalid decimal %q", lexeme)
+		}
 	}
-	scale := uint32(0)
-	joined := parts[0]
-	if len(parts) == 2 {
-		scale = uint32(len(parts[1]))
-		joined += parts[1]
-	}
-	if joined == "" {
-		joined = "0"
-	}
-	n, ok := new(big.Int).SetString(joined, 10)
+	fitted, legalScale, ok := constant.FitDecimal(coefficient, scale, bits)
 	if !ok {
-		return DecimalConstant{}, fmt.Errorf("invalid decimal %q", lexeme)
+		return DecimalConstant{}, fmt.Errorf("decimal %q has no exact representation with a %d-bit coefficient and int32 scale", lexeme, bits)
 	}
-	if negative {
-		n.Neg(n)
+	return DecimalConstant{Coefficient: fitted, Scale: legalScale, Lexeme: lexeme}, nil
+}
+
+// decimalBits is the coefficient width of a decimal Semantic IR type.
+func (fb *functionBuilder) decimalBits(typeID TypeID) int {
+	resolved, _ := fb.owner.module.Types.Lookup(typeID)
+	if resolved.Kind == TypeNamed {
+		resolved, _ = fb.owner.module.Types.Lookup(resolved.Base)
 	}
-	return DecimalConstant{Coefficient: n, Scale: scale, Lexeme: lexeme}, nil
+	if resolved.Kind == TypeDecimal128 {
+		return 128
+	}
+	return 64
 }
 func requestedModule(program *ast.Program, files []string) string {
 	wanted := map[string]bool{}

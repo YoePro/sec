@@ -440,19 +440,24 @@ equally named roots of different declarations stay distinct alternatives
 
   Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Static roots (2026-10-16, with P15-42a): `ref` / `ref mut` of a module static or function-local static lowers to `place.static-root @N` with the static's authority, marks the static address-taken and carries Sema's static-storage facts (`TestPackage15LowersStaticPlaceRoots`). Remaining: addressed (fixed-address/MMIO) roots, blocked by MD-077 (no Semantic IR register types or operations are specified; Semantic IR rejects every register access).
   MD-077 (decided 2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md`): addressed roots split by binding category. Ordinary addressed storage becomes a Place root. A hardware register binding becomes a `register.hw.bind` resource/instance root of type `HardwareInstance[T]`, never a Place, with no `ref` to physical bits. The schema is `sec_mlir_dialect.md` v11.41.1. P15-42/42a stays open until MD-077 steps 2–5 are implemented.
-  Current closure boundary (2026-10-25): ordinary addressed roots require MD-111 endpoint/region facts; hardware operation serialization requires MD-114. Detached register/hardware-instance types exist, so the earlier statement that no register IR types exist is historical. MD-116 static reference emission and identity verification are implemented (2026-10-27); physical reference-dependent static lowering remains separate. None is waived by the evidence tasks below.
+  Current closure boundary (updated 2026-10-28): ordinary addressed roots and hardware operation serialization require MD-111 endpoint/region facts; detached register serialization under MD-114 is implemented as described below. Detached register/hardware-instance types exist, so the earlier statement that no register IR types exist is historical. MD-116 static reference emission and identity verification are implemented (2026-10-27); physical reference-dependent static lowering remains separate. None is waived by the evidence tasks below.
 
   2026-10-27:
   - MD-116 is decided and implemented; see P15-42a.
   - MD-114 is decided (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`; dialect v11.41.1a, lowering v11.30, Semantic IR § 21(7)). It defines the `sec.registers` table with typed `#sec.register_def` / `#sec.register_field`, `sec.field_path` (i32 ordinals) and `sec.write_proof` (`typed` / `constant` / `interval`).
-  - Remaining implementation for detached register values, in the order of correction § 10:
-    1. TableGen attributes and module-table verification;
-    2. `sec.register.extract` / `update` with their path and proof verifiers, the version gate and round trips;
-    3. MD-110 width lookup through the table;
-    4. Go emission from `Module.Registers`;
-    5. the § 11 matrix.
-  - The `bit-extraction` conversion basis stays an MD-110 reconciliation item. Hardware operations stay with MD-111.
-
+  - Implemented 2026-10-28: typed table/field/write-proof attributes; strict
+    module layout/carrier/nested-type verification; pure extract/update with
+    composed ordinal paths; direct Go emission from Module.Registers; and
+    MD-110 constant/source-domain from_bits / signed-or-unsigned to_bits using
+    the same table. Source/CLI/native tests cover 32/64 plans, schemas 11/12,
+    P5/P6/P8, full standard carriers to 256 bits, nominal/endian preservation,
+    exact/interval/typed writes and rejection without artifacts.
+  - Remaining: MD-110 fits_bits destination-identity attribute spelling and
+    bit-extraction proof transport, quantity carriers without a representation,
+    and unsupported arithmetic/CFG numeric-write proof transport. These fail
+    explicitly rather than erasing types or trusting unverified intervals.
+    MD-111 hardware endpoints/operations and physical register lowering are
+    separate; P15-42/42a and final P15 acceptance remain open.
 - [ ] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
   static (module-level), thread-local and addressed (fixed-address binding,
   register/MMIO) storage in Semantic IR, which today has only local-automatic

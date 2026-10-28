@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Implementation Status — Sec</title>
+    <link rel="stylesheet" href="https://sec-lang.com/manual.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://sec-lang.com/image/favicon-32x32.png">
+    <style>
+        .status-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+        .status-metric { padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+        .status-metric dt { font-size: .85rem; color: var(--text-muted); }
+        .status-metric dd { margin: .25rem 0 0; font-size: 1.8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .status-progress { display: block; width: 100%; height: .65rem; margin-top: .75rem; accent-color: var(--celadon-dark); }
+        .content .status-number { text-align: right; font-variant-numeric: tabular-nums; }
+        .content section { scroll-margin-top: 5rem; }
+        @media (max-width: 600px) {
+            .header-inner { flex-wrap: wrap; }
+            .header-nav { margin-left: 0; flex-wrap: wrap; gap: .5rem 1rem; }
+            .sidebar { display: flex; flex-wrap: wrap; gap: .25rem; }
+            .sidebar-title, .sidebar-section, .sidebar a:not(.report-link) { display: none; }
+        }
+        .skip-link { position: absolute; left: -10000px; }
+        .skip-link:focus { position: fixed; left: 1rem; top: 1rem; padding: .5rem 1rem; background: var(--bg); z-index: 20; }
+    </style>
+</head>
+<body>
+<a class="skip-link" href="#overview">Skip to report</a>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="https://sec-lang.com/index.html" class="site-logo">
+            <img src="https://sec-lang.com/logo.svg" alt="" width="28" height="28">
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav" aria-label="Main navigation">
+            <a href="https://sec-lang.com/01-introduction.html">Language</a>
+            <a href="https://sec-lang.com/stdlib.html">Stdlib</a>
+            <a href="https://sec-lang.com/syntax-reference.html">Syntax</a>
+            <a href="https://sec-lang.com/best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">Language</div>
+        <a href="https://sec-lang.com/01-introduction.html">Introduction</a>
+        <div class="sidebar-section">Reference</div>
+        <a href="https://sec-lang.com/stdlib.html">Standard Library</a>
+        <a href="https://sec-lang.com/syntax-reference.html">Syntax Reference</a>
+        <a href="https://sec-lang.com/best-practices.html">Best Practices</a>
+        <div class="sidebar-section">Status</div>
+        <a href="#overview" class="active report-link" aria-current="page">Implementation Status</a>
+        {{if .Stats.TotalObjects}}<a href="#integrations" class="report-link">Integration statuses</a>{{end}}
+        {{if .ChecklistTotal}}<a href="#checklist" class="report-link">Checklist items</a>{{end}}
+        {{if .Fields}}<a href="#metadata" class="report-link">Other fields</a>{{end}}
+        <div class="sidebar-section">Community</div>
+        <a href="https://sec-lang.com/bug-report.html">Report a Bug</a>
+        <a href="https://sec-lang.com/join.html">Join</a>
+    </nav>
+    <main class="content" id="overview">
+        <div class="breadcrumb"><a href="https://sec-lang.com/index.html">Sec</a> / Implementation Status</div>
+        <h1>Implementation Status</h1>
+        <p>Compiler implementation progress from the Sec governance checklists.</p>
+        {{if .Stats.Files}}
+        <dl class="status-overview" aria-label="Report overview">
+            <div class="status-metric"><dt>YAML files read</dt><dd>{{.Stats.Files}}</dd></div>
+            <div class="status-metric"><dt>Total integrations</dt><dd>{{.Stats.TotalObjects}}</dd></div>
+            <div class="status-metric"><dt>Checklist items</dt><dd>{{.ChecklistTotal}}</dd></div>
+        </dl>
+        {{if .ChecklistTotal}}
+        <div class="rule">
+            <strong>{{.Completion}} implemented.</strong> {{.Stats.TotalImplemented}} of {{.ChecklistTotal}} checklist items are complete.
+            <progress class="status-progress" value="{{.Stats.TotalImplemented}}" max="{{.ChecklistTotal}}" aria-label="Implemented checklist items">{{.Completion}}</progress>
+        </div>
+        {{end}}
+        {{if .Stats.TotalObjects}}
+        <section id="integrations" aria-labelledby="integrations-title">
+            <h2 id="integrations-title">Integration statuses</h2>
+            <p>Status of each integration ID, counted separately from its checklist items.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Status</th><th scope="col" class="status-number">Integrations</th></tr></thead>
+                    <tbody>{{range .Statuses}}
+                        <tr><th scope="row">{{.Label}}</th><td class="status-number">{{.Count}}</td></tr>{{end}}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {{else}}<p>No integrations found.</p>{{end}}
+        {{if .ChecklistTotal}}
+        <section id="checklist" aria-labelledby="checklist-title">
+            <h2 id="checklist-title">Checklist items</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Status</th><th scope="col" class="status-number">Items</th><th scope="col" class="status-number">Share</th></tr></thead>
+                    <tbody>{{range .Checklist}}
+                        <tr><th scope="row">{{.Label}}</th><td class="status-number">{{.Count}}</td><td class="status-number">{{.Percentage}}</td></tr>{{end}}
+                    </tbody>
+                    <tfoot><tr><th scope="row">Total</th><td class="status-number">{{.ChecklistTotal}}</td><td class="status-number">100.0%</td></tr></tfoot>
+                </table>
+            </div>
+        </section>
+        {{else}}<p>No checklist items found.</p>{{end}}
+        {{else}}<div class="note">No YAML files found.</div>{{end}}
+        {{if .Stats.LibraryObjects}}
+        <div class="note">
+            <strong>Library scope.</strong> {{.Stats.LibraryObjects}} library integrations are not counted as compiler implementation.
+            <ul>{{range .Stats.LibraryFiles}}<li><code>{{.}}</code></li>{{end}}</ul>
+        </div>
+        {{end}}
+        {{if .Fields}}
+        <section id="metadata" aria-labelledby="metadata-title">
+            <h2 id="metadata-title">Other field occurrences</h2>
+            <p>Occurrences per integration; these fields do not count as checklist progress.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Field</th><th scope="col" class="status-number">Occurrences</th></tr></thead>
+                    <tbody>{{range .Fields}}
+                        <tr><th scope="row"><code>{{.Label}}</code></th><td class="status-number">{{.Count}}</td></tr>{{end}}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {{end}}
+        <div class="page-navigation"><a href="https://sec-lang.com/index.html">Back to home</a></div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>Sec Language · Governance report</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
+</body>
+</html>

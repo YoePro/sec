@@ -32,6 +32,16 @@ func typeDefinitionsForSource(uri string, text string, pos position, overlays ..
 	if !ok {
 		return nil
 	}
+	if definition, selected, found := selectedTypeComponentDeclaration(program, analyzer, use); selected {
+		if !found {
+			return nil
+		}
+		definitionURI := uri
+		if definition.File != "" {
+			definitionURI = uriFromPath(definition.File)
+		}
+		return []location{{URI: definitionURI, Range: definitionTokenRange(sourceTextForToken(uri, text, overlay, definition), definition)}}
+	}
 	typ, ok := resolvedTypeAtSourceToken(program, analyzer, use)
 	if !ok {
 		return nil
@@ -102,4 +112,30 @@ func expressionOwnsTypeToken(expression ast.Expression, token lexer.Token) bool 
 	default:
 		return false
 	}
+}
+
+// selectedTypeComponentDeclaration honors the actual type identifier selected
+// in an annotation, independently of surrounding Result/ref/collection shapes.
+// Only Sema may resolve the target; a recognized unresolved component cannot
+// fall back to another type inferred for the enclosing expression or binding.
+// Rules: rules/tooling/lsp.md — "Navigation and references", A.15;
+// rules/types/types.md — "Generic and parameterized types", "Safe references".
+func selectedTypeComponentDeclaration(program *ast.Program, analyzer *sema.Analyzer, token lexer.Token) (definition lexer.Token, selected, found bool) {
+	ast.Visit(program, func(node any) bool {
+		ref, ok := node.(*ast.TypeReference)
+		if !ok || ref.Invalid {
+			return true
+		}
+		name := ref.NameToken
+		if name.Type == "" {
+			name = ref.Token
+		}
+		if !sameSourceToken(name, token) {
+			return true
+		}
+		selected = true
+		definition, found = analyzer.TypeReferenceDeclarationAt(token.File, token.Line, token.Column)
+		return false
+	})
+	return
 }

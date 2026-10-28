@@ -69,7 +69,6 @@ integrations:
     related_documents:
       - rules/control-flow/flowcontrol_for.md
       - rules/memory/reference_model.md
-      - rules/compiler/rules_implementations.txt
     summary: Loop fixed-point analysis carries ArenaDomain generations with move state, resources, borrows, and local reference origins. Fallthrough and continue backedges merge generations into the loop header, generation changes participate in convergence, and replay uses the merged header state for both while and for loops.
     code:
       - internal/sema/analyzer.go
@@ -945,6 +944,12 @@ integrations:
       - extend explicit source-order CFG with reachable compiler-known empty state once frontend initialization-state facts exist
       - extend statement-match continuation with non-trivial ownership, cleanup, and discard effects
       - complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage
+      - "md029-bare-union-variant-patterns: accept a bare variant pattern for a payload-bearing ordinary union variant as full variant coverage (flowcontrol_match.md § 8, unions.md § 9.2a) with the omitted-payload Information identity, and explicit `Variant {}` / `Variant(_)` suppression subject to discardability (M029-06). Baseline 2026-10-28: S1152 \"union variant requires payload binding\". Shared with frontend.errorhandling-v2 md029-bare-variant-information."
+      - "md029-match-err-payload-patterns: Result match arms accept the payload-bearing and contextual ErrPattern forms with the same semantics as try handlers and take part in closed exhaustiveness; flowcontrol_match.md § 28 no longer rejects payload-carrying union error variants (M029-02/03/07/10)."
+      - "md042-reachable-state-proof: distinguish declared variant domain, soundly proven reachable subset and source-order coverage in authoritative Sema facts (flowcontrol_match.md § 5; correction md029-md042-md102 phase 4); `let f := Figure.Dot` then `match f { Dot => ... }` is exhaustive; mutation, aliases, foreign/dynamic calls, unstable property reads and unknown results invalidate the proof (M042-01/05). Baseline 2026-10-28: such a match is \"non-exhaustive ... missing Line\"; only `is Variant` if-tests use the known active variant."
+      - "md042-inactive-arm-information: valid arms excluded only by the proof are legal and emit a new configurable inactive-arm Information identity (diagnostics.md § 24(4e), to be allocated) with subject type, excluded variant, proof reason and related location; duplicate/covered/after-catch-all arms keep S3003-class errors; inactive arms are still fully type- and ownership-checked; guard-false, reachable empty, open bit-enum and alias coverage laws unchanged (M042-02/03/04/06/08)."
+      - "md042-failure-provenance: restrict the active error set of try/match only from complete, sound operation-specific failure provenance (flowcontrol_match.md § 25A): integer-only arithmetic excludes decimal PrecisionExhausted/ScaleOverflow; a Result[int, ArithmeticError] signature proves nothing (M042-07)."
+      - "md042-ir-and-tooling: preserve declared domain, proven subset with provenance and coverage in Semantic IR (semantic_ir.md § 71(6)); the formatter never removes inactive arms (formatter.md § 20(12)); LSP hover may show the proof; CLI/JSON/LSP parity of the advisory identity."
     required_tests:
       - match subject expression evaluates exactly once
       - source arm order is preserved
@@ -1029,12 +1034,14 @@ integrations:
       sequential index/value and map key/value arity, iterable inference, finite
       range validation, immutable lexical bindings, loop-control flow,
       zero/non-continuing path analysis, and explicit compiler-known Iterator[T]
-      conformance with a Sema-owned static Next plan. Semantic IR and the compilation track lower infinite
-      loops and integer ranges with the implicit step (2026-10-17); fixed arrays and explicit
-      floating ranges. Explicit ref/ref-mut binding modes, copy-only value
-      iteration, canonical ascending default steps, structural iteration
-      borrows, and broad collection lowering remain incomplete.
+      conformance with a Sema-owned static Next plan. Semantic IR and the
+      compilation track lower infinite loops and integer ranges with the
+      implicit step (2026-10-17); fixed arrays and explicit floating ranges.
+      Explicit ref/ref-mut binding modes, copy-only value iteration, canonical
+      ascending default steps, structural iteration borrows, and broad
+      collection lowering remain incomplete.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/control-flow/flowcontrol_for.md
       - rules/declarations/interfaces.md
       - rules/types/types.md
@@ -1116,6 +1123,7 @@ integrations:
       - while a loop iterates reusable dynamic-array, list, map, or set storage, a compiler-known structural operation (selected by the registry StructuralMutation contract, never by name) or an assignment on the iterated collection or any storage enclosing it is rejected with mandatory S1075 for.structural-mutation-during-iteration, the operation, both Places, help, and the loop location; element assignment, mutation inside one element or through a ref mut binding, sibling storage, ranges, and code after the loop remain valid
       - "generic iterator parameters (2026-10-10): a for loop over a generic parameter constrained by Iterator[T], by value (fn F[I: Iterator[T]](values: I)) or as ref mut I, takes its element type and Next requirement from the constraint without an interface value or dispatch; each specialization resolves the concrete Next statically, a ref mut I parameter infers I from an owned mutable argument through the implicit call-site borrow (borrowing.md §15.2), and lowering readiness reports such template loops as Unproven (per-specialization lowering) instead of Invalid"
     remaining:
+      - "MD-117 heterogeneous iteration: produce concrete per-position expansion plans for ordinary for, for ref and for ref mut with statically typed indexes/Len; reject by-value iteration of move-only elements and runtime heterogeneous indexing, preserve empty iteration, break/continue/return/defer/try/panic and executed side effects without a for static keyword (flowcontrol_for.md §13A; correction §5)."
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
       - hold the shared or exclusive iterable borrow for the whole loop body so conflicting uses of the iterated collection inside the body are rejected
@@ -1208,7 +1216,7 @@ integrations:
         result: passed on 2026-10-02 with Append/Clear/RemoveAt/Remove/Add, whole and enclosing replacement, field and reference-parameter sources, and outer-loop sources from inner loops rejected, and eight structurally safe forms accepted
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-02 after the structural-stability check
-    revised: "2026-10-10"
+    revised: "2026-10-28"
 
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow

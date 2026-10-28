@@ -326,7 +326,7 @@ func (p *Parser) skipUnsupportedConditionalExpression() RecoveryEvent {
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Impl declaration", NewExpression production
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention", "Nil use"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes", "Nil use"
 func (p *Parser) parseNewExpression() ast.Expression {
 	expr := &ast.NewExpression{Token: p.curToken}
 	if !p.expectPeekTypeStart() {
@@ -498,8 +498,8 @@ func (p *Parser) parseMatchExpression() *ast.MatchExpression {
 // the partial slice exists for tooling and later recovery-aware consumers.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
-//   - rules/compiler/parser_recovery.md — "Other specialized unterminated constructs can still return nil"
+//   - rules/compiler/parser_recovery.md — "Block recovery"
+//   - rules/compiler/parser_recovery.md — "Nil use"
 //   - rules/foundations/grammar.md — "Match expression"
 func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 	arms := []*ast.MatchArm{}
@@ -1392,8 +1392,8 @@ func (p *Parser) parseTryExpression() ast.Expression {
 // syntax: the unterminated diagnostic continues to block code generation.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
-//   - rules/compiler/parser_recovery.md — "Other specialized unterminated constructs can still return nil"
+//   - rules/compiler/parser_recovery.md — "Block recovery"
+//   - rules/compiler/parser_recovery.md — "Nil use"
 //   - rules/foundations/grammar.md — "TryHandler"
 //   - rules/errors/errorhandling.md — §15.2 "No nested match wrapper syntax"
 func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
@@ -1705,16 +1705,20 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 	return lit
 }
 
+// typeReferenceFromExpression retains nominal source identity when a parsed
+// identifier/member chain becomes a type constructor or conversion target.
+// Rules: rules/foundations/grammar.md — TypeReference, postfix expressions;
+// rules/tooling/lsp.md — "Navigation and references".
 func typeReferenceFromExpression(expr ast.Expression) (*ast.TypeReference, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		return &ast.TypeReference{Token: expr.Token, Name: expr.Value}, true
+		return &ast.TypeReference{Token: expr.Token, NameToken: expr.Token, Name: expr.Value}, true
 	case *ast.MemberExpression:
 		left, ok := typeReferenceFromExpression(expr.Object)
 		if !ok {
 			return nil, false
 		}
-		return &ast.TypeReference{Token: left.Token, Name: left.Name + "." + expr.Property.Value}, true
+		return &ast.TypeReference{Token: left.Token, NameToken: expr.Property.Token, Name: left.Name + "." + expr.Property.Value}, true
 	default:
 		return nil, false
 	}

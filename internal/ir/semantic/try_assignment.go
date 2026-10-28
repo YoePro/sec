@@ -35,6 +35,8 @@ func (fb *functionBuilder) buildTryAssignment(stmt *ast.TryAssignmentStatement) 
 	step := "constrained-type contract check"
 	if access, isProperty := fb.owner.analyzer.ResolvedPropertyAccessOf(stmt.Assignment.Target); isProperty && access.Kind == sema.PropertyFallibleWrite {
 		step = "fallible property setter " + access.Name
+	} else if fb.owner.analyzer.IsDecimalScaleWrite(stmt.Assignment) {
+		step = "decimal Scale setter (exact rescale, MD-066)"
 	}
 	return fb.unsupported(fmt.Sprintf("try assignment through %s (%s error %s)", step, edge, sema.TypeDisplayName(fact.ErrorType)), stmt.Token)
 }

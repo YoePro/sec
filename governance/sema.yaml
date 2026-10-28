@@ -47,8 +47,8 @@ integrations:
     summary: >-
       Accepts contextual not in as the boolean complement of membership without
       reserving not as a keyword. Parser, Sema and LSP share the canonical AST
-      operator; lowering in the single compilation track is pending (the
-      removed legacy range backends negated one membership search; MD-101).
+      operator; lowering in the single compilation track is pending (the removed
+      legacy range backends negated one membership search; MD-101).
     rules:
       - rules/foundations/lexical_structure.md
       - rules/foundations/grammar.md
@@ -210,7 +210,7 @@ integrations:
     remaining:
       - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior
       - "P20 floating operators: complete NaN comparison and truncation-remainder facts in Semantic IR, schema-16 Sec MLIR verification and Arith lowering after the corrected P18/P19 predecessor chain; the current emitter and dialect support schema 10"
-      - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules (planned as SEC-MLIR-P21, `lowering.sec-mlir-package21`; operator scale, error type and decimal128 members await MD-066..MD-068)
+      - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules (planned as SEC-MLIR-P21, `lowering.sec-mlir-package21`; operator scale, core ArithmeticError mapping and decimal128 members are normatively decided by MD-066/067/068 on 2026-10-28; actual implementation and predecessor gates remain, following correction §13(3) numbered steps)
       - lower fixed-array and slice membership as exact-once left-to-right short-circuit search without allocation
       - lower range membership over char, rune, float, decimal, and nominal ordered values (Semantic IR covers built-in integers)
       - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every maintained backend

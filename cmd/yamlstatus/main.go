@@ -159,36 +159,43 @@ func processYAMLFile(path string, stats *Stats) error {
 	}
 }
 
-func printResults(out io.Writer, stats Stats, verbose bool) {
+func printResults(out io.Writer, stats Stats, verbose bool, html bool) {
+
+	if html {
+		fmt.Fprint(out, createHTMLOutput(stats, verbose))
+		return
+	}
+
 	if stats.Files == 0 {
 		fmt.Fprintln(out, "No YAML files found.")
 		return
 	}
 	fmt.Fprintln(out, "\nIMPLEMENTATION STATISTICS")
-	fmt.Fprintf(out, "YAML files read:             %d\n", stats.Files)
-	fmt.Fprintf(out, "Total integrations:          %d\n", stats.TotalObjects)
+	fmt.Fprintf(out, "YAML files read:               %3d\n", stats.Files)
+	fmt.Fprintf(out, "Total integrations:            %3d\n", stats.TotalObjects)
 
 	if stats.TotalObjects > 0 {
-		fmt.Fprintln(out, "\nIntegration statuses:")
+		fmt.Fprintln(out, "\nIntegration ID statuses:")
 		for _, status := range []string{"implemented", "partial", "planned"} {
 			fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
 		}
 		for _, status := range sortedKeys(stats.StatusCounts) {
 			if status != "implemented" && status != "partial" && status != "planned" {
-				fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
+				fmt.Fprintf(out, "  %-10s                    %3d\n", status, stats.StatusCounts[status])
 			}
 		}
+		fmt.Fprintf(out, "-------------------------------------------\n")
 	} else {
 		fmt.Fprintln(out, "\nNo integrations found.")
 	}
 
 	tot := stats.TotalImplemented + stats.TotalRemaining + stats.TotalPartial
 	if tot > 0 {
-		fmt.Fprintln(out, "\nChecklist items:")
+		fmt.Fprintln(out, "\nChecklist item status:")
 		fmt.Fprintf(out, "  Implemented:               %5d  (%2.1f%%)\n", stats.TotalImplemented, (float64(stats.TotalImplemented) / float64(tot) * 100))
 		fmt.Fprintf(out, "  Remaining:                 %5d  (%2.1f%%)\n", stats.TotalRemaining, (float64(stats.TotalRemaining) / float64(tot) * 100))
 		fmt.Fprintf(out, "  Partial:                   %5d  ( %2.1f%%)\n", stats.TotalPartial, (float64(stats.TotalPartial) / float64(tot) * 100))
-		fmt.Fprintf(out, "--------------------------------------------\n")
+		fmt.Fprintf(out, "-------------------------------------------\n")
 		fmt.Fprintf(out, "  Total:                     %5d\n", tot)
 	} else {
 		fmt.Fprintln(out, "\nNo checklist items found.")

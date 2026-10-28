@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-16"
+    revised: "2026-10-28"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -20,6 +20,7 @@ integrations:
       method-level generics, complete specialization identity, and concrete-only
       backend lowering remain incomplete.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/declarations/generics.md
       - rules/declarations/enums.md
       - rules/declarations/impl.md
@@ -101,6 +102,7 @@ integrations:
       - "forwarded constraints and overload fallback (2026-10-10): a template parameter passed as a generic argument satisfies a constraint that its own declaration guarantees (Concat[I: Iterator[string]] calling Join[I: Iterator[string]]), and a call selected through its expected type no longer reports a generic candidate's constraint failure while non-generic overloads remain for the main call path; both surfaced in sec/stdlib/str/join.sec"
       - generic primary and extended impl scopes retain the owning type declaration’s ordered interface constraints and recheck every conjunct when those parameters are reused as generic type arguments; concrete substitutions still require valid explicit conformance, and parameterized interface arguments remain distinct
     remaining:
+      - "MD-117 declaration/tooling: parse and retain one trailing generic type-pack parameter [...Types] as a compile-time ordered type sequence (including empty), distinct from an ordinary T and from runtime containers; add parser/CST, formatter and LSP declaration/signature coverage without inventing explicit pack literals or changing ordinary array/spread grammar (correction §§2,10; generics.md §16A). Feature-specific parser status is owned here, not by the cross-cutting grammar-recovery integrations."
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
       - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
@@ -156,6 +158,7 @@ integrations:
 
   - id: compiler.generics-lowering
     area: compiler-semantic-ir-and-mlir
+    revised: "2026-10-28"
     status: partial
     integrated: "2026-09-04"
     document_revision: "1.1"
@@ -168,6 +171,7 @@ integrations:
       generic enum, method, named-type, ownership/destruction, ABI, and
       generic-concreteness verification remain incomplete.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/compiler/generics_lowering.md
       - rules/compiler/monomorphization.md
       - rules/declarations/generics.md
@@ -196,6 +200,7 @@ integrations:
       - current union lowering explicitly rejects unresolved generic union template values
       - canonical rulebooks now cross-reference the concrete generic-lowering boundary without claiming complete implementation
     remaining:
+      - "MD-117 concrete lowering: consume verified ordered pack specializations and expanded concrete callable signatures without redoing inference or adding erased pack ABIs, boxing, hidden heap allocation or runtime dictionaries; preserve effects, source evaluation and cleanup supplied by the semantic owners (correction §§9,14(6); generics_lowering.md §§3,7)."
       - consume canonical InstantiationIdentity and concrete specialization facts from compiler.monomorphization without recreating demand, identity, or substitution semantics
       - implement method-level generic lowering for already canonical concrete method specializations
       - complete generic named-type lowering and preserve nominal identity independently of physical representation
@@ -264,6 +269,7 @@ integrations:
       diagnostics provide a partial foundation; the complete cross-module
       specialization and realization model remains incomplete.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/compiler/monomorphization.md
       - rules/declarations/generics.md
       - rules/compiler/generics_lowering.md
@@ -287,6 +293,7 @@ integrations:
       - unresolved generic parameters are rejected by represented concrete lowering paths where current checks exist
       - unresolved generic extern declarations are rejected before callable registration and every semantic CLI/backend entry; diagnostics retain Invalid proof state, declaration links and all unresolved parameters, while generic Sec wrappers may call concrete extern providers
     remaining:
+      - "MD-117 specialization: make the ordered concrete pack sequence, nominal/reference/mode identities and empty arity part of canonical specialization/cache identity; demand-check concrete element operations and preserve template plus instantiation/position diagnostics, cross-module and target compatibility (correction §§4(6),9,10; monomorphization.md §9.1)."
       - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
       - separate generic resolution and inference ownership from canonical specialization application
       - implement one canonical demand/provenance graph for nested concrete specialization requests
@@ -334,7 +341,7 @@ integrations:
       - unresolved generic extern declarations are rejected and concrete generic FFI compatibility is checked independently
       - size and performance policies may select different physical sharing without changing semantic instantiation identity
       - cold and warm cache plus parallel and sequential compilation produce equivalent canonical generic results
-    revised: "2026-10-13"
+    revised: "2026-10-28"
     code:
       - internal/sema/ffi.go
     tests:

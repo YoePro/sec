@@ -15,7 +15,7 @@ import (
 //
 // Rules:
 //   - rules/compiler/parser_recovery.md — "Struct literal recovery", "Missing closing brace"
-//   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
+//   - rules/compiler/parser_recovery.md — "Block recovery"
 func TestUnterminatedStructLiteralRetainsFieldsAndEnclosingFunction(t *testing.T) {
 	const fixture = "../../testdata/parser/unterminated_struct_literal_invalid.sec"
 	input, err := os.ReadFile(fixture)

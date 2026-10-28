@@ -1,0 +1,8 @@
+module main
+
+type Item struct {
+    value: int,
+}
+
+fn Invalid(unresolved: Option[missing.Item]) void {
+}

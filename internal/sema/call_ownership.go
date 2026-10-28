@@ -14,7 +14,7 @@ import (
 // Rules:
 //   - rules/memory/copy_move.md — §§7,8.1–8.3,28.1
 //   - rules/declarations/functions.md — §9 "Explicit consuming parameter"
-func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
+func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, call *ast.CallExpression) bool {
 	valid := true
 	for sourceIndex, arg := range sourceArgs {
 		param, ok := functionParameterForArgument(function, sourceIndex)
@@ -26,7 +26,12 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 		source := explicitMoveSource(arg)
 		borrowParameter := param.Ref || param.MutableRef || param.Type.Kind == ReferenceType
 		if explicit {
-			if preparedSpread || borrowParameter {
+			if borrowParameter {
+				a.reportMoveIntoBorrowedParameter(move, param, function, call)
+				valid = false
+				continue
+			}
+			if preparedSpread {
 				a.addErrorAtToken(move.Token, "explicit <- argument requires an owning value parameter")
 				valid = false
 				continue

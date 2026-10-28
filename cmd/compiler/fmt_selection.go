@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -19,6 +20,7 @@ type fmtSelection struct {
 	display  string
 	input    []byte
 	mode     os.FileMode
+	info     os.FileInfo
 }
 
 // selectFmtSources expands explicit file and directory arguments into the
@@ -78,7 +80,7 @@ func selectFmtSources(arguments []string) ([]fmtSelection, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", selected[index].display, err)
 		}
-		selected[index].input, selected[index].mode = input, info.Mode().Perm()
+		selected[index].input, selected[index].mode, selected[index].info = input, info.Mode().Perm(), info
 	}
 	return selected, nil
 }
@@ -92,8 +94,26 @@ func walkFmtDirectory(root string, add func(path, display string) error) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", root, err)
 	}
+	scanRoot := reservedParent
 	if manifest, found := formatconfig.ProjectManifest(root); found {
-		reservedParent = filepath.Dir(filepath.Dir(manifest))
+		reservedParent, err = filepath.Abs(filepath.Dir(filepath.Dir(manifest)))
+		if err != nil {
+			return fmt.Errorf("%s: %w", root, err)
+		}
+		// Explicit directory roots still perform automatic discovery. Starting
+		// within reserved output/fixture trees cannot bypass their exclusion;
+		// only explicitly named files receive that exception (§28(10)).
+		relative, err := filepath.Rel(reservedParent, scanRoot)
+		if err != nil {
+			return fmt.Errorf("%s: %w", root, err)
+		}
+		if relative != "." {
+			for index, part := range strings.Split(relative, string(filepath.Separator)) {
+				if strings.HasPrefix(part, ".") || part == "testdata" || index == 0 && part == "bin" {
+					return nil
+				}
+			}
+		}
 	}
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -108,20 +128,45 @@ func walkFmtDirectory(root string, add func(path, display string) error) error {
 			}
 			return nil
 		}
-		if path == root {
-			return nil
-		}
 		name := entry.Name()
 		absolute, err := filepath.Abs(path)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
+		if path == root {
+			name = filepath.Base(absolute)
+		}
 		if strings.HasPrefix(name, ".") || name == "testdata" || name == "bin" && filepath.Dir(absolute) == reservedParent {
 			return filepath.SkipDir
+		}
+		if path == root {
+			return nil
 		}
 		if info, err := os.Stat(filepath.Join(path, ".sec", "sec.toml")); err == nil && !info.IsDir() {
 			return fmt.Errorf("%s: project boundary: a separate Sec project manifest lies inside the selected directory %s; format it separately", path, root)
 		}
 		return nil
 	})
+}
+
+// validate rejects a source whose identity, contents or permissions changed
+// after preflight. A detected symlink replacement is rejected; changed files
+// are not knowingly overwritten using the invocation's older source bytes.
+// Rules: rules/tooling/formatter.md — §28(12)–(13); MD-037 §7(3).
+func (file fmtSelection) validate() error {
+	info, err := os.Lstat(file.absolute)
+	if err != nil {
+		return fmt.Errorf("%s: source changed after formatter preflight: %w", file.display, err)
+	}
+	if file.info == nil || !info.Mode().IsRegular() || !os.SameFile(file.info, info) || info.Mode() != file.info.Mode() || info.Size() != file.info.Size() || !info.ModTime().Equal(file.info.ModTime()) {
+		return fmt.Errorf("%s: source changed after formatter preflight; rerun fmt", file.display)
+	}
+	contents, err := os.ReadFile(file.absolute)
+	if err != nil {
+		return fmt.Errorf("%s: reread selected source: %w", file.display, err)
+	}
+	if !bytes.Equal(contents, file.input) {
+		return fmt.Errorf("%s: source changed after formatter preflight; rerun fmt", file.display)
+	}
+	return nil
 }

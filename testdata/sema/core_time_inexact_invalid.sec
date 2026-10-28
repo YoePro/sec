@@ -1,0 +1,11 @@
+module main
+
+fn FractionalSecond() uint128<s> {
+    let value: uint128<ps> := 1
+    return value
+}
+
+fn OverflowSeconds() uint8<s> {
+    let value: uint8<min> := 5
+    return value
+}

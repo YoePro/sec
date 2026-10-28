@@ -50,6 +50,9 @@ func resolveRenameTarget(uri string, text string, pos position, overlay sourceOv
 	prepareProgramForLSP(program, path, overlay)
 	analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
 	analyzer.Analyze(program)
+	if analyzer.IsUnitMetadataSymbolAt(use.File, use.Line, use.Column) {
+		return renameTarget{}, fmt.Errorf("%s is a fixed unit metadata member and cannot be renamed", use.Lexeme)
+	}
 	if _, compilerKnown := analyzer.CompilerKnownSymbolAt(use.File, use.Line, use.Column); compilerKnown {
 		return renameTarget{}, fmt.Errorf("%s is a compiler-known member and cannot be renamed", use.Lexeme)
 	}

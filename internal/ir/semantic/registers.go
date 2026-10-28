@@ -300,20 +300,53 @@ func registerWriteProof(proof sema.ResolvedRegisterWriteProof) RegisterWriteProo
 	return write
 }
 
+// verifyRegisterDefinitions checks the one nominal module registry and exact
+// declaration-order coverage before operations may refer to its field IDs.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.1a (MD-114 §§2–3,9).
 func verifyRegisterDefinitions(module *Module) error {
 	seen := map[TypeID]bool{}
+	identities := map[string]bool{}
 	for _, definition := range module.Registers {
 		typ, ok := module.Types.Lookup(definition.TypeID)
 		if !ok || typ.Kind != TypeRegister || typ.Identity == "" || definition.SymbolID != SymbolID(typ.Identity) ||
 			definition.Name != typ.Name || definition.Width != typ.BitWidth || definition.Width == 0 || seen[definition.TypeID] {
 			return fmt.Errorf("invalid register definition !%d", definition.TypeID)
 		}
+		if identities[typ.Identity] {
+			return fmt.Errorf("duplicate register nominal identity %s", typ.Identity)
+		}
+		identities[typ.Identity] = true
+		if definition.ByteOrder != "" && definition.ByteOrder != "little-endian" && definition.ByteOrder != "big-endian" {
+			return fmt.Errorf("register has invalid byte order")
+		}
 		seen[definition.TypeID] = true
 		if definition.AllocationOrder != "lsb-first" && definition.AllocationOrder != "msb-first" {
 			return fmt.Errorf("register !%d has invalid allocation order %q", definition.TypeID, definition.AllocationOrder)
 		}
 		occupied := make([]bool, definition.Width)
+		names := map[string]bool{}
+		allocated := uint32(0)
 		for index, field := range definition.Fields {
+			if field.Name == "" || field.Reserved != (field.Name == "_") || !field.Reserved && names[field.Name] {
+				return fmt.Errorf("register has invalid or duplicate field name/reserved flag")
+			}
+			names[field.Name] = true
+			switch field.Access {
+			case "read-write", "read-only", "write-only", "read-clear", "read-set", "write-one-clear", "write-one-set", "write-one-toggle", "write-zero-clear", "write-zero-set", "write-zero-toggle":
+			default:
+				return fmt.Errorf("register field has invalid access policy")
+			}
+			if allocated+uint32(field.Width) > uint32(definition.Width) {
+				return fmt.Errorf("register fields exceed declared width")
+			}
+			offset := allocated
+			if definition.AllocationOrder == "msb-first" {
+				offset = uint32(definition.Width) - allocated - uint32(field.Width)
+			}
+			if uint32(field.BitOffset) != offset {
+				return fmt.Errorf("register field offset disagrees with allocation order")
+			}
+			allocated += uint32(field.Width)
 			if field.ID != RegisterFieldID(index) || field.Width == 0 || uint32(field.BitOffset)+uint32(field.Width) > uint32(definition.Width) {
 				return fmt.Errorf("register !%d field #%d has an invalid bit slice", definition.TypeID, index)
 			}
@@ -334,6 +367,38 @@ func verifyRegisterDefinitions(module *Module) error {
 			if !used {
 				return fmt.Errorf("register !%d leaves bits unassigned", definition.TypeID)
 			}
+		}
+	}
+	for index, typ := range module.Types.All() {
+		if typ.Kind == TypeRegister && !seen[TypeID(index+1)] {
+			return fmt.Errorf("register type has no definition")
+		}
+	}
+	state := map[TypeID]int{}
+	var visit func(TypeID) error
+	visit = func(id TypeID) error {
+		if state[id] == 1 {
+			return fmt.Errorf("recursive register layout")
+		}
+		if state[id] == 2 {
+			return nil
+		}
+		state[id] = 1
+		definition, _ := registerDefinition(module, id)
+		for _, field := range definition.Fields {
+			typ, _ := module.Types.Lookup(field.Type)
+			if typ.Kind == TypeRegister {
+				if err := visit(field.Type); err != nil {
+					return err
+				}
+			}
+		}
+		state[id] = 2
+		return nil
+	}
+	for _, definition := range module.Registers {
+		if err := visit(definition.TypeID); err != nil {
+			return err
 		}
 	}
 	return nil

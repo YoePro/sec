@@ -10,11 +10,18 @@ import (
 // Each binary binade is an integer lattice. Its image must lie on the coarsest
 // destination lattice it spans; a single source value needs only an exact image.
 // Unknown proofs are rejected, including subnormal loss and finite overflow.
+// A negative factor is proven on the mirrored interval: binary floating
+// values are symmetric under negation, so f*x+o over [lower, upper] equals
+// |f|*y+o over y in [-upper, -lower].
 // Rules: rules/types/units.md — Exact fixed conversions; No hidden precision loss;
+// rules/types/units.md — "Unit metadata" `Scale` (MD-062 § 9(2));
 // rules/types/types.md — Binary floating-point types.
 func FloatAffineIntervalExact(lower, upper, factor, offset *big.Rat, bits int) bool {
-	if lower == nil || upper == nil || factor == nil || offset == nil || lower.Cmp(upper) > 0 || factor.Sign() <= 0 {
+	if lower == nil || upper == nil || factor == nil || offset == nil || lower.Cmp(upper) > 0 || factor.Sign() == 0 {
 		return false
+	}
+	if factor.Sign() < 0 {
+		return FloatAffineIntervalExact(new(big.Rat).Neg(upper), new(big.Rat).Neg(lower), new(big.Rat).Neg(factor), offset, bits)
 	}
 	precision, minExponent, maxExponent := 53, -1022, 1023
 	if bits == 32 {

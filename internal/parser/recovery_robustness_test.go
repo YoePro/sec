@@ -23,8 +23,8 @@ import (
 // Rules:
 //   - rules/compiler/parser_recovery.md — "Recovery invariants": "Progress", "Determinism", "Bounded damage"
 //   - rules/compiler/parser_recovery.md — "Diagnostic limit"
-//   - rules/compiler/parser_recovery.md — "Tests": "Progress tests", "Truncation tests", "Mutation tests", "Fuzz tests"
-//   - rules/compiler/parser_recovery.md — "A.19 Add fuzz and mutation tests"
+//   - rules/compiler/parser_recovery.md — "Conformance requirements": "Progress tests", "Truncation tests", "Mutation tests", "Fuzz tests"
+//   - rules/compiler/parser_recovery.md — "Robustness inputs"
 
 const robustnessParseTimeout = 10 * time.Second
 

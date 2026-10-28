@@ -12,7 +12,7 @@ import (
 // the outer type without discarding their shape or following declarations.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func TestInvalidCompositeTypeReferencesPropagateRecovery(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/parser/invalid_composite_type_references_invalid.sec")

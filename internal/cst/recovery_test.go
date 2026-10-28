@@ -56,7 +56,7 @@ func TestRecoveryKeepsUnprovenMissingTokenAnchorsInexact(t *testing.T) {
 }
 
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Skipped tokens are only partly preserved"
+//   - rules/compiler/parser_recovery.md — "Token and trivia retention"
 //   - rules/tooling/formatter.md — § 25 "Malformed and incomplete source"
 func TestRecoveryAttachesSkippedRangesToRealElements(t *testing.T) {
 	source := "module main\n\nfn F() void {\n    let x := 1 ) ) 2\n    let y := 3\n}\n"

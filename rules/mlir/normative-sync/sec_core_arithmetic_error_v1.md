@@ -1,5 +1,7 @@
 # Package 9 Normative Core Error Addition
 
+> **Historical sync note (2026-10-28).** This Package 9 addition is applied. MD-067 later appended `ScaleOverflow` and `PrecisionExhausted` to `ArithmeticError` for decimal operators; the canonical five-variant declaration is `rules/library/core-library.md` § 20.1.
+
 ## Target rulebook
 
 Apply this normative addition to:

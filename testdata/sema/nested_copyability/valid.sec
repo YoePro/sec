@@ -1,0 +1,43 @@
+module main
+
+type Box[T] struct { value: T }
+type Choice[T] union { Value(T), Empty }
+
+fn CopyOption(value: Option[Option[int]]) Option[Option[int]] {
+    let copy := value
+    discard copy
+    return value
+}
+fn InferredOption() Option[Option[int]] {
+    let value := Some(Some(1))
+    let copy := value
+    discard copy
+    return value
+}
+fn CopyBox(value: Box[Box[int]]) Box[Box[int]] {
+    let copy := value
+    discard copy
+    return value
+}
+fn CopyUnion(value: Choice[Choice[int]]) Choice[Choice[int]] {
+    let copy := value
+    discard copy
+    return value
+}
+fn MoveOption(value: Option[Option[int[]]]) Option[Option[int[]]] {
+    let moved :<- value
+    return moved
+}
+fn MoveBox(value: Box[Box[int[]]]) Box[Box[int[]]] {
+    let moved :<- value
+    return moved
+}
+fn MoveUnion(value: Choice[Choice[int[]]]) Choice[Choice[int[]]] {
+    let moved :<- value
+    return moved
+}
+fn Deep(value: Option[Option[Option[Option[int]]]]) Option[Option[Option[Option[int]]]] {
+    let copy := value
+    discard copy
+    return value
+}

@@ -99,7 +99,7 @@ func (a *Analyzer) typeDeferredContextualArguments(function Function, arguments 
 			return false
 		}
 		delete(a.deferredContextualArguments, argument)
-		typ, _ := a.inferExpressionWithExpected(argument, parameter.Type)
+		typ, _ := a.inferExpressionWithExpected(argument, a.concreteContextualParameterType(parameter.Type))
 		if typ.Kind == InvalidType {
 			return false
 		}

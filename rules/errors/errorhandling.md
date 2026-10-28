@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-21
-- **Last updated:** 2026-10-15 (no-unnecessary-errors design principle cross-reference)
-- **Document revision:** 2.1
+- **Last updated:** 2026-10-28 (§§ 15.3, 20, 27.2b, 37.5 payload-bearing and contextual error patterns, MD-029/MD-042); 2026-10-28 (§ 3.4 most specific applicable error, MD-067)
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/errorhandling.md`
 - **Implementation governance:** `governance/errors.yaml`
@@ -188,6 +188,23 @@ Error values follow normal:
 - lifetime rules.
 
 There is no special hidden clone merely because a value is an error.
+
+### 3.4 Most specific applicable error
+
+An operation reports the narrowest existing variant of its selected public
+error type that accurately describes its failure. A generic variant, such as
+`ArithmeticError.Overflow`, is used only when no more specific applicable
+variant is defined in that type (MD-067, 2026-10-28).
+
+Selection is deterministic and depends on the mathematical cause of the
+failure, never on the order of low-level checks, the backend target or
+optimization. It creates no implicit conversion between distinct concrete
+error types and no hierarchy among enum variants: a generic variant does not
+match a more specific one, so a handler that wants every remaining variant
+names them or uses `Err(_)` (§ 17).
+
+Compiler diagnostics and internal failure reasons may be more detailed than
+the public error value.
 
 ---
 
@@ -872,6 +889,80 @@ try Read() {
 }
 ```
 
+### 15.3 Error-pattern forms (MD-029)
+
+`try` handlers and the `Err(...)` arms of a `Result` `match` use the same
+`ErrPattern` (`rules/foundations/grammar.md` "Try expression") with the same
+selection and binding semantics. The existing forms `Err(_)`,
+`Err(errorValue)` and `Err(ConcreteError.Variant)` keep their meaning.
+
+`Err(errorValue)` binds the **whole error**. `Err(FileError.NotFound(info))`
+selects one concrete variant and binds **that variant's payload**; the two
+bindings have different refined types.
+
+A variant of a concrete union error carrying a single payload, including a
+struct-like payload, may be selected and have its payload bound as one value,
+or have its fields destructured shallowly with the existing union field-pattern
+grammar:
+
+```sec
+type FileError union error {
+    NotFound {
+        Path: string
+    }
+
+    PermissionDenied
+
+    InvalidEncoding(uint)
+}
+
+// Within a try handler or Result match arm:
+Err(FileError.NotFound(info)) => Log(info.Path)
+Err(FileError.NotFound { Path: path }) => Log(path)
+Err(FileError.InvalidEncoding(position)) => ReportPosition(position)
+```
+
+Fields may be omitted, renamed, explicitly borrowed or explicitly mutably
+borrowed only when the matched value and ownership context grant that
+authority. Destructuring is exactly one level deep: `Some(Ok(value))` and
+nested `Err`/union patterns are not part of Sec 0.1; use a second `match`. The
+variant and payload shape are resolved against the declared variant of the
+concrete error type; an unknown variant or field, a duplicate field, a wrong
+payload shape, an illegal binding mode or an incompatible payload type is a
+compile-time error with a focused diagnostic.
+
+A bare variant such as `Err(FileError.NotFound)` is valid for a payload-bearing
+variant. It selects every value of that variant regardless of payload contents;
+it is not a test for an empty or default payload. Because it binds none of the
+payload, the compiler issues a configurable **Information** diagnostic by
+default that names the payload type or fields and suggests a binding form. The
+explicit forms `Variant(_)` (single payload) and `Variant {}` (struct-like
+payload) state deliberate non-binding and suppress only that information; they
+never waive ownership, destructor or non-discardability obligations, and no
+implicit partial move, silent clone or hidden ownership escape is authorized.
+
+When the protected failure channel or `Result[T, E]` subject supplies one
+unambiguous closed concrete error type `E`, the type name may be omitted:
+
+```sec
+Err(.NotFound)
+Err(.NotFound(info))
+Err(.NotFound { Path: path })
+Err(.NotFound {})
+```
+
+These resolve exactly like the corresponding `Err(FileError.NotFound...)`
+forms when `E` is `FileError`. The expected concrete type must be determined
+without looking up the candidate variant name; the compiler never searches
+visible error types for a matching spelling. The abbreviation is unavailable
+for the open root `error` and for heterogeneous or ambiguous failure contexts,
+even when only one known type declares that variant; no common error type or
+error union is inferred. It is a pattern spelling only, not a value
+expression, and the fully qualified form remains valid. It is an additive form
+activated in Sec 0.1.2 (owner choice 2026-10-28).
+
+Rules: `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 2–5, 7.
+
 ---
 
 ## 16. Partial handlers and implicit propagation
@@ -1040,6 +1131,15 @@ The move is committed only after:
 The guard may inspect or borrow the prospective binding according to normal
 rules but must not consume it before selection when a later handler or
 propagation path may still need the original value.
+
+The same applies to MD-029 variant payload and field bindings: they are visible
+only in their selected handler's guard and body, a guard-false path and an
+unmatched propagation path retain the original error value and its
+obligations, and a borrowed error cannot be silently consumed or yield a
+mutable borrow without authority. Error-pattern selection preserves
+left-to-right evaluation, evaluates the protected expression exactly once and
+introduces no extra getter call, allocation, dynamic reflection or mandatory
+runtime service.
 
 ---
 
@@ -1387,6 +1487,36 @@ match result {
 This is a deliberately narrow Sec 0.1 exception, not a general nested-pattern
 model; `flowcontrol_match.md` § 28 "Concrete error variants" owns the details
 (MD-008; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 9).
+
+### 27.2b Payload-bearing error variants in `match` and open narrowing (MD-029)
+
+The § 15.3 forms are equally valid as `Err(...)` arms. On `Result[T, error]` a
+fully qualified variant pattern first checks the concrete error identity, then
+the selected variant, and only then exposes the payload; it never reads the
+payload of a different error type or variant. The `Err(.Variant...)`
+abbreviation is unavailable there:
+
+```sec
+match result {
+    Ok(content) => Use(content)
+    Err(FileError.NotFound { Path: path }) => HandleMissing(path)
+    Err(errorValue) => HandleOther(errorValue)
+}
+```
+
+For `Result[T, FileError]`, unguarded arms for every reachable `FileError`
+variant together with `Ok` exhaust the match; a bare payload-bearing variant
+counts as full coverage of that variant. An unguarded `Err(errorValue)` or
+`Err(_)` covers all remaining error cases, so a later variant arm is covered
+and remains a compile-time error, as does a variant arm after an unguarded
+complete set of variant arms. Guarded arms follow the guard-false continuation
+rules.
+
+The declared error type and the errors a specific expression can produce are
+distinct facts (MD-042): a `match` or `try` may treat a variant as inactive
+only from sound, complete failure provenance (`flowcontrol_match.md` § 25A).
+`fn Calculate() Result[int, ArithmeticError]` does not prove that
+`PrecisionExhausted` is impossible.
 
 ### 27.3 Generic `_` may not hide `Err`
 
@@ -1773,6 +1903,15 @@ partial handler propagates unmatched compatible error
 partial handler rejects unmatched error that cannot propagate
 Err(_) handles heterogeneous failure set without binding
 heterogeneous Err(named) rejected when no single declared binding type exists
+Err(Error.Variant(info)) binds one union-error payload with its type
+Err(Error.Variant { Field: name }) binds exactly the chosen fields
+bare payload-bearing Err(Error.Variant) valid with Information naming the payload
+Err(Error.Variant {}) and Err(Error.Variant(_)) suppress only that Information
+Err(.Variant...) resolves from one unambiguous closed error type
+Err(.Variant) rejected for Result[T, error] and heterogeneous contexts
+unknown variant, missing/duplicate field, wrong binding mode, recursive pattern rejected
+guard false keeps the error and payload obligations; selected arm transfers once
+try-handler braces and field-pattern braces parse and format distinctly
 ```
 
 ### 37.6 Recovery values

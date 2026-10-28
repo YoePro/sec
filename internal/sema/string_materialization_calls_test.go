@@ -23,7 +23,7 @@ func TestStringMaterializationStaticCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	errors := analyzeSourceRaw(t, string(invalid))
-	want := []string{"requires a byte array or slice", "requires a rune array or slice", "expects 1 argument", "explicit <- argument requires an owning value parameter", "explicit <- argument requires an owning value parameter"}
+	want := []string{"requires a byte array or slice", "requires a rune array or slice", "expects 1 argument", "Cannot move 'data' into borrowed parameter 'data'.", "Cannot move 'data' into borrowed parameter 'data'."}
 	if len(errors) != len(want) {
 		t.Fatalf("got %v, want %d diagnostics", errors, len(want))
 	}

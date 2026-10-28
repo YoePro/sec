@@ -662,6 +662,8 @@ public:
         sec::SliceIndexInBoundsOp, sec::SliceElementPlaceOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addDynamicallyLegalOp<
+        sec::RegisterExtractOp, sec::RegisterUpdateOp,
+        sec::RegisterFromBitsOp, sec::RegisterToBitsOp,
         sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
         sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
         sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
@@ -692,6 +694,11 @@ public:
                  ScalarCondBranchLowering,
                  ScalarFunctionLowering>(typeConverter, context);
     for (StringRef operationName : {
+             // MD-114: keep detached operations/proofs and resolve only scalar types.
+             sec::RegisterExtractOp::getOperationName(),
+             sec::RegisterUpdateOp::getOperationName(),
+             sec::RegisterFromBitsOp::getOperationName(),
+             sec::RegisterToBitsOp::getOperationName(),
              sec::IntUnaryPlusOp::getOperationName(),
              sec::IntNegCheckedOp::getOperationName(),
              sec::IntBinaryCheckedOp::getOperationName(),

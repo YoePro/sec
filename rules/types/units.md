@@ -1071,8 +1071,11 @@ The `decimal` read of `Scale` projects the exact rational to the nearest
 representable `decimal`, breaking exact ties with `RoundingMode.NearestEven`.
 It is one deterministic projection, independent of host, target, iteration
 order and optimization flags, and is not a rounding permission for unit
-conversion, the other numeric members or decimal arithmetic (MD-066 keeps
-operator result scale). The approximate value never feeds back into exact unit
+conversion, the other numeric members or decimal arithmetic (decimal operator
+result scale and division rounding are defined by MD-066 in
+`rules/foundations/operators.md` "Decimal arithmetic"; the nearest
+representable value ranges over the whole signed `int32` scale domain). The
+approximate value never feeds back into exact unit
 semantics. When an accepted value cannot be represented in its public type
 under the governing numeric contract, the read or materialization fails with a
 source-positioned diagnostic; the declaration is not altered.

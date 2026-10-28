@@ -1,13 +1,13 @@
 # MD-099, MD-100 and MD-037 — Formatter alignment and deterministic file selection
 
 - **Decisions:** MD-099 — `formatter-trailing-comment-column-padding-limit`; MD-100 — `formatter-enum-values-always-aligned`; MD-037 — `sec-fmt-directory-and-project-selection`
-- **Status:** **Normative integration complete; MD-099/MD-100 implementation verified 2026-10-27; MD-037 closure pending**
+- **Status:** **Applied — MD-099/MD-100 verified 2026-10-27; MD-037 implementation and governance closure verified 2026-10-28**
 - **Created:** 2026-10-27
-- **Last updated:** 2026-10-27
+- **Last updated:** 2026-10-28
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Reference repository:** `YoePro/sec`, `main` at `5426af6cf8cce6fe85ff897b97050dfd330ef4fe` (2026-10-26)
-- **Pending correction location:** `rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md`
+- **Applied correction location:** `rules/corrections/applied/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction-20261028.md`
 - **Archive after normative integration:** `rules/corrections/applied/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction-YYYYMMDD.md`
 - **Primary normative owner:** `rules/tooling/formatter.md`, in particular §§ 2–4, 9, 12, 15, 25, 28 and 30
 - **Related owners:** `rules/projects/projects.md` (single manifest, root and recognized directories); `rules/projects/modules.md` (project source versus selected compilation graph); `rules/tooling/lsp.md` (shared formatter)

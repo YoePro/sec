@@ -1,14 +1,14 @@
 # MD-092 — Preserve `string.CharAt` as a byte-indexed convenience alias
 
 - **Decision:** MD-092 — `string-charat-byte-access-name`
-- **Status:** **Owner-approved — normative correction pending repository integration; existing implementation to be simplified where appropriate**
+- **Status:** **Applied 2026-10-28 — normative/core alias and governance integrated; runtime string conformance remains tracked by frontend.types-core**
 - **Created:** 2026-10-27
-- **Last updated:** 2026-10-27
+- **Last updated:** 2026-10-28
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Reference repository:** `YoePro/sec`, `main` at `5426af6cf8cce6fe85ff897b97050dfd330ef4fe` (2026-10-26)
-- **Pending correction location:** `rules/corrections/MD-092-string-CharAt-byte-alias-correction.md`
-- **Archive after normative integration:** `rules/corrections/applied/MD-092-string-CharAt-byte-alias-correction-YYYYMMDD.md`
+- **Pending correction location:** `rules/corrections/applied/MD-092-string-CharAt-byte-alias-correction-20261028.md`
+- **Archive after normative integration:** `rules/corrections/applied/MD-092-string-CharAt-byte-alias-correction-20261028.md`
 - **Primary normative owner:** `rules/library/core-library.md`, especially § 5.3 and § 5.7
 - **Existing implementation:** `sec/core/string.sec`, `impl string`, `CharAt(index: uint) char`
 - **Related contracts:** `rules/types/types.md` (`char`, `rune`, `byte`); MD-050/MD-071/MD-072 string-position correction; UTF-8 string invariants

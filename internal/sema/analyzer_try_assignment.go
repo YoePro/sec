@@ -116,6 +116,10 @@ func (a *Analyzer) analyzeTryAssignmentHandlers(stmt *ast.TryAssignmentStatement
 func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, bool) {
 	switch target := stmt.Target.(type) {
 	case *ast.MemberExpression:
+		// The decimal Scale setter fails with PrecisionError (core-library.md § 10.1).
+		if a.decimalScaleWrites[stmt] {
+			return a.types["PrecisionError"], true
+		}
 		property, ok := a.lookupPropertyOnMember(target)
 		if !ok || property.Error == nil {
 			return Type{}, false

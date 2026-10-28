@@ -31,7 +31,7 @@ func writeFmtFile(t *testing.T, path, text string) {
 //
 // Rules:
 //   - rules/tooling/formatter.md — §§ 28(9)–28(13)
-//   - rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md — §§ 5–8, 10(3)–(5)
+//   - rules/corrections/applied/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction-20261028.md — §§ 5–8, 10(3)–(5)
 func TestFmtSelectsProjectDirectories(t *testing.T) {
 	manifestPath, _ := writeFmtProject(t, "[format]\nindentation_width = 2\n", fmtDirtySource)
 	root := filepath.Dir(filepath.Dir(manifestPath))

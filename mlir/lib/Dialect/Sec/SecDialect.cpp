@@ -5,6 +5,7 @@
 #include "sec/Dialect/Sec/ReturnOrigins.h"
 #include "sec/Dialect/Sec/TypeTraversal.h"
 #include "OperationContracts.h"
+#include "RegisterContracts.h"
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -227,6 +228,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
                << "Places, direct references and their operations require schema 11, module declares schema "
                << number;
     }
+    if (number>=11 && failed(detail::verifyRegisterModule(module))) return failure();
     if (number == 1)
       return success();
     auto semanticVersion =
@@ -281,6 +283,22 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     return success();
   }
 
+  if (name=="sec.register_fit_proof") {
+    if (!isa<RegisterFromBitsOp>(operation)) return operation->emitError("sec.register_fit_proof belongs only on register.from_bits");
+    return success();
+  }
+  if (name == "sec.registers") {
+    auto module=dyn_cast<ModuleOp>(operation);
+    if (!module) return operation->emitError("sec.registers belongs on a module");
+    auto version=module->getAttrOfType<IntegerAttr>("sec.dialect_version");
+    if (!version || version.getInt()<11) return operation->emitError("sec.registers requires schema 11");
+    return detail::verifyRegisterModule(module);
+  }
+  if (name=="sec.field_path" || name=="sec.write_proof") {
+    if (!isa<RegisterExtractOp,RegisterUpdateOp>(operation)) return operation->emitError("register field metadata requires detached field operation");
+    if (name=="sec.write_proof" && !isa<RegisterUpdateOp>(operation)) return operation->emitError("sec.write_proof belongs only on register.update");
+    return success();
+  }
   if (name == "sec.semantic_ir_version") {
     auto integer = dyn_cast<IntegerAttr>(value);
     auto type = integer ? dyn_cast<IntegerType>(integer.getType())

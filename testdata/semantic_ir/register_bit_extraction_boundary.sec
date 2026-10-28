@@ -1,0 +1,4 @@
+module main
+
+type Small register[3] { Value: bit[3], }
+fn Convert(x: uint8) Small { return Small(bit[3](x)) }

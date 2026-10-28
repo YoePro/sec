@@ -153,7 +153,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-09-21"
+    revised: "2026-10-28"
     summary: >-
       Tracks canonical nominal register types independently from fixed-address
       storage, including exact bit layouts, field types, access semantics,
@@ -183,7 +183,7 @@ integrations:
       - testdata/register_invalid.sec
     implemented:
       - "MD-077 steps 1-2 (2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md): detached bit[N] carriers, proven field writes and the no-truncation rules are locked by tests. @address bindings resolve to the compiler-known HardwareInstance[T] (types.go, hardware_instances.go), which is non-copyable, trivially destructible and only for register T. The type-owned primary impl is mandatory. Physical fields resolve only inside impl T, with a diagnostic naming the public members. ref/ref mut of physical bits (through an instance or self) are rejected, while ref of the instance is ref HardwareInstance[T] and never crosses with ref T. LSP completion offers impl members, not fields. Fixtures register_valid, register2/3/5, register_invalid, bit_enum_*, allocation_physical_storage_valid and the pitfall fixtures were migrated to the impl API (register_md077_test.go, cmd/lsp/hardware_instance_test.go)."
-      - "MD-077 step 3, detached part (2026-10-23): Sema records immutable register field plans (ResolvedRegisterFieldOf: register type, field ordinal, field contract, root kind detached/hardware-instance/impl-receiver) and write proofs (ResolvedRegisterWriteOf: typed, constant or interval). Semantic IR has the register type, the module register-definition table (bit slices, carriers, access, unit, reserved fields; verified complete and non-overlapping) and the pure register.value.extract/update operations, including nested registers, registers inside structs and impl members on a software receiver (self.Field and implicit Field read the receiver Place, then extract/update; owner clarification 2026-10-23 in registers.md § 11.7: the receiver kind, not the impl, decides hardware versus software semantics); a differently typed proven value is converted exactly to the field carrier (register_values_test.go). A member that borrows a receiver register field is software-receiver-only and is rejected on a hardware instance, also through implicit-self calls (register_receivers.go). Hardware roots, HardwareInstance[T] and integer-to-register conversion (MD-110) fail closed with specific diagnostics; emit-sec-mlir rejects register types until dialect v11.41.1 is implemented."
+      - "MD-077 step 3, detached part (2026-10-23): Sema records immutable register field plans (ResolvedRegisterFieldOf: register type, field ordinal, field contract, root kind detached/hardware-instance/impl-receiver) and write proofs (ResolvedRegisterWriteOf: typed, constant or interval). Semantic IR has the register type, the module register-definition table (bit slices, carriers, access, unit, reserved fields; verified complete and non-overlapping) and the pure register.value.extract/update operations, including nested registers, registers inside structs and impl members on a software receiver (self.Field and implicit Field read the receiver Place, then extract/update; owner clarification 2026-10-23 in registers.md § 11.7: the receiver kind, not the impl, decides hardware versus software semantics); a differently typed proven value is converted exactly to the field carrier (register_values_test.go). A member that borrows a receiver register field is software-receiver-only and is rejected on a hardware instance, also through implicit-self calls (register_receivers.go). Hardware roots, HardwareInstance[T] and integer-to-register conversion (MD-110) fail closed with specific diagnostics; This historical emitter gate is superseded by the MD-114 detached table/extract/update and MD-110 constant/source-domain/to-bits subset implemented on 2026-10-28 under lowering.sec-mlir-package15; hardware and remaining conversion/proof transport stay explicit boundaries."
       - nominal declarations through type Name register[N] with positive allocation-free compile-time integer expressions, including source-order-independent immutable module constants
       - bit and bit[N] fields with positive compile-time integer-expression widths and exact total-width validation
       - duplicate named-field rejection and inaccessible reserved underscore fields that retain layout width
@@ -558,6 +558,7 @@ integrations:
       slices, while complete callable/backend ownership metadata remains major
       work.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/declarations/functions.md
       - rules/declarations/generics.md
       - rules/declarations/interfaces.md
@@ -634,10 +635,12 @@ integrations:
       - direct zero-or-more typed variadic arguments, generic instantiation, runtime-length array/slice/pack spread sources, multiple mixed spread sources, and fixed-arity preference over equally ranked variadic overloads
       - variadic callable shape retained by inferred function values, callable identity, compatibility, and concrete generic instances
       - "MD-027 contextual arguments (2026-10-12, types.md 'Contextual None and empty-literal arguments', functions.md § 19): overload resolution considers all supplied arguments together; a bare None, an empty array literal [] or the null sentinel whose type the candidates do not agree on is deferred, matches only a parameter of its family (Option, empty-literal-compatible array, RawPtr) and is typed from the single selected overload, for calls, methods, init and new; viable candidates that disagree give S1147 types.ambiguous-contextual-argument naming the candidate types with typed-binding help; return types neither distinguish nor select overloads (TestContextualLiteralArgumentsFollowOverloadResolution, TestReturnTypeAloneDoesNotDistinguishOverloads, TestBareNoneArgumentUsesAgreedParameterContext)"
-      - "MD-027 contextual Some and silent mismatch (fixed 2026-10-17, MD-102 open): a bare one-argument Some(...) argument is a contextual Option argument like None (deferred, accepted only by Option parameters, typed from the selected overload, also in methods, initializers and middle positions), so Some(x) as an argument no longer fails with S1157; inferCallExpressionWithExpected hands non-generic calls and calls with contextual arguments to the ordinary call path (return Pick(Some(x))); a contextual argument passed to a non-Option/non-array parameter is now reported (previously Plain(None) was accepted silently); an uninstantiated generic parameter no longer binds a context (Unwrap(Some(1), 0) reports cannot infer generic arguments, as None does); None() is explained under S1157; TestBareSomeArgumentUsesParameterContext"
+      - "MD-027 contextual Some and silent mismatch (fixed 2026-10-17; MD-102 decided 2026-10-28, see remaining md102-*): a bare one-argument Some(...) argument is a contextual Option argument like None (deferred, accepted only by Option parameters, typed from the selected overload, also in methods, initializers and middle positions), so Some(x) as an argument no longer fails with S1157; inferCallExpressionWithExpected hands non-generic calls and calls with contextual arguments to the ordinary call path (return Pick(Some(x))); a contextual argument passed to a non-Option/non-array parameter is now reported (previously Plain(None) was accepted silently); an uninstantiated generic parameter no longer binds a context (Unwrap(Some(1), 0) reports cannot infer generic arguments, as None does); None() is explained under S1157; TestBareSomeArgumentUsesParameterContext"
+      - "MD-102 Some payload overloads and generic inference (2026-10-28; functions.md § 20, generics.md § 18.1; internal/sema/some_inference.go): a deferred Some(value) argument checks its independently typed payload against the U of each Option[U] candidate like an ordinary argument (literal shaping, canPassCallArgumentUnrecorded, overloadArgumentRank), so Store(Some(42)) selects Option[int] over Option[string] while Option[int32]/Option[int64] stay ambiguous naming both; a payload mismatch of the only Option candidate reports the payload diagnostic. For generic candidates the deferred Some supplies Option[P] to inference and other deferred contextual arguments are skipped (placeholder), so Process(Some(42)) and Unwrap(Some(42), 0) infer T = int, Unwrap(None, 0) infers from the fallback, and Process(None) still cannot infer; the instantiated Option[T] parameter is re-instantiated from the template before typing the argument. Tests: TestSomePayloadSelectsOverloadAndInfersGenerics, TestSomeInferenceRejections, updated TestBareSomeArgumentUsesParameterContext."
       - accept optional `return <-value` with the same result ownership as `return value`
       - Optional terminal `return <-expression` is retained as ReturnStatement.MoveToken rather than an ordinary prefix move, applies to the complete returned expression, and follows exactly the same Sema ownership, construction, lifetime, Result-forwarding and Semantic IR paths as unmarked return (2026-10-18; functions.md §14; grammar.md ReturnStatement). Fresh values, aggregates and calls are accepted; moved sources, escaping locals and indexed move-only extraction remain rejected. CST formatting preserves and attaches the marker; dangling-marker recovery retains the following declaration. TestNativeTrackBuildsAndRuns/explicit_return builds and executes the program with exactly-once return-operand evaluation.
     remaining:
+      - "MD-117 call/Sema contract: infer statically known heterogeneous arity and pointwise concrete argument modes for ...Types/...ref Types/...ref mut Types, including empty packs, ordinary literal/overload rules, fixed-arity preference and once-only left-to-right preparation; reject runtime-length heterogeneous inference and ->values: ...Types, and diagnose the failing concrete position/type. Homogeneous native ...T stays distinct (functions.md §38A; correction §§3,4,10)."
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
@@ -671,7 +674,7 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
         result: passed
-    revised: "2026-10-18"
+    revised: "2026-10-28"
 
   - id: frontend.lambda-functions-v2
     area: frontend-analysis-and-lowering
@@ -1565,6 +1568,7 @@ integrations:
 
   - id: frontend.spread
     area: frontend-analysis-and-semantic-ir
+    revised: "2026-10-28"
     status: partial
     integrated: "2026-08-13"
     summary: >-
@@ -1572,6 +1576,7 @@ integrations:
       literal, and same-type struct spread semantics without hidden moves or
       allocation.
     rules:
+      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
       - rules/declarations/spread.md
       - rules/declarations/struct.md
       - rules/collections/collections.md
@@ -1597,6 +1602,7 @@ integrations:
       - rejection of hidden consuming reads for move-only fixed-array elements and move-only struct sources
       - diagnostics that retain the original reference or dynamic-array source type for runtime-arity failures
     remaining:
+      - "MD-117 spread source legality: parse and resolve complete owned native parameter-pack <-values... for homogeneous and heterogeneous packs; retain non-consuming values..., reject single-element/partial consumption and consuming array/slice/list/tuple/struct spread. Publish resolved source/expansion facts to the ownership/call producers rather than committing transfers in syntax handling (spread.md §4.4; correction §7)."
       - preserve exactly-once evaluation, expansion order, ownership decisions, and struct override/default provenance in Semantic IR or a proven equivalent normalized representation
       - complete visibility and construction-invariant diagnostics for struct spread across module boundaries
       - add permanent spread_valid.sec and spread_invalid.sec fixtures covering all canonical cases

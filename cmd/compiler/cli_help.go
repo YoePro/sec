@@ -39,8 +39,9 @@ func cliCommands() []cliCommand {
 			Details: "build runs the single compilation track: Semantic IR, Sec dialect MLIR, standard MLIR, the LLVM dialect and LLVM IR, then links with clang. --keep-mlir keeps the Sec dialect module as <program>.mlir and --keep-llvm the LLVM IR as <program>.ll. A construct the track cannot lower yet is reported by name; nothing falls back to another backend."},
 		{Name: "test", Synopsis: []string{"sec test [--list] [--run <regexp>] [--json] [--target <os-arch>] [<file_test.sec|dir|glob>...]"},
 			Purpose: "Discover, compile and run Sec tests."},
-		{Name: "fmt", Synopsis: []string{"sec fmt [--check] <file.sec>...", "sec fmt --stdin"},
-			Purpose: "Format sources canonically, or check that they are formatted."},
+		{Name: "fmt", Synopsis: []string{"sec fmt [--check] [--fix] [--indentation-width <2|4|6>] <file.sec|dir>...", "sec fmt [--fix] [--indentation-width <2|4|6>] --stdin"},
+			Purpose: "Format sources canonically, or check that they are formatted.",
+			Details: "Directories select .sec files recursively, including tests and internal modules. Hidden, reserved output and testdata directories are skipped; symbolic links are never followed. Every file and configuration is checked before writes. --check reports changes without writing; --fix enables Language Corrections. Malformed files remain unchanged while valid files are processed."},
 		{Name: "init", Synopsis: []string{
 			"sec init [path] [--dry-run] [--minimal] [--name <name>] [--target <os-arch>] [--profile <profile>]",
 			"sec init module <path> [--dry-run]",

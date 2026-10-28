@@ -342,7 +342,7 @@ integrations:
       - expose identical output through LSP document formatting without editor-side alignment logic
       - "inline block comment fix (2026-10-18, formerly identified bug tooling.formatter.inline-block-comment-breaks-field-alignment): the root cause was the parser — a one-line `/* ... */` with code before and after it on the same line (`c: int /* inline */,`, `a /* note */ + b`) was not skipped and produced a parse error, so the formatter saw uncertain syntax and lost the following fields' roles. Parser.nextToken now treats such a comment as inline trivia (still recorded as an inline comment attachment); every field keeps the § 9(5) type column (TestFormatInlineBlockCommentKeepsFieldAlignment, TestParseInlineBlockCommentsAsTrivia; formatter.md § 9(5), § 9(8), § 12(9a)). TestFormatTokenSpacingLeavesUnroledAndMultilineGaps had only passed because of that parse error and now expects the canonical output"
     remaining:
-      - complete range and on-type formatting; recursive directory and project selection is blocked on MD-037; document-formatting minimal enclosing edits, check, stdin, and fix modes are implemented
+      - complete range and on-type formatting; recursive directory/project selection and check/fix modes are implemented under tooling.formatter-check-explicit-files (MD-037, 2026-10-28); document-formatting minimal enclosing edits and stdin are implemented
       - migrate the remaining trimmed-line indentation and alignment decisions to the parser-owned lossless comment/trivia attachments now returned by the shared formatter
     verification:
       - command: go test ./internal/cst ./internal/formatter -count=1; go test ./cmd/compiler ./cmd/lsp -run "BindingAlignment|Fmt|Format|Formatting" -count=1
@@ -354,18 +354,31 @@ integrations:
     area: tooling
     status: implemented
     integrated: "2026-09-09"
+    revised: "2026-10-28"
     summary: >-
-      Adds sec fmt --check for explicit source files using the same formatter as
-      in-place formatting and LSP document formatting.
+      Checks explicit files and recursively selected project/directory sources
+      through the shared formatter, including opt-in language corrections.
+      Selection/configuration preflight precedes writes; malformed files and
+      changed snapshots are preserved. Shared canonical-style coverage remains
+      with the formatter's broader conformance work.
     rules:
       - rules/tooling/formatter.md
     code:
       - cmd/compiler/main.go
+      - cmd/compiler/fmt_command.go
+      - cmd/compiler/fmt_selection.go
+      - cmd/compiler/cli_help.go
     tests:
+      - cmd/compiler/fmt_bulk_test.go
+      - cmd/compiler/fmt_directory_test.go
+      - cmd/compiler/fmt_configuration_test.go
+      - testdata/formatter/bulk_balanced_invalid.sec
+      - testdata/formatter/bulk_fix_input.sec
       - cmd/compiler/fmt_check_test.go
       - testdata/formatter/check_canonical.sec
       - testdata/formatter/check_noncanonical.sec
     implemented:
+      - "Directory/project selection and --fix completed (MD-037, 2026-10-28): the same check/format pipeline freezes a lexically normalized, sorted, unique file set from explicit paths and recursive .sec discovery, including tests/internal/unused modules without target or import selection. Reserved project output, hidden directories, testdata and symlinks remain excluded even for scans starting within a reserved tree; explicit files remain eligible. Every source and effective configuration is preflighted before writes. Explicit --fix applies the existing language corrections and composes with --check; ordinary mode never enables them. Grammatically malformed balanced files are now preserved too, with valid siblings processed and a nonzero result. Source identity/content/mode checks reject stale snapshots before replacement. CLI help and actual process tests cover project-relative '.', overlapping aliases, fix/check idempotence, configuration precedence, malformed sources, exclusions, no-write check and permission preservation. Formatter command orchestration was extracted from main.go into fmt_command.go; LSP formatting policy is unchanged."
       - return exit code 0 silently when every selected file matches the current shared formatter output
       - report all noncanonical files with format.noncanonical-source and exit code 1 without labeling differences as language errors
       - preserve file bytes, line endings, identity, permissions, and modification times in check mode
@@ -374,9 +387,14 @@ integrations:
       - verify that ordinary in-place formatting makes a subsequent check pass
       - report byte-preserved lexically malformed or delimiter-incomplete files with format.malformed-source instead of falsely accepting unchanged uncertain source as canonical
     remaining:
-      - directory and project selection and --fix remain outside this explicit-file integration; --stdin is tracked by tooling.formatter-stdin
       - canonical-style coverage remains limited to the current shared formatter implementation
     verification:
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Formatting|Format|HeaderSpacing|Alignment|Help' -count=1
+        result: passed on 2026-10-28 after MD-037 completion; actual CLI directory/check/fix processes, frozen snapshots, reserved roots and shared CLI/LSP formatting regressions pass
+      - command: go test ./internal/formatter ./internal/formatconfig -count=1
+        result: passed on 2026-10-28; full shared formatter/configuration suites
+      - command: go vet ./cmd/compiler ./internal/formatter ./internal/formatconfig ./cmd/lsp
+        result: passed on 2026-10-28 after MD-037
       - command: go test ./cmd/compiler ./internal/formatter -count=1
         result: passed, including subprocess checks of real CLI exit codes and diagnostics
 
@@ -413,7 +431,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-10-27"
+    revised: "2026-10-28"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-09-23
     summary: Tracks conformance of the shared Sec formatter to formatter revision 2.1. The repository has a usable but primarily bespoke, line-oriented CLI/LSP formatter plus a lexical CST foundation that is not yet its primary engine. The formatter must migrate to a CST-driven architecture while preserving existing behavior, then complete the configured, grammar-aware formatting and correction contract.
@@ -485,7 +503,8 @@ integrations:
       - internal/formatter/edits_test.go
       - cmd/lsp/format_document_test.go
     implemented:
-      - "MD-099/MD-100 completed (2026-10-27): ordinary trailing line/block-comment columns honor effective max_alignment_padding group-wide, including uncommented rows when finding the widest preceding cell. At-cap alignment is retained; over-cap comments use one structural space without discarding a legal primary column or restoring one previously dropped. Long comment text does not widen the starting column. Only compatible explicit-value enum runs ignore the cap; implicit enum members, blank lines and standalone comments delimit those runs. The final nominal comment pass now splits explicit/implicit enum runs so an implicit member cannot disable the mandatory exception for adjacent explicit groups, while implicit runs keep ordinary capped alignment. Shared formatter/configuration/CLI/LSP tests pass; format_version remains 1 and no new setting is introduced. MD-037 directory-selection closure is separate."
+      - MD-037 directory/check/fix command completion is owned and verified by tooling.formatter-check-explicit-files (2026-10-28); the whole corresponding remaining item was removed there. The existing shared formatter/configuration and CLI/LSP canonical layout owners retain broader style, range/on-type and effective-width obligations.
+      - "MD-099/MD-100 completed (2026-10-27): ordinary trailing line/block-comment columns honor effective max_alignment_padding group-wide, including uncommented rows when finding the widest preceding cell. At-cap alignment is retained; over-cap comments use one structural space without discarding a legal primary column or restoring one previously dropped. Long comment text does not widen the starting column. Only compatible explicit-value enum runs ignore the cap; implicit enum members, blank lines and standalone comments delimit those runs. The final nominal comment pass now splits explicit/implicit enum runs so an implicit member cannot disable the mandatory exception for adjacent explicit groups, while implicit runs keep ordinary capped alignment. Shared formatter/configuration/CLI/LSP tests pass; format_version remains 1 and no new setting is introduced. MD-037 directory/check/fix closure was completed on 2026-10-28 under tooling.formatter-check-explicit-files."
       - >-
         One shared formatter implementation serves sec fmt and LSP document
         formatting; LSP does not maintain an independent formatting grammar.
@@ -714,8 +733,8 @@ integrations:
         project configuration, and complete the § 26–§ 27 catalogue.
       - >-
         formatter-cli-lsp-unification: Complete project configuration, effective
-        width, format-on-save, range/on-type, recursive project, and
-        exact-output equivalence behavior required by § 28.
+        width, format-on-save, range/on-type, and exact-output equivalence
+        behavior required by § 28.
       - >-
         formatter-invariants-and-tests: Enforce every § 29 and § 31 invariant
         and complete the § 30 golden, second-pass, round-trip, malformed-source,

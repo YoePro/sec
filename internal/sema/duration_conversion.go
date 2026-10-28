@@ -83,8 +83,8 @@ func timeQuantityUnit(typ Type) (UnitSemantics, string, bool) {
 		return UnitSemantics{}, fmt.Sprintf("%s does not have the dimension of time", typeDisplayName(typ)), false
 	}
 	unit := effectiveUnitSemantics(typ)
-	if unit.Kind != "" && unit.Kind != "time" {
-		return UnitSemantics{}, fmt.Sprintf("%s has Kind %s, not time", typeDisplayName(typ), unit.Kind), false
+	if unit.Kind != "" && unit.Kind != "UnitKind.Time" {
+		return UnitSemantics{}, fmt.Sprintf("%s has Kind %s, not UnitKind.Time", typeDisplayName(typ), unit.Kind), false
 	}
 	if unit.Role == UnitPointRolePoint {
 		return UnitSemantics{}, fmt.Sprintf("%s is a time point, not a time difference", typeDisplayName(typ)), false
@@ -92,7 +92,7 @@ func timeQuantityUnit(typ Type) (UnitSemantics, string, bool) {
 	if unit.Transform != "" && unit.Transform != LinearUnitTransform || unit.Offset != nil && unit.Offset.Sign() != 0 {
 		return UnitSemantics{}, fmt.Sprintf("%s has a non-linear transform", typeDisplayName(typ)), false
 	}
-	if unit.Scale == nil || unit.Scale.Sign() <= 0 {
+	if unit.Scale == nil || unit.Scale.Sign() == 0 {
 		return UnitSemantics{}, fmt.Sprintf("%s has no resolved compile-time scale", typeDisplayName(typ)), false
 	}
 	return unit, "", true
@@ -237,6 +237,10 @@ func (a *Analyzer) planDurationConversion(expr ast.Expression, source Type, roun
 			low, _, _ := constantDurationNanoseconds(new(big.Rat).SetInt(minimum), plan.NanosecondsPerUnit, rounding)
 			high, _, _ := constantDurationNanoseconds(new(big.Rat).SetInt(maximum), plan.NanosecondsPerUnit, rounding)
 			if low != nil && high != nil {
+				// A negative Scale (MD-062 § 9(2)) reverses the interval.
+				if low.Cmp(high) > 0 {
+					low, high = high, low
+				}
 				plan.Proof, plan.Minimum, plan.Maximum = DurationConversionBoundedDomain, low, high
 				return plan, "", true
 			}

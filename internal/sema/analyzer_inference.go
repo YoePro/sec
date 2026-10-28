@@ -2080,6 +2080,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if typ, value, ok := a.inferCallAsUnionVariantConstructor(expr, nil); ok {
 			return typ, value
 		}
+		if typ, value, ok := a.inferStandaloneSome(expr); ok {
+			return typ, value
+		}
 		return a.inferCallAsConversion(expr)
 	}
 	functions = a.accessibleFunctions(functions)
@@ -2153,12 +2156,14 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			function = instantiated
 		} else if len(function.GenericParameters) > 0 {
 			hadGenericArityMatch = true
+			// A deferred Some(value) supplies Option[T] from its payload; other
+			// contextual arguments have no type to infer from, so another
+			// argument must supply their type parameters (MD-102).
+			inferenceTypes := sourceArgTypes
 			if a.hasDeferredContextualArgument(sourceArgs) {
-				// A contextual literal has no type to infer generic
-				// arguments from; only concrete candidates can type it.
-				continue
+				inferenceTypes = a.contextualInferenceArgumentTypes(sourceArgs, sourceArgTypes)
 			}
-			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+			argTypes := a.callArgumentTypesForFunction(function, inferenceTypes, methodReceiver, isMethodCall)
 			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
 			if !ok {
 				continue
@@ -2194,7 +2199,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			if a.deferredContextualArguments[arg] {
 				if !a.contextualArgumentAccepts(arg, parameter.Type) {
 					matchesArguments = false
+					continue
 				}
+				payloadRank, payloadOK := a.contextualArgumentPayloadRank(arg, parameter.Type)
+				matchesArguments = payloadOK
+				rank += payloadRank
 				continue
 			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], parameter.Type)
@@ -2228,7 +2237,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if a.checkCompileTimeCallArgumentContracts(best[0].Function, sourceArgs) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues) {
+		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues, expr) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !a.validateCallArgumentBorrows(best[0].Function, sourceArgs, preparedSpreadValues) {
@@ -2381,6 +2390,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				// name its family so the mismatch is never silent (MD-027).
 				if !a.contextualArgumentAccepts(arg, param.Type) {
 					a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), a.contextualArgumentFamily(arg))
+				} else if _, payloadOK := a.contextualArgumentPayloadRank(arg, param.Type); !payloadOK {
+					// The Some payload cannot initialize the Option payload
+					// type; typing it in that context reports why (MD-102).
+					a.inferExpressionWithExpected(arg, param.Type)
 				}
 				continue
 			}
@@ -2969,7 +2982,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		if a.checkCompileTimeCallArgumentContracts(function, args) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if !a.validateCallArgumentOwnership(function, args, runtimeSpreadValues) || !a.validateCallArgumentBorrows(function, args, runtimeSpreadValues) {
+		if !a.validateCallArgumentOwnership(function, args, runtimeSpreadValues, expr) || !a.validateCallArgumentBorrows(function, args, runtimeSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordCallBoundaryEscapeFacts(function, args, runtimeSpreadValues)
@@ -3030,7 +3043,14 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 	substitution := map[string]Type{}
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
-		if !parameterOK || !inferGenericArgumentSubstitution(parameter.Type, argType, substitution) {
+		if !parameterOK {
+			return Function{}, false
+		}
+		// A deferred contextual argument (MD-027) supplies no type.
+		if isDeferredContextualPlaceholder(argType) {
+			continue
+		}
+		if !inferGenericArgumentSubstitution(parameter.Type, argType, substitution) {
 			return Function{}, false
 		}
 	}
@@ -3684,6 +3704,10 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 }
 
 func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, value Type, expr ast.Expression) (Type, bool) {
+	// MD-066 § 6(1): `x /= 0m` is the same provably zero decimal divisor.
+	if dereferenceType(target).Kind == DecimalType && !a.validateDecimalDivisor(operator, expr, expressionToken(expr)) {
+		return Type{Kind: InvalidType}, false
+	}
 	if operator == "+=" && (isTextConcatKind(target) || isTextConcatKind(value)) {
 		if target.Kind == StringType && !target.Named && isDirectTextConcatOperand(value) {
 			return Type{Name: "string", Kind: StringType}, true
@@ -3920,6 +3944,9 @@ func (a *Analyzer) inferRangeMembershipExpression(expr *ast.InfixExpression, ran
 }
 
 func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
+	if !a.validateDecimalZeroDivisor(expr) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if isComparisonOperator(expr.Operator) {
 		if isEqualityOperator(expr.Operator) && !canCompareEquality(leftType, rightType) {
 			a.addErrorAtToken(expr.Token, "cannot compare %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))

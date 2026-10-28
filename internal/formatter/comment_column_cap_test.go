@@ -15,7 +15,7 @@ import (
 //
 // Rules:
 //   - rules/tooling/formatter.md — §§ 9(10a), 12(6a), 15(4a)
-//   - rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md — §§ 2–4, 10(1)–(2)
+//   - rules/corrections/applied/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction-20261028.md — §§ 2–4, 10(1)–(2)
 func TestFormatCapsTrailingCommentColumn(t *testing.T) {
 	cases := []struct {
 		name, input, want string

@@ -2566,7 +2566,6 @@ formatter.md
 lsp.md
 diagnostics rulebook
 language-rulebook-status.md
-rules_implementations.txt
 ```
 
 ---
@@ -2585,7 +2584,7 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules/compiler/rules_implementations.txt
+governance/ (owning integration entries)
 ```
 
 Mark the rulebook Written.

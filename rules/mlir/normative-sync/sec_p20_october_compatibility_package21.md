@@ -38,7 +38,7 @@ GitHub `rules/mlir/packages/` contains P20 (v16 package). Canonical `rules/mlir/
 [ ] target 32/64 tests
 [ ] RoundingMode conversion-mode tests
 [ ] NumericConversionError core identity synchronized
-[ ] source-visible .scale int-vs-uint8 bug identified/fixed in P21
+[ ] source-visible .scale int-vs-uint8 bug identified/fixed in P21 (target type is now int32 with try set, MD-066 2026-10-28)
 [ ] dialect v16 installed before claiming v17 emission
 [ ] current repository SHA recorded and evidence preserved
 ```

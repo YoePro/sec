@@ -2030,7 +2030,6 @@ compiler_pipeline.md
 lsp.md
 diagnostics.md
 language-rulebook-status.md
-rules_implementations.txt
 ```
 
 ---

@@ -334,8 +334,8 @@ LogicalResult FloatPropertyOp::verify() {
 LogicalResult ConstDecimalOp::verify() {
   if (failed(parseDecimalInteger(getCoefficient())))
     return emitOpError("coefficient must be a base-10 integer string");
-  if (getScaleAttr().getValue().isNegative())
-    return emitOpError("scale must be non-negative");
+  // The scale is a signed i32 over its whole domain (dialect v3 § 22;
+  // MD-066: negative decimal scales are legal), so no sign check applies.
   if (getLexeme().empty())
     return emitOpError("lexeme must not be empty");
   if (!isa<DecimalType, Decimal128Type>(
@@ -573,8 +573,9 @@ LogicalResult CoreErrorIsVariantOp::verify() {
   if (!error || error.getIdentity().getValue() != "core::ArithmeticError")
     return emitOpError(
         "operand must be !sec.core_error<\"core::ArithmeticError\">");
-  if (!isOneOf(getVariant(),
-               {"Overflow", "DivisionByZero", "InvalidShift"}))
+  // MD-067: the five canonical variants of core::ArithmeticError.
+  if (!isOneOf(getVariant(), {"Overflow", "DivisionByZero", "InvalidShift",
+                              "ScaleOverflow", "PrecisionExhausted"}))
     return emitOpError("unknown ArithmeticError variant");
   return success();
 }

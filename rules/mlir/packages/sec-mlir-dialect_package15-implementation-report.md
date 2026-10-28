@@ -403,3 +403,22 @@ without converting storage initialization or weakening exact overload ranking.
 Do not close P16 returned subranges until MD-115 is decided, or projected holders
 until aggregate-contained reference facts have a concrete representation.
 Keep physical descriptors/ABI and nontrivial ownership in their owning packages.
+
+
+## MD-114 implementation amendment — 2026-10-28
+
+This amendment records work after the frozen 2026-10-25 snapshot; it does not
+rewrite that baseline evidence or promote P15 acceptance. The canonical detached
+register table, typed field/write-proof attributes, pure extract/update path
+verification and Go emission are now implemented. Constant/source-domain
+register.from_bits and signed/unsigned register.to_bits use the same table.
+Source/native inspection covers 32/64 plans and schemas 11/12 through P5/P6/P8;
+field carriers through 256 bits, nominal enums/nested types, layout/reserved
+bits, byte-order omission/retention and proof forgery rejection are covered.
+
+MD-110 still needs the exact fits_bits destination-identity attribute and its
+bit-extraction proof transport. Quantity representation and broader arithmetic/
+CFG evidence remain named unsupported boundaries under MD-114 §§3(8),7(8).
+Hardware endpoints/plans remain MD-111; no physical register representation or
+binary support is selected. Current commands/results and the single ownership
+record are in governance/lowering.yaml, lowering.sec-mlir-package15.

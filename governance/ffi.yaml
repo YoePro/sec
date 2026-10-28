@@ -107,7 +107,7 @@ integrations:
       - add C::fn foreign function-pointer types, nullable-call proof, ABI classification, and lowering distinct from native callable types
       - implement C::callback for exact environment-free reusable callables and reject capturing, mut fn, and consuming callables
       - implement final bare C varargs only for unsafe extern C and C::fn, including default promotions and target classification
-      - keep C varargs distinct from native typed variadics, Sec spread, ref parameters, and native pack representation
+      - "MD-117 native/foreign boundary: keep C varargs distinct from homogeneous and heterogeneous native typed packs, Sec spread and ref parameters; reject implicit pack-to-C-vararg adaptation, boxing and native-format privileges, retaining unsafe foreign promotion and ABI legality (ffi.md §26; correction §11(3))"
       - add explicit string encoding, termination, embedded-zero, buffer length, and incoming foreign-text wrapper support without hidden string ABI conversion
       - model foreign resources through nominal Sec owners, explicit retain/clone, transfer-on-success, and fallible-close contracts
       - keep raw foreign status/null/error protocols distinct from Result and Option until wrappers normalize them

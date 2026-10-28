@@ -85,12 +85,15 @@ func TestStandaloneAndMultipleDocuments(t *testing.T) {
 func TestEnglishOutputAndSortedFields(t *testing.T) {
 	var output bytes.Buffer
 	printResults(&output, Stats{
-		TotalObjects: 2,
-		StatusCounts: map[string]int{"partial": 2},
-		FieldCounts:  map[string]int{"zebra": 1, "alpha": 2},
-	}, true)
+		Files:            1,
+		TotalObjects:     2,
+		TotalImplemented: 1,
+		TotalRemaining:   1,
+		StatusCounts:     map[string]int{"partial": 2},
+		FieldCounts:      map[string]int{"zebra": 1, "alpha": 2},
+	}, true, false)
 	text := output.String()
-	for _, expected := range []string{"IMPLEMENTATION STATISTICS", "Total integrations:", "Integration statuses:", "Checklist items:", "Remaining:"} {
+	for _, expected := range []string{"IMPLEMENTATION STATISTICS", "Total integrations:", "Integration ID statuses:", "Checklist item status:", "Remaining:"} {
 		if !strings.Contains(text, expected) {
 			t.Errorf("missing English label %q", expected)
 		}

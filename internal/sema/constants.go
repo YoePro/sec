@@ -2,8 +2,6 @@ package sema
 
 import (
 	"math/big"
-	"strconv"
-	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/sema/constant"
@@ -85,7 +83,6 @@ func isNumericLiteral(expr ast.Expression) bool {
 }
 
 func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
-	negative := false
 	lexeme := ""
 
 	switch expr := expr.(type) {
@@ -118,60 +115,18 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 		return DecimalValue{Coefficient: integer}, true
 	}
 
-	if strings.HasPrefix(lexeme, "-") {
-		negative = true
-		lexeme = strings.TrimPrefix(lexeme, "-")
-	}
-	lexeme = ast.NormalizeNumericLiteralLexeme(lexeme)
-
-	exponent := int64(0)
-	if exponentIndex := strings.IndexAny(lexeme, "eE"); exponentIndex >= 0 {
-		parsedExponent, err := strconv.ParseInt(lexeme[exponentIndex+1:], 10, 32)
-		if err != nil {
-			return DecimalValue{}, false
-		}
-		exponent = parsedExponent
-		lexeme = lexeme[:exponentIndex]
-	}
-
-	parts := strings.Split(lexeme, ".")
-	if len(parts) > 2 {
+	// MD-066 § 3(7): the literal keeps the signed scale its spelling implies
+	// (`1.20` scale 2, `1e3` scale -3), moved only to the closest exact legal
+	// int32 scale; the coefficient width is checked per target.
+	coefficient, scale, ok := constant.DecimalLiteral(ast.NormalizeNumericLiteralLexeme(lexeme))
+	if !ok {
 		return DecimalValue{}, false
 	}
-
-	digits := parts[0]
-	scale := int64(0)
-	if len(parts) == 2 {
-		digits += parts[1]
-		scale = int64(len(parts[1]))
-	}
-	scale -= exponent
-
-	if scale > 255 {
+	coefficient, legalScale, ok := constant.FitDecimal(coefficient, scale, 0)
+	if !ok {
 		return DecimalValue{}, false
 	}
-	if scale < 0 {
-		if -scale > 255 {
-			return DecimalValue{}, false
-		}
-		digits += strings.Repeat("0", int(-scale))
-		scale = 0
-	}
-
-	if digits == "" {
-		return DecimalValue{}, false
-	}
-
-	coefficient, parsed := new(big.Int).SetString(digits, 10)
-	if !parsed {
-		return DecimalValue{}, false
-	}
-
-	if negative {
-		coefficient.Neg(coefficient)
-	}
-
-	return DecimalValue{Coefficient: coefficient, Scale: uint8(scale)}, true
+	return DecimalValue{Coefficient: coefficient, Scale: legalScale}, true
 }
 
 func (a *Analyzer) assignmentIntegerValue(name string, stmt *ast.AssignmentStatement) (*big.Int, bool) {

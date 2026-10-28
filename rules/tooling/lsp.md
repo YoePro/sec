@@ -2315,6 +2315,24 @@ range, nested recursive, or ordinary struct-subject patterns.
 Completion and code actions must not recommend payload use that is invalid in
 the compiler-resolved ownership state.
 
+### Error patterns, inactive arms and `Some` (MD-029/MD-042/MD-102)
+
+The parsed contextual `Err(.Variant...)` form, its resolved qualified variant
+and its payload-binding sites keep source locations for hover, diagnostics,
+references and go-to-definition. After `Err(.` completion offers the variants
+of the one concrete error type supplied by the protected channel or `Result`
+subject, never a workspace-wide name search; for an open `error` channel or a
+heterogeneous context it suggests a qualified concrete type instead. Hover on a
+bare payload-bearing variant may show the omitted payload fields, and hover on
+an inactive arm may show the proof; both come from compiler facts and never
+rewrite source. Quick fixes for the omitted-payload and inactive-arm
+Information diagnostics are optional and semantic-fact driven. Hover on a
+`Some(value)` shows the selected `Option[T]` and constructor. CLI, JSON and LSP
+report the same advisory identities
+(`rules/tooling/diagnostics.md` § 24(4e);
+`rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
+§§ 10(4), 15(4)).
+
 ---
 
 # Contracts
@@ -3506,7 +3524,6 @@ isr_analysis.md
 data_races.md
 deadlock_analysis.md
 language-rulebook-status.md
-rules_implementations.txt
 ```
 
 Files that do not yet exist remain planned dependencies.
@@ -3928,8 +3945,8 @@ Remove `lsp.md` from Candidate.
 
 Add it to the canonical written set.
 
-Update `rules_implementations.txt` with the current implemented, partial, and
-missing LSP features.
+Record the current implemented, partial, and missing LSP features in
+`governance/tooling_lsp.yaml`.
 
 ---
 

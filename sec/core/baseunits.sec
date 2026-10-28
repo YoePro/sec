@@ -105,6 +105,7 @@ impl <min> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 60
     System: SI
 }
@@ -117,6 +118,7 @@ impl <h> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 3600
     System: SI
 }
@@ -129,6 +131,7 @@ impl <day> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 86400
     System: SI
 }
@@ -141,6 +144,7 @@ impl <week> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 604800
     System: SI
 }
@@ -195,6 +199,7 @@ impl <ps> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 1 / 1000000000000
     System: SI
 }
@@ -207,6 +212,7 @@ impl <fs> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 1 / 1000000000000000
     System: SI
 }
@@ -219,6 +225,7 @@ impl <as> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 1 / 1000000000000000000
     System: SI
 }
@@ -231,6 +238,7 @@ impl <zs> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 1 / 1000000000000000000000
     System: SI
 }
@@ -243,6 +251,7 @@ impl <ys> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 1 / 1000000000000000000000000
     System: SI
 }
@@ -259,6 +268,7 @@ impl <mo> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 2.628e6
     System: Other
 }
@@ -271,6 +281,7 @@ impl <yr> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 3.154e7
     System: Other
 }
@@ -283,6 +294,7 @@ impl <decade> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 3.154e8
     System: Other
 }
@@ -295,6 +307,7 @@ impl <century> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 3.154e9
     System: Other
 }
@@ -307,6 +320,7 @@ impl <millennia> {
     BaseUnit: false
     Status: active
     Dimension: [time^1]
+    Kind: UnitKind.Time
     Scale: 3.154e10
     System: Other
 }

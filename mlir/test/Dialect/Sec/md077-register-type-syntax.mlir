@@ -4,6 +4,7 @@
 // MD-077 section 19(1)-(2): type spelling only. Register-table resolution
 // and hardware operation admission are not implemented by this fixture.
 module attributes {
+  sec.registers = [#sec.register_def<identity = "device::Control", width = 8, order = "lsb-first", fields = [#sec.register_field<ordinal = 0, name = "Raw", offset = 0, width = 8, type = ui8, access = "read-write", shadow = false, reserved = false>]>],
   sec.dialect_version = 11 : i32,
   sec.semantic_ir_version = 1 : i32,
   sec.module_id = "register-types",

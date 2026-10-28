@@ -12,7 +12,7 @@ import (
 // node and preserve the following top-level declaration.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func TestInvalidPostfixTypeReferencesAreRetained(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/parser/invalid_postfix_type_references_invalid.sec")

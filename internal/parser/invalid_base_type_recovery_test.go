@@ -12,7 +12,7 @@ import (
 // nodes, their recoverable source facts, and the following declaration.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Type-reference grammar", "Unit annotation"
 func TestInvalidQualifiedAndUnitTypeReferencesAreRetained(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/parser/invalid_base_type_references_invalid.sec")

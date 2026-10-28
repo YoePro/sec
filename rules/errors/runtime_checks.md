@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-10-19 (P16-04 slice checks synchronization)
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
@@ -128,6 +128,12 @@ invalid float-to-integer conversion
 non-finite value where prohibited
 decimal precision or scale failure where defined
 ```
+
+Decimal arithmetic failures use `ArithmeticError` with the most specific
+applicable variant (`ScaleOverflow`, `PrecisionExhausted`, otherwise
+`Overflow`; `rules/foundations/operators.md` "Decimal arithmetic failures").
+An inexact decimal quotient rounded by "Decimal division" is a successful
+value, not a runtime-check failure (MD-066/MD-067, 2026-10-28).
 
 ## Bounds and shape
 
@@ -664,6 +670,14 @@ Fallible:
 ```sec
 let result := try numerator / denominator
 ```
+
+A decimal divisor that the compiler proves to be zero is a compile-time error,
+with or without `try`; compilation stops. An unproven decimal divisor is
+checked at run time: the ordinary operation panics with reason
+`DivisionByZero`, and `try` yields `ArithmeticError.DivisionByZero`. This
+decimal rule does not make every other provably failing runtime check a
+compile-time error (`rules/foundations/operators.md` "Decimal division and
+remainder by zero"; MD-066, 2026-10-28).
 
 ---
 
@@ -1340,7 +1354,6 @@ lsp.md
 diagnostics.md
 build rules
 language-rulebook-status.md
-rules_implementations.txt
 ```
 
 ---

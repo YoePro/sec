@@ -1,0 +1,51 @@
+module main
+
+unit Distance float physical
+
+fn Wide32() float32 {
+    return 3.5e38 // binary32
+}
+fn Wide64() float64 {
+    return 1e400 // binary64
+}
+fn Signed() float32 {
+    return -3.5e38g // binary32
+}
+fn Platform() float {
+    return 3.5e38g // platform32
+}
+fn Default() void {
+    let value := 1e400g // binary64 binary32
+}
+fn Take(value: float32) float32 { return value }
+fn Argument() float32 {
+    return Take(3.5e38) // binary32
+}
+fn Operator(value: float32) float32 {
+    return value + 3.5e38 // binary32
+}
+fn Compare(value: float32) bool {
+    return value < 3.5e38 // binary32
+}
+fn Array() float32[1] {
+    return [3.5e38] // binary32
+}
+fn Quantity() float32<Distance> {
+    return 3.5e38<Distance> // binary32
+}
+fn WideExplicitOn32() float64 { return 3.5e38g }
+fn WideQuantityOn32() float64<Distance> { return 3.5e38g<Distance> }
+fn Tiny() float32 { return -1e-400g }
+fn Subnormal() float32 { return 1.401298464324817e-45 }
+fn Finite64() float64 { return 1.7976931348623157e308g }
+fn Finite32() float32 { return 3.4028234663852886e38g }
+fn IntegerForm() float32 {
+    return 0x100000000000000000000000000000000g // binary32
+}
+type Packet struct { value: float32 }
+fn Field() Packet {
+    return Packet { value: 3.5e38 } // binary32
+}
+fn Pick(value: float32, flag: bool) float32 { return value }
+fn Pick(value: float64, flag: int) float64 { return value }
+fn SelectedOverload() float64 { return Pick(3.5e38g, 1) }

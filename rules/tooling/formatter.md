@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
-- **Document revision:** 2.2
+- **Last updated:** 2026-10-28 (MD-029/MD-042 error-pattern and inactive-arm preservation §§ 20(11)–20(12); MD-062 metadata spacing and preservation policy §§ 22(11)–22(13)); 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
 - **Replaces:** Earlier legacy revision at the same canonical path
@@ -543,7 +543,7 @@ let ready :=
 
 § 12(6) Trailing-comment alignment obeys the maximum alignment padding rule.
 
-§ 12(6a) *Group-wide comment-column cap (MD-099, 2026-10-27; `rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md` § 2).* The candidate comment column is decided for each non-exempt group as follows:
+§ 12(6a) *Group-wide comment-column cap (MD-099, 2026-10-27; `rules/corrections/applied/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction-20261028.md` § 2).* The candidate comment column is decided for each non-exempt group as follows:
 - **Candidate column.** It lies one space after the widest formatted code cell of the group. Every row counts, including rows without a comment and any columns already accepted. The text of a comment never moves the column.
 - **Rejection.** If any commented row would need more padding than the effective `max_alignment_padding`, the column is rejected for the whole group. Padding exactly equal to the cap is allowed.
 - **After rejection.** Every trailing comment then follows its code after one space. No subset of rows is aligned, and no ad hoc gaps remain.
@@ -1198,6 +1198,10 @@ let Point {
 
 § 20(10) Ownership-bearing pattern syntax is preserved exactly according to the canonical pattern grammar. The formatter must never add or remove ownership or borrow markers merely for style.
 
+§ 20(11) MD-029 error patterns are preserved as written: `Err(.Variant)`, `Err(.Variant(info))`, `Err(.Variant { Field: name })` and the explicit non-binding forms `Variant {}` and `Variant(_)`. The formatter never expands a contextual `.Variant` to its qualified form or the reverse, never inserts or removes the empty `{}` or `(_)`, and never rewrites a variant because of reachability or payload analysis. The braces of a field pattern inside `Err(...)` are kept distinct from the braces of a `try` handler list, `match` body or arm body, and formatting is idempotent.
+
+§ 20(12) A `match` arm or `try` handler reported as proven inactive (MD-042) is never removed, reordered or commented out by the formatter (`rules/control-flow/flowcontrol_match.md` § 25A).
+
 ---
 
 ## § 21. Ownership, borrow, and consuming markers
@@ -1327,6 +1331,12 @@ is not canonical.
 ```sec
 let speed := distance / time
 ```
+
+§ 22(11) Unit metadata declarations use `Key: value` with one space after the colon. Arithmetic in exact numeric metadata uses ordinary binary-operator spacing and attached unary signs, for example `Scale: -(1 / 60)` and `Offset: 273.15`. Numeric metadata powers use binary-operator spacing (`2 ^ -3`); dimension axis powers stay compact (`time^-2`). Qualified enum members stay compact (`Kind: UnitKind.Energy`), as does a named-unit suffix in `Reference: 0.001<W>`. Whitespace normalization never merges distinct lexical tokens, including two unary signs into `++` or `--`.
+
+§ 22(12) Metadata formatting preserves the written expression: literal digits, signs, grouping, operators, dimension/factor order, enum qualification and unit identity are retained. It does not evaluate a fraction, replace it with a decimal approximation, normalize dimensions or reinterpret custom enum members. Comments and literal contents retain their meaning under § 12 and § 29.
+
+§ 22(13) The Sec 0.1 metadata migration policy preserves accepted bare enum values in ordinary formatting and Language Corrections mode: `Kind: temperature`, `System: SI`, and `Status: active` remain spelled that way. Typed values also retain their concrete qualification. Case/underscore normalization of accepted metadata keys still uses their canonical PascalCase spelling, including `BaseUnit`; `IsBaseunit` is not an alias. Value migration to qualified enum names belongs to compiler-authoritative semantic handling; the formatter does not select or rewrite an enum identity from a bare spelling.
 
 ---
 
@@ -1847,7 +1857,7 @@ type Point struct {
 
 § 28(8) The formatter must not claim semantic validity merely because formatting succeeded.
 
-§ 28(9) *Path selection (MD-037, decided 2026-10-27; `rules/corrections/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction.md` §§ 5–8).* `sec fmt` and `sec fmt --check` expand their paths in the same way. Each path is a Sec source file or a directory that is traversed recursively:
+§ 28(9) *Path selection (MD-037, decided 2026-10-27; `rules/corrections/applied/MD-099-MD-100-MD-037-formatter-alignment-and-selection-correction-20261028.md` §§ 5–8).* `sec fmt` and `sec fmt --check` expand their paths in the same way. Each path is a Sec source file or a directory that is traversed recursively:
 
 ```sh
 sec fmt source.sec

@@ -1,0 +1,3 @@
+module main
+
+type UserID = uint64

@@ -1,0 +1,10 @@
+module main
+
+unit u ratio
+
+fn InvalidCalls(dimension: UnitDimension) void {
+    let kind := <u>.Kind()
+    let scale := <u>.Scale()
+    let count := dimension.AxisCount()
+    let empty := dimension.IsDimensionless()
+}

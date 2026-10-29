@@ -1,6 +1,9 @@
 package sema
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // CompilerKnownDisplayFacts is the shared user-facing registry projection.
 // Label contains the public name qualified by a concrete resolved receiver
@@ -142,3 +145,13 @@ func compilerKnownDisplayText(text string) string {
 	}
 	return text
 }
+
+// CompilerKnownDisplayProse removes transport placeholders from secondary
+// documentation without decoding identities or changing stable diagnostic codes.
+// Missing public-name facts stay explicit instead of inventing source names.
+// Rules: rules/compiler/compiler_known_members.md — "User-facing symbol names", "Synthetic definitions".
+func CompilerKnownDisplayProse(text string) string {
+	return compilerKnownDisplayID.ReplaceAllString(text, "compiler-known symbol")
+}
+
+var compilerKnownDisplayID = regexp.MustCompile(`\bCK[MFV]-[A-Za-z0-9_-]+`)

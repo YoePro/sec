@@ -342,9 +342,11 @@ const (
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
 	UnionVariantPayloadRequired = "S1151"
-	// UnionPatternPayloadBindingRequired rejects a match pattern that names a
-	// payload-carrying union variant without binding its payload.
-	// Rules: rules/declarations/unions.md — §§8.1,9.2–9.4.
+	// UnionPatternPayloadBindingRequired rejected a match pattern that names a
+	// payload-carrying union variant without binding its payload. Retired by
+	// MD-029: the bare variant pattern is valid and reports
+	// OmittedPayloadPattern (A2007) instead; the ID stays reserved.
+	// Rules: rules/declarations/unions.md — § 9.2a.
 	UnionPatternPayloadBindingRequired = "S1152"
 	// DurationConversionInvalid rejects a time-quantity-to-duration conversion
 	// that is inexact without a rounding mode, out of the int64 nanosecond
@@ -364,13 +366,41 @@ const (
 	// RedundantDiscard describes a legal no-op on a definitely unavailable Place.
 	// Rules: rules/control-flow/discard.md — §§5,37–38.
 	RedundantDiscard = "A2006"
+	// OmittedPayloadPattern explains a legal bare variant pattern that selects
+	// a payload-carrying variant without binding its payload (MD-029).
+	// Rules: rules/control-flow/flowcontrol_match.md — § 8;
+	// rules/tooling/diagnostics.md — § 24(4e).
+	OmittedPayloadPattern = "A2007"
+	// InactiveMatchArm explains a valid match arm whose variant a sound proof
+	// of the subject's current state excludes (MD-042). It is not the
+	// mandatory S3003 unreachable-arm error.
+	// Rules: rules/control-flow/flowcontrol_match.md — § 25A;
+	// rules/tooling/diagnostics.md — § 24(4e).
+	InactiveMatchArm = "A2008"
+	// ImplicitEmptyCatchAll is optional guidance for an unguarded wildcard
+	// handling a reachable empty union state without an explicit empty arm.
+	// Rules: rules/declarations/unions.md — §10.4.
+	ImplicitEmptyCatchAll = "A2009"
+	// ImplicitDiscardedResult explains a legal ordinary call-result discard.
+	// Rules: rules/control-flow/discard.md — §§12,37–38.
+	ImplicitDiscardedResult = "A3001"
+	// Optional guidance for proven effect-free discard and discarded void.
+	// Rules: rules/control-flow/discard.md — §§13,27,37–38.
+	UselessExplicitDiscard = "A3002"
+	RedundantVoidDiscard   = "A3003"
 )
 
 var registry = map[string]Definition{
+	UselessExplicitDiscard:                {ID: UselessExplicitDiscard, Name: "ownership.useless-explicit-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	RedundantVoidDiscard:                  {ID: RedundantVoidDiscard, Name: "ownership.redundant-void-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	ImplicitDiscardedResult:               {ID: ImplicitDiscardedResult, Name: "ownership.implicit-discarded-result", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
 	RedundantDiscard:                      {ID: RedundantDiscard, Name: "ownership.redundant-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	OmittedPayloadPattern:                 {ID: OmittedPayloadPattern, Name: "union.omitted-payload-pattern", Family: "union", DefaultSeverity: SeverityInformation, Mandatory: false},
+	InactiveMatchArm:                      {ID: InactiveMatchArm, Name: "control-flow.inactive-match-arm", Family: "control-flow", DefaultSeverity: SeverityInformation, Mandatory: false},
+	ImplicitEmptyCatchAll:                 {ID: ImplicitEmptyCatchAll, Name: "union.implicit-empty-catch-all", Family: "union", DefaultSeverity: SeverityWarning, Mandatory: false},
 	DurationConversionInvalid:             {ID: DurationConversionInvalid, Name: "temporal.invalid-duration-conversion", Family: "temporal", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
-	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
+	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true, Retired: true},
 	ProjectInvalidVersion:                 {ID: ProjectInvalidVersion, Name: "projects.invalid-version", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	ProjectInvalidBoundary:                {ID: ProjectInvalidBoundary, Name: "projects.invalid-project-boundary", Family: "projects", DefaultSeverity: SeverityError, Mandatory: true},
 	DynamicArrayLiteralInvalid:            {ID: DynamicArrayLiteralInvalid, Name: "collections.dynamic-array-literal-invalid", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},

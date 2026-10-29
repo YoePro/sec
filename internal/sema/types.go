@@ -958,6 +958,9 @@ func decimalCoefficientBits(target Type) uint {
 }
 
 type Symbol struct {
+	// DecimalExact is the exact folded value and scale of an immutable
+	// decimal binding initialized by a constant decimal expression (MD-066).
+	DecimalExact *DecimalValue
 	// atomicMemoryOrder snapshots an immutable canonical MemoryOrder value
 	// for operation/order validation (rules/concurrency/atomics.md — §24).
 	atomicMemoryOrder *atomicOrderConstant

@@ -146,7 +146,7 @@ integrations:
     area: tooling-lsp
     status: partial
     integrated: "2026-10-03"
-    revised: "2026-10-28"
+    revised: "2026-10-29"
     summary: >-
       Implements the initial textDocument/typeDefinition protocol surface as a
       thin projection of Sema-resolved binding and expression types plus their
@@ -155,6 +155,7 @@ integrations:
       - rules/tooling/lsp.md
       - rules/foundations/names_scopes_visibility.md
       - rules/projects/modules.md
+      - rules/declarations/generics.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -171,6 +172,10 @@ integrations:
       - testdata/lsp/type_components/use.sec
       - testdata/lsp/type_components/unresolved_invalid.sec
       - cmd/lsp/type_definition_test.go
+      - cmd/lsp/type_definition_generics_test.go
+      - testdata/lsp/generic_type_navigation/catalog.sec
+      - testdata/lsp/generic_type_navigation/use.sec
+      - testdata/lsp/generic_type_navigation/unresolved_invalid.sec
     implemented:
       - initialize advertises typeDefinitionProvider and textDocument/typeDefinition returns ordinary LSP locations
       - the request is classified as read-only analysis so formatting priority does not reorder it across document synchronization
@@ -180,11 +185,15 @@ integrations:
       - same-module declarations in another source file retain the declaring URI and exact token range
       - compiler-known scalar types without a source declaration return no fabricated location
       - "Type-component navigation completed 2026-10-28: parser TypeReference.NameToken retains the final real nominal identifier across qualification, ref/container nesting and expression-derived conversion/constructor references. Sema binds that token to its nominal declaration and exposes one readonly source-provenance query; LSP prioritizes an explicitly selected type component without a spelling lookup or wrapper/element guess. Actual imported catalog fixtures cover generic constructors/arguments, Result/Option, ref/ref mut, fixed/dynamic arrays, slices, list/map/set, vector/matrix/tensor/tensor_view and nested combinations. Negative cases preserve no-target behavior for unresolved qualified types despite a same-spelled local type, module qualifiers and shape extents; whole compound bindings do not arbitrarily select an element. Generic constraints/inferred specialization facts and future shared-workspace provenance remain separate existing items."
+      - "Generic type-definition navigation completed 2026-10-29: real imported-module fixtures cover each conjunct of function/type generic constraints, specialized interface/type arguments, nested and constrained generic structs, explicit generic call arguments, inferred/explicit specialized nominal call results and resolved member values. Generic parameters and compound values never choose an arbitrary constraint or element type; ordinary definition still points to the real generic parameter declaration. Negative source covers an unresolved qualified constraint despite a same-spelled local type, plus invalid generic/concrete T shadowing. The regression exposed and fixed name-only fallback for generic types: ResolvedTypeDeclarationLocation now withholds generic/invalid/unresolved types and lives beside the other queries in type_navigation.go. No LSP resolver or generic inference rules were introduced."
     remaining:
-      - cover generic parameter constraints and specialized type arguments without inventing one target for an ambiguous compound type
       - integrate generated, platform-selected, dependency, and target-variant sources through the future shared workspace symbol index
       - implement the separately required textDocument/implementation and semantic rename surfaces
     verification:
+      - command: go test ./cmd/lsp -run 'TestGenericTypeDefinitionNavigation|TestGenericConstraintNavigationDoesNotGuessSameSpelledType|TestTypeDefinition|TestHoverPresentsOrderedMultipleGenericConstraints' -count=1 -timeout=120s; go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-10-29 (12.267s), followed by the final imported-module generic navigation selection (5.121s) including both type-declaration constraint conjuncts. Exact URI/ranges, explicit/inferred specialization, ordinary generic declaration navigation and no-target guards pass. The invalid-shadow regression failed before the guard by selecting the unrelated concrete T. Remaining 3 to 2.
+      - command: go test ./internal/sema -count=1 -timeout=180s
+        result: passed on 2026-10-29 (14.896s) after guarding generic/unresolved declaration provenance and moving the query into type_navigation.go; no generic source acceptance changes.
       - command: go test ./cmd/lsp -run 'TypeDefinition|UnitMetadata|Rename|CompilerKnown.*Definition' -count=1
         result: passed on 2026-10-28; all compound component cases, unresolved/qualifier/extent/whole-value guards and existing metadata/rename/compiler-known navigation regressions
       - command: go test ./internal/sema -count=1
@@ -602,6 +611,7 @@ integrations:
       - cmd/lsp/inlay_binding_types.go
       - cmd/lsp/inlay_struct_defaults.go
       - internal/sema/defaults_presentation.go
+      - cmd/lsp/inlay_resolve.go
     tests:
       - cmd/lsp/inlay_hints_test.go
       - cmd/lsp/inlay_binding_types_test.go
@@ -610,6 +620,8 @@ integrations:
       - cmd/lsp/inlay_struct_defaults_test.go
       - testdata/lsp/struct_default_hints/valid.sec
       - testdata/lsp/struct_default_hints/literals_invalid.sec
+      - cmd/lsp/inlay_resolve_test.go
+      - testdata/lsp/inlay_resolve/main.sec
     implemented:
       - initialize advertises inlayHintProvider; textDocument/inlayHint is a deferrable read-only request
       - "inferred-type hints `: T` after a let without a declared type, from the resolved binding, omitted when a struct literal, new, or same-named conversion call already spells the type"
@@ -623,12 +635,19 @@ integrations:
       - resolved defaults of omitted defaultable struct fields through DefaultValueOf
       - sec.inlayHints.defaults independently controls default-value previews at source struct literal closing braces; validated final-field plans distinguish actual default sources from explicit and spread fields, and shared Sema rendering consumes the stored DefaultValueOf result without a second selection engine or source edits
       - default previews cover explicit type, range, membership, enum, recursive struct and array defaults; nested literals remain distinct, lexical closing-brace scanning ignores comments and strings, synthetic/invalid constructions have no hint, and labels are bounded to eight fields and 160 Unicode scalars while retaining active-file/range filtering
+      - inlayHint/resolve advertises resolveProvider and enriches stable label parts with Markdown tooltips and exact resolved type or selected parameter declaration locations, including imported types; built-in, unresolved and compound types without one physical declaration remain unlinked
+      - client resolveSupport independently negotiates tooltip, label.tooltip and label.location; unsupported lazy properties are supplied eagerly, while resolve regenerates current compiler facts, rejects malformed, forged, disabled or stale items, replaces client decorations, preserves display fields and uses the read-only queue with queued-edit/close supersession
     remaining:
       - "`copy` hints currently never fire because no type classifies as CopySemantic yet; they follow the classification once semantic copies exist"
       - "`move` hints for implicit consuming construction and receiver ownership effects of method calls"
       - generic instantiation, resolved overload, unit conversion, contract check, error type, allocation, and target hints
-      - inlayHint/resolve with hover-style tooltips and navigable label parts
     verification:
+      - command: go test -race ./cmd/lsp -run 'InlayHint|CodeLensResolve|RequestQueue|Superseded|ServerAnswersConcurrentRequestsExactlyOnce' -count=1 -timeout=180s
+        result: passed on 2026-10-29 (76.340s); final regressions including builtin no-guessed-target assertion, existing hint categories, stale-item handling, lazy/eager property negotiation, queue and concurrent request coverage
+      - command: go test ./internal/lsp/... -count=1; go vet ./cmd/lsp
+        result: passed on 2026-10-29; protocol/server/features suites and vet
+      - command: go test ./cmd/lsp -run 'InlayHint|CodeLensResolve|RequestQueue|Superseded|ServerAnswersConcurrentRequestsExactlyOnce' -count=1 -timeout=150s
+        result: passed on 2026-10-29 (14.924s); actual framed JSON-RPC listing/resolve, selected type and parameter declaration ranges, imported generic result types, stable labels, idempotence, forged decoration replacement, stale/closed/disabled items, eager fallback and per-property lazy support
       - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/... -count=1
         result: passed on 2026-10-14 with unchanged final fixtures; complete LSP, Sema, protocol and server suites
       - command: go test -race ./cmd/lsp -run 'InlayHints|TestServerAnswersConcurrentRequestsExactlyOnce' -count=1
@@ -653,7 +672,7 @@ integrations:
         result: passed on 2026-10-04 for inferred let types, omitted hints for struct literals, declared types, single-argument calls, and same-named arguments, range restriction, and per-category settings
       - command: go test ./cmd/lsp -run 'InlayHints' -count=1
         result: passed on 2026-10-04 for moves-if-selected on a move-only union payload binding without a hint on a trivially copied binding, implicit ref and ref mut call-site borrows, no hint for explicit ref or existing references, and the ownership setting
-    revised: "2026-10-14"
+    revised: "2026-10-29"
 
   - id: tooling.lsp-interface-conformance-lens
     area: tooling-lsp
@@ -773,16 +792,9 @@ integrations:
 
   - id: tooling.lsp-compiler-known-friendly-names
     area: tooling-lsp-user-facing-symbol-presentation
-    status: partial
-    revised: "2026-10-28"
-    summary: >-
-      User-requested friendly presentation of compiler-known symbols in the
-      language server and editor. Ordinary UI should show public Sec names,
-      concrete receivers and signatures such as list[int].Append or string.Len
-      rather than CKM-/CKF-/CKV- implementation identifiers. Stable registry
-      identities remain internal semantic/transport facts; this entry owns
-      presentation, not a second member registry or changes to source spelling,
-      lookup, visibility or diagnostic codes.
+    status: implemented
+    revised: "2026-10-29"
+    summary: Compiler-known friendly presentation is implemented across shared display facts, ordinary hover/completion/signature documentation and synthetic definition/editor navigation. Public names, concrete receiver labels and resolved signatures replace visible implementation IDs; stable identities remain internal/transport facts. Bounded receiver/context caches preserve exact generated content, readable missing-fact states avoid invented signatures, and core visibility, read-only behavior, semantic lookup and stable diagnostic codes are retained.
     rules:
       - rules/tooling/lsp.md
       - rules/compiler/compiler_known_members.md
@@ -793,20 +805,40 @@ integrations:
       - internal/sema/compiler_known_synthetic.go
       - vscode/src/extension.ts
       - internal/sema/compiler_known_display.go
+      - cmd/lsp/compiler_known_completion.go
+      - cmd/lsp/main.go
+      - cmd/lsp/atomic_fence_completion.go
+      - internal/sema/atomic_fence.go
     tests:
       - cmd/lsp/compiler_known_definition_test.go
       - internal/sema/compiler_known_display_test.go
+      - cmd/lsp/compiler_known_hover_test.go
+      - cmd/lsp/raw_pointer_registry_test.go
+      - cmd/lsp/raw_pointer_safety_test.go
+      - cmd/lsp/main_test.go
+      - testdata/tooling/compiler_known_display/members.sec
+      - cmd/lsp/compiler_known_navigation_test.go
+      - cmd/lsp/atomic_fence_tooling_test.go
+      - cmd/lsp/unit_metadata_navigation_test.go
+      - internal/sema/compiler_known_synthetic_display_test.go
+      - testdata/tooling/compiler_known_display/fences.sec
     implemented:
       - "Shared presentation facts (2026-10-28): CompilerKnownDisplayFacts and DisplayFacts() on canonical member/function/value registry records provide source Name, receiver-qualified Label, readable Kind, concrete Receiver, Signature and ResultType. Uses existing receiver-instantiated signature metadata and canonical names instead of an ID-to-label inventory; descriptive receiver patterns never become concrete type labels. Missing names/types/signatures remain explicit readable fallbacks, contextual len/fill arity is not fabricated as zero arguments, known unsafe property signatures keep unsafe, and queries preserve IDs, visibility/effects and instance metadata. User-facing naming contract is normative under compiler_known_members.md LSP and indexed in language-rulebook-status.md. Tests cover actual CKM/CKF/CKV catalogs, nominal/nested receivers, internal values, missing/transport-only records and unchanged semantic metadata. Ordinary LSP renderer and synthetic editor migration remain the two separately tracked remaining items."
-    remaining:
-      - "Ordinary LSP presentation: replace visible compiler-known identifiers in hover and shared documentation used by completion/signature help and any related hint/action labels with friendly names and concrete signatures. Audit these renderers so IDs do not leak through fallback names, generated documentation or secondary text; preserve useful type/effect/unsafe/availability information and stable diagnostic codes."
-      - "Synthetic definitions and editor navigation: show friendly member/receiver names in generated definition text, link labels and editor-visible document titles/filenames instead of CKM-/CKF-/CKV- labels. Keep definitions clearly synthetic and read-only, with stable identity resolution, receiver-instance cache isolation and existing core visibility restrictions; update the VS Code presentation/content-provider integration where needed."
+      - "Ordinary presentation completed 2026-10-29: hover, member completion documentation, atomic.Fence completion and existing RawPtr signature-help documentation/labels consume canonical DisplayFacts. Receiver-qualified labels and concrete signatures replace visible CKM/CKF/CKV identities. Missing signatures remain explicit rather than fabricated; unavailable source names are omitted from completion. Secondary registry prose cannot leak transport placeholders; stable diagnostic codes remain intact. The shared renderer retains result, authority, effects, documentation, target availability, unsafe context and caller obligations. The member-completion projection was extracted from main.go into compiler_known_completion.go. Source-backed and catalog/fallback tests cover instantiated properties/methods, map/list receivers, trusted temporal values, interface requirements, shaped types, cancellation, ThreadLocal and RawPtr. Synthetic definition text/URIs remain the separate navigation point; no source naming, lookup or visibility changes."
+      - "Synthetic definition/editor navigation completed 2026-10-29: generated text and URI basenames use canonical friendly member/receiver labels and concrete signatures, with explicit unavailable fallbacks and no visible CKM/CKF/CKV placeholders. Stable identity remains in transport query data; receiver/signature/resolved-documentation digests isolate contexts in the bounded cache. Editor URI escaping/query-order normalization preserves the exact cached instance; cold or evicted instances cannot fall back to generic or other receiver text. Public legacy ID-only recovery remains compatible, while cold private function/value requests require authorized Sema navigation. Shared prose sanitation retains stable diagnostic codes. Atomic fence presentation now qualifies Fence with atomic rather than its MemoryOrder argument, preserving established order in documentation and context isolation. The VS Code provider keeps the friendly basename and opaque query through its existing read-only content request. Normative Synthetic definitions text and rulebook-status index are synchronized. Source and registry tests cover friendly paths/text, same-label distinct IDs, receiver/context isolation, malformed requests, cold core restrictions, real fence order contexts, signature locations and retained synthetic/read-only warnings."
+    remaining: []
     required_tests:
       - Hover, completion and signature documentation show public names with resolved generic receiver types and do not display raw compiler-known IDs in ordinary UI.
       - Synthetic definitions, navigation labels and editor-visible document names use friendly names while internal lookup and receiver-instance identity remain correct.
       - Properties, methods, functions and value intrinsics cover CKM/CKF/CKV identities; aliases and unavailable display facts never fall back to raw IDs or guessed semantics.
       - No semantic lookup, source naming, diagnostic identity, visibility or read-only behavior changes as a side effect of presentation.
     verification:
+      - command: go test ./cmd/lsp -run "CompilerKnown|Completion|RawPointer|RawPtr|SignatureHelp|Synthetic|Friendly|TemporalIntrinsic|CompilerInterfaceRequirement|AtomicFence|UnitMetadata" -count=1 -timeout=180s; go test ./internal/sema -count=1; go vet ./cmd/lsp ./internal/sema; (cd vscode && ./node_modules/.bin/tsc --noEmit -p ./)
+        result: "passed 2026-10-29: focused LSP regressions 50.8s, full Sema 17.1s, vet and extension typecheck passed. Final whole point closed, owner remaining 1 to 0 and partial to implemented; global remaining 2422 to 2421, checklist partial stays 55."
+      - command: go vet ./cmd/lsp; go run ./cmd/yamlstatus check; go run ./cmd/yamlstatus fmt -check governance/tooling_lsp.yaml; git diff --check
+        result: passed 2026-10-29; 0 governance problems in 45 fragments, owning YAML canonical and no whitespace errors; remaining 2423 to 2422, partial stays 55; one implemented item records the whole ordinary-presentation point
+      - command: go test ./cmd/lsp -run "CompilerKnown|Completion|RawPointer|RawPtr|SignatureHelp|Synthetic|TemporalIntrinsic|CompilerInterfaceRequirement" -count=1 -timeout=180s
+        result: "passed on 2026-10-29 (34.1s): ordinary presentation regression selection, actual source completion/hover, registry/fallback and unsafe signature documentation; synthetic definition/URI compatibility remains tested separately and unchanged. Whole ordinary-presentation point closed, owner remaining 2 to 1."
       - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1; go test ./cmd/lsp -run "CompilerKnown|SignatureHelp" -count=1 -timeout=60s; go vet ./internal/sema ./cmd/lsp
         result: passed 2026-10-28 for the complete shared-display-facts point; full suites 17.7s/3.6s/1.6s and focused LSP 12.8s. Additional fallback/nominal/unsafe tests passed on targeted rerun. Remaining 3 to 2 under this ID and 29 to 28 in tooling_lsp.yaml, with no replacement remaining item. Editor-facing renderer/title migration is not claimed.
       - command: go run ./cmd/yamlstatus check

@@ -1,0 +1,14 @@
+module main
+let Known := "hello"
+fn Runtime(value: string) string { return value }
+fn Distinct(value: string, other: string) void {
+    switch value {
+    case "a" + "b": return
+    case Known: return
+    case "e" + "\u{301}": return
+    case "\u{e9}": return
+    case Runtime(other): return
+    case Runtime(other): return
+    default: return
+    }
+}

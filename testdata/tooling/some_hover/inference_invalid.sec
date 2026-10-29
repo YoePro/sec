@@ -1,0 +1,6 @@
+module main
+
+fn Use() void {
+    let invalid := Some(None)
+    discard invalid
+}

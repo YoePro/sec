@@ -54,7 +54,8 @@ func enumCaseNamed(typ Type, member string) (ResolvedEnumCase, bool) {
 // ResolvedEnumConversionOf classifies only explicit conversions accepted by
 // Sema. It does not infer a conversion from callee spelling alone.
 // Rules: rules/declarations/enums.md — § 12; rules/declarations/functions.md
-// — §§ 19–20, 24 (selected calls retain their callable identity).
+// — §§ 19–20, 24 (selected calls retain their callable identity);
+// rules/types/types.md — "Exact integer conversion proof" (known constants).
 func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedEnumConversion, bool) {
 	if a == nil || call == nil || len(call.Arguments) != 1 {
 		return ResolvedEnumConversion{}, false
@@ -76,7 +77,11 @@ func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedE
 	if operand.Kind == EnumType && isIntegerType(result) {
 		conversion := ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}
 		if isBuiltinConversionInteger(result) {
-			conversion.Proof = a.integerConversionProof(result, operand, nil)
+			// Keep the same known-member evidence that admitted the source
+			// conversion. The complete enum domain may be wider than this
+			// constant, so recomputing only a domain proof loses exactness.
+			constant, _ := enumConstantValue(operand, call.Arguments[0])
+			conversion.Proof = a.integerConversionProof(result, operand, constant)
 		}
 		return conversion, true
 	}

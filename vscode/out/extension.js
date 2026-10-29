@@ -89,7 +89,9 @@ function activate(context) {
 // Synthetic read-only definitions of compiler-known members
 // (rules/compiler/compiler_known_members.md "Synthetic definitions"). The
 // language server renders them from its registry; a content provider keeps
-// them read-only and outside the workspace.
+// them read-only and outside the workspace. The friendly basename supplies the
+// editor tab/location label; preserve the opaque identity/instance query on the
+// content request instead of reconstructing a URI from that visible label.
 const compilerKnownScheme = "sec-compiler-known";
 function registerCompilerKnownDefinitions(context) {
     const provider = {

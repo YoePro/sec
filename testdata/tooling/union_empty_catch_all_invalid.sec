@@ -1,0 +1,13 @@
+module main
+
+type State union {
+    Idle
+    Running
+}
+
+fn GuardOnly(flag: bool) void {
+    let mut state: State
+    match state {
+        _ where flag => {}
+    }
+}

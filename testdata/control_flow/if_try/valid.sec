@@ -1,0 +1,36 @@
+module main
+
+enum GateError error { Failed }
+fn Probe(mode: int) Result[bool, GateError] {
+    if mode == 2 { return Err(GateError.Failed) }
+    return Ok(mode == 1)
+}
+fn Propagate(mode: int) Result[int, GateError] {
+    if try Probe(mode) { return Ok(11) }
+    return Ok(22)
+}
+fn RecoverFalse(mode: int) int {
+    if (try Probe(mode) { Err(_) => false }) { return 11 }
+    return 22
+}
+fn RecoverTrue(mode: int) int {
+    if (try Probe(mode) { Err(_) => true }) { return 11 }
+    return 22
+}
+fn Negated(mode: int) Result[int, GateError] {
+    if !(try Probe(mode)) { return Ok(11) }
+    return Ok(22)
+}
+fn main() int {
+    let yes := try Propagate(1) { Err(_) => 99 }
+    let no := try Propagate(0) { Err(_) => 99 }
+    let failed := try Propagate(2) { Err(_) => 33 }
+    if yes != 11 { return 1 }
+    if no != 22 { return 2 }
+    if failed != 33 { return 3 }
+    if RecoverFalse(2) != 22 { return 4 }
+    if RecoverTrue(2) != 11 { return 5 }
+    let inverse := try Negated(0) { Err(_) => 99 }
+    if inverse != 11 { return 6 }
+    return 0
+}

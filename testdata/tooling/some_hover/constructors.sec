@@ -1,0 +1,22 @@
+module main
+
+fn Accept(value: Option[int64]) void {
+    discard value
+}
+
+fn Use() Option[int64] {
+    let integer := Some(3)
+    let text := Some("hello")
+    let contextual: Option[int64] := Some(42)
+    let nested := Some(Some(1))
+    let nestedNone: Option[Option[int]] := Some(None)
+    let qualified := Option[int].Some(7)
+    Accept(Some(43))
+    discard integer
+    discard text
+    discard contextual
+    discard nested
+    discard nestedNone
+    discard qualified
+    return Some(44)
+}

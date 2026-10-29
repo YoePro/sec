@@ -472,6 +472,26 @@ replaces the former `uint8` type). Both spellings resolve to the one identity
 identity (MD-068). New examples, generated declarations and hover use
 `.Scale`.
 
+The read-only value predicates of `core-library.md` §§ 10.2 and 10.4
+(MD-068 § 9(2)) are compiler-known properties of the mathematical value,
+independent of the representation scale, with one identity per type:
+`IsInteger`, `IsZero`, `IsPositive` and `IsNegative` of type `bool` and
+`Sign` of type `int` are `CKM-DECIMAL-ISINTEGER`, `CKM-DECIMAL-ISZERO`,
+`CKM-DECIMAL-ISPOSITIVE`, `CKM-DECIMAL-ISNEGATIVE` and `CKM-DECIMAL-SIGN`
+on `decimal` and the corresponding `CKM-DECIMAL128-*` identities on
+`decimal128`. They have no setters and no legacy spellings.
+
+The decimal core methods of `core-library.md` §§ 10.2 and 10.4 (MD-066 § 8,
+MD-068 § 9(2)) are compiler-known methods with one identity per type,
+`CKM-DECIMAL-<NAME>` and `CKM-DECIMAL128-<NAME>`: `Normalize()`, `Floor()`,
+`Ceiling()`, `Truncate()` and `Round()` return the receiver type;
+`Min(other)` and `Max(other)` take and return the receiver type;
+`Abs()` returns `Result[T, OverflowError]`; `Clamp(minimum, maximum)`
+returns `Result[T, RangeError]`; `Rescale(scale: int32)` and
+`RoundTo(scale: int32[, mode: RoundingMode])` return
+`Result[T, PrecisionError]`. Calls check arity and argument types; the error
+types resolve to the loaded core declarations.
+
 Lowercase spellings are classified as migration spellings.
 
 They are not separate semantic members.
@@ -2893,22 +2913,35 @@ target restrictions.
 
 It must not pretend that generated text is user source.
 
-Implemented (2026-10-04): the language server answers definition on such a
-member with `sec-compiler-known:/<member ID>.sec`. Its text, served by the
-`sec/compilerKnownDefinition` request, opens with a comment block stating that
-it is a synthetic read-only definition generated from the registry and not
-source code, followed by the member and ID, category, rule section, receiver
-pattern, effects, unsafe requirement, target restriction, legacy spellings,
-structural-mutation fact, and documentation, and ends with the signature line
-where navigation places the cursor. The VS Code extension presents it through
-a read-only content provider. Receiver-instantiated signatures are implemented
-(2026-10-14): element, key, value and carrier parameters retain their concrete
-nominal types, while method-local generic parameters remain generic. Navigation
-adds an instance query to the stable member-ID URI so different receiver types
-cannot overwrite each other's definitions. The presentation cache is bounded;
-an evicted instance requires renewed navigation. ID-only requests retain the
-generic registry definition. `CompilerKnownDocumentationForType` generates
-derived documentation using the same synthetic-definition renderer.
+Synthetic navigation uses a friendly public member/receiver name for the
+editor-visible document basename and generated member label. Stable registry
+identities remain transport data, rather than visible filenames or definition
+text. Unknown public names or signatures use explicit readable fallbacks;
+tooling must not recover a name by decoding an identity.
+
+The `sec-compiler-known:` scheme and `sec/compilerKnownDefinition` content
+request serve generated read-only documents outside the workspace. Generated
+text starts with a comment stating that it is synthetic registry output, not
+editable or compilable source. It retains category, normative rule, receiver,
+effects, unsafe requirements, target restrictions and caller obligations.
+Navigation places the cursor on the resolved signature, or an explicit
+signature-unavailable comment when that fact is absent.
+
+Receiver-instantiated signatures preserve concrete nominal types while
+method-local generic parameters remain generic. URI transport retains stable
+operation identity and an instance discriminator for receiver-specific or
+call-context-specific metadata. Distinct instances must not overwrite each
+other's content. The bounded presentation cache requires renewed navigation
+for an evicted instance; a cold instance request must never fall back to an
+unrelated or generic definition. Equivalent editor URI escaping or query order
+must not change the resolved instance.
+
+Legacy ID-only requests may retain public generic registry recovery. They do
+not supply core authority: private functions and value intrinsics require
+navigation from an authorized resolved use, regardless of whether the content
+request uses a friendly filename or a legacy ID basename.
+`CompilerKnownDocumentationForType` generates derived documentation through the
+same friendly synthetic-definition renderer.
 
 ---
 

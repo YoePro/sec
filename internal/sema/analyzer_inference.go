@@ -785,13 +785,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 				planValid = false
 				continue
 			}
-			if !sameConcreteType(typ, spreadType) {
-				a.addErrorAtToken(field.Token, "cannot spread %s into %s; spread source must have type %s", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(typ))
-				planValid = false
-				continue
-			}
-			if !implicitlyCopyable(spreadType) {
-				a.addErrorAtToken(field.Token, "cannot spread %s into %s; %s is not implicitly copyable", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(spreadType))
+			if !a.validateStructSpreadSource(typ, spreadType, field.Token) {
 				planValid = false
 				continue
 			}

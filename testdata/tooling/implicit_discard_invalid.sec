@@ -1,0 +1,14 @@
+module main
+
+enum Failure error { Failed }
+type Fallible struct {}
+impl Fallible { init() Failure {} }
+fn Required() Result[int, Failure] { return Ok(1) }
+fn Typed(value: int) int { return value }
+
+fn Invalid() void {
+    Required()
+    new Fallible()
+    defer { Required() }
+    Typed(true)
+}

@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-09-04"
+    revised: "2026-10-29"
     document_revision: "2.1"
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
@@ -30,6 +30,7 @@ integrations:
       - rules/errors/errorhandling.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
+      - rules/compiler/compile_time_evaluation.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -41,6 +42,13 @@ integrations:
       - internal/ir/semantic/builder.go
       - internal/lowering/secmlir/emitter.go
       - cmd/lsp/main.go
+      - internal/sema/enum_value_classes.go
+      - internal/sema/enum_string_diagnostics.go
+      - internal/lexer/string_presentation.go
+      - cmd/lsp/enum_hover.go
+      - cmd/lsp/string_enum_hover.go
+      - internal/sema/type_declarations.go
+      - internal/sema/enum_string_initializers.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/defaults_test.go
@@ -52,6 +60,18 @@ integrations:
       - testdata/enum_valid.sec
       - testdata/errorhandling_match_invalid.sec
       - testdata/zim-decoder.sec
+      - internal/sema/enum_value_classes_test.go
+      - internal/lexer/string_presentation_test.go
+      - cmd/lsp/string_enum_hover_test.go
+      - cmd/compiler/string_enum_diagnostics_test.go
+      - testdata/sema/enum_value_classes.sec
+      - testdata/tooling/string_enum_hover.sec
+      - testdata/tooling/string_enum_conversion_invalid.sec
+      - internal/sema/string_enum_cte_test.go
+      - cmd/compiler/string_enum_cte_test.go
+      - cmd/lsp/string_enum_cte_test.go
+      - testdata/sema/string_enum_cte/valid.sec
+      - testdata/sema/string_enum_cte/invalid.sec
     normative_delta:
       - generic enums are canonical Sec 0.1 compile-time nominal templates, including valid phantom identity parameters
       - each ordered concrete generic argument list identifies a distinct enum type without runtime generic machinery
@@ -96,12 +116,12 @@ integrations:
       - canonical formatter preservation of string underlying syntax and explicit initializers
       - testdata/zim-decoder.sec uses the canonical Program string enum and passes compiler Sema
       - parser recovery retains malformed member positions as invalid source-ordered EnumValue nodes while preserving later members and declarations; Sema ignores those recovery-only nodes without advancing iota or creating dependent enum members
+      - "String-enum hover and conversion repairs (2026-10-29): type/member hover displays the resolved string representation, declared decoded values, closed-domain status, alias representatives, explicit/implicit semantic default, checked runtime string conversion with EnumValueError.UndeclaredValue and infallible enum-to-string conversion. Documentation attachments remain visible. Shared EnumValueClasses uses canonical coverage identity, declaration order and detached value/member copies; it lists declared classes only and never substitutes an open enum runtime domain. Invalid known strings retain their original error and gain unique declared-value/member repairs, while existing runtime conversion help still requires try. String spellings use the lexer-owned Sec escape grammar rather than Go-only escapes. No acceptance, runtime or lowering changes."
+      - "string enum initializers and constant string-to-enum construction consume shared semantic CTE instead of literal-only recognition: composed decoded strings and immutable module constants establish member values, aliases/defaults and generic template constants. Known composed/bound string constants convert directly only when declared; undeclared constants remain errors and unknown runtime strings retain checked Result conversion. Required calls/getters unavailable to CTE report the shared S1101 diagnostic; omitted initializers, iota, wrong-kind and runtime initializers remain rejected. CLI and LSP preserve computed values and canonical diagnostics."
     remaining:
       - preserve concrete generic enum owner and member provenance through Semantic IR, Sec MLIR, deterministic symbol formation, ABI, FFI, and executable backend lowering
       - revalidate concrete-dependent enum representation and generic constraints before representation-dependent lowering
-      - extend compile-time string constant evaluation beyond direct literals when the canonical constant evaluator supports composed string expressions
-      - extend proof-based runtime string membership analysis beyond direct literal construction
-      - expose string underlying type, closed domain, declared values, aliases, defaults, and checked conversion behavior through richer LSP hover and conversion diagnostics
+      - extend runtime string membership proofs beyond the implemented canonical compile-time string constants and checked fallback for unknown runtime strings
       - add focused definition, references, document-symbol, semantic-token, switch, default-initialization, and formatter tests for string-backed enums
       - represent string-backed enum types, constants, value classes, conversions, equality, switch, and match plans in Semantic IR
       - add Sec MLIR types, attributes, operations, or canonical lowering needed to preserve nominal string-enum identity and checked construction
@@ -132,6 +152,14 @@ integrations:
       - Semantic IR verification and deterministic Sec MLIR emission
       - end-to-end backend execution for constants, conversion success and failure, equality, switch, and match
     verification:
+      - command: go test -race ./cmd/compiler ./cmd/lsp -run 'StringEnum.*CTE|StringEnumCTE|StringEnumInitializers|StringEnumHover|StringEnumDiagnostic' -count=1 -timeout=120s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-29; CLI 4.833s and LSP 9.235s under race; computed member/alias/default and generic facts, module constants, direct known conversions, checked runtime fallback, decoded Unicode, missing/iota/wrong-kind/runtime rejection and canonical S1101 transport verified; no string-enum runtime lowering claimed
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/... -count=1 -timeout=180s
+        result: passed on 2026-10-29 with final CTE/conversion source regressions; full Sema 19.452s, diagnostics 0.004s, Semantic IR 4.043s and nominal 0.126s. Previously observed iteration-borrow failures no longer occur in this working-tree snapshot.
+      - command: go test ./cmd/lsp -run 'TestStringEnum|TestCompletionReturnsStringBackedEnumMembers|TestCompletionKeepsNamedStringOptionFlowAndEnumMembers|TestAtomicSurfaceLSP|TestChannelCapabilityLSP|TestMutexCanonicalNamingLSP' -count=1 -timeout=180s; go test ./cmd/compiler -run 'TestStringEnum|TestDiagnosticCatalog' -count=1 -timeout=120s; go vet ./internal/sema ./internal/lexer ./cmd/lsp ./cmd/compiler
+        result: "passed on 2026-10-29: LSP 5.491s, compiler 0.445s, vet clean. Source fixtures verify values, aliases, explicit/implicit defaults, escaped strings and declaration/member docs; human/JSON/LSP repairs distinguish invalid constants from runtime strings needing try. Existing enum completion, atomic/channel/mutex surface and diagnostic catalog regressions pass."
+      - command: go test ./internal/sema ./internal/lexer -count=1 -timeout=180s
+        result: "passed on 2026-10-29: complete Sema 14.349s and lexer 0.007s. Shared enum-class facts preserve alias order and detached integer/string/member data; emitted source strings round-trip through the actual Sec lexer/decoder, including controls and Unicode. Existing enum conversion acceptance/error messages are preserved. Remaining 15 to 14."
       - command: go test ./internal/parser -run EnumDefault -count=1
         result: passed
       - command: go test ./internal/sema -run 'TestEnum(Default|Rejects|Initializer|ClosedAndOpen|ValuesAndNamespace|ValidFixture|MatchEnumNumericCoverage)|TestErrorHandlingMatchInvalidFixture' -count=1
@@ -237,6 +265,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
       - rules/foundations/grammar.md
+      - rules/tooling/diagnostics.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -248,6 +277,8 @@ integrations:
       - internal/sema/semantic_facts.go
       - internal/sema/analyzer_union_state.go
       - internal/cst/roles.go
+      - internal/sema/union_empty_advisory.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -264,6 +295,11 @@ integrations:
       - testdata/sema/union_state_tests_invalid.sec
       - testdata/sema/union_empty_match_valid.sec
       - testdata/sema/union_empty_match_invalid.sec
+      - internal/sema/union_empty_advisory_test.go
+      - cmd/compiler/union_empty_advisory_test.go
+      - cmd/lsp/union_empty_advisory_test.go
+      - testdata/tooling/union_empty_catch_all.sec
+      - testdata/tooling/union_empty_catch_all_invalid.sec
     implemented:
       - named closed payload-less, single-payload, struct-like, and mixed union declarations
       - nominal variant namespaces, duplicate and empty-union validation, payload arity checking, and broad payload type compatibility; complete representability and ownership preparation remain partial
@@ -291,11 +327,11 @@ integrations:
       - match over a possibly-empty local union binding reads the subject without a value read, accepts the compiler-known empty pattern, requires an unguarded empty arm or _ for exhaustiveness, proves the binding initialized inside every variant arm, rejects duplicate empty arms, and rejects an empty arm on a known-initialized subject as unreachable
       - ResolvedMatchPlan records EmptyStateReachable and an empty-state arm so termination and return analysis include the empty arm; Semantic IR and both legacy backends reject the empty state explicitly instead of treating it as a catch-all
       - direct, mutual, Option/Result-mediated, and generic-instantiation recursive union storage is rejected through the shared by-value layout dependency graph with mandatory S1071 union.recursive-by-value-layout (or S1055 when the cycle passes through a struct) and the full variant path
+      - "Optional implicit-empty catch-all guidance (2026-10-29; unions.md §10.4): A2009 / union.implicit-empty-catch-all is a nonmandatory Warning at an accepted unguarded underscore when Sema already proves the subject may be empty and no explicit empty arm exists. Uses existing match reachability and accepted arm source indices; it never changes coverage, initialization, ownership or lowering. Explicit empty arms (including guarded ones), initialized/defaulted/parameter subjects and initialized refinements receive no warning. The ordinary project diagnostic policy supports off/info/warning/error; CLI human output, JSON identity/range/help and unsaved-source LSP projection are tested, including repeated analysis and mandatory coverage with advice disabled."
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
       - record active-variant refinement (beyond initialization and the known-variant state-test slice) for later member and payload analyses, match arms excluded by a known active variant (§ 21(6)), while-condition variant tests, and owned by-value union parameters that no mutable-receiver method can change
       - lower StateTestExpression through Semantic IR and the compilation track; Semantic IR currently rejects it as not implemented
-      - warn when an unguarded _ absorbs a reachable empty state without an explicit empty arm (optional tooling policy in §10.4)
       - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
       - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
       - classify the finite indirection carrier used by unions.md §18 (`Box[List[T]]`), which no rulebook defines yet (missing-decisions.yaml MD-018)
@@ -305,6 +341,10 @@ integrations:
       - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
       - add complete parser recovery, formatter, valid/invalid, dataflow, LSP, Semantic IR, MLIR, and end-to-end coverage
     verification:
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'TestImplicitEmptyCatchAll|TestDiagnosticCatalog' -count=1 -timeout=120s; go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: "passed on 2026-10-29: compiler 1.486s, LSP 1.427s, vet clean. Real manifests verify default/off/info/warning/error policy, human warning text, JSON registered identity/location/help, unsaved-source LSP identity/range/help and source rejection only on explicit promotion."
+      - command: go test ./internal/sema ./internal/diagnostics -count=1 -timeout=180s
+        result: "passed on 2026-10-29: complete Sema suite 15.386s, diagnostics suite 0.002s. New optional A2009 tests cover all analysis depths, repeated runs, all policy levels, exact underscore ranges, negative cases and mandatory empty-state coverage with the advisory disabled. Remaining 12 to 11."
       - command: go test ./internal/parser -run UnionDefault -count=1
         result: passed
       - command: go test ./internal/sema -run 'Union|Default|Match.*Payload|StructLiteralOptionFields' -count=1
@@ -315,6 +355,7 @@ integrations:
         result: passed on 2026-10-01; state tests parse, type, refine definite assignment, diagnose impossible and invalid tests, and format canonically
       - command: go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1
         result: passed on 2026-10-02 with Option/Result payload, instantiation-only, nested-generic parameter, mutual generic, mutual union, and union-payload-field-through-struct cycles, valid slice/ref/dynamic boundaries inside tagged and generic carriers, and a single diagnostic for direct union self-recursion
+    revised: "2026-10-29"
 
   - id: frontend.properties
     area: frontend-analysis
@@ -1144,12 +1185,19 @@ integrations:
       - internal/ir/semantic/builder.go
       - internal/ir/semantic/verifier.go
       - internal/lowering/secmlir/emitter.go
+      - internal/sema/enum_facts.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/ir/semantic/package11_test.go
       - internal/ir/semantic/package11_verifier_test.go
       - cmd/compiler/emit_sec_mlir_package11_test.go
       - testdata/semantic_ir/enum_union_values.sec
+      - internal/sema/enum_conversion_domains_test.go
+      - internal/ir/semantic/enum_known_narrowing_test.go
+      - cmd/compiler/native_track_test.go
+      - testdata/sema/enum_conversion_domains.sec
+      - testdata/sema/enum_conversion_domains_invalid.sec
+      - testdata/build/native/enum_known_narrowing.sec
     implemented:
       - explicit enum-to-integer conversion is recognized by Sema
       - Package 11 Semantic IR represents Sema-proven infallible enum-to-integer conversion
@@ -1160,6 +1208,8 @@ integrations:
       - closed enum runtime conversion proves every numeric value class fits the target
       - open bit enum runtime conversion uses the complete bit domain
       - unproven narrowing is Result-valued with ArithmeticError and records a fallible enum conversion fact
+      - "Fixed-width enum narrowing matrix (2026-10-29): independently parsed 32/64-bit plans verify signed/unsigned boundaries, closed value classes and aliases, wider carriers with fitting domains, out-of-range constants, Result-valued narrowing and rejection of unprotected runtime narrowing. Public ResolvedEnumConversionOf facts retain exact source/target identity, result shape, proof basis and exact bounds; fixed-width proofs remain target-independent. The tests exposed and fixed lost constant evidence: known enum members now retain the constant proof rather than recomputing only the wider enum domain. Full Sema/IR suites and a real native KnownZero/KnownHigh fixture pass."
+      - "Complete open bit-enum domain regressions (2026-10-29): bit[8]/bit[16] enums declare only 0 and 1, yet runtime conversion facts use 0..255 and 0..65535. uint8/uint16/int16/int32 fitting cases carry open-enum-domain proofs; signed and unsigned narrowing remain fallible. Explicit known-member narrowing retains a constant proof without treating other open values as bounded by declared members. The same fixtures and assertions run under 32/64-bit plans."
     partial:
       - Semantic IR and lowering do not yet consume the represented fallible enum-to-integer conversion path
     remaining:
@@ -1173,14 +1223,13 @@ integrations:
       - preserve infallibility/fallibility and source enum identity in immutable Sema/Semantic IR facts
       - prevent unconditional OpEnumToInteger emission for conversions that may fail
       - lower the fallible case through canonical checked-integer conversion and explicit failure control flow
-      - add fixed-width narrowing tests independent of target-sized int/uint behavior
-      - add open-bit-enum tests proving the complete bit domain is used rather than declared members only
     bug_reference:
       - correction7.md
     governance_reconciliation:
       - Keep lowering.sec-mlir-enum-union-values at implemented for Package 11's dependency-bounded scope. Its own governance text explicitly says the enum conversion fixtures remain inside the Sema-proven infallible boundary.
       - Qualify Package 11's implemented enum-to-integer conversion as the Sema-proven infallible form. The missing functionality is frontend proof and checked/fallible conversion outside that boundary.
       - frontend.enums tracks Result-valued integer-to-enum and string-to-string-enum runtime conversion; this integration remains the reciprocal integer-backed enum-to-integer checked narrowing slice.
+      - The 2026-10-29 regression work closes only the two fixed-width/open-domain test items and repairs retained constant proofs. General fallible Semantic IR/backend conversion remains open, as does migration of the existing legacy ArithmeticError result to the canonical ConversionError failure family under the existing canonical-error-semantics remaining item.
     required_tests:
       - closed enum whose complete domain fits target integer converts infallibly
       - closed enum with one out-of-range member produces a fallible runtime conversion
@@ -1192,6 +1241,12 @@ integrations:
       - fallible enum-to-integer conversion requires ordinary try handling
       - fallible conversion is not emitted as unconditional OpEnumToInteger
       - existing Package 11 infallible enum conversion fixtures continue to pass
+    revised: "2026-10-29"
+    verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run 'TestNativeTrackBuildsAndRuns/enum_known_narrowing$' -v -count=1 -timeout=120s
+        result: passed on 2026-10-29 (0.317s), executed with the real MLIR tools; uint8(Wide.Zero) and int8(Signed.High) compile and run although other members do not fit their target type.
+      - command: go test ./internal/sema -count=1 -timeout=180s; go test ./internal/ir/semantic -count=1 -timeout=120s; go vet ./internal/sema ./internal/ir/semantic ./cmd/compiler
+        result: "passed on 2026-10-29: complete Sema suite 27.462s, complete Semantic IR suite 6.013s, vet clean. New matrix checks fixed-width/complete-open-domain facts on 32/64-bit plans and rejects five invalid forms on each; known-member constant proof regression reproduced before fix. Remaining 12 to 10."
 
   - id: frontend.impl-core-privilege
     area: frontend-source-provenance-and-impl-coherence
@@ -1568,7 +1623,7 @@ integrations:
 
   - id: frontend.spread
     area: frontend-analysis-and-semantic-ir
-    revised: "2026-10-28"
+    revised: "2026-10-29"
     status: partial
     integrated: "2026-08-13"
     summary: >-
@@ -1588,10 +1643,21 @@ integrations:
       - internal/lexer/lexer.go
       - internal/parser/expression.go
       - internal/sema/analyzer.go
+      - internal/sema/struct_spread.go
+      - internal/sema/analyzer_inference.go
+      - internal/parser/spread.go
     tests:
       - internal/lexer/lexer_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/struct_spread_visibility_test.go
+      - internal/parser/spread_recovery_test.go
+      - testdata/sema/spread_visibility/owner.sec
+      - testdata/sema/spread_visibility/consumer.sec
+      - testdata/parser/spread_prefix_invalid.sec
+      - testdata/parser/spread_repeated_invalid.sec
+      - testdata/parser/spread_missing_source_invalid.sec
+      - testdata/parser/spread_out_of_context_invalid.sec
     implemented:
       - postfix expression... syntax in call arguments, fixed-array literals, and struct literal entries
       - fixed-array expansion counts for calls and array literals
@@ -1601,14 +1667,20 @@ integrations:
       - rejection of standalone spread and runtime-length sources in fixed-arity calls and fixed-array literals
       - rejection of hidden consuming reads for move-only fixed-array elements and move-only struct sources
       - diagnostics that retain the original reference or dynamic-array source type for runtime-arity failures
+      - "Struct spread construction boundaries (2026-10-29): validateStructSpreadSource checks exact nominal identity, implicit copyability and accessibility of every direct field before a spread can populate the final construction plan or suppress omitted-field defaults. Cross-module spread of hidden representation now reports the inaccessible field at the spread site; inaccessible NonDefaultable fields remain unsupplied. Permanent two-module regressions verify legal same-module and public-field updates, hidden value/reference rejection with no published construction plan, field-contract overrides and nominal mismatch. Source checks were extracted from analyzer_inference.go into struct_spread.go; no new constructor or ownership semantics."
+      - "Spread parser recovery (2026-10-29): permanent prefix, repeated, missing-source and out-of-context fixtures verify progress, explicit invalid nodes, preserved sibling statements and following functions. Repeated postfix markers now produce one focused P2007 invalid postfix node retaining the already parsed spread and its real source; further repeated markers record exact skipped-token recovery without consuming the list closer. Complete standalone spread remains in the AST for Sema, which rejects both let and return uses rather than accepting an expansion as a value."
     remaining:
       - "MD-117 spread source legality: parse and resolve complete owned native parameter-pack <-values... for homogeneous and heterogeneous packs; retain non-consuming values..., reject single-element/partial consumption and consuming array/slice/list/tuple/struct spread. Publish resolved source/expansion facts to the ownership/call producers rather than committing transfers in syntax handling (spread.md §4.4; correction §7)."
       - preserve exactly-once evaluation, expansion order, ownership decisions, and struct override/default provenance in Semantic IR or a proven equivalent normalized representation
-      - complete visibility and construction-invariant diagnostics for struct spread across module boundaries
       - add permanent spread_valid.sec and spread_invalid.sec fixtures covering all canonical cases
-      - add parser recovery coverage for prefix, repeated, missing-source, and out-of-context spread
       - support runtime-length sequence spread only if a separate runtime-arity destination rule defines it
     verification:
+      - command: go test ./internal/parser -count=1 -timeout=180s; go vet ./internal/parser ./internal/sema
+        result: "passed on 2026-10-29: complete parser suite 91.443s and vet clean, including recovery robustness/progress tests and new spread fixtures. Complete Sema suite passed separately in 14.414s."
+      - command: go test ./internal/sema -count=1 -timeout=180s
+        result: passed on 2026-10-29 (14.414s); complete Sema suite after enforcing spread field visibility and preserving defaults/contracts/ownership checks.
+      - command: go test ./internal/parser -run TestSpread -count=1 -timeout=120s; go test ./internal/sema -run 'TestStructSpread|TestInvalidStructSpread|TestSpreadOutOfContext|TestResolvedStructPlanUsesLaterSpread' -count=1 -timeout=120s
+        result: passed on 2026-10-29; cross-module visibility hole reproduced before the fix (hidden-field spreads had valid construction plans), and repeated-spread source loss reproduced before parser repair. Source fixtures verify all four malformed/contextual spread families, and two-module valid/invalid construction facts. Remaining 6 to 4.
       - command: go test ./internal/sema -run 'Test(CallSpread|ArrayLiteralSpread|StructSpread|InvalidStructSpread)' -count=1
         result: passed
 
@@ -1620,7 +1692,7 @@ integrations:
     document_revision: "2.0"
     document_created: "2026-08-14"
     document_last_updated: "2026-08-14"
-    summary: Supplements frontend.functions-v2 with the backend identity status for ordinary overloads. Sema resolves overloads by parameter signature and records the exact selected callable; the single compilation track (MD-101) must preserve that identity through Semantic IR and Sec MLIR into deterministic backend symbols.
+    summary: Sema retains selected ordinary overloads, and represented Semantic IR overload groups now receive deterministic local Sec MLIR symbols from canonical FunctionID rather than declaration order. Source/IR order and 32/64-bit emitter regressions plus native same-arity int8/uint8/int16 calls verify distinct results even for coinciding physical carriers. Full signature-dimension coverage, module/generic specialization determinism and variadic identity remain separate; this is not an external ABI compatibility promise.
     rules:
       - rules/declarations/functions.md
       - rules/declarations/generics.md
@@ -1631,10 +1703,15 @@ integrations:
       - internal/sema/semantic_facts.go
       - internal/ir/semantic
       - internal/lowering/secmlir
+      - internal/lowering/secmlir/function_symbols.go
+      - internal/lowering/secmlir/emitter_options.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/ir/semantic
       - internal/lowering/secmlir
+      - internal/lowering/secmlir/function_symbols_test.go
+      - testdata/build/native/overload_identity.sec
+      - cmd/compiler/native_track_test.go
     implemented:
       - ordinary overload groups are registered in Sema by source name
       - overload identity excludes return type
@@ -1642,16 +1719,16 @@ integrations:
       - exact parameter matches are preferred over matches requiring conversion
       - ambiguous equally ranked Sema candidates are rejected
       - the exact selected ordinary callable is retained in resolved Sema call facts
+      - "Physical-carrier overload collision regression completed 2026-10-29: int8 and uint8 parameters lower to the same signless i8 carrier while preserving distinct canonical function IDs, emitted symbols and call targets. The source-backed native program returns different observable results from each overload; emitter tests retain separate definitions/calls on 32/64-bit plans, across source and IR declaration reordering."
+      - "Same-name/same-arity end-to-end overload tests completed 2026-10-29: a source fixture defines Select(int8), Select(uint8) and Select(int16), calls all three with independently typed arguments, and verifies distinct runtime results through the single Sema/Semantic IR/Sec-MLIR/LLVM/clang compilation track."
+      - "Deterministic ordinary-overload symbols completed 2026-10-29: resolvedFunctionSymbols consumes canonical Semantic IR FunctionID values and derives local overload symbols using their complete identity digest, independent of declaration position, arity and physical scalar carriers. Definitions and direct/foreign call emission share this one map. Distinct-ID symbol collisions are rejected rather than aliased. Unique source names retain existing local numbering; this does not establish a stable external ABI or reclassify source overloads. Signature-dimension/generic/variadic coverage remains separately tracked."
     partial:
-      - backend symbol identity is therefore not yet a preserved consequence of canonical parameter-signature overload identity
+      - Represented ordinary overloads now retain semantic identities in deterministic local symbols; complete signature-dimension auditing, module/generic specialization determinism, native variadic identity and remaining unsupported-family coverage are still tracked below.
     remaining:
       - preserve the exact Sema-selected callable identity in Semantic IR call facts
-      - assign deterministic backend symbols to ordinary overloads using canonical semantic signature identity rather than source name or arity alone
       - ensure symbol identity includes parameter types and all signature dimensions that participate in callable identity, while excluding return type and non-discriminating ownership mode exactly as required by the rulebooks
       - support same-arity parameter-type overloads through the compilation track or reject them with an explicit unsupported-lowering diagnostic before producing IR
       - preserve deterministic overload symbols across source order, modules, generic specialization, and repeated builds
-      - add end-to-end tests where two overloads have the same name and arity but different parameter types and both are called
-      - add tests proving overload symbols cannot collide when physical lowered parameter types happen to coincide but semantic overload identity remains distinct where the ABI permits the distinction
       - integrate native variadic overload identity later without conflating it with C/foreign varargs
     governance_reconciliation:
       - frontend.functions-v2 already records the broad remaining work to represent calls in Semantic IR and lower calls through Sec MLIR/LLVM. This supplement makes the specifically missing ordinary-overload symbol and selected-callable identity problem explicit.
@@ -1663,6 +1740,10 @@ integrations:
       - return type never contributes to overload symbol identity because such source overloads are already invalid
       - forced-consuming versus ordinary mode does not create a distinct overload symbol because such source overload pairs are already invalid
       - unsupported backend paths fail before publishing invalid or ambiguous IR
+    revised: "2026-10-29"
+    verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/lowering/secmlir -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "TestNativeTrackBuildsAndRuns|TestMatchField" -count=1 -timeout=150s; go vet ./internal/lowering/secmlir ./cmd/compiler
+        result: "passed 2026-10-29: full Sec MLIR emission suite 20.7s, native/match selection 20.2s and vet; explicit native overload case also passed without a skip. Emitter test covers source and IR declaration permutations on 32/64-bit plans and exact definition/callee correspondence. Three whole points closed, remaining 8 to 5."
 
   - id: frontend.register-wide-bit-fields
     area: frontend-register-analysis

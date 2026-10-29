@@ -468,7 +468,7 @@ integrations:
     status: partial
     integrated: "2026-08-09"
     audited: "2026-08-12"
-    revised: "2026-10-28"
+    revised: "2026-10-29"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types/types.md
@@ -518,6 +518,8 @@ integrations:
       - internal/sema/analyzer_relational_reachability.go
       - internal/sema/analyzer_control_flow.go
       - internal/sema/copy_classification.go
+      - cmd/lsp/some_constructor_hover.go
+      - cmd/lsp/hover.go
     tests:
       - cmd/compiler/main_test.go
       - testdata/sema/named_string_error_channel_invalid.sec
@@ -554,7 +556,12 @@ integrations:
       - internal/sema/nested_copyability_test.go
       - testdata/sema/nested_copyability/valid.sec
       - testdata/sema/nested_copyability/copy_invalid.sec
+      - cmd/lsp/some_constructor_hover_test.go
+      - testdata/tooling/some_hover/constructors.sec
+      - testdata/tooling/some_hover/inference_invalid.sec
+      - testdata/tooling/some_hover/user.sec
     implemented:
+      - "MD-102 Some ownership and facts (2026-10-29): a self-inferred Some(value) keeps the ordinary transfer rules (Some(handle) of a move-only reusable Place is S1007, Some(<-handle) is accepted); the selected Option[T] reaches Semantic IR exactly as for a typed binding (union core::Option<int>, union.construct); None() keeps S1157; invalid None/Some/[]/null families stay rejected (TestBareSomeArgumentUsesParameterContext); a Some recovery value inside a Result try keeps try propagation (TestSomeInferenceKeepsOwnershipAndTryRules)."
       - "MD-102 standalone Some (2026-10-28; types.md \"Contextual and self-inferred Some(value)\"; internal/sema/some_inference.go): a bare Some(value) with no expected type and no visible callable named Some is typed Option[T] from its independently typed payload and then checked through the ordinary expected-type path, so let v := Some(42) is Option[int], Some(text) Option[string], Some(Some(1)) Option[Option[int]]; an expected Option[int64] still shapes Some(42) and Option[uint8] rejects Some(300); uncontextualized Some(None) reports that its payload has no type of its own; a user fn Some is called normally. Tests: TestStandaloneSomeInfersOptionType, TestSomeInferenceRejections, TestUserSomeFunctionIsNotOptionConstruction."
       - "MD-092 integrated 2026-10-28: string.CharAt(index: uint) char is a permanent, nondeprecated public byte-indexed alias of char(self.ByteAt(index)), using index < SizeOf and ByteAt bounds/panic behavior, with no rune decoding or new intrinsic. Core-library §§5.3/5.7 and sec/core/string.sec agree. TestCompilerCoreStringCharAtIsByteAlias verifies char/byte/rune result distinctions and rejects implicit CharAt-to-rune conversion; the complete core string implementation type-checks. Runtime ASCII/NUL/high/UTF-8-continuation-byte equality and out-of-bounds equivalence remain in the existing string runtime conformance item, not claimed executed."
       - "MD-093 applied 2026-10-26 (rules/corrections/applied/md093-named-string-conversion-correction-20261026.md): direct numeric-to-named-string conversion is unavailable, with or without try, for literals, all numeric families and eligible named numerics. Primitive string(number) keeps Result[string, StringError]. Both explicit ToString-then-Name forms type-check; conversion operands consume successful protected Result values through the existing try-chain machinery, preserving materialization before nominal contract checks and each independent error type. Declared named-string checks require their own protection, including fallible assignment; an inner-only try and incompatible propagation are rejected. General unavailable conversions in both inference forms use centrally registered S1174 types.conversion-unavailable with a concrete materialization repair for this case. CLI check/sema/emit-ir reject direct conversions before lowering; LSP projects the same identity/help. Runtime text, contract execution and failure injection remain unverified under the existing P16/P23 backend gate, not a missing normative decision."
@@ -603,6 +610,7 @@ integrations:
       - "MD-074/MD-088 and MD-051 (applied 2026-10-17, rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md): compiler-known len(value) returns uint, the same count as .Len (registry CKF-LEN and len inference); string(numericValue) for int/uint (including byte), float, decimal and named numeric values is typed Result[string, StringError] using the trusted-core StringError, in both conversion forms, while implicit numeric-to-string coercion stays invalid. Rulebooks core-library.md §§ 1.4, 15, collections.md § 3.1, compiler_known_members.md (Global len, numeric ToString), types.md (Numeric-to-text conversion), pitfall_analysis.md and the P14/P16/P18/P23 package and sync notes. Tests: TestLenIsUintAndNumericStringConversionIsFallible, TestCompilerKnownLenReturnsUintForStringsAndArrays, TestUnionValidFixture"
       - "MD-056 try enforcement (2026-10-26, types.md \"Explicit conversions\"): every Sec-only integer-family conversion that may fail now requires try, as c:: conversions already did; a conversion the plan-aware MD-104 proof shows exact needs none (the proof is recorded first). Migrated beforehand with no new errors anywhere under sec/: syscall register words in sec/platform/linux and stdlib io use uint(bit[64](value)); uint slice bounds drop the int(...) wrapper; UTF-8/ASCII/hex byte encodings use byte(bit[8](...)); validated hex digits, path lengths, offsets, kernel counts and Unicode scalars use try with the function's own error or U+FFFD recovery (linux file/process, io transfer/file/write, str builder/collect/escape, fmt string_builder, net ip/url). Fixed in passing: imported modules' try-handler patterns and bodies were not import-qualified, so a handler naming its module's type was undefined (cmd/compiler and cmd/lsp). Tests: TestSecScalarConversionsThatMayFailRequireTry, TestCLIImportedTryHandlersResolveModuleNames; TestIntegerConversionPlansAndCharacterComparisons, TestUnprovenConversionsFailClosed and TestConversionProofIsRecomputedPerPlan updated to the enforced rule"
       - "Nested generic copyability (fixed 2026-10-28; copy_move.md §§4.1-4.3): concrete-instantiation recursion keys include ordered type and const arguments instead of just declaration names. Option[Option[int]], deeper Options and nested generic structs/unions derive ordinary copyability; nested owning int[] remains move-only with S1007 on implicit copy and accepts explicit transfer. Shared trait traversal now retains nested non-trivial destruction and non-comparability; actual recursion and unresolved generic payloads still classify conditionally. Copy derivation extracted into internal/sema/copy_classification.go. Source-backed tests: TestNestedGenericCopyability, TestGenericCopyabilityRecursionRemainsConditional. The whole nested Option remaining item is closed; MD-102 ownership/facts and physical Option lowering retain their own gates."
+      - "MD-102 Some constructor hover (2026-10-29): cmd/lsp/some_constructor_hover.go displays the Sema-selected Option[T].Some constructor and selected Option[T] only at its callee token, using ResolvedUnionConstructionOf and excluding ordinary ResolvedCallTarget calls. Tests cover inferred int/string, contextual int64 at declarations/calls/returns, nested Some/None, qualified construction, exact token ranges, invalid inference and a user Some function returning Option[int]; no parallel inference or overload model."
     remaining:
       - "known hole (verified 2026-10-17): no lowering route lowers the global len(...) call or materializes numeric text for string(numericValue); the uint length and the ToString equality are therefore unverified at run time (MD-051 closed 2026-10-17 on the owner's decision that byte counts as uint8; MD-093 decided 2026-10-26: Sema rejects Name(number), while the accepted explicit materialization/nominal-conversion sequence still stops at unsupported intermediate-Result routing and P23 text materialization)"
       - "known hole (verified 2026-10-17): the corrected core string algorithms (rune-position search and slicing, split, FromRuneArray, ToByteArray) and the migrated stdlib str/http code are verified only by compilation; `sec test` cannot execute test bodies yet, so the correction § 9 runtime conformance gates (UTF-8 negative cases, rune-index oracle, multibyte separators, allocation failure, HTTP malformed input, plus MD-092 CharAt/ByteAt byte equality over ASCII/NUL/high/continuation bytes and identical at/past-SizeOf panics) remain open"
@@ -615,13 +623,14 @@ integrations:
       - decimal division precision and failure policy implementation
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
-      - "md102-some-ownership-and-facts: Some(value) construction obeys move/copy/borrow/lifetime rules with no implicit move from a reusable Place, invented copy or reference escape; the selected Option[T] and constructor are recorded before IR building and shown by LSP hover; None() keeps S1157 guidance; invalid None/Some/[]/null families stay rejected; one cross-feature regression of Some inside Result recovery (M102-10/12/13, correction § 17(4))."
       - "resolved 2026-10-18 (MD-105, formerly this hole): char/rune comparison of the same character type reuses int.compare / sec.int.cmp over !sec.char / !sec.rune and lowers unsigned via char -> ui8 / rune -> ui32 (semantic_ir.md § 125, operators.md \"Rune ordering\", package7.md amendment); native fixture characters.sec covers all six predicates, a top-bit char and a rune above U+FFFF"
     governance_reconciliation:
       - "representation audit completion does not implement every backend representation: collection/array work remains with frontend.collections; register, union and interface work remains with frontend.registers, frontend.unions and frontend.interfaces; task/thread work remains with concurrency.tasks-v2 and concurrency.thread-v2; quantity facts and operations remain with frontend.units-v2; any remains explicitly listed here. Maintained Semantic IR and physical Result/Option/aggregate lowering remain with the integrations in governance/lowering.yaml. Legacy unsupported boundaries are implementation capabilities, not new source-language restrictions."
       - "audit completion is distinct from runtime conversion implementation: the existing scalar ConversionError frontend remains open; audited missing nominal-core representations retain their specialized implementation owners, as do collection/place/defaultability owners. The historical matrix excluded the then-undecided numeric-to-string permission; MD-051 subsequently defined primitive fallible text materialization, and MD-093 now rejects direct nominal-string targets. Their backend gates remain separate from relation validation."
       - explicit callable parameter ownership modes and variadic callable type syntax remain with frontend.functions-v2 and frontend.lambda-functions-v2 in governance/declarations.yaml; inferred variadic shape is covered here without claiming those syntax/ownership integrations complete.
     verification:
+      - command: go test ./cmd/lsp -run 'SomeConstructorHover|TryHover|CompilerKnownFriendly|TypeHover' -count=1 -timeout=120s
+        result: passed on 2026-10-29 (15.278s); source validity, selected constructor/type, exact hover ranges and ordinary user-call fallback verified; types-core remaining 13 to 12.
       - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1; go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
         result: passed 2026-10-28 after nested generic trait identity correction; regression first reproduced S1007 for valid nested Option/struct/union copies, then passed. Ownership-negative fixtures still reject three nested move-only copies, explicit moves work, and nested destruction/equality classification plus true recursion/unresolved generic guards are checked. frontend.types-core remaining 14 to 13, types.yaml 48 to 47; no replacement remaining added.
       - command: go test ./cmd/compiler -run 'TestCompilerCoreStringCharAtIsByteAlias|TestCompilerAllowsCoreStringImpl' -count=1
@@ -805,7 +814,7 @@ integrations:
   - id: frontend.temporal-duration
     area: timeout-conversion
     status: partial
-    revised: "2026-10-13"
+    revised: "2026-10-29"
     normative:
       - duration is the canonical timeout parameter type.
       - Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced.
@@ -816,6 +825,8 @@ integrations:
       - rules/types/units.md
       - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
       - rules/corrections/applied/md015-time-unit-duration-conversion-correction-20261013.md
+      - rules/tooling/lsp.md
+      - rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md
     code:
       - internal/sema/analyzer_mutex_calls.go
       - internal/sema/analyzer_inference.go
@@ -824,6 +835,9 @@ integrations:
       - internal/parser/expression.go
       - sec/core/rounding.sec
       - sec/core/baseunits.sec
+      - cmd/lsp/duration_hover.go
+      - cmd/lsp/hover.go
+      - internal/sema/unit_conversion_plan.go
     tests:
       - internal/sema/temporal/duration_conversion_test.go
       - internal/parser/quantity_literal_test.go
@@ -831,16 +845,27 @@ integrations:
       - internal/sema/temporal/duration_boundary_test.go
       - testdata/sema/temporal/duration_call_boundary.sec.in
       - testdata/sema/temporal/duration_mutex_boundary.sec.in
+      - cmd/lsp/duration_hover_test.go
+      - testdata/tooling/duration_hover.sec
+      - testdata/tooling/duration_hover_invalid.sec
     implemented:
       - "complete no-hard-coded-unit-spellings audit (2026-10-08, mutex.md §12(2)-(6)): represented mutex dispatch contains no unit-name list or unit-specific timeout overloads; mutex-like, context-like, ordinary and user member names use the same nominal duration argument checks, without accepting quantities by familiar spelling, dimension alone or numeric carrier"
-      - 72 source cases vary s/ms/us/ns and custom unit identities, time versus length metadata, exact scales 1 and 1/1000, and actual duration, unit quantity and plain integer inputs; all duration values are accepted, and other inputs report the same four nominal argument errors with original source locations; six intrinsic-dispatch cases verify the existing zero-argument mutex forms do not invent timeout overloads for familiar or custom units
       - the existing mutex call inference function was extracted unchanged from analyzer_inference.go into its focused responsibility file with explicit timeout/MD-015 traceability; conformance tests live in the existing temporal subpackage rather than increasing parent test-file count
       - "time-quantity-to-duration conversion (MD-015, 2026-10-13, temporal.md § 5): Sema plans every conversion exactly with big rationals (value * scale * 1e9, rounding once by an explicit RoundingMode, then the int64 range check) and publishes DurationConversionPlanOf. An explicit duration(q) proves constant quantities, immutable quantity bindings and bounded integer domains (constant / bounded-domain proofs) and is otherwise a checked conversion requiring try with ConversionError (PrecisionLoss or OutOfRange); contextual materialization in a duration position is limited to quantity literals (MD-015 clarification 2026-10-15, rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md § 2: a typed or inferred quantity binding is never converted implicitly, even when provable — TestTypedQuantitiesNeedAWrittenDurationConversion); a contextual typed quantity, an inexact constant without a mode, an out-of-range result and a non-time, point, non-linear or scale-less unit are S1153 temporal.invalid-duration-conversion errors with the reason. Unit names resolve through ordinary metadata (dimension time^1, Kind time or unknown); there is no per-API spelling table. Core declares s/ms/us/ns once with Kind: time (stdlib/unit no longer redeclares ms/us/ns) and the RoundingMode enum (TestDurationConversionsAreExact, TestInvalidDurationConversionsAreRejected, TestDurationRoundingModes)"
+      - "Quantity and duration hover (2026-10-29): cmd/lsp/duration_hover.go presents the Sema-resolved quantity carrier/unit and shared dimension/scale derivation over the literal span, and DurationConversionPlanOf at explicit conversion callees or contextual signed/unsigned literals. Plans expose explicit/contextual form, constant/bounded-domain/checked proof, exact rational nanoseconds per unit, rounding, constant nanoseconds or proven bounds, direct/fallible result and first possible ConversionError; protected calls retain the existing try-flow hover. Custom unit, contextual carrier, signed, rounded, constant-binding, call-argument, bounded and runtime-checked source fixtures pass. Invalid conversions/unresolved units never acquire a successful plan. The selected-call conversion recorder now retains an already accepted contextual duration plan; speculative and rejected overload candidates publish none. No LSP unit algebra or new conversion/lowering semantics."
+      - "No-unit-spelling shortcut coverage synchronized to the canonical Mutex API (2026-10-29): 72 ordinary call-boundary cases and 72 intrinsic-dispatch cases vary s/ms/us/ns/custom names, time versus length dimension, exact scales 1 and 1/1000, and duration/typed-quantity/plain-integer arguments. Lock() / TryLock() / Lock(duration) retain their exact guard/Option signatures; the timeout argument of Lock accepts nominal duration or a contextually materialized time literal, already typed quantities require written conversion, and TryLock rejects all arguments. Literal conversion plans use the resolved scale (5 seconds versus 5 milliseconds), never a familiar spelling. Replaced the stale lowercase fixture and its obsolete zero-argument-only Lock oracle; compiler semantics were unchanged."
     remaining:
       - Semantic IR representation of duration and unit quantities, so the recorded conversion plan (source unit, scale, proof or checked conversion, rounding mode, final nanosecond value) reaches Semantic IR and the backends; today Semantic IR and the legacy LLVM/MLIR paths reject `type duration` and unit quantities with explicit unsupported-lowering errors
       - duration arithmetic (temporal.md § 5.8 fixes its checked-overflow behavior; the operators themselves are not implemented)
-      - LSP hover for quantity literals and duration conversion plans
     verification:
+      - command: go test ./internal/sema/temporal -count=1 -timeout=120s; go vet ./internal/sema/temporal
+        result: "passed on 2026-10-29: complete temporal suite 0.271s and vet clean. Earlier TestRepresentedMutexCallsDoNotInventUnitOverloads was a stale test, not a compiler bug: mutex.md §3 mandates Lock/TryLock, §§20–24 define Lock(duration), and temporal.md §5.5 requires explicit conversion of already typed quantities. Replaced it with TestCanonicalMutexCallsDoNotInventUnitOverloads and 72 intrinsic cases with exact nanosecond-plan checks; ordinary 72-case coverage also passes. Remaining count unchanged (2)."
+      - command: go test ./internal/sema/temporal -run 'TestQuantityLiteralsKeepUnitSemantics|TestDurationConversionsAreExact|TestInvalidDurationConversionsAreRejected|TestDurationRoundingModes|TestTypedQuantitiesNeedAWrittenDurationConversion' -count=1 -timeout=120s
+        result: passed on 2026-10-29 (0.016s). The full temporal subpackage still fails TestRepresentedMutexCallsDoNotInventUnitOverloads with unknown function or type mutex.lock; the identical failure reproduces using a Go source overlay restoring HEAD unit_conversion_plan.go, so no full temporal-suite success is claimed.
+      - command: go test ./internal/sema -count=1 -timeout=180s; go vet ./cmd/lsp ./internal/sema ./internal/sema/temporal
+        result: "passed on 2026-10-29: complete Sema suite 15.690s; vet clean. Selected-call duration-plan publication preserves existing accepted/rejected source behavior."
+      - command: go test ./cmd/lsp -run 'TestQuantityAndDurationHover|TestInvalidDurationHover|TestTryHover|TestSomeConstructorHover|TestUnitMetadata' -count=1 -timeout=120s
+        result: "passed on 2026-10-29 (28.963s): quantity/duration source facts, exact ranges, ordinary overload selection without a speculative duration plan, invalid guards and neighboring try/Some/unit-metadata hover regressions. Remaining 3 to 2."
       - command: GOCACHE=/tmp/sec-go-cache go test ./... -count=1
         result: passed on 2026-10-08 with the focused mutex inference extraction and all duration boundary fixtures; the extracted function body also matches HEAD exactly
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema/temporal -run 'DurationCall|RepresentedMutex' -count=1

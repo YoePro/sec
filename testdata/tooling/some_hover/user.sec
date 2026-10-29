@@ -1,0 +1,11 @@
+module main
+
+fn Some(value: int) Option[int] {
+    discard value
+    return None
+}
+
+fn Use() void {
+    let ordinary := Some(3)
+    discard ordinary
+}

@@ -1,0 +1,74 @@
+module main
+
+type State union {
+    Idle
+    Running
+}
+
+fn Implicit() void {
+    let mut state: State
+    match state {
+        _ => {}
+    }
+}
+
+fn Conditional(flag: bool) void {
+    let mut state: State
+    if flag { state = State.Idle }
+    match state {
+        Idle => {}
+        _ => {}
+    }
+}
+
+fn GuardedFallback(flag: bool) void {
+    let mut state: State
+    match state {
+        _ where flag => {}
+        _ => {}
+    }
+}
+
+fn Explicit() void {
+    let mut state: State
+    match state {
+        empty => {}
+        _ => {}
+    }
+}
+
+fn ExplicitGuarded(flag: bool) void {
+    let mut state: State
+    match state {
+        empty where flag => {}
+        _ => {}
+    }
+}
+
+fn Parameter(state: State) void {
+    match state { _ => {} }
+}
+
+fn Initialized() void {
+    let mut state: State
+    state = State.Running
+    match state { _ => {} }
+}
+
+fn Refined(flag: bool) void {
+    let mut state: State
+    if flag { state = State.Idle }
+    if state is not empty {
+        match state { _ => {} }
+    }
+}
+
+type DefaultState union {
+    Idle default
+    Running
+}
+
+fn DefaultInitialized() void {
+    let mut state: DefaultState
+    match state { _ => {} }
+}

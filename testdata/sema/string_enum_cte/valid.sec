@@ -1,0 +1,24 @@
+module main
+let Prefix := "Alpha"
+let Suffix := " Beta"
+
+enum Composed string {
+    Primary = Prefix + Suffix
+    Alias = "\x41lpha" + " Beta"
+    Empty default = "" + ""
+    Unicode = "å" + "🙂"
+}
+enum Phantom[T] string { Value = Prefix + Suffix }
+fn Read() Composed { return Composed("Alpha" + " Beta") }
+fn Generic() Phantom[int] { return Phantom[int].Value }
+
+fn ParseRuntime(value: string) Result[Composed, EnumValueError] {
+    return Composed(value)
+}
+fn ParseLocal(value: string) Result[Composed, EnumValueError] {
+    let local := value
+    return Composed(local)
+}
+
+let Whole := "Alpha Beta"
+fn FromConstantBinding() Composed { return Composed(Whole) }

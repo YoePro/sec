@@ -1,0 +1,12 @@
+module main
+
+enum Wide uint16 { High = 256 }
+enum Negative int16 { Low = -1 }
+enum TooLow int16 { Low = -129 }
+enum Open16 bit[16] { Zero = 0 }
+
+fn Overflow() uint8 { return uint8(Wide.High) }
+fn Underflow() uint8 { return uint8(Negative.Low) }
+fn SignedUnderflow() int8 { return int8(TooLow.Low) }
+fn Unprotected(value: Wide) uint8 { return uint8(value) }
+fn UnprotectedOpen(value: Open16) uint8 { return uint8(value) }

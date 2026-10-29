@@ -299,6 +299,21 @@ const (
 	ResolvedFloatCompareLE ResolvedOperatorKind = "float-compare-le"
 	ResolvedFloatCompareGT ResolvedOperatorKind = "float-compare-gt"
 	ResolvedFloatCompareGE ResolvedOperatorKind = "float-compare-ge"
+	// Decimal operators (MD-066/MD-067): checked exact arithmetic with
+	// nearest-scale selection, rounded division and scale-independent
+	// comparison.
+	ResolvedDecimalNegateChecked    ResolvedOperatorKind = "decimal-negate-checked"
+	ResolvedDecimalAddChecked       ResolvedOperatorKind = "decimal-add-checked"
+	ResolvedDecimalSubtractChecked  ResolvedOperatorKind = "decimal-subtract-checked"
+	ResolvedDecimalMultiplyChecked  ResolvedOperatorKind = "decimal-multiply-checked"
+	ResolvedDecimalDivideChecked    ResolvedOperatorKind = "decimal-divide-checked"
+	ResolvedDecimalRemainderChecked ResolvedOperatorKind = "decimal-remainder-checked"
+	ResolvedDecimalCompareEQ        ResolvedOperatorKind = "decimal-compare-eq"
+	ResolvedDecimalCompareNE        ResolvedOperatorKind = "decimal-compare-ne"
+	ResolvedDecimalCompareLT        ResolvedOperatorKind = "decimal-compare-lt"
+	ResolvedDecimalCompareLE        ResolvedOperatorKind = "decimal-compare-le"
+	ResolvedDecimalCompareGT        ResolvedOperatorKind = "decimal-compare-gt"
+	ResolvedDecimalCompareGE        ResolvedOperatorKind = "decimal-compare-ge"
 )
 
 type OperatorFailureBehavior string
@@ -324,6 +339,48 @@ type ResolvedOperator struct {
 	// effect. Semantic IR has only a checked shift operation, so lowering
 	// keeps that form and its failure edge is dead.
 	ShiftCountProven bool
+	// Decimal publishes the immutable MD-066 operator plan of a decimal
+	// operator; nil for every other family.
+	Decimal *ResolvedDecimalOperation
+}
+
+// ResolvedDecimalPreferredScale names the preferred result scale rule of a
+// decimal operation (MD-066 § 3(2)).
+type ResolvedDecimalPreferredScale string
+
+const (
+	DecimalPreferredMaxScale     ResolvedDecimalPreferredScale = "max-operand-scale"
+	DecimalPreferredSumScale     ResolvedDecimalPreferredScale = "sum-of-operand-scales"
+	DecimalPreferredOperandScale ResolvedDecimalPreferredScale = "operand-scale"
+)
+
+// ResolvedDecimalOperation is the immutable operator plan of one decimal
+// operation: coefficient width, preferred scale rule, the nearest exact legal
+// scale for exact results, nearest-even rounding for an inexact quotient,
+// scale-independent comparison, the ArithmeticError variants the operation
+// can produce, and the exact folded result of constant operands.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division"
+//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
+type ResolvedDecimalOperation struct {
+	CoefficientBits int
+	PreferredScale  ResolvedDecimalPreferredScale
+	// RoundsInexactQuotient marks division: an inexact quotient rounds once
+	// with nearest-even at the finest admissible scale and succeeds.
+	RoundsInexactQuotient bool
+	// TruncatingRemainder marks `%`: q = trunc(a / b), r = a - q*b exactly.
+	TruncatingRemainder bool
+	// ScaleIndependentComparison marks comparisons of mathematical values.
+	ScaleIndependentComparison bool
+	// PossibleFailures lists the ArithmeticError variants the operation can
+	// produce, most specific by cause (MD-067 § 7(3)).
+	PossibleFailures []string
+	// Constant is the exact folded result of constant operands, or nil.
+	Constant *DecimalValue
+	// ConstantFailure is the proven ArithmeticError variant of constant
+	// operands that always fail, or "".
+	ConstantFailure string
 }
 
 type ResolvedConditionFactKind string
@@ -533,6 +590,15 @@ type ResolvedTryHandler struct {
 	// payload; otherwise the binding takes ownership of it by move
 	// (rules/errors/errorhandling.md §20 "Handler ownership and guards").
 	BindingCopies bool
+	// ErrorPayload records an MD-029 error-variant payload pattern: Variant
+	// names the selected variant and BindingName, when set, binds that
+	// variant's payload rather than the whole error. FieldBindings records a
+	// shallow field pattern (rules/errors/errorhandling.md § 15.3).
+	ErrorPayload  bool
+	FieldBindings bool
+	// FieldBindingList is the resolved shallow field bindings of an
+	// `Err(E.Variant { ... })` handler.
+	FieldBindingList []ResolvedMatchFieldBinding
 }
 
 // ResolvedTryPlan is the source-ordered local handler decision of one try.
@@ -646,6 +712,10 @@ type ResolvedMatchPlan struct {
 	Exhaustive          bool
 	EmptyStateReachable bool
 	Arms                []ResolvedMatchArm
+	// ProvenActiveVariant is the union variant soundly proven active at the
+	// match point (MD-042); Exhaustive may then rest on that reachable subset
+	// instead of the declared domain (flowcontrol_match.md §§ 5, 25A).
+	ProvenActiveVariant string
 }
 
 type ResolvedEnumCase struct {
@@ -1000,16 +1070,6 @@ func (a *Analyzer) ResolvedCallableCapabilityOf(expr ast.Expression) (CallableCa
 		return CallableCapabilityFact{}, false
 	}
 	return CallableCapabilityFactOf(typ)
-}
-
-// ResolvedTypeDeclarationLocation returns declaration provenance recorded by
-// Sema without exposing its mutable symbol tables.
-func (a *Analyzer) ResolvedTypeDeclarationLocation(typ Type) (lexer.Token, bool) {
-	if a == nil {
-		return lexer.Token{}, false
-	}
-	token, ok := a.typeDefinitionTokens[typ.Name]
-	return token, ok
 }
 
 // ResolvedUnionConstructionOf exposes the concrete union and stable variant
@@ -1662,6 +1722,10 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 			resolved = ResolvedOperator{Kind: kind, LeftType: operand, ResultType: result, FailureBehavior: OperatorDoesNotFail}
 			break
 		}
+		if ok && expression.Operator == "-" && dereferenceType(operand).Kind == DecimalType {
+			resolved = a.resolvedDecimalNegate(expression, operand, result)
+			break
+		}
 		if !ok || !isBuiltinIntegerOperatorType(operand) {
 			return
 		}
@@ -1730,6 +1794,10 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 		}
 		if floating, ok := resolvedFloatInfixOperator(expression.Operator, left, right, result); ok {
 			resolved = floating
+			break
+		}
+		if decimal, ok := a.resolvedDecimalInfixOperator(expression, left, right, result); ok {
+			resolved = decimal
 			break
 		}
 		integer, ok := resolvedIntegerInfixOperator(expression.Operator, left, right, result)

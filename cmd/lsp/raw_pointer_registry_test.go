@@ -89,9 +89,10 @@ func TestRawPointerRegistryHoverAndDefinitionParity(t *testing.T) {
 			}
 			pos := offsetPosition(source, token.ByteStart)
 			hover, found := hoverForSource(uri, source, pos)
-			if !found || !strings.Contains(hover.Contents.Value, member.Signature) || !strings.Contains(hover.Contents.Value, member.ID) {
+			if !found || !strings.Contains(hover.Contents.Value, member.Signature) || !strings.Contains(hover.Contents.Value, member.DisplayFacts().Label) {
 				t.Fatalf("hover diverged from registry: %+v; member=%+v", hover, member)
 			}
+			assertNoCompilerKnownDisplayIDs(t, hover.Contents.Value)
 			definitions := definitionsForSource(uri, source, pos)
 			if len(definitions) != 1 {
 				t.Fatalf("%s definitions: %+v", member.ID, definitions)

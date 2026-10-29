@@ -1,0 +1,21 @@
+module client
+
+fn CopyPublic(value: Public) Public {
+    return Public { value..., Name: "outside" }
+}
+
+fn HiddenSpread(value: Hidden) Hidden {
+    return Hidden { value..., Name: "outside" }
+}
+
+fn HiddenReferenceSpread(value: HiddenRef) HiddenRef {
+    return HiddenRef { value..., Name: "outside" }
+}
+
+fn InvalidOverride(value: Public) Public {
+    return Public { value..., Count: 20 }
+}
+
+fn InvalidNominal(value: Other) Public {
+    return Public { value... }
+}

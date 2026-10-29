@@ -1,0 +1,68 @@
+module main
+
+type FileError union error {
+    NotFound { Path: string, Code: int }
+    Bad(int)
+    Denied
+}
+
+enum OtherError error { Gone }
+
+fn Read() Result[int, FileError] { return Ok(1) }
+fn ReadAny() Result[int, error] { return Ok(1) }
+fn ReadOther() Result[int, OtherError] { return Ok(1) }
+fn Wrap(value: int) Result[int, FileError] { return Ok(value) }
+
+fn TryClosed() int {
+    return try Read() {
+        Err(.Denied) => 11
+        Err(_) => 0
+    }
+}
+
+fn MatchClosed() int {
+    match Read() {
+        Ok(value) => return value
+        Err(.Denied) => return 12
+        Err(_) => return 0
+    }
+}
+
+fn TryOpen() int {
+    return try ReadAny() {
+        Err(FileError.Denied) => 13
+        Err(_) => 0
+    }
+}
+
+fn MatchOpen() int {
+    match ReadAny() {
+        Ok(value) => return value
+        Err(FileError.Denied) => return 14
+        Err(_) => return 0
+    }
+}
+
+fn Heterogeneous(values: int[], index: uint) int {
+    return try Wrap(values[index]) {
+        Err(FileError.Denied) => 15
+        Err(_) => 0
+    }
+}
+
+fn Nested() int {
+    return try Read() {
+        Err(.Denied) => try ReadOther() {
+            Err(.Gone) => 16
+        }
+        Err(_) => 0
+    }
+}
+
+fn NonPattern() void {
+    let result: Result[int, FileError] := Err(FileError.Denied)
+    let quoted := "Err(."
+    // Err(.
+    discard result
+    discard quoted
+}

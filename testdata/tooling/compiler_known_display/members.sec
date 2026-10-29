@@ -1,0 +1,6 @@
+module main
+
+fn Inspect(values: ref mut list[int], text: string) void {
+    discard values.RemoveAt(0)
+    discard text.Len
+}

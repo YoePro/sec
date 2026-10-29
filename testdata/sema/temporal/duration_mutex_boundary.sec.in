@@ -5,7 +5,19 @@ impl <__UNIT__> {
     Kind: __AXIS__
     Scale: __SCALE__
 }
-fn Check(mutex: Mutex[int], value: int<__UNIT__>) void {
-    discard mutex.lock(value)
-    discard mutex.tryLock(value)
+fn Basic(mutex: ref Mutex[int]) MutexGuard[int] {
+    return mutex.Lock()
+}
+fn Probe(mutex: ref Mutex[int]) Option[MutexGuard[int]] {
+    return mutex.TryLock()
+}
+fn Timed(mutex: ref Mutex[int], timeout: duration) Option[MutexGuard[int]] {
+    return mutex.Lock(timeout)
+}
+fn Literal(mutex: ref Mutex[int]) Option[MutexGuard[int]] {
+    return mutex.Lock(5<__UNIT__>)
+}
+fn Check(mutex: ref Mutex[int], value: __TYPE__) void {
+    discard mutex.Lock(value)
+    discard mutex.TryLock(value)
 }

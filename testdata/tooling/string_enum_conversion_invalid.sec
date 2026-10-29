@@ -1,0 +1,11 @@
+module main
+
+enum Program string {
+    Primary = "Alpha\x20Beta"
+    Alias = "Alpha Beta"
+    Other default = "Gamma"
+}
+
+fn Invalid() Program { return Program("unknown") }
+
+fn RuntimeWithoutTry(value: string) Program { return Program(value) }

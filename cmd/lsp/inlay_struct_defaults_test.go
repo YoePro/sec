@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -79,7 +80,7 @@ func TestInlayHintsOmittedStructDefaults(t *testing.T) {
 					t.Fatal(string(raw))
 				}
 				filtered := inlayHintsForSource(uri, text, lspRange{Start: at, End: at}, inlayHintSettings{Defaults: true})
-				if len(filtered) != 1 || filtered[0] != hint {
+				if len(filtered) != 1 || !reflect.DeepEqual(filtered[0], hint) {
 					t.Fatal(filtered, hint)
 				}
 			}

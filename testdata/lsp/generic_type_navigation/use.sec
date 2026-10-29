@@ -1,0 +1,29 @@
+module main
+import "catalog"
+
+fn Inspect[T: catalog.Named & catalog.Ranked & catalog.Source[catalog.Item]](
+    generic: T,
+    box: catalog.Box[catalog.Item],
+    pair: catalog.Pair[catalog.Item, catalog.Box[catalog.Item]],
+    constrained: catalog.Constrained[catalog.Item],
+    compound: Result[catalog.Item, catalog.Failure],
+) void {
+    discard generic
+    discard box
+    discard pair
+    discard constrained
+    discard compound
+}
+
+fn Uses(value: catalog.Item) void {
+    let inferred := catalog.Wrap(value)
+    let explicit := catalog.Wrap[catalog.Item](value)
+    let payload := inferred.Value
+    discard inferred
+    discard explicit
+    discard payload
+}
+
+fn ReadBox(box: catalog.Box[catalog.Item]) catalog.Item {
+    return box.Value
+}

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
+- **Last updated:** 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
@@ -1018,12 +1018,14 @@ The occurrence message names the required reference type and the source Place an
 
 § 24(4e) Two advisory identities are required by MD-029/MD-042 and are allocated in the registry when implemented, with a stable ID, symbolic name, canonical English message, structured arguments, default severity `Information` (configurable under § 18(4a)), optional help and LSP code. `S3001` and `S3003` are **not** reused with a changed severity; genuinely erroneous reachability keeps its mandatory identities (§ 21(6) applies only where the owning rule requires reachability, and `flowcontrol_match.md` § 25A states that proven-inactive arms do not):
 
-- an **inactive-arm** identity for a valid `match` arm or `try` handler excluded only by a proven subject state or complete failure provenance. The occurrence carries the pattern location, resolved subject type, excluded variant and proof reason, and where available a related location for the assignment or condition establishing the active variant;
-- an **omitted-payload** identity for a bare variant pattern that selects a payload-bearing variant without binding its payload. It names the payload type or fields and suggests a binding form and the explicit `Variant {}` / `Variant(_)` spelling.
+- an **inactive-arm** identity for a valid `match` arm or `try` handler excluded only by a proven subject state or complete failure provenance. The occurrence carries the pattern location, resolved subject type, excluded variant and proof reason, and where available a related location for the assignment or condition establishing the active variant. Allocated 2026-10-29 as `A2008` / `control-flow.inactive-match-arm` (family `control-flow`, default `Information`, configurable);
+- an **omitted-payload** identity for a bare variant pattern that selects a payload-bearing variant without binding its payload. It names the payload type or fields and suggests a binding form and the explicit `Variant {}` / `Variant(_)` spelling. Allocated 2026-10-29 as `A2007` / `union.omitted-payload-pattern` (family `union`, default `Information`, configurable). It replaces `S1152` / `union.pattern-payload-binding-required`, which is retired and stays reserved (§ 24(5)).
 
 Equivalent proof occurrences are grouped or deduplicated as this rulebook prescribes. CLI, JSON and LSP publish the same identity and proof information. Quick fixes, if offered, are optional and driven by semantic facts; the formatter never removes an inactive arm (MD-029/MD-042, `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 10).
 
 § 24(4f) `S1157` keeps its identity for a call of the compiler-known `None` variant: `None()` is invalid Option construction, and the message explains that `None` takes no arguments and is not a function. A legitimate user-defined function is never labelled as the Option absence variant, and a valid `Some(value)` with Option context or an independently typeable payload never produces `S1157` (MD-102, same correction §§ 11(2), 14).
+
+§ 24(4g) The optional empty-state catch-all warning permitted by `rules/declarations/unions.md` § 10.4 is allocated as `A2009` / `union.implicit-empty-catch-all` (family `union`, default `Warning`, configurable under § 18). It identifies the unguarded `_` that absorbs a reachable `empty` state when no explicit `empty` arm exists, names the possibly-empty subject and suggests explicit handling. Initialized subjects, guarded wildcards alone and matches with an explicit empty arm do not receive this advisory. Its policy never changes exhaustiveness or initialization/ownership facts; missing required coverage remains an error even when the advisory is disabled. JSON and LSP retain the canonical identity, source range and help.
 
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 
@@ -1053,6 +1055,34 @@ Equivalent proof occurrences are grouped or deduplicated as this rulebook prescr
 § 25(6) A broader must-use diagnostic receives its own registry identity when implemented unless an existing published definition already exactly owns that programmer-visible rule.
 
 § 25(7) Must-use, ownership, borrow and lifecycle-safety errors are mandatory when their owning rulebook defines the operation as invalid.
+
+§ 25(8) `A3001` / `ownership.implicit-discarded-result` (family `ownership`,
+default `Information`, configurable under § 18) identifies an ordinary non-`void`
+call result implicitly discarded at statement end (`discard.md` §§ 10–13).
+It names the call and resolved result type, points to the call, supplies the
+selected callable declaration as a related location where available, and offers
+using the result or writing an explicit `discard`. An explicit discard, a `void`
+call, a result consumed by another expression, and a failed call do not receive
+this advisory. Repeated semantic visits to a loop/deferred body produce only one
+occurrence per source statement. Promotion to `Error` is applied after mandatory
+analysis and does not change ownership or must-use semantics. Mandatory
+must-use failures retain their own diagnostic even when `A3001` is disabled.
+CLI, JSON and LSP preserve this identity, severity, source range and help.
+
+
+
+§ 25(9) `A3002` / `ownership.useless-explicit-discard` and `A3003` /
+`ownership.redundant-void-discard` (family `ownership`, default `Information`)
+are independently configurable under §18. A3002 identifies a proven
+compile-time temporary whose evaluation and destruction have no observable
+ownership effect (`discard.md` §27); ownership-ending Places and nontrivially
+destructible values are excluded. A3003 identifies a legal explicit discard
+of a `void` expression (§13); its help preserves evaluation of the expression
+and suggests removing only `discard`. Both identify the keyword, retain stable
+identities through policy changes and share CLI/JSON/LSP transport. Unknown
+constant evaluation, invalid operands and mandatory ownership failures do not
+become positive redundancy proofs. Neither advisory permits removing effects,
+weakens discardability or changes availability/destruction semantics.
 
 ---
 

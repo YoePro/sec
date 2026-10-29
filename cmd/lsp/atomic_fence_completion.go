@@ -24,8 +24,10 @@ func atomicNamespaceCompletionItems(text string, dotOffset int, prefix string) (
 	}
 	member := sema.AtomicFenceMember()
 	items := []completionItem{}
-	if completionLabelMatches(member.Name, prefix) {
-		items = append(items, completionItem{Label: member.Name, Kind: 3, Detail: "atomic." + member.Signature, Documentation: member.Documentation})
+	if item, ok := compilerKnownCompletionItem(member); ok && completionLabelMatches(item.Label, prefix) {
+		item.Kind = 3
+		item.Detail = "atomic." + compilerKnownSignatureLabel(member)
+		items = append(items, item)
 	}
 	return items, true
 }

@@ -222,6 +222,20 @@ decisions:
       § 20(11); lsp.md. Implementation pending (baseline 2026-10-28: payload
       and field Err patterns are S1095, bare payload variants S1152,
       Err(.X) a parse error); tracked in governance frontend.errorhandling-v2.
+      Partial 2026-10-29: bare payload-carrying variant patterns are valid in
+      union matches, Result match arms and try handlers with the new
+      Information A2007 union.omitted-payload-pattern (S1152 retired);
+      `Variant(_)` / `Variant {}` suppress it. Since 2026-10-29 the parser
+      and Sema also implement payload/field Err patterns and the contextual
+      Err(.Variant...) form in match arms and try handlers (open narrowing,
+      focused rejections, no hidden partial moves, union try coverage).
+      Since 2026-10-29 LSP completion after Err(. uses the Sema-resolved
+      concrete channel (explicit type qualifications for open/heterogeneous
+      channels); variant/payload hover, definitions and references preserve
+      compiler source identities and specialized payload types. The missing
+      try-payload binding declaration token is repaired.
+      Remaining: Semantic IR/MLIR lowering and the Sec 0.1.2 activation gate
+      once language versions are selectable.
     classification: constraining
     status: decided-implementation-pending
 
@@ -320,6 +334,11 @@ decisions:
       errorhandling.md § 27.2b; diagnostics.md § 24(4e); semantic_ir.md
       § 71(6); formatter.md § 20(12). Implementation pending; tracked in
       governance frontend.match-v2.
+      Partial 2026-10-29: Sema implements reachable-state exhaustiveness for
+      immutable union bindings with a proven active variant, the
+      configurable Information A2008 control-flow.inactive-match-arm, and
+      integer-operation failure provenance for ArithmeticError try handlers.
+      Remaining: IR/LSP provenance (md042-ir-and-tooling).
     classification: constraining
     status: decided-implementation-pending
 
@@ -612,6 +631,12 @@ decisions:
       division, zero-divisor rule, ArithmeticError variants, Scale lowering,
       core members incl. decimal128 source, unsuffixed literals beyond
       float64, schema 17 and physical lowering).
+      Partial 2026-10-29: Sema resolves immutable decimal operator plans
+      (preferred scale, nearest exact scale, nearest-even rounded division,
+      truncating remainder, scale-independent comparison, MD-067 failure
+      classification) with exact constant folding, and decimal arithmetic is
+      a checked runtime operation (`try a / b` yields ArithmeticError).
+      Semantic IR and physical lowering remain.
     classification: blocking
     status: decided-implementation-pending
   - id: MD-067

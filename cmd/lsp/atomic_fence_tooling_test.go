@@ -26,7 +26,7 @@ func TestAtomicFenceHoverAndNavigation(t *testing.T) {
 		}
 	}
 	definitions := definitionsForSource(uri, source, offsetPosition(source, offset))
-	if len(definitions) != 1 || !strings.HasPrefix(definitions[0].URI, compilerKnownScheme+":/CKF-ATOMIC-FENCE.sec") {
+	if len(definitions) != 1 || !friendlyDefinitionURI(definitions[0].URI, "CKF-ATOMIC-FENCE", "atomic.Fence") {
 		t.Fatalf("definition: %+v", definitions)
 	}
 	text, ok := compilerKnownDefinitionText(definitions[0].URI)

@@ -57,7 +57,9 @@ fn Use(text: string) void {
     let typedNested: Option[Option[int]] := Some(None)
     let numberCheck: Option[int] := number
     let nameCheck: Option[string] := name
-    let nestedCheck: Option[Option[int]] <- nested
+    let nestedCheck: Option[Option[int]] := nested
+    let nestedAgain: Option[Option[int]] := nested
+    discard nestedAgain
     discard numberCheck
     discard nameCheck
     discard nestedCheck
@@ -138,5 +140,66 @@ fn Use() int {
 `)
 	if len(errs) != 0 {
 		t.Fatalf("user Some function rejected: %v", errs)
+	}
+}
+
+// A self-inferred Some(value) is only a typing result: a move-only reusable
+// Place still needs explicit transfer, and an inferred Some inside a Result
+// recovery flow keeps try propagation and does not enable nested patterns
+// (M102-10, correction § 17(4)).
+func TestSomeInferenceKeepsOwnershipAndTryRules(t *testing.T) {
+	errs := analyzeSourceRaw(t, `
+module main
+
+type Handle struct {
+    id: int
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Implicit() void {
+    let handle := Handle { id: 1 }
+    let wrapped := Some(handle)
+    discard wrapped
+}
+
+fn Explicit() void {
+    let handle := Handle { id: 1 }
+    let wrapped := Some(<-handle)
+    discard wrapped
+}
+`)
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "cannot copy move-only value handle") {
+		t.Fatalf("want exactly the implicit-move rejection, got %v", errs)
+	}
+
+	recovery := analyzeSourceRaw(t, `
+module main
+
+enum ParseError error {
+    Empty
+}
+
+fn Parse(text: string) Result[Option[int], ParseError] {
+    if text == "" {
+        return Err(ParseError.Empty)
+    }
+    return Ok(Some(1))
+}
+
+fn Recover(text: string) Result[Option[int], ParseError] {
+    let parsed := try Parse(text) {
+        Err(ParseError.Empty) => Some(0)
+    }
+    let checked := try Parse(text)
+    discard checked
+    return Ok(parsed)
+}
+`)
+	if len(recovery) != 0 {
+		t.Fatalf("Some inside Result recovery rejected: %v", recovery)
 	}
 }

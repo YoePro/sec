@@ -14,6 +14,11 @@ import "sec/internal/ast"
 func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	constantCondition := false
 	constantConditionKnown := false
+	// The condition runs before every iteration, so places it consumes are
+	// backedge state, not loop-entry state; keep the pre-condition moves for
+	// the backedge fixed point (rules/memory/ownership.md, loop fixed point).
+	preConditionMoved := copyMoved(a.moved)
+	preConditionReasons := copyMoveReasons(a.moveReasons)
 	if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
@@ -99,12 +104,14 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	loopArenaGenerations := a.arenaGenerations
 	frameState := a.loopBreakFrames[frame]
 	bodyFallsThrough := a.blockCanFallThrough(stmt.Body)
-	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
+	headerMoved, headerReasons := loopBackedgeMoveState(preConditionMoved, preConditionReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
 	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, bodyFallsThrough)
 	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
 	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
 	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
-	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations, loopHeaderReferenceOrigins(iterationEntry.symbols, a.symbols, bodyFallsThrough, frameState))
+	backedgeEntry := iterationEntry
+	backedgeEntry.moved = preConditionMoved
+	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, backedgeEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations, loopHeaderReferenceOrigins(iterationEntry.symbols, a.symbols, bodyFallsThrough, frameState))
 	a.callGraphPathReachable = previousCallGraphPathReachable
 	breakFrame := a.popLoopBreakFrame(frame)
 	loopSymbols := a.symbols

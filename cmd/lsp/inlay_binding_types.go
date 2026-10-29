@@ -34,7 +34,9 @@ func inferredScopedBindingTypeHints(program *ast.Program, analyzer *sema.Analyze
 		if typ == "" {
 			return
 		}
-		hints = append(hints, inlayHint{Position: tokenRange(text, token).End, Label: ": " + typ, Kind: inlayHintKindType})
+		hint := inlayHint{Position: tokenRange(text, token).End, Label: ": " + typ, Kind: inlayHintKindType, detail: name + ": " + typ}
+		hint.declaration, _ = analyzer.ResolvedTypeDeclarationLocation(binding.Type)
+		hints = append(hints, hint)
 	}
 	walkLSPNodes(program, func(node any) {
 		switch node := node.(type) {

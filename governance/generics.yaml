@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-28"
+    revised: "2026-10-29"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -43,6 +43,7 @@ integrations:
       - internal/formatter/cst_spacing.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
+      - internal/sema/generic_substitution.go
     tests:
       - internal/parser/parser_test.go
       - internal/parser/generic_parameter_recovery_test.go
@@ -64,6 +65,9 @@ integrations:
       - cmd/lsp/generic_impl_constraints_test.go
       - testdata/sema/generic_impl_constraints_valid.sec
       - testdata/sema/generic_impl_constraints_invalid.sec
+      - internal/sema/generic_function_members_test.go
+      - testdata/sema/generic_function_members/concrete.sec
+      - testdata/sema/generic_function_members/copy_invalid.sec
     implemented:
       - generic parameter parsing on type, function, and interface declarations
       - generic type-argument parsing, nested generic references, and attached explicit generic calls
@@ -101,6 +105,7 @@ integrations:
       - "generic argument inference through implicit call-site borrows (2026-10-10): a ref or ref mut T parameter infers T from an owned argument's type (borrowing.md §15.2); borrow authority is still checked on the instantiated call"
       - "forwarded constraints and overload fallback (2026-10-10): a template parameter passed as a generic argument satisfies a constraint that its own declaration guarantees (Concat[I: Iterator[string]] calling Join[I: Iterator[string]]), and a call selected through its expected type no longer reports a generic candidate's constraint failure while non-generic overloads remain for the main call path; both surfaced in sec/stdlib/str/join.sec"
       - generic primary and extended impl scopes retain the owning type declaration’s ordered interface constraints and recheck every conjunct when those parameters are reused as generic type arguments; concrete substitutions still require valid explicit conformance, and parameterized interface arguments remain distinct
+      - generic function parameter and result substitution recursively updates resolved struct field types alongside nested type arguments; inferred and explicit Box[Item] results expose Item fields rather than stale T, and detached field slices keep concrete specializations independent while @noCopy and unconstrained template copy restrictions remain enforced
     remaining:
       - "MD-117 declaration/tooling: parse and retain one trailing generic type-pack parameter [...Types] as a compile-time ordered type sequence (including empty), distinct from an ordinary T and from runtime containers; add parser/CST, formatter and LSP declaration/signature coverage without inventing explicit pack literals or changing ordinary array/spread grammar (correction §§2,10; generics.md §16A). Feature-specific parser status is owned here, not by the cross-cutting grammar-recovery integrations."
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
@@ -125,6 +130,14 @@ integrations:
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
       - const or value generics without a separate normative rulebook and syntax
     verification:
+      - command: go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-10-29
+      - command: go test ./cmd/lsp -run 'TestGenericTypeDefinitionNavigation|TestGenericConstraintNavigationDoesNotGuessSameSpelledType|TestHoverPresentsOrderedMultipleGenericConstraints' -count=1 -timeout=120s
+        result: passed on 2026-10-29 (6.043s); imported generic return field now type-checks and navigates through the concrete Item facts
+      - command: go test ./internal/ir/... -count=1 -timeout=180s
+        result: passed on 2026-10-29; semantic IR and nominal suites
+      - command: go test ./internal/sema -count=1 -timeout=180s
+        result: passed on 2026-10-29 (15.658s); first reproduced stale T in concrete function-result fields, then verified inferred/explicit/nested results, generic parameters, independent bool/Item instances and retained concrete/template copy restrictions
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
         result: passed on 2026-10-16 after generic impl constraint forwarding fix
       - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp

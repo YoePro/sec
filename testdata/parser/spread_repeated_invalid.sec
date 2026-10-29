@@ -1,0 +1,12 @@
+module main
+
+fn Broken(values: int[2]) void {
+    let before := 1
+    let bad := [values......]
+    let longRun := [values.........]
+    let survivor := 2
+    discard before
+    discard survivor
+}
+
+fn After() int { return 7 }

@@ -3606,7 +3606,7 @@ fn Use(ptr: RawPtr[byte]) byte {
 	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
 	if !ok || !strings.Contains(hover.Contents.Value, "unsafe fn VolatileRead() byte") ||
 		!strings.Contains(hover.Contents.Value, "Result here: `byte`") ||
-		!strings.Contains(hover.Contents.Value, "CKM-RAWPTR-VOLATILE-READ") ||
+		!strings.Contains(hover.Contents.Value, "RawPtr[byte].VolatileRead") ||
 		!strings.Contains(hover.Contents.Value, "Effects: `volatile-read`") {
 		t.Fatalf("volatile compiler-known hover = %+v, %v", hover, ok)
 	}
@@ -3629,7 +3629,7 @@ func TestCancellationRequestCompletionAndHover(t *testing.T) {
 		hoverOffset := strings.Index(hoverSource, "RequestCancel") + 2
 		hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
 		if !ok || !strings.Contains(hover.Contents.Value, "fn RequestCancel() void") ||
-			!strings.Contains(hover.Contents.Value, "CKM-"+strings.ToUpper(typeName)+"-REQUEST-CANCEL") ||
+			!strings.Contains(hover.Contents.Value, typeName+"[int].RequestCancel") ||
 			!strings.Contains(hover.Contents.Value, "idempotent") ||
 			!strings.Contains(hover.Contents.Value, "without consuming") {
 			t.Fatalf("%s RequestCancel hover = %+v, %v", typeName, hover, ok)
@@ -3659,7 +3659,7 @@ func TestThreadLocalV2CompletionAndHover(t *testing.T) {
 	hoverOffset := strings.Index(hoverSource, "BorrowMut") + 2
 	hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
 	if !ok || !strings.Contains(hover.Contents.Value, "fn BorrowMut() ref mut int") ||
-		!strings.Contains(hover.Contents.Value, "CKM-THREADLOCAL-BORROW-MUT") {
+		!strings.Contains(hover.Contents.Value, "ThreadLocal[int].BorrowMut") {
 		t.Fatalf("ThreadLocal.BorrowMut hover = %+v, %v", hover, ok)
 	}
 }
@@ -3712,7 +3712,7 @@ func TestShapedRankShapeAndLenCompletionAndHover(t *testing.T) {
 	hoverOffset := strings.LastIndex(hoverSource, "Shape") + 1
 	hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
 	if !ok || !strings.Contains(hover.Contents.Value, "property Shape: Shape[2]") ||
-		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-SHAPE") ||
+		!strings.Contains(hover.Contents.Value, "matrix[int, 3, 4].Shape") ||
 		!strings.Contains(hover.Contents.Value, "extents: [3, 4]") {
 		t.Fatalf("shaped Shape hover = %+v, %v", hover, ok)
 	}
@@ -3729,7 +3729,7 @@ func TestShapedStridesCompletionAndHover(t *testing.T) {
 	hoverOffset := strings.LastIndex(source, "Strides") + 1
 	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
 	if !ok || !strings.Contains(hover.Contents.Value, "property Strides: Strides[3]") ||
-		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-STRIDES") ||
+		!strings.Contains(hover.Contents.Value, "tensor[int, 2, 3, 4].Strides") ||
 		!strings.Contains(hover.Contents.Value, "strides: [12, 4, 1]") {
 		t.Fatalf("shaped Strides hover = %+v, %v", hover, ok)
 	}
@@ -3745,7 +3745,7 @@ func TestShapedIsContiguousCompletionAndHover(t *testing.T) {
 	hoverOffset := strings.LastIndex(source, "IsContiguous") + 1
 	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
 	if !ok || !strings.Contains(hover.Contents.Value, "property IsContiguous: bool") ||
-		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-IS-CONTIGUOUS") ||
+		!strings.Contains(hover.Contents.Value, "vector[int, 8].IsContiguous") ||
 		!strings.Contains(hover.Contents.Value, "known true") {
 		t.Fatalf("shaped IsContiguous hover = %+v, %v", hover, ok)
 	}
@@ -3818,7 +3818,7 @@ fn Use(values: int[]) uint {
 
 	hoverOffset := strings.LastIndex(source, "Len") + 1
 	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
-	if !ok || !strings.Contains(hover.Contents.Value, "property Len: uint") || !strings.Contains(hover.Contents.Value, "CKM-LEN-ARRAY") {
+	if !ok || !strings.Contains(hover.Contents.Value, "property Len: uint") || !strings.Contains(hover.Contents.Value, "int[].Len") {
 		t.Fatalf("compiler-known hover = %+v, %v", hover, ok)
 	}
 }

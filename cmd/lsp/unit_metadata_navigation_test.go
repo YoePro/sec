@@ -73,7 +73,7 @@ func TestUnitMetadataPropertyNavigationAndSignatures(t *testing.T) {
 	for _, name := range []string{"AxisCount", "IsDimensionless"} {
 		cursor := strings.Index(source, "dimension."+name) + len("dimension.")
 		got := definitionsForSource(uri, source, offsetPosition(source, cursor))
-		if len(got) != 1 || !strings.HasPrefix(got[0].URI, "sec-compiler-known:/CKM-UNITDIMENSION-") {
+		if len(got) != 1 || !friendlyDefinitionURI(got[0].URI, "CKM-UNITDIMENSION-"+strings.ToUpper(name), "UnitDimension."+name) {
 			t.Fatalf("%s definitions=%+v", name, got)
 		}
 		if text, ok := compilerKnownDefinitionText(got[0].URI); !ok || !strings.Contains(text, name) {

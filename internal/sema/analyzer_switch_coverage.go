@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -79,18 +80,34 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 		tracker.boolValues[literal.Value] = expressionToken(expr)
 		return
 	}
-	if literal, ok := expr.(*ast.StringLiteral); ok && tracker.subjectType.Kind == StringType {
-		if _, exists := tracker.stringValues[literal.Value]; exists {
-			a.addErrorAtTokenWithMetadata(
-				expressionToken(expr),
-				diagnostics.DuplicateSwitchCase,
-				"Remove the duplicate case or combine its body with the first case for this string value.",
-				"duplicate switch case value %q",
-				literal.Value,
-			)
+	if tracker.subjectType.Kind == StringType {
+		// Coverage consumes the existing resolved equality relation and shared
+		// constant value; calls/getters are not executed to infer case identity.
+		// Rules: flowcontrol_switch.md — §§20,25;
+		// rules/compiler/compile_time_evaluation.md — semantic constant facts.
+		typ, resolved := a.ResolvedTypeOf(expr)
+		if !resolved || !canCompareEquality(tracker.subjectType, typ) {
 			return
 		}
-		tracker.stringValues[literal.Value] = expressionToken(expr)
+		value, outcome := a.semanticCompileTimeConstant(expr)
+		if outcome != compileTimeEvaluated || value.Kind != StringType {
+			return
+		}
+		if previous, exists := tracker.stringValues[value.String]; exists {
+			token := expressionToken(expr)
+			endLine, endColumn := token.EndPosition()
+			a.appendError(Error{
+				ID: diagnostics.DuplicateSwitchCase, Severity: diagnostics.SeverityError,
+				Help:    "Remove the duplicate case or combine its body with the first case for this string value.",
+				Message: fmt.Sprintf("duplicate switch case value %q", value.String),
+				File:    token.File, Line: token.Line, Column: token.Column,
+				EndLine: endLine, EndColumn: endColumn,
+				PreviousFile: previous.File, PreviousLine: previous.Line, PreviousColumn: previous.Column,
+				RelatedLabel: "earlier equivalent string case",
+			})
+			return
+		}
+		tracker.stringValues[value.String] = expressionToken(expr)
 		return
 	}
 	if _, key, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {

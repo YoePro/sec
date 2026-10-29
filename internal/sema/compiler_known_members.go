@@ -271,6 +271,18 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			id = "CKM-DECIMAL128-SCALE"
 		}
 		members = append(members, CompilerKnownMember{ID: id, Name: "Scale", LegacyNames: []string{"scale"}, Kind: CompilerKnownProperty, Result: builtinType("int32")})
+		// core-library.md § 10.2 / MD-068 § 9(2): read-only predicates of the
+		// mathematical value, independent of the representation scale.
+		prefix := "CKM-DECIMAL-"
+		if id == "CKM-DECIMAL128-SCALE" {
+			prefix = "CKM-DECIMAL128-"
+		}
+		members = append(members,
+			CompilerKnownMember{ID: prefix + "ISINTEGER", Name: "IsInteger", Kind: CompilerKnownProperty, Result: boolType},
+			CompilerKnownMember{ID: prefix + "ISZERO", Name: "IsZero", Kind: CompilerKnownProperty, Result: boolType},
+			CompilerKnownMember{ID: prefix + "ISPOSITIVE", Name: "IsPositive", Kind: CompilerKnownProperty, Result: boolType},
+			CompilerKnownMember{ID: prefix + "ISNEGATIVE", Name: "IsNegative", Kind: CompilerKnownProperty, Result: boolType},
+			CompilerKnownMember{ID: prefix + "SIGN", Name: "Sign", Kind: CompilerKnownProperty, Result: builtinType("int")})
 	}
 	// core-library.md § 27.5 (MD-062): the complete public UnitDimension
 	// surface besides == and !=; no setters, Get methods or legacy spellings.
@@ -338,6 +350,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		)
 	}
 	members = append(members, compilerKnownFloatMembers(sequence)...)
+	members = append(members, compilerKnownDecimalMembers(sequence)...)
 	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
 	members = append(members, compilerKnownAtomicMembers(sequence)...)
 	members = append(members, compilerKnownMutexMembers(sequence)...)

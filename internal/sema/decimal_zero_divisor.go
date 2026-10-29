@@ -64,11 +64,14 @@ func (a *Analyzer) recordDecimalBindingConstant(name string, expr ast.Expression
 	if !ok || symbol.Mutable || symbol.Volatile || dereferenceType(symbol.Type).Kind != DecimalType || hasUnitSemantics(symbol.Type) {
 		return
 	}
-	value, ok := a.decimalConstantValue(expr)
-	if !ok {
-		return
+	if exact, ok := a.decimalExactConstant(expr); ok {
+		symbol.DecimalExact = &exact
 	}
-	symbol.DecimalConstant = value
+	if value, ok := a.decimalConstantValue(expr); ok {
+		symbol.DecimalConstant = value
+	} else if symbol.DecimalExact != nil {
+		symbol.DecimalConstant = decimalValueRat(*symbol.DecimalExact)
+	}
 	a.symbols[name] = symbol
 }
 

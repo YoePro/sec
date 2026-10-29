@@ -20,6 +20,12 @@ func (fb *functionBuilder) buildBooleanOperator(expr ast.Expression) (builtValue
 			value, err := fb.buildRangeMembership(expression, plan)
 			return value, true, err
 		}
+		if resolved, ok := fb.owner.analyzer.ResolvedOperatorOf(expression); ok && fb.owner.maxPackage >= 14 &&
+			(resolved.Kind == sema.ResolvedMembershipCompare || resolved.Kind == sema.ResolvedNegatedMembershipCompare) {
+			if value, handled, err := fb.buildFixedArrayMembership(expression, resolved); handled {
+				return value, true, err
+			}
+		}
 	case *ast.PrefixExpression:
 		if resolved, ok := fb.owner.analyzer.ResolvedOperatorOf(expression); ok && resolved.Kind == sema.ResolvedBoolNot {
 			boolType, err := fb.boolType()
@@ -50,6 +56,9 @@ func (fb *functionBuilder) buildBooleanOperator(expr ast.Expression) (builtValue
 //   - rules/control-flow/flowcontrol_while.md — § 5; rules/control-flow/flowcontrol_if.md — §§ 4–6
 //   - rules/compiler/semantic_ir.md — § 67(2) value-producing branches merge through typed block parameters
 func (fb *functionBuilder) buildLogical(expr *ast.InfixExpression, flow sema.ResolvedLogicalFlow) (builtValue, error) {
+	if err := validateResolvedLogicalFlow(flow); err != nil {
+		return builtValue{}, err
+	}
 	boolType, err := fb.boolType()
 	if err != nil {
 		return builtValue{}, err

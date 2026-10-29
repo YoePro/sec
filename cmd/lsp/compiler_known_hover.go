@@ -6,18 +6,14 @@ import (
 	"strings"
 )
 
-// compilerKnownMemberHover presents the shared receiver-resolved registry.
+// compilerKnownMemberHover presents the canonical friendly registry facts and
+// retains authority, effects, availability and caller obligations. Completion
+// documentation and signature help reuse this same projection.
 // Rules: rules/compiler/compiler_known_members.md — "LSP", "Synthetic definitions";
 // rules/memory/raw_pointers.md — §35(2–6).
 func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMember) hoverResult {
-	kind := string(member.Kind)
-	if member.Unsafe {
-		kind = "unsafe " + kind
-	}
-	result := lspTypeName(member.Result)
-	if member.Result.Kind == sema.InvalidType || member.Result.Kind == "" {
-		result = "context-dependent"
-	}
+	facts := member.DisplayFacts()
+	result := facts.ResultType
 	effects := ""
 	if len(member.Effects) > 0 {
 		names := make([]string, 0, len(member.Effects))
@@ -26,15 +22,13 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 		}
 		effects = "\n\nEffects: `" + strings.Join(names, "`, `") + "`."
 	}
-	declaration := fmt.Sprintf("%s %s: %s", kind, member.Name, result)
+	declaration := "Signature unavailable for `" + facts.Label + "`; result: `" + result + "`."
+	if facts.Signature != "" {
+		declaration = "```sec\n" + facts.Signature + "\n```"
+	}
 	resolved := ""
-	if member.Signature != "" {
-		declaration = member.Signature
-		// The registry signature is generic; show the receiver-resolved
-		// result at this use as well.
-		if result != "context-dependent" {
-			resolved = "\n\nResult here: `" + result + "`."
-		}
+	if facts.Signature != "" && result != "context-dependent" {
+		resolved = "\n\nResult here: `" + result + "`."
 	}
 	if member.Rule != "" {
 		resolved += "\n\nRule: " + member.Rule + "."
@@ -56,9 +50,12 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 	case sema.PrivilegedCoreMember:
 		category = "\n\nPrivileged core member."
 	}
-	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s%s%s", declaration, member.ID, resolved, category, effects, documentation)
+	contents := fmt.Sprintf("%s\n\nCompiler-known %s `%s`.%s%s%s%s", declaration, facts.Kind, facts.Label, resolved, category, effects, documentation)
+	if member.TargetRestriction != "" {
+		contents += "\n\nAvailability: " + member.TargetRestriction + "."
+	}
 	contents += compilerKnownCallerObligations(member)
-	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
+	return hoverResult{Contents: markupContent{Kind: "markdown", Value: sema.CompilerKnownDisplayProse(contents)}, Range: sourceRange}
 }
 
 // compilerKnownCallerObligations labels required caller proofs separately from

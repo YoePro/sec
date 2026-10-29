@@ -1,0 +1,125 @@
+module main
+
+fn WhileSwitch(limit: int) int {
+    let mut i := 0
+    let mut score := 0
+    while i < limit {
+        i += 1
+        switch i {
+        case 1:
+            switch {
+            case i == 1:
+                continue // loop-target: 1
+            default:
+                score += 10000
+            }
+        case 3:
+            switch i {
+            case 3:
+                break // loop-target: 1
+            }
+        default:
+            score += 10
+        }
+        score += 100
+    }
+    return score
+}
+
+fn ForSwitch() int {
+    let mut score := 0
+    for i in 1..4 {
+        switch i {
+        case 1:
+            continue // loop-target: 1
+        case 3:
+            break // loop-target: 1
+        default:
+            score += 10
+        }
+        score += 100
+    }
+    return score
+}
+
+fn NestedLoops() int {
+    let mut score := 0
+    for row in 1..3 {
+        for column in 1..3 {
+            switch column {
+            case 1:
+                continue // loop-target: 2
+            default:
+                switch {
+                case column == 2:
+                    break // loop-target: 2
+                default:
+                    score += 10000
+                }
+            }
+            score += 10000
+        }
+        switch row {
+        case 1:
+            continue // loop-target: 1
+        case 3:
+            break // loop-target: 1
+        default:
+            score += 5
+        }
+        score += 10
+    }
+    return score
+}
+
+fn FallthroughLoop() int {
+    let mut i := 0
+    let mut score := 0
+    while i < 3 {
+        i += 1
+        switch i {
+        case 1:
+            score += 1
+            fallthrough
+        case 2:
+            switch {
+            case i == 1:
+                continue // loop-target: 1
+            default:
+                score += 2
+            }
+        case 3:
+            break // loop-target: 1
+        }
+        score += 10
+    }
+    return score
+}
+
+fn DefaultSwitch() int {
+    let mut score := 0
+    for i in 1..4 {
+        switch i {
+        case 1:
+            score += 1
+        default:
+            switch {
+            case i == 2:
+                continue // loop-target: 1
+            default:
+                break // loop-target: 1
+            }
+        }
+        score += 10
+    }
+    return score
+}
+
+fn main() int {
+    if WhileSwitch(5) != 110 { return 1 }
+    if ForSwitch() != 110 { return 2 }
+    if NestedLoops() != 15 { return 3 }
+    if FallthroughLoop() != 13 { return 4 }
+    if DefaultSwitch() != 11 { return 5 }
+    return 0
+}

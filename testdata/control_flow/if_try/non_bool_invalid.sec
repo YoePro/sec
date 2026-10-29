@@ -1,0 +1,14 @@
+module main
+
+enum GateError error { Failed }
+type Configuration struct { Enabled: bool, }
+fn Count() Result[int, GateError] { return Ok(1) }
+fn Text() Result[string, GateError] { return Ok("yes") }
+fn Config() Result[Configuration, GateError] { return Ok(Configuration { Enabled: true }) }
+fn Invalid() Result[int, GateError] {
+    if try Count() {}
+    if try Text() {}
+    if try Config() {}
+    if (try Count() { Err(_) => 0 }) {}
+    return Ok(0)
+}

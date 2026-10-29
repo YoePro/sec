@@ -1,0 +1,23 @@
+module main
+let mut RuntimeText := "runtime"
+fn GetText() string { return "value" }
+enum Missing string { Value }
+enum IotaText string { Value = iota }
+enum NumberText string { Value = 12 }
+enum RuntimeValue string { Value = RuntimeText + "!" }
+enum NeedsExecution string { Value = "prefix" + GetText() }
+enum Duplicate string {
+    First = "a" + "b"
+    Alias = "ab"
+}
+fn InvalidMatch(value: Duplicate) int {
+    match value {
+        Duplicate.First => { return 1 }
+        Duplicate.Alias => { return 2 }
+    }
+}
+
+fn InvalidConstant() ComposedMissing {
+    return ComposedMissing("known" + "-missing")
+}
+enum ComposedMissing string { Only = "known" }

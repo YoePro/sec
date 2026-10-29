@@ -80,7 +80,9 @@ func commandEntryIdentity(module *semantic.Module, analyzed analyzedProgram, inp
 
 // lowerToLLVMDialect verifies the Sec dialect module and lowers it to the
 // LLVM dialect, returning the path of the LLVM dialect file. The caller
-// removes temporary files through cleanup.
+// removes temporary files through cleanup. Retained Sec MLIR is published only
+// after successful verification/lowering.
+// Rules: rules/compiler/compiler_pipeline.md — §§32–34,59–60,88(1–3).
 func lowerToLLVMDialect(secMLIR []byte, entry string, mlirBin string, keepSecPath string) (string, func()) {
 	paths := []string{}
 	cleanup := func() {
@@ -88,17 +90,15 @@ func lowerToLLVMDialect(secMLIR []byte, entry string, mlirBin string, keepSecPat
 			_ = os.Remove(path)
 		}
 	}
-	secPath := keepSecPath
-	if secPath == "" {
-		path, remove, err := createTempOutputPath(".sec.mlir")
-		if err != nil {
-			reportToolError("temp file", "%v", err)
-			exitCLI(1)
-		}
-		secPath = path
-		if remove {
-			paths = append(paths, path)
-		}
+	// A retained file is a published artifact. Verify/lower a temporary
+	// module first, so rejected input cannot overwrite a previous artifact.
+	secPath, removeSecPath, err := createTempOutputPath(".sec.mlir")
+	if err != nil {
+		reportToolError("temp file", "%v", err)
+		exitCLI(1)
+	}
+	if removeSecPath {
+		paths = append(paths, secPath)
 	}
 	if err := os.WriteFile(secPath, secMLIR, 0644); err != nil {
 		cleanup()
@@ -118,6 +118,13 @@ func lowerToLLVMDialect(secMLIR []byte, entry string, mlirBin string, keepSecPat
 		cleanup()
 		reportPipelineError("Sec MLIR to LLVM lowering", err)
 		exitCLI(4)
+	}
+	if keepSecPath != "" {
+		if err := os.WriteFile(keepSecPath, secMLIR, 0644); err != nil {
+			cleanup()
+			reportToolError("write", "%v", err)
+			exitCLI(1)
+		}
 	}
 	return llvmDialectPath, cleanup
 }

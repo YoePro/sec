@@ -388,16 +388,10 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 				a.addErrorAtToken(value.Token, "string-backed enum member %s.%s requires an explicit initializer", name, value.Name.Value)
 				continue
 			}
-			literal, ok := initializer.(*ast.StringLiteral)
+			stringValue, ok := a.stringEnumInitializer(name, value.Name.Value, initializer)
 			if !ok {
-				if identifier, isIdentifier := initializer.(*ast.Identifier); isIdentifier && identifier.Value == "iota" {
-					a.addErrorAtToken(identifier.Token, "iota is not available in string-backed enum %s", name)
-					continue
-				}
-				a.addErrorAtToken(expressionToken(initializer), "string-backed enum value %s.%s initializer must be a compile-time string constant", name, value.Name.Value)
 				continue
 			}
-			stringValue := literal.Value
 			typ.EnumValues = append(typ.EnumValues, value.Name.Value)
 			typ.EnumConsts[value.Name.Value] = EnumValue{
 				Name:        value.Name.Value,

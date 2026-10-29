@@ -53,6 +53,9 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 		defer a.finishIterationDependencies(stmt)
 	}
 	iterationEntry := a.captureLoopIterationAnalysisState()
+	if len(a.errors) == iterableErrors {
+		a.registerForBindingBorrows(stmt)
+	}
 
 	activeIterations := len(a.activeCollectionIterations)
 	if active, ok := a.activeCollectionIterationFor(stmt); ok {
@@ -138,6 +141,37 @@ func (a *Analyzer) analyzeForIterable(stmt *ast.ForStatement) {
 		}
 		if a.defineSymbol(binding.Name, bindingTypes[i], false, binding.Token) {
 			a.assigned[binding.Name] = true
+		}
+	}
+}
+
+// registerForBindingBorrows makes every ref and ref mut loop binding the
+// holder of a shared or exclusive borrow of the iterable, so the ordinary
+// conflict checks apply to the iterated collection inside the body. Each
+// borrow is iteration-local: reference-holder liveness ends it after the
+// binding's last required use, and the loop clears it with the binding at the
+// iteration boundary and on every break and continue edge.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §6 "Shared element iteration", §7 "Mutable element iteration"
+//   - rules/memory/borrowing.md — §§ 8.1(11), 14.5(2), 18(4)
+func (a *Analyzer) registerForBindingBorrows(stmt *ast.ForStatement) {
+	place, ok := a.resolvePlace(stmt.Iterable)
+	if !ok {
+		return
+	}
+	for _, binding := range stmt.Bindings {
+		if binding.Discard || binding.Mode == ast.ForBindingValue {
+			continue
+		}
+		kind := sharedBorrow
+		if binding.Mode == ast.ForBindingRefMut {
+			kind = mutableBorrow
+		}
+		for _, alternative := range placeOriginAlternatives(place) {
+			a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
+				Root: alternative.Root, Place: alternative, Holder: binding.Name, Kind: kind, Token: binding.ModeToken,
+			})
 		}
 	}
 }

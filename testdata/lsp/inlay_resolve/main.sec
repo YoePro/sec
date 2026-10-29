@@ -1,0 +1,16 @@
+module main
+
+type Item struct { Value: int, }
+fn Make() Item { return Item { Value: 7 } }
+fn Count(amount: int, enabled: bool) int { return amount }
+fn Read(value: ref Item) int { return value.Value }
+
+fn Main() void {
+    let item := Make()
+    let total := Count(2, true)
+    let observed := Read(item)
+    let empty := Item {}
+    discard total
+    discard observed
+    discard empty
+}

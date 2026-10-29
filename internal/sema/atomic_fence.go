@@ -16,15 +16,20 @@ const atomicFenceName = "atomic.Fence"
 const atomicFenceMemberID = "CKF-ATOMIC-FENCE"
 
 // AtomicFenceMember is the compiler-known presentation of atomic.Fence; its
-// signature, documentation and rule come from the synthetic catalog.
+// signature, documentation and rule come from the synthetic catalog. The
+// namespace qualifies its public label; a MemoryOrder argument is not a receiver.
+// Rules: rules/concurrency/atomics.md — §§3(3),26;
+// rules/compiler/compiler_known_members.md — "User-facing symbol names".
 func AtomicFenceMember() CompilerKnownMember {
-	return withSyntheticMetadata(CompilerKnownMember{ID: atomicFenceMemberID, Name: "Fence", Kind: CompilerKnownAssociatedFunction, Result: Type{Name: "void", Kind: VoidType}})
+	return withSyntheticMetadata(CompilerKnownMember{ID: atomicFenceMemberID, Name: "Fence", BoundReceiver: "atomic", Kind: CompilerKnownAssociatedFunction, Result: Type{Name: "void", Kind: VoidType}})
 }
 
 // recordAtomicFenceSymbol attaches the compiler-known fence identity to the
 // `Fence` name of a resolved call so LSP hover and go-to-definition reach
 // its canonical synthetic definition; a fence with an established order
 // names that order in its presentation.
+// Rules: rules/concurrency/atomics.md — §§26,40;
+// rules/compiler/compiler_known_members.md — "Synthetic definitions".
 func (a *Analyzer) recordAtomicFenceSymbol(expr *ast.CallExpression, order string) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
@@ -32,7 +37,6 @@ func (a *Analyzer) recordAtomicFenceSymbol(expr *ast.CallExpression, order strin
 	}
 	known := AtomicFenceMember()
 	if order != "" {
-		known.BoundReceiver = "MemoryOrder." + order
 		known.Documentation += " This call establishes MemoryOrder." + order + "."
 	}
 	a.compilerKnownMemberFacts[sourceTokenLocation(member.Property.Token)] = known

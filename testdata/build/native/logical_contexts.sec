@@ -1,0 +1,29 @@
+module main
+
+static let mut visits: int := 0
+static let mut order: int := 0
+
+fn Mark(tag: int, answer: bool) bool {
+    visits += 1
+    order = order * 10 + tag
+    return answer
+}
+
+fn Echo(answer: bool) bool { return answer }
+
+fn FoldedSkip() bool { return 3 < 2 && Mark(9, true) }
+fn FoldedRequired() bool { return 3 > 2 && Mark(9, true) }
+
+fn main() int {
+    let first := Mark(1, false) && Mark(9, true)
+    let second := Mark(2, true) || Mark(9, false)
+    if first || !second || visits != 2 || order != 12 { return 1 }
+    let nested := Mark(3, true) && (Mark(4, false) || Mark(5, true))
+    if !nested || visits != 5 || order != 12345 { return 2 }
+    if !Echo(Mark(6, false) || Mark(7, true)) { return 3 }
+    while Mark(8, false) && Mark(9, true) { return 4 }
+    if visits != 8 || order != 12345678 { return 5 }
+    if FoldedSkip() || visits != 8 { return 6 }
+    if !FoldedRequired() || visits != 9 || order != 123456789 { return 7 }
+    return 0
+}

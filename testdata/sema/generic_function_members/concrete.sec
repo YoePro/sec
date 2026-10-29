@@ -1,0 +1,25 @@
+module main
+
+type Box[T] struct { Value: T, }
+type Item struct { Number: int, }
+
+fn Wrap[T](value: T) Box[T] { return Box[T] { Value: <-value } }
+fn Pass[T](value: Box[T]) Box[T] { return <-value }
+fn Nested[T](value: T) Box[Box[T]] {
+    return Box[Box[T]] { Value: Wrap(<-value) }
+}
+
+fn Main() int {
+    let inferred := Wrap(Item { Number: 7 })
+    let explicit := Wrap[Item](Item { Number: 9 })
+    let nested := Nested(Item { Number: 11 })
+    let other := Wrap(true)
+    let flag: bool := other.Value
+    discard flag
+    let passed := Pass(inferred)
+    let first: Item := inferred.Value
+    let second: Item := explicit.Value
+    let third: Item := nested.Value.Value
+    let fourth: Item := passed.Value
+    return first.Number + second.Number + third.Number + fourth.Number
+}

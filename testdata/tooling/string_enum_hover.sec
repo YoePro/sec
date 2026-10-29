@@ -1,0 +1,26 @@
+module main
+
+/** Modes accepted by the service. */
+enum Program string {
+    Primary = "Alpha\x20Beta"
+    /** Compatibility name for the primary mode. */
+    Alias = "Alpha Beta"
+    Other default = "Gamma"
+    Escaped = "line\n\"quoted\""
+}
+
+enum Implicit string {
+    First = "one"
+    Next = "two"
+}
+
+fn Parse(value: string) Result[Program, EnumValueError] {
+    return Ok(try Program(value))
+}
+
+fn Show(value: Program) string { return string(value) }
+fn AliasValue() Program { return Program.Alias }
+fn DefaultValue() Program {
+    let mut value: Program
+    return value
+}

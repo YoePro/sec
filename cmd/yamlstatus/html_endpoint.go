@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"html/template"
 	"strings"
+	"time"
 )
 
 //go:embed html_endpoint.html
 var htmlPageSource string
 
 var htmlPage = template.Must(template.New("implementation-status").Parse(htmlPageSource))
+
+// htmlNow supplies the report's update time; tests replace it.
+var htmlNow = time.Now
 
 type htmlCount struct {
 	Label      string
@@ -25,12 +29,18 @@ type htmlReport struct {
 	Fields         []htmlCount
 	ChecklistTotal int
 	Completion     string
+	Updated        string
+	UpdatedISO     string
 }
 
 // createHTMLOutput renders a complete document using the Sec manual's shared
 // layout and stylesheet. html/template escapes all governance-derived text.
 func createHTMLOutput(stats Stats, verbose bool) string {
-	report := htmlReport{Stats: stats, ChecklistTotal: stats.TotalImplemented + stats.TotalRemaining + stats.TotalPartial}
+	updated := htmlNow().UTC()
+	report := htmlReport{
+		Stats: stats, ChecklistTotal: stats.TotalImplemented + stats.TotalRemaining + stats.TotalPartial,
+		Updated: updated.Format("2006-01-02 15:04 UTC"), UpdatedISO: updated.Format(time.RFC3339),
+	}
 	for _, status := range []string{"implemented", "partial", "planned"} {
 		report.Statuses = append(report.Statuses, htmlCount{Label: status, Count: stats.StatusCounts[status]})
 	}

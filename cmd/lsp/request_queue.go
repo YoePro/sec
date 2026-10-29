@@ -128,6 +128,12 @@ func supersededByQueuedEdit(message rpcMessage, later []rpcMessage) bool {
 			uri = lens.Data.URI
 		}
 	}
+	if uri == "" && message.Method == "inlayHint/resolve" {
+		var hint inlayHint
+		if json.Unmarshal(message.Params, &hint) == nil && hint.Data != nil {
+			uri = hint.Data.URI
+		}
+	}
 	if uri == "" {
 		return false
 	}
@@ -195,6 +201,7 @@ func isDeferrableAnalysisRequest(method string) bool {
 		"workspace/symbol",
 		"workspaceSymbol/resolve",
 		"textDocument/inlayHint",
+		"inlayHint/resolve",
 		"textDocument/codeLens",
 		"codeLens/resolve",
 		"sec/compilerKnownDefinition",

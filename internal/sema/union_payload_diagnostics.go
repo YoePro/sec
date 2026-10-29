@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
@@ -31,17 +32,51 @@ func (a *Analyzer) reportUnionVariantPayloadRequired(token lexer.Token, union Ty
 		"%s variant %s requires payload", sumSourceKind(union), name)
 }
 
-// reportUnionPatternPayloadBindingRequired reports a match pattern naming a
-// payload-carrying variant without binding the payload
-// (rules/declarations/unions.md §§8.1,9.2–9.4).
-// Rules: rules/concurrency/atomics.md — §6 (associated-value core enum).
-func (a *Analyzer) reportUnionPatternPayloadBindingRequired(token lexer.Token, union Type, variant UnionVariant) {
+// reportOmittedPayloadPattern explains a legal bare variant pattern that
+// selects every value of a payload-carrying variant without inspecting the
+// payload (MD-029). It names the payload and the binding and explicit
+// non-binding spellings; `Variant(_)` and `Variant {}` suppress it.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — § 8 "Variant patterns"
+//   - rules/declarations/unions.md — § 9.2a
+//   - rules/tooling/diagnostics.md — § 24(4e)
+func (a *Analyzer) reportOmittedPayloadPattern(token lexer.Token, union Type, variant UnionVariant) {
 	name := typeDisplayName(union) + "." + variant.Name
-	help := fmt.Sprintf("Bind the payload in the pattern, for example `%s(payload) => ...`", variant.Name)
+	var carried, inspect, ignore string
 	if len(variant.PayloadFields) > 0 {
-		help += fmt.Sprintf(" or `%s { %s } => ...`", variant.Name, variant.PayloadFields[0].Name)
+		fields := make([]string, 0, len(variant.PayloadFields))
+		names := make([]string, 0, len(variant.PayloadFields))
+		for _, field := range variant.PayloadFields {
+			fields = append(fields, field.Name+": "+typeDisplayName(field.Type))
+			names = append(names, field.Name)
+		}
+		carried = "fields " + strings.Join(fields, ", ")
+		inspect = fmt.Sprintf("%s { %s }", variant.Name, strings.Join(names, ", "))
+		ignore = variant.Name + " {}"
+	} else {
+		carried = "a payload"
+		if variant.Payload != nil {
+			carried = "a `" + typeDisplayName(*variant.Payload) + "` payload"
+		}
+		inspect = variant.Name + "(payload)"
+		ignore = variant.Name + "(_)"
 	}
-	help += fmt.Sprintf(". To test the active variant without the payload, use `value is %s`.", name)
-	a.addErrorAtTokenWithMetadata(token, diagnostics.UnionPatternPayloadBindingRequired, help,
-		"%s variant %s requires payload binding", sumSourceKind(union), name)
+	a.addWarningAtTokenWithMetadata(token, diagnostics.OmittedPayloadPattern,
+		fmt.Sprintf("To inspect it, write `%s`; to ignore it explicitly, write `%s`.", inspect, ignore),
+		"%s carries %s that this pattern does not inspect", name, carried)
+}
+
+// reportOmittedTryHandlerPayload applies the MD-029 omitted-payload
+// Information to a bare `Err(ErrorType.Variant)` try handler that selects a
+// payload-carrying union error variant.
+// Rules: rules/errors/errorhandling.md — § 15.3.
+func (a *Analyzer) reportOmittedTryHandlerPayload(pattern *ast.MemberExpression, errorType Type) {
+	if errorType.Kind != UnionType || pattern.Property == nil {
+		return
+	}
+	variant, ok := lookupUnionVariant(errorType, pattern.Property.Value)
+	if ok && (variant.Payload != nil || len(variant.PayloadFields) > 0) {
+		a.reportOmittedPayloadPattern(pattern.Property.Token, errorType, variant)
+	}
 }

@@ -201,8 +201,7 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			return left
 		}
 		if p.peekToken.Type == lexer.SPREAD {
-			p.nextToken()
-			return &ast.SpreadExpression{Token: p.curToken, Value: left}
+			return p.parsePostfixSpread(left)
 		}
 
 		switch p.peekToken.Type {
@@ -634,17 +633,11 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 			)
 			return nil
 		}
-		// Open error narrowing: `Err(ErrorType.Variant)` names a concrete error
-		// variant; Sema decides whether the subject's error channel permits it.
-		if pattern.Name == "Err" && p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.DOT {
-			owner := &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
-			p.nextToken()
-			if !p.expectPeek(lexer.IDENT) {
-				p.skipRejectedMatchPayload()
-				return nil
-			}
-			pattern.ErrorVariant = &ast.MemberExpression{Token: owner.Token, Object: owner, Property: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}}
-			if !p.expectPeek(lexer.RPAREN) {
+		// Error selection: `Err(ErrorType.Variant)`, `Err(.Variant)` and their
+		// shallow payload forms; Sema decides whether the subject's error
+		// channel permits them.
+		if pattern.Name == "Err" && (p.curToken.Type == lexer.DOT || p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.DOT) {
+			if !p.parseErrorSelection(pattern) {
 				p.skipRejectedMatchPayload()
 				return nil
 			}
@@ -674,6 +667,79 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 		}
 	}
 	return pattern
+}
+
+// parseErrorSelection parses the ErrorSelection of an ErrPattern after
+// `Err(`, with the current token at its first token: a qualified
+// `ErrorType.Variant` or contextual `.Variant`, an optional single payload
+// binding `(binding)` or shallow field pattern `{ ... }`, and the closing `)`.
+// The braces of a field pattern are not a handler list, match body or arm
+// body.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Try expression" (ErrPattern, MD-029)
+//   - rules/errors/errorhandling.md — § 15.3
+//   - rules/compiler/parser_recovery.md — "Match recovery", "Error patterns"
+func (p *Parser) parseErrorSelection(pattern *ast.MatchPattern) bool {
+	if p.curToken.Type == lexer.DOT {
+		if !p.expectPeek(lexer.IDENT) {
+			return false
+		}
+		pattern.ContextualErrorVariant = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	} else {
+		owner := &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			return false
+		}
+		pattern.ErrorVariant = &ast.MemberExpression{Token: owner.Token, Object: owner, Property: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}}
+	}
+	variant := p.curToken
+	switch p.peekToken.Type {
+	case lexer.LPAREN:
+		p.nextToken()
+		p.nextToken()
+		payload := &ast.MatchPattern{Token: variant, Kind: ast.MatchPatternVariant, Name: variant.Lexeme, NameToken: variant}
+		payload.Binding = p.parseMatchPatternBinding()
+		if payload.Binding == nil {
+			return false
+		}
+		if p.peekToken.Type != lexer.RPAREN {
+			p.addError("an error variant payload pattern contains exactly one binding; nested patterns are not part of Sec 0.1 at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return false
+		}
+		p.nextToken()
+		pattern.ErrorPayload = payload
+	case lexer.LBRACE:
+		p.nextToken()
+		payload := &ast.MatchPattern{Token: variant, Kind: ast.MatchPatternFields, Name: variant.Lexeme, NameToken: variant}
+		payload.Fields = p.parseMatchFieldPatterns()
+		if payload.Fields == nil {
+			return false
+		}
+		pattern.ErrorPayload = payload
+	}
+	return p.expectPeek(lexer.RPAREN)
+}
+
+// looksLikeStructuredErrPattern reports, at `Err` with `(` as the peek token,
+// an MD-029 selection that the expression grammar cannot carry: a leading
+// `.Variant`, or `ErrorType.Variant` followed by `(` or `{`.
+func (p *Parser) looksLikeStructuredErrPattern() bool {
+	if p.curToken.Type != lexer.IDENT || p.curToken.Lexeme != "Err" || p.peekToken.Type != lexer.LPAREN {
+		return false
+	}
+	state := p.l.Snapshot()
+	defer p.l.Restore(state)
+	first := p.l.NextToken()
+	if first.Type == lexer.DOT {
+		return true
+	}
+	if first.Type != lexer.IDENT || p.l.NextToken().Type != lexer.DOT || p.l.NextToken().Type != lexer.IDENT {
+		return false
+	}
+	next := p.l.NextToken().Type
+	return next == lexer.LPAREN || next == lexer.LBRACE
 }
 
 func (p *Parser) parseMatchPatternBinding() *ast.MatchPatternBinding {
@@ -1488,11 +1554,22 @@ func (p *Parser) isTryHandlerBlockRecoveryStart(t lexer.TokenType) bool {
 
 func (p *Parser) parseTryHandler() *ast.TryHandler {
 	handler := &ast.TryHandler{Token: p.curToken}
-	pattern := p.parseExpression(LOWEST)
-	if pattern == nil {
-		return nil
+	if p.looksLikeStructuredErrPattern() {
+		// MD-029: payload, field and contextual `.Variant` error patterns use
+		// the closed ErrPattern grammar shared with match arms.
+		errPattern := p.parseMatchPattern()
+		if errPattern == nil {
+			return nil
+		}
+		handler.ErrPattern = errPattern
+		handler.Pattern = errPattern.Expression()
+	} else {
+		pattern := p.parseExpression(LOWEST)
+		if pattern == nil {
+			return nil
+		}
+		handler.Pattern = pattern
 	}
-	handler.Pattern = pattern
 
 	// rules/errors/errorhandling.md — §19: `Pattern where condition => body`.
 	if p.peekToken.Type == lexer.WHERE {
@@ -2002,7 +2079,16 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	open := p.curToken
 	p.nextToken()
 
+	// Parentheses own their closing delimiter: an inner try handler cannot
+	// consume the surrounding condition's body brace. Restore the header
+	// boundary before continuing after the group.
+	// Rules: rules/foundations/grammar.md — GroupedExpression;
+	// rules/control-flow/flowcontrol_if.md — §11;
+	// rules/errors/errorhandling.md — local try handlers.
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = false
 	expr := p.parseExpression(LOWEST)
+	p.stopBeforeBrace = previousStopBeforeBrace
 	if expr == nil {
 		return nil
 	}

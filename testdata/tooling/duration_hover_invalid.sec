@@ -1,0 +1,15 @@
+module main
+
+unit metre physical
+impl <metre> {
+    Kind: length
+    Dimension: [length^1]
+    Scale: 1
+}
+
+fn Invalid() void {
+    let bad := duration(1<metre>)
+    let unknown := 2<missing>
+    discard bad
+    discard unknown
+}

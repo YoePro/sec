@@ -1,0 +1,20 @@
+module main
+
+enum Wide uint16 {
+    Zero = 0
+    High = 256
+}
+
+enum Signed int16 {
+    Low = -129
+    High = 127
+}
+
+fn KnownZero() uint8 { return uint8(Wide.Zero) }
+fn KnownHigh() int8 { return int8(Signed.High) }
+
+fn main() int {
+    if KnownZero() != 0 { return 1 }
+    if KnownHigh() != 127 { return 2 }
+    return 0
+}

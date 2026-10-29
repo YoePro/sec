@@ -1,0 +1,13 @@
+module main
+
+enum Numbers uint8 {
+    One = 1
+    Alias = 1
+    Two = 2
+}
+
+enum Texts string {
+    One = "one"
+    Alias = "one"
+    Empty = ""
+}

@@ -9595,7 +9595,7 @@ fn Select(command: string) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		`duplicate switch case value "start" at 8:7`,
+		`duplicate switch case value "start" at 8:7, earlier equivalent string case at 6:7`,
 	}
 	assertSemaErrors(t, errors, expected)
 	if errors[0].ID != diagnostics.DuplicateSwitchCase {

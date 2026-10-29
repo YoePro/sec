@@ -1,0 +1,56 @@
+module main
+
+unit tick physical
+impl <tick> {
+    Kind: time
+    Dimension: [time^1]
+    Scale: 1 / 1000
+}
+
+unit tiny physical
+impl <tiny> {
+    Kind: time
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000
+}
+
+enum RoundingMode {
+    NearestEven
+    NearestAwayFromZero
+    TowardZero
+    AwayFromZero
+    Ceil
+    Floor
+}
+
+fn Wait(value: duration) void { discard value }
+
+fn Choose(value: duration) void { discard value }
+fn Choose(value: decimal<tick>) void { discard value }
+
+fn Use(count: int16<tick>, dynamic: decimal<tick>) void {
+    let raw := 7<tick>
+    let typed: int16<tick> := 250<tick>
+    let explicitValue := duration(5<tick>)
+    let contextual: duration := 2<tick>
+    let negative: duration := -5<tick>
+    let rounded := duration(500<tiny>, RoundingMode.Ceil)
+    let bounded := duration(count)
+    let checked := try duration(dynamic) { Err(_) => return }
+    let checkedRounded := try duration(dynamic, RoundingMode.Ceil) { Err(_) => return }
+    let elapsed := 3<tick>
+    let fromBinding := duration(elapsed)
+    Wait(25<tick>)
+    Choose(30<tick>)
+    discard raw
+    discard typed
+    discard explicitValue
+    discard contextual
+    discard negative
+    discard rounded
+    discard bounded
+    discard checked
+    discard checkedRounded
+    discard elapsed
+    discard fromBinding
+}

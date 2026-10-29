@@ -1,0 +1,19 @@
+module main
+
+type Box[T] struct { Value: T, }
+@noCopy
+type Owned struct { Number: int, }
+
+fn Wrap[T](value: T) Box[T] { return Box[T] { Value: <-value } }
+
+fn CopyOwned() void {
+    let wrapped := Wrap(Owned { Number: 7 })
+    let copy := wrapped.Value
+    discard copy
+}
+
+fn CopyUnknown[T](value: T) void {
+    let wrapped := Wrap(<-value)
+    let copy := wrapped.Value
+    discard copy
+}

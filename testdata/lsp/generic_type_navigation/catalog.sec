@@ -1,0 +1,18 @@
+module catalog
+
+interface Named { fn Name() string }
+interface Ranked { fn Rank() int }
+interface Source[T] { fn Next() T }
+
+type Item struct { Value: int, }
+impl Item implements Named, Ranked {
+    fn Name() string { return "item" }
+    fn Rank() int { return self.Value }
+}
+
+type Box[T] struct { Value: T, }
+type Pair[L, R] struct { Left: L, Right: R, }
+type Constrained[T: Named & Ranked] struct { Value: T, }
+enum Failure error { Failed }
+
+fn Wrap[T](value: T) Box[T] { return Box[T] { Value: value } }

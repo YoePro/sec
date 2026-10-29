@@ -269,14 +269,19 @@ func (a *Analyzer) recordUnitConversionPlan(target, value Type, expr ast.Express
 
 // recordCallArgumentUnitConversions records the conversion plans of the
 // arguments of a call after overload resolution chose its function, including
-// float literal shaping to that selected parameter type.
+// float literal shaping and quantity-literal duration materialization to that
+// selected parameter type. Candidate checks never publish these plans.
 // Rules: rules/types/units.md — "Exact fixed conversions";
 // rules/types/types.md — "Context shaping";
+// rules/types/temporal.md — §5.5(1–3);
 // rules/mlir/packages/sec-mlir-dialect_package20.md — §§11–19.
 func (a *Analyzer) recordCallArgumentUnitConversions(function Function, args []ast.Expression, argTypes []Type) {
 	for i, arg := range args {
 		parameter, ok := functionParameterForArgument(function, i)
 		if !ok || i >= len(argTypes) {
+			continue
+		}
+		if a.contextualDurationConversion(parameter.Type, argTypes[i], arg, true) {
 			continue
 		}
 		if parameter.Type.Kind == FloatType && isUntypedNumericExpression(arg) {

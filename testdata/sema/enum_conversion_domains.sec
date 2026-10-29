@@ -1,0 +1,52 @@
+module main
+
+enum Closed uint16 {
+    Zero = 0
+    High = 255
+    Alias = 255
+}
+
+enum Wide uint16 {
+    Zero = 0
+    High = 256
+}
+
+enum Signed int16 {
+    Low = -128
+    High = 127
+}
+
+enum TooLow int16 {
+    Low = -129
+    High = 127
+}
+
+enum Open8 bit[8] {
+    Zero = 0
+    One = 1
+}
+
+enum Open16 bit[16] {
+    Zero = 0
+    One = 1
+}
+
+fn ClosedByte(value: Closed) uint8 { return uint8(value) }
+fn ClosedSigned(value: Closed) int8 { return try int8(value) { Err(_) => 0 } }
+fn WideByte(value: Wide) uint8 { return try uint8(value) { Err(_) => 0 } }
+fn SignedByte(value: Signed) int8 { return int8(value) }
+fn SignedUnsigned(value: Signed) uint8 { return try uint8(value) { Err(_) => 0 } }
+fn TooLowByte(value: TooLow) int8 { return try int8(value) { Err(_) => 0 } }
+fn WideFits(value: Wide) uint16 { return uint16(value) }
+fn KnownFits() uint8 { return uint8(Wide.Zero) }
+fn KnownHighFits() uint8 { return uint8(Closed.High) }
+fn KnownSignedFits() int8 { return int8(TooLow.High) }
+fn Open8Byte(value: Open8) uint8 { return uint8(value) }
+fn Open8Wide(value: Open8) uint16 { return uint16(value) }
+fn Open8SignedWide(value: Open8) int16 { return int16(value) }
+fn Open8Signed(value: Open8) int8 { return try int8(value) { Err(_) => 0 } }
+fn Open16Byte(value: Open16) uint8 { return try uint8(value) { Err(_) => 0 } }
+fn Open16Wide(value: Open16) uint16 { return uint16(value) }
+fn Open16Signed(value: Open16) int16 { return try int16(value) { Err(_) => 0 } }
+fn Open16SignedWide(value: Open16) int32 { return int32(value) }
+fn OpenKnownFits() uint8 { return uint8(Open16.One) }

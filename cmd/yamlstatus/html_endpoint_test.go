@@ -5,6 +5,7 @@ import (
 	"html"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHTMLReportCLIIsACompleteDocument(t *testing.T) {
@@ -44,6 +45,18 @@ func TestHTMLReportEscapesGovernanceTextAndKeepsLibraryScope(t *testing.T) {
 	}
 	if strings.Index(text, "<code>alpha</code>") > strings.Index(text, "<code>zebra</code>") {
 		t.Fatal("metadata order is unstable")
+	}
+}
+
+func TestHTMLReportShowsLastUpdatedInFooter(t *testing.T) {
+	previous := htmlNow
+	htmlNow = func() time.Time { return time.Date(2026, 10, 29, 14, 5, 0, 0, time.FixedZone("CET", 3600)) }
+	defer func() { htmlNow = previous }()
+	text := createHTMLOutput(Stats{}, false)
+	want := `Last updated <time datetime="2026-10-29T13:05:00Z">2026-10-29 13:05 UTC</time>`
+	footer := strings.Index(text, `class="site-footer"`)
+	if footer < 0 || strings.Index(text, want) < footer {
+		t.Fatalf("missing footer timestamp %q", want)
 	}
 }
 

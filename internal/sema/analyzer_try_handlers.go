@@ -9,6 +9,27 @@ import (
 	"sec/internal/lexer"
 )
 
+// tryHandlerBindingIdentifier preserves the real declaration of a whole-error
+// or single variant-payload binding when the handler scope is recorded. MD-029
+// payload nodes must not inherit the outer Err keyword as their declaration.
+// Rules: rules/errors/errorhandling.md — §§15.3,20;
+// rules/tooling/lsp.md — "Error patterns, inactive arms and `Some`".
+func tryHandlerBindingIdentifier(handler *ast.TryHandler) *ast.Identifier {
+	if handler == nil {
+		return nil
+	}
+	if pattern := handler.ErrPattern; pattern != nil && pattern.ErrorPayload != nil && pattern.ErrorPayload.Binding != nil {
+		return pattern.ErrorPayload.Binding.Name
+	}
+	switch pattern := handler.Pattern.(type) {
+	case *ast.ErrExpression:
+		identifier, _ := pattern.Value.(*ast.Identifier)
+		return identifier
+	default:
+		return nil
+	}
+}
+
 // analyzeTryHandlerGuard checks a handler's `where` condition in the arm scope
 // where the pattern binding is already visible. The guard runs before the
 // handler is selected, so it may inspect but must not consume the binding.
@@ -153,9 +174,9 @@ func (a *Analyzer) analyzeMatchErrorNarrowing(member *ast.MemberExpression, erro
 // analyzeMatchConcreteErrorVariant resolves `Err(ConcreteError.Variant)` on a
 // Result[T, ConcreteError] subject. The variant must belong to the subject's
 // own closed error type. Enum error variants are keyed by their underlying
-// value class, as ordinary enum match arms are; payload-less union error
-// variants by name. A payload-carrying union variant would need a nested
-// payload pattern, which Sec 0.1 does not define (MD-029).
+// value class, as ordinary enum match arms are; union error variants by name.
+// A bare payload-carrying union variant selects the whole variant without
+// binding its payload and reports the omitted-payload Information (MD-029).
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_match.md — "Concrete error variants"
@@ -172,13 +193,12 @@ func (a *Analyzer) analyzeMatchConcreteErrorVariant(member *ast.MemberExpression
 			a.addErrorAtToken(expressionToken(member), "Err(%s) must name a variant of %s", member.String(), typeDisplayName(errorType))
 			return matchPatternInfo{}, false
 		}
-		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-			a.addErrorAtToken(member.Property.Token,
-				"Err(%s.%s) cannot select a payload-carrying error variant because Sec 0.1 has no nested payload pattern; bind the error with Err(name) and match it against %s.%s(...) in the arm body",
-				typeDisplayName(errorType), variant.Name, typeDisplayName(errorType), variant.Name)
-			return matchPatternInfo{}, false
-		}
 		a.bindDefinition(member.Property.Token, variant.Token)
+		// MD-029: a bare variant selects a payload-carrying error variant
+		// without binding its payload.
+		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+			a.reportOmittedPayloadPattern(member.Property.Token, errorType, variant)
+		}
 		return matchPatternInfo{Variant: concreteErrorVariantPrefix + variant.Name, EnumCaseName: typeDisplayName(errorType) + "." + variant.Name}, true
 	}
 	patternType, ok := a.inferMemberExpression(member)
@@ -334,6 +354,11 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		}
 		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic}
 		delete(a.constInts, bindingName)
+	}
+	// MD-029 shallow field bindings are local to this handler like the
+	// whole-error binding (rules/errors/errorhandling.md § 15.3).
+	if fields := a.tryHandlerFields[handler]; len(fields) > 0 {
+		a.defineMatchFieldBindings(matchPatternInfo{FieldBindings: fields})
 	}
 	defer func() {
 		if a.tryHandlerOrigins != nil {

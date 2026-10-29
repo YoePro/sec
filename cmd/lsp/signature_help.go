@@ -38,7 +38,7 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 					} else if active >= len(parameters) {
 						active = len(parameters) - 1
 					}
-					return signatureHelp{Signatures: []signatureInformation{{Label: known.Signature, Documentation: compilerKnownMemberHover(lspRange{}, known).Contents, Parameters: parameters}}, ActiveParameter: active}, true
+					return signatureHelp{Signatures: []signatureInformation{{Label: compilerKnownSignatureLabel(known), Documentation: compilerKnownMemberHover(lspRange{}, known).Contents, Parameters: parameters}}, ActiveParameter: active}, true
 				}
 			}
 		}

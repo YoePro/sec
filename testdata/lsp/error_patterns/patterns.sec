@@ -1,0 +1,62 @@
+module main
+
+type FileError union error {
+    NotFound { Path: string, Code: int }
+    Bad(int)
+    Denied
+}
+
+fn Read() Result[int, FileError] { return Ok(1) }
+fn ReadAny() Result[int, error] { return Ok(1) }
+
+fn MatchPatterns() int {
+    let result := Read()
+    match result {
+        Ok(value) => return value
+        Err(.NotFound { Code: matchCode, Path: ref path }) => {
+            discard path
+            return matchCode
+        }
+        Err(.Bad(matchPosition)) => return matchPosition
+        Err(FileError.Denied) => return 0
+    }
+}
+
+fn TryPatterns() int {
+    let value := try Read() {
+        Err(.NotFound { Code }) => Code
+        Err(FileError.Bad(tryPosition)) => tryPosition
+        Err(.Denied) => 0
+    }
+    return value
+}
+
+fn IgnoredPayload() int {
+    return try Read() {
+        Err(.NotFound) => 0
+        Err(_) => 1
+    }
+}
+
+fn OpenPatterns() int {
+    match ReadAny() {
+        Ok(value) => return value
+        Err(FileError.Bad(openPosition)) => return openPosition
+        Err(_) => return 0
+    }
+}
+
+type TypedError[T] union error {
+    Item(T)
+}
+
+fn ReadTyped() Result[int, TypedError[string]] { return Ok(1) }
+
+fn TypedPattern() int {
+    return try ReadTyped() {
+        Err(.Item(typedPayload)) => {
+            discard typedPayload
+            0
+        }
+    }
+}

@@ -44,6 +44,15 @@ type ResolvedMatchFieldBinding struct {
 // Rules: rules/control-flow/flowcontrol_match.md — §§ 10, 12–15;
 // rules/foundations/grammar.md — StructLikeUnionPattern.
 func (a *Analyzer) analyzeMatchFieldPattern(subject ast.Expression, pattern *ast.MatchPattern, subjectType Type) (matchPatternInfo, bool) {
+	subjectPlace, hasPlace := a.resolvePlace(subject)
+	return a.analyzeUnionFieldPatternAt(subject, subjectPlace, hasPlace, pattern, subjectType)
+}
+
+// analyzeUnionFieldPatternAt resolves a shallow field pattern against the
+// union value stored at subjectPlace. A match subject passes its own Place;
+// an MD-029 error pattern passes the Err payload Place of its Result subject,
+// so field borrows project through the selected error variant.
+func (a *Analyzer) analyzeUnionFieldPatternAt(subject ast.Expression, subjectPlace Place, hasPlace bool, pattern *ast.MatchPattern, subjectType Type) (matchPatternInfo, bool) {
 	variantName, variantToken := pattern.Name, pattern.NameToken
 	if variantToken.Line == 0 {
 		variantToken = pattern.Token
@@ -73,7 +82,6 @@ func (a *Analyzer) analyzeMatchFieldPattern(subject ast.Expression, pattern *ast
 	}
 	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}
 	payloadType := Type{Name: typeDisplayName(subjectType) + "." + variant.Name, Kind: StructType, Fields: variant.PayloadFields}
-	subjectPlace, hasPlace := a.resolvePlace(subject)
 	seenFields, seenNames := map[string]bool{}, map[string]bool{}
 	valid := true
 	for _, field := range pattern.Fields {

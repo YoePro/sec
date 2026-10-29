@@ -106,6 +106,11 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	if floatCoreReceiver(lookupType) && strings.HasPrefix(member.ID, "CKM-FLOAT-") {
 		return a.inferFloatCoreCall(expr, lookupType, member)
 	}
+	if decimalCoreReceiver(lookupType) && strings.HasPrefix(member.ID, "CKM-DECIMAL") {
+		if result, value, handled := a.inferDecimalCoreCall(expr, lookupType, member); handled {
+			return result, value, true
+		}
+	}
 	switch member.Name {
 	case "Ok", "Err":
 		return a.inferConsumingResultProjection(expr, memberExpr, receiverType, lookupType, member)

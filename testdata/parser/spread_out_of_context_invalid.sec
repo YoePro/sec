@@ -1,0 +1,12 @@
+module main
+
+fn LetSpread(values: int[2]) void {
+    let bad := values...
+    discard bad
+}
+
+fn ReturnSpread(values: int[2]) int[2] {
+    return values...
+}
+
+fn After() int { return 7 }

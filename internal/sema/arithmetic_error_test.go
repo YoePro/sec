@@ -24,7 +24,7 @@ func TestArithmeticErrorHasFiveVariants(t *testing.T) {
 		body string
 		want string
 	}{
-		"all five": {"fn F(a: int, b: int) int {\n    return try a / b {\n        Err(ArithmeticError.Overflow) => 1\n        Err(ArithmeticError.DivisionByZero) => 2\n        Err(ArithmeticError.InvalidShift) => 3\n        Err(ArithmeticError.ScaleOverflow) => 4\n        Err(ArithmeticError.PrecisionExhausted) => 5\n    }\n}\n", ""},
+		"all five":  {"fn F(a: int, b: int) int {\n    return try a / b {\n        Err(ArithmeticError.Overflow) => 1\n        Err(ArithmeticError.DivisionByZero) => 2\n        Err(ArithmeticError.InvalidShift) => 3\n        Err(ArithmeticError.ScaleOverflow) => 4\n        Err(ArithmeticError.PrecisionExhausted) => 5\n    }\n}\n", ""},
 		"catch-all": {"fn F(a: int, b: int) int {\n    return try a / b {\n        Err(ArithmeticError.DivisionByZero) => 2\n        Err(_) => 0\n    }\n}\n", ""},
 		"constants": {"fn F() ArithmeticError {\n    return ArithmeticError.PrecisionExhausted\n}\n", ""},
 		"old three are not exhaustive": {"fn F(a: int, b: int) int {\n    return try a / b {\n        Err(ArithmeticError.Overflow) => 1\n        Err(ArithmeticError.DivisionByZero) => 2\n        Err(ArithmeticError.InvalidShift) => 3\n    }\n}\n",

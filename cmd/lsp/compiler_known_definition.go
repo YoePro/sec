@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -50,18 +51,21 @@ func rememberSyntheticDefinition(uri string, member sema.CompilerKnownMember) {
 	syntheticDefinitionMembers.entries[uri] = member
 }
 
-// compilerKnownDefinitionURI keeps receiver instances separate while leaving
-// the stable operation ID visible in the path. The instance digest contains
-// no workspace paths and does not change compiler semantic identity.
+// compilerKnownDefinitionURI gives the editor a friendly filename while stable
+// registry identity remains a transport query. Receiver instances retain their
+// digest; neither filenames nor digests contain workspace paths.
 // Rules: rules/compiler/compiler_known_members.md — "Synthetic definitions",
-// "Stable member identity".
+// "User-facing symbol names", "Stable member identity".
 func compilerKnownDefinitionURI(member sema.CompilerKnownMember) string {
-	uri := compilerKnownScheme + ":/" + member.ID + ".sec"
+	query := url.Values{"id": {member.ID}}
 	if member.BoundReceiver != "" {
-		instance := sha256.Sum256([]byte(member.BoundReceiver + "\x00" + member.Signature))
-		uri += fmt.Sprintf("?instance=%x", instance)
+		instance := sha256.Sum256([]byte(member.BoundReceiver + "\x00" + member.Signature + "\x00" + member.Documentation))
+		query.Set("instance", fmt.Sprintf("%x", instance))
 	}
-	return uri
+	// A virtual document is not a disk file, but keep its public label in a
+	// single basename even when a receiver contains module path separators.
+	label := strings.NewReplacer("/", "∕", "\\", "∖").Replace(member.DisplayFacts().Label)
+	return (&url.URL{Scheme: compilerKnownScheme, Path: "/" + label + ".sec", RawQuery: query.Encode()}).String()
 }
 
 // compilerKnownDefinitionLocation navigates a compiler-known member without an
@@ -89,25 +93,56 @@ func compilerKnownDefinitionLocation(member sema.CompilerKnownMember) location {
 // compilerKnownDefinitionText answers sec/compilerKnownDefinition for a
 // synthetic definition URI. A member not yet navigated in this server process
 // is rendered from its registry ID alone.
+// Rules: rules/compiler/compiler_known_members.md — "Synthetic definitions",
+// "Private core UTC wall-clock intrinsic", "User-facing symbol names".
 func compilerKnownDefinitionText(uri string) (string, bool) {
-	prefix := compilerKnownScheme + ":"
-	if !strings.HasPrefix(uri, prefix) {
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Scheme != compilerKnownScheme || parsed.Host != "" || parsed.Opaque != "" || parsed.Fragment != "" {
 		return "", false
 	}
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil || len(query["id"]) > 1 || len(query["instance"]) > 1 {
+		return "", false
+	}
+	for key := range query {
+		if key != "id" && key != "instance" {
+			return "", false
+		}
+	}
+	// Canonicalize URI escaping/query order after editor transport. Cache keys
+	// still include the resolved label, operation identity and instance digest.
+	canonical := (&url.URL{Scheme: compilerKnownScheme, Path: parsed.Path, RawQuery: query.Encode()}).String()
 	syntheticDefinitionMembers.Lock()
-	member, cached := syntheticDefinitionMembers.entries[uri]
+	member, cached := syntheticDefinitionMembers.entries[canonical]
 	syntheticDefinitionMembers.Unlock()
 	if cached {
 		return sema.CompilerKnownSyntheticDefinition(member), true
 	}
-	// Unknown instance URIs have no receiver fact; never return an unrelated
-	// cached instance or pretend that generic text is its resolved definition.
-	if strings.Contains(uri, "?") {
+	// Missing instances never fall back to a generic or different receiver.
+	if _, instance := query["instance"]; instance {
 		return "", false
 	}
-	id := strings.TrimSuffix(strings.TrimLeft(strings.TrimPrefix(uri, prefix), "/"), ".sec")
+	id := query.Get("id")
+	if id == "" {
+		// Previously issued ID-only URIs remain readable through the registry;
+		// new navigation never emits these implementation-named basenames.
+		if parsed.RawQuery != "" || !strings.HasPrefix(parsed.Path, "/") || !strings.HasSuffix(parsed.Path, ".sec") {
+			return "", false
+		}
+		id = strings.TrimSuffix(strings.TrimPrefix(parsed.Path, "/"), ".sec")
+		if strings.Contains(id, "/") {
+			return "", false
+		}
+	}
 	if id == "" {
 		return "", false
+	}
+	// Internal function definitions also require an authorized Sema navigation;
+	// knowing their transport ID does not supply privileged-core authority.
+	for _, function := range sema.CompilerKnownFunctions() {
+		if function.ID == id && function.Internal {
+			return "", false
+		}
 	}
 	if symbol, ok := sema.CompilerKnownIntrinsicSymbolByID(id); ok {
 		// Core-only value definitions require navigation from an authorized

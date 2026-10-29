@@ -1,0 +1,23 @@
+module main
+let Limit := 10
+fn Nothing() void {}
+fn Produce() int { return 7 }
+type DisposableNumber struct { Value: int }
+impl DisposableNumber { free {} }
+
+fn Check() void {
+    discard 42 // useless
+    discard "hello" // useless
+    discard true // useless
+    discard 1 + 2 // useless
+    discard Limit + 1 // useless
+    discard Nothing() // void
+    let value := 42
+    discard value
+    discard Produce()
+    discard new DisposableNumber()
+    for i in 0..<3 {
+        discard 5 // useless
+        discard Nothing() // void
+    }
+}

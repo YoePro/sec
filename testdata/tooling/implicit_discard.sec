@@ -1,0 +1,36 @@
+module main
+
+type Counter struct { Value: int, }
+impl Counter {
+    fn Read() int { return self.Value }
+}
+type Created struct {}
+impl Created { init(count: int) {} }
+fn Number() int { return 7 }
+fn Nothing() void {}
+fn Maybe() Option[int] { return Some(1) }
+fn Identity[T](value: T) T { return <-value }
+
+fn Check(flag: bool) void {
+    Number() // advisory
+    Nothing()
+    discard Number()
+    let bound := Number()
+    discard bound
+    let counter := Counter { Value: 2 }
+    counter.Read() // advisory
+    Maybe() // advisory
+    for i in 0..<3 {
+        Number() // advisory
+    }
+    if flag {
+        Number() // advisory
+    }
+    defer {
+        Number() // advisory
+    }
+    Identity[int](3) // advisory
+    int(4) // advisory
+    new Counter() // advisory
+    new Created(1) // advisory
+}

@@ -1,0 +1,19 @@
+module main
+let Known := "hello"
+fn Separate(value: string) void {
+    switch value {
+    case "a" + "b": return
+    case "ab": return
+    }
+}
+fn SameClause(value: string) void {
+    switch value {
+    case "hello", Known: return
+    }
+}
+fn Escaped(value: string) void {
+    switch value {
+    case "\x41" + "\0": return
+    case "A\0": return
+    }
+}

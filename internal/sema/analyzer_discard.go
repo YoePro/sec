@@ -63,12 +63,16 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 		}
 	}
 
+	errorsBefore := len(a.errors)
 	valueType, _ := a.inferExpression(stmt.Value)
 	if valueType.Kind == InvalidType {
 		return
 	}
 	if !a.validateExplicitDiscardType(valueType, expressionToken(stmt.Value)) {
 		return
+	}
+	if len(a.errors) == errorsBefore {
+		a.recordExplicitDiscardAdvisory(stmt, valueType)
 	}
 	if place, resolved := a.resolvePlace(stmt.Value); resolved && a.rejectCustomFreeFieldDiscard(place, expressionToken(stmt.Value)) {
 		return

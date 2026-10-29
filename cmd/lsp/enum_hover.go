@@ -11,6 +11,7 @@ import (
 // enumVariantHoverContents presents only an enum member Sema resolved to its
 // declaration token, attaching the parser-owned documentation for that member.
 // Rules: rules/tooling/lsp.md — "Hover";
+// rules/declarations/enums.md — §§5,7–8,12.6,18;
 // rules/concurrency/atomics.md — §43(1) (MemoryOrder variants).
 func enumVariantHoverContents(analyzer *sema.Analyzer, program *ast.Program, definition lexer.Token) (string, bool) {
 	for _, typ := range analyzer.Types() {
@@ -30,6 +31,12 @@ func enumVariantHoverContents(analyzer *sema.Analyzer, program *ast.Program, def
 				continue
 			}
 			contents := "```sec\n" + lspTypeName(typ) + "." + name + "\n```"
+			if typ.Underlying == "string" {
+				if value.StringValue != nil {
+					contents = "```sec\n" + lspTypeName(typ) + "." + name + " = " + lexer.QuoteDecodedStringLiteral(*value.StringValue) + "\n```"
+				}
+				contents += stringEnumHoverDetails(typ)
+			}
 			for _, attachment := range program.Documentation {
 				member, ok := attachment.Declaration.(*ast.EnumValue)
 				if ok && member != nil && member.Name != nil && sameSourceToken(member.Name.Token, definition) {
@@ -42,19 +49,25 @@ func enumVariantHoverContents(analyzer *sema.Analyzer, program *ast.Program, def
 	return "", false
 }
 
-// enumTypeHoverContents renders the closed variant set retained by Sema. Core
-// documentation stays attached to its real declaration rather than a second
-// hand-maintained description of the compiler-known enum.
+// enumTypeHoverContents renders Sema's declared members and, for string enums,
+// their closed domain/default/conversion facts. Core documentation stays
+// attached to its real declaration rather than a second maintained description.
 // Rules: rules/tooling/lsp.md — "Hover";
+// rules/declarations/enums.md — §§5,7–8,12.6,18;
 // rules/concurrency/atomics.md — §§5,43(1).
 func enumTypeHoverContents(typ sema.Type, program *ast.Program) string {
 	header := "enum " + typ.Name + genericHeaderDisplay(typ.GenericParameters, typ.GenericConstraints)
 	// Rules: rules/declarations/enums.md — §3 "Declaration forms";
 	// rules/concurrency/mutex.md — §7(1–3).
+	members := typ.EnumValues
+	if typ.Underlying == "string" {
+		header += " string"
+		members = stringEnumDeclarationMembers(typ)
+	}
 	if typ.ErrorAssignable {
 		header += " error"
 	}
-	contents := "```sec\n" + header + " {\n    " + strings.Join(typ.EnumValues, "\n    ") + "\n}\n```"
+	contents := "```sec\n" + header + " {\n    " + strings.Join(members, "\n    ") + "\n}\n```" + stringEnumHoverDetails(typ)
 	for _, attachment := range program.Documentation {
 		declaration, ok := attachment.Declaration.(*ast.EnumDeclaration)
 		if !ok || declaration == nil || declaration.Name == nil || declaration.Name.Value != typ.Name {

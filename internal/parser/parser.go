@@ -492,6 +492,12 @@ func (p *Parser) parseStatement() ast.Statement {
 		}
 		return p.parseExpressionOrAssignmentStatement()
 
+	case lexer.NEW:
+		// Ordinary constructor results follow the same statement discard
+		// boundary as calls; Sema enforces must-use and advisory policy.
+		// Rules: grammar.md — ExpressionStatement; discard.md — §11.
+		return p.parseExpressionStatement()
+
 	case lexer.SELF:
 		return p.parseExpressionOrAssignmentStatement()
 

@@ -242,9 +242,12 @@ type Analyzer struct {
 	noPanicLambdaSeen map[*ast.LambdaExpression]bool
 	// atomicFenceOrders retains the established order of each valid
 	// atomic.Fence call (atomics.md § 26).
-	atomicFenceOrders           map[*ast.CallExpression]string
-	tryFailureSet               *tryFailureSetContext
-	tryHandlerDepth             int
+	atomicFenceOrders map[*ast.CallExpression]string
+	tryFailureSet     *tryFailureSetContext
+	tryHandlerDepth   int
+	// tryHandlerFields holds the shallow field bindings of MD-029
+	// `Err(E.Variant { ... })` try handlers for their handler bodies.
+	tryHandlerFields            map[*ast.TryHandler][]matchFieldBinding
 	openErrorObligationsReady   bool
 	openErrorObligationList     []Type
 	invalidInterfaceInheritance map[string]bool
@@ -344,8 +347,9 @@ type Analyzer struct {
 	// diagnosticRules is the project's rule-specific diagnostic policy
 	// (rules/tooling/diagnostics.md § 18), applied when an optional
 	// diagnostic is recorded.
-	diagnosticRules   diagnostics.RulePolicy
-	redundantDiscards map[*ast.DiscardStatement]Error
+	diagnosticRules           diagnostics.RulePolicy
+	explicitDiscardAdvisories map[*ast.DiscardStatement]Error
+	implicitDiscards          map[*ast.ExpressionStatement]Error
 	// placeIdentities allocates the canonical P15 storage, invalidation,
 	// epoch, address-space, borrow and lifetime identities (place_identities.go).
 	placeIdentities placeIdentityAllocator
@@ -580,7 +584,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	}
 	a.errorKeys = map[string]bool{}
 	a.warnings = nil
-	a.redundantDiscards = map[*ast.DiscardStatement]Error{}
+	a.explicitDiscardAdvisories = map[*ast.DiscardStatement]Error{}
+	a.implicitDiscards = map[*ast.ExpressionStatement]Error{}
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
 	a.predeclaredStatic = map[sourceTokenKey]bool{}
@@ -798,7 +803,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.iteratorLoweringProgram = program
 	// Advisory promotion must not change mandatory ownership/effect analysis.
 	// Rules: rules/control-flow/discard.md — §§5,38.
-	a.emitRedundantDiscardAdvisories()
+	a.emitExplicitDiscardAdvisories()
+	a.emitImplicitDiscardAdvisories()
 
 	return cloneSemanticErrors(a.errors)
 }
@@ -2336,48 +2342,15 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	}
 }
 
-func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) {
-	if tryExpr, ok := stmt.Expression.(*ast.TryExpression); ok {
-		if a.statementTries == nil {
-			a.statementTries = map[*ast.TryExpression]bool{}
-		}
-		a.statementTries[tryExpr] = true
-	}
-	exprType, _ := a.inferExpression(stmt.Expression)
-	if _, ok := stmt.Expression.(*ast.SpawnExpression); ok && exprType.Kind != InvalidType {
-		a.addErrorAtToken(stmt.Token, "spawned task result must be owned, awaited, joined or detached")
-		return
-	}
-	if exprType.Kind == InvalidType || exprType.Kind == VoidType || !isCallLikeExpression(stmt.Expression) {
-		return
-	}
-	if !isMustUseType(exprType) {
-		// Ordinary call results are implicitly discarded at statement end. The
-		// configurable advisory for this acknowledged loss is tracked separately.
-		return
-	}
-	if a.inDeferBlock && exprType.Kind == ResultType {
-		a.addErrorAtTokenWithMetadata(
-			expressionToken(stmt.Expression),
-			diagnostics.UnhandledMustUseResult,
-			"use try, match, binding, return, or explicit discard",
-			"unhandled Result inside defer; handle it or discard it explicitly",
-		)
-		return
-	}
-	a.addErrorAtTokenWithMetadata(
-		expressionToken(stmt.Expression),
-		diagnostics.UnhandledMustUseResult,
-		"use try, match, binding, return, or explicit discard",
-		"result of %s has type %s and must be handled explicitly",
-		expressionStatementDisplayName(stmt.Expression),
-		typeDisplayName(exprType),
-	)
-}
-
+// isCallLikeExpression identifies standalone calls and constructions whose
+// results follow the ordinary implicit-discard/must-use boundary.
+// Rules: rules/control-flow/discard.md — §11.
 func isCallLikeExpression(expr ast.Expression) bool {
-	_, call := expr.(*ast.CallExpression)
-	return call
+	switch expr.(type) {
+	case *ast.CallExpression, *ast.NewExpression:
+		return true
+	}
+	return false
 }
 
 func isMustUseType(typ Type) bool {
@@ -9293,49 +9266,6 @@ func genericNamedTypeWithRepresentation(template Type, representation Type) Type
 	return out
 }
 
-// substituteGenericType replaces parameters in representation, element and
-// callable facts while retaining each named declaration identity.
-// Rules: rules/declarations/generics.md — §17 Substitution; rules/types/types.md — Named types.
-func substituteGenericType(typ Type, substitution map[string]Type) Type {
-	if typ.NamedBase != nil {
-		base := substituteGenericType(*typ.NamedBase, substitution)
-		typ.NamedBase = &base
-	}
-	if typ.Kind == GenericType {
-		if concrete, ok := substitution[typ.Name]; ok {
-			return concrete
-		}
-		return typ
-	}
-	if len(typ.TypeArgs) > 0 {
-		out := typ
-		out.TypeArgs = make([]Type, 0, len(typ.TypeArgs))
-		for _, arg := range typ.TypeArgs {
-			out.TypeArgs = append(out.TypeArgs, substituteGenericType(arg, substitution))
-		}
-		return out
-	}
-	if typ.Element != nil {
-		out := typ
-		element := substituteGenericType(*typ.Element, substitution)
-		out.Element = &element
-		return out
-	}
-	if typ.Kind == FunctionType {
-		out := typ
-		out.FunctionParameterTypes = make([]Type, 0, len(typ.FunctionParameterTypes))
-		for _, param := range typ.FunctionParameterTypes {
-			out.FunctionParameterTypes = append(out.FunctionParameterTypes, substituteGenericType(param, substitution))
-		}
-		if typ.FunctionReturnType != nil {
-			returnType := substituteGenericType(*typ.FunctionReturnType, substitution)
-			out.FunctionReturnType = &returnType
-		}
-		return out
-	}
-	return typ
-}
-
 func (a *Analyzer) resolveFunctionType(ref *ast.TypeReference) (Type, bool) {
 	params := make([]Type, 0, len(ref.FunctionParameterTypes))
 	ok := true
@@ -11088,13 +11018,14 @@ func (a *Analyzer) enumConversionResultType(target Type, sourceType Type, source
 		if sourceType.Kind != StringType || sourceType.Named {
 			return Type{Kind: InvalidType}, false
 		}
-		if literal, constant := source.(*ast.StringLiteral); constant {
+		constant, outcome := a.semanticCompileTimeConstant(source)
+		if outcome == compileTimeEvaluated && constant.Kind == StringType && !constant.NominalText {
 			for _, enumCase := range target.EnumConsts {
-				if enumCase.StringValue != nil && *enumCase.StringValue == literal.Value {
+				if enumCase.StringValue != nil && *enumCase.StringValue == constant.String {
 					return target, true
 				}
 			}
-			a.addErrorAtToken(expressionToken(source), "string value %q is not a declared value of closed enum %s", literal.Value, target.Name)
+			a.reportUndeclaredStringEnumValue(expressionToken(source), target, constant.String)
 			return Type{Kind: InvalidType}, false
 		}
 		return a.fallibleEnumConversionType(target), true
@@ -11175,10 +11106,22 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 	matchedVariants := map[string]lexer.Token{}
 	var lastVariantToken lexer.Token
 
+	var arithmeticVariants map[string]bool
+	arithmeticKnown, arithmeticChecked := false, false
 	for sourceIndex, handler := range expr.Handlers {
 		_, bindingName, variantName, bindingType, ok := a.analyzeTryHandlerPattern(handler, errorType)
 		if !ok {
 			continue
+		}
+		// MD-042 § 9: failure provenance may make a typed handler inactive.
+		if variantName != "" && errorType.Kind == EnumType && errorType.Name == "ArithmeticError" {
+			if !arithmeticChecked {
+				arithmeticVariants, arithmeticKnown = a.provenArithmeticFailureVariants(expr)
+				arithmeticChecked = true
+			}
+			if arithmeticKnown && !arithmeticVariants[variantName] {
+				a.reportInactiveTryHandler(handler, errorType, variantName, arithmeticVariants)
+			}
 		}
 
 		if errorCatchAllSeen {
@@ -11192,7 +11135,9 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		// toward variant coverage.
 		guarded := handler.Guard != nil
 
-		if bindingName != "" && !guarded {
+		// An MD-029 payload binding selects one variant; only a whole-error
+		// binding is a catch-all.
+		if bindingName != "" && variantName == "" && !guarded {
 			errorCatchAllSeen = true
 			errorCatchAllToken = handler.Token
 		}
@@ -11217,9 +11162,10 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		}
 
 		patternKind := TryHandlerErrVariant
-		if bindingName != "" {
+		if bindingName != "" && variantName == "" {
 			patternKind = TryHandlerErrCatchAll
 		}
+		fieldBindings := a.tryHandlerFields[handler]
 		resolvedBindingName := bindingName
 		payloadDiscard := false
 		if bindingName == "_" {
@@ -11233,7 +11179,8 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		narrowed := errorType.Kind == ErrorRootType && variantName != ""
 		classification := CopyClassificationOf(bindingType)
 		bindingCopies := resolvedBindingName != "" && (classification == CopyTrivial || classification == CopySemantic)
-		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue, OpenErrorNarrowing: narrowed, BindingCopies: bindingCopies})
+		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue, OpenErrorNarrowing: narrowed, BindingCopies: bindingCopies,
+			ErrorPayload: variantName != "" && resolvedBindingName != "", FieldBindings: fieldBindings != nil, FieldBindingList: resolvedMatchFieldBindings(matchPatternInfo{FieldBindings: fieldBindings})})
 	}
 
 	if errorCatchAllSeen {
@@ -11241,6 +11188,12 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		return plan, len(a.errors) == errorsBefore
 	}
 	if errorType.Kind == EnumType && len(errorType.EnumValues) > 0 && len(matchedVariants) >= len(errorType.EnumValues) {
+		plan.Exhaustive = true
+		return plan, len(a.errors) == errorsBefore
+	}
+	// MD-029: unguarded handlers for every variant of a closed union error,
+	// including payload-carrying ones, cover the whole error channel.
+	if errorType.Kind == UnionType && len(unhandledTryVariants(errorType, matchedVariants)) == 0 && len(errorType.UnionVariants) > 0 {
 		plan.Exhaustive = true
 		return plan, len(a.errors) == errorsBefore
 	}
@@ -11268,6 +11221,15 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 // unhandledTryVariants lists the qualified enum error variants that no
 // unguarded handler covers, in declaration order.
 func unhandledTryVariants(errorType Type, matched map[string]lexer.Token) []string {
+	if errorType.Kind == UnionType {
+		missing := []string{}
+		for _, variant := range errorType.UnionVariants {
+			if _, covered := matched[variant.Name]; !covered {
+				missing = append(missing, typeDisplayName(errorType)+"."+variant.Name)
+			}
+		}
+		return missing
+	}
 	if errorType.Kind != EnumType {
 		return nil
 	}
@@ -11331,6 +11293,9 @@ func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, errorType T
 		a.reportForbiddenTrySuccessHandler(pattern.Token, "Ok", "Err")
 		return "", "", "", Type{}, false
 	case *ast.ErrExpression:
+		if isStructuredErrPattern(handler.ErrPattern) {
+			return a.analyzeTryStructuredErrPattern(handler, errorType)
+		}
 		return a.analyzeTryErrHandlerPattern(pattern, errorType)
 	default:
 		a.addErrorAtTokenWithMetadata(expressionToken(handler.Pattern), diagnostics.InvalidTryHandlerPattern,
@@ -11450,6 +11415,7 @@ func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, er
 					return "", "", "", Type{}, false
 				}
 			}
+			a.reportOmittedTryHandlerPayload(pattern, patternType)
 			return "Err", "", typeDisplayName(patternType) + "." + pattern.Property.Value, errorType, true
 		}
 		if !sameConcreteType(patternType, errorType) {
@@ -11458,6 +11424,7 @@ func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, er
 				"try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
 			return "", "", "", Type{}, false
 		}
+		a.reportOmittedTryHandlerPayload(pattern, patternType)
 		return "Err", "", pattern.Property.Value, errorType, true
 	default:
 		a.addErrorAtTokenWithMetadata(expressionToken(errPattern.Value), diagnostics.InvalidTryHandlerPattern,
@@ -11501,19 +11468,6 @@ func rootPlaceReasonState(state map[string]string, root string) map[string]strin
 	return result
 }
 
-func tryHandlerBindingIdentifier(handler *ast.TryHandler) *ast.Identifier {
-	if handler == nil {
-		return nil
-	}
-	switch pattern := handler.Pattern.(type) {
-	case *ast.ErrExpression:
-		identifier, _ := pattern.Value.(*ast.Identifier)
-		return identifier
-	default:
-		return nil
-	}
-}
-
 func (a *Analyzer) analyzeMatchStatement(stmt *ast.MatchStatement) {
 	if stmt.Match == nil {
 		return
@@ -11550,6 +11504,10 @@ type matchPatternInfo struct {
 	// FieldBindings are the shallow named-field bindings of a struct-like
 	// union pattern (flowcontrol_match.md § 10).
 	FieldBindings []matchFieldBinding
+	// PayloadPlaceResolved records that the pattern already projected
+	// PayloadPlace, as an MD-029 error pattern does through Err and the
+	// selected variant (errorhandling.md § 15.3).
+	PayloadPlaceResolved bool
 }
 
 // analyzeMatch validates patterns, exhaustiveness, branch state and an optional
@@ -11598,6 +11556,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	branches := []branchAnalysis{}
 	patternError := false
 	seenEmpty := false
+	// MD-042: a soundly proven active variant restricts the reachable domain.
+	provenVariant := a.provenMatchVariant(expr.Subject, subjectType, maybeEmptySubject)
 	addArmResult := func(arm *ast.MatchArm, armType Type) {
 		if !valueContext || armType.Kind == InvalidType {
 			return
@@ -11632,6 +11592,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		var ok bool
 		if arm.Pattern.Kind == ast.MatchPatternFields {
 			info, ok = a.analyzeMatchFieldPattern(expr.Subject, arm.Pattern, subjectType)
+		} else if isStructuredErrPattern(arm.Pattern) {
+			info, ok = a.analyzeMatchErrPattern(expr.Subject, arm.Pattern, subjectType)
 		} else {
 			info, ok = a.analyzeMatchPattern(arm.Pattern.Expression(), subjectType)
 		}
@@ -11655,7 +11617,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			a.addErrorAtToken(arm.Token, "unreachable match arm; earlier Err arms already cover every variant of %s", typeDisplayName(subjectType.TypeArgs[1]))
 			continue
 		}
-		if info.BindingName != "" && info.PayloadVariant != "" {
+		if info.BindingName != "" && info.PayloadVariant != "" && !info.PayloadPlaceResolved {
 			if subjectPlace, placeOK := a.resolvePlace(expr.Subject); placeOK {
 				payloadType := info.BindingType
 				if info.PayloadBorrow && payloadType.Element != nil {
@@ -11724,6 +11686,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			}
 		}
 
+		if provenVariant != "" && info.Kind == "variant" && info.Variant != "" && info.Variant != provenVariant {
+			a.reportInactiveMatchArm(arm, expr.Subject, subjectType, info.Variant, provenVariant)
+		}
 		armRefinementCount := len(a.activeConditionFacts)
 		if binding, state, known := matchArmResultState(expr.Subject, arm); known {
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
@@ -11732,7 +11697,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]
 		branches = append(branches, branch)
 		resolvedArm := a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
-		if !guarded && matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) {
+		if !guarded && (matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) || provenVariant != "" && seenVariants[provenVariant]) {
 			resolvedArm.ResidualAlwaysMatches = true
 		}
 		plan.Arms = append(plan.Arms, resolvedArm)
@@ -11744,7 +11709,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		a.addErrorAtToken(expr.Token, "catch-all pattern may not hide Err")
 	}
 	exhaustive := true
-	if !patternError {
+	if !patternError && !(provenVariant != "" && seenVariants[provenVariant]) {
 		exhaustive = a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants, seenEnumValues)
 	}
 	if !patternError && maybeEmptySubject != "" && !seenEmpty && !catchAll {
@@ -11752,6 +11717,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		exhaustive = false
 	}
 	plan.EmptyStateReachable = maybeEmptySubject != ""
+	if !patternError && catchAll {
+		a.reportImplicitEmptyCatchAll(expr, maybeEmptySubject, plan.Arms)
+	}
+	plan.ProvenActiveVariant = provenVariant
 	recordPlan := true
 	if !exhaustive {
 		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
@@ -11951,11 +11920,12 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			owner, ownerOK := typePathFromExpression(pattern.Object)
 			variant, variantOK := lookupUnionVariant(subjectType, pattern.Property.Value)
 			if ownerOK && a.resolveTypeName(owner) == subjectType.Name && variantOK {
-				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-					a.reportUnionPatternPayloadBindingRequired(pattern.Property.Token, subjectType, variant)
-					return matchPatternInfo{}, false
-				}
 				a.bindDefinition(pattern.Property.Token, variant.Token)
+				// MD-029: a bare variant selects a payload-carrying variant
+				// without binding its payload.
+				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+					a.reportOmittedPayloadPattern(pattern.Property.Token, subjectType, variant)
+				}
 				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
 			}
 		}
@@ -11993,9 +11963,10 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		if subjectType.Kind == UnionType {
 			if variant, ok := lookupUnionVariant(subjectType, pattern.Value); ok {
 				a.bindDefinition(pattern.Token, variant.Token)
+				// MD-029: a bare variant selects a payload-carrying variant
+				// without binding its payload.
 				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-					a.reportUnionPatternPayloadBindingRequired(pattern.Token, subjectType, variant)
-					return matchPatternInfo{}, false
+					a.reportOmittedPayloadPattern(pattern.Token, subjectType, variant)
 				}
 				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
 			}

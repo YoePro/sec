@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"sec/internal/testsupport"
 )
@@ -38,6 +40,9 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"division_trap", 0, true},
 		{"for_loops", 0, false},
 		{"switch", 0, false},
+		{"switch_loop_control", 0, false},
+		{"logical_contexts", 0, false},
+		{"overload_identity", 0, false},
 		{"integer_conversions", 0, false},
 		{"characters", 0, false},
 		{"enums", 0, false},
@@ -48,6 +53,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"panic_trap", 0, true},
 		{"assert_trap", 0, true},
 		{"integer_enums", 0, false},
+		{"enum_known_narrowing", 0, false},
 		{"float_core", 0, false},
 		{"floats", 0, false},
 		{"float_literals", 0, false},
@@ -60,7 +66,13 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("build: %d %s", code, stderr)
 			}
-			err := exec.Command(program).Run()
+			// A wrong loop-control target can otherwise hang this regression.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			err := exec.CommandContext(ctx, program).Run()
+			if ctx.Err() != nil {
+				t.Fatalf("program did not terminate: %v", ctx.Err())
+			}
 			var exit *exec.ExitError
 			switch {
 			case test.trap:

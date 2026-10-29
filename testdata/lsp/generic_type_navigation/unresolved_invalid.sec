@@ -1,0 +1,9 @@
+module main
+import "catalog"
+
+type Absent struct {}
+type T struct {}
+
+fn Invalid[T: catalog.Absent & catalog.Named](value: T) void {
+    discard value
+}

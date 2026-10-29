@@ -76,8 +76,9 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := validateTryHandlerSchema(module); err != nil {
 		return nil, err
 	}
-	for index, function := range module.Functions {
-		e.functions[function.ID] = fmt.Sprintf("sec_fn_%d", index)
+	e.functions, err = resolvedFunctionSymbols(module)
+	if err != nil {
+		return nil, err
 	}
 	if err := e.emitModule(); err != nil {
 		return nil, err

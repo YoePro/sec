@@ -49,8 +49,14 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}()
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := someConstructorHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if read, ok := analyzer.UnitMetadataReadAt(token.File, token.Line, token.Column); ok {
 			return unitMetadataHover(tokenRange(text, token), read), true
+		}
+		if hover, ok := quantityDurationHover(text, program, analyzer, token); ok {
+			return hover, true
 		}
 		if hover, ok := compareExchangeResultHoverAt(text, program, analyzer, token); ok {
 			return hover, true
@@ -129,6 +135,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
 		if len(definitions) == 1 {
+			if contents, found := errorVariantHoverContents(program, analyzer, token, definitions[0]); found {
+				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
+			}
 			if contents, found := enumVariantHoverContents(analyzer, program, definitions[0]); found {
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}

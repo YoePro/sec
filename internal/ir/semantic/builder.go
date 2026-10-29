@@ -2893,6 +2893,11 @@ func lowerableTryPlan(plan sema.ResolvedTryPlan) bool {
 		if handler.OpenErrorNarrowing {
 			return false
 		}
+		// MD-029 error-variant payload bindings need variant payload
+		// extraction, which Semantic IR does not lower yet.
+		if handler.ErrorPayload || handler.FieldBindings {
+			return false
+		}
 	}
 	return true
 }

@@ -1,0 +1,15 @@
+module main
+
+fn Select(value: int8) int { return 11 }
+fn Select(value: uint8) int { return 22 }
+fn Select(value: int16) int { return 33 }
+
+fn main() int {
+    let signed: int8 := 1
+    let unsigned: uint8 := 1
+    let wider: int16 := 1
+    if Select(signed) != 11 { return 1 }
+    if Select(unsigned) != 22 { return 2 }
+    if Select(wider) != 33 { return 3 }
+    return 0
+}

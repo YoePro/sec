@@ -1,0 +1,6 @@
+module main
+
+fn Publish() void {
+    atomic.Fence(MemoryOrder.Acquire)
+    atomic.Fence(MemoryOrder.Release)
+}

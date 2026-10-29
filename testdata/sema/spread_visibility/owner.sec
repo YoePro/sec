@@ -1,0 +1,31 @@
+module vault
+
+type Level int range 0..10
+
+type Public struct {
+    Name: string,
+    Count: Level,
+}
+
+type Hidden struct {
+    Name: string,
+    _representation: int,
+}
+
+type HiddenRef struct {
+    Name: string,
+    _reference: ref int,
+}
+
+type Other struct {
+    Name: string,
+    Count: Level,
+}
+
+fn CopyInside(value: Hidden) Hidden {
+    return Hidden { value..., Name: "inside" }
+}
+
+fn CopyRefInside(value: HiddenRef) HiddenRef {
+    return HiddenRef { value..., Name: "inside" }
+}

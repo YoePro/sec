@@ -69,6 +69,7 @@ integrations:
       - testdata/lsp/contextual_membership_semantic_tokens.sec
       - testdata/sema/resolved_contextual_operator_facts.sec
     implemented:
+      - "fixed-array integer membership in Semantic IR (2026-10-29; internal/ir/semantic/array_membership.go): `value in array` and `value not in array` over a fixed array of built-in integers with at most 64 elements lower with value-then-array exactly-once evaluation, constant proven-safe array.extract operations in index order, int.compare eq with early exit into a bool merge, const false for an empty array and bool.not for not in; the module verifies and emits verified Sec MLIR. Tests: TestFixedArrayIntegerMembershipLowering; the package-14 boundary test now uses a bool element array."
       - lexer continues to emit not as IDENT and in as the existing hard keyword
       - parser recognizes the adjacent contextual token pair only in infix membership position
       - canonical AST operator spelling is not in at the same precedence as in
@@ -80,8 +81,8 @@ integrations:
       - hover on either token segment of not in presents one full compound-operator range, resolved operand/result types, and canonical complement behavior
       - fixed-array Semantic IR deferral recognizes in and not in consistently
     remaining:
-      - maintained Semantic IR membership lowering for fixed arrays, dynamic arrays and slices
-      - executable backend coverage for negated array and slice membership after that lowering exists
+      - maintained Semantic IR membership lowering for dynamic arrays and slices, for fixed arrays of non-integer element types (bool, enum, string, float, aggregates) and for fixed arrays longer than 64 elements; dynamic-array and slice parameters are themselves still Semantic IR signature boundaries
+      - executable backend coverage for array and slice membership once the Sec MLIR to LLVM track lowers sec.array.extract (plain fixed-array indexing has the same backend boundary today)
     verification:
       - command: go test ./internal/parser ./internal/sema ./cmd/lsp ./internal/codegen/llvm ./internal/codegen/mlir
         result: passed

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +74,7 @@ func TestDefinitionOfCompilerKnownMemberNavigatesToSyntheticDefinition(t *testin
 	offset := strings.Index(source, "Append")
 	pos := offsetPosition(source, offset)
 	locations := definitionsForSource("file:///tmp/synthetic.sec", source, pos)
-	if len(locations) != 1 || !strings.HasPrefix(locations[0].URI, "sec-compiler-known:/CKM-LIST-APPEND.sec?instance=") {
+	if len(locations) != 1 || !friendlyDefinitionURI(locations[0].URI, "CKM-LIST-APPEND", "ref mut list[int].Append") {
 		t.Fatalf("locations = %#v", locations)
 	}
 	text, ok := compilerKnownDefinitionText(locations[0].URI)
@@ -83,7 +84,7 @@ func TestDefinitionOfCompilerKnownMemberNavigatesToSyntheticDefinition(t *testin
 	for _, want := range []string{
 		"Synthetic read-only definition",
 		"not source code",
-		"Member:     Append (CKM-LIST-APPEND)",
+		"Member:     ref mut list[int].Append",
 		"Rule:       rules/collections/collections.md — 13.5 Core list methods",
 		"Receiver:   list[int] (mutable)",
 		"Effects:    none",
@@ -133,11 +134,11 @@ func TestCompilerInterfaceRequirementUsesSharedIdentity(t *testing.T) {
 	offset := strings.Index(source, "value.Next") + len("value.")
 	pos := offsetPosition(source, offset)
 	hover, ok := hoverForSource(uri, source, pos)
-	if !ok || !strings.Contains(hover.Contents.Value, "CKM-ITERATOR-NEXT") || !strings.Contains(hover.Contents.Value, "Option[int]") {
+	if !ok || !strings.Contains(hover.Contents.Value, "Iterator[int].Next") || !strings.Contains(hover.Contents.Value, "Option[int]") {
 		t.Fatalf("hover = %#v, %v", hover, ok)
 	}
 	locations := definitionsForSource(uri, source, pos)
-	if len(locations) != 1 || !strings.HasPrefix(locations[0].URI, "sec-compiler-known:/CKM-ITERATOR-NEXT.sec?instance=") {
+	if len(locations) != 1 || !friendlyDefinitionURI(locations[0].URI, "CKM-ITERATOR-NEXT", "Iterator[int].Next") {
 		t.Fatalf("locations = %#v", locations)
 	}
 	definition, ok := compilerKnownDefinitionText(locations[0].URI)
@@ -191,13 +192,13 @@ func TestTemporalIntrinsicUsesSharedToolingFacts(t *testing.T) {
 	uri := uriFromPath(path)
 	pos := offsetPosition(source, strings.Index(source, "_now"))
 	hover, ok := hoverForSource(uri, source, pos)
-	for _, want := range []string{"CKV-TEMPORAL-NOW", "datetime", "may-use-nondeterministic-input"} {
+	for _, want := range []string{"_now", "datetime", "may-use-nondeterministic-input"} {
 		if !ok || !strings.Contains(hover.Contents.Value, want) {
 			t.Fatalf("hover missing %s: %#v", want, hover)
 		}
 	}
 	locations := definitionsForSource(uri, source, pos)
-	if len(locations) != 1 || locations[0].URI != "sec-compiler-known:/CKV-TEMPORAL-NOW.sec" {
+	if len(locations) != 1 || !friendlyDefinitionURI(locations[0].URI, "CKV-TEMPORAL-NOW", "_now") {
 		t.Fatalf("locations = %#v", locations)
 	}
 	definition, ok := compilerKnownDefinitionText(locations[0].URI)
@@ -212,7 +213,7 @@ func TestTemporalIntrinsicUsesSharedToolingFacts(t *testing.T) {
 	// Spelling and a core-looking module grant no intrinsic identity.
 	userURI := uriFromPath(filepath.Join(root, "untrusted.sec"))
 	hover, ok = hoverForSource(userURI, source, pos)
-	if ok && strings.Contains(hover.Contents.Value, "CKV-TEMPORAL-NOW") {
+	if ok && strings.Contains(hover.Contents.Value, "Compiler-known value `_now`") {
 		t.Fatalf("untrusted hover: %#v", hover)
 	}
 	if locations := definitionsForSource(userURI, source, pos); len(locations) != 0 {
@@ -244,4 +245,12 @@ func TestCoreOnlyDefinitionRequiresAuthorizedNavigation(t *testing.T) {
 	if text, ok := compilerKnownDefinitionText("sec-compiler-known:/CKV-TEMPORAL-NOW.sec"); ok || text != "" {
 		t.Fatalf("internal ID exposed without source authority: %q", text)
 	}
+}
+
+// friendlyDefinitionURI checks the editor-visible basename independently from
+// internal transport identity. URL decoding is the editor's path presentation.
+// Rules: rules/compiler/compiler_known_members.md — "Synthetic definitions".
+func friendlyDefinitionURI(uri, id, label string) bool {
+	parsed, err := url.Parse(uri)
+	return err == nil && parsed.Scheme == compilerKnownScheme && parsed.Path == "/"+label+".sec" && parsed.Query().Get("id") == id
 }

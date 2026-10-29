@@ -2181,6 +2181,10 @@ type TryHandler struct {
 	BlockBody  *BlockStatement
 	Invalid    bool
 	Recovery   *RecoveryInfo
+	// ErrPattern is the structured MD-029 error pattern when the handler uses
+	// a payload, field or contextual `.Variant` selection that the expression
+	// form of Pattern cannot represent.
+	ErrPattern *MatchPattern
 }
 
 type MatchStatement struct {
@@ -2236,6 +2240,14 @@ type MatchPattern struct {
 	// `Err(ErrorType.Variant)` narrowing pattern
 	// (rules/control-flow/flowcontrol_match.md "Open error narrowing").
 	ErrorVariant *MemberExpression
+	// ContextualErrorVariant is the `.Variant` of `Err(.Variant...)`, whose
+	// error type comes from the subject or protected failure channel (MD-029).
+	ContextualErrorVariant *Identifier
+	// ErrorPayload is the shallow payload pattern of an error variant:
+	// `Err(E.Variant(binding))` (Kind variant with Binding) or
+	// `Err(E.Variant { fields })` (Kind fields). Its Name is the variant name.
+	// Rules: rules/foundations/grammar.md — "Try expression" ErrPattern.
+	ErrorPayload *MatchPattern
 	Fields       []*MatchFieldPattern
 	Invalid      bool
 	Recovery     *RecoveryInfo
@@ -2270,6 +2282,9 @@ func (mp *MatchPattern) String() string {
 	case MatchPatternEmpty:
 		return "empty"
 	case MatchPatternVariant:
+		if selector := mp.errorSelectorString(); selector != "" {
+			return mp.Name + "(" + selector + ")"
+		}
 		if mp.Binding == nil {
 			return mp.Name
 		}
@@ -2290,6 +2305,34 @@ func (mp *MatchPattern) String() string {
 	default:
 		return "<invalid-pattern>"
 	}
+}
+
+// errorSelectorString spells an MD-029 error selection with its optional
+// shallow payload pattern, or "" for other patterns.
+func (mp *MatchPattern) errorSelectorString() string {
+	selector := ""
+	switch {
+	case mp.ContextualErrorVariant != nil:
+		selector = "." + mp.ContextualErrorVariant.Value
+	case mp.ErrorVariant != nil:
+		selector = mp.ErrorVariant.String()
+	default:
+		return ""
+	}
+	payload := mp.ErrorPayload
+	switch {
+	case payload == nil:
+		return selector
+	case payload.Kind == MatchPatternFields:
+		fields := strings.TrimPrefix(payload.String(), payload.Name)
+		if len(payload.Fields) == 0 {
+			fields = " {}"
+		}
+		return selector + fields
+	case payload.Binding != nil:
+		return selector + "(" + payload.Binding.String() + ")"
+	}
+	return selector
 }
 
 func (binding *MatchPatternBinding) String() string {
@@ -2322,6 +2365,9 @@ func (mp *MatchPattern) Expression() Expression {
 		return &Identifier{Token: mp.Token, Value: value}
 	case MatchPatternVariant:
 		base := matchPatternNameExpression(mp.Token, mp.NameToken, mp.Name)
+		if mp.Name == "Err" && mp.ContextualErrorVariant != nil {
+			return &ErrExpression{Token: mp.Token, Value: mp.ContextualErrorVariant, Arguments: []Expression{mp.ContextualErrorVariant}}
+		}
 		if mp.Name == "Err" && mp.ErrorVariant != nil {
 			return &ErrExpression{Token: mp.Token, Value: mp.ErrorVariant, Arguments: []Expression{mp.ErrorVariant}}
 		}

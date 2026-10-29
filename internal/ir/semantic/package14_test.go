@@ -951,7 +951,7 @@ fn Different(left: int[2], right: int[2]) bool {
 		{
 			name: "membership",
 			source: `module main
-fn Contains(value: int, values: int[2]) bool {
+fn Contains(value: bool, values: bool[2]) bool {
     return value in values
 }`,
 			wantDetail: "fixed-array membership lowering",

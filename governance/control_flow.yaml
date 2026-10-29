@@ -118,15 +118,7 @@ integrations:
     integrated: "2026-09-04"
     document_revision: "2.0"
     repository_baseline: 56be75d
-    summary: >-
-      Tracks revision-2.0 explicit and implicit discard semantics. The lexer,
-      parser, AST, semantic analysis, compiler dump, and current backend path
-      support explicit discard expressions, simple-binding invalidation,
-      mutable-binding reinitialization, reference-holder release, ordinary
-      call-result discard, recursive must-use/discardability checks, and the
-      current Task/Thread/spawn safety rules. Arbitrary Place support,
-      path-sensitive aggregate state, stable configurable advisories, explicit
-      Semantic IR provenance, and complete destruction/cleanup lowering remain.
+    summary: Tracks revision-2.0 explicit and implicit discard semantics. The lexer, parser, AST, semantic analysis, compiler dump, and current backend path support explicit discard expressions, simple-binding invalidation, mutable-binding reinitialization, reference-holder release, ordinary call-result discard, recursive must-use/discardability checks, and the current Task/Thread/spawn safety rules plus configurable implicit-result advisories. Arbitrary Place support, path-sensitive aggregate state, additional advisory diagnostics, explicit Semantic IR provenance, and complete destruction/cleanup lowering remain.
     rules:
       - rules/control-flow/discard.md
       - rules/types/types.md
@@ -158,6 +150,9 @@ integrations:
       - internal/diagnostics/diagnostics.go
       - internal/formatter/formatter.go
       - cmd/compiler/main.go
+      - internal/sema/expression_statements.go
+      - internal/sema/implicit_discard_advisory.go
+      - internal/sema/discard_advisory.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -168,6 +163,15 @@ integrations:
       - internal/sema/parameter_usage_test.go
       - internal/formatter/formatter_test.go
       - testdata/semantic_ir/unsupported_nonvoid_discard.sec
+      - internal/sema/implicit_discard_advisory_test.go
+      - cmd/compiler/implicit_discard_advisory_test.go
+      - cmd/lsp/implicit_discard_advisory_test.go
+      - testdata/tooling/implicit_discard.sec
+      - testdata/tooling/implicit_discard_invalid.sec
+      - internal/sema/explicit_discard_advice_test.go
+      - cmd/compiler/explicit_discard_advice_test.go
+      - cmd/lsp/explicit_discard_advice_test.go
+      - testdata/tooling/explicit_discard_advice.sec
     implemented:
       - discard is a lexer keyword with parser and AST support for discard expression
       - discard without an operand is rejected by the parser
@@ -200,9 +204,11 @@ integrations:
       - repeated discard preserves compiler-owned operand type and definition facts for shared CLI and LSP consumers and never restores availability
       - frontend explicit discard marks independently tracked direct struct fields unavailable, including copyable fields, while sibling fields remain available
       - reads and borrows after explicit discard emit mandatory S4001 ownership.use-after-discard with the discard source location and actionable help
+      - A3001 ownership.implicit-discarded-result reports legal ignored ordinary non-void function, method, generic and compiler-known call results and standalone constructions; default Information and off/info/warning/error project policy preserve one identity, resolved result type, actionable help and selected callable/initializer related location where available
+      - implicit-result advice is deduplicated per source statement across summary and loop/defer visits and promoted only after mandatory analysis; explicit discard, consumed results, void and invalid calls receive no advisory, while existing must-use and fallible-construction errors cannot be suppressed by advisory policy
+      - A3002 ownership.useless-explicit-discard and A3003 ownership.redundant-void-discard are independently configurable default-Information advisories with off/info/warning/error policy, stable keyword ranges and actionable help; shared semantic CTE proves constant temporaries without Places, trivial destruction excludes custom free, and void guidance preserves expression evaluation. Source-keyed explicit-discard facts avoid repeated loop/summary advice and are published after mandatory analysis; ordinary local/field discard, unknown calls, invalid operands and mandatory ownership rules remain unchanged. CLI/JSON/LSP preserve identities and independent policies.
     remaining:
-      - implement configurable ownership.implicit-discarded-result advisories with off, info, warning, and error severities while preserving mandatory must-use errors
-      - register stable IDs, symbolic names, structured notes and help, and related locations for implicit discard, broader unhandled must-use, borrow conflicts, useless discard, and redundant void discard; complete structured transport for existing non-discardable errors
+      - register stable IDs, symbolic names, structured notes and help, and related locations for broader unhandled must-use, borrow conflicts; complete structured transport for existing non-discardable errors
       - complete path-sensitive active-payload reasoning for wrapper and union discardability without weakening conservative defaults
       - extend explicit discard beyond independently tracked direct struct fields to other supported Places and complete field-sensitive partial state
       - separate canonical Availability from moved/discarded/detached reason provenance across joins
@@ -213,7 +219,6 @@ integrations:
       - add non-discardable unresolved Process handling when Process becomes a complete compiler-known lifecycle type
       - complete recursive Result of lifecycle-handle spawn modelling for every supported spawn kind
       - account for fallible task spawn before a Task[T] exists and the TaskOutcome[T] observation layer after successful creation when validating detach and discard
-      - implement configurable advisories for useless literal or constant discard and redundant explicit discard of void
       - complete parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, MLIR, and backend regression coverage
     required_tests:
       - explicit discard of trivial local binding
@@ -252,12 +257,23 @@ integrations:
       - Semantic IR records implicit call-result discard provenance
       - backend never infers semantic discard from unused SSA
     verification:
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/... -count=1 -timeout=180s
+        result: on 2026-10-29 diagnostics and both IR suites passed; full Sema failed TestStructuralMutationDuringIterationIsRejected/append_during_ref_mut_iteration and TestNonStructuralMutationDuringIterationRemainsValid in the concurrently changed iteration-borrow implementation. Both failures reproduced with a Go source overlay disabling the new recordExplicitDiscardAdvisory call; not caused by this advisory and not recorded as a full Sema pass.
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'ExplicitDiscardAdvice|RedundantDiscard|ImplicitDiscard' -count=1 -timeout=150s; go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-29; Sema 2.844s, CLI 42.455s, LSP 34.632s; default/off/info/warning/error plus independent mixed policy, repeats/loop probes, local ownership and custom-free exclusions verified
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'ExplicitDiscardAdvice|RedundantDiscard|ImplicitDiscard|DiagnosticCatalog' -count=1 -timeout=120s
+        result: passed on 2026-10-29; source-backed advisory identity, policy, keyword ranges and help checks; CLI 6.334s and LSP 7.115s
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/... ./internal/parser -count=1 -timeout=180s
+        result: passed on 2026-10-29 with final constructors and negative fixtures; full Sema 17.518s, diagnostics 0.002s, Semantic IR 3.581s, nominal 0.119s and full parser 95.395s
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'ImplicitDiscard' -count=1 -timeout=150s; go vet ./internal/parser ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-29; final source fixtures cover ten ordinary/method/generic/conversion/construction occurrences, all policy levels and analysis depths, stable repeated/loop/defer visits, related declarations, human/JSON/LSP transport, explicit/void/value-consumer exclusions and mandatory Result/fallible-construction errors; Sema 1.560s, CLI 19.073s, LSP 14.669s under race; vet passed
       - command: go test ./internal/parser -run Discard -count=1
         result: passed
       - command: go test ./internal/sema -run 'Discard|MustUse' -count=1
         result: passed
       - command: go test ./internal/formatter -run Discard -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
+    revised: "2026-10-29"
 
   - id: frontend.defer-v2
     area: frontend-control-flow-ownership-and-lowering
@@ -418,7 +434,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-26"
-    revised: "2026-10-10"
+    revised: "2026-10-29"
     document_revision: "2.0"
     repository_baseline: 0f92cf4
     replaces: rules/control-flow/flowcontrol_if.txt
@@ -447,6 +463,7 @@ integrations:
       - internal/sema/analyzer_if_flow.go
       - internal/sema/analyzer_union_state.go
       - internal/formatter/formatter.go
+      - internal/parser/expression.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -461,6 +478,12 @@ integrations:
       - testdata/basic_types_valid.sec
       - testdata/control_flow/if_lazy/evaluation.sec
       - testdata/control_flow/if_lazy/harness.c
+      - internal/sema/if_try_conditions_test.go
+      - internal/ir/semantic/if_try_conditions_test.go
+      - cmd/compiler/if_try_conditions_test.go
+      - cmd/lsp/if_try_conditions_test.go
+      - testdata/control_flow/if_try/valid.sec
+      - testdata/control_flow/if_try/non_bool_invalid.sec
     implemented:
       - "Semantic IR if join (2026-10-06): an if without else whose body continues now branches to the merge block exactly once; the former code reused the then-branch end as the else end and emitted a second branch, so every such if produced invalid Semantic IR (TestIfWithoutElseJoinsOnce)"
       - if, else-if, and else syntax with mandatory braces
@@ -484,11 +507,11 @@ integrations:
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
       - "MD-006 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 7, 2026-10-03): non-binding is state tests are ordinary bool expressions at the non-chainable equality level in every expression context (let, return, &&/||, arguments); `is not` negates variant, empty, Some, None, and available tests; ungrouped chaining with == or != is rejected; `(test) == true` (A2002) and `!(test)` (A2003) are bad-practice warnings with explicit Language Corrections; `is Some(binding)` binds only as the complete if condition, while `is not Some(value)` and `!(option is Some(value))` receive focused parser diagnostics; negated tests keep data-flow refinement"
       - "executable lazy-if regression matrix (2026-10-10): 20 exact side-effect traces cover dynamic AND/OR, nested grouping, first/second/third/else branch selection and logical conditions throughout else-if chains; LLVM and existing MLIR verify and compile for amd64 and armv7 at O0/O2, and every host executable checks condition frequency, left-to-right ordering, skipped RHS/later-condition calls and exactly one selected body"
+      - explicit if-try conformance covers Result[bool,E] propagation, true/false success, negation and parenthesized local bool recovery; int, string and struct success types and non-bool local recovery remain rejected by Sema/CLI/LSP. Grouped-expression parsing now restores the outer header brace boundary while allowing inner try handlers, instead of rejecting valid parenthesized handlers. Semantic IR tests verify typed CFG and exactly-once calls; current unsupported sec.result backend boundary is tested with existing output preservation, without claiming binary execution.
     remaining:
       - "MD-006 lowering: Semantic IR does not lower state tests outside the existing if/while condition forms; it rejects them explicitly"
       - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
-      - add explicit try Result[bool, E] acceptance and non-bool successful-result rejection coverage
       - complete the revision-2.0 parser, Sema, flow-analysis, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     required_tests:
       - bool condition accepted
@@ -508,6 +531,14 @@ integrations:
       - definite assignment fails when a continuing path does not assign
       - proven unreachable statements follow the canonical unreachable-code diagnostic policy
     verification:
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run "TestIfTryConditionDiagnosticsCLI|TestIfTryConditionsUnsupportedResultBoundary" -count=1 -timeout=120s
+        result: passed on 2026-10-29 (0.624s); native build explicitly rejects unsupported sec.result operations and preserves an existing output file. The earlier executable probe reached that same known boundary; runtime branch execution is not claimed.
+      - command: go test -race ./cmd/compiler ./cmd/lsp -run 'IfTryCondition|TryHover' -count=1 -timeout=120s; go vet ./internal/parser ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-29; CLI 2.432s and LSP 82.095s under race, vet passed
+      - command: go test ./internal/parser ./internal/sema ./internal/ir/... -count=1 -timeout=180s
+        result: on 2026-10-29 full parser passed (113.819s), Semantic IR (3.764s) and nominal (0.118s) passed. Full Sema retains the two independently documented iteration-borrow failures TestStructuralMutationDuringIterationIsRejected/append_during_ref_mut_iteration and TestNonStructuralMutationDuringIterationRemainsValid; no iteration code changed here and no full Sema pass claimed.
+      - command: go test ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run 'IfTryCondition|IfTryBoolean' -count=1 -timeout=120s
+        result: passed on 2026-10-29 after reproducing and fixing parenthesized try-handler parse failures; bool success and local bool recovery accepted, four non-bool conditions rejected with owning diagnostic text/ranges; IR verifies one Probe call per condition and separate error/bool branches
       - command: go test ./internal/sema -run 'ResolvedIfFlow|ResolvedLogicalFlow|LogicalShortCircuit|FoldedBooleanConditions' -count=1
         result: passed on 2026-10-10
       - command: go test ./internal/parser -run 'If|ComparisonChaining' -count=1
@@ -528,7 +559,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-22"
-    revised: "2026-10-05"
+    revised: "2026-10-29"
     document_revision: "2.0"
     repository_baseline: 56be75d
     replaces: rules/control-flow/flowcontrol_while.txt
@@ -580,7 +611,11 @@ integrations:
       - testdata/while_invalid.sec
       - testdata/parser/condition_pattern_binding_invalid.sec
       - testdata/parser/while_unsupported_forms_invalid.sec
+      - internal/ir/semantic/switch_loop_control_test.go
+      - cmd/compiler/native_track_test.go
+      - testdata/build/native/switch_loop_control.sec
     implemented:
+      - "condition moves across iterations (fixed 2026-10-29; internal/sema/analyzer_while_flow.go): the while condition runs before every iteration, so the loop header and backedge fixed point now start from the pre-condition move state; `while Consume(<-token) {}` (with or without && / ||) reports S1089 \"may be unavailable on a later loop iteration\", while a body that reinitializes the place stays valid. Previously the condition's move was folded into the loop-entry state and never rechecked. Test: TestWhileConditionMoveIsCheckedAcrossIterations."
       - lexer recognition and AST representation of while statements
       - while condition and mandatory block parsing with missing-condition recovery
       - focused while-else rejection consumes the unsupported else block as one recovery unit and preserves following statements for compiler and LSP analysis
@@ -612,12 +647,12 @@ integrations:
       - "Semantic IR conditions (2026-10-05): while and if conditions built from &&, ||, ! and integer range membership lower through the shared boolean-operator builder (rules/foundations/operators.md), so `while count < 5 && value != 100` and `while !(value in 0..100)` reach verified Semantic IR (TestRangeMembershipBuildsBoundComparisons)"
       - "Semantic IR loop CFG (2026-10-05, semantic_ir.md § 66, § 67(4); while § 29): a while statement becomes an explicit LoopRecord (condition block that is also the continue target, body block, exit block that is the break target) with enter, condition, back, continue, and break edges carrying the loop identity; the condition is evaluated once per attempted iteration, ResolvedWhileFlow selects the constant forms (a proven-true condition is not re-evaluated and exits only through a reachable break, a proven-false body is never entered, a non-continuing loop has no exit), break/continue target the innermost loop including from match arms, and loop-carried state is reloaded from mutable local storage; the verifier ties every record to its edges and rejects foreign entries, mistargeted edges, and inconsistent continuation (TestWhileLoopBuildsExplicitLoopCFG, TestVerifierRejectsMalformedLoops)"
       - "while conditions refine definite assignment from union state tests: the body of while value is Variant sees an initialized binding, and a while value is empty loop without a reachable break leaves the binding initialized; loop backedge re-analysis never weakens the published possibly-empty state-test fact"
+      - "While/switch loop-target verification completed 2026-10-29 using the focused source/IR/native evidence owned by frontend.switch-statements-v2: nested switch break targets the surrounding while exit, continue targets its condition, and fallthrough does not create a loop target. Explicit CFG successor and loop identity checks plus executed expected-result checks cover skipped case/body tails. Nontrivial loop cleanup and other while coverage remain separately tracked; no new lowering capability is claimed."
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
       - apply union state-test refinement on loop exits that pass through reachable break edges
       - extend non-literal condition proof beyond the current integer-comparison and boolean-operator subset and route other non-continuing flow through the canonical unreachable-code policy
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
-      - verify that break and continue inside a switch nested in while target the surrounding loop in CFG, Semantic IR, and the compilation track
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
       - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
       - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
@@ -653,6 +688,8 @@ integrations:
       - while-else rejected
       - labeled loop control rejected
     verification:
+      - command: go test ./internal/ir/semantic -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run TestNativeTrackBuildsAndRuns -count=1 -timeout=120s; go vet ./internal/ir/semantic ./cmd/compiler
+        result: "passed on 2026-10-29: complete Semantic IR suite 3.6s, native build/run matrix including nested switch loop-control 15.1s, vet passed. One whole switch test point and its existing while-specific verification counterpart are closed with shared evidence."
       - command: go test ./internal/parser -run While -count=1
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ConditionPatternBindingReportsFocusedDiagnostics|ConditionStateTestsParse|UnsupportedWhileFormsReportFocusedDiagnostics|SwitchCreatesNoLoopControlTarget|UnionState)' -count=1
@@ -687,6 +724,7 @@ integrations:
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.md
       - rules/compiler/semantic_ir.md
+      - rules/compiler/compile_time_evaluation.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -719,6 +757,14 @@ integrations:
       - testdata/control_flow/subjectless_switch/evaluation.sec
       - testdata/control_flow/subjectless_switch/harness.c
       - testdata/control_flow/switch_fallthrough
+      - internal/ir/semantic/switch_loop_control_test.go
+      - cmd/compiler/native_track_test.go
+      - testdata/build/native/switch_loop_control.sec
+      - internal/sema/switch_string_constants_test.go
+      - cmd/compiler/switch_string_constants_test.go
+      - cmd/lsp/switch_string_constants_test.go
+      - testdata/sema/switch_string_constants/valid.sec
+      - testdata/sema/switch_string_constants/duplicate_invalid.sec
     implemented:
       - subject and subjectless switch parsing with AST source-order retention
       - value, range, relational, and comma-separated case alternatives
@@ -744,14 +790,14 @@ integrations:
       - switch statement analysis lives in internal/sema/analyzer_switch.go with per-function rulebook traceability
       - struct-shaped switch case destructuring (bare or qualified type heads, shorthand fields, wildcard and reference fields) reports one focused P2009 parser.invalid-pattern with match help; balanced recovery preserves comma alternatives, clause bodies, later clauses and declarations, while explicit struct-value fields, spreads, nested values and empty literals retain ordinary expression parsing
       - fallthrough placement authority is tied to membership in the current AST case body instead of an inherited boolean context, so nested if, loop, lambda and unsafe blocks cannot transfer to an enclosing case while a nested switch retains its own valid successor
+      - "Focused nested-switch lowering coverage completed 2026-10-29: source-backed Semantic IR assertions check all 12 break/continue operations against their enclosing loop ID and actual condition/exit successor, with no extra loop records introduced by switches. A shared native fixture exercises while and range-for loops, nested subject/subjectless switches, default cases, fallthrough followed by continue, and restoring the outer loop target after an inner loop ends. Five independently checked runtime results pass through the single Sema/Semantic IR/Sec-MLIR/LLVM/clang track. The native regression runner now bounds execution time so a future wrong CFG target cannot hang the test or masquerade as an expected trap. Existing lowering behavior already handles these cases; this closes the required focused verification point without claiming new cleanup or string/named-switch capabilities."
+      - "Computed string switch coverage (2026-10-29): the shared semantic compile-time evaluator establishes case equality for composed strings, decoded escapes and immutable module bindings, rejecting equal values across clauses or within comma alternatives with the registered duplicate-case diagnostic, actionable help and the earlier equivalent case location. Only resolved equality-compatible cases participate; unavailable calls/getters and unknown runtime values do not establish a duplicate proof. Distinct Unicode scalar sequences are not normalized. Source-backed Sema, CLI JSON and LSP tests verify proofs and diagnostic provenance. String switch Semantic IR/backend lowering remains separate remaining work."
     remaining:
-      - add focused lowering tests proving nested switch break and continue resolve only to an enclosing loop
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
       - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
       - lower bool, string and named-type switch subjects through Semantic IR and the compilation track
-      - extend compile-time coverage to computed string constants beyond direct literals
       - implement full unit-aware and named-semantic-type-aware overlap reasoning
       - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
       - complete code generation for every Sema-supported switch subject and case family
@@ -785,6 +831,10 @@ integrations:
       - definite assignment includes unmatched path when coverage is incomplete
       - terminating switch recognized when every reachable path terminates
     verification:
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestComputedStringSwitch|TestSwitchStructPattern|TestSwitchWildcard' -count=1 -timeout=150s; go vet ./internal/sema ./internal/diagnostics ./internal/ir/semantic/... ./cmd/compiler ./cmd/lsp
+        result: "Passed on 2026-10-29: full Sema 15.831s, diagnostics and Semantic IR suites passed; targeted CLI/LSP race tests passed (4.504s/3.303s); vet passed. Regression reproduced before the fix as zero duplicate errors instead of three. frontend.switch-statements-v2 remaining 10 to 9; global Remaining 2379 to 2378 at this snapshot."
+      - command: go test ./internal/ir/semantic -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run TestNativeTrackBuildsAndRuns -count=1 -timeout=120s; go vet ./internal/ir/semantic ./cmd/compiler
+        result: "passed on 2026-10-29: complete Semantic IR suite 3.6s, native build/run matrix including nested switch loop-control 15.1s, vet passed. One whole switch test point and its existing while-specific verification counterpart are closed with shared evidence."
       - command: go vet ./...
         result: passed on 2026-10-10 after explicit MLIR fallthrough lowering and direct-case Sema placement validation
       - command: go test ./... -count=1
@@ -809,7 +859,7 @@ integrations:
         result: passed on 2026-10-01; value use, guards, payload binding, wildcard items, and loop-control targeting produce focused diagnostics without cascades
       - command: go test ./internal/formatter -run Switch -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
-    revised: "2026-10-10"
+    revised: "2026-10-29"
 
   - id: frontend.match-v2
     area: frontend-control-flow-ownership-and-lowering
@@ -882,6 +932,9 @@ integrations:
       - internal/ir/semantic/match_field_bindings_test.go
       - testdata/semantic_ir/match_field_patterns.sec
     implemented:
+      - "MD-042 reachable-state coverage and inactive arms (2026-10-29; flowcontrol_match.md §§ 5, 25A; internal/sema/match_reachable_state.go, try_failure_provenance.go): a match on an immutable union binding whose active variant is proven by construction or a dominating unmutated `is` fact (knownVariantTest) is exhaustive once that variant is covered unguarded (`let f := Figure.Dot; match f { Dot => ... }`), recorded as ResolvedMatchPlan.ProvenActiveVariant so termination and Semantic IR residuals follow; other valid arms emit the new configurable Information A2008 control-flow.inactive-match-arm with the proof, are still fully checked, and duplicates stay errors. Owned by-value parameters and `let mut` bindings are mutable working bindings and prove nothing (a mutable-receiver method may change the variant), so their matches keep the whole domain; guarded arms never cover. Try handlers over ArithmeticError use complete failure provenance: when every failure point is a checked integer operation (+ - * unary - give Overflow; / % DivisionByZero and Overflow; << InvalidShift and Overflow; >> InvalidShift) and no carrier is typed ArithmeticError or error, handlers for other variants are A2008-inactive; a Result[int, ArithmeticError] call proves nothing. Tests: TestReachableStateMatchCoverage, TestTryFailureProvenanceInactiveHandlers."
+      - "MD-029 Result match error patterns (2026-10-29): Err(E.V(binding)), Err(E.V { fields }), Err(E.V {}) and Err(.V...) arms take part in closed exhaustiveness and source-order coverage like Err(E.V); payload places project Result → Err → variant for borrows (analyzeUnionFieldPatternAt shares the field-pattern rules). See frontend.errorhandling-v2 for the full contract and tests."
+      - "MD-029 bare payload-carrying variant patterns (2026-10-29; flowcontrol_match.md § 8, unions.md § 9.2a, diagnostics.md § 24(4e)): `Variant` and `Union.Variant` arms over a payload-carrying union variant are valid full-variant coverage without a payload binding (guarded ones cover only the guarded subset) and emit the new configurable Information A2007 / union.omitted-payload-pattern naming the payload type or fields with the binding and explicit `Variant(_)` / `Variant {}` spellings; the explicit forms suppress it. S1152 union.pattern-payload-binding-required is retired. Semantic IR lowers the arm as union.is-variant without a payload read. Tests: TestBarePayloadVariantPatterns, TestUnionVariantMissingPayloadHasStableDiagnostics (value-position S1151 unchanged), TestBuildDiagnosticCatalogContainsEveryRegisteredDefinition."
       - AST represents MatchExpression, MatchStatement, and MatchArm
       - parser supports match in statement and expression positions
       - parser supports expression, return, and block arm bodies
@@ -944,12 +997,7 @@ integrations:
       - extend explicit source-order CFG with reachable compiler-known empty state once frontend initialization-state facts exist
       - extend statement-match continuation with non-trivial ownership, cleanup, and discard effects
       - complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage
-      - "md029-bare-union-variant-patterns: accept a bare variant pattern for a payload-bearing ordinary union variant as full variant coverage (flowcontrol_match.md § 8, unions.md § 9.2a) with the omitted-payload Information identity, and explicit `Variant {}` / `Variant(_)` suppression subject to discardability (M029-06). Baseline 2026-10-28: S1152 \"union variant requires payload binding\". Shared with frontend.errorhandling-v2 md029-bare-variant-information."
-      - "md029-match-err-payload-patterns: Result match arms accept the payload-bearing and contextual ErrPattern forms with the same semantics as try handlers and take part in closed exhaustiveness; flowcontrol_match.md § 28 no longer rejects payload-carrying union error variants (M029-02/03/07/10)."
-      - "md042-reachable-state-proof: distinguish declared variant domain, soundly proven reachable subset and source-order coverage in authoritative Sema facts (flowcontrol_match.md § 5; correction md029-md042-md102 phase 4); `let f := Figure.Dot` then `match f { Dot => ... }` is exhaustive; mutation, aliases, foreign/dynamic calls, unstable property reads and unknown results invalidate the proof (M042-01/05). Baseline 2026-10-28: such a match is \"non-exhaustive ... missing Line\"; only `is Variant` if-tests use the known active variant."
-      - "md042-inactive-arm-information: valid arms excluded only by the proof are legal and emit a new configurable inactive-arm Information identity (diagnostics.md § 24(4e), to be allocated) with subject type, excluded variant, proof reason and related location; duplicate/covered/after-catch-all arms keep S3003-class errors; inactive arms are still fully type- and ownership-checked; guard-false, reachable empty, open bit-enum and alias coverage laws unchanged (M042-02/03/04/06/08)."
-      - "md042-failure-provenance: restrict the active error set of try/match only from complete, sound operation-specific failure provenance (flowcontrol_match.md § 25A): integer-only arithmetic excludes decimal PrecisionExhausted/ScaleOverflow; a Result[int, ArithmeticError] signature proves nothing (M042-07)."
-      - "md042-ir-and-tooling: preserve declared domain, proven subset with provenance and coverage in Semantic IR (semantic_ir.md § 71(6)); the formatter never removes inactive arms (formatter.md § 20(12)); LSP hover may show the proof; CLI/JSON/LSP parity of the advisory identity."
+      - "md042-ir-and-tooling: carry the proven reachable subset and its provenance from ResolvedMatchPlan.ProvenActiveVariant into Semantic IR (the residual still lowers as `unreachable reason=exhaustive-match-fallthrough`, which the Sec MLIR verifier requires verbatim) and show the proof in LSP hover (semantic_ir.md § 71(6), lsp.md \"Error patterns, inactive arms and Some\"); CLI/JSON/LSP parity test for A2008. Sema facts and the advisory are implemented."
     required_tests:
       - match subject expression evaluates exactly once
       - source arm order is preserved
@@ -1122,15 +1170,12 @@ integrations:
       - for statement analysis lives in internal/sema/analyzer_for.go with per-function rulebook traceability
       - while a loop iterates reusable dynamic-array, list, map, or set storage, a compiler-known structural operation (selected by the registry StructuralMutation contract, never by name) or an assignment on the iterated collection or any storage enclosing it is rejected with mandatory S1075 for.structural-mutation-during-iteration, the operation, both Places, help, and the loop location; element assignment, mutation inside one element or through a ref mut binding, sibling storage, ranges, and code after the loop remain valid
       - "generic iterator parameters (2026-10-10): a for loop over a generic parameter constrained by Iterator[T], by value (fn F[I: Iterator[T]](values: I)) or as ref mut I, takes its element type and Next requirement from the constraint without an interface value or dispatch; each specialization resolves the concrete Next statically, a ref mut I parameter infers I from an owned mutable argument through the implicit call-site borrow (borrowing.md §15.2), and lowering readiness reports such template loops as Unproven (per-specialization lowering) instead of Invalid"
+      - "loop-binding borrows (2026-10-29, flowcontrol_for.md §§6-7; borrowing.md §§8.1(11), 14.5(2), 18(4)): every ref and ref mut loop binding holds a shared or exclusive borrow of the iterable Place, so reads, assignments and borrow creation that conflict with the live binding inside the body are rejected through the canonical S1160-S1162 diagnostics naming the binding as holder. The borrow is iteration-local: holder liveness ends it after the binding's last required use (a binding is fresh per iteration, and a later loop reusing the name is not a use), and the loop clears it at the iteration boundary and on every break and continue edge. The rulebook's iteration-local end points replace the earlier whole-body wording of this item; structural mutation keeps its dedicated S1075 check, and iteration dependency facts publish the binding borrow once in the iteration-binding phase (TestForBindingBorrowsIterable, TestIteratorStorageAndBorrowDependencies)"
+      - "binding-position modes (verified 2026-10-29, flowcontrol_for.md §§9, 14, 20, 21): the sequential two-binding index is an ordinary int (or discard) and rejects reference modes; map iteration accepts plain, ref and ref mut values with mutable authority, shared or plain keys, and rejects ref mut keys and ref mut through a shared map; set iteration accepts plain-copy and shared-reference elements and rejects ref mut; discard bindings introduce no copy or move requirement, so move-only elements may be discarded (TestForBindingPositionModes, TestForBindingModeDiagnostics)"
     remaining:
       - "MD-117 heterogeneous iteration: produce concrete per-position expansion plans for ordinary for, for ref and for ref mut with statically typed indexes/Len; reject by-value iteration of move-only elements and runtime heterogeneous indexing, preserve empty iteration, break/continue/return/defer/try/panic and executed side effects without a for static keyword (flowcontrol_for.md §13A; correction §5)."
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
-      - hold the shared or exclusive iterable borrow for the whole loop body so conflicting uses of the iterated collection inside the body are rejected
-      - keep a sequential two-binding index as ordinary int or discard and apply reference modes only to its element binding
-      - enforce exact map key/value reference modes, including shared keys and values, mutable values with authority, and rejection of mutable key references
-      - permit plain-copy or shared-reference set iteration and reject mutable set element references
-      - ensure discard bindings introduce no transfer, copy, move, or copyability requirement for the discarded yielded component
       - "lower explicit for range steps (Known hole, verified 2026-10-17): Semantic IR rejects `step` as 'for range with an explicit step'"
       - require explicit compatible negative steps for descending iteration without synthesizing signed conversion for unsigned ranges
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
@@ -1216,7 +1261,9 @@ integrations:
         result: passed on 2026-10-02 with Append/Clear/RemoveAt/Remove/Add, whole and enclosing replacement, field and reference-parameter sources, and outer-loop sources from inner loops rejected, and eight structurally safe forms accepted
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-02 after the structural-stability check
-    revised: "2026-10-28"
+      - command: go test ./internal/sema -run 'TestForBinding|TestStructural|TestNonStructural|TestIteratorStorage' -count=1
+        result: passed on 2026-10-29 with loop-binding borrows of the iterable and binding-position modes; frontend.for-loops-v2 remaining 19 to 14
+    revised: "2026-10-29"
 
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow
@@ -1343,7 +1390,7 @@ integrations:
     area: frontend-expression-control-flow
     status: partial
     audited: "2026-08-19"
-    revised: "2026-10-01"
+    revised: "2026-10-29"
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_if.md
     document_revision: "2.0"
@@ -1365,11 +1412,18 @@ integrations:
       - internal/sema/semantic_facts.go
       - internal/ir/semantic
       - internal/lowering/secmlir
+      - internal/ir/semantic/boolean.go
+      - internal/ir/semantic/logical_flow.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_logical_test.go
       - internal/sema/copy_move_test.go
+      - internal/ir/semantic/logical_flow_test.go
+      - internal/ir/semantic/boolean_test.go
+      - testdata/build/native/logical_contexts.sec
+      - cmd/compiler/native_track_test.go
     implemented:
+      - "regression coverage (2026-10-29; internal/sema/analyzer_logical_coverage_test.go): a conditional RHS move merges with the bypass path in let, nested && / ||, if and while conditions (S1089 conditionally available on the later borrow), a folded skipped RHS keeps the value available, and a conditional RHS call is a reachable call-graph edge with its panic effect; resource and Arena restoration on folded RHS stays covered by TestFoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects. Found and fixed with it: a value consumed by a while condition was not rechecked across iterations (frontend.while-statements-v2)."
       - logical bool operand type validation
       - logical expression result type bool
       - maintained backend lowering has left-to-right short-circuit branch structure
@@ -1387,10 +1441,9 @@ integrations:
       - left and right operands are each inferred once in source order by the dedicated logical flow path
       - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
       - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining S1023 warnings for insufficient guards
+      - "Canonical logical-flow IR/lowering bridge completed 2026-10-29: boolean lowering consumes Sema ResolvedLogicalFlow for never/always/conditional RHS execution, selected edge and bypass result rather than reconstructing source proofs. A focused invariant gate now rejects non-bool types, unknown operators/execution and contradictory edge/result facts before operand construction or IR mutation. Existing exact CFG merge/branch tests plus the new shared source/native fixture cover left-first once-only effects, skipped RHS, nested logical operands, local initializers, call arguments, while conditions and return expressions, including compiler-folded skip/required paths. Sec MLIR and the sole native track consume that canonical CFG; no second boolean evaluator or backend was introduced. Broader source-state regression and compile-time proof extensions remain their separate items."
     remaining:
       - extend canonical compile-time bool proof beyond the current immutable-integer and boolean operator subset
-      - consume ResolvedLogicalFlow in Semantic IR and all maintained lowering paths
-      - add ownership, resource, arena, call-graph, nested-expression, and cross-context regression coverage
     bug_reference:
       - correction22.md
     governance_reconciliation:
@@ -1400,6 +1453,8 @@ integrations:
       - Removed legacy remaining claims for the dedicated flow path, skipped-RHS isolation, conditional state merging, and call-graph exclusion because the migrated entry already records those corrections as implemented.
       - The 2026-09-24 frontend step publishes the selected RHS edge as ResolvedLogicalFlow without extending backend scope.
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "TestNativeTrackBuildsAndRuns|TestSecMLIRPublication|TestRetainedSecMLIR|TestReference.*Inspection" -count=1 -timeout=150s; go vet ./internal/ir/semantic ./cmd/compiler
+        result: "passed 2026-10-29: full IR/emission/toolchain suites (3.5s/15.6s/1.0s), native/publication/inspection regressions (20.5s) and vet. Two whole governance points closed: logical flow 3 to 2 and lowering pipeline 5 to 4."
       - command: go test ./internal/sema -run 'TestResolvedLogicalFlowRecordsSelectedRHSEdge|TestLogicalShortCircuitDoesNotCommitImpossibleMove|TestLogicalOperatorsRequireBool' -count=1
         result: passed on 2026-09-24
       - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|FoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects)' -count=1

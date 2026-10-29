@@ -43,6 +43,7 @@ func TestRawPointerSafetyHoverAndSignatureHelp(t *testing.T) {
 			t.Fatalf("missing signature for %s: %+v", member.ID, help)
 		}
 		signature := help.Signatures[0]
+		assertNoCompilerKnownDisplayIDs(t, hover.Contents.Value, signature.Label, signature.Documentation.Value)
 		if signature.Label != member.Signature || len(signature.Parameters) != len(member.Parameters) || help.ActiveSignature != 0 || help.ActiveParameter != 0 {
 			t.Fatalf("signature diverged from registry: %+v; member=%+v", help, member)
 		}

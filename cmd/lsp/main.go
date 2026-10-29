@@ -200,10 +200,12 @@ type callHierarchyOutgoingCall struct {
 }
 
 type completionItem struct {
-	Label         string `json:"label"`                   //
-	Kind          int    `json:"kind"`                    // 5 = Field, 2 = Method, 13 = Enum, 20 = EnumMember
-	Detail        string `json:"detail,omitempty"`        //
-	Documentation string `json:"documentation,omitempty"` //
+	Label         string    `json:"label"`                   //
+	Kind          int       `json:"kind"`                    // 5 = Field, 2 = Method, 13 = Enum, 20 = EnumMember
+	Detail        string    `json:"detail,omitempty"`        //
+	Documentation string    `json:"documentation,omitempty"` //
+	TextEdit      *textEdit `json:"textEdit,omitempty"`
+	FilterText    string    `json:"filterText,omitempty"`
 }
 
 type didChangeParams struct {
@@ -294,6 +296,7 @@ type server struct {
 	parameterInsight          parameterInsightSettings
 	pitfallSettings           pitfallDiagnosticSettings
 	inlayHints                *inlayHintSettings
+	inlayResolve              inlayResolveSupport
 	crossTarget               *crossTargetStore
 	targetSelections          map[string]lspTargetSelection // timerMu protects immutable request snapshots
 	// stateMu guards the settings and workspace fields above: read-only
@@ -393,6 +396,7 @@ func (s *server) handle(message rpcMessage) error {
 		var params initializeParams
 		if len(message.Params) > 0 && json.Unmarshal(message.Params, &params) == nil {
 			s.workspaceRoots = workspaceRootsFromInitialize(params)
+			s.configureInlayResolve(message.Params)
 			s.workspaceSymbolLazyRanges = false
 			for _, property := range params.Capabilities.Workspace.Symbol.ResolveSupport.Properties {
 				if property == "location.range" {
@@ -419,7 +423,7 @@ func (s *server) handle(message rpcMessage) error {
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
 				"workspaceSymbolProvider":    map[string]any{"resolveProvider": true},
-				"inlayHintProvider":          true,
+				"inlayHintProvider":          map[string]any{"resolveProvider": true},
 				"codeLensProvider": map[string]any{
 					"resolveProvider": true,
 				},
@@ -512,6 +516,8 @@ func (s *server) handle(message rpcMessage) error {
 		return s.respond(message.ID, unresolvedInterfaceCodeLenses(params.TextDocument.URI, snapshot.Text))
 	case "codeLens/resolve":
 		return s.handleCodeLensResolve(message)
+	case "inlayHint/resolve":
+		return s.handleInlayHintResolve(message)
 	case "textDocument/inlayHint":
 		var params inlayHintParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -521,7 +527,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []inlayHint{})
 		}
-		return s.respond(message.ID, inlayHintsForSource(params.TextDocument.URI, snapshot.Text, params.Range, s.inlayHintSettings(), s.sourceOverlay()))
+		return s.respond(message.ID, s.documentInlayHints(params.TextDocument.URI, snapshot.Text, params.Range))
 	case "workspace/didChangeWatchedFiles":
 		s.updatePitfallSettings(nil)
 		// Analysis configuration is read from the project manifest for each
@@ -1061,6 +1067,9 @@ func definitionTokenRange(text string, token lexer.Token) lspRange {
 // complete the active cursor receiver, including incomplete source.
 // Rules: rules/tooling/lsp.md — "Completion" and "Recovery nodes".
 func completeSource(uri string, text string, offset int, overlays ...sourceOverlay) []completionItem {
+	if items, recognized := errorPatternCompletionItems(uri, text, offset, firstSourceOverlay(overlays)); recognized {
+		return items
+	}
 	if items, recognized := stateTestCompletionItems(uri, text, offset, firstSourceOverlay(overlays)); recognized {
 		return items
 	}
@@ -2953,21 +2962,9 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 		items = append(items, item)
 	}
 	for _, member := range sema.CompilerKnownMembersForType(exprType, static) {
-		kind := 2
-		if member.Kind == sema.CompilerKnownProperty {
-			kind = 10
+		if item, ok := compilerKnownCompletionItem(member); ok {
+			addTyped(item, member.Result)
 		}
-		detail := lspTypeName(member.Result)
-		if member.Result.Kind == sema.InvalidType || member.Result.Kind == "" {
-			detail = string(member.Kind)
-		}
-		if member.Unsafe {
-			detail = "unsafe " + detail
-		}
-		if len(member.Effects) > 0 {
-			detail += " (effectful)"
-		}
-		addTyped(completionItem{Label: member.Name, Kind: kind, Detail: detail}, member.Result)
 	}
 
 	// rules/declarations/enums.md section 16 and unions.md section 4 place

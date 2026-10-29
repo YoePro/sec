@@ -18,11 +18,16 @@ type inlayHintParams struct {
 
 // inlayHint is the LSP InlayHint; Kind 1 is Type and 2 is Parameter.
 type inlayHint struct {
-	Position     position `json:"position"`
-	Label        string   `json:"label"`
-	Kind         int      `json:"kind,omitempty"`
-	PaddingLeft  bool     `json:"paddingLeft,omitempty"`
-	PaddingRight bool     `json:"paddingRight,omitempty"`
+	Position     position              `json:"position"`
+	Label        string                `json:"label"`
+	Kind         int                   `json:"kind,omitempty"`
+	PaddingLeft  bool                  `json:"paddingLeft,omitempty"`
+	PaddingRight bool                  `json:"paddingRight,omitempty"`
+	Tooltip      *markupContent        `json:"tooltip,omitempty"`
+	Data         *inlayHintResolveData `json:"data,omitempty"`
+	LabelParts   []inlayHintLabelPart  `json:"-"`
+	detail       string
+	declaration  lexer.Token
 }
 
 const (
@@ -133,6 +138,7 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 	inThisFile := func(token lexer.Token) bool {
 		return token.File == "" || path == "" || normalizedSourcePath(token.File) == normalizedSourcePath(path)
 	}
+	fingerprint := sourceContentFingerprint(text)
 	seen := map[string]bool{}
 	add := func(hint inlayHint) {
 		key := hint.Label + "@" + positionKey(hint.Position)
@@ -140,6 +146,8 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			return
 		}
 		seen[key] = true
+		hint.Data = &inlayHintResolveData{Version: 1, URI: uri, Fingerprint: fingerprint}
+		hint.LabelParts = []inlayHintLabelPart{{Value: hint.Label}}
 		hints = append(hints, hint)
 	}
 
@@ -177,7 +185,10 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			if name == "" || initializerSpellsType(node.Value, binding.Type) {
 				return
 			}
-			add(inlayHint{Position: tokenRange(text, node.Name.Token).End, Label: ": " + name, Kind: inlayHintKindType})
+			hint := inlayHint{Position: tokenRange(text, node.Name.Token).End, Label: ": " + name, Kind: inlayHintKindType}
+			hint.detail = node.Name.Value + ": " + name
+			hint.declaration, _ = analyzer.ResolvedTypeDeclarationLocation(binding.Type)
+			add(hint)
 		case *ast.MatchExpression:
 			if settings.Ownership && node != nil && inThisFile(node.Token) {
 				for _, hint := range matchBindingOwnershipHints(analyzer, text, node) {
@@ -221,7 +232,10 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 				if !validDefinitionTokenForHint(token) {
 					continue
 				}
-				add(inlayHint{Position: tokenRange(text, token).Start, Label: name + ":", Kind: inlayHintKindParameter, PaddingRight: true})
+				hint := inlayHint{Position: tokenRange(text, token).Start, Label: name + ":", Kind: inlayHintKindParameter, PaddingRight: true}
+				hint.detail = name + ": " + lspTypeName(parameters[index].Type)
+				hint.declaration = parameters[index].Token
+				add(hint)
 			}
 		}
 	})

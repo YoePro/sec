@@ -2068,10 +2068,26 @@ the source does not spell, from Sema facts:
 Explicit `<-` and `ref` forms, temporaries, existing references, and trivial
 copies get no hint.
 
+Inlay hint resolve (2026-10-29): `inlayHintProvider.resolveProvider`
+advertises `inlayHint/resolve`. Hints retain stable label parts and opaque data
+for the exact source snapshot. Resolve adds Markdown tooltips and declaration
+locations from the existing resolved binding type or selected call parameter;
+imported declarations retain their own URI and range. Types without one physical
+declaration do not acquire a guessed target. Ownership and default-preview hints
+explain the already resolved effect or omitted defaults without changing source.
+
+The client’s `textDocument.inlayHint.resolveSupport.properties` controls lazy
+`tooltip`, `label.tooltip` and `label.location` properties independently;
+unsupported lazy properties are supplied when listing hints. Resolve regenerates
+the current hint using current compiler facts and settings, preserves its label,
+position, kind and padding, and ignores client-supplied decorations. Malformed
+or unmatched hints are rejected; changed or closed source snapshots require a
+fresh hint request. Resolve uses the read-only worker queue and is superseded by
+queued document changes or close notifications.
+
 Pending: `move` hints for implicit consuming construction (explicit `<-` is
 required today), generic instantiation, resolved
-overload, unit conversion, contract, error type, allocation, target, and
-inlay-hint resolve.
+overload, unit conversion, contract, error type, allocation and target hints.
 
 Possible categories:
 

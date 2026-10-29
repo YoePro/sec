@@ -141,8 +141,8 @@ func (a *Analyzer) beginIterationDependencies(stmt *ast.ForStatement, valid bool
 	a.iterationDependencies[stmt] = fact
 	a.activeIterationDependencies = append(a.activeIterationDependencies, activeIterationDependency{stmt, a.currentCallable, len(a.errors)})
 	a.recordIterationBorrowDependencies("entry")
-	// Collection ref bindings are semantic element borrows even when no ordinary
-	// RefExpression/borrowRecord was required to create the loop binding.
+	// Collection ref bindings are semantic element borrows; the borrow record
+	// each binding holds over the iterable is published once, in this phase.
 	for _, binding := range stmt.Bindings {
 		if binding.Discard || binding.Mode == ast.ForBindingValue {
 			continue
@@ -200,6 +200,9 @@ func (a *Analyzer) recordIterationBorrowState(phase string, borrows map[string][
 		sort.Strings(roots)
 		for _, root := range roots {
 			for _, record := range borrows[root] {
+				if forBindingBorrowRecord(active.statement, record) {
+					continue
+				}
 				candidate := IterationBorrowDependency{LiveAtLoopExit: phase == "exit", Place: record.Place, Holder: record.Holder, Kind: string(record.Kind), Source: record.Token, Phase: phase, LoopCarried: phase == "backedge" && record.LoopCarried, OverlapsIteratorStorage: fact.BackingUnknown}
 				if record.Place.Root == "" {
 					candidate.OverlapsIteratorStorage = true
@@ -276,4 +279,15 @@ func iterationSnapshotPlace(place Place) Place {
 		place.AlternativeOrigins[i] = iterationSnapshotPlace(place.AlternativeOrigins[i])
 	}
 	return place
+}
+
+// forBindingBorrowRecord reports the borrow a ref or ref mut binding of loop
+// holds over its iterable, which the iteration-binding phase already records.
+func forBindingBorrowRecord(loop *ast.ForStatement, record borrowRecord) bool {
+	for _, binding := range loop.Bindings {
+		if !binding.Discard && binding.Mode != ast.ForBindingValue && record.Holder == binding.Name && record.Token == binding.ModeToken {
+			return true
+		}
+	}
+	return false
 }

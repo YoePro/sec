@@ -156,7 +156,10 @@ func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 			switch enclosing := frame.block.Statements[frame.index].(type) {
 			case *ast.IfStatement, *ast.MatchStatement:
 			case *ast.WhileStatement, *ast.ForStatement:
-				if declaredDepth <= frame.depth && a.identifierUseOf(enclosing).names[name] {
+				// A binding of this for loop is fresh in every iteration
+				// (borrowing.md § 18(4)); its next-iteration uses belong
+				// to a new holder.
+				if declaredDepth <= frame.depth && a.identifierUseOf(enclosing).names[name] && !forStatementBinds(enclosing, name) {
 					return true
 				}
 			default:
@@ -166,6 +169,11 @@ func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 			}
 		}
 		for _, later := range frame.block.Statements[from:] {
+			// A later loop binding the same name introduces a new binding;
+			// no shadowing means it cannot refer to this holder.
+			if forStatementBinds(later, name) {
+				continue
+			}
 			if a.identifierUseOf(later).names[name] {
 				return true
 			}
@@ -176,6 +184,20 @@ func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 			if statementDefinitelyReturns(later) {
 				return false
 			}
+		}
+	}
+	return false
+}
+
+// forStatementBinds reports whether statement is a for loop that binds name.
+func forStatementBinds(statement ast.Statement, name string) bool {
+	loop, ok := statement.(*ast.ForStatement)
+	if !ok {
+		return false
+	}
+	for _, binding := range loop.Bindings {
+		if !binding.Discard && binding.Name == name {
+			return true
 		}
 	}
 	return false

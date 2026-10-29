@@ -159,7 +159,7 @@ func processYAMLFile(path string, stats *Stats) error {
 	}
 }
 
-func printResults(out io.Writer, stats Stats, verbose bool, html bool) {
+func printResults(out io.Writer, stats Stats, verbose bool, html bool, itemOnly bool) {
 
 	if html {
 		fmt.Fprint(out, createHTMLOutput(stats, verbose))
@@ -170,25 +170,26 @@ func printResults(out io.Writer, stats Stats, verbose bool, html bool) {
 		fmt.Fprintln(out, "No YAML files found.")
 		return
 	}
-	fmt.Fprintln(out, "\nIMPLEMENTATION STATISTICS")
-	fmt.Fprintf(out, "YAML files read:               %3d\n", stats.Files)
-	fmt.Fprintf(out, "Total integrations:            %3d\n", stats.TotalObjects)
+	if !itemOnly {
+		fmt.Fprintln(out, "\nIMPLEMENTATION STATISTICS")
+		fmt.Fprintf(out, "YAML files read:               %3d\n", stats.Files)
+		fmt.Fprintf(out, "Total integrations:            %3d\n", stats.TotalObjects)
 
-	if stats.TotalObjects > 0 {
-		fmt.Fprintln(out, "\nIntegration ID statuses:")
-		for _, status := range []string{"implemented", "partial", "planned"} {
-			fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
-		}
-		for _, status := range sortedKeys(stats.StatusCounts) {
-			if status != "implemented" && status != "partial" && status != "planned" {
-				fmt.Fprintf(out, "  %-10s                    %3d\n", status, stats.StatusCounts[status])
+		if stats.TotalObjects > 0 {
+			fmt.Fprintln(out, "\nIntegration ID statuses:")
+			for _, status := range []string{"implemented", "partial", "planned"} {
+				fmt.Fprintf(out, "  %-20s %d\n", status, stats.StatusCounts[status])
 			}
+			for _, status := range sortedKeys(stats.StatusCounts) {
+				if status != "implemented" && status != "partial" && status != "planned" {
+					fmt.Fprintf(out, "  %-10s                    %3d\n", status, stats.StatusCounts[status])
+				}
+			}
+			fmt.Fprintf(out, "-------------------------------------------\n")
+		} else {
+			fmt.Fprintln(out, "\nNo integrations found.")
 		}
-		fmt.Fprintf(out, "-------------------------------------------\n")
-	} else {
-		fmt.Fprintln(out, "\nNo integrations found.")
 	}
-
 	tot := stats.TotalImplemented + stats.TotalRemaining + stats.TotalPartial
 	if tot > 0 {
 		fmt.Fprintln(out, "\nChecklist item status:")
@@ -200,7 +201,7 @@ func printResults(out io.Writer, stats Stats, verbose bool, html bool) {
 	} else {
 		fmt.Fprintln(out, "\nNo checklist items found.")
 	}
-	if stats.LibraryObjects > 0 {
+	if stats.LibraryObjects > 0 && !itemOnly {
 		fmt.Fprintf(out, "\nNot counted (library, not compiler implementation): %d integrations in %s\n", stats.LibraryObjects, strings.Join(stats.LibraryFiles, ", "))
 	}
 	if verbose {

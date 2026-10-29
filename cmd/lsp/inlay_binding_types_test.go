@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -67,7 +68,7 @@ func TestInlayHintsScopedBindingTypes(t *testing.T) {
 	for _, hint := range hints {
 		at := lspRange{Start: hint.Position, End: hint.Position}
 		only := inlayHintsForSource(uri, text, at, inlayHintSettings{Types: true})
-		if len(only) != 1 || only[0] != hint {
+		if len(only) != 1 || !reflect.DeepEqual(only[0], hint) {
 			t.Fatal(only, hint)
 		}
 	}

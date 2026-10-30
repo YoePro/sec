@@ -565,7 +565,10 @@ func (a *Analyzer) recordReferenceReturnUse(value ast.Expression, returnType Typ
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — § 59 "Reference parameters"
 //   - rules/memory/borrowing.md — § 11 "Reference values and reborrowing"
 func (a *Analyzer) recordReferenceParameterFacts(param FunctionParameter) {
-	if a.summaryPass || param.Variadic || (!param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType) {
+	// An expanded `...ref Types` position is an ordinary reference parameter of
+	// its specialization (semantic_ir.md § 27A); a homogeneous variadic is not.
+	typePack := param.Type.Element != nil && param.Type.Element.Kind == GenericTypePackType
+	if a.summaryPass || param.Variadic && !typePack || (!param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType) {
 		return
 	}
 	place, ok := a.resolvePlace(&ast.Identifier{Token: param.Token, Value: param.Name})

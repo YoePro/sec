@@ -1,0 +1,3 @@
+module main
+fn RuntimeValue() int { return 17 }
+let Invalid: int := runtime RuntimeValue()

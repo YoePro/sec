@@ -216,6 +216,8 @@ func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
 		ParserAssertMissingCondition,
 		ParserLegacyTryMatchWrapper,
 		ParserRemovedUppercaseForeignQualifier,
+		ParserInvalidHardwareDeclaration,
+		ParserMutFnInImpl,
 	}
 	for _, id := range ids {
 		definition, ok := Lookup(id)

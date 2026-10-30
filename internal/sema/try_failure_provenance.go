@@ -20,7 +20,7 @@ import (
 // Rules:
 //   - rules/control-flow/flowcontrol_match.md — § 25A (failure provenance)
 //   - rules/errors/errorhandling.md — § 27.2b
-//   - rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — § 9
+//   - rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — § 9
 func (a *Analyzer) provenArithmeticFailureVariants(expr *ast.TryExpression) (map[string]bool, bool) {
 	if rootType, ok := a.ResolvedTypeOf(expr.Expression); ok && rootType.Kind == ResultType && len(rootType.TypeArgs) == 2 && arithmeticErrorOpaque(rootType.TypeArgs[1]) {
 		return nil, false

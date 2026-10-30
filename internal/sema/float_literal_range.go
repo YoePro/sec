@@ -15,7 +15,7 @@ import (
 // Decimal sources of runtime conversions keep their decimal type and are
 // deliberately excluded. Sorting gives diagnostics stable source order.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§11–19;
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func (a *Analyzer) validateResolvedFloatLiterals() {
 	literals := make([]ast.Expression, 0)
 	for expr, typ := range a.expressionTypes {

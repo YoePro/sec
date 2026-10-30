@@ -71,7 +71,7 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 				anchor = clause
 			}
 			addFailure(required.Name, anchor, required.Token, diagnostics.InterfaceMemberMissing,
-				"declare "+interfaceRequirementDisplay(substituteInterfaceSelf(required, typ))+" in the impl of "+typ.Name,
+				"declare "+implMethodDisplay(substituteInterfaceSelf(required, typ))+" in the impl of "+typ.Name,
 				"type %s implements %s but is missing method %s", typ.Name, iface.Name, required.Name)
 			continue
 		}

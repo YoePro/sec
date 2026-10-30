@@ -1,0 +1,2 @@
+module main
+fn Observe[...Types](values: ...ref Types) uint { return values[0] }

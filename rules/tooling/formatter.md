@@ -1683,7 +1683,7 @@ if ready {
 }
 ```
 
-§ 27(18) The same rule applies to unambiguous `while`, `switch`, and supported `for` condition forms.
+§ 27(18) The same rule applies to unambiguous `while`, `switch`, and supported `for` condition forms. The rule removes only one pair that encloses the whole condition: a condition that merely begins with `(` and ends with `)`, such as `(flags & mask) == byte(0x80)` or `(a) && (b)`, is unchanged. A pair containing a brace, such as a `try` handler, struct literal or lambda, is also unchanged, because the parentheses keep that brace from being read as the statement body (amended 2026-10-30).
 
 § 27(19) Redundant expression parentheses may be removed only when precedence and grouping are provably unchanged:
 

@@ -7,15 +7,11 @@ import (
 	"sec/internal/sema"
 )
 
-// Methods declared in impl blocks (impl.md §§ 11, 13). A `static fn` member has
-// no receiver, so it lowers as an ordinary Semantic IR function under its
-// qualified `Target.Name` identity, and a call to it is a direct call to that
-// resolved callable. Instance methods carry an implicit `self` receiver whose
-// capability (shared, mutable or consuming) becomes an explicit receiver
-// parameter; shared and mutable receivers need reference parameters
-// (sec-mlir-dialect P15-47), so instance methods and their calls remain
-// unsupported, as do static methods of generic implementations until
-// specialization identities exist in Semantic IR.
+// Methods declared in impl blocks retain their resolved qualified identity.
+// Static methods have no receiver; from P15 ordinary instance methods take an
+// explicit shared/mutable reference receiver. Ordinary methods never consume
+// whole self (functions.md §22); generic implementations remain unsupported
+// until concrete specialization identities and body facts exist in Semantic IR.
 //
 // Rules:
 //   - rules/declarations/impl.md — § 8 "self", § 11 "Methods", § 13 "Static members", § 25

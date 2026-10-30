@@ -1,0 +1,10 @@
+module main
+
+import "io"
+
+fn Load(path: string) Result[uint, IOErrorLegacy] {
+	let mut buffer: byte[16] := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	let count := try io.ReadFileInto(path, ref mut buffer[..])
+
+	return Ok(count)
+}

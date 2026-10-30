@@ -15,7 +15,7 @@ import (
 // The source matrix checks the final binary width in all literal contexts,
 // preserving valid wide explicit contexts, subnormals and signed underflow.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§11–19;
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func TestResolvedFloatLiteralRanges(t *testing.T) {
 	const path = "../../testdata/sema/md066_literals/float_ranges.sec"
 	data, err := os.ReadFile(path)

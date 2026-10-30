@@ -1,0 +1,31 @@
+module main
+
+// MD-117 Semantic IR: each selected call demands one concrete specialization,
+// whose identity is the ordered type sequence (semantic_ir.md § 27A).
+
+fn Count[...Types](values: ...ref Types) uint {
+    return values.Len
+}
+
+fn Tagged[...Types](base: uint, values: ...ref Types) uint {
+    return base + values.Len * 2
+}
+
+fn Unused[...Types](values: ...ref Types) void {
+}
+
+fn Nested[...Types](values: ...ref Types) uint {
+    return Count(1, true) + values.Len
+}
+
+fn Use() uint {
+    let number := 42
+    let base: uint := 10
+    let reference := ref number
+    let empty     := Count()
+    let pair      := Count(number, true)
+    let reordered := Count(true, number)
+    let samePair  := Count(reference, false)
+    Unused(1)
+    return empty + pair + reordered + samePair + Tagged(base, 1, 2, 3) + Nested(number)
+}

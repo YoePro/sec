@@ -148,6 +148,26 @@ fn GetState() ref mut ApplicationState {
 }
 ```
 
+**Amendment MD-081 (2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` §§ 2–7).** A static may be initialized with an explicit reference to static storage:
+
+```sec
+let Configuration: int := 42
+let ConfigurationRef: ref int := ref Configuration
+let ConfigurationRef2 := ref Configuration
+
+let mut Counter: int := 0
+let CounterAccess := ref mut Counter
+
+let Table: int[3] := [1, 2, 3]
+let SecondEntry := ref Table[1]
+```
+
+- **Spelling and type.** The reference is always written `ref place` or `ref mut place`; an owned Place supplied where a reference is expected stays `S1169` (MD-080). The destination type is optional and inferred as `ref T` or `ref mut T`, never erasing authority, origin or mutability.
+- **Roots.** The root is existing static storage with one canonical identity: a module-level declaration (static whether or not `static` is written), a type-owned `static let` (reached as `Owner.Name`), or a function-local `static let`. An automatic local, parameter, call temporary, computed value, runtime-mapped resource or evaluator allocation is not a valid root. A cross-module root needs ordinary visibility and its module-qualified identity, and a stage that cannot preserve that linkage rejects it.
+- **Sub-Places.** A field path or fixed-array element is allowed when the whole Place path resolves to static storage during compilation: every index is a compile-time value proven in bounds, and the root's identity and the complete projection are kept, never a spelling or numeric offset. A runtime index, an out-of-bounds index, an unknown or overlapping projection, a non-address-stable backing collection or an invalid union projection is rejected, and a projection never launders an invalid origin.
+- **Authority.** `ref` of an immutable static grants no mutation; `ref mut` needs mutable static storage and a proven exclusive borrow over every use reachable through the holder. A mutable borrow held by a static does not end when its initializer finishes; overlapping exclusive borrows (for example two `ref mut Counter` statics) and shared/exclusive conflicts are errors, while provably disjoint fields or elements may have separate mutable references. When exclusivity cannot be proven, compilation fails closed. A static reference is never a synchronization mechanism (§ 17).
+- **Object validity.** Static storage duration proves only that the Place exists. The referenced object must also stay initialized and valid, and may not be moved, replaced or destroyed while a usable reference holder can reach it (§ 20).
+
 ## 6. Static declarations in implementations
 
 Type-associated storage and values belong in `impl`.
@@ -491,6 +511,8 @@ Normative rule:
 
 This rule is unrelated to lifecycle `init` members. `init` constructs an explicitly requested instance; it is not an implicit static-startup mechanism.
 
+**Amendment MD-081 (2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` §§ 2(1), 8).** `ref S` and `ref mut S` of verified static storage are compile-time initializer expressions (§ 5 amendment). Forming such a reference computes a static storage identity; it never reads the runtime contents of a mutable static, adds a runtime startup action or makes a computed temporary static. The dependency and cycle rules of § 16 apply unchanged: an edge that takes an address is still a dependency and no exception allows a cyclic initializer graph.
+
 ## 16. Static initialization dependency order
 
 Static initialization order must not depend on source-file discovery order.
@@ -596,6 +618,8 @@ Examples include:
 - kernel or runtime failure.
 
 Static destruction follows the general destruction rules.
+
+**Amendment MD-081 (2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` § 7(3)).** A static reference holder and its referent are destroyed in an order validated against their dependency and use relationships, so a referent is never destroyed while a live reference can still use it. Existing shutdown and target termination rules are unchanged.
 
 ## 21. Target profiles
 
@@ -731,6 +755,8 @@ Static IR metadata must include, where applicable:
 Static members must never be lowered as instance fields.
 
 `StaticInitialize` represents compile-time-resolved static initialization semantics. It must not imply a hidden runtime startup call.
+
+**Amendment MD-081 (2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` §§ 9, 10).** Semantic analysis records each static reference initializer's canonical static origin, exact field/element projection and shared or mutable authority, and Semantic IR carries them through the MD-116 static root (`place.static-root`, `sec.place.static`, `sec.static_id`, `sec.address_taken`) with ordinary projections and borrows; no second static-root mechanism exists, and an unsupported projection or cross-module linkage is rejected rather than approximated. An invalid static reference receives the most specific diagnostic: `S1169`, reference origin (for example a non-static root or a runtime index), immutability, borrow overlap, bounds, lifetime or materialization, never only the generic runtime-initializer error. Diagnostics name the static root and projected Place and, for borrow conflicts, the conflicting holder.
 
 ## 28. Diagnostics
 

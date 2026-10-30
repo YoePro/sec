@@ -1,0 +1,5 @@
+module main
+fn Capture(value: int) int {
+    static let Captured: int := value + 1
+    return Captured
+}

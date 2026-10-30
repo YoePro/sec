@@ -33,8 +33,8 @@ func TestTypedScalarMatrix(t *testing.T) {
 // remaining runtime validation/lowering implementation. Typed scalar identity
 // stays distinct even when an explicit conversion relation exists.
 // Rules: rules/types/types.md — Explicit conversions, char, rune, numeric-to-boolean;
-// Numeric-to-string constructor casts are excluded: MD-051 records the
-// missing relation; ToString does not specify constructor-cast semantics.
+// Numeric-to-string constructor relations are covered separately below: the
+// primitive formatting route and named string rejection differ (MD-051/MD-093).
 func TestExplicitScalarMatrix(t *testing.T) {
 	matrix(t, "conversions", func(target, source scalar) bool {
 		numeric := func(f string) bool { return f == "integer" || f == "float" || f == "decimal" }
@@ -57,11 +57,11 @@ func TestExplicitScalarMatrix(t *testing.T) {
 	}, 1)
 }
 
-// TestLegacyNumericStringConversions characterizes the pre-existing frontend
-// permission without treating it as a normative constructor conversion relation.
-// The missing rule is tracked in missing-decisions.yaml MD-051; rules/library/
-// core-library.md — ToString defines a separate fallible member operation.
-func TestLegacyNumericStringConversions(t *testing.T) {
+// TestNumericStringConstructorRelations distinguishes the primitive formatting
+// route from the forbidden direct conversion to a nominal string (MD-051/MD-093).
+// Runtime failure facts are covered by the compiler's core-loaded conversion tests.
+// Rules: rules/types/types.md — "Numeric-to-text conversion".
+func TestNumericStringConstructorRelations(t *testing.T) {
 	data, err := os.ReadFile("../../../testdata/sema/type_compatibility/conversions.sec.in")
 	if err != nil {
 		t.Fatal(err)
@@ -69,13 +69,18 @@ func TestLegacyNumericStringConversions(t *testing.T) {
 	for _, target := range []string{"string", "Text"} {
 		for _, source := range []string{"int", "float", "decimal"} {
 			text := strings.NewReplacer("TARGET", target, "SOURCE", source).Replace(string(data))
-			p := parser.New(lexer.NewWithFile(text, "legacy-string-cast.sec"))
+			p := parser.New(lexer.NewWithFile(text, "numeric-string-cast.sec"))
 			program := p.ParseProgram()
 			if len(p.Errors()) != 0 {
 				t.Fatal(p.Errors())
 			}
-			if errors := sema.NewAnalyzer().Analyze(program); len(errors) != 0 {
-				t.Fatalf("legacy %s(%s): %v", target, source, errors)
+			errors := sema.NewAnalyzer().Analyze(program)
+			if target == "string" {
+				if len(errors) != 0 {
+					t.Fatalf("primitive %s(%s): %v", target, source, errors)
+				}
+			} else if len(errors) != 1 || errors[0].ID != diagnostics.ConversionUnavailable || errors[0].Line != 16 || errors[0].Column == 0 {
+				t.Fatalf("nominal %s(%s) must reject direct formatting: %v", target, source, errors)
 			}
 		}
 	}
@@ -95,8 +100,8 @@ func matrix(t *testing.T, fixture string, allowed func(scalar, scalar) bool, fai
 		for _, depth := range []sema.AnalysisDepth{sema.AnalysisInteractive, sema.AnalysisStandard, sema.AnalysisDeep} {
 			for _, target := range scalars {
 				for _, source := range scalars {
-					// MD-051: keep undocumented numeric-to-string casts outside the
-					// normative matrix; their legacy permission is characterized separately.
+					// MD-051/MD-093: primitive versus nominal numeric-to-string
+					// constructor relations are audited separately above.
 					if fixture == "conversions" && target.family == "string" && (source.family == "integer" || source.family == "float" || source.family == "decimal") {
 						continue
 					}

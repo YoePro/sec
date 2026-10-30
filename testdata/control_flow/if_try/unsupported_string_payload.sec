@@ -1,0 +1,22 @@
+module main
+
+type GateError union error {
+    Failed(string)
+}
+
+fn Probe(mode: int) Result[bool, GateError] {
+    if mode == 2 {
+        return Err(GateError.Failed("gate"))
+    }
+    return Ok(mode == 1)
+}
+
+fn main() int {
+    let open := try Probe(1) {
+        Err(_) => false
+    }
+    if open {
+        return 0
+    }
+    return 1
+}

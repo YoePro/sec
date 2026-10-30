@@ -1,0 +1,128 @@
+module main
+
+// Native Result and union values with scalar payloads (layout.md §§ 15-16;
+// sec-lower-tagged-values): construction, parameters, returns, guards,
+// mutable storage, loops, Option and nested enum payloads.
+
+enum Level {
+    Low,
+    High,
+}
+
+type Figure union {
+    Circle(int)
+    Flag(bool)
+    Ratio(float)
+    Tier(Level)
+    Box {
+        Width:  int,
+        Height: int
+    }
+    Dot
+}
+
+fn Make(kind: int) Figure {
+    if kind == 1 {
+        return Figure.Flag(true)
+    }
+    if kind == 2 {
+        return Figure.Ratio(1.5)
+    }
+    if kind == 3 {
+        return Figure.Dot
+    }
+    if kind == 4 {
+        return Figure.Tier(Level.High)
+    }
+    if kind == 5 {
+        return Figure.Box { Width: 6, Height: 7 }
+    }
+    return Figure.Circle(kind)
+}
+
+fn Size(shape: Figure) int {
+    match shape {
+        Circle(radius) => return radius
+        Flag(on) => {
+            if on {
+                return 1
+            }
+            return 0
+        }
+        Ratio(value) => {
+            if value > 1.0 {
+                return 2
+            }
+            return -2
+        }
+        Tier(level) => {
+            if level == Level.High {
+                return 4
+            }
+            return -4
+        }
+        Box { Width: width, Height: height } => return width * height
+        Dot => return 3
+    }
+}
+
+fn Choose(kind: int) Figure {
+    return match Make(kind) {
+        Circle(radius) => Figure.Circle(radius + 1)
+        Dot => Make(8)
+        Flag(_) => Figure.Dot
+        Ratio(_) => Figure.Dot
+        Tier(_) => Figure.Dot
+        Box {} => Figure.Dot
+    }
+}
+
+fn Find(kind: int) Option[int] {
+    if kind > 2 {
+        return Some(kind)
+    }
+    return None
+}
+
+fn Pick(kind: int) int {
+    match Find(kind) {
+        Some(value) => return value
+        None => return 0
+    }
+}
+
+fn main() int {
+    if Size(Make(0)) != 0 || Size(Make(1)) != 1 || Size(Make(2)) != 2 || Size(Make(3)) != 3 {
+        return 1
+    }
+    if Size(Make(4)) != 4 || Size(Make(5)) != 42 || Size(Make(9)) != 9 {
+        return 2
+    }
+    if Pick(1) != 0 || Pick(4) != 4 {
+        return 3
+    }
+    if Size(Choose(3)) != 8 || Size(Choose(6)) != 7 || Size(Choose(1)) != 3 {
+        return 7
+    }
+    let shape     := Make(8)
+    let mut other := Make(3)
+    if Size(shape) != 8 || Size(other) != 3 {
+        return 4
+    }
+    other = Make(6)
+    if Size(other) != 6 {
+        return 5
+    }
+    let mut total := 0
+    for index in 0..<3 {
+        let mut step := Make(index + 6)
+        if index == 1 {
+            step = Make(10)
+        }
+        total += Size(step)
+    }
+    if total != 24 {
+        return 6
+    }
+    return 0
+}

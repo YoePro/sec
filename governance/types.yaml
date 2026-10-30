@@ -629,6 +629,8 @@ integrations:
       - "audit completion is distinct from runtime conversion implementation: the existing scalar ConversionError frontend remains open; audited missing nominal-core representations retain their specialized implementation owners, as do collection/place/defaultability owners. The historical matrix excluded the then-undecided numeric-to-string permission; MD-051 subsequently defined primitive fallible text materialization, and MD-093 now rejects direct nominal-string targets. Their backend gates remain separate from relation validation."
       - explicit callable parameter ownership modes and variadic callable type syntax remain with frontend.functions-v2 and frontend.lambda-functions-v2 in governance/declarations.yaml; inferred variadic shape is covered here without claiming those syntax/ownership integrations complete.
     verification:
+      - command: go test ./internal/sema/typecompatibility -run TestNumericStringConstructorRelations -count=1
+        result: "Passed 2026-10-30: primitive int/float/decimal string-constructor relations remain accepted; direct Text(number) is rejected exactly once with located S1174, following the applied MD-051/MD-093 decisions. Replaces the obsolete legacy-permission oracle; runtime StringError materialization remains separately gated."
       - command: go test ./cmd/lsp -run 'SomeConstructorHover|TryHover|CompilerKnownFriendly|TypeHover' -count=1 -timeout=120s
         result: passed on 2026-10-29 (15.278s); source validity, selected constructor/type, exact hover ranges and ordinary user-call fallback verified; types-core remaining 13 to 12.
       - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1; go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
@@ -1256,6 +1258,8 @@ integrations:
       - constrained assignment outside try rejected
       - constrained assignment inside try leaves destination unchanged on failure
     verification:
+      - command: go test ./internal/sema/collectionshape -count=1
+        result: "Passed 2026-10-30 for the P15-75 blocker repairs: the three formerly failing contract tests retain all expected length/duplicate diagnostics and all 32/64-bit, Interactive/Standard/Deep uniqueness cases using supported fixed-array fixtures; no nonempty owning dynamic-array literal is enabled."
       - command: go test ./... -count=1
         result: passed on 2026-10-09 after direct-element unique equality and generic comparability enforcement; all packages including compiler, LSP, Sema and backends
       - command: go test -race ./internal/sema/... -count=1 and go vet ./...

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
+- **Last updated:** 2026-10-30 (§ 24(4i) MD-111 hardware metadata diagnostics; § 24(4h) recognized type-pack expansion capability boundary); 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
@@ -1021,11 +1021,30 @@ The occurrence message names the required reference type and the source Place an
 - an **inactive-arm** identity for a valid `match` arm or `try` handler excluded only by a proven subject state or complete failure provenance. The occurrence carries the pattern location, resolved subject type, excluded variant and proof reason, and where available a related location for the assignment or condition establishing the active variant. Allocated 2026-10-29 as `A2008` / `control-flow.inactive-match-arm` (family `control-flow`, default `Information`, configurable);
 - an **omitted-payload** identity for a bare variant pattern that selects a payload-bearing variant without binding its payload. It names the payload type or fields and suggests a binding form and the explicit `Variant {}` / `Variant(_)` spelling. Allocated 2026-10-29 as `A2007` / `union.omitted-payload-pattern` (family `union`, default `Information`, configurable). It replaces `S1152` / `union.pattern-payload-binding-required`, which is retired and stays reserved (§ 24(5)).
 
-Equivalent proof occurrences are grouped or deduplicated as this rulebook prescribes. CLI, JSON and LSP publish the same identity and proof information. Quick fixes, if offered, are optional and driven by semantic facts; the formatter never removes an inactive arm (MD-029/MD-042, `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 10).
+Equivalent proof occurrences are grouped or deduplicated as this rulebook prescribes. CLI, JSON and LSP publish the same identity and proof information. Quick fixes, if offered, are optional and driven by semantic facts; the formatter never removes an inactive arm (MD-029/MD-042, `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 10).
 
 § 24(4f) `S1157` keeps its identity for a call of the compiler-known `None` variant: `None()` is invalid Option construction, and the message explains that `None` takes no arguments and is not a function. A legitimate user-defined function is never labelled as the Option absence variant, and a valid `Some(value)` with Option context or an independently typeable payload never produces `S1157` (MD-102, same correction §§ 11(2), 14).
 
 § 24(4g) The optional empty-state catch-all warning permitted by `rules/declarations/unions.md` § 10.4 is allocated as `A2009` / `union.implicit-empty-catch-all` (family `union`, default `Warning`, configurable under § 18). It identifies the unguarded `_` that absorbs a reachable `empty` state when no explicit `empty` arm exists, names the possibly-empty subject and suggests explicit handling. Initialized subjects, guarded wildcards alone and matches with an explicit empty arm do not receive this advisory. Its policy never changes exhaustiveness or initialization/ownership facts; missing required coverage remains an error even when the advisory is disabled. JSON and LSP retain the canonical identity, source range and help.
+
+§ 24(4h) `S1177` / `compiler.type-pack-expansion-unavailable` (family `compiler-capability`, mandatory `Error`) reports the compiler implementation boundary after recognizing an MD-117 type-pack declaration. At a declaration it points at the `...` marker; unsupported call preparation or competing pack templates point at the call or argument. Shared-pack free-function bodies with no pack use or only read-only Len observations and ordered direct-call inference are supported; other parameter modes, demanded pack-element body expansion and spread preparation still report the capability boundary. Executable pack expansion has a separate named Semantic IR boundary. It does not claim that the approved source form is invalid, does not reinterpret the pack as one generic type or a runtime container, and prevents emission until those semantic owners provide the required support. CLI JSON and LSP retain this identity, location and help. In the LSP this known implementation limitation is presented as Information, not as a source-code Error; the mandatory Error and compilation stop remain in CLI checking and emission. This presentation exception applies only to S1177, not to other mandatory diagnostics. This is an implementation capability report, not a new restriction on `generics.md` § 16A.
+
+§ 24(4i) MD-111 § 13(2) hardware metadata diagnostics have separate permanent identities. The following are mandatory `Error` diagnostics (family `hardware`, except the two named compiler-capability boundaries):
+
+| ID | Symbolic name | Failure |
+|---|---|---|
+| S1178 | `hardware.member-type` | Member value has the wrong metadata type or nonliteral integer form. |
+| S1179 | `hardware.member-schema` | Unknown/duplicate member or conflicting declaration name. |
+| S1180 | `hardware.enum-case` | Unknown closed enum case or wrong/unqualified enum namespace. |
+| S1181 | `hardware.unknown-domain` | Domain is not supplied by the selected target. |
+| S1182 | `hardware.address-extent` | Invalid integer range, extent, containment, transfer width or alignment. |
+| S1183 | `hardware.symbol-resolution` | Unknown, ambiguous, inaccessible or wrong-category source metadata selector. |
+| S1184 | `hardware.required-capability` | Missing required member, disabled-direction member, invalid width set or forbidden direction. |
+| S1185 | `hardware.region-conflict` | Incompatible region kind/overlap or conflict with established target/Device facts. |
+| S1186 | `compiler.hardware-schema-unavailable` | Recognized non-linear region or endpoint kind lacks a supported declaration schema (family `compiler-capability`). |
+| S1187 | `compiler.hardware-context-unavailable` | Selected target or resolver-owned canonical module context is unavailable or invalid (family `compiler-capability`). |
+
+`A2010` / `hardware.region-overlap` is a configurable default `Warning` for overlapping compatible regions. It does not prove shared resource identity and cannot be silenced by a binding alias acknowledgement. Errors and warnings retain the offending property/declaration span, expected metadata type where applicable, actionable help and a related source location for duplicates, visibility, containment and overlaps where available. No invalid metadata fact set is published. Project override selectors/property-change warnings and binding alias checks retain their later owning stages; these identities do not claim those stages are implemented.
 
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 

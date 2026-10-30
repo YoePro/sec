@@ -364,3 +364,24 @@ type ShapeError union error {
     // Storage or placement failed during shaped initialization.
     InitError(StorageError),
 }
+
+/**
+ * Reports an error while rendering formatted text to a destination.
+ *
+ * Description:
+ * Distinguishes text representation and format errors from
+ * failures reported by the output destination.
+ *
+ * Ownership:
+ * Owns its error payload according to normal Sec union rules.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 2, 5 and 9-10.
+ */
+type FormatRenderError union error {
+    // Format validation, text conversion or materialization failed.
+    Text(StringError)
+
+    // The output destination failed to accept the complete text.
+    IO(IOError)
+}

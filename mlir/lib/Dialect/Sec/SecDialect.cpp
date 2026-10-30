@@ -193,6 +193,13 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
         return operation->emitError()
                << "register and hardware-instance types require schema 11, module declares schema "
                << number;
+      // v11.41.2 amendment (2026-10-30): the MLIR form of int.bit-extract.
+      bool hasBitExtract = false;
+      module.walk([&](IntBitExtractOp) { hasBitExtract = true; });
+      if (hasBitExtract)
+        return operation->emitError()
+               << "int.bit_extract requires schema 11, module declares schema "
+               << number;
     }
     // Slice types (including nested type attributes, signatures and block
     // parameters) belong to schema 12. An older header cannot hide a P16 value
@@ -347,8 +354,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     StringRef kind = cast<StringAttr>(value).getValue();
     if (kind != "enum-value" && kind != "union-variant" &&
         kind != "result-ok" && kind != "result-err" &&
-        kind != "option-some" && kind != "option-none" &&
-        kind != "catch-all")
+        kind != "result-err-variant" && kind != "option-some" &&
+        kind != "option-none" && kind != "catch-all")
       return operation->emitError("invalid sec.match_pattern_kind");
     return success();
   }

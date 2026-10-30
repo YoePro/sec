@@ -444,7 +444,7 @@ equally named roots of different declarations stay distinct alternatives
 
   2026-10-27:
   - MD-116 is decided and implemented; see P15-42a.
-  - MD-114 is decided (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`; dialect v11.41.1a, lowering v11.30, Semantic IR § 21(7)). It defines the `sec.registers` table with typed `#sec.register_def` / `#sec.register_field`, `sec.field_path` (i32 ordinals) and `sec.write_proof` (`typed` / `constant` / `interval`).
+  - MD-114 is decided (`rules/corrections/applied/MD-114-canonical-register-value-mlir-contract-correction-20261030.md`; dialect v11.41.1a, lowering v11.30, Semantic IR § 21(7)). It defines the `sec.registers` table with typed `#sec.register_def` / `#sec.register_field`, `sec.field_path` (i32 ordinals) and `sec.write_proof` (`typed` / `constant` / `interval`).
   - Implemented 2026-10-28: typed table/field/write-proof attributes; strict
     module layout/carrier/nested-type verification; pure extract/update with
     composed ordinal paths; direct Go emission from Module.Registers; and
@@ -477,14 +477,14 @@ equally named roots of different declarations stay distinct alternatives
   This also fixes a miscompilation that predates P15 and affected every package level: a function-local `static let mut` was lowered as automatic local storage and re-initialized on every call. The legacy direct `emit-llvm` and `emit-mlir` routes had the same defect (an `alloca`); they now reject function-local statics. The Sec MLIR emitter rejects statics, since no schema represents them yet (`TestStaticStorageLowersToModuleStatics`, `TestPackage15LowersStaticPlaceRoots`, `TestVerifierChecksStaticStorage`, `TestResolvedStaticOfDistinguishesStaticStorage`, `TestStaticStorageEmitRoutes`, `TestLegacyRoutesRejectFunctionLocalStatics`).
 
   Current limits, each a package boundary:
-  - statics of integer-family or bool type with a literal (or default) initializer only;
-  - no compound assignment to statics;
+  - statics of integer-family or bool type with a Sema-resolved scalar CTE initializer or synthesized default;
+  - compound assignment to scalar statics is implemented (2026-10-18; ordinary load/operator/store);
   - no statics of another module.
 
   Remaining:
   - addressed storage (fixed-address register/MMIO bindings) and its Place roots;
   - thread-local storage: Sec 0.1 has no thread-local static syntax, only `ThreadLocal[T]` owning a TLS key (static.md § 4);
-  - aggregate and compile-time-evaluated (non-literal) static initializers.
+  - aggregate, reference-held and executor-dependent static initializers (available scalar CTE is implemented below).
 
   MD-116 (decided 2026-10-27, `rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`; dialect v11.41.3, lowering v11.29) specifies the MLIR form of a static Place root. That form covers P15-42 static roots and P15-47 static return origins as well:
   - `place.static-root` emits as zero-operand `sec.place.static {global, place_root_id, storage_identity, address_space}`;
@@ -513,6 +513,19 @@ equally named roots of different declarations stay distinct alternatives
   - static field and element projections, once aggregate statics exist (only integer and bool statics are representable today);
   - cross-module static origins, which fail closed;
   - physical lowering of reference-dependent statics.
+  Update 2026-10-30 — scalar CTE producers completed: `ResolvedStatic.Initializer`
+  is frozen by Sema using the shared evaluator and resolved declaration identities.
+  Arithmetic, bitwise and boolean expressions, forward/static dependencies,
+  mutable statics' initial values, same-spelled statics in separate functions and
+  exact uint256 values lower through the existing scalar `sec.static.global`
+  schema. Bool calculations retain the resolved widths of floating operands.
+  Semantic IR consumes these facts without re-evaluating source or adding startup
+  code; integer division/remainder remain integer operations. Conflicting or
+  out-of-domain IR initializer payloads fail before output. Schema 11/12 source
+  tests pass at 32/64 bits and `TestNativeTrackBuildsAndRuns/static_cte` executes
+  successfully through the single track. Aggregate, static-held-reference and
+  executor-dependent materialization remain open; P15-42/42a stay unchecked.
+
 - [x] P15-43 — Lower direct field/subfield borrows via Place projections;
   demonstrate that P13 struct values are neither loaded nor copied solely to
   create a reference. Keep properties out of field-Place lowering.
@@ -544,10 +557,19 @@ equally named roots of different declarations stay distinct alternatives
   allowed returned input/subfield references, and preserved return-origin
   summaries. Do not choose a physical ABI or silently copy `ref mut`.
 
-  Partial 2026-10-12: Sema records callee-side facts for every ref/ref mut parameter (`ReferenceParameterFactsOf`; caller-owned-borrow proof, or dynamic-epoch for Arena-backed referents). Semantic IR parameters carry them (`Parameter.Reference`, printed and verifier-required), and the verifier now tracks dynamic-epoch parameters so their dereferences need guards (the P15-46 note). Reads and writes through a reference parameter use the P15-46 policy. At a call site an owned Place passed to a ref or ref mut parameter lowers Sema's implicit borrow as a Place borrow, an explicit `ref` argument its borrow, an existing shared reference is passed with `ref.copy-shared` (same borrow), and an existing ref mut is passed with `ref.reborrow-mut`, never copied. The new argument actions `shared-reference` and `mutable-reference` are verifier-checked against the parameter type (`TestPackage15LowersReferenceParametersAndPassing`, `TestPackage15DynamicReferenceUseValidatesOnce`). Instance-method receivers (2026-10-12): Sema publishes `ReceiverReferenceFactsOf` per instance method, `ResolvedImplicitReceiverOf` for `self` and implicit stored-field identifiers (reads and assignment targets), and an implicit borrow or pass use for the receiver expression of each instance-method call. From package 15 Semantic IR builds non-generic instance methods with a borrowed receiver, with an explicit first parameter `self` of type ref/ref mut Target carrying those facts. Field reads and writes through `self.f` or an implicit `f` dereference it and project `place.field`. A call passes the receiver: an implicit borrow of an owned Place, a pass of a reference holder, or the caller's own `self` (copied when shared), including bare method calls inside a method (`TestPackage15LowersInstanceMethodReceivers`, `TestPackage15ReceiverBoundaries`, `TestPackage15ImplicitFieldWriteUsesMutableReceiver`). Returned references (2026-10-16): Sema publishes `ReturnReferenceSummaryOf` (positional origins `$param:N`/`$receiver` with canonical projections) and `ResolvedCallReferenceOf` (caller-side facts instantiated from the callee summary over the actual arguments). A function returning a direct reference carries `ReturnOrigins` metadata (printed `returns-from=[param#0.field#0]`, `receiver.field#0`, `[1]`/`[*]` for elements). A returned reference may be the parameter's own reference, a sub-Place reborrow of it (`return ref pair.left`; `ref self.left` in a method reborrows the receiver), a local holder of one, or a call result. The verifier traces every returned reference through copies, moves, reborrows, dereferences, field and element Places and calls (via the callee's summary), and requires each traced origin to be listed. A call returning a reference carries the instantiated facts on its result (`TestPackage15LowersReturnedReferences`, `TestPackage15VerifierChecksReturnedReferenceOrigins`). Static and addressed origins stay unsupported until P15-42a. Receiver reborrows (2026-10-16): Sema publishes `ResolvedReceiverReborrowOf(call)` for a call on the enclosing method's own mutable receiver. `Bump()` and `self.Bump()` inside a mutating method lower to `ref.reborrow-mut` of the receiver with a fresh BorrowID/LifetimeID per call, or `ref.reborrow-shared` when the callee only reads. The receiver is never copied. `self` or a receiver field passed to a ref/ref mut parameter (`Read(self)`, `ReadInner(inner)`, `Write(self)`), and explicit `ref self` / `ref mut self`, derive the borrow from the dereferenced receiver with Sema's implicit-borrow facts (`TestPackage15ReborrowsReceiversForNestedCallsAndArguments`). The temporary-borrow rejection ("cannot borrow temporary expression") now carries S1168. Remaining: consuming receivers; generic implementations; and receivers that are temporaries without a Place (for example `Start().Next()`), which keep try-chain-intermediate-lowering blocked and await MD-076 (Sema accepts call-lifetime temporaries without an explicit rule).
+  Partial 2026-10-12: Sema records callee-side facts for every ref/ref mut parameter (`ReferenceParameterFactsOf`; caller-owned-borrow proof, or dynamic-epoch for Arena-backed referents). Semantic IR parameters carry them (`Parameter.Reference`, printed and verifier-required), and the verifier now tracks dynamic-epoch parameters so their dereferences need guards (the P15-46 note). Reads and writes through a reference parameter use the P15-46 policy. At a call site an owned Place passed to a ref or ref mut parameter lowers Sema's implicit borrow as a Place borrow, an explicit `ref` argument its borrow, an existing shared reference is passed with `ref.copy-shared` (same borrow), and an existing ref mut is passed with `ref.reborrow-mut`, never copied. The new argument actions `shared-reference` and `mutable-reference` are verifier-checked against the parameter type (`TestPackage15LowersReferenceParametersAndPassing`, `TestPackage15DynamicReferenceUseValidatesOnce`). Instance-method receivers (2026-10-12): Sema publishes `ReceiverReferenceFactsOf` per instance method, `ResolvedImplicitReceiverOf` for `self` and implicit stored-field identifiers (reads and assignment targets), and an implicit borrow or pass use for the receiver expression of each instance-method call. From package 15 Semantic IR builds non-generic instance methods with a borrowed receiver, with an explicit first parameter `self` of type ref/ref mut Target carrying those facts. Field reads and writes through `self.f` or an implicit `f` dereference it and project `place.field`. A call passes the receiver: an implicit borrow of an owned Place, a pass of a reference holder, or the caller's own `self` (copied when shared), including bare method calls inside a method (`TestPackage15LowersInstanceMethodReceivers`, `TestPackage15ReceiverBoundaries`, `TestPackage15ImplicitFieldWriteUsesMutableReceiver`). Returned references (2026-10-16): Sema publishes `ReturnReferenceSummaryOf` (positional origins `$param:N`/`$receiver` with canonical projections) and `ResolvedCallReferenceOf` (caller-side facts instantiated from the callee summary over the actual arguments). A function returning a direct reference carries `ReturnOrigins` metadata (printed `returns-from=[param#0.field#0]`, `receiver.field#0`, `[1]`/`[*]` for elements). A returned reference may be the parameter's own reference, a sub-Place reborrow of it (`return ref pair.left`; `ref self.left` in a method reborrows the receiver), a local holder of one, or a call result. The verifier traces every returned reference through copies, moves, reborrows, dereferences, field and element Places and calls (via the callee's summary), and requires each traced origin to be listed. A call returning a reference carries the instantiated facts on its result (`TestPackage15LowersReturnedReferences`, `TestPackage15VerifierChecksReturnedReferenceOrigins`). Static and addressed origins stay unsupported until P15-42a. Receiver reborrows (2026-10-16): Sema publishes `ResolvedReceiverReborrowOf(call)` for a call on the enclosing method's own mutable receiver. `Bump()` and `self.Bump()` inside a mutating method lower to `ref.reborrow-mut` of the receiver with a fresh BorrowID/LifetimeID per call, or `ref.reborrow-shared` when the callee only reads. The receiver is never copied. `self` or a receiver field passed to a ref/ref mut parameter (`Read(self)`, `ReadInner(inner)`, `Write(self)`), and explicit `ref self` / `ref mut self`, derive the borrow from the dereferenced receiver with Sema's implicit-borrow facts (`TestPackage15ReborrowsReceiversForNestedCallsAndArguments`). The temporary-borrow rejection ("cannot borrow temporary expression") now carries S1168. Current remaining: generic implementations and unrepresented root-dependent returns. Ordinary whole-self consuming receivers are forbidden by functions.md §22 and copy_move.md §18, so they are not a missing producer. MD-076 temporary support is implemented as described below.
 
   MD-076 (2026-10-21, `borrowing.md` § 5.4): temporary arguments and receivers, which Semantic IR previously rejected ("receiver argument without a resolved borrow or reference pass"), now lower. Each one gets its own compiler-materialized Place: a value root for a shared borrow, address-taken compiler storage for `ref mut`. The producer is evaluated once, in left-to-right order. Mutating methods on temporaries had been silently invalid in Sema and are now accepted. References returned through such a borrow are usable within the full expression (`*Field(CreateCounter())`) and are rejected when retained or returned. Tests: `TestTemporaryCallBorrowsAreAccepted`, `TestTemporaryCallBorrowsRejectEscapesAndExplicitBorrows`, `TestTemporaryBorrowsMaterializeOwnPlaces`, `TestTemporaryBorrowsAndDereferenceEmitSchema11`. Cleanup of non-trivially-destructible temporaries remains P17.
-  Further implementation 2026-10-25: named `ref mut T` arguments now grant a shared call reborrow to `ref T` through the normal Sema candidate/ownership/overlap checks and the existing P15 shared-reborrow producer (`borrowing.md` §15.3(2)). Exact mutable overloads retain precedence, the parent remains usable after non-retaining calls, and returned shared dependencies retain normal lifetime restrictions. `reference_shared_call_reborrow.sec`, focused Sema/IR negative tests and all 12 source pipeline cases pass on both widths. The structured type-compatibility call oracle was corrected; storage initialization and explicit conversions were not weakened. Generic/consuming and unrepresented root-dependent producers keep P15-47 open.
+  Further implementation 2026-10-25: named `ref mut T` arguments now grant a shared call reborrow to `ref T` through the normal Sema candidate/ownership/overlap checks and the existing P15 shared-reborrow producer (`borrowing.md` §15.3(2)). Exact mutable overloads retain precedence, the parent remains usable after non-retaining calls, and returned shared dependencies retain normal lifetime restrictions. `reference_shared_call_reborrow.sec`, focused Sema/IR negative tests and all 12 source pipeline cases pass on both widths. The structured type-compatibility call oracle was corrected; storage initialization and explicit conversions were not weakened. Generic and unrepresented root-dependent producers keep P15-47 open.
+
+  Update 2026-10-30 — copy-trivial whole-self values completed: `return self`
+  in an ordinary shared or mutable method reads the receiver's existing Place
+  once with `place.read`, preserving struct/named-scalar identity and receiver
+  capabilities. It never moves whole self or ends the receiver borrow; caller
+  uses remain valid. Existing Sema whole-self move/discard/consuming-call
+  rejections remain authoritative. Source IR and schemas 11/12 pass on 32/64
+  targets through all three P15 verifiers and P5/P6/P8 preservation. Generic
+  specialization and addressed/root-dependent returns keep P15-47 unchecked.
 
 - [x] P15-48 — Integrate effects and `@noPanic`: proven use adds no invalid-
   reference panic; a reachable dynamic failure adds the exact panic reason;
@@ -829,6 +851,28 @@ equally named roots of different declarations stay distinct alternatives
   rulebook-status check, complete Go/vet suites with absolute MLIR tooling, and
   full Sec MLIR suite before handoff. Confirm every P15 TODO item is either
   complete or explicitly moved to its owning later package.
+
+  Revalidated 2026-10-30 (partial final acceptance): the seven known failing
+  Go tests are repaired. Frozen HEAD `aa59b4c18c91ed04eef69c7dd0028e41630067f5` plus
+  source manifest `e9a65f8e08c1fd606ac7b9cc7efb3a6bb4791cea4261e8c2cb0adf180e5f036a`
+  (3989 files; distribution binaries excluded) passes full Go: 43 packages,
+  4 without tests, zero failures; full vet and whitespace pass. The two
+  tool-gated Boolean execution skips were rerun with both absolute tool
+  directories and passed. Full native lit passes 191/191; schema 9/10/11
+  passes 28/28; the source-to-schema-11 pipeline passes all 12 cases on 32/64
+  plans. Governance passes with 0 problems; all 56 criteria, 46 report topics
+  and eight required rulebook inventory entries were checked. See the dated
+  P15-75 revalidation in the implementation report. The checkbox remains open:
+  P15-42/42a/47 producers are not waived by these green prerequisite gates.
+  Scope correction 2026-10-30: P15 §§151–155 explicitly exclude physical
+  reference representation and LLVM. The MD-061 physical optimization matrix
+  belongs to its later lowering consumers, not to P15 final acceptance.
+  `TestPackage15HighLevelOptimizationBoundary` checks the available P15
+  transforms on 32/64 plans; `TestPackage15OptimizationDependencyCFG` checks
+  valid and malformed guard/lifetime/transfer facts before/after canonicalize
+  and CSE. P15 must preserve its facts and reject unsupported physical lowering.
+  It does not wait for completion of P24/P25/P26/P27. The full physical matrix
+  remains required under lowering.reference-model in governance/memory.yaml.
 
   Completed 2026-10-25: `rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md` covers all 46 section-156 topics in their normative order, including exact commands/results, test-oracle correction, baseline failures, deferrals and P16 recommendations.
 

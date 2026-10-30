@@ -79,6 +79,8 @@ const (
 	ParserAssertMissingCondition                  = "P2033"
 	ParserLegacyTryMatchWrapper                   = "P2034"
 	ParserRemovedUppercaseForeignQualifier        = "P2035"
+	ParserInvalidHardwareDeclaration              = "P2036"
+	ParserMutFnInImpl                             = "P2037"
 	MissingModuleDeclaration                      = "S1001"
 	DuplicateModuleDeclaration                    = "S1002"
 	ModuleDeclarationConflict                     = "S1003"
@@ -338,6 +340,24 @@ const (
 	// selected reference parameter without consuming the caller's source.
 	// Rules: rules/declarations/functions.md — §§7,9–10; rules/memory/borrowing.md — §15.
 	MoveIntoBorrowedParameter = "S1176"
+	// GenericTypePackExpansionUnavailable identifies a compiler implementation
+	// boundary, not invalid MD-117 declaration syntax.
+	// Rules: rules/declarations/generics.md — §16A; MD-117 — §§2,10(4).
+	GenericTypePackExpansionUnavailable = "S1177"
+	// Hardware metadata diagnostics distinguish the failure categories in MD-111
+	// §13(2); rules/tooling/diagnostics.md §24(4i).
+	HardwareMemberType         = "S1178"
+	HardwareMemberSchema       = "S1179"
+	HardwareEnumCase           = "S1180"
+	HardwareUnknownDomain      = "S1181"
+	HardwareAddressExtent      = "S1182"
+	HardwareSymbolResolution   = "S1183"
+	HardwareRequiredCapability = "S1184"
+	HardwareRegionConflict     = "S1185"
+	HardwareSchemaUnavailable  = "S1186"
+	HardwareContextUnavailable = "S1187"
+	HardwareRegionOverlap      = "A2010"
+
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
 	// Rules: rules/declarations/unions.md — §§5.2,5.3.
@@ -391,6 +411,17 @@ const (
 )
 
 var registry = map[string]Definition{
+	HardwareMemberType:                    {ID: HardwareMemberType, Name: "hardware.member-type", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareMemberSchema:                  {ID: HardwareMemberSchema, Name: "hardware.member-schema", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareEnumCase:                      {ID: HardwareEnumCase, Name: "hardware.enum-case", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareUnknownDomain:                 {ID: HardwareUnknownDomain, Name: "hardware.unknown-domain", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareAddressExtent:                 {ID: HardwareAddressExtent, Name: "hardware.address-extent", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareSymbolResolution:              {ID: HardwareSymbolResolution, Name: "hardware.symbol-resolution", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareRequiredCapability:            {ID: HardwareRequiredCapability, Name: "hardware.required-capability", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareRegionConflict:                {ID: HardwareRegionConflict, Name: "hardware.region-conflict", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareSchemaUnavailable:             {ID: HardwareSchemaUnavailable, Name: "compiler.hardware-schema-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareContextUnavailable:            {ID: HardwareContextUnavailable, Name: "compiler.hardware-context-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareRegionOverlap:                 {ID: HardwareRegionOverlap, Name: "hardware.region-overlap", Family: "hardware", DefaultSeverity: SeverityWarning, Mandatory: false},
 	UselessExplicitDiscard:                {ID: UselessExplicitDiscard, Name: "ownership.useless-explicit-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
 	RedundantVoidDiscard:                  {ID: RedundantVoidDiscard, Name: "ownership.redundant-void-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
 	ImplicitDiscardedResult:               {ID: ImplicitDiscardedResult, Name: "ownership.implicit-discarded-result", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
@@ -518,6 +549,7 @@ var registry = map[string]Definition{
 	StringMaterializationWithoutAllocationContext: {ID: StringMaterializationWithoutAllocationContext, Name: "allocation.string-materialization-without-context", Family: "allocation", DefaultSeverity: SeverityError, Mandatory: true},
 	ConfusableIdentifier:                          {ID: ConfusableIdentifier, Name: "names.confusable-identifier", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ToStringSignature:                             {ID: ToStringSignature, Name: "members.tostring-signature", Family: "members", DefaultSeverity: SeverityError, Mandatory: true},
+	GenericTypePackExpansionUnavailable:           {ID: GenericTypePackExpansionUnavailable, Name: "compiler.type-pack-expansion-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
 	SemanticCompileTimeExecutionUnavailable:       {ID: SemanticCompileTimeExecutionUnavailable, Name: "compile-time.execution-unavailable", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
 	AssertConditionNotBool:                        {ID: AssertConditionNotBool, Name: "panic.assert-condition-not-bool", Family: "panic", DefaultSeverity: SeverityError, Mandatory: true},
 	ExplicitSelfParameter:                         {ID: ExplicitSelfParameter, Name: "declarations.explicit-self-parameter", Family: "declarations", DefaultSeverity: SeverityError, Mandatory: true},
@@ -615,6 +647,8 @@ var registry = map[string]Definition{
 	ParserLegacyTryMatchWrapper:         parserDefinition(ParserLegacyTryMatchWrapper, "parser.legacy-try-match-wrapper"),
 	// rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md §2.1
 	ParserRemovedUppercaseForeignQualifier: parserDefinition(ParserRemovedUppercaseForeignQualifier, "parser.removed-uppercase-foreign-qualifier"),
+	ParserInvalidHardwareDeclaration:       parserDefinition(ParserInvalidHardwareDeclaration, "parser.invalid-hardware-declaration"),
+	ParserMutFnInImpl:                      parserDefinition(ParserMutFnInImpl, "parser.mut-fn-in-impl"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",

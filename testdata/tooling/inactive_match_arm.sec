@@ -1,0 +1,14 @@
+module main
+
+type Figure union {
+    Dot
+    Line(int)
+}
+
+fn Measure() int {
+    let figure := Figure.Dot
+    match figure {
+        Dot => return 0
+        Line(length) => return length
+    }
+}

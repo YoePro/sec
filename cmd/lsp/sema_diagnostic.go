@@ -68,6 +68,12 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 	if definition, known := diagnostics.Lookup(err.ID); known && definition.Mandatory {
 		resolvedSeverity = lspSeverity(definition.DefaultSeverity, resolvedSeverity)
 	}
+	// A recognized MD-117 implementation gap is editor information, not a
+	// source error. CLI checks still stop on the unchanged mandatory occurrence.
+	// Rules: rules/tooling/diagnostics.md §24(4h), S1177 presentation exception.
+	if err.ID == diagnostics.GenericTypePackExpansionUnavailable {
+		resolvedSeverity = 3
+	}
 	var data *diagnosticData
 	if err.ProofState != "" {
 		data = &diagnosticData{ProofState: err.ProofState}

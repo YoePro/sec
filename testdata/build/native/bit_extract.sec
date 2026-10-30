@@ -1,0 +1,37 @@
+module main
+
+// MD-046/MD-056 bit[N](value) on the native track: x mod 2^N as the smallest
+// unsigned carrier, independent of the source's signedness (Sec MLIR
+// sec.int.bit_extract, dialect v11.41.2 amendment).
+
+fn Low(x: int32) uint8 {
+    return bit[4](x)
+}
+
+fn Byte(x: int32) uint8 {
+    return bit[8](x)
+}
+
+fn Twelve(x: int) uint16 {
+    return bit[12](x)
+}
+
+fn Check(minusOne: int32, wide: int) int {
+    if Low(0x5A) != 10 {
+        return 1
+    }
+    if Low(minusOne) != 15 {
+        return 2
+    }
+    if Twelve(wide) != 0x345 {
+        return 3
+    }
+    if Byte(minusOne) != 255 {
+        return 4
+    }
+    return 0
+}
+
+fn main() int {
+    return Check(-1, 0x12345)
+}

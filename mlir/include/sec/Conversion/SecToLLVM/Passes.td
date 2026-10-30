@@ -27,6 +27,25 @@ def SecLowerIntegerEnums : Pass<"sec-lower-integer-enums", "mlir::ModuleOp"> {
   ];
 }
 
+def SecLowerTaggedValues : Pass<"sec-lower-tagged-values", "mlir::ModuleOp"> {
+  let summary = "Select the native struct representation of scalar-payload Result and union values";
+  let description = [{
+    After checked-integer lowering, replace semantic Result and union values
+    whose payloads are resolved scalars (or such Results/unions) with an LLVM
+    literal struct: the discriminator (i1 Err flag for Result, i32 variant
+    index for a union) followed by one slot per payload position, inactive
+    slots undefined. Construction, tests, guarded projections, calls,
+    returns, branches and signatures are rewritten together. Strings,
+    structs, arrays and references in payloads are outside this slice and are
+    rejected at the track entry. Earlier package pipelines keep the nominal
+    types (layout.md §§ 15-16).
+  }];
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::func::FuncDialect"
+  ];
+}
+
 def SecLowerFloats : Pass<"sec-lower-floats", "mlir::ModuleOp"> {
   let summary = "Lower the P20 binary floating subset to standard Arith";
   let description = [{

@@ -1,0 +1,41 @@
+module main
+let Disabled := "a" == "b"
+let Enabled := !Disabled
+let Half: float := 0.5
+let Price: decimal := 1.25
+
+enum Mode string { First = "ready", Alias = "ready", Last = "done" }
+fn Dangerous() bool { panic "reachable RHS" }
+fn Runtime() bool { return false }
+fn Choices(flag: bool) void {
+    let text := ("a" + "b" == "ab") || Dangerous()
+    let bytes := ('a' != 'a') && Dangerous()
+    let scalar := ('å' == 'å') || Dangerous()
+    let floating := (Half == 0.5) || Dangerous()
+    let decimalValue := (Price > 1.0) || Dangerous()
+    let alias := (Mode.First == Mode.Alias) || Dangerous()
+    let named := Disabled && Dangerous()
+    let composed := Enabled || Dangerous()
+    let required := ("a" != "b") && Runtime()
+    let unknown := flag && Runtime()
+    let executing := Runtime() && Dangerous()
+    let mut changing := 0
+    while changing < 2 {
+        let transient := changing == 0
+        let repeated := transient && Runtime()
+        changing += 1
+    }
+}
+
+@noPanic
+fn SkippedEffects() bool { return ("a" + "b" == "ab") || Dangerous() }
+@noCopy
+type Token struct { Value: int }
+fn Consume(-> token: Token) bool { return true }
+fn Use(value: ref Token) void {}
+fn PreservedOwnership() void {
+    let token := Token { Value: 1 }
+    let skipped := ("a" == "b") && Consume(<-token)
+    Use(ref token)
+    discard skipped
+}

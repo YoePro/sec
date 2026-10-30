@@ -180,135 +180,23 @@ func TestSourceIncludePathsLoadsIOPackageFiles(t *testing.T) {
 	}
 }
 
+// The IO integration tests exercise the real target-aware compiler entry point,
+// including the selected scalar plan, core bootstrap and transitive imports.
+// Rules: rules/compiler/compiler_pipeline.md — §26 semantic validation;
+// rules/platform/target_profiles.md — target-selected scalar representation.
 func TestCompilerLoadsIOReadFileIntoAPI(t *testing.T) {
-	source := `module main
-
-import "io"
-
-fn Load(path: string) Result[uint, IOErrorLegacy] {
-	let mut buffer: byte[16] := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-	let count := try io.ReadFileInto(path, ref mut buffer[..])
-
-	return Ok(count)
-}
-`
-
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		t.Fatalf("parser errors: %v", p.Errors())
-	}
-
-	target := CompilerTarget{OS: "linux", Arch: "amd64"}
-	resolveCoreLibrary(program)
-	resolveStdlibImports(program, target)
-	analyzer := sema.NewAnalyzer()
-	if errors := analyzer.Analyze(program); len(errors) > 0 {
-		t.Fatalf("Analyze(user with io file API) errors: %v", errors)
+	_, stderr, code := runCLIForDiagnostics(t, "check", "--target=linux-amd64", "../../testdata/compiler/io/read_file_into.sec")
+	if code != 0 {
+		t.Fatalf("Analyze(user with io file API): %d %s", code, stderr)
 	}
 }
 
+// Rules: rules/compiler/compiler_pipeline.md — §26 semantic validation;
+// rules/platform/target_profiles.md — target-selected scalar representation.
 func TestCompilerLoadsIOWriteSeekAndDirectoryAPIs(t *testing.T) {
-	source := `module main
-
-import "io"
-
-fn Update(path: string, text: string) Result[uint, IOErrorLegacy] {
-	let mut file := try io.OpenReadWrite(path, true)
-	let written := try file.WriteString(text)
-	let position := try file.Seek(0, io.SeekOrigin.Start)
-	try file.Flush()
-	try file.Close()
-
-	return Ok(written + position)
-}
-
-fn Save(path: string, text: string) Result[void, IOErrorLegacy] {
-	try io.WriteStringFile(path, text)
-	return Ok()
-}
-
-fn SaveBytes(path: string, data: ref byte[]) Result[void, IOErrorLegacy] {
-	try io.WriteFile(path, ref data[..])
-	return Ok()
-}
-
-fn Append(path: string, text: string) Result[uint, IOErrorLegacy] {
-	let mut file := try io.OpenAppend(path)
-	let written := try file.WriteString(text)
-	try file.Close()
-	return Ok(written)
-}
-
-fn FirstEntry(path: string) Result[Option[io.DirectoryEntry], IOErrorLegacy] {
-	let mut directory := try io.OpenDirectory(path)
-	let entry := try directory.Next()
-	try directory.Close()
-
-	return Ok(entry)
-}
-
-fn ListEntries(path: string, entries: ref mut io.DirectoryEntry[]) Result[uint, IOErrorLegacy] {
-	let count := try io.ReadDirectoryInto(path, ref mut entries[..])
-	return Ok(count)
-}
-
-fn EntryName(entry: io.DirectoryEntry) string {
-	return entry.Name
-}
-
-fn EntryType(entry: io.DirectoryEntry) io.DirectoryEntryType {
-	return entry.Type
-}
-
-fn CheckAndRename(oldPath: string, newPath: string) Result[bool, IOErrorLegacy] {
-	let exists := try io.Exists(oldPath)
-	try io.Access(oldPath, io.AccessMode.Read)
-	try io.Rename(oldPath, newPath)
-	return Ok(exists)
-}
-
-fn DirectoryLifecycle(path: string) Result[void, IOErrorLegacy] {
-	try io.CreateDirectory(path)
-	try io.RemoveDirectory(path)
-	return Ok()
-}
-
-fn Remove(path: string) Result[void, IOErrorLegacy] {
-	try io.RemoveFile(path)
-	return Ok()
-}
-
-fn CopyHandles(
-	source: ref mut io.File,
-	destination: ref mut io.File,
-	buffer: ref mut byte[],
-) Result[uint, IOErrorLegacy] {
-	let copied := try io.Copy(source, destination, ref mut buffer[..])
-	return Ok(copied)
-}
-
-fn ReadFixed(file: ref mut io.File, buffer: ref mut byte[]) Result[uint, IOErrorLegacy] {
-	let count := try file.ReadExact(ref mut buffer[..])
-	try file.Truncate(count)
-	return Ok(count)
-}
-`
-
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		t.Fatalf("parser errors: %v", p.Errors())
-	}
-
-	target := CompilerTarget{OS: "linux", Arch: "amd64"}
-	resolveCoreLibrary(program)
-	resolveStdlibImports(program, target)
-	analyzer := sema.NewAnalyzer()
-	if errors := analyzer.Analyze(program); len(errors) > 0 {
-		t.Fatalf("Analyze(user with complete io API) errors: %v", errors)
+	_, stderr, code := runCLIForDiagnostics(t, "check", "--target=linux-amd64", "../../testdata/compiler/io/write_seek_directory.sec")
+	if code != 0 {
+		t.Fatalf("Analyze(user with complete io API): %d %s", code, stderr)
 	}
 }
 

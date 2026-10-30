@@ -1,0 +1,168 @@
+#target(os: "linux", arch: "amd64")
+module fmt
+
+import "io"
+
+/*
+ * Sec Standard Library - fmt - Linux stdout adapter
+ *
+ * File:        stdlib/fmt/print.linux.amd64.sec
+ * Module:      fmt
+ * Revision:    1
+ * Updated:     2026-10-30
+ *
+ * Purpose:
+ * Provides the Linux/AMD64 stdout transport used by the
+ * fmt printing functions.
+ *
+ * Allocation:
+ * Does not allocate.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 9-10 and 15.
+ * stdlib/io/std-io.md, section 8.6.
+ */
+
+/**
+ * Writes a complete UTF-8 string to standard output.
+ *
+ * Description:
+ * Writes the encoded bytes of value to Linux file descriptor 1
+ * (stdout), using the existing io.Write syscall wrapper.
+ *
+ * Handles partial writes by advancing the byte pointer and
+ * retrying the remaining data. Two consecutive writes without
+ * progress cause an error.
+ *
+ * Parameters:
+ * - value: UTF-8 string to write without modification.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written successfully.
+ * - Ok(0): The input string is empty.
+ *
+ * Errors:
+ * - WriteFormatError.IO(IOError.InvalidInput):
+ * The byte offset cannot be represented by a signed pointer offset.
+ * - WriteFormatError.IO(IOError.NoProgress):
+ * Two consecutive writes made no progress.
+ * - WriteFormatError.IO(IOError.NativeFailure):
+ * The syscall failed or returned an invalid byte count.
+ *
+ * Ownership:
+ * Borrows the string's underlying storage during each write.
+ * Does not consume or modify the supplied string.
+ *
+ * Allocation:
+ * Does not allocate or materialize intermediate strings.
+ *
+ * Safety:
+ * Pointer arithmetic and syscall invocation are performed in
+ * an explicit unsafe block. The byte offset is kept within
+ * the string's encoded storage.
+ *
+ * Platform:
+ * Linux, AMD64 only.
+ */
+fn _WriteStdoutString(value: string) Result[uint, IOError] {
+    let mut written: uint := 0
+    let mut idle:    uint := 0
+
+    while written < value.SizeOf {
+        let remaining := value.SizeOf - written
+
+        let offset := try int(written) {
+            Err(_) => return Err(IOError.InvalidInput)
+        }
+
+        let mut count: int := 0
+
+        unsafe {
+            count = io.Write(1, value.Ptr.Offset(offset), remaining)
+        }
+
+        if count < 0 {
+            return Err(IOError.NativeFailure)
+        }
+
+        if count == 0 {
+            idle += 1
+
+            if idle >= 2 {
+                return Err(IOError.NoProgress)
+            }
+
+            continue
+        }
+
+        if uint(count) > remaining {
+            return Err(IOError.NativeFailure)
+        }
+
+        idle = 0
+        written += uint(count)
+    }
+
+    return Ok(written)
+}
+
+/**
+ * Adapts the Linux standard output stream to the core FormatSink interface.
+ *
+ * Description:
+ * Provides a concrete destination for the core formatting engine.
+ * Output is written directly to Linux file descriptor 1.
+ *
+ * The adapter does not buffer output or alter UTF-8 text.
+ * Partial writes are handled by the underlying transport helper.
+ *
+ * Ownership:
+ * Does not own the standard output stream.
+ *
+ * Allocation:
+ * Does not allocate.
+ *
+ * Platform:
+ * Linux, AMD64.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 9 and 10.
+ */
+type _StdoutFormatSink struct {
+}
+
+impl _StdoutFormatSink implements FormatSink {
+    /**
+     * Writes a complete UTF-8 text segment to stdout.
+     *
+     * Description:
+     * Delegates byte transmission to _WriteStdoutString.
+     * Returns success only after every byte has been written.
+     *
+     * Parameters:
+     * - text: UTF-8 text to write without modification.
+     *
+     * Returns:
+     * - Ok(): All UTF-8 bytes were written successfully.
+     *
+     * Errors:
+     * - IOError.InvalidInput: Invalid byte offset.
+     * - IOError.NoProgress: The destination failed to make progress.
+     * - IOError.NativeFailure: The underlying syscall failed
+     * or returned an invalid write count.
+     *
+     * Ownership:
+     * Borrows the supplied text.
+     * Does not consume or modify it.
+     *
+     * Allocation:
+     * Does not allocate.
+     *
+     * Rulebook:
+     * stdlib/fmt/std-fmt.md, section 10.
+     */
+    fn WriteText(text: string) Result[void, IOError] {
+        try _WriteStdoutString(text)
+        return Ok()
+    }
+}

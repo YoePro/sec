@@ -1,0 +1,3 @@
+module hardwaremeta
+hardware resource OutputState { width: 32, }
+fn OutputState() void {}

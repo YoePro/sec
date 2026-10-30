@@ -1,0 +1,8 @@
+module main
+fn Observe[...Types](values: ...ref Types) void {}
+fn Use() int {
+    let mut value := 1
+    let grant := ref mut value
+    Observe(value)
+    return *grant
+}

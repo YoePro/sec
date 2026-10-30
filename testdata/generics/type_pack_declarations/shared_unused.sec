@@ -1,0 +1,17 @@
+module main
+
+fn Printf[...Types](format: string, values: ...ref Types) int { return 0 }
+fn Select[T, ...Types](head: T, values: ...ref Types) T { return head }
+fn Use() int {
+    let mutable := 42
+    let reference := ref mutable
+    discard Printf("hello")
+    discard Printf("values", 1, true, "text")
+    discard Printf("reordered", true, 1)
+    discard Printf("references", reference)
+    discard Printf("owned", mutable)
+    let mut counter := 7
+    let exclusive := ref mut counter
+    discard Printf("reborrow", exclusive)
+    return Select[int](*exclusive, true, "x")
+}

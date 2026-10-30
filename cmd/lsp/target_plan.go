@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sec/internal/ast"
 	lspserver "sec/internal/lsp/server"
 	"sort"
@@ -72,7 +73,7 @@ func lspScalarPlan(sourcePath string) (layout.ResolvedScalarPlan, error) {
 			selected = plan
 			continue
 		}
-		if plan != selected {
+		if !reflect.DeepEqual(plan, selected) {
 			return layout.ResolvedScalarPlan{}, fmt.Errorf("project target has multiple active scalar plans")
 		}
 	}

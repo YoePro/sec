@@ -663,6 +663,8 @@ partially moved where ordinary Sec rules permit it.
 
 § 28(5) A CTE-local reference identity must not escape into a runtime artifact unless an owning storage/materialization rule explicitly creates a distinct valid runtime reference identity.
 
+§ 28(6) *Static reference initializers (MD-081, 2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` § 8).* `ref S` and `ref mut S` in a static initializer, where `S` is static storage or a field/constant-index element of it (`rules/declarations/static.md` § 5 amendment), are such a rule. Semantic CTE may evaluate what the Place path needs, such as a constant index, and yields a typed symbolic reference target, not an evaluator object address and not a read of a mutable static's runtime contents. The compiler materializes it only after validating root, projection, borrow authority, lifetime and representability.
+
 ---
 
 ## § 29 Raw pointers during CTE
@@ -801,6 +803,8 @@ required target relocations and static references are legal.
 § 36(3) A cyclic value graph has no implicit CTE static-heap semantics in Sec 0.1.
 
 § 36(4) Another owning rule may define such a representation in the future.
+
+§ 36(5) *MD-081 materialization (2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` § 8(3)–8(4)).* A materialized static reference preserves the referenced static's program storage identity through a symbol, relocation or target-defined equivalent selected by the `CompilationPlan`. It never embeds an evaluator host address, fabricates a static heap or adds a hidden runtime initializer. When CTE succeeds but the target cannot represent the reference, the applicable stage reports a materialization or unsupported-feature diagnostic; it never converts the reference to a raw pointer or a runtime-created borrow. The cycle rules of §§ 38–39 apply unchanged.
 
 ---
 

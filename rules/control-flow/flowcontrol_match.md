@@ -917,7 +917,7 @@ variants its implementation can produce. Failure provenance restricts the
 active error set only when it is complete and sound; it is a semantic proof,
 not an ABI property or an inference from a variant name.
 
-Rules: `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 8–10.
+Rules: `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 8–10.
 
 ---
 

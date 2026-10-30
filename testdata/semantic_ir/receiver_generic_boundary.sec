@@ -1,0 +1,7 @@
+module main
+
+type Box[T] struct { value: T }
+impl Box[T] {
+    fn Value() int { return 1 }
+}
+fn Use(box: ref mut Box[int]) int { return box.Value() }

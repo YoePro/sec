@@ -16,7 +16,7 @@ import (
 // Rules:
 //   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division"
 //   - rules/errors/runtime_checks.md — "Division and remainder"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
 
 // decimalOperationFailures lists, per operator, the ArithmeticError variants
 // a decimal operation can produce (MD-067 § 7(3)). Exact operations fail

@@ -938,6 +938,14 @@ The formatter and syntax highlighter determine presentation from syntactic conte
 
 ---
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 8(1), 10(1)).** `hardware`
+is a contextual word, not a reserved keyword: it starts a hardware fact
+declaration only at a module-scope declaration boundary when followed by
+`region`, `resource` or `endpoint`, and stays an ordinary identifier elsewhere.
+`alias` is a contextual marker only as the second argument of `@address(...)`.
+Neither adds a lexical keyword, and lexer, parser, formatter, editor grammar and
+Sema share this one contextual treatment.
+
 # 10. Contextual operator `x`
 
 The spelling:

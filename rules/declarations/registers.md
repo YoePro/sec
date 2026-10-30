@@ -2,7 +2,7 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-10-22 (MD-077 hardware-bound access, field carriers)
+**Last updated:** 2026-10-30 (MD-112 per-bit specialized writes; MD-113 IsShadowKnown reservation); 2026-10-22 (MD-077 hardware-bound access, field carriers)
 **Replaces:** register-type portions of `rules/platform/registers.txt`  
 **Document revision:** 4
 **Sec language version:** 0.1
@@ -350,6 +350,61 @@ Writing the named trigger value performs the corresponding clear, set, or
 toggle operation. These modifiers describe one logical field write; they do not
 describe a multi-register device protocol.
 
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` §§ 1–4).** On a hardware-bound
+register the six behaviors denote logical **per-bit** actions, not assignment
+of a stored value: for a field of width `N` every bit is independently
+triggering or neutral.
+
+| Declared behavior | Triggering bit | Neutral bit | Action on a triggering bit |
+|---|---:|---:|---|
+| `write-one-clear` | `1` | `0` | clear the bit |
+| `write-one-set` | `1` | `0` | set the bit |
+| `write-one-toggle` | `1` | `0` | toggle the bit |
+| `write-zero-clear` | `0` | `1` | clear the bit |
+| `write-zero-set` | `0` | `1` | set the bit |
+| `write-zero-toggle` | `0` | `1` | toggle the bit |
+
+For a validated width-`N` value `v` the logical action mask is `v` for
+`write-one-*` and `(~v) & ((1 << N) - 1)` for `write-zero-*`, computed as a
+width-`N` bit vector after the ordinary carrier, range and explicit extraction
+rules have accepted `v` (no truncation, no native-width overflow). Only bits
+selected by the mask request the action; the other field bits are untouched,
+and the compiler does not infer signal polarity from the modifier.
+
+A neutral bit requests no action and is not an invalid value. A
+compile-time-known all-neutral assignment is a logical no-op: it creates no
+pending specialized intent and needs no physical I/O. A runtime value that
+satisfies the type and range rules is legal; its action mask is preserved, and
+the physical effect is conditional on a nonzero mask unless a verified
+endpoint contract provides an equivalent realization. A nonzero mask remains a
+requested effect even when software believes the bits already have the target
+state; toggles in particular are never dropped. Constant-zero mask elimination
+is a source-semantic no-op determination, not permission to remove an explicit
+`Write(value)`, an ordinary `read-write` field write or any other observable
+physical transaction.
+
+```sec
+type InterruptStatus register[8] {
+    Pending: bit[4] write-one-clear,
+    _: bit[4],
+}
+
+impl InterruptStatus {
+    fn ClearSelected(ref mut self) void {
+        self.Pending = 0b0101 // clears bits 0 and 2 only
+    }
+
+    fn ClearNone(ref mut self) void {
+        self.Pending = 0b0000 // logical no-op, no transaction
+    }
+}
+```
+
+A `bit[4] write-zero-clear` field given `0b1010` clears bits 0 and 2. Detached
+`register[N]` values keep ordinary bit-value semantics even when their fields
+carry these modifiers (§ 11.7). MD-112 introduces no saturating arithmetic,
+clamping, wrapping or new syntax.
+
 The compiler must not lower such an operation as an ordinary read-modify-write when doing so could change the defined semantics of the physical register or other fields.
 
 ### 11.4 Specialized read semantics
@@ -416,7 +471,7 @@ Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic
 
 - **Two kinds of register.** A `register[N]` is a nominal bit-layout type. As a *detached value* (a protocol header, packet field, file format or snapshot) it carries no hardware effect. As a *hardware-bound instance* (`@address`), its physical register is an external resource, not a memory Place.
 - **Type-owned `impl`.** A hardware-bound register type requires a type-owned primary `impl`. Normal code reaches the hardware only through the properties and methods that `impl` exposes. Physical fields are available for resolution inside the owning `impl` and are not public members because they appear in the declaration.
-- **Field syntax inside the `impl`** resolves to the declared logical register operation. A `write-one-clear` field written with its trigger value is a clear action, not a memory store.
+- **Field syntax inside the `impl`** resolves to the declared logical register operation. A `write-one-clear` field written with its trigger value is a clear action, not a memory store; every write to a specialized field is a per-bit action request whose neutral bits request nothing, and an all-neutral constant is a logical no-op (§ 11.3, MD-112).
 - **Direct access outside the `impl`.** Direct hardware field access outside the owning `impl` is rejected with a diagnostic naming the permitted public member.
 - **Permissions.** Permissions and specialized behaviors (§§ 11.1–11.6) are unchanged. No property or method can rename its way around them.
 
@@ -425,6 +480,8 @@ Clarification (owner, 2026-10-23):
 - **The receiver decides, not the `impl`.** One `impl T` serves both kinds of register. On a hardware register (`HardwareInstance[T]`), `self.Field` is the field's hardware access with its declared access semantics. On a software register (a detached value in a memory Place, such as an IP or file header), `self.Field` is an ordinary field, much like a struct field. Each member is lowered statically for the receiver kind it is used with. Nothing is dispatched at run time.
 - **Specialized semantics on software registers.** On a detached value, a field with specialized read or write semantics (for example `write-one-clear` or `read-clear`) is just bits. Writing it updates the bits, and reading it is pure. The specialized behavior exists only as a hardware operation.
 - **`Read` and `Write` are reserved.** In an `impl` of a register type, `Read` and `Write` cannot be declared as members. Inside the `impl`, `self.Read()`, `self.Write()` and `self.Write(value)` always mean the compiler-known hardware operations (`rules/platform/hardware-register-access.md` §§ 7–8). They are not reachable outside the owning `impl`, and they require a hardware receiver. A member that uses them can therefore only be used on a hardware instance. A public operation is published under another name, for example `fn Snapshot() T { return self.Read() }`.
+- **`IsShadowKnown` (MD-113, 2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` §§ 3–4, 9).** `IsShadowKnown` is reserved with `Read` and `Write`: no method, overload, property, static or other member of that name may be declared in the primary `impl` or any `impl extends` fragment of a register type, regardless of parameters or return type; unrelated ordinary types may still use the three names. Inside the owning `impl`, `self.IsShadowKnown(Control.Mode)` asks whether software holds a complete shadow value for the field (`rules/platform/hardware-register-access.md` § 9.8). Its single argument is a static field selector `RegisterType.Field(.Field)*`: the root is resolved as a type (a local named `Control` does not change that) and must be the receiver's register type, each intermediate step a nested-register field, and the last a declared named field with an effective `shadow` policy. The selector is never evaluated, has no runtime representation and cannot be stored, passed or constructed. A detached receiver has no shadow state, so the call needs a hardware receiver.
+- **Register type versus hardware facts (MD-111, 2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 1(5), 8(2)).** A `register[N]` declaration is a logical bit layout. Where the bits live is a separate hardware fact: a `hardware region` classifies an address range, a `hardware resource` names the logical state, and a `hardware endpoint` describes how that state is accessed (`rules/platform/hardware-register-access.md` § 11.7). A binding `@address(Endpoint)` names an endpoint, never a number; declaring an endpoint creates no register type or binding, and the type-owned `impl` remains the only hardware access boundary.
 - **Borrowed fields.** A member that borrows `self.Field` (`ref`/`ref mut`) needs a software receiver, because physical register bits are not memory (§ 11.7, MD-077 § 4(1)). Using such a member on a hardware instance is a compile-time error. This also applies when the member is reached through another member that calls it on its own receiver.
 
 ## 12. Register values and conversions

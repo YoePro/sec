@@ -9,7 +9,7 @@ import "sec/internal/lexer"
 // rules/declarations/generics.md — §30;
 // rules/foundations/names_scopes_visibility.md — resolved declaration identity.
 func (a *Analyzer) ResolvedTypeDeclarationLocation(typ Type) (lexer.Token, bool) {
-	if a == nil || typ.Kind == GenericType || typ.Kind == InvalidType || typ.Kind == "" {
+	if a == nil || typ.Kind == GenericType || typ.Kind == GenericTypePackType || typ.Kind == InvalidType || typ.Kind == "" {
 		return lexer.Token{}, false
 	}
 	token, ok := a.typeDefinitionTokens[typ.Name]

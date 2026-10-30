@@ -41,7 +41,7 @@ func TestIntegerFormFamilySuffixesPreserveBasePrefixedValue(t *testing.T) {
 // Approximate AST float64 presentation must not reject well-formed exact
 // decimal sources, but range tolerance must not swallow malformed syntax.
 // Rules: rules/foundations/lexical_structure.md — §12.9;
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func TestNumericLiteralHostRangeDoesNotLimitParsing(t *testing.T) {
 	for _, text := range []string{"1e400", "1e400m", "1e400g"} {
 		value, ok := ParseFloatLiteralFloat64(text)

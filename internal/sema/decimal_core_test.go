@@ -78,3 +78,77 @@ fn Bad(value: decimal) void {
 		}
 	}
 }
+
+// MD-068 § 10 decimal conversions: ToInt*/ToFloat* return
+// Result[target, ConversionError] with an optional RoundingMode for both
+// decimal widths, and reject wrong arities and argument types.
+// Rules: rules/library/core-library.md §§ 10.2, 10.4, 10.6.
+func TestDecimalConversionMethods(t *testing.T) {
+	errs := analyzeSourceRaw(t, `
+module main
+
+enum RoundingMode {
+    NearestEven
+    Floor
+}
+
+enum ConversionError error {
+    OutOfRange
+    PrecisionLoss
+}
+
+fn Use(value: decimal, wide: decimal128) Result[int128, ConversionError] {
+    let whole: int := try value.ToInt()
+    let narrow: int32 := try value.ToInt32(RoundingMode.Floor)
+    let long: int64 := try wide.ToInt64()
+    let single: float32 := try value.ToFloat32()
+    let double: float64 := try wide.ToFloat64(RoundingMode.NearestEven)
+    discard whole
+    discard narrow
+    discard long
+    discard single
+    discard double
+    return wide.ToInt128(RoundingMode.Floor)
+}
+`)
+	assertSemaErrors(t, errs, nil)
+	for _, typ := range []string{"decimal", "decimal128"} {
+		members := map[string]CompilerKnownMember{}
+		for _, member := range CompilerKnownMembersForType(builtinType(typ), false) {
+			members[member.Name] = member
+		}
+		for name, result := range map[string]string{"ToInt": "int", "ToInt32": "int32", "ToInt64": "int64", "ToInt128": "int128", "ToFloat": "float", "ToFloat32": "float32", "ToFloat64": "float64"} {
+			member := members[name]
+			if member.ID != "CKM-"+strings.ToUpper(typ)+"-"+strings.ToUpper(name) || member.Result.Kind != ResultType || member.Result.TypeArgs[0].Name != result {
+				t.Errorf("%s.%s = %+v", typ, name, member)
+			}
+		}
+	}
+
+	invalid := analyzeSourceRaw(t, `
+module main
+
+enum RoundingMode {
+    NearestEven
+}
+
+fn Bad(value: decimal) void {
+    discard value.ToInt(3)
+    discard value.ToFloat(RoundingMode.NearestEven, 1)
+    let wrong: int := value.ToInt64()
+}
+`)
+	for _, want := range []string{
+		"decimal.ToInt argument 1 must be RoundingMode, got int",
+		"decimal.ToFloat expects 0 or 1 arguments, got 2",
+		"cannot initialize int with Result[int64, ConversionError]",
+	} {
+		found := false
+		for _, err := range invalid {
+			found = found || strings.Contains(err.Message, want)
+		}
+		if !found {
+			t.Errorf("missing %q in %v", want, invalid)
+		}
+	}
+}

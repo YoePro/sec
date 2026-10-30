@@ -1,0 +1,2 @@
+module main
+let TooWide: uint8 := 250 + 10

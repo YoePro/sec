@@ -1,0 +1,19 @@
+module main
+
+enum Mode int {
+    First          = 10,
+    Second default = 20,
+    Alias          = 20,
+}
+
+enum Label string {
+    Alpha          = "a",
+    Chosen default = "\x62",
+    LongerName     = "b",
+}
+
+enum Implicit {
+    Zero,
+    One default,
+    Two,
+}

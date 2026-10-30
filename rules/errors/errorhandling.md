@@ -961,7 +961,7 @@ error union is inferred. It is a pattern spelling only, not a value
 expression, and the fully qualified form remains valid. It is an additive form
 activated in Sec 0.1.2 (owner choice 2026-10-28).
 
-Rules: `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 2–5, 7.
+Rules: `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 2–5, 7.
 
 ---
 

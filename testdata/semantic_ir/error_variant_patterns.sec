@@ -1,0 +1,67 @@
+module main
+
+// MD-008/MD-029 error-variant match arms and try handlers on closed concrete
+// error channels (semantic_ir.md § 71(6); sec_mlir_dialect.md v11.41.4).
+
+enum IOError error {
+    InvalidValue,
+    NotFound,
+}
+
+type FileError union error {
+    Missing {
+        Code:  int,
+        Depth: int
+    }
+    Denied
+    Encoding(int)
+}
+
+fn Read(kind: int) Result[int, IOError] {
+    if kind == 1 {
+        return Err(IOError.InvalidValue)
+    }
+    return Ok(kind)
+}
+
+fn Open(kind: int) Result[int, FileError] {
+    if kind == 1 {
+        return Err(FileError.Denied)
+    }
+    return Ok(kind)
+}
+
+fn ClassifyRead(kind: int) int {
+    match Read(kind) {
+        Ok(value) => return value
+        Err(IOError.InvalidValue) => return 10
+        Err(.NotFound) => return 20
+    }
+}
+
+fn ClassifyOpen(kind: int) int {
+    return match Open(kind) {
+        Ok(found) => found
+        Err(FileError.Missing { Code: code }) where code > 5 => code
+        Err(.Missing {}) => 100
+        Err(.Denied) => 200
+        Err(FileError.Encoding(position)) => 300 + position
+    }
+}
+
+fn RecoverOpen(kind: int) int {
+    let result := try Open(kind) {
+        Err(.Encoding(_)) => 1
+        Err(.Denied) => 2
+        Err(.Missing { Code: code, Depth }) => code + Depth
+    }
+    return result
+}
+
+fn RecoverRead(kind: int) int {
+    let result := try Read(kind) {
+        Err(.NotFound) => 2
+        Err(IOError.InvalidValue) => 1
+    }
+    return result
+}

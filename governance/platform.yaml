@@ -5,15 +5,17 @@ integrations:
   - id: platform.hardware-register-access
     area: platform-register-access-and-lowering
     status: planned
-    reviewed: "2026-08-28"
-    document_revision: 1.0
-    repository_baseline: "6a63b37"
+    reviewed: "2026-10-30"
+    document_revision: "1.0"
+    repository_baseline: 6a63b37
     summary: >-
-      Implements canonical Sec hardware-register access semantics above register layout and volatile access,
-      including safe implicit field observation, explicit register Read/Write, shadow state, hardware
-      resource/endpoint identity, alias operations, transaction planning, width/alignment/footprints,
-      coherence, ordering/completion, access context, runtime mappings, fault semantics, and verified
-      Semantic IR/MLIR lowering.
+      Implements canonical Sec hardware-register access semantics above register
+      layout and volatile access, including safe implicit field observation,
+      explicit register Read/Write, shadow state, hardware resource/endpoint
+      identity, alias operations, transaction planning,
+      width/alignment/footprints, coherence, ordering/completion, access
+      context, runtime mappings, fault semantics, and verified Semantic IR/MLIR
+      lowering.
     rules:
       - rules/platform/hardware-register-access.md
       - rules/declarations/registers.md
@@ -39,15 +41,25 @@ integrations:
       - the complete write-one/write-zero clear/set/toggle modifier family is represented through parser, AST, Sema direct-write and compound-read diagnostics, and compiler-fact-driven LSP hover
       - "shadow/noshadow register-level and field-level modifiers (2026-10-23): parser (duplicate, contradictory and order diagnostics), AST, Sema effective policy with field > register > global noshadow inheritance (RegisterField.Shadow), formatter round trip, LSP hover and the Semantic IR register-definition table (register_shadow_test.go, TestRegisterShadowPolicyInheritance, TestHoverShowsEffectiveRegisterShadowPolicy)"
       - "logical hardware requests (2026-10-23, register_requests.go): every leaf field step on a hardware instance or impl receiver resolves to observe, destructive-observe (read-clear/read-set), write-value or a clear/set/toggle action with its shadow policy (ResolvedRegisterHardwareRequestOf); the safe implicit read rule rejects an observation whose register holds another read-clear/read-set field (no selective capability is known); compound updates of specialized fields and non-trigger special writes (MD-112) are rejected on hardware; inside impl T they make the member software-only, and such members are rejected where used on a hardware instance (register_receivers.go, TestMD077HardwareRequests). Implicit field writes in a register impl now use the field rules (TestImplicitRegisterFieldWritesUseFieldRules)."
+      - "MD-112 per-bit specialized writes (2026-10-30, rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md; registers.md § 11.3 amendment): the blanket Sema rejection of non-trigger constants, runtime values and multibit fields on hardware is retired. A write-one/write-zero field request carries the width-N logical action mask (v, or the width-N complement for write-zero-*) as ResolvedRegisterHardwareRequest.ActionMask, a constant all-neutral assignment resolves to the no-op request kind (no pending intent, no I/O), and a runtime value is a ValueDependent action; range, compound-assignment and impl-access rejections are kept, detached registers stay ordinary bits and read-write fields stay write-value requests. LSP hover shows the mask or its value dependence (TestMD112SpecializedWriteActionMasks, TestMD077HardwareRequests, hardware_instance_test.go)."
+      - "MD-113 registry, selector and reservation (2026-10-30, internal/sema/register_operations.go; registers.md § 11.7, compiler_known_members.md \"Register hardware operations\"): CompilerKnownRegisterOperations registers CKM-REGISTER-READ/-WRITE/-WRITE-VALUE/-IS-SHADOW-KNOWN and drives reservation, resolved operation IDs and LSP completion/hover; self.IsShadowKnown(T.Field[.Nested...]) resolves to a bool query whose static selector is resolved as a type rooted in the receiver's register (no evaluation), walks nested registers, links each step to its field for go-to-definition, accepts write-only shadow fields and rejects a missing root, self/value roots, runtime expressions, unknown steps, non-register intermediates, reserved _, another register root, noshadow leaves, detached receivers and use outside the owning impl; IsShadowKnown is reserved with Read/Write for methods, properties and events in register impl surfaces while ordinary types keep the names (TestMD113ShadowKnownSelectorsAndReservation, TestRegisterShadowKnownLSP, TestMD077RegisterReadWriteOperations)."
+      - "MD-111 hardware declarations, parser and formatter (2026-10-30; grammar.md HardwareDeclaration, lexical_structure.md contextual hardware; internal/ast/hardware.go, internal/parser/hardware.go, internal/formatter/hardware_declarations.go): contextual `hardware region|resource|endpoint Name { member: value, ... }` at module scope only, with restricted values (integer, string and boolean literals, dotted paths for qualified enum cases and hardware symbols, bracketed integer lists with trailing commas); `hardware` stays an ordinary identifier elsewhere; malformed headers, members, values, separators and lists report focused P2036 parser.invalid-hardware-declaration diagnostics and recovery continues with later members and declarations; Sema accepts the declarations as module metadata (schema validation is the next item); the formatter writes them canonically (one `name: value,` member per line, exact value spelling, `[a, b]` lists), idempotently at every indentation width, and leaves a declaration with comments to token formatting (TestParseHardwareDeclarations, TestHardwareDeclarationRecovery, TestFormatHardwareDeclarations)."
+      - "MD-113 shadow knowledge analysis and summaries (2026-10-30; internal/sema/shadow_knowledge.go; hardware-register-access.md § 9.8 amendment): every hardware instance (`self` in a register impl member, or a hardware binding) starts with all shadow fields unknown; a shadow field read needs a known value; Read() establishes every observable shadow field, an ordinary write the written field, a specialized MD-112 action nothing; Write() forgets action fields and Write(value) every shadow field; the true branch of IsShadowKnown(T.F) knows F; if/else, switch and match merge by intersection and loops are analyzed twice. Register impl members and accessors publish ShadowKnowledgeSummary (Requires, Ensures, EnsuresWhenTrue, Invalidates) computed to a fixed point, so recursion is conservative; a requirement on self becomes the member's own, and an unproven requirement at a use on a hardware binding is an error naming the field, instance and requiring member, with no hidden hardware read. LSP hover shows a member's contract at its declaration and call names as static information (TestShadowKnowledgeAnalysis, TestShadowContractHover)."
     remaining:
+      - "MD-112 Semantic IR (correction § 7(3)-(4), § 8(2)5): when register.hw.request_write/shadow_intent/commit are built (MD-077 steps 3-4), carry the Sema action mask, emit no request or intent for a no-op request, keep a ValueDependent request conditional on a nonzero runtime mask (explicit control flow or a verified equivalent), record pending intent as the logical action mask rather than the written pattern, and verify that a no-op is never a physical write and that explicit Write(value) and read-write field writes are not reclassified as neutral (semantic_ir.md § 21(8))."
+      - "MD-112 Sec MLIR (dialect v11.41.1b, lowering v11.31, specified 2026-10-30): implement the typed #sec.register_write_action (action, trigger, width, kind, mask) as sec.write_action on sec.hw.request_write/sec.hw.shadow_intent together with those MD-077 operations: TableGen registration and round trips, verifier checks against the sec.registers leaf access and width, nonzero canonical constant masks, the dominating sec.int.cmp ne zero guard of value-dependent masks, rejection on non-specialized requests, commits and whole-register writes, no intent merging without a verified plan, the Go emitter, the version gate and the lowering-support manifest"
+      - "MD-112 physical plans (correction §§ 5, 8(3), 8(4)): with MD-111 endpoint facts, plan selective alias/mask/strobe realizations of an action mask, fill collateral positions with documented non-triggering values, reject unsafe read-modify-write, undocumented selective writes and collateral command effects, preserve repeated toggles and their order, and report rejected plans with field, action mask, footprint, conflicting effect and remedy"
       - "MD-077 (decided 2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md) steps 3-4 (detached register.value.extract/update done 2026-10-23, see frontend.registers): Semantic IR register.hw.bind/observe (physical plans blocked by MD-111: no canonical endpoint fact source)/request_write/shadow_*/commit built from Sema's resolved plans with the full § 10 payload; controlled public exposure; shadow/side-effect emission; fail-closed target capability diagnostics; negative tests before enabling CLI output"
-      - implement shadow observed-state and pending-logical-write analysis without a global runtime manager
+      - "MD-113 Semantic IR and Sec MLIR (semantic_ir.md § 21(9), dialect v11.41.1c, lowering v11.32): register.hw.shadow_known with instance, RegisterTypeID, field path and availability fact, and the facts on shadow-served reads; sec.hw.shadow_known with sec.field_path and sec.shadow_fact, its verifier, folding and dominance rules, known-mask lowering in ordinary memory, never an MMIO/CSR/port or destructive read (§ 12(4)); implemented together with the MD-077 sec.hw.* operations"
       - "compiler-known hardware register Read() / Write() / Write(value): frontend done 2026-10-23 (register_operations.go: impl-only, hardware receiver, hardware-only members, reserved names, Write() needs a writable shadow field); remaining: coherent snapshot plan, shadow intent analysis behind Write(), and the §8.4 mixed-semantics check of Write(value), all needing MD-111 plan facts"
-      - "implement safe-only implicit hardware field observation with collateral-effect rejection (type-level necessary check done 2026-10-23; plan-level proof needs MD-111 endpoint facts)"
-      - introduce canonical HardwareResourceIdentity, EndpointIdentity, and physical operation identities
+      - implement safe-only implicit hardware field observation with collateral-effect rejection (type-level necessary check done 2026-10-23; plan-level proof needs MD-111 endpoint facts)
+      - "MD-111 region overlap and memory-map compatibility (rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md §§ 4(2), 10(6)): warn when two regions of a common address domain overlap without asserting a shared resource, reject a region whose kind conflicts with the target/Device memory map (a project cannot turn a target-forbidden range into usable MMIO), and keep these region diagnostics separate from binding alias acknowledgements"
+      - "MD-111 Semantic IR and Sec MLIR identities (rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md § 13(1); semantic_ir.md § 21(10); dialect v11.41.1 MD-111 note): carry separate address-domain, region, resource, endpoint, binding, physical-operation and verified-plan identities with compatibility, capability, effect, footprint and alias evidence on register.hw.bind and the other register.hw.* operations, and as sec.hardware_resource_id / sec.endpoint_id / sec.hardware_binding_id / sec.verified_plan_id in Sec MLIR; no raw address ever stands in for an endpoint, and the MD-110/MD-114 register table stays the only register-definition encoding"
+      - "MD-111 LSP and tooling (rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md § 13(3); lsp.md \"Hardware fact declarations\"): completion and hover of hardware declaration members from the compiler schema (allowed members, types, requiredness, enum cases and meaning), navigation from hardware names, @address endpoint paths, Project.<name> exports and manifest override selectors to canonical identities, and presentation of the selected address domain, override provenance with the changed-value warning, and binding alias facts, with no LSP- or formatter-owned copy of the schema"
+      - "MD-111 closure (rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md § 14(4)): when the schema, project tables, named-endpoint bindings, alias diagnostics, IR/MLIR identities, the first executable plan subset and the § 13(4)-(6) tests pass, remove MD-111 from missing-decisions.yaml, update the language-rulebook-status.md rows that still say implementation pending, and archive the correction under rules/corrections/applied/"
       - model endpoint kinds including memory-mapped, port-mapped, instruction-encoded, runtime-mapped, and target-defined
       - represent read/write aliases and set/clear/toggle operations by resource effects rather than address heuristics
-      - implement RegisterOperationPlanner candidate enumeration, validation, and deterministic selection
+      - "implement RegisterOperationPlanner candidate enumeration, validation, and deterministic selection; MD-111 § 11 first executable subset: a verified PhysicalOperationPlan for one whole-register MemoryMapped non-destructive read or replacement write, fingerprinted against the CompilationPlan, with the typed Sec MLIR plan-record spelling (dialect v11.41.1 MD-111 amendment) and native lowering"
       - model legal read/write widths independently from field/register widths and reject arbitrary narrowing/widening/splitting/merging
       - model required alignment and runtime view alignment validation
       - model physical read/write transaction footprints and collateral side-effect analysis
@@ -56,7 +68,7 @@ integrations:
       - represent hardware ordering and completion edges separately from generic volatility
       - lower semantic ordering/completion requirements to target-specific barriers/read-backs/stronger operations
       - add context-sensitive hardware access requirements for privilege, security, execution unit/mode, virtualization, and acquired authority
-      - "extend @address to one named canonical endpoint expression while retaining validated numeric canonical-linear form"
+      - extend @address to one named canonical endpoint expression while retaining validated numeric canonical-linear form
       - implement compiler-known move-only runtime mapped hardware region resources
       - implement lifetime-bounded checked RegisterView[T] derivation from runtime mappings
       - ensure RawPtr does not acquire endpoint identity, authority, ownership, alias, or transaction semantics implicitly
@@ -80,12 +92,30 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md
       - rules/corrections/applied/stdlib-hw-correction-20260828.md
+    implemented:
+      - "MD-111 step 3 source metadata schema and Sema HardwareFacts (2026-10-30; correction §§ 2-8, 10(6), 12, 13(2), source-stage 13(4)-(5); internal/hardware/schema.go, model.go, normalize.go; internal/sema/hardware_metadata.go): one shared closed member/type/requiredness and enum/encoding table, literal-only exact decimal/hex integers, domain-sized addresses and extents independent of CPU uint (tested through 256-bit domains, full-cardinality boundaries and source addresses above uint64), region/domain containment and alignment, target/Device region constraints, directional requiredness/absence and bit-width checks, explicit unsupported non-linear/endpoint-kind schemas, canonical source module/category/name identities and distinct domain/region/resource/endpoint/binding/operation/plan identity types, import-visible references with module-internal/file-private checks, per-property and original-list provenance, deterministic isolated snapshots, mandatory S1178-S1187 and configurable A2010 region overlap warnings. Analyzer.ResolveHardwareDeclarations is the declaration-only producer; Analyze publishes cloned HardwareFacts. HardwareModuleContext must be supplied by the canonical resolver and fails closed when absent; final CLI/LSP plan assembly, independent B definitions/overrides/applicability, binding alias checks and verified physical plan producers/tests remain with their existing separate MD-111 owners. Tested by internal/hardware/normalize_test.go, internal/sema/hardware_metadata_test.go and internal/diagnostics/hardware_test.go; declarations create no runtime types, values, I/O or physical-operation proof."
+    evidence:
+      - internal/hardware/schema.go
+      - internal/hardware/model.go
+      - internal/hardware/normalize.go
+      - internal/hardware/normalize_test.go
+      - internal/sema/hardware_metadata.go
+      - internal/sema/hardware_metadata_test.go
+      - internal/diagnostics/hardware_test.go
+    verification:
+      - command: go test ./internal/hardware ./internal/diagnostics ./internal/sema -count=1
+        result: "passed 2026-10-30 final rerun: hardware 0.014s, diagnostics 0.003s, full Sema 13.500s; includes real-source wide-domain, qualifier-conflict and warning-policy tests"
+      - command: go test -race ./internal/hardware -count=1; go vet ./internal/hardware ./internal/diagnostics ./internal/sema
+        result: "passed 2026-10-30: hardware snapshot/parallel determinism race checks and vet"
+      - command: go test ./internal/hardware ./internal/diagnostics ./internal/sema -count=1
+        result: "passed 2026-10-30: shared hardware and diagnostics suites, full Sema 16.080s; additional focused TestHardwareMetadata source/warning-policy tests passed"
+
   - id: platform.volatile
     area: platform-memory-and-volatile-access
     status: partial
     integrated: "2026-08-27"
-    document_revision: 1
-    repository_baseline: "fc8d632"
+    document_revision: "1"
+    repository_baseline: fc8d632
     summary: >-
       Implements Sec volatile physical-storage semantics, including explicit
       RawPtr VolatileRead/VolatileWrite operations, canonical @address region
@@ -176,6 +206,7 @@ integrations:
       - atomic memory-order semantics
       - target/device knowledge-pack format
       - general C-style volatile types or @volatile source syntax
+
   - id: platform.interrupts-v1
     area: platform-interrupts
     status: planned
@@ -315,6 +346,7 @@ integrations:
       - relevant platform edits invalidate dependent ISR work while unrelated edits preserve unrelated caches
       - stale separate-compilation summaries cannot serve as positive ISR-safety proofs
       - interrupt analysis and generated artifact identities are deterministic
+
   - id: frontend.fixed-address-bindings
     area: frontend-analysis-and-lowering
     status: partial
@@ -349,12 +381,10 @@ integrations:
     remaining:
       - "MD-077 (decided 2026-10-22): classify @address bindings as hardware register bindings (register.hw.bind roots, HardwareInstance[T]) versus ordinary addressed storage (P15 Place roots); never form Places or safe refs to hardware endpoints"
       - propagate AddressStability.Fixed independently from storage origin through Place, Semantic IR, MLIR, and tooling facts
-      - require every binding, including raw numeric spelling, to resolve against a canonical target region covering its complete extent
-      - validate target address domain/space, alignment, extent, access width, memory space, layout, representation, availability, and permissions
+      - "MD-111 named-endpoint @address (rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md §§ 1(4), 10(1), 10(7)): accept exactly @address(EndpointPath[, alias]) resolving statically to a source, imported or Project.<name> endpoint; reject numeric, arithmetic, raw-pointer, variable and runtime arguments, a third argument and an unknown or duplicated marker; migrate the existing numeric @address tests and testdata (13 testdata files, 11 Go test files) to declared endpoints"
+      - "validate each binding against its endpoint's MD-111 facts: region domain, kind (Reserved forbids binding), permissions and range, endpoint offset/size/alignment containment, transfer widths, footprints and effects, and agreement with the register type, its impl and the target; a valid binding without a supported verified plan is an explicit unsupported-capability diagnostic"
       - reject unmodeled Hosted process addresses and ensure unsafe cannot waive canonical region validation
-      - accept arbitrary compile-time-known integer address expressions rather than only integer literals
-      - accept exactly one named canonical Platform or Project endpoint expression while retaining the validated numeric canonical-linear form
-      - diagnose statically known incompatible overlapping bindings
+      - "MD-111 binding alias diagnostics (§ 10(2)-(6)): warn on unacknowledged (a) proven same-resource, (b) unestablished address-overlap binding pairs, reject (c) incompatible physical overlap, validate @address(..., alias) only for a statically known same-resource partner, and keep region-overlap warnings separate"
       - preserve volatile semantics through impl receivers and all field/property access paths
       - lower volatile loads/stores and safe addressed field updates
       - preserve read-only, write-only, W1C, W0C, canonical read-clear, nested-register, shadow, and byte-order semantics at addressed boundaries
@@ -365,16 +395,18 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'Register|StorageOrigin' -count=1
         result: passed
+
   - id: compiler.platform-model
     area: compiler-platform-and-tooling
     status: planned
     revised: "2026-09-28"
     summary: >-
       Adds the canonical Sec platform registry and resolver, producing immutable
-      per-Target/per-Variant CompilationPlans with typed architecture, CPU, Device,
-      memory, runtime, execution, ABI, link, source-selection, capability,
-      fingerprint, diagnostic, and LSP-invalidation facts without host-dependent
-      target guessing or duplicated downstream platform resolution.
+      per-Target/per-Variant CompilationPlans with typed architecture, CPU,
+      Device, memory, runtime, execution, ABI, link, source-selection,
+      capability, fingerprint, diagnostic, and LSP-invalidation facts without
+      host-dependent target guessing or duplicated downstream platform
+      resolution.
     rules:
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
@@ -401,8 +433,10 @@ integrations:
       - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
       - semantic Atomic[T] eligibility is distinct from concrete layout, operation, order, native/emulated, blocking and interrupt-safety capability in the selected CompilationPlan
     implemented:
+      - "MD-111 target address domains (2026-10-30; internal/layout/address_domains.go, internal/platform/target): ResolvedScalarPlan.AddressDomains carries the target-supplied domains with identity, address width, addressable unit and linearity, validated (unique, positive widths) and bound into the atomic-capability plan identity by deep equality; every CPU target supplies the linear byte-addressed cpu-physical domain with the CPU address width and WebAssembly supplies none; Sema reads them through Analyzer.AddressDomain (TestTargetsSupplyAddressDomains, TestScalarPlanRejectsInvalidAddressDomains)."
       - "target registry (decision 2026-10-04): linux-riscv64 (riscv64-unknown-linux-gnu, ABI lp64d, C model riscv-lp64d with unsigned char and binary128 long double) and freebsd-armv7 (armv7-unknown-freebsd-gnueabihf, C model aapcs-freebsd-gnueabihf) are registered hosted targets with status planned (parse and check, no LLVM, link, or run yet); further less common hosted architectures may be added the same way. stdlib/os has platform files for every registered hosted target with a file system, including zephyr and rtems. Tests: internal/platform/target/target_test.go, internal/layout/c_abi_test.go"
     remaining:
+      - "MD-111 hardware fact assembly (rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md §§ 1(6)-1(7), 12; platform_model.md §§ 10, 20 amendments): target-supplied AddressDomainIdentity with addressable unit and address width (e.g. cpu-physical), the declaration-only A pass, B normalization and overrides, one frozen CompilationPlan with a canonical hardware fingerprint, no influence of hardware metadata on source/Variant/@when selection, deterministic order, and incremental invalidation of exactly the dependent plan/capability/binding layers (§ 13(6) differential tests)"
       - add canonical Target and Variant platform-resolution integration that produces one concrete CompilationPlan for each requested Target x Variant pair
       - keep Target as the logical product and Variant as the concrete platform-specific build configuration throughout compiler and tooling APIs
       - introduce typed canonical identities for platform, architecture, CPU, Device, ABI, TargetProfile, runtime, execution, memory, and link definitions instead of downstream free-form target strings
@@ -455,16 +489,17 @@ integrations:
       - reserve separately resolved accelerator devices without implementing GPU execution or memory semantics as part of the Sec 0.1 platform-model milestone
       - expose an inspectable read-only resolved-plan view for diagnostics, tests, LSP, and future target-info tooling
       - update implementation-status verification commands when the first conforming platform-model vertical slice is integrated
+
   - id: platform.target-profiles
     area: platform-and-target-profiles
     status: planned
     integrated: "2026-08-24"
     document_revision: "1"
-    repository_baseline: "45e5cd4"
+    repository_baseline: 45e5cd4
     summary: >-
       Implements canonical Hosted/RTOS/BareMetal target-profile resolution,
-      typed capabilities and policies, resource constraints/enforcement,
-      derived profiles and overrides, immutable ResolvedTargetProfile
+      typed capabilities and policies, resource constraints/enforcement, derived
+      profiles and overrides, immutable ResolvedTargetProfile
       identity/fingerprints, and consistent downstream consumption.
     rules:
       - rules/platform/target_profiles.md
@@ -525,242 +560,189 @@ integrations:
       - exact project configuration syntax
       - multiple profile inheritance in Sec 0.1
       - mandatory finite numeric limits for all targets
+
   - id: platform.inline-assembly-v1
     area: platform-inline-assembly
     status: partial
-    reviewed: '2026-09-03'
-    document_revision: '1.0'
+    reviewed: "2026-09-03"
+    document_revision: "1.0"
     repository_baseline: 998d8d1
-    summary: Tracks Sec 0.1 source-level inline assembly as an explicit unsafe, target-specific machine-operation
-      boundary with typed fixed-width operands, RawPtr address operands, explicit clobbers/effects, observable-by-default
-      execution, structured control-flow and stack boundaries, compiler-visible symbol dependencies, target/privilege
-      validation, syscall and execution-environment transition contracts, Semantic IR/Sec MLIR preservation, LLVM/backend
-      materialization, and compiler/LSP diagnostics.
+    summary: Tracks Sec 0.1 source-level inline assembly as an explicit unsafe, target-specific machine-operation boundary with typed fixed-width operands, RawPtr address operands, explicit clobbers/effects, observable-by-default execution, structured control-flow and stack boundaries, compiler-visible symbol dependencies, target/privilege validation, syscall and execution-environment transition contracts, Semantic IR/Sec MLIR preservation, LLVM/backend materialization, and compiler/LSP diagnostics.
     rules:
-    - rules/platform/inline_assembly.md
-    - rules/memory/unsafe.md
-    - rules/platform/platform_model.md
-    - rules/platform/target_profiles.md
-    - rules/platform/volatile.md
-    - rules/platform/hardware-register-access.md
-    - rules/platform/interrupts.md
-    - rules/platform/ffi.md
-    - rules/memory/memory_model.md
-    - rules/memory/raw_pointers.md
-    - rules/memory/ownership.md
-    - rules/memory/borrowing.md
-    - rules/memory/copy_move.md
-    - rules/memory/destruction.md
-    - rules/analysis/effect_analysis.md
-    - rules/analysis/isr_analysis.md
-    - rules/analysis/stack_analysis.md
-    - rules/compiler/semantic_ir.md
-    - rules/compiler/linking.md
-    - rules/mlir/sec_mlir.md
+      - rules/platform/inline_assembly.md
+      - rules/memory/unsafe.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/platform/volatile.md
+      - rules/platform/hardware-register-access.md
+      - rules/platform/interrupts.md
+      - rules/platform/ffi.md
+      - rules/memory/memory_model.md
+      - rules/memory/raw_pointers.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/analysis/effect_analysis.md
+      - rules/analysis/isr_analysis.md
+      - rules/analysis/stack_analysis.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/linking.md
+      - rules/mlir/sec_mlir.md
     code:
-    - internal/parser/parser.go
-    - internal/sema/analyzer.go
-    - sec/platform/linux/amd64/raw_syscall.sec
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - sec/platform/linux/amd64/raw_syscall.sec
     tests:
-    - internal/parser/parser_test.go
-    - internal/sema/analyzer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
     implemented:
-    - parser recognizes asm statements and the structured asm block form
-    - structured parser retains assembly template plus inputs, outputs, and clobbers
-    - Sema classifies asm as requiring an explicit unsafe context
-    - Sema visits asm input expressions and creates named output bindings in the current partial model
-    - Linux/amd64 platform syscall source uses structured inline assembly with fixed syscall registers and explicit
-      rcx/r11/memory clobbers
-    - effect-analysis trust provenance already recognizes facts trusted through an inline assembly declaration
-    - unsafe governance already identifies inline assembly as an unsafe trust boundary and requires effect/target
-      analyses to remain active
+      - parser recognizes asm statements and the structured asm block form
+      - structured parser retains assembly template plus inputs, outputs, and clobbers
+      - Sema classifies asm as requiring an explicit unsafe context
+      - Sema visits asm input expressions and creates named output bindings in the current partial model
+      - Linux/amd64 platform syscall source uses structured inline assembly with fixed syscall registers and explicit rcx/r11/memory clobbers
+      - effect-analysis trust provenance already recognizes facts trusted through an inline assembly declaration
+      - unsafe governance already identifies inline assembly as an unsafe trust boundary and requires effect/target analyses to remain active
     incorrect_or_partial:
-    - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
-    - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary
-      to the exact-width rule
-    - current LLVM lowering permits pointer-to-i64 coercion rather than preserving RawPtr as a target-aware raw-address
-      operand contract
-    - current LLVM lowering supplies rcx and r11 as implicit default clobbers when none are declared; canonical inline
-      asm has no architecture-specific hidden default clobber set
-    - current Sema requires at least one output for structured asm blocks, while canonical instruction-only/side-effect
-      asm must be legal without artificial outputs
-    - current Sema derives asm output type from the enclosing function return or defaults to int64 instead of resolving
-      an explicit low-level output type contract
-    - current source platform syscall functions use target-sized int/uint at the asm boundary and require migration
-      to explicit fixed-width machine ABI values
-    - current platform syscall source places asm directly in unsafe fn bodies and must be synchronized with unsafe.md's
-      rule that unsafe fn bodies are not implicitly unsafe contexts
-    - current frontend does not yet model register width/class compatibility, target register identity, target feature
-      requirements, privilege, or assembler dialect through CompilationPlan
-    - current lowering goes from AST-level asm directly toward LLVM constraint strings rather than preserving a first-class
-      complete Semantic IR/Sec MLIR asm contract
-    - current model does not yet distinguish precise memory effects, unknown memory, external effects, machine-state
-      effects, atomic/order/completion contracts, or stack effects
-    - current model does not yet carry compiler-visible global symbol dependencies/relocations for asm
-    - current model does not yet enforce object-model directive restrictions or general control-flow/stack boundary
-      requirements
+      - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
+      - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary to the exact-width rule
+      - current LLVM lowering permits pointer-to-i64 coercion rather than preserving RawPtr as a target-aware raw-address operand contract
+      - current LLVM lowering supplies rcx and r11 as implicit default clobbers when none are declared; canonical inline asm has no architecture-specific hidden default clobber set
+      - current Sema requires at least one output for structured asm blocks, while canonical instruction-only/side-effect asm must be legal without artificial outputs
+      - current Sema derives asm output type from the enclosing function return or defaults to int64 instead of resolving an explicit low-level output type contract
+      - current source platform syscall functions use target-sized int/uint at the asm boundary and require migration to explicit fixed-width machine ABI values
+      - current platform syscall source places asm directly in unsafe fn bodies and must be synchronized with unsafe.md's rule that unsafe fn bodies are not implicitly unsafe contexts
+      - current frontend does not yet model register width/class compatibility, target register identity, target feature requirements, privilege, or assembler dialect through CompilationPlan
+      - current lowering goes from AST-level asm directly toward LLVM constraint strings rather than preserving a first-class complete Semantic IR/Sec MLIR asm contract
+      - current model does not yet distinguish precise memory effects, unknown memory, external effects, machine-state effects, atomic/order/completion contracts, or stack effects
+      - current model does not yet carry compiler-visible global symbol dependencies/relocations for asm
+      - current model does not yet enforce object-model directive restrictions or general control-flow/stack boundary requirements
     remaining:
-    - synchronize grammar, unsafe, effects, platform, FFI, ISR, stack, linking, Semantic IR, MLIR, diagnostics, formatter,
-      and LSP references
-    - retain target applicability scope in its owning target rulebook; asm must only consume the already resolved
-      CompilationPlan
-    - define the canonical target assembler dialect per resolved target and reject block-local dialect switching that
-      escapes the target contract
-    - keep real target assembly, multiple instructions, local labels, and target-approved local directives legal
-    - preserve explicit unsafe-context requirement for every inline asm operation, including inside unsafe fn bodies
-    - replace current target-sized/int64 asm coercion model with fixed-width direct integer operands and exact logical
-      width matching
-    - support float32/float64 only for compatible target operand classes
-    - support RawPtr[T] as the canonical raw-address operand without silently converting it into an integer semantic
-      type
-    - reject direct string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, collection,
-      and shaped-type register operands in Sec 0.1
-    - reserve future target-defined SIMD/GPU machine operand categories without making Sec vectors/tensors direct
-      asm operands
-    - resolve fixed registers, register classes, immediates, address/memory operands, and target-defined constraints
-      against target knowledge rather than LLVM spelling
-    - validate immediate width/range and known operand-form restrictions before final backend emission where practical
-    - resolve output types independently from physical register width and make outputs available only after normal
-      asm completion
-    - support same physical register as input and output without conflating Sec value identity or implying in-place
-      mutation
-    - remove implicit architecture-specific default clobbers and require every destroyed undeclared machine resource
-      to be represented explicitly
-    - support target machine resources beyond general registers where the target contract defines them
-    - make ordinary asm observable by default and preserve its occurrence on live execution paths without turning
-      containing declarations into LinkRoots
-    - do not add asm volatile, volatile asm, @volatile asm, or other C-style volatile source forms
-    - represent memory as compiler-visible unknown memory interaction rather than hardware ordering/synchronization/completion
-    - support precise known memory footprints where practical instead of forcing every asm operation to unknown memory
-    - represent external/system effects separately from ordinary memory effects
-    - preserve canonical hardware, atomic, ordering, completion, cache, DMA, and interrupt effects only through explicit
-      owning compiler/platform contracts rather than mnemonic inference
-    - ensure raw atomic instructions do not automatically provide Sec atomic/race-freedom proofs
-    - ensure raw interrupt-mask instructions do not automatically provide Sec critical-section/preemption proofs
-    - enforce one Sec entry and normal fallthrough or explicit no-return semantics for ordinary asm
-    - allow target-local labels and internal branches while rejecting arbitrary jumps into or out of Sec CFG
-    - reject ordinary inline asm as a direct machine return from the enclosing Sec function or canonical ISR/exception
-      return
-    - introduce compiler-visible bounded temporary stack-effect contracts and feed them to canonical stack analysis
-    - reject persistent stack-pointer changes and permanent stack switching as ordinary inline asm
-    - keep naked/manual machine-entry semantics behind a stronger compiler/platform contract rather than implicit
-      asm behavior
-    - represent machine calls to Sec/foreign/platform symbols through compiler-visible canonical symbol dependencies
-      and resolved ABI/effect contracts
-    - treat opaque runtime-address calls conservatively when positive callable/ISR/effect proof is required
-    - permit target relocations derived from compiler-visible symbols while keeping local asm labels assembler-owned
-    - reject ordinary inline asm directives that create sections, global/weak symbols, object placement, hidden file
-      inclusion, or compiler-owned debug/unwind metadata
-    - classify target assembler directives into local-allowed versus object-model-affecting/forbidden categories
-    - permit target-approved raw instruction encodings without treating raw bytes as a waiver of asm effects/clobbers/control-flow
-      contracts
-    - validate ISA, CPU feature/extension, execution mode, privilege, platform authority, and known context requirements
-      against CompilationPlan even when the assembler can encode the instruction
-    - prevent inline assembly directives from silently enabling CPU/ISA capabilities absent from the CompilationPlan
-    - model syscalls, supervisor calls, traps, hypercalls, firmware calls, and other execution-environment transitions
-      through explicit platform contracts
-    - keep raw machine/OS error conventions as low-level scalar outputs and construct Result/domain types outside
-      the asm boundary
-    - keep machine faults/exceptions/traps distinct from ordinary Result error propagation
-    - propagate inline asm effects and trust provenance through canonical effect analysis
-    - introduce a first-class resolved inline-assembly Semantic IR operation carrying all correctness-relevant contracts
-      and source provenance
-    - preserve the complete asm contract through Sec MLIR until dependent analyses consume it or equivalent lower-level
-      facts are frozen
-    - lower Sec constraints to LLVM/backend inline-asm representation without exposing LLVM constraint syntax as the
-      source contract
-    - reject backend materialization that would weaken clobber, width, observability, target, control-flow, ordering,
-      completion, or symbol semantics
-    - make LTO/inlining preserve live asm observability and target/context legality while still permitting unreachable
-      containing code to be removed
-    - export compatible separate-compilation summaries for functions containing asm without requiring consumers to
-      reparse assembly text
-    - make validation/materialization caches sensitive to asm text, semantic contract, relevant CompilationPlan facts,
-      assembler dialect, ABI, and backend/toolchain semantics
-    - map target assembler diagnostics back to exact inline-assembly source lines and contract entries
-    - make LSP use the exact compiler CompilationPlan and target assembler semantics rather than host architecture
-      assumptions
-    - provide hover/navigation for resolved target, operands, outputs, clobbers, effects, validation state, and compiler-visible
-      symbol dependencies
-    - add the complete parser, unsafe, operand-width/type, clobber, observability, memory, control-flow, stack, directive,
-      target-feature, privilege, syscall, embedded, hardware/concurrency, ISR, symbol/linking, LTO, separate-compilation,
-      diagnostics/LSP, incremental, and determinism regression matrix
+      - synchronize grammar, unsafe, effects, platform, FFI, ISR, stack, linking, Semantic IR, MLIR, diagnostics, formatter, and LSP references
+      - retain target applicability scope in its owning target rulebook; asm must only consume the already resolved CompilationPlan
+      - define the canonical target assembler dialect per resolved target and reject block-local dialect switching that escapes the target contract
+      - keep real target assembly, multiple instructions, local labels, and target-approved local directives legal
+      - preserve explicit unsafe-context requirement for every inline asm operation, including inside unsafe fn bodies
+      - replace current target-sized/int64 asm coercion model with fixed-width direct integer operands and exact logical width matching
+      - support float32/float64 only for compatible target operand classes
+      - support RawPtr[T] as the canonical raw-address operand without silently converting it into an integer semantic type
+      - reject direct string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, collection, and shaped-type register operands in Sec 0.1
+      - reserve future target-defined SIMD/GPU machine operand categories without making Sec vectors/tensors direct asm operands
+      - resolve fixed registers, register classes, immediates, address/memory operands, and target-defined constraints against target knowledge rather than LLVM spelling
+      - validate immediate width/range and known operand-form restrictions before final backend emission where practical
+      - resolve output types independently from physical register width and make outputs available only after normal asm completion
+      - support same physical register as input and output without conflating Sec value identity or implying in-place mutation
+      - remove implicit architecture-specific default clobbers and require every destroyed undeclared machine resource to be represented explicitly
+      - support target machine resources beyond general registers where the target contract defines them
+      - make ordinary asm observable by default and preserve its occurrence on live execution paths without turning containing declarations into LinkRoots
+      - do not add asm volatile, volatile asm, @volatile asm, or other C-style volatile source forms
+      - represent memory as compiler-visible unknown memory interaction rather than hardware ordering/synchronization/completion
+      - support precise known memory footprints where practical instead of forcing every asm operation to unknown memory
+      - represent external/system effects separately from ordinary memory effects
+      - preserve canonical hardware, atomic, ordering, completion, cache, DMA, and interrupt effects only through explicit owning compiler/platform contracts rather than mnemonic inference
+      - ensure raw atomic instructions do not automatically provide Sec atomic/race-freedom proofs
+      - ensure raw interrupt-mask instructions do not automatically provide Sec critical-section/preemption proofs
+      - enforce one Sec entry and normal fallthrough or explicit no-return semantics for ordinary asm
+      - allow target-local labels and internal branches while rejecting arbitrary jumps into or out of Sec CFG
+      - reject ordinary inline asm as a direct machine return from the enclosing Sec function or canonical ISR/exception return
+      - introduce compiler-visible bounded temporary stack-effect contracts and feed them to canonical stack analysis
+      - reject persistent stack-pointer changes and permanent stack switching as ordinary inline asm
+      - keep naked/manual machine-entry semantics behind a stronger compiler/platform contract rather than implicit asm behavior
+      - represent machine calls to Sec/foreign/platform symbols through compiler-visible canonical symbol dependencies and resolved ABI/effect contracts
+      - treat opaque runtime-address calls conservatively when positive callable/ISR/effect proof is required
+      - permit target relocations derived from compiler-visible symbols while keeping local asm labels assembler-owned
+      - reject ordinary inline asm directives that create sections, global/weak symbols, object placement, hidden file inclusion, or compiler-owned debug/unwind metadata
+      - classify target assembler directives into local-allowed versus object-model-affecting/forbidden categories
+      - permit target-approved raw instruction encodings without treating raw bytes as a waiver of asm effects/clobbers/control-flow contracts
+      - validate ISA, CPU feature/extension, execution mode, privilege, platform authority, and known context requirements against CompilationPlan even when the assembler can encode the instruction
+      - prevent inline assembly directives from silently enabling CPU/ISA capabilities absent from the CompilationPlan
+      - model syscalls, supervisor calls, traps, hypercalls, firmware calls, and other execution-environment transitions through explicit platform contracts
+      - keep raw machine/OS error conventions as low-level scalar outputs and construct Result/domain types outside the asm boundary
+      - keep machine faults/exceptions/traps distinct from ordinary Result error propagation
+      - propagate inline asm effects and trust provenance through canonical effect analysis
+      - introduce a first-class resolved inline-assembly Semantic IR operation carrying all correctness-relevant contracts and source provenance
+      - preserve the complete asm contract through Sec MLIR until dependent analyses consume it or equivalent lower-level facts are frozen
+      - lower Sec constraints to LLVM/backend inline-asm representation without exposing LLVM constraint syntax as the source contract
+      - reject backend materialization that would weaken clobber, width, observability, target, control-flow, ordering, completion, or symbol semantics
+      - make LTO/inlining preserve live asm observability and target/context legality while still permitting unreachable containing code to be removed
+      - export compatible separate-compilation summaries for functions containing asm without requiring consumers to reparse assembly text
+      - make validation/materialization caches sensitive to asm text, semantic contract, relevant CompilationPlan facts, assembler dialect, ABI, and backend/toolchain semantics
+      - map target assembler diagnostics back to exact inline-assembly source lines and contract entries
+      - make LSP use the exact compiler CompilationPlan and target assembler semantics rather than host architecture assumptions
+      - provide hover/navigation for resolved target, operands, outputs, clobbers, effects, validation state, and compiler-visible symbol dependencies
+      - add the complete parser, unsafe, operand-width/type, clobber, observability, memory, control-flow, stack, directive, target-feature, privilege, syscall, embedded, hardware/concurrency, ISR, symbol/linking, LTO, separate-compilation, diagnostics/LSP, incremental, and determinism regression matrix
     required_tests:
-    - instruction-only asm is accepted without artificial input/output sections
-    - multi-instruction target assembly and local labels are accepted
-    - asm outside explicit unsafe context is rejected
-    - asm inside unsafe fn still requires an explicit unsafe context
-    - uint32/int32 match a 32-bit machine operand and uint64/int64 match a 64-bit machine operand
-    - implicit 32-to-64 and 64-to-32 asm integer conversions are rejected
-    - supported RawPtr target-address operand is accepted without semantic integer conversion
-    - string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, and shaped direct
-      register operands are rejected
-    - fixed-register name resolves against selected target and an architecture-incompatible register is rejected
-    - target operand class and immediate range validation is CompilationPlan-sensitive
-    - same physical register may be both input and output while Sec input/output values remain distinct
-    - asm output is unavailable before the operation and available after normal completion
-    - no hidden target-specific default clobbers are inserted for ordinary asm
-    - declared clobbers preserve surrounding live machine values correctly
-    - ordinary live asm remains after optimization when outputs are unused
-    - unreachable private function containing observable asm may be dead-stripped
-    - interrupt/startup/platform roots retain asm-containing code through their owning LinkRoot semantics
-    - memory clobber forces conservative compiler memory reasoning but does not imply or emit a hardware fence
-    - precise declared memory footprint remains more precise than unknown memory
-    - raw machine atomic asm does not automatically satisfy Sec atomic/race proof
-    - canonical Atomic operation lowered through asm preserves the owning atomic contract
-    - raw interrupt-mask asm does not automatically establish Sec critical-section exclusion
-    - canonical platform masking primitive lowered through asm preserves interrupt masking semantics
-    - internal asm branch/local label is accepted
-    - arbitrary branch from asm into Sec CFG is rejected
-    - ordinary machine ret is rejected as a direct Sec function exit
-    - ordinary interrupt/exception-return instruction is rejected as a source-level ISR return mechanism where target
-      classification is known
-    - temporary stack use with a finite contract contributes to stack analysis
-    - stack-pointer modification without a sufficient stack contract is rejected where known
-    - permanent stack switching is not accepted as ordinary fallthrough asm
-    - compiler-visible Sec/foreign/platform symbol dependency survives into LinkPlan and target relocation
-    - source asm does not require the final mangled symbol spelling
-    - ordinary asm global/weak symbol definition is rejected
-    - ordinary asm section/object placement directives are rejected
-    - ordinary asm hidden include/incbin build dependency is rejected
-    - target-approved local/raw encoding directive is accepted where the target contract permits it
-    - assembler-known instruction requiring absent CPU feature is rejected by CompilationPlan validation
-    - assembler-known privileged instruction is rejected when current execution environment lacks authority
-    - asm directive cannot silently enable an unavailable ISA extension
-    - cross-compilation validates assembly for the target rather than the host
-    - Linux/amd64 raw syscall regression uses fixed-width ABI operands, explicit rcx/r11/memory clobbers, and a raw
-      scalar result
-    - embedded ARM inline-assembly regression compiles through the target assembler path
-    - embedded RISC-V inline-assembly regression compiles through the target assembler path as target support matures
-    - syscall/trap raw error convention remains distinct from Sec Result construction
-    - single-instruction system transition may carry MayBlock/NoReturn/external effects from platform contract
-    - asm effect trust provenance is visible to effect/ISR analysis
-    - Semantic IR retains assembly template, typed operands, constraints, clobbers, effects, control flow, stack,
-      symbols, target requirements, observability, and source provenance
-    - Sec MLIR preserves required asm semantic facts until lowering
-    - LLVM/backend constraints are generated from Sec contracts rather than user-written LLVM constraint strings
-    - backend failure to represent a required asm contract is diagnosed rather than approximated
-    - LTO preserves observable asm on live paths and may eliminate unreachable containing code
-    - separate-compilation summary carries asm effects/dependencies and stale summary cannot serve as positive proof
-    - asm cache invalidates on assembly text, contract, target feature, dialect, ABI, or relevant toolchain change
-    - assembler diagnostic maps to the exact source line within multiline asm
-    - Sec contract diagnostics use Sec register/type/effect terminology rather than LLVM constraint syntax
-    - LSP and compiler resolve identical asm target/register/feature facts
-    - Pending target-assembly validation is not presented as completed Valid
-    - identical source, CompilationPlan, contracts, and toolchain semantics yield deterministic resolved asm semantics
+      - instruction-only asm is accepted without artificial input/output sections
+      - multi-instruction target assembly and local labels are accepted
+      - asm outside explicit unsafe context is rejected
+      - asm inside unsafe fn still requires an explicit unsafe context
+      - uint32/int32 match a 32-bit machine operand and uint64/int64 match a 64-bit machine operand
+      - implicit 32-to-64 and 64-to-32 asm integer conversions are rejected
+      - supported RawPtr target-address operand is accepted without semantic integer conversion
+      - string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, and shaped direct register operands are rejected
+      - fixed-register name resolves against selected target and an architecture-incompatible register is rejected
+      - target operand class and immediate range validation is CompilationPlan-sensitive
+      - same physical register may be both input and output while Sec input/output values remain distinct
+      - asm output is unavailable before the operation and available after normal completion
+      - no hidden target-specific default clobbers are inserted for ordinary asm
+      - declared clobbers preserve surrounding live machine values correctly
+      - ordinary live asm remains after optimization when outputs are unused
+      - unreachable private function containing observable asm may be dead-stripped
+      - interrupt/startup/platform roots retain asm-containing code through their owning LinkRoot semantics
+      - memory clobber forces conservative compiler memory reasoning but does not imply or emit a hardware fence
+      - precise declared memory footprint remains more precise than unknown memory
+      - raw machine atomic asm does not automatically satisfy Sec atomic/race proof
+      - canonical Atomic operation lowered through asm preserves the owning atomic contract
+      - raw interrupt-mask asm does not automatically establish Sec critical-section exclusion
+      - canonical platform masking primitive lowered through asm preserves interrupt masking semantics
+      - internal asm branch/local label is accepted
+      - arbitrary branch from asm into Sec CFG is rejected
+      - ordinary machine ret is rejected as a direct Sec function exit
+      - ordinary interrupt/exception-return instruction is rejected as a source-level ISR return mechanism where target classification is known
+      - temporary stack use with a finite contract contributes to stack analysis
+      - stack-pointer modification without a sufficient stack contract is rejected where known
+      - permanent stack switching is not accepted as ordinary fallthrough asm
+      - compiler-visible Sec/foreign/platform symbol dependency survives into LinkPlan and target relocation
+      - source asm does not require the final mangled symbol spelling
+      - ordinary asm global/weak symbol definition is rejected
+      - ordinary asm section/object placement directives are rejected
+      - ordinary asm hidden include/incbin build dependency is rejected
+      - target-approved local/raw encoding directive is accepted where the target contract permits it
+      - assembler-known instruction requiring absent CPU feature is rejected by CompilationPlan validation
+      - assembler-known privileged instruction is rejected when current execution environment lacks authority
+      - asm directive cannot silently enable an unavailable ISA extension
+      - cross-compilation validates assembly for the target rather than the host
+      - Linux/amd64 raw syscall regression uses fixed-width ABI operands, explicit rcx/r11/memory clobbers, and a raw scalar result
+      - embedded ARM inline-assembly regression compiles through the target assembler path
+      - embedded RISC-V inline-assembly regression compiles through the target assembler path as target support matures
+      - syscall/trap raw error convention remains distinct from Sec Result construction
+      - single-instruction system transition may carry MayBlock/NoReturn/external effects from platform contract
+      - asm effect trust provenance is visible to effect/ISR analysis
+      - Semantic IR retains assembly template, typed operands, constraints, clobbers, effects, control flow, stack, symbols, target requirements, observability, and source provenance
+      - Sec MLIR preserves required asm semantic facts until lowering
+      - LLVM/backend constraints are generated from Sec contracts rather than user-written LLVM constraint strings
+      - backend failure to represent a required asm contract is diagnosed rather than approximated
+      - LTO preserves observable asm on live paths and may eliminate unreachable containing code
+      - separate-compilation summary carries asm effects/dependencies and stale summary cannot serve as positive proof
+      - asm cache invalidates on assembly text, contract, target feature, dialect, ABI, or relevant toolchain change
+      - assembler diagnostic maps to the exact source line within multiline asm
+      - Sec contract diagnostics use Sec register/type/effect terminology rather than LLVM constraint syntax
+      - LSP and compiler resolve identical asm target/register/feature facts
+      - Pending target-assembly validation is not presented as completed Valid
+      - identical source, CompilationPlan, contracts, and toolchain semantics yield deterministic resolved asm semantics
     excluded:
-    - direct Sec MLIR source injection
-    - direct LLVM IR source injection
-    - LLVM constraint syntax as Sec source syntax
-    - a general volatile keyword, @volatile attribute, asm volatile, or volatile asm form
-    - direct high-level string/aggregate/user-defined/shaped asm operands in Sec 0.1
-    - implicit integer width conversion at the asm boundary
-    - implicit ownership transfer through register operands
-    - general asm goto across Sec CFG boundaries
-    - ordinary inline-asm naked functions
-    - ordinary inline-asm permanent stack switching
-    - a parallel global symbol/section/object-file/link model inside asm
-    - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical
-      semantics from instruction mnemonics
-    - a specific future GPU/SIMD machine-vector operand design
-    - 'target applicability scope syntax such as the exact ownership of #target versus @target'
+      - direct Sec MLIR source injection
+      - direct LLVM IR source injection
+      - LLVM constraint syntax as Sec source syntax
+      - a general volatile keyword, @volatile attribute, asm volatile, or volatile asm form
+      - direct high-level string/aggregate/user-defined/shaped asm operands in Sec 0.1
+      - implicit integer width conversion at the asm boundary
+      - implicit ownership transfer through register operands
+      - general asm goto across Sec CFG boundaries
+      - ordinary inline-asm naked functions
+      - ordinary inline-asm permanent stack switching
+      - a parallel global symbol/section/object-file/link model inside asm
+      - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical semantics from instruction mnemonics
+      - a specific future GPU/SIMD machine-vector operand design
+      - "target applicability scope syntax such as the exact ownership of #target versus @target"

@@ -27,6 +27,20 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 	defer release()
 	defer func() {
 		if token, ok := sourceTokenAtPosition(uri, text, pos); ok {
+			if suffix := shadowContractHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Register member"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := inactiveArmHover(program, analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Match arm"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
 			if suffix := allocationOperationHover(analyzer, token); suffix != "" {
 				if !found {
 					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Allocation"}, Range: tokenRange(text, token)}
@@ -49,6 +63,12 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		}
 	}()
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := typePackCallHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
+		if hover, ok := typePackDeclarationHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := someConstructorHover(text, program, analyzer, token); ok {
 			return hover, true
 		}

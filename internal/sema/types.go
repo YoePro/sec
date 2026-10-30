@@ -57,10 +57,13 @@ const (
 	VariadicPackType TypeKind = "variadic-pack"
 	FunctionType     TypeKind = "function"
 	GenericType      TypeKind = "generic"
-	InterfaceType    TypeKind = "interface"
-	ErrorRootType    TypeKind = "error-root"
-	NeverType        TypeKind = "never"
-	VoidType         TypeKind = "void"
+	// GenericTypePackType is a compile-time ordered sequence, never one T or a runtime container.
+	// Rules: rules/declarations/generics.md — §16A(1–5).
+	GenericTypePackType TypeKind = "generic-type-pack"
+	InterfaceType       TypeKind = "interface"
+	ErrorRootType       TypeKind = "error-root"
+	NeverType           TypeKind = "never"
+	VoidType            TypeKind = "void"
 )
 
 type Type struct {
@@ -638,6 +641,7 @@ type Function struct {
 	CompilerKnownID          string
 	CompilerInternal         bool
 	GenericParameters        []string
+	GenericTypePack          string
 	GenericConstraints       []GenericConstraint
 	GenericConstraintFailure *GenericConstraintFailure
 	Parameters               []FunctionParameter

@@ -129,12 +129,15 @@ integrations:
       - transfer.sec implements ReadAtLeast, ReadExactly, bounded ReadAll, WriteAll with zero-progress detection, streaming Copy, and CopyN through the root interfaces with bounded 4096-byte working storage
       - file.linux.amd64.sec stays in module io, uses IOErrorLegacy, and maps the shared io.SeekOrigin to Linux whence values instead of declaring its own SeekOrigin
       - Sema registers the error marker on enum and union type headers, so interface requirements analyzed before type bodies accept declared error types in Result channels
+      - "P15-75 source-check repair (2026-10-30): transfer helpers and legacy file Copy form ordinary checked slices before the IO try; Directory.Next forms its byte view before string materialization, so its handler binds only StringError. The ordinary bounds panic path stays distinct from IOError/IOErrorLegacy, no new error mapping or concrete-interface dispatch is introduced, and CopyN discards its mutable slice holder before reading the buffer. Both target-aware IO import/API checks pass; MD-026 and runtime materialization dependencies remain open."
     remaining:
       - merge IOErrorLegacy into IOError, or define the concrete-resource error family the file API keeps (std-io.md § 27), and make File and Directory implement the root interfaces
       - decide and implement conversion of borrowed concrete references to borrowed interface references so the transfer helpers can be called with concrete readers and writers (MD-026)
       - write the io sub-books and packages listed in std-io.md § 29 (reader, writer, seek, buffer, buffered, text, memory, pipe, limit, multi, section, tee, stdio)
       - add the std-io.md § 28 behavior tests, including deliberately short reads and writes, once interface dispatch can execute
     verification:
+      - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./cmd/compiler -run 'TestCompilerLoadsIO(ReadFileIntoAPI|WriteSeekAndDirectoryAPIs)' -count=1
+        result: Passed 2026-10-30 using checked-in IO fixtures and the actual linux-amd64 CLI check path, including transitive imports and the target scalar plan. No diagnostic filter, skipped IO check, runtime string or dynamic-interface execution claim.
       - command: go run ./cmd/compiler sema sec/stdlib/io
         result: passed on 2026-10-02 with no io diagnostics; only the known S1040 core date/duration parameter shadowing remains
       - command: go test ./internal/sema -run TestInterfaceRequirementsAcceptDeclaredErrorTypes -count=1
@@ -173,6 +176,8 @@ integrations:
       - cmd/unicodegen/main_test.go
       - cmd/unicodegen/ucd_test.go
     verification:
+      - command: go test ./cmd/unicodegen -count=1
+        result: "Passed 2026-10-30: generator output matches the existing Unicode 18.0.0 file byte for byte after restoring field alignment and the current ASCII range-membership spelling. No table data or Unicode version changed."
       - command: go test ./cmd/unicodegen -count=1
         result: passed on 2026-10-10 with fixture parsing of all four files, malformed-input and wrong-version rejection, tampered-file hash rejection, Unicode 18.0.0 data facts, Go unicode 15.0.0 letter preservation and the generated unicode.sec being current
       - command: go run ./cmd/compiler sema sec/stdlib/unicode/unicode.sec
@@ -222,7 +227,7 @@ integrations:
     implemented: []
     remaining:
       - Specify and implement the public fmt surface after MD-118 settles format grammar/validation, builtin and user participation, text materialization versus output, allocation and StringError/IO errors; the existing Println(string) stub does not define Printf or the unresolved API.
-      - Integrate the implemented MD-117 native type-pack facility for mixed concrete arguments without fmt-specific compiler rules, implicit any/boxing or C-vararg adaptation; language owners are frontend.generics-v2, frontend.functions-v2 and frontend.spread, with ownership/control-flow, Semantic IR, specialization and P25 ABI work in their existing owners. MD-119 separately owns pack-carried reference dereference spelling.
+      - Integrate the implemented MD-117 native type-pack facility for mixed concrete arguments without fmt-specific compiler rules, implicit any/boxing or C-vararg adaptation; language owners are frontend.generics-v2, frontend.functions-v2 and frontend.spread, with ownership/control-flow, Semantic IR, specialization and P25 ABI work in their existing owners. Pack-carried references use ordinary reference access syntax (references.md § 3.4(10), MD-119 applied 2026-10-30).
     required_tests:
       - Mixed string/int/bool and empty calls from ordinary user modules use the same native language semantics as library calls.
       - Format validation, materialization/output errors, exact evaluation/cleanup and no hidden type erasure follow the eventual MD-118 API.

@@ -1,1 +1,19 @@
 module fmt
+
+/**
+ * Reports a failure during formatted output to an external destination.
+ *
+ * Description:
+ * Preserves the original text/format failure or I/O failure without
+ * changing the semantics of the underlying error.
+ *
+ * Ownership:
+ * The error value owns its payload according to normal Sec union rules.
+ */
+type WriteFormatError union error {
+    // Text conversion, invalid format or materialization failure.
+    Text(StringError),
+
+    // Failure reported by the selected output stream or Writer.
+    IO(IOError),
+}

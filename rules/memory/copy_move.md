@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-10-27 (MD-117 variadic pack arguments, § 8.3(5)); 2026-10-21 (explicit move at ordinary value arguments, §§ 8.1(4–5))
+- **Last updated:** 2026-10-30 (§ 18(3) example: an impl method is written `fn`); 2026-10-27 (MD-117 variadic pack arguments, § 8.3(5)); 2026-10-21 (explicit move at ordinary value arguments, §§ 8.1(4–5))
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/copy_move.md`
@@ -693,7 +693,7 @@ let payload :<- package.Payload
 
 ```sec
 impl Package {
-    mut fn ReleasePayload() void {
+    fn ReleasePayload() void {
         Destroy(<-self.Payload)
     }
 }

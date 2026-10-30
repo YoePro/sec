@@ -13,7 +13,7 @@ import (
 // It never chooses a channel from a candidate variant name.
 // Rules: rules/tooling/lsp.md — "Error patterns, inactive arms and `Some`";
 // rules/errors/errorhandling.md — §§15.3,27.2b;
-// rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §5(1–5).
+// rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §5(1–5).
 func errorPatternCompletionItems(uri, text string, offset int, overlay sourceOverlay) ([]completionItem, bool) {
 	errToken, dot, prefix, ok := errorPatternCompletionPosition(uri, text, offset)
 	if !ok {

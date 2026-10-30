@@ -82,26 +82,25 @@ func (e *emitter) emitRegisterValue(operation semantic.Operation, values map[sem
 	return nil
 }
 
-// emitRegisterConversion preserves the already admitted MD-110 proof families;
-// unavailable guarded/bit-extraction transport fails without inventing syntax.
-// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2; MD-114 §8.
+// emitRegisterConversion writes the MD-110 conversions: fits_bits names its
+// destination with the register_type TypeAttr, and from_bits transports every
+// Semantic IR proof basis (constant, source-domain, guarded, bit-extraction).
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2 and its 2026-10-30 amendment; MD-114 §8.
 func (e *emitter) emitRegisterConversion(op semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
-	if op.Kind == semantic.OpRegisterValueFitsBits || op.RegisterConversion.Basis == "guarded" {
-		return &UnsupportedLoweringError{Feature: "MD-110 fits_bits destination-identity transport"}
-	}
-	if op.RegisterConversion.Basis == "bit-extraction" {
-		return &UnsupportedLoweringError{Feature: "MD-110 bit-extraction proof transport"}
-	}
 	if err := e.emitResults(op); err != nil {
 		return err
 	}
-	name := "sec.register.from_bits"
-	if op.Kind == semantic.OpRegisterValueToBits {
-		name = "sec.register.to_bits"
-	}
-	fmt.Fprintf(&e.out, "\"%s\"(%s)", name, valueName(op.Operands[0]))
-	if op.Kind == semantic.OpRegisterValueFromBits {
-		fmt.Fprintf(&e.out, " {sec.register_fit_proof = {basis = %s}}", mlirString(op.RegisterConversion.Basis))
+	switch op.Kind {
+	case semantic.OpRegisterValueFitsBits:
+		register, err := e.typeText(op.RegisterConversion.Register)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.register.fits_bits\"(%s) <{register_type = %s}>", valueName(op.Operands[0]), register)
+	case semantic.OpRegisterValueFromBits:
+		fmt.Fprintf(&e.out, "\"sec.register.from_bits\"(%s) {sec.register_fit_proof = {basis = %s}}", valueName(op.Operands[0]), mlirString(op.RegisterConversion.Basis))
+	default:
+		fmt.Fprintf(&e.out, "\"sec.register.to_bits\"(%s)", valueName(op.Operands[0]))
 	}
 	e.out.WriteString(" : (")
 	if err := e.emitOperandTypes(op.Operands, values); err != nil {
@@ -118,25 +117,24 @@ func (e *emitter) emitRegisterConversion(op semantic.Operation, values map[seman
 	return nil
 }
 
-// validateRegisterConversionTransport rejects the two unresolved MD-110 paths
-// before any operation is serialized, even when a preceding low-bit extraction
-// would otherwise obscure the actual missing register-proof contract.
-// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2; MD-114 §8(4).
-func validateRegisterConversionTransport(module *semantic.Module) error {
-	for _, fn := range module.Functions {
-		for _, block := range fn.Blocks {
-			for _, op := range block.Operations {
-				if op.RegisterConversion == nil {
-					continue
-				}
-				if op.Kind == semantic.OpRegisterValueFitsBits || op.RegisterConversion.Basis == "guarded" {
-					return &UnsupportedLoweringError{Feature: "MD-110 fits_bits destination-identity transport", Function: fn.ID}
-				}
-				if op.RegisterConversion.Basis == "bit-extraction" {
-					return &UnsupportedLoweringError{Feature: "MD-110 bit-extraction proof transport", Function: fn.ID}
-				}
-			}
-		}
+// emitBitExtract writes int.bit-extract as sec.int.bit_extract with its
+// width; the result type is Sema's smallest unsigned carrier.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2 amendment; semantic_ir.md § 59.
+func (e *emitter) emitBitExtract(op semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if err := e.emitResults(op); err != nil {
+		return err
 	}
+	fmt.Fprintf(&e.out, "\"sec.int.bit_extract\"(%s) <{width = %s : i32}> : (", valueName(op.Operands[0]), op.Integer.String())
+	if err := e.emitOperandTypes(op.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	result, err := e.typeText(op.Results[0].Type)
+	if err != nil {
+		return err
+	}
+	e.out.WriteString(result)
+	e.emitLocation(op.Location)
+	e.out.WriteByte('\n')
 	return nil
 }

@@ -1,0 +1,17 @@
+module hardwaremeta
+hardware region First {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0,
+    size: 16,
+    readable: true,
+    writable: true,
+}
+hardware region Second {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 8,
+    size: 16,
+    readable: true,
+    writable: true,
+}

@@ -1,0 +1,7 @@
+module main
+fn Read(value: ref int) int { return *value }
+fn Flip(value: ref mut bool) void { *value = !*value }
+fn Use() int {
+    Flip(true)
+    return Read(42) + Read(3 + 4)
+}

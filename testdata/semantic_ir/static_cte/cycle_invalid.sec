@@ -1,0 +1,3 @@
+module main
+let First: int := Second + 1
+let Second: int := First + 1

@@ -1,0 +1,9 @@
+module main
+
+fn Select[T, ...Types](head: T, values: ...ref Types) T {
+    return head
+}
+
+fn Use() int {
+    return Select[int](1, true)
+}

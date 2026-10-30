@@ -113,6 +113,14 @@ func parameterModeDisplay(parameter FunctionParameter) string {
 	return "by value"
 }
 
+// implMethodDisplay renders a requirement as the concrete method that
+// satisfies it: an impl writes plain `fn` and derives receiver mutation from
+// the body (P2037; rules/declarations/impl.md).
+func implMethodDisplay(required Function) string {
+	required.ReceiverMutable = false
+	return interfaceRequirementDisplay(required)
+}
+
 // interfaceRequirementDisplay renders a requirement as Sec source.
 func interfaceRequirementDisplay(required Function) string {
 	var text strings.Builder

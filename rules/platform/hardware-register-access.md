@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-10-22
+- **Last updated:** 2026-10-30 (MD-112 per-bit specialized writes; MD-113 shadow knowledge)
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `6a63b37`
@@ -273,6 +273,8 @@ Output: bit write-zero-toggle
 
 Writing logical zero requests the field's toggle operation according to the hardware contract.
 
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` §§ 1–4).** §§ 4.4–4.9 define the trigger value of one bit. For a field of width `N` each bit is independently triggering (`1` for `write-one-*`, `0` for `write-zero-*`) or neutral (the other value); the logical action mask is `v` for `write-one-*` and the width-`N` complement of `v` for `write-zero-*`, computed after the ordinary carrier and range rules. A neutral bit requests no action on that bit and is never reinterpreted as a request to store that value. A compile-time all-neutral assignment is a logical no-op; a runtime value keeps its value-dependent mask. The full table and examples are in `rules/declarations/registers.md` § 11.3.
+
 ### 4.10 Stronger device effects
 
 A device contract may describe stronger effects that do not reduce to the modifier family above, including:
@@ -483,6 +485,8 @@ Calling `Write()` when the applicable shadow state contains no pending write int
 
 The compiler may diagnose the operation as redundant according to normal diagnostic policy, but the semantic result is a no-op.
 
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 6(2)).** A specialized field assignment whose action mask is all neutral adds no pending intent, so a following `Write()` with no other pending intent is this no-op. An explicit whole-register `Write(value)` is never reclassified as an all-neutral field request (§ 8.3, § 8.4).
+
 ### 8.3 Whole-value write form
 
 Where the endpoint and register semantics permit a whole-register write:
@@ -619,6 +623,16 @@ The compiler performs definite-shadow-state analysis where possible.
 
 When path-dependent state must exist at runtime, the compiler may materialize bounded ordinary shadow metadata such as a known mask. This is compiler-managed storage, not a runtime service.
 
+**Amendment MD-113 (2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` §§ 1–8).** Shadow knowledge is software knowledge, never present hardware state, and the compiler never reads hardware merely to make it available.
+- **Four concepts.** Hardware state, observed knowledge (`Unknown`/`Known(value)` from a permitted coherent observation), an intended ordinary value (a well-typed assignment to an ordinary writable shadow field, readable before commit) and a pending specialized action (MD-112 per-bit action mask) are distinct.
+- **Readable view.** For an ordinary writable field the most recent intended value is read before an earlier observed value. A pending specialized action never fabricates an observed or intended value: it leaves an `Unknown` field `Unknown` and leaves an existing `Known(observed)` view readable unchanged.
+- **Initial state.** A newly bound hardware instance starts with every shadow field `Unknown`, unless a separately specified, compiler-proven binding contract establishes valid software knowledge. Binding performs no hardware read and fabricates no zero, reset or default value.
+- **Unknown reads.** A shadow field read whose complete value is not statically proven available is a compile-time error unless a proven guard or caller contract supplies the knowledge. It never issues a hardware read, yields an uninitialized value, becomes an implicit `Option`/`Result`, or panics.
+- **Static interprocedural analysis.** Availability is analyzed statically across members and modules. A register `impl` member that reads a shadow field without establishing it carries an inferred `RequiresKnown(field)` precondition that every caller must prove; a member whose every normal return establishes a field exports `EnsuresKnown(field)`; failed and partial paths keep conservative postconditions. Summaries also record invalidations, pending-intent effects and hardware observation, write and read-side effects. They are conservative for recursion, indirect calls, interface dispatch, opaque bodies and joins, apply only to the receiver and field identities they name, and are published in the module surface (`rules/projects/modules.md` § 2.4) so imported calls are checked without the body.
+- **Status query.** Inside the owning `impl T` (and its same-module `impl extends` fragments), `self.IsShadowKnown(T.Field[.Nested...])` returns `bool`: whether software holds a complete defined value for that field, from a valid observation or an ordinary intended assignment. It performs no hardware access, allocation or state change, and does not grant read permission: on a `write-only shadow` field it reports status only, and `self.Field` stays a read-permission error. The argument is a static register-type-qualified field selector (`registers.md` § 11.7), never an evaluated expression; the final field must have an effective `shadow` policy (a `noshadow` field is a compile-time error, not `false`); reserved `_` fields, other roots and runtime expressions are rejected. Detached register values have no shadow state, and callers outside the `impl` use ordinary public wrappers.
+- **Refinement.** On the true branch of `IsShadowKnown` the field is known for the same instance until a possible invalidation, conflicting mutation, alias, call or unknown effect. A public wrapper that returns the query result unchanged and cannot invalidate the knowledge exports the conditional summary `return == true => ShadowKnown(field)`, so a guarded caller can use it across modules; a wrapper that transforms the result must not claim it and can return an explicit `Option` from inside the checked branch instead. Refinements must stay sound under aliasing and concurrent mutation of the software metadata.
+- **Commit.** After `Write()` the compiler updates, keeps or invalidates knowledge only according to guaranteed postconditions and the failure contract.
+
 ### 9.9 Read updates shadow
 
 An explicit or safe implicit physical observation updates every shadowed field whose value is established by that coherent observation.
@@ -655,6 +669,10 @@ For specialized write semantics, shadow state records logical write intent rathe
 
 For example, a pending `write-one-clear` intent represents a clear operation. It must not later be treated as an instruction to store logical one into ordinary register state.
 
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 6).** Pending specialized intent records the logical action and its selected bit mask, not the written source pattern. Pending actions may be combined or removed only when the compiler proves that semantics, order, hardware effects, failure behavior and observability are preserved; clear, set and toggle requests are not assumed to commute, collapse or cancel because their masks look compatible. Observed shadow knowledge (`Unknown`/`Known(value)`) stays separate from pending intent and never justifies dropping a nonzero mask; cross-call shadow knowledge belongs to MD-113.
+
+**Amendment MD-113 (2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` §§ 2(4), 5(4)).** A pending specialized action, including an all-neutral MD-112 request, never makes a field readable or changes `IsShadowKnown`; an existing observed view stays readable and is not replaced by a predicted post-commit value.
+
 ### 9.14 Shadow update after write
 
 After a hardware write, the compiler updates or invalidates observed shadow knowledge according to the operation's guaranteed postcondition.
@@ -662,6 +680,8 @@ After a hardware write, the compiler updates or invalidates observed shadow know
 If the operation proves the resulting logical value, the shadow may become `Known(result)`.
 
 If the resulting hardware value cannot be established, the corresponding observed state becomes `Unknown` while unrelated known state may remain known.
+
+**Amendment MD-113 (2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 5(5)).** These postconditions, including success, failure and partial failure of a commit, are the only source of knowledge updates after `Write()`. An external device that may change bits independently gives no stronger current-state assertion.
 
 ### 9.15 No automatic refresh
 
@@ -803,6 +823,14 @@ PhysicalEndpoint {
 
 One endpoint may support multiple operations, such as read, replacement write, set-bits, clear-bits, toggle-bits, or another target-defined operation.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 1(5), 4–7).** Regions, resources and endpoints are distinct, typed hardware facts:
+- **Region** (`hardware region`): an address-range classification with `domain`, `kind` (`HardwareRegionKind.MMIO`, `.RAM`, `.ROM`, `.Reserved`), `base`, `size`, `readable` and `writable`. The 0.1 schema is linear only. `Reserved` forbids binding, and `RAM`/`ROM` only mark candidate addressed storage: they never manufacture a safe `Place` or reference without separately proven storage, lifetime and authority facts.
+- **Resource** (`hardware resource`): logical register state with one member, `width` in bits. It has no address, direction or endpoint kind, and declaring it allocates, reads, writes or resets nothing.
+- **Endpoint** (`hardware endpoint`): a supported physical access mechanism with `kind`, `region`, `resource`, `offset`, `size`, `alignment`, `read_widths`, `write_widths` and, per enabled direction, `read_footprint`, `write_footprint`, `read_effect`, `write_operation`, `ordering`, `completion`, `atomicity`, plus `context` and `fault`. Members of a disabled direction (empty width list) must be absent. Only `HardwareEndpointKind.MemoryMapped` has a 0.1 user schema; `PortMapped`, `InstructionEncoded`, `RuntimeMapped` and `TargetDefined` are reserved semantic cases rejected as an unsupported endpoint-kind schema.
+- **Closed metadata enums.** `HardwareFootprintKind.Whole`, `HardwareReadEffect` (`NonDestructive`, `ReadClear`, `ReadSet`), `HardwareWriteOperation` (`Replace`, `SetBits`, `ClearBits`, `ToggleBits`), `HardwareOrdering.Volatile`, `HardwareCompletion.Issued`, `HardwareAtomicity.Unspecified`, `HardwareAccessContext.Current` and `HardwareFaultContract.Platform` are the complete 0.1 cases. They are compile-time schema enums, not runtime types. `Volatile` is no fence, `Issued` is not external completion, `Unspecified` claims no atomicity, `Platform` faults never become a `Result`, and `SetBits`/`ClearBits`/`ToggleBits` are endpoint capabilities, not source operators (MD-112 still governs non-trigger effects).
+- **Identity and aliases.** Distinct endpoints may name the same resource (for example output, set and clear aliases); that is a declared hardware fact. Equal or adjacent addresses, similar names or equal layouts never prove a shared resource, and equal numbers in different domains need not alias.
+- **Checks.** An endpoint's footprint, widths, byte order, location and permissions are checked against the nominal register type, the resource, Device facts and each requested field operation. A width never implies read-modify-write safety, and no set/clear alias, atomicity, barrier or non-destructive observation is inferred.
+
 ---
 
 ## 12. Hardware resource identity and aliases
@@ -939,6 +967,10 @@ If no semantics-preserving physical operation plan exists, compilation fails.
 
 The compiler must not emit an approximate operation merely because ordinary integer manipulation could produce the requested final bits in an idealized memory model.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 11).** A normalized endpoint does not select an instruction: a verified `PhysicalOperationPlan` is derived per requested logical operation from the CompilationPlan's Target/Device facts, the endpoint/resource/region capabilities, the binding's access context and the field semantics, and is fingerprinted against that plan. The first executable subset is a fixed, byte-addressable `MemoryMapped` endpoint with one legal whole-register transfer width, target-compatible alignment and layout, and either a non-destructive full-register observation or a replacement write whose logical meaning is provably preserved, as exact physical steps. Missing atomicity, ordering barriers, completion, fault recovery, field-targeted effects, read-clear behavior, set/clear aliases or device protocols are never fabricated; a valid but unsupported plan is an explicit unsupported-capability diagnostic, and `unsafe` does not override a known invalid fact.
+
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` §§ 3(3), 5).** A specialized field request carries its logical action mask, which is not a physical transfer pattern. For a runtime mask the physical operation is conditional on a nonzero mask unless the validated endpoint contract provides a proven-equivalent realization; a zero runtime mask never causes an otherwise unrequested write. A read-modify-write sequence is not automatically safe: destructive or incoherent reads and written-back observed bits can trigger unrelated specialized actions, so it needs the same proof as any other plan. When no plan realizes the mask without forbidden collateral effects, compilation fails closed; `unsafe` does not invent capabilities. A diagnostic for a rejected plan names the field and action mask, the endpoint and physical footprint, the conflicting effect or missing capability, and a concrete remedy when one exists.
+
 ---
 
 ## 14. Access width
@@ -1029,6 +1061,8 @@ Collateral read and write effects are evaluated over the physical transaction fo
 Byte strobes, write masks, selected-bit instructions, and equivalent hardware capabilities affect the physical write footprint only when explicitly supplied by the endpoint contract.
 
 The compiler must not invent selective write capability from source field width.
+
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 5(2)–(3)).** When one physical transaction necessarily writes positions outside the requested action mask, each such position receives a documented, sufficient physically non-triggering value, or is excluded through an explicitly supported mask, strobe, alias or equivalent operation. Neutral bits do not make the whole transaction harmless: ordinary `read-write` fields, command fields, reserved bits and stronger endpoint effects may still respond.
 
 ---
 
@@ -1671,12 +1705,16 @@ LLVM IR must not decide whether a register field update is W1C, safe RMW, alias 
 
 Those decisions must already be resolved or represented by explicit target intrinsics before ordinary LLVM optimization can erase the semantic distinction.
 
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 7).** Sema resolves field behavior, carrier and range validity, the per-bit trigger mask and the distinction between an all-neutral request and an effectful action. The MD-077 operations (`register.hw.request_write`, `register.hw.shadow_intent`, `register.hw.commit`) stay canonical; no competing operation family is introduced. For a runtime value Semantic IR preserves the conditional action-mask semantics and the condition under which a physical effect is permitted (control flow or a verified equivalent). Semantic IR and Sec MLIR verification never conflate a logical no-op with a physical write, infer endpoint write masks from register width, or recompute source semantics from raw integer patterns after Sema has resolved them.
+
 **Amendment MD-077 (2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md` §§ 9–11).** The canonical Semantic IR operations are:
 - `register.value.extract` and `register.value.update`, which are pure;
 - `register.hw.bind`, which establishes authority and performs no I/O;
 - `register.hw.observe`, `register.hw.request_write`, `register.hw.shadow_observe`, `register.hw.shadow_intent`, `register.hw.shadow_invalidate` and `register.hw.commit`.
 
 Hardware operations carry their full identity, field, request, transfer, safety, effect, shadow, authority, failure and trace payload (`rules/compiler/semantic_ir.md` §§ 21, 85). They are effectful even when their value is unused. Destructive observations are never eliminated, duplicated, speculated or reordered.
+
+**Amendment MD-113 (2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 10).** The shadow status query is the separate software operation `register.hw.shadow_known` (`semantic_ir.md` § 21(9)). It is not `register.hw.observe`, never lowers to an MMIO, CSR or port read or to a `read-clear`/`read-set` effect, needs no physical plan, and may be folded to a constant only where the proven knowledge state allows it. Lowering keeps the dataflow between the query, later reads and invalidations, so a checked `true` is never treated as permanent after an invalidating operation.
 
 ---
 
@@ -1706,6 +1744,8 @@ target-specific intrinsic
 ### 31.3 No semantic approximation
 
 If the selected target cannot materialize the required operation semantics, compilation fails.
+
+**Amendment MD-112 (2026-10-30, `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 7(5)).** Physical lowering of an action-mask request requires a verified plan under MD-111; valid source-level semantics do not imply that executable hardware code can be emitted.
 
 ### 31.4 Host independence
 

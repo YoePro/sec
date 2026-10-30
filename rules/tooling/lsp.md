@@ -2346,8 +2346,34 @@ Information diagnostics are optional and semantic-fact driven. Hover on a
 `Some(value)` shows the selected `Option[T]` and constructor. CLI, JSON and LSP
 report the same advisory identities
 (`rules/tooling/diagnostics.md` § 24(4e);
-`rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
+`rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
 §§ 10(4), 15(4)).
+
+### Register shadow knowledge (MD-113)
+
+Amendment 2026-10-30 (`rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` §§ 4(8), 7(7), 9(7)). Completion, hover and
+go-to-definition for `self.IsShadowKnown(T.Field...)` use Sema's selector
+resolution: the selector links to the final field and shows the whole path, and
+no LSP-only parser exists. Reserved-name diagnostics for `Read`, `Write` and
+`IsShadowKnown` and their completion come from the compiler-known registry.
+Hover on a register `impl` member shows its published static contract: whether
+a returned value comes from shadow or from a hardware observation, its
+`RequiresKnown` / `EnsuresKnown` / conditional summaries, and whether it may
+touch external hardware. This is static API information, never runtime
+reflection, and a `Known` shadow value is never presented as current hardware
+state.
+
+### Hardware fact declarations (MD-111)
+
+Amendment 2026-10-30 (`rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 13(3)). Completion and hover for
+`hardware region`, `hardware resource` and `hardware endpoint` members come from
+the compiler's metadata schema: allowed members, exact types, requiredness,
+enum cases and their meaning, with no separate LSP or formatter copy. Navigation
+resolves hardware declaration names, `@address` endpoint paths, `Project.<name>`
+exports and manifest override selectors to their canonical identities. The
+server reports the selected target address domain, effective property
+provenance (source or project override, with the changed-value warning) and
+alias facts for bindings.
 
 ---
 

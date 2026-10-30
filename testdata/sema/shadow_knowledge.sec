@@ -1,0 +1,95 @@
+module main
+
+type Control register[8] {
+    Mode: bit[3] shadow,
+    Clear: bit write-one-clear shadow,
+    _: bit[4],
+}
+
+impl Control {
+    fn HasKnownMode() bool {
+        return self.IsShadowKnown(Control.Mode)
+    }
+
+    fn GetMode() uint8 {
+        return self.Mode
+    }
+
+    fn TryGetMode() Option[uint8] {
+        if self.IsShadowKnown(Control.Mode) {
+            return Some(self.Mode)
+        }
+        return None
+    }
+
+    fn Refresh() Control {
+        return self.Read()
+    }
+
+    fn Reset() void {
+        self.Mode = 0
+    }
+
+    fn Ack() void {
+        self.Clear = true
+    }
+
+    fn ResetThenGet() uint8 {
+        self.Mode = 1
+        return self.Mode
+    }
+
+    fn Overwrite(value: Control) void {
+        self.Write(value)
+    }
+
+    fn Commit() void {
+        self.Write()
+    }
+}
+
+@address(0x40000000)
+let mut control: Control
+
+fn Good() uint8 {
+    if control.HasKnownMode() {
+        let guarded := control.GetMode()
+    }
+    let snapshot := control.Refresh()
+    let mode := control.GetMode()
+    let maybe := control.TryGetMode()
+    return control.ResetThenGet()
+}
+
+fn Unknown() uint8 {
+    return control.GetMode()
+}
+
+fn ActionDoesNotEstablish() uint8 {
+    control.Ack()
+    return control.GetMode()
+}
+
+fn WriteEstablishes() uint8 {
+    control.Reset()
+    return control.GetMode()
+}
+
+fn BranchMerge(flag: bool) uint8 {
+    if flag {
+        let snapshot := control.Refresh()
+    }
+    return control.GetMode()
+}
+
+fn OverwriteForgets() uint8 {
+    let snapshot := control.Refresh()
+    control.Overwrite(snapshot)
+    return control.GetMode()
+}
+
+fn CommitKeepsOrdinaryFields() uint8 {
+    control.Reset()
+    control.Commit()
+    return control.GetMode()
+}

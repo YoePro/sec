@@ -1,17 +1,17 @@
 module main
 
 type Figure union {
-    Circle(int)
+    Circle(string)
     Square(int)
 }
 
 fn Size(shape: Figure) int {
     return match shape {
-        Circle(r) => r
+        Circle(_) => 1
         Square(s) => s
     }
 }
 
 fn main() int {
-    return Size(Figure.Circle(4))
+    return Size(Figure.Square(4))
 }

@@ -14,12 +14,576 @@ enum FormatSign {
 }
 
 type FormatSpec struct {
-    Fill: rune,
-    Alignment: FormatAlignment,
-    Sign: FormatSign,
-    Alternate: bool,
-    ZeroPad: bool,
-    Width: Option[uint],
-    Precision: Option[uint],
+    Fill:         rune,
+    Alignment:    FormatAlignment,
+    Sign:         FormatSign,
+    Alternate:    bool,
+    ZeroPad:      bool,
+    Width:        Option[uint],
+    Precision:    Option[uint],
     Presentation: Option[rune],
+}
+
+/**
+ * Receives UTF-8 text emitted by the core formatting engine.
+ *
+ * Description:
+ * Provides a destination-independent text output contract.
+ * Implementations may write to files, streams, memory buffers,
+ * terminal devices or other supported destinations.
+ *
+ * The formatting engine controls the text representation and
+ * argument order. The sink controls how the text is delivered.
+ *
+ * A successful WriteText call must accept the entire supplied
+ * string. Implementations must handle partial underlying writes
+ * before reporting success.
+ *
+ * Ownership:
+ * The sink is borrowed through mutable receiver authority.
+ * It does not take ownership of source strings.
+ *
+ * Allocation:
+ * The interface does not require allocation. Individual
+ * implementations may allocate when their destination requires it.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 2, 9 and 10.
+ * rules/declarations/interfaces.md, section 3.
+ */
+interface FormatSink[E] {
+    /**
+     * Writes one complete UTF-8 text segment.
+     *
+     * Parameters:
+     * - text: Valid UTF-8 text to deliver.
+     *
+     * Returns:
+     * - Ok(): The complete segment was accepted.
+     *
+     * Errors:
+     * - E: Destination-specific failure.
+     *
+     * Ownership:
+     * Does not consume the source text.
+     *
+     * Allocation:
+     * Depends on the destination implementation.
+     */
+    mut fn WriteText(text: string) Result[void, E]
+}
+
+/**
+ * Identifies the kinds of tokens produced by the composite format scanner.
+ *
+ * Literal spans use UTF-8 byte offsets into the original format string.
+ * Escaped braces represent one output character each.
+ */
+type _FormatToken union {
+    // Unmodified UTF-8 text in the half-open byte range [Start, End).
+    Literal {
+        Start: uint,
+        End:   uint
+    }
+
+    // The escaped opening brace "{{".
+    EscapedOpen
+
+    // The escaped closing brace "}}".
+    EscapedClose
+
+    // A positional argument reference, including automatic fields.
+    Argument(uint)
+}
+
+/**
+ * Tracks the argument addressing mode of a composite format.
+ */
+enum _FormatMode {
+    None
+    Automatic
+    Indexed
+}
+
+/**
+ * Scans a composite format into sequential tokens.
+ *
+ * Description:
+ * Recognizes literal text, escaped braces and positional fields.
+ * Enforces valid argument indexes and prohibits mixing automatic
+ * and explicit indexing.
+ *
+ * Ownership:
+ * Retains the format string according to normal string semantics.
+ *
+ * Allocation:
+ * Does not allocate token collections or output strings.
+ */
+type _FormatCursor struct {
+    _source:         string,
+    _position:       uint,
+    _argumentCount:  uint,
+    _automaticIndex: uint,
+    _mode:           _FormatMode,
+    _finished:       bool,
+}
+
+impl _FormatCursor implements Iterator[Result[_FormatToken, FormatError]] {
+    /**
+     * Initializes a composite format scanner.
+     *
+     * Parameters:
+     * - source: UTF-8 format string to scan.
+     * - argumentCount: Number of supplied formatting arguments.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    init(source: string, argumentCount: uint) {
+        self._source = source
+        self._position = 0
+        self._argumentCount = argumentCount
+        self._automaticIndex = 0
+        self._mode = _FormatMode.None
+        self._finished = false
+    }
+
+    /**
+     * Advances the composite format iterator.
+     *
+     * Description:
+     * Produces the next format token or a parsing error.
+     * A parsing error is emitted once, after which iteration ends.
+     *
+     * Returns:
+     * - Some(Ok(token)): The next parsed format token.
+     * - Some(Err(error)): A format parsing error.
+     * - None: The iterator has reached its end or has already
+     * reported an error.
+     *
+     * Ownership:
+     * Does not consume the underlying format string.
+     * Updates only the iterator's internal state.
+     *
+     * Allocation:
+     * Does not allocate.
+     *
+     * Rulebook:
+     * rules/control-flow/flowcontrol_for.md, section 37.
+     * stdlib/fmt/std-fmt.md, section 8.
+     */
+    fn Next() Option[Result[_FormatToken, FormatError]] {
+        if self._finished {
+            return None()
+        }
+
+        let result := self._NextChecked()
+
+        match result {
+            Ok(next) => {
+                match next {
+                    Some(token) => return Some(Ok(token))
+
+                    None => {
+                        self._finished = true
+                        return None()
+                    }
+                }
+            }
+
+            Err(error) => {
+                self._finished = true
+                return Some(Err(error))
+            }
+        }
+    }
+
+    /**
+     * Reads the next composite format token.
+     *
+     * Description:
+     * Advances through the original UTF-8 byte sequence.
+     * Non-ASCII text remains unchanged in literal spans.
+     *
+     * Returns:
+     * - Ok(Some(token)): The next format token.
+     * - Ok(None): The end of the format has been reached.
+     *
+     * Errors:
+     * - FormatError.InvalidFormat: Malformed braces, invalid argument
+     * references or mixed automatic and indexed fields.
+     * - FormatError.UnsupportedFormat: A field uses a format
+     * specification not supported by the baseline grammar.
+     *
+     * Ownership:
+     * Returned tokens do not own the original format string.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn _NextChecked() Result[Option[_FormatToken], FormatError] {
+        if self._position >= self._source.SizeOf {
+            return Ok(None)
+        }
+
+        let current := try self._source.GetByte(self._position) {
+            Err(_) => return Err(FormatError.InvalidFormat)
+        }
+
+        if current == byte(123) {
+            self._position += 1
+
+            if self._position >= self._source.SizeOf {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            let next := try self._source.GetByte(self._position) {
+                Err(_) => return Err(FormatError.InvalidFormat)
+            }
+
+            if next == byte(123) {
+                self._position += 1
+                return Ok(Some(_FormatToken.EscapedOpen))
+            }
+
+            if next == byte(125) {
+                if self._mode == _FormatMode.Indexed {
+                    return Err(FormatError.InvalidFormat)
+                }
+
+                if self._automaticIndex >= self._argumentCount {
+                    return Err(FormatError.InvalidFormat)
+                }
+
+                let index := self._automaticIndex
+                self._automaticIndex += 1
+                self._position += 1
+                self._mode = _FormatMode.Automatic
+
+                return Ok(Some(_FormatToken.Argument(index)))
+            }
+
+            if self._mode == _FormatMode.Automatic {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            if next == byte(58) {
+                return Err(FormatError.UnsupportedFormat)
+            }
+
+            if next < byte(48) || next > byte(57) {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            let mut index: uint := 0
+
+            while self._position < self._source.SizeOf {
+                let digitByte := try self._source.GetByte(self._position) {
+                    Err(_) => return Err(FormatError.InvalidFormat)
+                }
+
+                if digitByte < byte(48) || digitByte > byte(57) {
+                    break
+                }
+
+                let digit := uint(digitByte - byte(48))
+
+                if self._argumentCount == 0 || digit >= self._argumentCount {
+                    return Err(FormatError.InvalidFormat)
+                }
+
+                if index > (self._argumentCount - 1 - digit) / 10 {
+                    return Err(FormatError.InvalidFormat)
+                }
+
+                index = index * 10 + digit
+                self._position += 1
+            }
+
+            if self._position >= self._source.SizeOf {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            let closing := try self._source.GetByte(self._position) {
+                Err(_) => return Err(FormatError.InvalidFormat)
+            }
+
+            if closing == byte(58) {
+                return Err(FormatError.UnsupportedFormat)
+            }
+
+            if closing != byte(125) {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            self._position += 1
+            self._mode = _FormatMode.Indexed
+
+            return Ok(Some(_FormatToken.Argument(index)))
+        }
+
+        if current == byte(125) {
+            self._position += 1
+
+            if self._position >= self._source.SizeOf {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            let next := try self._source.GetByte(self._position) {
+                Err(_) => return Err(FormatError.InvalidFormat)
+            }
+
+            if next != byte(125) {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            self._position += 1
+            return Ok(Some(_FormatToken.EscapedClose))
+        }
+
+        let start := self._position
+
+        while self._position < self._source.SizeOf {
+            let value := try self._source.GetByte(self._position) {
+                Err(_) => return Err(FormatError.InvalidFormat)
+            }
+
+            if value == byte(123) || value == byte(125) {
+                break
+            }
+
+            self._position += 1
+        }
+
+        return Ok(Some(_FormatToken.Literal {
+            Start: start,
+            End: self._position,
+        }))
+    }
+}
+
+/**
+ * Validates a composite format and all argument references.
+ *
+ * Description:
+ * Scans the complete format before accepting it as valid.
+ * Rejects malformed fields, mixed indexing modes, references
+ * outside the supplied argument range, and unused arguments.
+ *
+ * Every supplied argument must be referenced at least once.
+ * An indexed argument may be referenced multiple times.
+ *
+ * Parameters:
+ * - format: UTF-8 composite format string to validate.
+ * - argumentCount: Number of available formatting arguments.
+ *
+ * Returns:
+ * - Ok(): The complete format is valid.
+ *
+ * Errors:
+ * - FormatError.InvalidFormat: Invalid syntax, argument reference,
+ * indexing mode, or unused argument.
+ * - FormatError.UnsupportedFormat: Unsupported presentation syntax.
+ *
+ * Ownership:
+ * Does not consume or modify the format string.
+ * Uses independent local iterators for validation.
+ *
+ * Allocation:
+ * Does not allocate.
+ *
+ * Complexity:
+ * O(argumentCount * tokenCount) in the worst case.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, section 8.
+ */
+fn ValidateCompositeFormat(format: string, argumentCount: uint) Result[void, FormatError] {
+    let mut validator := new _FormatCursor(format, argumentCount)
+
+    // Validate the complete format, including its final token.
+    for tokenResult in validator {
+        match tokenResult {
+            Ok(_) => {
+            }
+            Err(error) => return Err(error)
+        }
+    }
+
+    // Ensure that every supplied argument is referenced.
+    let mut expected: uint := 0
+
+    while expected < argumentCount {
+        let mut cursor := new _FormatCursor(format, argumentCount)
+        let mut found  := false
+
+        for tokenResult in cursor {
+            let token := try tokenResult
+
+            match token {
+                _FormatToken.Argument(index) => {
+                    if index == expected {
+                        found = true
+                        break
+                    }
+                }
+
+                _ => {
+                }
+            }
+        }
+
+        if !found {
+            return Err(FormatError.InvalidFormat)
+        }
+
+        expected += 1
+    }
+
+    return Ok()
+}
+
+/**
+ * Writes a complete text segment and updates the byte count.
+ *
+ * Description:
+ * Checks that the resulting total UTF-8 byte count is representable
+ * before passing the segment to the destination.
+ *
+ * Parameters:
+ * - sink: Mutable destination implementing FormatSink.
+ * - text: UTF-8 text segment to write.
+ * - total: Number of bytes successfully written previously.
+ *
+ * Returns:
+ * - Ok(count): Updated total UTF-8 byte count.
+ *
+ * Errors:
+ * - FormatRenderError.IO(IOError.InvalidInput):
+ * The total byte count would overflow uint.
+ * - FormatRenderError.IO(error):
+ * The destination failed to accept the complete segment.
+ *
+ * Ownership:
+ * Does not consume the destination or modify the text.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _WriteFormatSegment(sink: ref mut FormatSink, text: string, total: uint) Result[uint, FormatRenderError] {
+    let next := try total + text.SizeOf {
+        Err(_) => return Err(FormatRenderError.IO(IOError.InvalidInput))
+    }
+
+    try sink.WriteText(text) {
+        Err(error) => return Err(FormatRenderError.IO(error))
+    }
+
+    return Ok(next)
+}
+
+/**
+ * Formats heterogeneous values into a supplied text destination.
+ *
+ * Description:
+ * Validates the complete composite format before producing output.
+ *
+ * Uses the canonical format scanner to emit literal text,
+ * escaped braces and argument representations in source order.
+ *
+ * Automatic and explicit indexed fields follow the same rules
+ * as ValidateCompositeFormat. Indexed fields may reference
+ * the same argument more than once.
+ *
+ * Each argument is represented using its applicable ToString()
+ * method. The function does not construct a complete
+ * intermediate output string.
+ *
+ * Parameters:
+ * - format: UTF-8 composite format description.
+ * - sink: Mutable destination implementing FormatSink.
+ * - values: Heterogeneously typed, shared-borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Total number of UTF-8 bytes accepted by the sink.
+ *
+ * Errors:
+ * - FormatRenderError.Text: Invalid format or failed ToString().
+ * - FormatRenderError.IO: Destination failure or byte-count overflow.
+ *
+ * Structural format errors are detected before any output.
+ * Conversion and destination errors may leave partial output.
+ *
+ * Ownership:
+ * Does not consume the source arguments or destination.
+ * Temporary representations follow normal Sec destruction rules.
+ *
+ * Allocation:
+ * May allocate through an argument's ToString().
+ * Does not allocate a combined output string or token collection.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 3 and 8-10.
+ * rules/declarations/functions.md, section 38A.
+ */
+fn FormatComposite[...Types](format: string, sink: ref mut FormatSink, values: ...ref Types) Result[uint, FormatRenderError] {
+    try ValidateCompositeFormat(format, values.Len) {
+        Err(error) => {
+            return Err(FormatRenderError.Text(StringError.Format(error)))
+        }
+    }
+
+    let mut cursor := new _FormatCursor(format, values.Len)
+    let mut total: uint := 0
+
+    for tokenResult in cursor {
+        let token := try tokenResult {
+            Err(error) => {
+                return Err(FormatRenderError.Text(StringError.Format(error)))
+            }
+        }
+
+        match token {
+            _FormatToken.Literal { Start: start, End: end } => {
+                let text := try _SliceUtf8Bytes(format, start, end) {
+                    Err(_) => {
+                        return Err(FormatRenderError.Text(
+                            StringError.Format(FormatError.InvalidFormat),
+                        ))
+                    }
+                }
+
+                total = try _WriteFormatSegment(sink, text, total)
+            }
+
+            _FormatToken.EscapedOpen => {
+                total = try _WriteFormatSegment(sink, "{", total)
+            }
+
+            _FormatToken.EscapedClose => {
+                total = try _WriteFormatSegment(sink, "}", total)
+            }
+
+            _FormatToken.Argument(index) => {
+                let mut position: uint := 0
+
+                for ref value in values {
+                    if position == index {
+                        let text := try value.ToString() {
+                            Err(error) => {
+                                return Err(FormatRenderError.Text(error))
+                            }
+                        }
+
+                        total = try _WriteFormatSegment(sink, text, total)
+                        break
+                    }
+
+                    position += 1
+                }
+            }
+        }
+    }
+
+    return Ok(total)
 }

@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"reflect"
 	"sort"
 	"strings"
 
@@ -51,6 +52,7 @@ func (a *Analyzer) validateStaticInitialization(program *ast.Program) {
 		return
 	}
 	declarations := map[string]staticDeclaration{}
+	a.collectFunctionStaticHolders(program)
 	for _, statement := range program.Statements {
 		switch statement := statement.(type) {
 		case *ast.LetStatement:
@@ -94,9 +96,13 @@ func (a *Analyzer) validateStaticInitialization(program *ast.Program) {
 		}
 		return names[i] < names[j]
 	})
+	staticRoots := map[string]bool{}
+	for _, name := range names {
+		staticRoots[name] = true
+	}
 	for _, name := range names {
 		declaration := declarations[name]
-		a.validateStaticInitializerExpression(declaration.name, declaration.value, declaration.token)
+		a.validateStaticInitializerExpression(declaration.name, declaration.value, declaration.token, staticRoots)
 	}
 	a.validateStaticDependencyCycles(declarations)
 }
@@ -119,14 +125,17 @@ func (a *Analyzer) addStaticDeclaration(declarations map[string]staticDeclaratio
 }
 
 // validateStaticInitializerExpression rejects operations that require hidden
-// runtime startup execution (static.md, section 15).
-func (a *Analyzer) validateStaticInitializerExpression(name string, expression ast.Expression, token lexer.Token) {
+// runtime startup execution (static.md, section 15). staticRoots names the
+// module and type-owned static declarations of the module pass, whose symbols
+// may not be defined yet when it runs.
+func (a *Analyzer) validateStaticInitializerExpression(name string, expression ast.Expression, token lexer.Token, staticRoots map[string]bool) {
 	if expression == nil {
 		return
 	}
-	invalid := false
+	invalid, reported := false, false
+	settled := map[ast.Expression]bool{}
 	visitStatementExpressions(&ast.LetStatement{Value: expression}, func(candidate ast.Expression) {
-		if invalid {
+		if invalid || settled[candidate] {
 			return
 		}
 		switch candidate := candidate.(type) {
@@ -134,14 +143,13 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 			*ast.SpawnExpression, *ast.AwaitExpression, *ast.LambdaExpression:
 			invalid = true
 		case *ast.RefExpression:
-			// A reference to static storage is a legal static reference in a
-			// materialized static (compile_time_evaluation.md § 36(2);
-			// static.md § 5); a borrow of anything else needs runtime state.
-			// Implementation choice awaiting confirmation: MD-081.
-			root, rooted := borrowRootName(candidate.Value)
-			symbol, exists := a.symbols[root]
-			if !rooted || !exists || symbol.Local || symbol.Storage != StorageOriginStatic {
-				invalid = true
+			// MD-081: `ref S` / `ref mut S` of a static Place, or of a field or
+			// constant-index element of one, is a materializable static
+			// reference. Authority, overlap, bounds and lifetime are checked by
+			// the ordinary borrow analysis of the initializer.
+			if !a.validateStaticReferenceInitializer(name, candidate, token, staticRoots, settled) {
+				invalid, reported = true, true
+				return
 			}
 		case *ast.CallExpression:
 			callee, ok := typePathFromExpression(candidate.Callee)
@@ -178,9 +186,78 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 			}
 		}
 	})
-	if invalid {
+	if invalid && !reported {
 		a.addErrorAtToken(token, "static initializer for %s must be compile-time evaluable; runtime execution or invocation-local state is not allowed", name)
 	}
+}
+
+// validateStaticReferenceInitializer checks the origin of a reference in a
+// static initializer: a named static root (module, type-owned or
+// function-local static storage) reached through fields and compile-time
+// indexes only. It reports a reference-specific diagnostic, marks the Place
+// path as settled so its parts are not re-reported as runtime state, and
+// returns whether the origin is valid; a rejected origin replaces the generic
+// runtime-initializer error.
+//
+// Rules:
+//   - rules/declarations/static.md — §§ 5, 15 (Amendment MD-081)
+//   - rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md — §§ 2-5, 10(1)
+func (a *Analyzer) validateStaticReferenceInitializer(name string, reference *ast.RefExpression, token lexer.Token, staticRoots map[string]bool, settled map[ast.Expression]bool) bool {
+	settled[reference.Value] = true
+	place := reference.Value
+	for {
+		switch node := place.(type) {
+		case *ast.MemberExpression:
+			// A type-owned static is reached as `Owner.Name`.
+			if path, ok := typePathFromExpression(node); ok && staticRoots[path] {
+				markExpressionTree(node, settled)
+				return true
+			}
+			place = node.Object
+			settled[place] = true
+			continue
+		case *ast.IndexExpression:
+			if _, known := a.integerConstantValue(node.Index); !known {
+				a.addErrorAtToken(expressionToken(node.Index), "static reference initializer for %s needs a compile-time index; a runtime index cannot select static storage", name)
+				return a.settleRejectedStaticReference(reference, settled)
+			}
+			markExpressionTree(node.Index, settled)
+			place = node.Left
+			settled[place] = true
+			continue
+		case *ast.Identifier:
+			symbol, exists := a.symbols[node.Value]
+			if staticRoots[node.Value] && (!exists || !symbol.Local) || exists && symbol.Storage == StorageOriginStatic {
+				return true
+			}
+			if exists {
+				a.addErrorAtTokenWithMetadata(node.Token, "",
+					"Borrow a static instead, or initialize the static with a value rather than a reference.",
+					"static reference initializer for %s borrows %s, which is not static storage; a reference held by a static must have a static root", name, node.Value)
+				return a.settleRejectedStaticReference(reference, settled)
+			}
+			return true
+		}
+		// A computed value is not addressable; the ordinary borrow check
+		// reports it with its stable identity (S1168, MD-081 § 10(3)).
+		markExpressionTree(reference.Value, settled)
+		return true
+	}
+}
+
+// settleRejectedStaticReference marks the rejected reference as settled so the
+// reported origin error stays its only diagnostic (MD-081 § 10(1)).
+func (a *Analyzer) settleRejectedStaticReference(reference *ast.RefExpression, settled map[ast.Expression]bool) bool {
+	markExpressionTree(reference.Value, settled)
+	settled[reference] = true
+	return false
+}
+
+// markExpressionTree marks every expression of a subtree as settled.
+func markExpressionTree(expression ast.Expression, settled map[ast.Expression]bool) {
+	visitStatementExpressions(&ast.LetStatement{Value: expression}, func(candidate ast.Expression) {
+		settled[candidate] = true
+	})
 }
 
 func (a *Analyzer) validateStaticDependencyCycles(declarations map[string]staticDeclaration) {
@@ -247,6 +324,114 @@ func (a *Analyzer) validateStaticDependencyCycles(declarations map[string]static
 	for _, name := range names {
 		if state[name] == 0 {
 			visit(name)
+		}
+	}
+}
+
+// staticHolderBorrows keeps the borrows held by module and type-owned static
+// reference holders when a callable body starts: such a holder can be used
+// at any time, so its shared or exclusive borrow stays live in every body and
+// the ordinary conflict checks reject overlapping direct access.
+//
+// Rules:
+//   - rules/declarations/static.md — § 5 (Amendment MD-081)
+//   - rules/memory/lifetime_analysis.md — § 19.2(3)
+//   - rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md — § 6(3)
+func (a *Analyzer) staticHolderBorrows() map[string][]borrowRecord {
+	held := map[string][]borrowRecord{}
+	for root, records := range a.borrows {
+		for _, record := range records {
+			holder, exists := a.symbols[record.Holder]
+			if exists && !holder.Local && holder.Storage == StorageOriginStatic {
+				held[root] = append(held[root], record)
+			}
+		}
+	}
+	for _, holder := range a.functionStaticHolders {
+		place, ok := a.resolvePlace(holder.reference.Value)
+		if !ok {
+			continue
+		}
+		kind := sharedBorrow
+		if holder.reference.Mutable {
+			kind = mutableBorrow
+		}
+		for _, alternative := range placeOriginAlternatives(place) {
+			held[alternative.Root] = append(held[alternative.Root], borrowRecord{
+				Root: alternative.Root, Place: alternative, Holder: holder.name, Kind: kind, Token: holder.reference.Token,
+			})
+		}
+	}
+	return held
+}
+
+// functionStaticHolder is a function-local `static let` initialized with a
+// reference: its borrow persists across invocations, so it is live in every
+// callable that can reach the same static storage.
+type functionStaticHolder struct {
+	name      string
+	reference *ast.RefExpression
+}
+
+// collectFunctionStaticHolders records every function-local static reference
+// holder before any callable body is analyzed, so the conflict check does not
+// depend on the order in which bodies are analyzed (MD-081 § 6(3)).
+func (a *Analyzer) collectFunctionStaticHolders(program *ast.Program) {
+	a.functionStaticHolders = nil
+	var bodies []struct {
+		owner string
+		body  *ast.BlockStatement
+	}
+	for _, statement := range program.Statements {
+		switch statement := statement.(type) {
+		case *ast.FunctionDeclaration:
+			if statement != nil && statement.Name != nil && statement.Body != nil {
+				bodies = append(bodies, struct {
+					owner string
+					body  *ast.BlockStatement
+				}{statement.Name.Value, statement.Body})
+			}
+		case *ast.ImplStatement:
+			if statement == nil || statement.Target == nil {
+				continue
+			}
+			for _, member := range statement.Members {
+				if fn, ok := member.(*ast.FunctionDeclaration); ok && fn != nil && fn.Name != nil && fn.Body != nil {
+					bodies = append(bodies, struct {
+						owner string
+						body  *ast.BlockStatement
+					}{statement.Target.Name + "." + fn.Name.Value, fn.Body})
+				}
+			}
+		}
+	}
+	for _, body := range bodies {
+		walkASTValue(reflect.ValueOf(body.body), func(node any) {
+			let, ok := node.(*ast.LetStatement)
+			if !ok || let == nil || !let.Static || let.Name == nil {
+				return
+			}
+			if reference, ok := let.Value.(*ast.RefExpression); ok && reference != nil {
+				a.functionStaticHolders = append(a.functionStaticHolders, functionStaticHolder{name: body.owner + "." + let.Name.Value, reference: reference})
+			}
+		})
+	}
+}
+
+// dropStaticHolderBorrow removes the borrow a function-local static holder was
+// seeded with, before its own initializer registers that borrow again.
+func (a *Analyzer) dropStaticHolderBorrow(reference *ast.RefExpression) {
+	for root, records := range a.borrows {
+		kept := records[:0]
+		for _, record := range records {
+			if !sameSourceToken(record.Token, reference.Token) {
+				kept = append(kept, record)
+			}
+		}
+		if len(kept) == 0 {
+			delete(a.borrows, root)
+		} else {
+			a.borrows[root] = kept
 		}
 	}
 }

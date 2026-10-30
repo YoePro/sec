@@ -1,0 +1,2 @@
+module hardwaremeta
+hardware resource OutputState { width: "32", }

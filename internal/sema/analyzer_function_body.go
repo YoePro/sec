@@ -53,7 +53,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.moved = map[string]lexer.Token{}
 	a.moveReasons = map[string]string{}
 	a.closedResources = map[string]lexer.Token{}
-	a.borrows = map[string][]borrowRecord{}
+	a.borrows = a.staticHolderBorrows()
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
 	a.scopeDepth = 0

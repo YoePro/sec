@@ -144,7 +144,8 @@ func TestPackage15ModulesHaveNoPhysicalVocabulary(t *testing.T) {
 // reference parameters, references into dynamic arrays (collection
 // invalidation), foreign reference parameters (physical reference ABI),
 // move-only referents with custom free (non-trivial read, write and
-// destruction) and statics whose type or initializer is not a scalar literal constant. Stable/weak handles, pinning and
+// destruction) and statics without a represented scalar compile-time value.
+// Stable/weak handles, pinning and
 // RawPtr-to-reference conversion have no Sec 0.1 source form to test
 // (reference_model.md §§ 3(3), 10(9), 26(5); storage.md § 24(4); MD-070).
 //
@@ -211,7 +212,7 @@ fn Use() int {
     let fixed := ref label
     return 0
 }
-`, "not a scalar literal constant"},
+`, "has no resolved scalar compile-time value"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			module, err := buildPackage15Source(t, "module main\n"+test.source, "")

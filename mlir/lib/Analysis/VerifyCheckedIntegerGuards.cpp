@@ -376,7 +376,30 @@ LogicalResult sec::verifyMatchCFG(func::FuncOp function) {
         group.hasCatchAll = true;
         group.catchAllArm = arm.getInt();
       }
-      if (auto compare = dyn_cast<sec::EnumCmpOp>(operation)) {
+      // A result-err-variant arm (v11.41.4) tests the variant of the error
+      // unwrapped from the one Result subject after its sec.result.is_err.
+      auto unwrapsSubjectError = [&](Value tested) {
+        auto unwrap = tested.getDefiningOp<sec::ResultUnwrapErrOp>();
+        return unwrap && group.subject &&
+               unwrap->getOperand(0) == group.subject;
+      };
+      bool errorVariant = kind.getValue() == "result-err-variant";
+      if (errorVariant && isa<sec::EnumCmpOp, sec::UnionIsVariantOp>(operation)) {
+        Value tested = isa<sec::EnumCmpOp>(operation)
+                           ? cast<sec::EnumCmpOp>(operation).getLeft()
+                           : cast<sec::UnionIsVariantOp>(operation).getValue();
+        if (!unwrapsSubjectError(tested))
+          return operation->emitOpError(
+                     "error variant test must use the error unwrapped from "
+                     "the match subject"),
+                 WalkResult::interrupt();
+        auto branch =
+            dyn_cast_or_null<cf::CondBranchOp>(operation->getNextNode());
+        if (!branch || branch.getCondition() != operation->getResult(0))
+          return operation->emitOpError(
+                     "error variant test must immediately feed cf.cond_br"),
+                 WalkResult::interrupt();
+      } else if (auto compare = dyn_cast<sec::EnumCmpOp>(operation)) {
         if (group.subject && group.subject != compare.getLeft())
           return compare.emitOpError("match tests must reuse one enum subject"),
                  WalkResult::interrupt();

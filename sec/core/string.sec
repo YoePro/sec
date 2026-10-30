@@ -37,7 +37,7 @@ impl StringSplitIterator implements Iterator[string] {
             let rest := __StringSliceUnchecked(self.source, self.position, self.source.SizeOf)
 
             for character in rest {
-                let end := self.position + character.Utf8Length
+                let end  := self.position + character.Utf8Length
                 let part := __StringSliceUnchecked(self.source, self.position, end)
                 self.position = end
                 return Some(part)
@@ -349,7 +349,7 @@ impl string {
      */
     fn ToByteArray() Result[byte[], CollectionError] {
         let mut result: byte[]
-        let mut index: uint := 0
+        let mut index:  uint := 0
 
         while index < self.SizeOf {
             try result.Append(self.ByteAt(index))
@@ -569,7 +569,7 @@ impl string {
 
         // Fast path: one-byte search value.
         if value.SizeOf == 1 {
-            let needle := value.ByteAt(0)
+            let needle    := value.ByteAt(0)
             let mut index := startByte
 
             while index < self.SizeOf {
@@ -650,7 +650,7 @@ impl string {
      */
     fn _ByteOffsetOfRune(runeIndex: uint) Option[uint] {
         let mut current: uint := 0
-        let mut offset: uint := 0
+        let mut offset:  uint := 0
 
         for character in self {
             if current == runeIndex {
@@ -673,7 +673,7 @@ impl string {
      * byteOffset, which must lie on a scalar boundary.
      */
     fn _RuneIndexAtByte(byteOffset: uint) uint {
-        let mut current: uint := 0
+        let mut current:  uint := 0
         let mut position: uint := 0
 
         for character in self {
@@ -694,7 +694,7 @@ impl string {
 
         for character in self {
             let witdth := character.Utf8Length
-            let next := position + witdth
+            let next   := position + witdth
 
             if character.IsWhitespace {
                 if !foundContent {
@@ -763,7 +763,7 @@ impl string {
         }
 
         let mut startByte: uint := 0
-        let mut endByte: uint := 0
+        let mut endByte:   uint := 0
 
         match self._ByteOffsetOfRune(start) {
             Some(offset) => {
@@ -908,4 +908,72 @@ impl string {
     fn ToString() Result[string, StringError] {
         return Ok(self)
     }
+}
+
+/**
+ * Extracts a UTF-8 substring using encoded byte offsets.
+ *
+ * Description:
+ * Returns the half-open byte interval [start, end).
+ * Validates bounds and Unicode scalar boundaries before using
+ * the source-file-private string slicing primitive.
+ *
+ * Parameters:
+ * - value: Source UTF-8 string.
+ * - start: Inclusive byte offset.
+ * - end: Exclusive byte offset.
+ *
+ * Returns:
+ * - Ok(string): The selected substring.
+ *
+ * Errors:
+ * - RangeError.StartAfterEnd: start exceeds end.
+ * - RangeError.OutOfBounds: An offset is outside the string
+ * or splits a UTF-8 scalar.
+ *
+ * Ownership:
+ * Does not consume or modify the source string.
+ * Preserves the underlying string storage lifetime.
+ *
+ * Allocation:
+ * Does not allocate or copy UTF-8 data.
+ *
+ * Rulebook:
+ * rules/library/core-library.md
+ * rules/compiler/compiler_known_members.md
+ */
+fn _SliceUtf8Bytes(value: string, start: uint, end: uint) Result[string, RangeError] {
+    if start > end {
+        return Err(RangeError.StartAfterEnd)
+    }
+
+    if end > value.SizeOf {
+        return Err(RangeError.OutOfBounds)
+    }
+
+    if start < value.SizeOf {
+        let first := try value.GetByte(start) {
+            Err(_) => return Err(RangeError.OutOfBounds)
+        }
+
+        let prefix := first & byte(0xC0)
+
+        if prefix == byte(0x80) {
+            return Err(RangeError.OutOfBounds)
+        }
+    }
+
+    if end < value.SizeOf {
+        let last := try value.GetByte(end) {
+            Err(_) => return Err(RangeError.OutOfBounds)
+        }
+
+        let prefix := last & byte(0xC0)
+
+        if prefix == byte(0x80) {
+            return Err(RangeError.OutOfBounds)
+        }
+    }
+
+    return Ok(__StringSliceUnchecked(value, start, end))
 }

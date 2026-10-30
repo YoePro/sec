@@ -1,0 +1,10 @@
+module main
+fn Probe() void {}
+fn Excluded() void {
+    if "a" + "b" != "ab" {
+        Probe()
+    }
+    while 0.5 > 1.0 {
+        Probe()
+    }
+}

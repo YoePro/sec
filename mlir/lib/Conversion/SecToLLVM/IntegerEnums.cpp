@@ -15,6 +15,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
+#include "../SecToCore/ScalarContainers.h"
 
 namespace sec {
 #define GEN_PASS_DEF_SECLOWERINTEGERENUMS
@@ -168,6 +169,10 @@ struct LowerIntegerEnumsPass
     MLIRContext *context = &getContext();
     TypeConverter converter;
     converter.addConversion([](Type type) { return type; });
+    // Enums nested in Result and union payloads take the same resolved
+    // representation; the containers keep their identity until
+    // sec-lower-tagged-values (layout.md §§ 14-16).
+    sec::addScalarContainerConversions(converter, context);
     converter.addConversion([](sec::EnumType type) -> Type {
       return isOrdinaryIntegerEnum(type) ? type.getUnderlying() : type;
     });
@@ -209,7 +214,16 @@ struct LowerIntegerEnumsPass
                            sec::StorageStoreOp::getOperationName(),
                            sec::CallDirectOp::getOperationName(),
                            cf::BranchOp::getOperationName(),
-                           cf::CondBranchOp::getOperationName()})
+                           cf::CondBranchOp::getOperationName(),
+                           sec::ResultOkOp::getOperationName(),
+                           sec::ResultErrOp::getOperationName(),
+                           sec::ResultIsErrOp::getOperationName(),
+                           sec::ResultUnwrapOkOp::getOperationName(),
+                           sec::ResultUnwrapErrOp::getOperationName(),
+                           sec::UnionConstructOp::getOperationName(),
+                           sec::UnionIsVariantOp::getOperationName(),
+                           sec::UnionUnwrapPayloadOp::getOperationName(),
+                           sec::UnionUnwrapFieldOp::getOperationName()})
       patterns.add<EnumTransportLowering>(converter, context, name);
     if (failed(applyPartialConversion(getOperation(), target, std::move(patterns))))
       signalPassFailure();

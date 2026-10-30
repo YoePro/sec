@@ -1,0 +1,24 @@
+module main
+
+fn Extra[...Types](values: ...ref Types) uint { return values.Len + 1 }
+fn Empty[...Types](values: ...ref Types) bool { return values.Len == 0 }
+fn Guarded[...Types](values: ...ref Types) bool {
+    return values.Len == 0 || 10 / values.Len > 0
+}
+fn Previous[...Types](values: ...ref Types) uint { return values.Len - 1 }
+fn Wide[...Types](values: ...ref Types) uint { return values.Len * 2147483648 * 2 }
+fn Runtime() uint { return 1 }
+fn RuntimeBody[...Types](values: ...ref Types) uint { return values.Len + Runtime() }
+fn Use() void {
+    discard Extra()
+    discard Extra(42, true, "text")
+    discard Extra(Runtime())
+    discard Empty()
+    discard Empty(true)
+    discard Guarded()
+    discard Guarded(42)
+    discard Previous()
+    discard Previous(true)
+    discard Wide(true)
+    discard RuntimeBody()
+}

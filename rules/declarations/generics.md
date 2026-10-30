@@ -679,7 +679,7 @@ implicit move from a reusable non-copyable Place, invented copy, concealed
 reborrow, lifetime extension, unauthorized mutable borrow or escape of a
 short-lived reference (`rules/types/types.md` "Contextual and self-inferred
 `Some(value)`";
-`rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 12).
+`rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 12).
 
 ## 19. Explicit generic arguments
 

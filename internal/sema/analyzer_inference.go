@@ -2094,6 +2094,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if a.rejectUnavailableTypePackOverloads(functions, expr) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	arityMatches := []Function{}
 	for _, function := range functions {
@@ -2220,6 +2223,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if len(best) == 1 {
+		if a.rejectUnavailableTypePackCall(best[0].Function, expr, preparedSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		if best[0].Function.Unsafe && !a.callUnsafeAuthorized(expr) {
 			kind := "function"
 			if best[0].Function.Extern {
@@ -2918,9 +2924,16 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		}
 	}
 
-	argTypes, args, _, runtimeSpreadValues, argsOK := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
+	argTypes, args, preparedSpreadValues, runtimeSpreadValues, argsOK := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
 	if !argsOK {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	if a.rejectUnavailableTypePackOverloads(functions, expr) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if a.sharedTypePackHasFixedAlternative(functions, argTypes, args, runtimeSpreadValues) {
+		return Type{}, expressionValue{}, false
 	}
 
 	matches := []overloadMatch{}
@@ -2969,6 +2982,9 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		// call-graph checks as the main call path, so effects, borrows and
 		// moves of calls in return and typed-let positions are not lost.
 		function := best[0].Function
+		if a.rejectUnavailableTypePackCall(function, expr, preparedSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		if function.Unsafe && !a.callUnsafeAuthorized(expr) {
 			a.addErrorAtToken(expr.Token, "calling unsafe function %s requires unsafe", name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -3030,6 +3046,9 @@ func anyNonGenericFunction(functions []Function) bool {
 }
 
 func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
+	if function.GenericTypePack != "" {
+		return a.inferSharedTypePackCall(function, nil, argTypes, Type{})
+	}
 	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false
 	}
@@ -3058,6 +3077,9 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 }
 
 func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, argTypes []Type, expected Type) (Function, bool) {
+	if function.GenericTypePack != "" {
+		return a.inferSharedTypePackCall(function, nil, argTypes, expected)
+	}
 	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false
 	}

@@ -24,15 +24,24 @@ const (
 	RegisterRequestDestructiveObserve RegisterHardwareRequestKind = "destructive-observe"
 	RegisterRequestWriteValue         RegisterHardwareRequestKind = "write-value"
 	RegisterRequestAction             RegisterHardwareRequestKind = "action"
+	// RegisterRequestNoOp is a specialized write whose constant action mask
+	// is all neutral: no pending intent and no physical I/O (MD-112 § 3(1)).
+	RegisterRequestNoOp RegisterHardwareRequestKind = "no-op"
 )
 
 // ResolvedRegisterHardwareRequest is one logical request. Effect is the
 // destructive read effect ("clear", "set") or the write action ("clear",
-// "set", "toggle"); Shadow is the field's effective shadow policy.
+// "set", "toggle"); Shadow is the field's effective shadow policy. For a
+// clear/set/toggle request ActionMask is the width-N logical action mask in
+// binary, most significant bit first, when the written value is a constant;
+// ValueDependent marks a runtime value whose mask, and whether any physical
+// effect happens, depend on that value (MD-112 §§ 2-3).
 type ResolvedRegisterHardwareRequest struct {
-	Kind   RegisterHardwareRequestKind
-	Effect string
-	Shadow RegisterShadowPolicy
+	Kind           RegisterHardwareRequestKind
+	Effect         string
+	Shadow         RegisterShadowPolicy
+	ActionMask     string
+	ValueDependent bool
 }
 
 func (a *Analyzer) recordRegisterWriteTarget(target ast.Expression, stmt *ast.AssignmentStatement) {
@@ -193,8 +202,14 @@ func collateralDestructiveField(root, owner Type, observed string) (string, Regi
 }
 
 // registerWriteRequest builds a value write or a clear/set/toggle action.
-// Only the trigger constant of a write-one/write-zero field is defined on
-// hardware; other values wait for MD-112.
+// A write-one/write-zero field takes per-bit actions: each bit of the
+// validated value is triggering or neutral, a constant all-neutral value is
+// a logical no-op, and a runtime value keeps a value-dependent mask.
+//
+// Rules:
+//   - rules/declarations/registers.md — § 11.3 (Amendment MD-112)
+//   - rules/platform/hardware-register-access.md — §§ 4.4–4.9, 13.5
+//   - rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md — §§ 2–3
 func (a *Analyzer) registerWriteRequest(step registerAccessStep, stmt *ast.AssignmentStatement) *ResolvedRegisterHardwareRequest {
 	field := step.plan.Field
 	request := &ResolvedRegisterHardwareRequest{Kind: RegisterRequestWriteValue, Shadow: field.Shadow}
@@ -203,18 +218,52 @@ func (a *Analyzer) registerWriteRequest(step registerAccessStep, stmt *ast.Assig
 		return request
 	}
 	request.Kind, request.Effect = RegisterRequestAction, effect
-	value, constant := a.registerBitConstant(stmt.Value)
-	if field.Width == 1 && constant && value == trigger {
+	value, constant := a.registerFieldConstant(stmt.Value, field.Width)
+	if !constant {
+		request.ValueDependent = true
 		return request
 	}
-	triggerSpelling := "false"
-	if trigger {
-		triggerSpelling = "true"
+	width := uint(field.Width)
+	mask := new(big.Int).Set(value)
+	if !trigger {
+		all := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), width), big.NewInt(1))
+		mask.AndNot(all, value)
 	}
-	a.registerHardwareFailure(step,
-		"Write the trigger value "+triggerSpelling+" to request the "+effect+" action, guarded by an if when it is conditional; other values are undecided (MD-112).",
-		"writes a value other than the trigger constant to "+string(field.Access)+" register field "+field.Name)
+	if mask.Sign() == 0 {
+		request.Kind = RegisterRequestNoOp
+	}
+	request.ActionMask = registerBitString(mask, width)
 	return request
+}
+
+// registerFieldConstant reads the compile-time value written to a field of
+// width bits: a boolean or 0/1 for one bit, otherwise a non-negative integer
+// constant within the field (range errors are reported by the write check).
+func (a *Analyzer) registerFieldConstant(expr ast.Expression, width int64) (*big.Int, bool) {
+	if width == 1 {
+		if bit, known := a.registerBitConstant(expr); known {
+			if bit {
+				return big.NewInt(1), true
+			}
+			return big.NewInt(0), true
+		}
+		return nil, false
+	}
+	value, known := a.integerConstantValue(expr)
+	if !known || value.Sign() < 0 || int64(value.BitLen()) > width {
+		return nil, false
+	}
+	return value, true
+}
+
+// registerBitString spells a width-bit mask in binary, most significant bit
+// first.
+func registerBitString(mask *big.Int, width uint) string {
+	text := mask.Text(2)
+	for uint(len(text)) < width {
+		text = "0" + text
+	}
+	return text
 }
 
 // registerWriteTrigger returns the trigger value and action of a

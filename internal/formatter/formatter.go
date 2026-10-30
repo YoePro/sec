@@ -161,6 +161,7 @@ func format(text string, options Options) string {
 		normal = fixStateTestBadPractice(normal)
 		normal = fixLegacyAssignedNamedType(normal)
 	}
+	normal = formatHardwareDeclarations(normal)
 	normal = formatImportRegion(normal, options.compact())
 	normal = formatStructuralBlockLayout(normal)
 	normal = formatCallableParameterListLayout(normal)

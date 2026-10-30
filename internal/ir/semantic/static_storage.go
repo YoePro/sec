@@ -68,7 +68,8 @@ func formatStatics(out *strings.Builder, statics []Static) {
 }
 
 // verifyStatics checks the module's static declarations: unique dense IDs,
-// a known type and an initializer matching that type.
+// a known type and exactly one initializer in that scalar domain.
+// Rules: rules/compiler/semantic_ir.md §28; rules/types/types.md — integer/char/rune domains.
 func verifyStatics(module *Module) (map[StaticID]Static, error) {
 	statics := map[StaticID]Static{}
 	for index, static := range module.Statics {
@@ -79,11 +80,18 @@ func verifyStatics(module *Module) (map[StaticID]Static, error) {
 		if !ok {
 			return nil, fmt.Errorf("static @%d has an unknown type", static.ID)
 		}
+		if static.Initializer.Integer != nil && static.Initializer.Bool != nil {
+			return nil, fmt.Errorf("static @%d has conflicting initializers", static.ID)
+		}
 		switch {
 		case static.Initializer.Integer != nil:
 			if typ.Kind != TypeInt && typ.Kind != TypeUint && typ.Kind != TypeByte && typ.Kind != TypeChar && typ.Kind != TypeRune {
 				return nil, fmt.Errorf("static @%d has an integer initializer for a non-integer type", static.ID)
 			}
+			if !staticIntegerFits(module, typ, static.Initializer.Integer) {
+				return nil, fmt.Errorf("static @%d initializer is outside its scalar domain", static.ID)
+			}
+
 		case static.Initializer.Bool != nil:
 			if typ.Kind != TypeBool {
 				return nil, fmt.Errorf("static @%d has a bool initializer for a non-bool type", static.ID)
@@ -166,14 +174,20 @@ func (b *builder) registerStatic(static sema.ResolvedStatic) (StaticID, error) {
 	if static.Function == "" && !b.statics.moduleLets[declaration] {
 		return 0, &UnsupportedFeatureError{Feature: "static storage of another module", Package: b.maxPackage, Location: location(token)}
 	}
+	// MD-081: a static initialized with `ref S` is valid source, but a static
+	// holding a reference needs a module-lifetime borrow in the P15 reference
+	// model and reference lowering (P24); it stays an explicit boundary.
+	if _, isReference := declaration.Value.(*ast.RefExpression); isReference {
+		return 0, &UnsupportedFeatureError{Feature: "static " + static.Name + " initialized with a reference (static-held borrow materialization, P15-42/P24)", Package: b.maxPackage, Location: location(token)}
+	}
 	typeID, err := b.internType(static.Type)
 	if err != nil {
 		return 0, locateUnsupportedType(err, token)
 	}
 	typ, _ := b.module.Types.Lookup(typeID)
-	initializer, ok := staticInitializerOf(declaration.Value, typ.Kind)
+	initializer, ok := resolvedStaticInitializerOf(static.Initializer, typ.Kind)
 	if !ok {
-		return 0, &UnsupportedFeatureError{Feature: "static " + static.Name + " whose type or initializer is not a scalar literal constant", Package: b.maxPackage, Location: location(token)}
+		return 0, &UnsupportedFeatureError{Feature: "static " + static.Name + " whose type or initializer has no resolved scalar compile-time value", Package: b.maxPackage, Location: location(token)}
 	}
 	name := b.module.Identity + "::" + static.Name
 	if static.Function != "" {
@@ -191,36 +205,17 @@ func (b *builder) registerStatic(static sema.ResolvedStatic) (StaticID, error) {
 	return id, nil
 }
 
-// staticInitializerOf evaluates a static's initializer when it is a literal
-// constant of an integer-family or bool type; an absent initializer is the
-// type's zero default.
-func staticInitializerOf(value ast.Expression, kind TypeKind) (StaticInitializer, bool) {
+// resolvedStaticInitializerOf consumes Sema's immutable scalar CTE result. It
+// does not reevaluate source expressions or read runtime static storage.
+// Rules: rules/declarations/static.md §§15–16; rules/compiler/semantic_ir.md §28(5).
+func resolvedStaticInitializerOf(value sema.ResolvedStaticInitializer, kind TypeKind) (StaticInitializer, bool) {
 	integer := kind == TypeInt || kind == TypeUint || kind == TypeByte || kind == TypeChar || kind == TypeRune
-	if kind != TypeBool && !integer {
-		return StaticInitializer{}, false
+	if integer && value.Integer != nil && value.Bool == nil {
+		return StaticInitializer{Integer: new(big.Int).Set(value.Integer)}, true
 	}
-	if value == nil {
-		if integer {
-			return StaticInitializer{Integer: new(big.Int)}, true
-		}
-		zero := false
-		return StaticInitializer{Bool: &zero}, true
-	}
-	switch value := value.(type) {
-	case *ast.IntegerLiteral:
-		parsed, ok := ast.ParseIntegerLiteralLexeme(value.Token.Lexeme)
-		return StaticInitializer{Integer: parsed}, ok && integer
-	case *ast.PrefixExpression:
-		if literal, ok := value.Right.(*ast.IntegerLiteral); ok && value.Operator == "-" && integer {
-			if parsed, ok := ast.ParseIntegerLiteralLexeme(literal.Token.Lexeme); ok {
-				return StaticInitializer{Integer: new(big.Int).Neg(parsed)}, true
-			}
-		}
-	case *ast.BooleanLiteral:
-		if kind == TypeBool {
-			v := value.Value
-			return StaticInitializer{Bool: &v}, true
-		}
+	if kind == TypeBool && value.Bool != nil && value.Integer == nil {
+		b := *value.Bool
+		return StaticInitializer{Bool: &b}, true
 	}
 	return StaticInitializer{}, false
 }
@@ -309,4 +304,29 @@ func (fb *functionBuilder) buildStaticCompoundAssignment(stmt *ast.AssignmentSta
 	}
 	fb.emit(Operation{Kind: OpStaticStore, Static: static.ID, Operands: []ValueID{updated.id}, Location: loc})
 	return nil
+}
+
+// staticIntegerFits validates representability using explicit or selected widths,
+// never host int; unresolved target widths remain high-level, not a range proof.
+// Rules: rules/compiler/semantic_ir.md §28; rules/types/types.md — integer/char/rune domains.
+func staticIntegerFits(module *Module, typ Type, value *big.Int) bool {
+	if typ.Kind == TypeRune && (value.Sign() < 0 || value.Cmp(big.NewInt(0x10ffff)) > 0 || value.Cmp(big.NewInt(0xd800)) >= 0 && value.Cmp(big.NewInt(0xdfff)) <= 0) {
+		return false
+	}
+	if !typ.Signed && value.Sign() < 0 {
+		return false
+	}
+	bits := typ.BitWidth
+	if typ.TargetSize {
+		bits = module.PointerWidthBits
+	}
+	if bits == 0 {
+		return true
+	}
+	limit := new(big.Int).Lsh(big.NewInt(1), uint(bits))
+	if !typ.Signed {
+		return value.Cmp(limit) < 0
+	}
+	half := new(big.Int).Rsh(limit, 1)
+	return value.Cmp(new(big.Int).Neg(half)) >= 0 && value.Cmp(half) < 0
 }

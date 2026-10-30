@@ -362,7 +362,7 @@ const (
 //
 // Rules:
 //   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
 type ResolvedDecimalOperation struct {
 	CoefficientBits int
 	PreferredScale  ResolvedDecimalPreferredScale
@@ -695,6 +695,10 @@ type ResolvedMatchArm struct {
 	Flow                  ResolvedMatchArmFlow
 	ResultType            Type
 	ResidualAlwaysMatches bool
+	// ProvenInactive marks a legal variant arm that the proven reachable
+	// subset of ResolvedMatchPlan.ProvenActive excludes (MD-042, A2008). The
+	// arm keeps its type-checked body and ownership facts.
+	ProvenInactive bool
 }
 
 // ResolvedMatchPlan is the source-order match decision. EmptyStateReachable
@@ -716,6 +720,32 @@ type ResolvedMatchPlan struct {
 	// match point (MD-042); Exhaustive may then rest on that reachable subset
 	// instead of the declared domain (flowcontrol_match.md §§ 5, 25A).
 	ProvenActiveVariant string
+	// ProvenActive is the provenance of ProvenActiveVariant; nil when no
+	// reachable-state proof exists.
+	ProvenActive *ResolvedVariantProof
+}
+
+// ResolvedVariantProofBasis names how an active union variant was proven.
+type ResolvedVariantProofBasis string
+
+const (
+	// VariantProofConstruction: the immutable binding was initialized with
+	// the variant.
+	VariantProofConstruction ResolvedVariantProofBasis = "construction"
+	// VariantProofStateTest: a dominating, unmutated `is` test established
+	// the variant.
+	VariantProofStateTest ResolvedVariantProofBasis = "state-test"
+)
+
+// ResolvedVariantProof is the soundly proven reachable subset of a union
+// match subject (one active variant) with its source provenance: the
+// immutable binding, the proof basis and the token that established it
+// (semantic_ir.md § 71(6); md029-md042-md102 correction § 15(2)).
+type ResolvedVariantProof struct {
+	Binding string
+	Variant string
+	Basis   ResolvedVariantProofBasis
+	Source  lexer.Token
 }
 
 type ResolvedEnumCase struct {

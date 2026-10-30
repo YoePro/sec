@@ -1,0 +1,5 @@
+module main
+fn Count[...Types](values: ...ref Types) uint {
+    values.Len = 3
+    return values.Len
+}

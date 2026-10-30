@@ -1,0 +1,4 @@
+module main
+fn Choose(value: ref int) int { return 1 }
+fn Choose[...Types](values: ...ref Types) int { return 2 }
+fn Use(value: ref int) int { return Choose(value) }

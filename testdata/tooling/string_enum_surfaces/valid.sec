@@ -1,0 +1,34 @@
+module main
+
+/** Public processing states. */
+enum Status string {
+    Pending        = "waiting",
+    Active default = "å🙂",
+    Alias          = "å🙂",
+    Done           = "done",
+}
+
+enum Implicit string {
+    First = "one",
+    Next  = "two",
+}
+
+fn Defaulted() Status {
+    let mut current: Status
+    return current
+}
+
+fn AliasValue() Status {
+    return Status.Alias
+}
+
+fn Classify(status: Status) int {
+    switch status {
+        case Status.Pending:
+            return 0
+        case Status.Active:
+            return 1
+        case Status.Done:
+            return 2
+    }
+}

@@ -1,0 +1,10 @@
+module main
+
+fn Owned[...Types](values: ...Types) void {}
+fn Shared[...Types](values: ...ref Types) void {}
+fn Mutable[...Types](values: ...ref mut Types) void {}
+fn Mixed[T, ...Rest](head: T, values: ...Rest) void {}
+type Container struct {}
+impl Container {
+    fn Method[...Items](values: ...Items) void {}
+}

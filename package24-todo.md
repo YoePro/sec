@@ -59,6 +59,36 @@ internal/lowering/secmlir/target_scalar_parity_test.go
 governance/memory.yaml
 ```
 
+## Current arithmetic preflight — 2026-10-30
+
+HEAD `aa59b4c18c91ed04eef69c7dd0028e41630067f5`, with the shared source overlay
+recorded by the P15-75 revalidation (manifest
+`e9a65f8e08c1fd606ac7b9cc7efb3a6bb4791cea4261e8c2cb0adf180e5f036a`).
+That frozen baseline passes full Go (43 packages), full vet and native lit
+191/191; the implementation/test sources remain the same before this P24 work.
+Default emitter schema is 11, selectable schema 12; P24 schema 20 is planned.
+P15/P16 are partial high-level reference/slice implementations, not physical
+reference layouts; P17–P23 planning and implemented subsets do not establish
+P24 representation readiness. P25 CallABIPlan and P26 physical reference
+lowering are still prerequisites for the full MD-061 optimization matrix.
+
+Actual shared target inputs are `internal/layout/scalar_plan.go` and
+`internal/platform/target/target.go`; source type/recursion facts are in
+`internal/sema/types.go`, `semantic_facts.go`, `analyzer_struct_layout.go` and
+`generic_layout_paths.go`. `internal/ir/semantic/` publishes high-level typed
+facts; `internal/lowering/secmlir/` emits the represented scalar/aggregate
+subset. The native target scalar/integer passes consume selected widths.
+There is no complete ResolvedLayout service, plan-complete layout cache,
+canonical field-offset table or public executable AlignOf/StrideOf service.
+Compiler-known SizeOf typing is not a shared physical layout calculator.
+
+The arithmetic foundation accepts an explicit resolved maximum byte extent,
+supported alignments and selected minimum element stride. It must not derive
+these from the Go host, pointer width, C ABI or display spelling. It computes
+only exact checked numbers, not type identity, layout completeness, descriptor
+selection, an ABI or pointer arithmetic for zero-sized elements. Complete P24
+preflight and canonical resolver integration remain separate TODOs.
+
 ## Authority and dependency constraints
 
 1. **One canonical service:** Sema, Semantic IR, MLIR, lowering, LSP and
@@ -174,10 +204,28 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
   validated constraints and compiler layout revision into a complete immutable
   layout key. An incompatible cache entry must be a miss/recompute, never a
   fallback or authority.
-- [ ] P24-12 — Implement checked arbitrary-precision nonnegative arithmetic:
+- [x] P24-12 — Implement checked arbitrary-precision nonnegative arithmetic:
   `CheckedAdd`, `CheckedMul`, `AlignUp`, `StrideOf` and array-size calculation.
   Delay APInt/index/host-size casts until target representability is proven;
   diagnose the exact overflowing field/count/instantiation and target bound.
+
+  Implemented 2026-10-30 in `internal/layout/size_arithmetic.go`.
+  `SizeArithmetic` copies the explicitly resolved maximum byte extent and
+  supported alignments. All five operations use exact nonnegative `big.Int`
+  arithmetic and return no value on failure. `StrideOf` consumes the selected
+  target/policy minimum stride instead of selecting a zero-sized-element
+  policy; zero count does not hide an invalid element stride, while zero stride
+  retains an arbitrary-precision logical count. Errors retain the operation,
+  field/count/instantiation path, target label, requested extent and maximum.
+  Inputs/results and target snapshots do not alias across concurrent readers.
+  Tests cover explicit 32/64-bit-size bounds, successful and overflowing values
+  beyond 256 bits, padding, target-specific nonbinary alignment support,
+  unsupported/missing facts and zero-sized/zero-length arrays. Full layout tests,
+  focused target tests and vet pass; `go test -race ./internal/layout -count=1`
+  passes (1.015s). This is the arithmetic foundation, not executable `T.SizeOf`,
+  complete ResolvedLayout/plan identity or schema-20/physical reference lowering;
+  P24-10/11/13 onward retain those integration responsibilities. P24 checklist
+  remaining 57 → 56; existing governance resolver points stay open.
 - [ ] P24-13 — Establish resolver states for complete, incomplete, invalid and
   unsupported layouts. Target-independent requirements may remain incomplete;
   no layout-sensitive materialization/lowering may proceed from one.

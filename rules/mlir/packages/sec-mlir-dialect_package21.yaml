@@ -81,7 +81,7 @@ normative_decision_gates:
 - id: SEC-MLIR-P21-D1
   area: arithmetic result scale/canonicalization and public scale domain
   status: decided 2026-10-28 (MD-066); normative block released; implementation pending
-  decision: rules/corrections/md066-md067-md068-decimal-correction-20261028.md §§ 2-6, 8
+  decision: rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md §§ 2-6, 8
   summary: int32 public scale with fallible exact setter; preferred scale with nearest exact fallback; division alone rounds (nearest-even, finest admissible scale); provably zero decimal divisor is a compile-time error
   blocks:
   - operator scale-sensitive lowering
@@ -90,14 +90,14 @@ normative_decision_gates:
 - id: SEC-MLIR-P21-D2
   area: single exact decimal arithmetic operator error type/priority
   status: decided 2026-10-28 (MD-067); normative block released; implementation pending
-  decision: rules/corrections/md066-md067-md068-decimal-correction-20261028.md § 7
+  decision: rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md § 7
   summary: no DecimalArithmeticError (recommendation rejected); core::ArithmeticError gains ScaleOverflow and PrecisionExhausted; most specific applicable variant by mathematical cause
   blocks:
   - operator error CFG/try implementation
 - id: SEC-MLIR-P21-D3
   area: complete decimal128 public core member surface
   status: decided 2026-10-28 (MD-068); normative block released; implementation pending
-  decision: rules/corrections/md066-md067-md068-decimal-correction-20261028.md § 9
+  decision: rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md § 9
   summary: decimal128 mirrors the complete decimal member family (core-library.md § 10.4)
   blocks:
   - decimal128 method registry and public declaration generation

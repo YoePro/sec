@@ -613,7 +613,7 @@ match number {
 ### 9.2a Variant-only patterns for payload-bearing variants
 
 A bare variant pattern is valid for a variant that carries a payload (MD-029,
-2026-10-28, `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
+2026-10-28, `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
 § 4). It selects every value of the variant without extracting the payload; it
 does not test for an empty or default payload:
 

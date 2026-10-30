@@ -36,7 +36,7 @@ let label: string := "fixed"
 fn Fixed() ref string {
     return ref label
 }
-`, "not a scalar literal constant"},
+`, "has no resolved scalar compile-time value"},
 	} {
 		module, err := analyzedModule(t, test.source, 15)
 		var unsupported *UnsupportedFeatureError
@@ -122,7 +122,7 @@ fn Use() int {
 }
 `, 15)
 	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) || unsupported.Package != 15 || !strings.Contains(unsupported.Feature, "not a scalar literal constant") {
+	if !errors.As(err, &unsupported) || unsupported.Package != 15 || !strings.Contains(unsupported.Feature, "has no resolved scalar compile-time value") {
 		t.Fatalf("non-scalar static error = %v", err)
 	}
 }

@@ -177,6 +177,9 @@
 § 15(3) There is no requirement for one universal compiler-wide fingerprint.
 
 ---
+
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 12(3), 13(6)).** The canonical hardware fingerprint of a `CompilationPlan` covers the normalized `HardwareFacts`: source declarations, project tables, overrides, exports and their provenance. A change to a project property or an effective source declaration invalidates exactly the dependent plan, capability and binding layers, while comments and nonsemantic reorderings leave it unchanged; incremental results must match a cold rebuild and stay isolated per Target and Variant.
+
 ## § 16. Fingerprint contract versioning
 
 **Governance tags:** `compiler.incremental-compilation-v1`

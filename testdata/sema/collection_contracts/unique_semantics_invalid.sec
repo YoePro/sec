@@ -1,14 +1,14 @@
 module test
 let answer := 2 + 3
-type Numbers int[] unique
-type Decimals decimal[] unique
-type Texts string[] unique
+type Numbers int[2] unique
+type Decimals decimal[2] unique
+type Texts string[2] unique
 enum Code int { First = 1, Second = 2, }
-type Codes Code[] unique
+type Codes Code[2] unique
 type Row int[2]
-type Rows Row[] unique
+type Rows Row[2] unique
 type Point struct { x: int, y: int, }
-type Points Point[] unique
+type Points Point[2] unique
 fn Check() void {
     let numbers: Numbers := [answer, 5]
     let decimals: Decimals := [1.0m, 1.00m]

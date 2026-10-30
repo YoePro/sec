@@ -1539,7 +1539,7 @@ The result uses the common resolved floating type.
 
 Decimal arithmetic follows exact decimal semantics and the selected decimal
 type's precision and scale rules (MD-066/MD-067, 2026-10-28,
-`rules/corrections/md066-md067-md068-decimal-correction-20261028.md`).
+`rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md`).
 
 Operations are checked.
 
@@ -4328,7 +4328,7 @@ comparison ignores scale (1.2m == 1.20m)
 ```
 
 The complete conformance matrix is DEC-01 to DEC-22 in
-`rules/corrections/md066-md067-md068-decimal-correction-20261028.md` § 14.
+`rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md` § 14.
 
 ## Shift tests
 

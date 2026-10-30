@@ -295,6 +295,40 @@ parameters or source return type, may not be nested, and is governed by
 must share one contextual treatment of `test` rather than reserving or inferring
 it independently.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 3(5), 8(1)).** Module scope
+also admits the contextual hardware fact declarations:
+
+```text
+TopLevelDeclaration
+    ::= ... | HardwareDeclaration
+
+HardwareDeclaration
+    ::= "hardware" ("region" | "resource" | "endpoint") Identifier "{" HardwareMemberList "}"
+
+HardwareMemberList
+    ::= HardwareMember { "," HardwareMember } [ "," ]
+
+HardwareMember
+    ::= Identifier ":" HardwareMetadataValue
+
+HardwareMetadataValue
+    ::= IntegerLiteral | StringLiteral | BooleanLiteral
+      | QualifiedHardwareEnumCase | HardwareSymbolPath
+      | "[" [ IntegerLiteral { "," IntegerLiteral } [ "," ] ] "]"
+
+QualifiedHardwareEnumCase
+    ::= HardwareEnumTypeName "." EnumCaseName
+
+HardwareSymbolPath
+    ::= Identifier | ImportedModuleQualifier "." Identifier
+```
+
+This is restricted metadata syntax, not a struct initializer or expression:
+values are exact literals, qualified metadata enum cases, symbolic hardware
+selectors or homogeneous integer lists, never runtime expressions or ordinary
+bindings. The attribute form `@address(EndpointPath [, alias])` is specified in
+`rules/foundations/attributes.md`.
+
 ---
 
 # Identifier namespaces
@@ -319,11 +353,21 @@ GenericParameterList
     ::= "[" GenericParameter { "," GenericParameter } [ "," ] "]"
 
 GenericParameter
-    ::= Identifier [ GenericConstraintClause ]
+    ::= [ "..." ] Identifier [ GenericConstraintClause ]
 
 GenericConstraintClause
     ::= ":" TypeReference { "&" TypeReference }
 ```
+
+MD-117 amendment (2026-10-30; `rules/declarations/generics.md` § 16A and
+`rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md` § 2):
+only a function or method generic declaration may use the `...` prefix, at most
+once and on its final generic parameter. It declares one compile-time ordered
+sequence of zero or more concrete types, distinct from an ordinary single type.
+The spelling of its identifier remains ordinary; `Types` is not a keyword.
+Concrete inference and constraint validity belong to the owning generic and
+function rules. This amendment introduces no explicit pack literal, array form
+or general runtime spread rule.
 
 Examples:
 

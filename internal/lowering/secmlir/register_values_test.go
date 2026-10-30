@@ -149,17 +149,31 @@ func TestEmitRejectsMalformedRegisterFacts(t *testing.T) {
 	}
 }
 
-// The existing MD-110 bit-extraction gap remains a named no-output boundary;
-// the MD-114 table must not fabricate a fourth conversion-proof basis.
-// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.1a; MD-114 §8(4).
-func TestRegisterBitExtractionTransportRemainsClosed(t *testing.T) {
+// MD-110 bit-extraction is transported as sec.int.bit_extract feeding a
+// from_bits with the bit-extraction basis, and the native verifier accepts it
+// on both schemas without inventing another proof.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2 amendment (2026-10-30).
+func TestRegisterBitExtractionTransport(t *testing.T) {
 	source, err := os.ReadFile("../../../testdata/semantic_ir/register_bit_extraction_boundary.sec")
 	if err != nil {
 		t.Fatal(err)
 	}
+	tool := testsupport.RequireSecMLIROptPath(t)
 	module := buildPackage15EmitModule(t, "boundary", string(source))
-	output, err := Emit(module, testPlan(64))
-	if err == nil || output != nil || !strings.Contains(err.Error(), "MD-110 bit-extraction proof transport") {
-		t.Fatalf("missing precise conversion boundary: %v", err)
+	for _, schema := range []uint32{11, 12} {
+		output, err := EmitWithOptions(module, testPlan(64), EmitOptions{DialectVersion: schema})
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(output)
+		if !strings.Contains(text, `"sec.int.bit_extract"(`) || !strings.Contains(text, `<{width = 3 : i32}> : (ui8) -> ui8`) ||
+			!strings.Contains(text, `{sec.register_fit_proof = {basis = "bit-extraction"}}`) {
+			t.Fatalf("bit-extraction transport missing:\n%s", text)
+		}
+		command := exec.Command(tool, "-")
+		command.Stdin = bytes.NewReader(output)
+		if canonical, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("native rejected bit-extraction transport: %v\n%s\n%s", err, canonical, output)
+		}
 	}
 }

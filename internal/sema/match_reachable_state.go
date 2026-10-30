@@ -16,18 +16,41 @@ import (
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_match.md — § 5 "Reachable-state exhaustiveness (MD-042)"
-//   - rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 8(1), 8(6)–8(7)
-func (a *Analyzer) provenMatchVariant(subject ast.Expression, subjectType Type, maybeEmptySubject string) string {
+//   - rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 8(1), 8(6)–8(7)
+func (a *Analyzer) provenMatchVariant(subject ast.Expression, subjectType Type, maybeEmptySubject string) *ResolvedVariantProof {
 	identifier, ok := subject.(*ast.Identifier)
 	if !ok || identifier == nil || subjectType.Kind != UnionType || maybeEmptySubject != "" {
-		return ""
+		return nil
 	}
 	for _, variant := range subjectType.UnionVariants {
 		if active, known := a.knownVariantTest(identifier.Value, variant.Name); known && active {
-			return variant.Name
+			return a.variantProofProvenance(identifier.Value, variant.Name)
 		}
 	}
-	return ""
+	return nil
+}
+
+// variantProofProvenance records how knownVariantTest proved variant active
+// for binding: its construction, or the dominating `is` test it found.
+func (a *Analyzer) variantProofProvenance(binding string, variant string) *ResolvedVariantProof {
+	symbol := a.symbols[binding]
+	proof := &ResolvedVariantProof{Binding: binding, Variant: variant, Basis: VariantProofConstruction, Source: symbol.Token}
+	if symbol.ConstructedVariant != "" {
+		return proof
+	}
+	for _, active := range a.activeConditionFacts {
+		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil || active.fact.Kind == ConditionFactLogicalRHSFalse {
+			continue
+		}
+		for _, test := range conjunctStateTests(active.fact.Condition) {
+			subject, ok := test.Subject.(*ast.Identifier)
+			if ok && subject != nil && subject.Value == binding && !test.Empty && !test.Negated && test.Variant != nil && test.Variant.Value == variant {
+				proof.Basis, proof.Source = VariantProofStateTest, test.Token
+				return proof
+			}
+		}
+	}
+	return proof
 }
 
 // reportInactiveMatchArm explains a legal arm whose variant the proven subject

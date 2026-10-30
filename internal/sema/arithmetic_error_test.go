@@ -14,7 +14,7 @@ import (
 // Rules:
 //   - rules/library/core-library.md — § 20.1
 //   - rules/errors/errorhandling.md — § 3.4
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 7(1), 7(6), 7(9), 14 DEC-20
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 7(1), 7(6), 7(9), 14 DEC-20
 func TestArithmeticErrorHasFiveVariants(t *testing.T) {
 	want := []string{"Overflow", "DivisionByZero", "InvalidShift", "ScaleOverflow", "PrecisionExhausted"}
 	if got := builtinType("ArithmeticError").EnumValues; !reflect.DeepEqual(got, want) {

@@ -82,6 +82,12 @@ func (a *Analyzer) resolvedGenericParameterConstraints(parameters []*ast.Generic
 //   - rules/declarations/generics.md — §15 "Operations available on generic parameters"
 func (a *Analyzer) constrainedGenericParameterType(parameter *ast.GenericParameter) Type {
 	typ := Type{Name: parameter.Name.Value, Kind: GenericType}
+	// The declaration fact is not an ordinary type or a runtime pack value.
+	// Rules: rules/declarations/generics.md — §16A(1–5).
+	if parameter.TypePack {
+		typ.Kind = GenericTypePackType
+		return typ
+	}
 	if target, ok := a.implGenericParameterTargets[parameter]; ok {
 		typ.GenericConstraints = implTargetParameterConstraints(a.types[target], parameter.Name.Value)
 	} else {

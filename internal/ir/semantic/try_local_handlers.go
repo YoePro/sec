@@ -50,7 +50,7 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 			if !unconditional {
 				nextTest = fb.newBlock()
 			}
-			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive, residual, nextTest); err != nil {
+			if err := fb.buildTryHandler(expr, handler, errorValue, matchErrorArm{}, merge, plan.Exhaustive, residual, nextTest); err != nil {
 				return builtValue{}, err
 			}
 			if unconditional {
@@ -59,8 +59,12 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 			fb.current = nextTest
 			continue
 		}
-		if unconditional {
-			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive, residual, nil); err != nil {
+		// A payload or field binding projects from the union error, which
+		// needs the variant test's true edge even for the last exhaustive
+		// handler (MD-029).
+		projects := handler.ErrorPayload && handler.BindingName != "" && handler.BindingName != "_" || handler.FieldBindings
+		if unconditional && !projects {
+			if err := fb.buildTryHandler(expr, handler, errorValue, matchErrorArm{}, merge, plan.Exhaustive, residual, nil); err != nil {
 				return builtValue{}, err
 			}
 			break
@@ -69,32 +73,35 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 		if err != nil {
 			return builtValue{}, err
 		}
+		token := expr.Handlers[handler.SourceIndex].Token
 		var condition builtValue
+		var selected matchErrorArm
 		if fb.owner.maxPackage >= 11 {
-			definition, ok := fb.owner.enumDefinition(errorValue.typ)
-			if !ok {
-				return builtValue{}, fb.unsupported("try handler error type without enum definition", expr.Handlers[handler.SourceIndex].Token)
+			meta := Operation{TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(token)}
+			condition, selected, err = fb.errorVariantTest(errorValue, handler.Variant, meta, boolType, token)
+			if err != nil {
+				return builtValue{}, err
 			}
-			caseID, ok := enumCaseIDByName(definition, handler.Variant)
-			if !ok {
-				return builtValue{}, fb.unsupported("unknown resolved enum handler case", expr.Handlers[handler.SourceIndex].Token)
-			}
-			constant := fb.result(Operation{Kind: OpEnumConstant, EnumCase: caseID, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)}, errorValue.typ)
-			condition = fb.result(Operation{Kind: OpEnumCompare, Operands: []ValueID{errorValue.id, constant.id}, IntegerCompare: IntegerCompareEQ, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
 		} else {
-			condition = fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
+			condition = fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(token)}, boolType)
 		}
 		handlerBlock, nextTest := fb.newBlock(), fb.newBlock()
-		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, TryHandlerGuarded: handler.Guarded, Location: location(expr.Handlers[handler.SourceIndex].Token)})
+		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, TryHandlerGuarded: handler.Guarded, Location: location(token)})
 		fb.current = handlerBlock
 		var guardFalse *Block
 		if handler.Guarded {
 			guardFalse = nextTest
 		}
-		if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive, residual, guardFalse); err != nil {
+		if err := fb.buildTryHandler(expr, handler, errorValue, selected, merge, plan.Exhaustive, residual, guardFalse); err != nil {
 			return builtValue{}, err
 		}
 		fb.current = nextTest
+		if unconditional {
+			// The exhaustive handler list leaves no other variant.
+			fb.emit(Operation{Kind: OpUnreachable, Synthesized: true, Reason: "exhaustive-try-fallthrough", TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(token)})
+			fb.current = nil
+			break
+		}
 	}
 	if fb.current != nil && fb.current != merge && len(fb.current.Operations) == 0 {
 		if !residual {

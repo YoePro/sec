@@ -1,0 +1,131 @@
+module main
+
+// MD-008/MD-029 executed: Err(E.Variant...) match arms and try handlers on
+// closed enum and union error channels, including first-match selection,
+// guard-false continuation, payload and field bindings and try propagation.
+
+enum IOError error {
+    InvalidValue,
+    NotFound,
+    Denied,
+}
+
+type FileError union error {
+    Missing {
+        Code:  int,
+        Depth: int
+    }
+    Denied
+    Encoding(int)
+}
+
+fn Read(kind: int) Result[int, IOError] {
+    if kind == 1 {
+        return Err(IOError.InvalidValue)
+    }
+    if kind == 2 {
+        return Err(IOError.NotFound)
+    }
+    if kind == 3 {
+        return Err(IOError.Denied)
+    }
+    return Ok(7)
+}
+
+fn Open(kind: int, value: int) Result[int, FileError] {
+    if kind == 1 {
+        return Err(FileError.Missing { Code: value, Depth: 2 })
+    }
+    if kind == 2 {
+        return Err(FileError.Denied)
+    }
+    if kind == 3 {
+        return Err(FileError.Encoding(value))
+    }
+    return Ok(value)
+}
+
+fn ClassifyRead(kind: int) int {
+    match Read(kind) {
+        Ok(value) => return value
+        Err(IOError.InvalidValue) => return 10
+        Err(.NotFound) => return 20
+        Err(.Denied) => return 30
+    }
+}
+
+fn ValuedRead(kind: int) int {
+    return match Read(kind) {
+        Err(.Denied) => 3
+        Ok(value) => value
+        Err(IOError.NotFound) => 2
+        Err(error) => 1
+    }
+}
+
+fn ClassifyOpen(kind: int, value: int) int {
+    match Open(kind, value) {
+        Ok(found) => return found
+        Err(FileError.Missing { Code: code }) where code > 5 => return code
+        Err(.Missing {}) => return 100
+        Err(.Denied) => return 200
+        Err(FileError.Encoding(position)) => return 300 + position
+    }
+}
+
+fn RecoverOpen(kind: int, value: int) int {
+    let result := try Open(kind, value) {
+        Err(.Encoding(_)) => 1
+        Err(.Denied) => 2
+        Err(.Missing { Code: code, Depth }) => code + Depth
+    }
+    return result
+}
+
+fn RecoverRead(kind: int) int {
+    let result := try Read(kind) {
+        Err(.NotFound) => 2
+        Err(IOError.InvalidValue) => 1
+        Err(.Denied) => 3
+    }
+    return result
+}
+
+fn Forward(kind: int, value: int) Result[int, FileError] {
+    let opened := try Open(kind, value)
+    return Ok(opened * 10)
+}
+
+fn ScoreForward(kind: int, value: int) int {
+    match Forward(kind, value) {
+        Ok(found) => return found
+        Err(.Encoding(position)) => return position
+        Err(.Missing { Depth }) => return Depth
+        Err(.Denied) => return -1
+    }
+}
+
+fn main() int {
+    if ClassifyRead(0) != 7 || ClassifyRead(1) != 10 || ClassifyRead(2) != 20 || ClassifyRead(3) != 30 {
+        return 1
+    }
+    if ValuedRead(0) != 7 || ValuedRead(1) != 1 || ValuedRead(2) != 2 || ValuedRead(3) != 3 {
+        return 2
+    }
+    if ClassifyOpen(0, 4) != 4 || ClassifyOpen(1, 9) != 9 || ClassifyOpen(1, 3) != 100 {
+        return 3
+    }
+    if ClassifyOpen(2, 0) != 200 || ClassifyOpen(3, 5) != 305 {
+        return 4
+    }
+    if RecoverOpen(0, 6) != 6 || RecoverOpen(1, 4) != 6 || RecoverOpen(2, 0) != 2 || RecoverOpen(3, 1) != 1 {
+        return 5
+    }
+    if RecoverRead(0) != 7 || RecoverRead(1) != 1 || RecoverRead(2) != 2 || RecoverRead(3) != 3 {
+        return 6
+    }
+    if ScoreForward(0, 5) != 50 || ScoreForward(1, 5) != 2 || ScoreForward(2, 0) != -1 || ScoreForward(3, 8) != 8 {
+        return 7
+    }
+    return 0
+}

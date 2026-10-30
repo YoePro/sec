@@ -1,0 +1,10 @@
+module hardwaremeta
+
+hardware region PeripheralSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0,
+    size: 340282366920938463463374607431768211456,
+    readable: true,
+    writable: true,
+}

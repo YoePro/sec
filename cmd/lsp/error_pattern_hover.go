@@ -13,7 +13,7 @@ import (
 // and qualified patterns share presentation without a variant-name lookup.
 // Rules: rules/tooling/lsp.md — "Error patterns, inactive arms and `Some`";
 // rules/errors/errorhandling.md — §15.3;
-// rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§4,5.
+// rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§4,5.
 func errorVariantHoverContents(program *ast.Program, analyzer *sema.Analyzer, use, definition lexer.Token) (string, bool) {
 	types := []sema.Type{}
 	if channel, ok := errorPatternHoverChannel(program, analyzer, use); ok && channel.Kind != sema.ErrorRootType {

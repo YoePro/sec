@@ -1,0 +1,35 @@
+module main
+
+type Value union { Number(int), Empty }
+enum Alias { First = 10, Same = 10, Second = 20 }
+enum Bit: bit[1] { Off = 0, Disabled = 0, On = 1 }
+fn Probe() void {}
+fn Union(value: Value) void {
+    match value { Number(number) => { return } Empty => { return } }
+    Probe()
+}
+fn Optional(value: Option[int]) void {
+    match value { Some(number) => { return } None => { return } }
+    Probe()
+}
+fn Aliases(value: Alias) void {
+    match value { Alias.Same => { return } Alias.Second => { return } }
+    Probe()
+}
+fn Bits(value: Bit) void {
+    match value { Bit.Disabled => { return } Bit.On => { return } }
+    Probe()
+}
+fn Nested(value: Value, other: Option[int]) void {
+    match value {
+        Number(number) => {
+            match other { Some(inner) => { return } None => { return } }
+        }
+        Empty => { return }
+    }
+    Probe()
+}
+fn NestedUnsafe(value: Option[int]) void {
+    unsafe { match value { Some(number) => { return } None => { return } } }
+    Probe()
+}

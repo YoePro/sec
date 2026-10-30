@@ -679,4 +679,18 @@ def Sec_RegisterToBitsOp : Sec_Op<"register.to_bits", [Pure]> {
   let results = (outs AnyType:$result);
   let hasVerifier = 1;
 }
+// MD-110 bit-pattern fit predicate; register_type names the destination
+// (v11.41.2 amendment, 2026-10-30).
+def Sec_RegisterFitsBitsOp : Sec_Op<"register.fits_bits", [Pure]> {
+  let arguments = (ins TypeAttr:$register_type, AnyType:$value);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+// MLIR form of Semantic IR int.bit-extract: x mod 2^width as the smallest
+// standard unsigned integer (v11.41.2 amendment, 2026-10-30).
+def Sec_IntBitExtractOp : Sec_Op<"int.bit_extract", [Pure]> {
+  let arguments = (ins I32Attr:$width, AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
 #endif // SEC_DIALECT_SEC_OPS_TD

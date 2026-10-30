@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-18 (MD-057 borrowed interface views)
+- **Last updated:** 2026-10-30 (`mut fn` is interface-only, P2037); 2026-10-18 (MD-057 borrowed interface views)
 - **Document revision:** 2.2
 - **Replaces:** `rules/declarations/interfaces.txt`
 - **Sec language version:** 0.1
@@ -57,7 +57,9 @@ interface Counter {
 }
 ```
 
-`mut fn` requires mutable/exclusive receiver access.
+`mut fn` requires mutable/exclusive receiver access. It belongs to the interface
+declaration only: the implementing method is written `fn`, and `mut fn` on it is
+the error P2037 (`impl.md`).
 
 ### 3.3 No whole-self consuming receiver
 

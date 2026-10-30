@@ -13,7 +13,7 @@ import (
 //
 // Rules:
 //   - rules/types/types.md — "Decimal scale"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(7), 14 DEC-02/DEC-03
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(7), 14 DEC-02/DEC-03
 func TestDecimalLiteralConstantsKeepSpelledScale(t *testing.T) {
 	for _, tc := range []struct{ typ, literal, want string }{
 		{"decimal", "1.20m", `coefficient=120 scale=2`},
@@ -40,7 +40,7 @@ func TestDecimalLiteralConstantsKeepSpelledScale(t *testing.T) {
 
 // Unsuffixed decimals beyond both ends of the host float64 range retain exact
 // coefficients/scales through declared and inferred bindings into Semantic IR.
-// Rules: rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
+// Rules: rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func TestUnsuffixedDecimalBeyondBinaryRange(t *testing.T) {
 	data, err := os.ReadFile("../../../testdata/sema/md066_literals/decimals.sec")
 	if err != nil {

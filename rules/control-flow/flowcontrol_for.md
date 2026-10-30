@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-16
-- **Last updated:** 2026-10-27 (MD-117 heterogeneous variadic packs, § 13A)
+- **Last updated:** 2026-10-30 (MD-119 pack-carried reference bindings, § 13A(4)); 2026-10-27 (MD-117 heterogeneous variadic packs, § 13A)
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_for.md`
@@ -491,6 +491,14 @@ reference holder out.
 borrow live ranges and cleanup keep their observable semantics; an iteration whose
 body is not reached executes no side effects. Expansion and unrolling are
 implementation techniques, not source-level control flow.
+
+(4) (MD-119) For an element that carries a reference, the bindings keep ordinary
+reference meaning (`rules/memory/references.md` § 3.4(10)): `for value` copies a
+`ref T` holder, so `value` has type `ref T`, and cannot take a move-only
+`ref mut T` element; `for ref value` is a shared reborrow of the referent with
+type `ref T`; `for ref mut value` is an exclusive reborrow of the referent of a
+`ref mut T` element with type `ref mut T` and is invalid over `ref T`. No nested
+`ref ref T` arises and no mutable holder is moved out (`borrowing.md` § 11.4).
 
 ---
 

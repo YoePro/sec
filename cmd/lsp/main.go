@@ -1293,16 +1293,7 @@ func documentSymbolForStatement(text string, stmt ast.Statement) (documentSymbol
 		}
 		return namedDocumentSymbol(text, stmt.Name.Value, "unit", 14, stmt.Token, stmt.Name.Token), true
 	case *ast.EnumDeclaration:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		symbol := namedDocumentSymbol(text, stmt.Name.Value, "enum", 10, stmt.Token, stmt.Name.Token)
-		for _, value := range stmt.Values {
-			if value != nil && value.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, value.Name.Value, "enum member", 22, value.Token, value.Name.Token))
-			}
-		}
-		return symbol, true
+		return enumDocumentSymbol(text, stmt)
 	case *ast.InterfaceDeclaration:
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
@@ -1467,7 +1458,7 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
 	defer release()
 	tokens := sourceTokens(uri, text)
-	for name := range analyzer.Types() {
+	for name, typ := range analyzer.Types() {
 		// Lowercase compiler-known collection and shaped constructors are
 		// contextual identifiers. Their type occurrences receive position-exact
 		// classifications below; a global spelling fallback would misclassify an
@@ -1476,6 +1467,9 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 			continue
 		}
 		classification[name] = "type"
+		if typ.Kind == sema.EnumType {
+			classification[name] = "enum"
+		}
 	}
 	for name := range analyzer.Functions() {
 		classification[name] = "function"
@@ -1810,6 +1804,9 @@ func semanticDeclarationKinds(analyzer *sema.Analyzer) map[string]string {
 		kinds[features.ClassificationKey(token.File, token.Line, token.Column)] = kind
 	}
 	for _, typ := range analyzer.Types() {
+		if typ.Kind == sema.EnumType {
+			set(typ.DeclarationToken, "enum")
+		}
 		for _, field := range typ.Fields {
 			set(field.Token, "property")
 		}
@@ -2368,7 +2365,7 @@ func functionHoverContents(functions []sema.Function, program *ast.Program, sour
 		for _, parameter := range function.Parameters {
 			params = append(params, initializerParameterLabel(parameter))
 		}
-		lines = append(lines, fmt.Sprintf("fn %s%s(%s) %s", function.Name, genericHeaderDisplay(function.GenericParameters, function.GenericConstraints), strings.Join(params, ", "), lspTypeName(function.ReturnType)))
+		lines = append(lines, fmt.Sprintf("fn %s%s(%s) %s", function.Name, genericHeaderDisplay(function.GenericParameters, function.GenericConstraints, function.GenericTypePack), strings.Join(params, ", "), lspTypeName(function.ReturnType)))
 	}
 	contents := "```sec\n" + strings.Join(lines, "\n") + "\n```"
 	// rules/platform/ffi.md §42: an extern @noPanic is a trusted foreign
@@ -2389,13 +2386,21 @@ func functionHoverContents(functions []sema.Function, program *ast.Program, sour
 // non-generic declaration.
 //
 // Rules:
-//   - rules/declarations/generics.md — §12 "Multiple constraints"
+//   - rules/declarations/generics.md — §12 "Multiple constraints", §16A "Heterogeneous type packs"
 //   - rules/tooling/lsp.md — "Hover"
-func genericHeaderDisplay(parameters []string, constraints []sema.GenericConstraint) string {
+func genericHeaderDisplay(parameters []string, constraints []sema.GenericConstraint, packName ...string) string {
 	if len(parameters) == 0 {
 		return ""
 	}
-	return "[" + strings.Join(sema.GenericParameterDisplays(parameters, constraints), ", ") + "]"
+	displays := sema.GenericParameterDisplays(parameters, constraints)
+	if len(packName) > 0 && packName[0] != "" {
+		for i, name := range parameters {
+			if name == packName[0] {
+				displays[i] = "..." + displays[i]
+			}
+		}
+	}
+	return "[" + strings.Join(displays, ", ") + "]"
 }
 
 // genericParameterHover presents one generic parameter's ordered constraint
@@ -2405,9 +2410,12 @@ func genericHeaderDisplay(parameters []string, constraints []sema.GenericConstra
 //
 // Rules:
 //   - rules/declarations/generics.md — §12 "Multiple constraints", §14 "Constraint satisfaction"
-//   - rules/declarations/generics.md — §15 "Operations available on generic parameters"
+//   - rules/declarations/generics.md — §15 "Operations available on generic parameters", §16A "Heterogeneous type packs"
 //   - rules/tooling/lsp.md — "Hover"
 func genericParameterHover(fact sema.GenericParameterFact) string {
+	if fact.TypePack {
+		return "```sec\ngeneric ..." + fact.Name + "\n```\n\nCompile-time ordered sequence of zero or more concrete types; not a single type or a runtime container. Concrete pack expansion is not implemented yet."
+	}
 	conjuncts := sema.GenericConstraintDisplays(fact.Name, fact.Constraints)
 	declaration := "generic " + fact.Name
 	if len(conjuncts) > 0 {

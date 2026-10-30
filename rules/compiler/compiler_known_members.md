@@ -489,8 +489,12 @@ MD-068 § 9(2)) are compiler-known methods with one identity per type,
 `Abs()` returns `Result[T, OverflowError]`; `Clamp(minimum, maximum)`
 returns `Result[T, RangeError]`; `Rescale(scale: int32)` and
 `RoundTo(scale: int32[, mode: RoundingMode])` return
-`Result[T, PrecisionError]`. Calls check arity and argument types; the error
-types resolve to the loaded core declarations.
+`Result[T, PrecisionError]`. The conversions of `core-library.md` § 10.6
+(MD-068 § 10) are compiler-known methods with the same identity scheme:
+`ToInt()`, `ToInt32()`, `ToInt64()`, `ToInt128()`, `ToFloat()`,
+`ToFloat32()` and `ToFloat64()`, each with an optional `mode: RoundingMode`
+argument and the result `Result[target, ConversionError]`. Calls check arity
+and argument types; the error types resolve to the loaded core declarations.
 
 Lowercase spellings are classified as migration spellings.
 
@@ -554,6 +558,17 @@ fallback without becoming an ambiguous overload. A differently shaped overload d
 code cannot override it where the canonical property applies.
 
 String conversion-array methods are reserved on built-in `string`.
+
+**Register hardware operations (MD-077, MD-113, 2026-10-30; `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 9).** On a `register[N]` type the names `Read`, `Write` and `IsShadowKnown` are reserved in the combined `impl` surface (`rules/declarations/registers.md` § 11.7). They are registry members with stable identities, reachable only inside the owning `impl T` on a `HardwareInstance[T]` receiver and never overridable or inheritable:
+
+| ID | Source form | Result | Hardware effect | Software effect |
+|---|---|---|---|---|
+| `CKM-REGISTER-READ` | `self.Read()` | detached `T` | one requested observation, with documented read side effects | establishes observed knowledge per the observation's postconditions |
+| `CKM-REGISTER-WRITE` | `self.Write()` | `void` | commits pending intents; no pending intent means no I/O | updates knowledge per the commit postconditions |
+| `CKM-REGISTER-WRITE-VALUE` | `self.Write(value)` | `void` | explicit whole-register write under a verified plan | per its postconditions |
+| `CKM-REGISTER-IS-SHADOW-KNOWN` | `self.IsShadowKnown(T.Field[.Nested...])` | `bool` | never | reads compiler-managed per-instance shadow availability only |
+
+`IsShadowKnown` has category `CompilerKnownOperation` with one static `RegisterFieldSelector` operand rooted in `T`; it is not unsafe, needs no allocation and maps to the Semantic IR operation `register.hw.shadow_known` (`rules/compiler/semantic_ir.md` § 21(9)). The selector is resolved by Sema to the canonical `RegisterTypeID` and complete `RegisterFieldID` path before IR construction and has no public type. Sema, LSP completion, hover, definition, reserved-name diagnostics and IR all consume these registry entries; no second LSP-owned intrinsic namespace or string comparison may define them.
 
 User-defined types may use the same method names for their own ordinary
 semantics unless another interface contract restricts them.
@@ -2362,10 +2377,14 @@ semantics.
 2026-10-28): each has one canonical identity of type `int32` with getter and
 fallible setter semantics, and the lowercase `scale` is only a migration
 alias of that identity. The registry must not keep the former `uint8` or
-`int` result type. The remaining `decimal`/`decimal128` members of
-`core-library.md` §§ 10.2 and 10.4 resolve through ordinary core member
-lookup with identical signatures for both types; tooling must not advertise a
-`decimal128` member that has no implementation or gate-aware diagnostic.
+`int` result type. The value predicates, scale/rounding methods and
+conversions of `core-library.md` §§ 10.2 and 10.4 are the compiler-known
+identities listed under "Legacy lowercase member spellings" above; the three
+`ToString` overloads (§ 10.7) are declared in the trusted core sources
+`sec/core/decimal.sec` and `sec/core/decimal128.sec` and resolve through
+ordinary core member lookup. Both types have identical signatures; tooling
+must not advertise a `decimal128` member that has no implementation or
+gate-aware diagnostic.
 
 Internal coefficient layout is not exposed merely because the compiler knows
 it.

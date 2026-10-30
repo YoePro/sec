@@ -993,7 +993,7 @@ let h := 0x8m
 //
 // Rules:
 //   - rules/types/types.md — "Decimal scale"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(6), 3(7), 14 DEC-02/DEC-03
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(6), 3(7), 14 DEC-02/DEC-03
 func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 	tests := []struct {
 		input       string

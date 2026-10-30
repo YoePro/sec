@@ -36,13 +36,16 @@ type Definition struct {
 	// Atomics is frozen against this definition's resolved scalar/profile plan.
 	// An unspecified table leaves concrete capability unknown.
 	// Rules: rules/concurrency/atomics.md — §37(1–5).
-	Atomics     layout.AtomicCapabilities
-	Status      Status
-	CanParse    bool
-	CanCheck    bool
-	CanEmitLLVM bool
-	CanLink     bool
-	CanRun      bool
+	Atomics layout.AtomicCapabilities
+	// AddressDomains are the hardware address domains this target supplies
+	// (MD-111 §§ 1(6)-1(7)); see AddressDomains for the defaults.
+	AddressDomains []layout.AddressDomain
+	Status         Status
+	CanParse       bool
+	CanCheck       bool
+	CanEmitLLVM    bool
+	CanLink        bool
+	CanRun         bool
 }
 
 // Supported platforms
@@ -550,11 +553,28 @@ func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 		Endianness:       definition.Endianness,
 		CABI:             definition.CABI,
 		Atomics:          definition.Atomics,
+		AddressDomains:   definition.addressDomains(),
 	}
 	if err := plan.Validate(); err != nil {
 		return layout.ResolvedScalarPlan{}, fmt.Errorf("target %s-%s has no resolved scalar plan: %w", definition.OS, definition.Arch, err)
 	}
 	return plan, nil
+}
+
+// addressDomains returns the target's hardware address domains. A CPU target
+// supplies the linear, byte-addressed CPU physical domain `cpu-physical` with
+// the CPU's address width; WebAssembly has no physical address domain. Whether
+// a binding in a domain is usable on a profile is decided by the region and
+// plan checks, never by the domain alone.
+// Rules: rules/platform/platform_model.md — § 10 (Amendment MD-111).
+func (definition Definition) addressDomains() []layout.AddressDomain {
+	if definition.AddressDomains != nil {
+		return append([]layout.AddressDomain(nil), definition.AddressDomains...)
+	}
+	if strings.HasPrefix(definition.Arch, "wasm") || definition.PointerWidthBits == 0 {
+		return nil
+	}
+	return []layout.AddressDomain{{Identity: "cpu-physical", AddressBits: definition.PointerWidthBits, UnitBits: 8, Linear: true}}
 }
 
 // Definitions returns a copy of the compiler-owned target registry.

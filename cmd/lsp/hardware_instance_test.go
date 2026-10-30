@@ -112,7 +112,7 @@ impl Status {
 let mut status: Status
 `
 	for marker, want := range map[string]string{
-		"Pending = true": "On a hardware instance: `action (clear)`. On a software value: an ordinary field.",
+		"Pending = true": "On a hardware instance: `action (clear) mask 0b1`. On a software value: an ordinary field.",
 		"Ready\n":        "Hardware request: `observe`",
 		"Read()":         "fn Read() Status",
 	} {

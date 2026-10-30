@@ -1,7 +1,7 @@
 # MD-114 — Canonical Sec MLIR register-definition, field-path, and field-write-proof contract
 
 - **Decision:** MD-114 — `sec-mlir-register-value-text-contract`
-- **Status:** **Normatively integrated; detached table/field operations implemented 2026-10-28; complete acceptance retains MD-110 dependencies**
+- **Status:** **Applied 2026-10-30 — normatively integrated; detached table/field operations implemented 2026-10-28; the MD-110 dependencies (`fits_bits` destination `register_type`, `bit-extraction` transport through `sec.int.bit_extract`) implemented 2026-10-30 (dialect v11.41.2 amendment)**
 - **Created:** 2026-10-27
 - **Last updated:** 2026-10-28
 - **Document revision:** 1.0

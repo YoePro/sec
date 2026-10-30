@@ -357,6 +357,11 @@ func (uds *UnitDeclStatement) TokenLiteral() string {
 }
 
 type GenericParameter struct {
+	// TypePack and PackToken distinguish one compile-time ordered type sequence
+	// (possibly empty) from one ordinary type parameter; no runtime value is implied.
+	// Rules: rules/declarations/generics.md — §16A(1–2), MD-117 §2.
+	TypePack            bool
+	PackToken           lexer.Token
 	Token               lexer.Token
 	Name                *Identifier
 	Constraints         []*TypeReference
@@ -381,13 +386,16 @@ func (gp *GenericParameter) TokenLiteral() string {
 }
 
 type EnumDeclaration struct {
-	Token              lexer.Token
-	Attributes         []*Attribute
-	Name               *Identifier
-	GenericParameters  []*GenericParameter
-	UnderlyingType     *TypeReference
-	BitUnderlying      bool
-	UnderlyingBitWidth int64
+	// BodyOpen/BodyClose retain real parsed boundaries for source tooling.
+	// Rules: rules/declarations/enums.md — §18; rules/tooling/lsp.md — "Document symbols".
+	BodyOpen, BodyClose lexer.Token
+	Token               lexer.Token
+	Attributes          []*Attribute
+	Name                *Identifier
+	GenericParameters   []*GenericParameter
+	UnderlyingType      *TypeReference
+	BitUnderlying       bool
+	UnderlyingBitWidth  int64
 	// ErrorType preserves the canonical enum Name error marker from
 	// rules/declarations/enums.md and rules/errors/errorhandling.md.
 	ErrorType  bool
@@ -404,6 +412,9 @@ func (ed *EnumDeclaration) TokenLiteral() string {
 }
 
 type EnumValue struct {
+	// EndToken is the last parsed member token, excluding a separator/comment.
+	// Rules: rules/tooling/lsp.md — "Document symbols".
+	EndToken         lexer.Token
 	Token            lexer.Token
 	Name             *Identifier
 	Default          bool
@@ -824,7 +835,7 @@ func ParseIntegerLiteralInt64(lexeme string) (int64, bool) {
 // retaining syntax validation; the token lexeme remains the semantic source.
 // Range validity belongs to the resolved decimal or binary target in Sema.
 // Rules: rules/foundations/lexical_structure.md — §12.9;
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
 	digits, suffix := SplitNumericLiteralSuffix(lexeme)
 	if suffix == "i" || suffix == "u" || suffix == "t" || suffix == "r" || digits == "" {
@@ -1190,7 +1201,8 @@ func (rs *ReturnStatement) TokenLiteral() string {
 type IfStatement struct {
 	Token     lexer.Token
 	Condition Expression
-	// ConditionOpen and ConditionClose retain a complete outer group for the
+	// ConditionOpen and ConditionClose retain one group enclosing the whole
+	// condition (ConditionClose is unset otherwise) for the
 	// opt-in formatter correction in rules/tooling/formatter.md §27(17).
 	ConditionOpen  lexer.Token
 	ConditionClose lexer.Token
@@ -1366,7 +1378,8 @@ type ForBinding struct {
 type WhileStatement struct {
 	Token     lexer.Token
 	Condition Expression
-	// ConditionOpen and ConditionClose retain a complete outer group for the
+	// ConditionOpen and ConditionClose retain one group enclosing the whole
+	// condition (ConditionClose is unset otherwise) for the
 	// opt-in formatter correction in rules/tooling/formatter.md §27(18).
 	ConditionOpen  lexer.Token
 	ConditionClose lexer.Token

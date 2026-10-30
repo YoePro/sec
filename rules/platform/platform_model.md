@@ -493,6 +493,30 @@ invalid address widths, illegal overlap where overlap is forbidden, conflicting
 properties, and duplicate identities. Legitimate aliases or overlapping views must
 be declared through canonical metadata rather than inferred accidentally.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 1–3, 12).**
+Address domains are target-owned: each selected target/platform supplies its
+address-domain identities (for example `"cpu-physical"`), their addressable unit
+and their address width. A hardware declaration may name such a domain but never
+invents one, and domain addresses are not limited to the CPU's target-sized
+`uint`. On top of the target's facts, Sec 0.1 admits two authorable compile-time
+hardware fact sources: (A) `hardware region`, `hardware resource` and
+`hardware endpoint` declarations in selected source modules, and (B)
+`[hardware.*]` tables in `.sec/sec.toml` (`rules/projects/projects.md`
+§ 6(13)–6(17)); a knowledge-pack provider (C) is reserved. Both normalize to one
+target- and plan-scoped `HardwareFacts` model with the separate identities
+`AddressDomainIdentity`, `MemoryRegionIdentity`, `HardwareResourceIdentity`,
+`HardwareEndpointIdentity`, `PhysicalOperationIdentity`,
+`HardwareBindingIdentity` and `VerifiedOperationPlanIdentity`, per-property
+provenance, applicability, alias relations and validity evidence. An A
+declaration is identified by canonical `ModuleIdentity` + category + name, a B
+entry by project identity + category + manifest key; a B override revises the
+selected A declaration and keeps its identity. Equivalent A and B facts mean the
+same thing. Facts are contractual input, not proof that the connected device
+matches; they may refine the selected model but never alter the instruction
+set, ISA address width, ABI, architectural byte order, privilege model or
+required Device restrictions, and a declaration inconsistent with known platform
+facts is invalid.
+
 ---
 
 ## 11. RuntimeEnvironment
@@ -912,6 +936,18 @@ determine legality. A higher-precedence CLI value does not make an incompatible
 CPU/Device or ABI/architecture combination valid.
 
 ---
+
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 12).** Hardware facts are
+assembled in a restricted two-stage order: resolve Target/Variant and baseline
+platform facts; select source modules without depending on hardware
+declarations; collect the selected A declarations in a declaration-only
+metadata pass; parse B, apply source-identity overrides, normalize and validate;
+freeze one immutable `CompilationPlan` with a canonical hardware fingerprint;
+then run ordinary Sema, Semantic IR and lowering against it. Hardware metadata
+never influences its own source selection, imports, Variant selection or `@when`
+inclusion, and normalization performs no compile-time execution, probing or
+side-effecting hooks. Results do not depend on TOML table order, import
+enumeration, hash iteration, scheduling or diagnostic order.
 
 ## 21. CompilationPlan invariants
 

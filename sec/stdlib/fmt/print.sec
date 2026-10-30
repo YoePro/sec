@@ -1,1 +1,227 @@
 module fmt
+
+/**
+ * Writes default representations of all arguments to stdout.
+ *
+ * Description:
+ * Concatenates argument representations in order, without inserting
+ * separators or a final newline. An empty call writes nothing.
+ *
+ * Parameters:
+ * - values: Shared borrows of zero or more independently typed values.
+ *
+ * Returns:
+ * Number of UTF-8 bytes successfully written, or zero when empty.
+ *
+ * Errors:
+ * - WriteFormatError.Text: A value could not be represented as text.
+ * - WriteFormatError.IO: The output stream failed or made no progress.
+ *
+ * Ownership:
+ * Does not copy or consume the original values merely for printing.
+ *
+ * Allocation:
+ * May allocate when a concrete value needs its allocating ToString().
+ * Does not require a complete intermediate string for all arguments.
+ */
+fn Print[...Types](values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut total: uint := 0
+
+    for ref value in values {
+        let text := try value.ToString() {
+            Err(error) => return Err(WriteFormatError.Text(error))
+        }
+
+        let written := try _WriteStdoutString(text) {
+            Err(error) => return Err(WriteFormatError.IO(error))
+        }
+
+        total += written
+    }
+
+    return Ok(total)
+}
+
+/**
+ * Writes default argument representations separated by spaces and then LF.
+ *
+ * Description:
+ * Inserts exactly one U+0020 SPACE between adjacent argument values.
+ * Appends one U+000A LINE FEED, including for an empty call.
+ *
+ * Parameters:
+ * - values: Shared borrows of zero or more independently typed values.
+ *
+ * Returns:
+ * Complete UTF-8 byte count including LF on success.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Text representation failed.
+ * - WriteFormatError.IO: Stream failure or no progress.
+ *
+ * Ownership:
+ * Does not consume or mutate input values.
+ *
+ * Allocation:
+ * May allocate for particular ToString() implementations.
+ */
+fn Println[...Types](values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut total: uint := 0
+    let mut first := true
+
+    for ref value in values {
+        if !first {
+            let written := try _WriteStdoutString(" ") {
+                Err(error) => return Err(WriteFormatError.IO(error))
+            }
+
+            total += written
+        }
+
+        let text := try value.ToString() {
+            Err(error) => return Err(WriteFormatError.Text(error))
+        }
+
+        let written := try _WriteStdoutString(text) {
+            Err(error) => return Err(WriteFormatError.IO(error))
+        }
+
+        total += written
+        first = false
+    }
+
+    let newlineBytes := try _WriteStdoutString("\n") {
+        Err(error) => return Err(WriteFormatError.IO(error))
+    }
+
+    return Ok(total + newlineBytes)
+}
+
+/**
+ * Writes composite-formatted text to standard output.
+ *
+ * Description:
+ * Formats heterogeneous arguments using the canonical core
+ * formatting engine and writes the resulting UTF-8 text to stdout.
+ *
+ * Supports automatic argument fields such as "{}" and explicit
+ * positional fields such as "{0}" and "{1}".
+ *
+ * Escaped opening and closing braces are written as literal
+ * braces. Automatic and explicit argument indexing cannot
+ * be mixed in the same format string.
+ *
+ * The entire format is validated before output begins.
+ * Every supplied argument must be referenced at least once.
+ *
+ * Argument conversion and output are performed in format order.
+ * An argument referenced multiple times may be converted
+ * multiple times.
+ *
+ * Parameters:
+ * - format: Composite format string.
+ * - values: Heterogeneous arguments borrowed for formatting.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written to stdout.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Invalid format or failure while
+ * converting an argument to its text representation.
+ * - WriteFormatError.IO: Output failure or byte-count overflow.
+ *
+ * A conversion or output error may leave partial text on stdout.
+ * Structural format errors produce no output.
+ *
+ * Ownership:
+ * Does not consume or modify the formatting arguments.
+ * The stdout sink is local to this invocation.
+ *
+ * Allocation:
+ * Does not allocate a combined output string.
+ * Individual argument conversions may allocate.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 3, 8 and 9.
+ * rules/declarations/functions.md, section 38A.
+ */
+fn Printf[...Types](format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut sink := new _StdoutFormatSink()
+
+    let result := FormatComposite(
+        format,
+        ref mut sink,
+        values...,
+    )
+
+    match result {
+        Ok(count) => {
+            return Ok(count)
+        }
+
+        Err(error) => {
+            match error {
+                FormatRenderError.Text(cause) => {
+                    return Err(WriteFormatError.Text(cause))
+                }
+
+                FormatRenderError.IO(cause) => {
+                    return Err(WriteFormatError.IO(cause))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Writes composite-formatted text followed by a newline to stdout.
+ *
+ * Description:
+ * Formats heterogeneous arguments through Printf() and appends
+ * exactly one newline character after successful formatting.
+ *
+ * Uses the canonical core formatting grammar, including automatic
+ * fields, explicit positional fields and escaped braces.
+ *
+ * The newline is written even when the format string is empty.
+ * It is not written when formatting or output fails.
+ *
+ * Parameters:
+ * - format: Composite format string.
+ * - values: Heterogeneous arguments borrowed for formatting.
+ *
+ * Returns:
+ * - Ok(count): Total UTF-8 bytes written, including the newline.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Invalid format or failed argument
+ * conversion.
+ * - WriteFormatError.IO: Output failure or byte-count overflow.
+ *
+ * Ownership:
+ * Does not consume or modify the formatting arguments.
+ *
+ * Allocation:
+ * Does not allocate a combined output string.
+ * Argument conversions may allocate.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 3, 8 and 9.
+ * rules/declarations/functions.md, section 38A.
+ */
+fn Printfln[...Types](format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    let count := try Printf(format, values...)
+
+    // Check the final byte count before writing the newline.
+    let total := try count + 1u {
+        Err(_) => return Err(WriteFormatError.IO(IOError.InvalidInput))
+    }
+
+    match _WriteStdoutString("\n") {
+        Ok(_) => return Ok(total)
+
+        Err(error) => {
+            return Err(WriteFormatError.IO(error))
+        }
+    }
+}

@@ -33,7 +33,7 @@ const maxDecimalEvaluationExponent = 400
 //
 // Rules:
 //   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 3–5, 7
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 3–5, 7
 func EvaluateDecimal(op string, aCoefficient *big.Int, aScale int64, bCoefficient *big.Int, bScale int64, bits int) (coefficient *big.Int, scale int64, failure DecimalFailure, ok bool) {
 	if aCoefficient == nil || bCoefficient == nil || outOfEvaluationRange(aScale) || outOfEvaluationRange(bScale) {
 		return nil, 0, "", false

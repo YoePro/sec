@@ -1,0 +1,9 @@
+module main
+
+enum WriteFormatError error { Failed }
+fn Printf[...Types](format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    return Ok(0)
+}
+fn Use() Result[uint, WriteFormatError] {
+    return Printf("{}, {}", 42, true)
+}

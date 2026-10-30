@@ -309,7 +309,33 @@ type Function struct {
 	// whose result is a direct reference: the finite set of external roots
 	// and projection paths the result may refer to (package15.md § 62).
 	ReturnOrigins []ReturnOrigin
-	Location      Location
+	// TypePack is set on one concrete specialization of a type-pack callable.
+	TypePack *TypePackFacts
+	Location Location
+}
+
+// TypePackFacts are the semantic_ir.md § 27A facts of one specialization: the
+// generic parameter, its ordered types (whose count is the exact pack length)
+// and the expanded parameter positions. The pack is compile-time metadata; each
+// position is an ordinary concrete parameter, never a runtime container.
+type TypePackFacts struct {
+	Parameter string
+	Types     []TypeID
+	// FixedCount is the number of parameters before the first pack position.
+	FixedCount int
+	Positions  []TypePackPosition
+}
+
+// TypePackMode is the receiving mode of one expanded pack position.
+type TypePackMode string
+
+const TypePackShared TypePackMode = "shared"
+
+// TypePackPosition is one expanded pack parameter with its mode and source
+// position in the template signature.
+type TypePackPosition struct {
+	Mode     TypePackMode
+	Location Location
 }
 
 // ReturnOriginKind names the external root of a returned reference.
@@ -421,6 +447,20 @@ type MatchRecord struct {
 	Arms         []MatchArmRecord
 	MergeBlock   BlockID
 	Location     Location
+	// ProvenActive is Sema's soundly proven reachable subset of a union
+	// subject (MD-042), distinct from the declared variant domain and from
+	// source-order arm coverage; nil without a proof (semantic_ir.md § 71(6)).
+	ProvenActive *MatchVariantProof
+}
+
+// MatchVariantProof is one proven active union variant with its provenance:
+// the immutable binding, the proof basis (construction or state-test) and
+// the source location that established it.
+type MatchVariantProof struct {
+	Variant  UnionVariantIndex
+	Binding  string
+	Basis    string
+	Location Location
 }
 
 type MatchArmRecord struct {
@@ -434,6 +474,9 @@ type MatchArmRecord struct {
 	Guarded      bool
 	Flow         string
 	Location     Location
+	// ProvenInactive marks a legal arm excluded by the match's ProvenActive
+	// proof; it keeps its lowered body and ownership facts.
+	ProvenInactive bool
 }
 
 type Parameter struct {

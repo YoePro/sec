@@ -1,6 +1,6 @@
 # Sec MLIR Program — Package 21: Exact Decimal Semantic Operations
 
-- **Status:** Implementation package — normative decision gates D1–D3 decided 2026-10-28 (MD-066/MD-067/MD-068, `rules/corrections/md066-md067-md068-decimal-correction-20261028.md`); implementation pending
+- **Status:** Implementation package — normative decision gates D1–D3 decided 2026-10-28 (MD-066/MD-067/MD-068, `rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md`); implementation pending
 - **Created:** 2026-10-16
 - **Last updated:** 2026-10-28 (D1–D3 decisions synchronized; superseded recommendations marked)
 - **Document revision:** 1.1
@@ -110,7 +110,7 @@ There is **no separately complete `decimal128` member listing** in that section.
 
 The October rules **do not yet specify** (D1) observable result-scale selection/canonicalization for every operator; (D2) one exact error type for decimal operators that can fail by both arithmetic and precision causes; or (D3) an exact complete decimal128 public method surface. The companion synchronization presents concrete recommendations for approval. Do not mark these already decided, invent member shapes, or implement P21 operator behavior requiring them before the rules are accepted. Independent literal/type/representation/checked-conversion infrastructure may proceed.
 
-*Resolved 2026-10-28:* all three gates are decided by `rules/corrections/md066-md067-md068-decimal-correction-20261028.md` and synchronized into their canonical owners. §§ 13–15 below keep the former recommendations only as history, each followed by the decision that supersedes it. Implementation remains pending and follows the correction's § 13(3) step order.
+*Resolved 2026-10-28:* all three gates are decided by `rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md` and synchronized into their canonical owners. §§ 13–15 below keep the former recommendations only as history, each followed by the decision that supersedes it. Implementation remains pending and follows the correction's § 13(3) step order.
 
 ## § 13. D1 recommended scale policy (decided 2026-10-28, MD-066)
 

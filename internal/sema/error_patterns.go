@@ -16,7 +16,7 @@ import (
 //   - rules/errors/errorhandling.md — §§ 15.3, 20, 27.2b
 //   - rules/foundations/grammar.md — "Try expression" (ErrPattern)
 //   - rules/control-flow/flowcontrol_match.md — § 28 "Concrete error variants"
-//   - rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 2–7
+//   - rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 2–7
 
 // errorSelection is the resolved variant of an MD-029 error pattern.
 type errorSelection struct {

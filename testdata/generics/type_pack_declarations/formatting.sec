@@ -1,0 +1,5 @@
+module main
+
+fn Owned[...  Types](values: ...Types) void {}
+fn Shared[...  Types](values: ...ref   Types) void {}
+fn Mutable[T,...  Rest](head: T,values: ...ref  mut Rest) void {}

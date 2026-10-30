@@ -50,6 +50,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"bool_switch", 0, false},
 		{"discard", 0, false},
 		{"statics", 0, false},
+		{"static_cte", 0, false},
 		{"panic_trap", 0, true},
 		{"assert_trap", 0, true},
 		{"integer_enums", 0, false},
@@ -59,6 +60,9 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"float_literals", 0, false},
 		{"float_operator_matrix", 0, false},
 		{"float_core_matrix", 0, false},
+		{"bit_extract", 0, false},
+		{"tagged_values", 0, false},
+		{"error_variant_patterns", 0, false},
 	} {
 		t.Run(test.fixture, func(t *testing.T) {
 			program := filepath.Join(t.TempDir(), test.fixture)

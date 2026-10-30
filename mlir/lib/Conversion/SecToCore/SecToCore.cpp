@@ -664,6 +664,7 @@ public:
     target.addDynamicallyLegalOp<
         sec::RegisterExtractOp, sec::RegisterUpdateOp,
         sec::RegisterFromBitsOp, sec::RegisterToBitsOp,
+        sec::RegisterFitsBitsOp, sec::IntBitExtractOp,
         sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
         sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
         sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
@@ -699,6 +700,8 @@ public:
              sec::RegisterUpdateOp::getOperationName(),
              sec::RegisterFromBitsOp::getOperationName(),
              sec::RegisterToBitsOp::getOperationName(),
+             sec::RegisterFitsBitsOp::getOperationName(),
+             sec::IntBitExtractOp::getOperationName(),
              sec::IntUnaryPlusOp::getOperationName(),
              sec::IntNegCheckedOp::getOperationName(),
              sec::IntBinaryCheckedOp::getOperationName(),

@@ -16,10 +16,12 @@ type StaticBindingID uint32
 //   - rules/declarations/static.md — §§ 2, 3, 4
 //   - rules/compiler/semantic_ir.md — § 28
 type ResolvedStatic struct {
-	ID      StaticBindingID
-	Name    string
-	Type    Type
-	Mutable bool
+	ID          StaticBindingID
+	Name        string
+	Module      string
+	Initializer ResolvedStaticInitializer
+	Type        Type
+	Mutable     bool
 	// Function names the enclosing function of a function-local static;
 	// empty at module level.
 	Function    string
@@ -45,7 +47,7 @@ func (a *Analyzer) recordStaticBinding(stmt *ast.LetStatement, symbol Symbol) {
 	}
 	a.staticBindings[key] = ResolvedStatic{
 		ID: StaticBindingID(len(a.staticBindings) + 1), Name: stmt.Name.Value, Type: symbol.Type,
-		Mutable: symbol.Mutable, Function: function, Declaration: stmt,
+		Mutable: symbol.Mutable, Module: a.currentModule, Function: function, Declaration: stmt,
 	}
 }
 
@@ -57,22 +59,23 @@ func (a *Analyzer) ResolvedStaticOf(identifier *ast.Identifier) (ResolvedStatic,
 	}
 	use := sourceTokenLocation(identifier.Token)
 	if static, ok := a.staticBindings[use]; ok {
-		return static, true
+		return cloneResolvedStaticInitializer(static), true
 	}
 	definitions := a.definitionTokens[use]
 	if len(definitions) != 1 {
 		return ResolvedStatic{}, false
 	}
 	static, ok := a.staticBindings[sourceTokenLocation(definitions[0])]
-	return static, ok
+	return cloneResolvedStaticInitializer(static), ok
 }
 
-// ResolvedStaticDeclarations returns the static bindings declared at module
-// level, in identity order.
+// ResolvedStaticDeclarations returns module and function-local static bindings
+// in identity order, with isolated initializer snapshots.
+// Rules: rules/declarations/static.md §§3–4,15–16.
 func (a *Analyzer) ResolvedStaticDeclarations() []ResolvedStatic {
 	statics := make([]ResolvedStatic, len(a.staticBindings))
 	for _, static := range a.staticBindings {
-		statics[static.ID-1] = static
+		statics[static.ID-1] = cloneResolvedStaticInitializer(static)
 	}
 	return statics
 }

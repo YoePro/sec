@@ -13,7 +13,7 @@ import (
 // inference or overload selection is performed by the LSP.
 // Rules: rules/types/types.md — "Contextual and self-inferred `Some(value)`";
 // rules/tooling/lsp.md — "Error patterns, inactive arms and `Some`";
-// rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§11–15.
+// rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§11–15.
 func someConstructorHover(text string, program *ast.Program, analyzer *sema.Analyzer, token lexer.Token) (hoverResult, bool) {
 	if token.Lexeme != "Some" {
 		return hoverResult{}, false

@@ -4,7 +4,7 @@
 **Document revision:** 2.2
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-10-22
+**Last updated:** 2026-10-30 (`mut fn` rejected on impl methods, P2037)
 
 **Supersedes:** `rules/declarations/impl.txt`
 
@@ -326,6 +326,11 @@ fn Update(ref mut self, value: int) void
 Receiver borrowing and mutation requirements are derived and validated by the
 compiler from the method body, calls, ownership rules, and borrowing rules.
 They are not written as receiver bureaucracy in the source signature.
+
+`mut fn` is receiver-capability syntax of an interface method declaration
+(`interfaces.md`), which has no body to derive from. On an impl method it is the
+error P2037 `parser.mut-fn-in-impl`; the method is written `fn`, including when
+it satisfies an interface `mut fn` requirement.
 
 A fresh owned temporary may be the receiver of a borrowing or mutating method,
 including in a chain such as `CreateCounter().Increment()` or
@@ -950,6 +955,8 @@ The combined implementation must reject:
 
 Diagnostics should identify both declarations when a conflict has two source
 sites.
+
+**Amendment MD-113 (2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 9).** For a `register[N]` target the combined primary and `impl extends` surface also rejects any member named `Read`, `Write` or `IsShadowKnown` at member registration, before overload resolution and independent of calls (`rules/declarations/registers.md` § 11.7). The reservation is receiver-category scoped; it adds no keyword and no explicit receiver parameter.
 
 ---
 

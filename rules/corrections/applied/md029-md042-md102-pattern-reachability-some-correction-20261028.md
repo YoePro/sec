@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **Owner-approved normative design correction; canonical integration, implementation and verification pending** |
+| **Status** | **APPLIED 2026-10-30** — normatively integrated 2026-10-28 (grammar.md, errorhandling.md §§ 15.3, 20, 27.2b, flowcontrol_match.md §§ 5, 25A, unions.md, types.md, functions.md § 20, generics.md § 18.1, semantic_ir.md § 71(6), diagnostics.md § 24(4e)-(4g), formatter.md §§ 20(11)-(12), lsp.md). MD-042 and MD-102 are implemented through Semantic IR facts; MD-029 parser, Sema, ownership, diagnostics, formatter, LSP and the § 17 conformance cases are implemented. MD-029 Semantic IR/Sec MLIR lowering of error-pattern plans (Semantic IR rejects with unsupported-lowering today) and the Sec 0.1.2 activation gate of Err(.Variant...) remain in governance/errors.yaml frontend.errorhandling-v2. |
 | **Created** | 2026-10-28 |
 | **Last updated** | 2026-10-28 |
 | **Document revision** | 1.0 |
@@ -10,7 +10,7 @@
 | **Repository** | `YoePro/sec`, `main` |
 | **Verified repository HEAD** | `7be87775a851be60a692a50010d1ab368550b7d1` (2026-10-28) |
 | **Decision IDs** | `MD-029`, `MD-042`, `MD-102` |
-| **Suggested correction destination** | `rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md` |
+| **Suggested correction destination** | `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` |
 | **Primary normative owners** | `rules/foundations/grammar.md`; `rules/errors/errorhandling.md`; `rules/control-flow/flowcontrol_match.md`; `rules/declarations/unions.md`; `rules/types/types.md`; `rules/declarations/functions.md`; `rules/tooling/diagnostics.md` |
 | **Related normative owners** | `rules/declarations/generics.md`; `rules/memory/ownership.md`; `rules/memory/borrowing.md`; `rules/memory/copy_move.md`; `rules/memory/destruction.md`; `rules/compiler/semantic_ir.md`; `rules/tooling/lsp.md`; `rules/tooling/formatter.md`; applicable Sec MLIR dialect and lowering rules |
 | **Existing implementation owners** | `frontend.errorhandling-v2` (`governance/errors.yaml`); `frontend.match-v2` (`governance/control_flow.yaml`); `frontend.types-core` (`governance/types.yaml`); relevant existing parser, Sema, generic-inference, IR, lowering and diagnostics entries |

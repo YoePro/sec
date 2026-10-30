@@ -1,6 +1,6 @@
 # MD-066 / MD-067 / MD-068 — Decimal Scale, Arithmetic Failure and Public Core API Correction
 
-- **Status:** Owner-approved language design; normative synchronization and implementation pending.
+- **Status:** Applied 2026-10-30 — normatively synchronized; § 13(3) steps 1-4 (rules, core/API, frontend/CTE) implemented with the frontend part of the § 14 matrix (operator scale plans, nearest-even division, truncating remainder, zero-divisor diagnostics, ArithmeticError classification, Scale, the complete decimal/decimal128 member family, § 14(2) negatives). Steps 5-8 (Semantic IR decimal operation plans, schema-17 Sec MLIR and lowering, runtime formatting/conversions, the DEC-22 differential matrix) remain ordinary P21 work in governance lowering.sec-mlir-package21; Semantic IR rejects decimal arithmetic explicitly until then.
 - **Created:** 2026-10-28
 - **Last updated:** 2026-10-28
 - **Document revision:** 1.0

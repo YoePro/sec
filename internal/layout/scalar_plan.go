@@ -31,6 +31,9 @@ type ResolvedScalarPlan struct {
 	// selected plan. Zero means unresolved, never host-derived support.
 	// Rules: rules/concurrency/atomics.md — §37; atomic_capabilities.go.
 	Atomics AtomicCapabilities
+	// AddressDomains are the target-supplied hardware address domains, in
+	// canonical order (MD-111 §§ 1(6)-1(7); address_domains.go).
+	AddressDomains []AddressDomain
 }
 
 // Validate rejects incomplete scalar facts, inconsistent C ABI/reference
@@ -60,5 +63,5 @@ func (p ResolvedScalarPlan) Validate() error {
 	if err := p.Atomics.validateFor(p); err != nil {
 		return err
 	}
-	return nil
+	return validateAddressDomains(p.AddressDomains)
 }

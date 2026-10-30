@@ -8,6 +8,10 @@ import (
 	"sec/internal/diagnostics"
 )
 
+// compileTimeIdentifierResolver supplies canonical declaration-owned values to
+// the shared CTE evaluator (static.md §§15–16; compile_time_evaluation.md §47).
+type compileTimeIdentifierResolver func(*ast.Identifier) (DefaultConstant, compileTimeOutcome)
+
 // compileTimeOutcome classifies an expression evaluated in a
 // SemanticCompileTimeRequiredContext.
 type compileTimeOutcome int
@@ -52,14 +56,60 @@ func (a *Analyzer) semanticCompileTimeConstant(expr ast.Expression) (DefaultCons
 
 // semanticCompileTimeConstantVisiting resolves immutable bindings without
 // cycles and applies contextual scalar semantics before evaluating operators.
+// An optional identity resolver supplies declaration-owned static initial values
+// instead of the name-based constant shortcut or runtime flow state.
 // Rules: rules/compiler/compile_time_evaluation.md — §§2(3),47;
 // rules/types/contracts.md — Contract arguments; rules/types/default_values.md — Explicit defaults;
 // rules/types/temporal.md — §3 (no clock input in semantic CTE).
 // rules/mlir/packages/sec-mlir-dialect_package20.md — §§12–20,82.
-func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visiting map[string]bool, context Type) (DefaultConstant, compileTimeOutcome) {
+func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visiting map[string]bool, context Type, resolver ...compileTimeIdentifierResolver) (DefaultConstant, compileTimeOutcome) {
+	var identifier compileTimeIdentifierResolver
+	if len(resolver) > 0 {
+		identifier = resolver[0]
+	}
+	return a.semanticCompileTimeConstantResolving(expr, visiting, context, identifier, nil)
+}
+
+// compileTimeExpressionResolver supplies declaration-bound specialized values;
+// false leaves the expression to the ordinary shared CTE implementation.
+// Rules: rules/compiler/compile_time_evaluation.md §§4(4),17;
+// rules/declarations/functions.md §38A(5)(2),(9).
+type compileTimeExpressionResolver func(ast.Expression) (DefaultConstant, compileTimeOutcome, bool)
+
+// semanticCompileTimeConstantResolving shares operators and short-circuiting
+// between ordinary CTE and concrete pack-length specialization. Resolvers never
+// execute arguments or mutate the shared template's expression facts.
+// Rules: rules/compiler/compile_time_evaluation.md §§2(3),4(4),17,47;
+// rules/declarations/functions.md §38A(5)(2),(9).
+func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, visiting map[string]bool, context Type, identifier compileTimeIdentifierResolver, expression compileTimeExpressionResolver) (result DefaultConstant, outcome compileTimeOutcome) {
 	if expr == nil {
 		return DefaultConstant{}, compileTimeAlreadyInvalid
 	}
+	if expression != nil {
+		// Each concrete intermediate retains its source type and target bounds.
+		if typ, known := a.ResolvedTypeOf(expr); known {
+			context = typ
+			defer func() {
+				if outcome == compileTimeEvaluated && result.Integer != nil {
+					low, high, integer := scalarIntegerDomain(typ)
+					if integer && (result.Integer.Cmp(low) < 0 || result.Integer.Cmp(high) > 0) {
+						result, outcome = DefaultConstant{}, compileTimeNotConstant
+					}
+				}
+			}()
+		}
+		if value, state, handled := expression(expr); handled {
+			return value, state
+		}
+	}
+	// Materialization of an already analyzed static uses the resolved scalar
+	// type of each intermediate; a bool result must not make float operands exact.
+	if identifier != nil {
+		if typ, ok := a.ResolvedTypeOf(expr); ok && (typ.Kind == FloatType || typ.Kind == DecimalType) {
+			context = typ
+		}
+	}
+
 	if _, invalid := expr.(*ast.InvalidExpression); invalid {
 		return DefaultConstant{}, compileTimeAlreadyInvalid
 	}
@@ -75,13 +125,15 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 		}
 		return a.prepareCompileTimeConstant(constant, context)
 	}
-	if value, ok := a.integerConstantValueUsing(expr, a.registerWidthConstants[a.currentModule]); ok && context.Kind != FloatType && context.Kind != DecimalType {
-		return DefaultConstant{Kind: IntType, Lexeme: value.String(), Integer: value}, compileTimeEvaluated
+	if identifier == nil && expression == nil {
+		if value, ok := a.integerConstantValueUsing(expr, a.registerWidthConstants[a.currentModule]); ok && context.Kind != FloatType && context.Kind != DecimalType {
+			return DefaultConstant{Kind: IntType, Lexeme: value.String(), Integer: value}, compileTimeEvaluated
+		}
 	}
 	switch expr := expr.(type) {
 	case *ast.MemberExpression:
 		// A projection or getter on a clock-derived value remains clock input.
-		if _, outcome := a.semanticCompileTimeConstantVisiting(expr.Object, visiting, Type{}); outcome == compileTimeForbiddenClock {
+		if _, outcome := a.semanticCompileTimeConstantResolving(expr.Object, visiting, Type{}, identifier, expression); outcome == compileTimeForbiddenClock {
 			return DefaultConstant{}, outcome
 		}
 	case *ast.CallExpression:
@@ -92,20 +144,23 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 			callee = expr.Function
 		}
 		if callee != nil {
-			if _, outcome := a.semanticCompileTimeConstantVisiting(callee, visiting, Type{}); outcome == compileTimeForbiddenClock {
+			if _, outcome := a.semanticCompileTimeConstantResolving(callee, visiting, Type{}, identifier, expression); outcome == compileTimeForbiddenClock {
 				return DefaultConstant{}, outcome
 			}
 		}
 		for _, argument := range expr.Arguments {
-			if _, outcome := a.semanticCompileTimeConstantVisiting(argument, visiting, Type{}); outcome == compileTimeForbiddenClock {
+			if _, outcome := a.semanticCompileTimeConstantResolving(argument, visiting, Type{}, identifier, expression); outcome == compileTimeForbiddenClock {
 				return DefaultConstant{}, outcome
 			}
 		}
 	case *ast.ConversionExpression:
-		if _, outcome := a.semanticCompileTimeConstantVisiting(expr.Value, visiting, Type{}); outcome == compileTimeForbiddenClock {
+		if _, outcome := a.semanticCompileTimeConstantResolving(expr.Value, visiting, Type{}, identifier, expression); outcome == compileTimeForbiddenClock {
 			return DefaultConstant{}, outcome
 		}
 	case *ast.Identifier:
+		if identifier != nil {
+			return identifier(expr)
+		}
 		binding, ok := a.moduleImmutableBindings[a.currentModule][expr.Value]
 		if !ok || binding.Value == nil || visiting[expr.Value] {
 			return DefaultConstant{}, compileTimeNotConstant
@@ -118,18 +173,22 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 				bindingContext = typ
 			}
 		}
-		value, outcome := a.semanticCompileTimeConstantVisiting(binding.Value, visiting, bindingContext)
+		value, outcome := a.semanticCompileTimeConstantResolving(binding.Value, visiting, bindingContext, identifier, expression)
 		if bindingContext.Named && (bindingContext.Kind == StringType || bindingContext.Kind == CharType || bindingContext.Kind == RuneType) {
 			value.NominalText = true
 		}
 		return value, outcome
 	case *ast.PrefixExpression:
-		inner, outcome := a.semanticCompileTimeConstantVisiting(expr.Right, visiting, context)
+		inner, outcome := a.semanticCompileTimeConstantResolving(expr.Right, visiting, context, identifier, expression)
 		if outcome != compileTimeEvaluated {
 			return DefaultConstant{}, outcome
 		}
 		if expr.Operator == "+" && (inner.Exact != nil || inner.Integer != nil) {
 			return inner, compileTimeEvaluated
+		}
+		if expr.Operator == "-" && inner.Integer != nil {
+			value := new(big.Int).Neg(inner.Integer)
+			return DefaultConstant{Kind: IntType, Lexeme: value.String(), Integer: value}, compileTimeEvaluated
 		}
 		if expr.Operator == "-" && inner.Exact != nil {
 			// Negation toggles the resolved floating sign, including zero.
@@ -154,7 +213,7 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 			return inner, compileTimeEvaluated
 		}
 	case *ast.InfixExpression:
-		left, outcome := a.semanticCompileTimeConstantVisiting(expr.Left, visiting, context)
+		left, outcome := a.semanticCompileTimeConstantResolving(expr.Left, visiting, context, identifier, expression)
 		if outcome != compileTimeEvaluated {
 			return DefaultConstant{}, outcome
 		}
@@ -168,7 +227,7 @@ func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visi
 		if left.DecimalBits == 128 {
 			rightContext = Type{Kind: DecimalType, Name: "decimal128"}
 		}
-		right, outcome := a.semanticCompileTimeConstantVisiting(expr.Right, visiting, rightContext)
+		right, outcome := a.semanticCompileTimeConstantResolving(expr.Right, visiting, rightContext, identifier, expression)
 		if outcome != compileTimeEvaluated {
 			return DefaultConstant{}, outcome
 		}

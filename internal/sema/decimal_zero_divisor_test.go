@@ -12,7 +12,7 @@ import (
 // Rules:
 //   - rules/foundations/operators.md — "Decimal division and remainder by zero"
 //   - rules/errors/runtime_checks.md — "Division and remainder"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 6(1), 6(4)–6(5), 14 DEC-10
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 6(1), 6(4)–6(5), 14 DEC-10
 func TestDecimalProvablyZeroDivisor(t *testing.T) {
 	for name, test := range map[string]struct {
 		body string

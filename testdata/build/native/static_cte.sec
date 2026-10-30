@@ -1,0 +1,47 @@
+module main
+
+let Base: int := 6 * 7
+let Forward: int := Later + Base
+let Later: int := 10
+let Negative: int := -7 / 2
+let Remainder: int := -7 % 2
+let Bits: int := (1 << 12) | 3
+let mut Ready: bool := Base == 42 && !(Later < 10)
+let mut Count: int := Base
+let InitialCount: int := Count + 1
+
+fn Step() int {
+    static let mut calls: int := Base / 7
+    calls = calls + 1
+    return calls
+}
+fn FirstScope() int {
+    static let Seed: int := 3
+    static let Local: int := Seed * 2
+    return Local
+}
+fn SecondScope() int {
+    static let Seed: int := 5
+    static let Local: int := Seed * 2
+    return Local
+}
+fn Equal(actual: int, expected: int) bool { return actual == expected }
+fn main() int {
+    if !Equal(Forward, 52) || !Equal(Negative, -3) || !Equal(Remainder, -1) || !Equal(Bits, 4099) {
+        return 1
+    }
+    if !Ready {
+        return 2
+    }
+    if Step() != 7 || Step() != 8 {
+        return 3
+    }
+    Count = 100
+    if InitialCount != 43 || Count != 100 {
+        return 4
+    }
+    if FirstScope() != 6 || SecondScope() != 10 {
+        return 5
+    }
+    return 0
+}

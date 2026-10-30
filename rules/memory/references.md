@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-08-29
-- Last updated: 2026-10-27 (MD-117 pack-carried references, § 9(11); MD-115/MD-116 returned range and static origins, § 9(12))
+- Last updated: 2026-10-30 (MD-119 pack-carried reference access, § 3.4(10), § 9(11)); 2026-10-27 (MD-117 pack-carried references, § 9(11); MD-115/MD-116 returned range and static origins, § 9(12))
 - Document revision: 2.2
 - Sec language version: 0.1
 - Canonical path: `rules/memory/references.md`
@@ -144,6 +144,8 @@ let copy := *r
 § 3.4(8) `ref r` / `ref mut r` over a holder remains a reborrow of the referent (MD-061), never a borrow of the holder and never a whole-value read. `return *r` returns a value; `return ref r` returns a reborrow subject to § 9.
 
 § 3.4(9) Before Semantic IR generation, `*r` resolves to the referent Place of `semantic_ir.md` § 45(8). A read is a separate `place.read`, a replacement a separate `place.write`; a compound assignment reads and writes the one formed Place, writing only after the operator's checks pass. Known hole (verified 2026-10-21): the native track stops at package 14, so whole-referent lowering is exercised at the Semantic IR level only, and non-trivial replacement through `*r` remains an explicit P15 lowering boundary (§ 3.4(4) still holds in Sema).
+
+§ 3.4(10) (MD-119) A reference **carried by** a native variadic pack element (`...ref Types`, `...ref mut Types`; `rules/declarations/functions.md` § 38A) follows §§ 3.4(1)–3.4(8) without a special case. An expression denoting the carried holder, including a statically resolved `values[index]` or a `for value` binding, keeps type `ref T` / `ref mut T` and is never implicitly `*value`; `*value` names the referent Place; `value.Field` / `value[index]` project through it; `ref value` / `ref mut value` reborrow the referent (`borrowing.md` § 11.4), never yielding `ref ref T`. A `ref mut T` holder is never copied or moved out of the pack as one element (`functions.md` § 38A(5)); a returned reborrow keeps its exact caller origin under § 9(11).
 
 ---
 
@@ -317,7 +319,7 @@ fn Identity(value: ref Item) ref Item {
 
 § 9(10) Unknown or stale summary data must never be treated as proof of a safe returned reference.
 
-§ 9(11) (MD-117) A reference **carried by** a native variadic parameter pack element (`...ref Types`, `...ref mut Types`) is distinct from a reference **to the pack's own storage**. The former may be returned or forwarded when §§ 9(3)–9(7) prove its caller-side origin, using finite origin sets with per-position projections; the latter cannot escape the invocation (`rules/declarations/functions.md` §§ 32, 38A(8)). A returned `ref mut T` keeps its exclusive grant. The spelling of the access (`value` or `*value`) is not decided by MD-117 (MD-119).
+§ 9(11) (MD-117) A reference **carried by** a native variadic parameter pack element (`...ref Types`, `...ref mut Types`) is distinct from a reference **to the pack's own storage**. The former may be returned or forwarded when §§ 9(3)–9(7) prove its caller-side origin, using finite origin sets with per-position projections; the latter cannot escape the invocation (`rules/declarations/functions.md` §§ 32, 38A(8)). A returned `ref mut T` keeps its exclusive grant. Access to the carried reference uses the ordinary holder/referent syntax of § 3.4(10) (MD-119).
 
 § 9(12) (MD-115, MD-116; 2026-10-27) Compiler metadata records the origin of a returned reference or slice; it adds no source syntax.
 - A returned sub-range of an input array or slice is summarized as an exact range relative to that input when the bounds are statically known, or as an indeterminate range that keeps the origin and conservatively overlaps it (`semantic_ir.md` § 126.22(1)).

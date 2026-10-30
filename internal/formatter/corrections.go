@@ -59,7 +59,9 @@ func fixRedundantNestedParentheses(text string) string {
 
 // fixRedundantControlConditionParentheses removes a complete outer grouping
 // pair only when the parser proves that it owns the whole if/while condition or
-// switch subject and that the following body parsed successfully.
+// switch subject and that the following body parsed successfully. A pair with
+// a brace inside stays: parentheses keep a try handler, struct literal or
+// lambda from being taken for the statement body once the group is gone.
 //
 // Rules:
 //   - rules/tooling/formatter.md — §26 "Language Corrections model"
@@ -70,9 +72,25 @@ func fixRedundantControlConditionParentheses(text string) string {
 	document.ApplyProgramRoles(program)
 
 	removals := make([]formatterReplacement, 0)
-	for _, element := range document.Elements {
-		if element.HasRole(cst.RedundantControlConditionDelimiter) {
-			removals = append(removals, formatterReplacement{start: element.Span.Start, end: element.Span.End})
+	opens := []int{}
+	for index, element := range document.Elements {
+		if !element.HasRole(cst.RedundantControlConditionDelimiter) {
+			continue
+		}
+		if element.Token.Type == lexer.LPAREN {
+			opens = append(opens, index)
+			continue
+		}
+		if len(opens) == 0 {
+			continue
+		}
+		open := opens[len(opens)-1]
+		opens = opens[:len(opens)-1]
+		if containsBraceElement(document.Elements[open+1 : index]) {
+			continue
+		}
+		for _, delimiter := range []cst.Element{document.Elements[open], element} {
+			removals = append(removals, formatterReplacement{start: delimiter.Span.Start, end: delimiter.Span.End})
 		}
 	}
 	sort.Slice(removals, func(i, j int) bool { return removals[i].start > removals[j].start })
@@ -80,6 +98,15 @@ func fixRedundantControlConditionParentheses(text string) string {
 		text = text[:removal.start] + text[removal.end:]
 	}
 	return text
+}
+
+func containsBraceElement(elements []cst.Element) bool {
+	for _, element := range elements {
+		if element.Token.Type == lexer.LBRACE {
+			return true
+		}
+	}
+	return false
 }
 
 func onlyWhitespaceElements(elements []cst.Element) bool {

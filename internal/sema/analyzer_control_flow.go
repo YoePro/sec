@@ -59,8 +59,9 @@ func (a *Analyzer) constantConditionReferencesMutableBinding(expression ast.Expr
 	}
 }
 
-// constantBooleanValue proves the side-effect-free boolean subset currently
-// shared by constant integer analysis and control-flow selection. Short-circuit
+// constantBooleanValue consumes shared semantic CTE bool values before the
+// established local-integer control-flow proofs. Mutable/transient dependencies
+// never become invariant facts through the shared evaluator. Short-circuit
 // operators may prove a result from their left operand alone; otherwise both
 // operands must be compile-time known. Unknown expressions remain runtime
 // conditions and receive no reachability claim.
@@ -69,7 +70,14 @@ func (a *Analyzer) constantConditionReferencesMutableBinding(expression ast.Expr
 //   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
 //   - rules/control-flow/flowcontrol_while.md — §19 "Constant conditions"
 //   - rules/tooling/diagnostics.md — §21 "Proven unreachable and dead code"
+//   - rules/compiler/compile_time_evaluation.md — §2(3), "SemanticCompileTimeRequiredContext"
 func (a *Analyzer) constantBooleanValue(expression ast.Expression) (bool, bool) {
+	if !a.constantConditionReferencesMutableBinding(expression) {
+		value, outcome := a.semanticCompileTimeConstant(expression)
+		if outcome == compileTimeEvaluated && value.Kind == BoolType {
+			return value.Bool, true
+		}
+	}
 	switch expression := expression.(type) {
 	case *ast.BooleanLiteral:
 		return expression.Value, true

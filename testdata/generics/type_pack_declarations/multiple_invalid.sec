@@ -1,0 +1,3 @@
+module main
+fn Broken[...Types, ...Other]() void {}
+fn After() void {}

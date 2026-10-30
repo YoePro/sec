@@ -13,7 +13,7 @@ import (
 // Rules:
 //   - rules/library/core-library.md — §§ 10.1, 10.4
 //   - rules/compiler/compiler_known_members.md — "Decimal types"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 2(5), 14 DEC-01
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 2(5), 14 DEC-01
 func TestDecimalScaleIsAnInt32ValueProperty(t *testing.T) {
 	for name, test := range map[string]struct {
 		body  string
@@ -41,7 +41,7 @@ func TestDecimalScaleIsAnInt32ValueProperty(t *testing.T) {
 // Rules:
 //   - rules/library/core-library.md — § 10.1 (MD-066)
 //   - rules/errors/errorhandling.md — § 24
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 2(3)–2(4), 11, 14 DEC-13, 14(2)
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 2(3)–2(4), 11, 14 DEC-13, 14(2)
 func TestDecimalScaleSetterIsFallible(t *testing.T) {
 	for name, test := range map[string]struct {
 		body string

@@ -136,6 +136,9 @@ func formatFunction(out *strings.Builder, fn *Function) {
 	if len(fn.ReturnOrigins) > 0 {
 		out.WriteString(formatReturnOrigins(fn.ReturnOrigins))
 	}
+	if fn.TypePack != nil {
+		out.WriteString(formatTypePackFacts(fn.TypePack))
+	}
 	fmt.Fprintf(out, " %s {\n", formatLocation(fn.Location))
 	if len(fn.Storages) > 0 {
 		out.WriteString("    storage {\n")

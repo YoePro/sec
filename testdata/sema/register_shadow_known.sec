@@ -1,0 +1,76 @@
+module main
+
+type InterruptBits register[4] {
+    Pending: bit[4] write-one-clear shadow,
+}
+
+type Other register[8] {
+    Mode: bit[3] shadow,
+    _: bit[5],
+}
+
+type Control register[16] {
+    Mode: bit[3] shadow,
+    Ready: bit read-only,
+    Command: bit[2] write-only shadow,
+    IRQ: InterruptBits,
+    _: bit[6],
+}
+
+impl Control {
+    fn HasKnownMode() bool {
+        return self.IsShadowKnown(Control.Mode)
+    }
+
+    fn HasPending() bool {
+        return self.IsShadowKnown(Control.IRQ.Pending)
+    }
+
+    fn CommandKnown() bool {
+        return self.IsShadowKnown(Control.Command)
+    }
+
+    fn Bad(other: Control) bool {
+        let a := self.IsShadowKnown(Mode)
+        let b := self.IsShadowKnown(self.Mode)
+        let c := self.IsShadowKnown(Control.Unknown)
+        let d := self.IsShadowKnown(Control._)
+        let e := self.IsShadowKnown(Control.Mode + 1)
+        let f := self.IsShadowKnown(Other.Mode)
+        let g := self.IsShadowKnown(Control.Ready)
+        let h := self.IsShadowKnown(Control.Mode.X)
+        return a
+    }
+
+    fn Detached(value: Control) bool {
+        return value.IsShadowKnown(Control.Mode)
+    }
+}
+
+impl Other {
+    fn IsShadowKnown() bool {
+        return true
+    }
+    property IsShadowKnown: bool {
+        get {
+            return true
+        }
+    }
+}
+
+type Plain struct {
+    x: int,
+}
+
+impl Plain {
+    fn IsShadowKnown() bool {
+        return true
+    }
+}
+
+@address(0x40000000)
+let mut control: Control
+
+fn Outside() bool {
+    return control.IsShadowKnown(Control.Mode) || control.HasKnownMode()
+}

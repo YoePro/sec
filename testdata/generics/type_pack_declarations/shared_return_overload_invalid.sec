@@ -1,0 +1,4 @@
+module main
+fn Pick[...Types](values: ...ref Types) int { return 1 }
+fn Pick[...Items](values: ...ref Items) bool { return true }
+fn Use() int { return Pick(42) }

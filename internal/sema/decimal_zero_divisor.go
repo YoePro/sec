@@ -83,7 +83,7 @@ func (a *Analyzer) recordDecimalBindingConstant(name string, expr ast.Expression
 // Rules:
 //   - rules/foundations/operators.md — "Decimal division and remainder by zero"
 //   - rules/errors/runtime_checks.md — "Division and remainder"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 6(1), 6(4)–6(5)
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 6(1), 6(4)–6(5)
 func (a *Analyzer) validateDecimalZeroDivisor(expr *ast.InfixExpression) bool {
 	return a.validateDecimalDivisor(expr.Operator, expr.Right, expr.Token)
 }

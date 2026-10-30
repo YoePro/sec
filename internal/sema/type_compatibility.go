@@ -546,6 +546,8 @@ func canonicalTypeIdentity(typ Type) string {
 		return identity
 	}
 	switch typ.Kind {
+	case GenericTypePackType:
+		return "type-pack:(" + canonicalTypeArgumentsKey(typ.TypeArgs) + ")"
 	case ReferenceType:
 		mode := "ref"
 		if typ.ReferenceMutable {

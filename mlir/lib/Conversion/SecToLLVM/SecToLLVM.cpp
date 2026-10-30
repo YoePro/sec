@@ -86,6 +86,38 @@ bool isLoweredSecFloatOperation(Operation *operation) {
              sec::FloatPropertyOp, sec::FloatClampCheckedOp>(operation);
 }
 
+// A Result or union this track represents natively: every payload position
+// is a resolved scalar, an ordinary integer enum, or again such a Result or
+// union (layout.md §§ 15-16; sec-lower-tagged-values).
+bool isScalarTaggedPayload(Type type);
+
+bool isScalarTaggedType(Type type) {
+  if (auto result = dyn_cast<sec::ResultType>(type))
+    return isScalarTaggedPayload(result.getSuccessType()) &&
+           isScalarTaggedPayload(result.getErrorType());
+  auto union_ = dyn_cast<sec::UnionType>(type);
+  if (!union_)
+    return false;
+  for (Attribute attribute : union_.getVariants()) {
+    auto variant = cast<sec::UnionVariantAttr>(attribute);
+    if (Type payload = variant.getPayload(); payload && !isScalarTaggedPayload(payload))
+      return false;
+    for (Attribute field : variant.getFields())
+      if (!isScalarTaggedPayload(cast<sec::UnionFieldAttr>(field).getType()))
+        return false;
+  }
+  return true;
+}
+
+bool isScalarTaggedPayload(Type type) {
+  if (auto enumType = dyn_cast<sec::EnumType>(type))
+    return enumType.getRepresentation() == "integer" &&
+           isa<IntegerType, sec::IntType, sec::UIntType>(enumType.getUnderlying());
+  return isa<sec::IntType, sec::UIntType, sec::FloatType, sec::CharType,
+             sec::RuneType, IntegerType, Float32Type, Float64Type>(type) ||
+         isScalarTaggedType(type);
+}
+
 // The Sec operations the track lowers today. Adding lowering for a construct
 // adds its operations here; nothing outside this set reaches conversion.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§63–75,79–84;
@@ -100,12 +132,33 @@ bool isLoweredSecOperation(Operation *operation) {
     auto type = cast<sec::EnumType>(valueType);
     return type.getRepresentation() == "integer";
   }
+  // Result and union values with scalar payloads (sec-lower-tagged-values).
+  if (isa<sec::ResultOkOp, sec::ResultErrOp, sec::ResultIsErrOp,
+          sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp, sec::UnionConstructOp,
+          sec::UnionIsVariantOp, sec::UnionUnwrapPayloadOp,
+          sec::UnionUnwrapFieldOp>(operation)) {
+    Type tagged = isa<sec::ResultOkOp, sec::ResultErrOp, sec::UnionConstructOp>(operation)
+                      ? operation->getResult(0).getType()
+                      : operation->getOperand(0).getType();
+    return isScalarTaggedType(tagged);
+  }
+  // Storage of a Result or union needs its value representation too.
+  if (isa<sec::StorageDeclareOp, sec::StorageInitOp, sec::StorageLoadOp,
+          sec::StorageStoreOp>(operation)) {
+    Value storage = isa<sec::StorageDeclareOp>(operation)
+                        ? operation->getResult(0)
+                        : operation->getOperand(0);
+    Type element = cast<sec::StorageType>(storage.getType()).getElementType();
+    if (isa<sec::ResultType, sec::UnionType>(element))
+      return isScalarTaggedType(element);
+  }
   return isLoweredSecFloatOperation(operation) ||
          isa<sec::ConstIntOp, sec::ConstBoolOp, sec::StorageDeclareOp,
              sec::StorageInitOp, sec::StorageLoadOp, sec::StorageStoreOp,
              sec::CallDirectOp, sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
-             sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NumericConvertExactOp,
+             sec::IntShiftCheckedOp, sec::IntCmpOp, sec::IntBitExtractOp,
+             sec::NumericConvertExactOp,
              sec::NumericConvertCheckedOp,
              sec::ArithmeticFailureReasonConstantOp, sec::FailArithmeticOp,
              sec::FailPanicOp, sec::StaticGlobalOp, sec::StaticLoadOp,
@@ -459,6 +512,7 @@ void sec::registerSecToLLVMPipelines() {
         if (!options.entry.getValue().empty())
           manager.addPass(sec::createSecLowerCommandEntry(
               sec::SecLowerCommandEntryOptions{options.entry.getValue()}));
+        manager.addPass(sec::createSecLowerTaggedValues());
         manager.addPass(sec::createSecFinalizeForLLVM());
         manager.addPass(createArithToLLVMConversionPass());
         manager.addPass(createConvertControlFlowToLLVMPass());

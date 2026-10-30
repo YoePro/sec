@@ -1,6 +1,9 @@
 package layout
 
-import "fmt"
+import (
+	"fmt"
+	"reflect"
+)
 
 // AtomicRequirement is a concrete, already semantically checked atomic request.
 // TypeID is the compiler's canonical nominal type identity, including generic
@@ -145,7 +148,7 @@ func (c AtomicCapabilities) validateFor(p ResolvedScalarPlan) error {
 		return nil
 	}
 	p.Atomics = AtomicCapabilities{}
-	if p != c.snapshot.plan {
+	if !reflect.DeepEqual(p, c.snapshot.plan) {
 		return fmt.Errorf("atomic capability snapshot belongs to a different resolved target/profile plan")
 	}
 	return nil

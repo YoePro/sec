@@ -1,0 +1,8 @@
+module main
+
+enum Label string {
+First="a",
+Chosen   default: "b",
+Last="c",
+}
+fn After() void {}

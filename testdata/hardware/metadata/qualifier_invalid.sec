@@ -1,0 +1,3 @@
+module hardwaremeta
+import PeripheralSpace "drivers/gpio"
+hardware resource PeripheralSpace { width: 32, }

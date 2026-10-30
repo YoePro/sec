@@ -398,7 +398,10 @@ fn Copy(source: ref mut File, destination: ref mut File, buffer: ref mut byte[])
                 if count == 0u {
                     return Ok(copied)
                 }
-                let written := try destination.WriteAll(ref buffer[..<count])
+                // Slice bounds use their ordinary check outside the IO try.
+                // runtime_checks.md "Slice checks"; errorhandling.md §§ 11–14.
+                let readBytes := ref buffer[..<count]
+                let written := try destination.WriteAll(readBytes)
                 copied += written
             }
         }
@@ -715,7 +718,10 @@ impl Directory {
             let entryType := _directoryEntryType(self.buffer[recordStart + 18])
             self.buffer_position = recordEnd
 
-            let name := try string.FromByteArray(ref self.buffer[nameStart..<nameEnd]) {
+            // Separate the checked view from fallible string materialization:
+            // Err(error) below binds StringError, never a mixed RangeError set.
+            let nameBytes := ref self.buffer[nameStart..<nameEnd]
+            let name := try string.FromByteArray(nameBytes) {
                 Err(error) => {
                     match error {
                         Allocation(_) => return Err(IOErrorLegacy.OutOfMemory)

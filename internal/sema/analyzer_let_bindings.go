@@ -14,7 +14,10 @@ import (
 func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	errorsBefore := len(a.errors)
 	if stmt != nil && stmt.Static && a.inFunctionBody {
-		a.validateStaticInitializerExpression(stmt.Name.Value, stmt.Value, stmt.Name.Token)
+		if reference, ok := stmt.Value.(*ast.RefExpression); ok && reference != nil {
+			a.dropStaticHolderBorrow(reference)
+		}
+		a.validateStaticInitializerExpression(stmt.Name.Value, stmt.Value, stmt.Name.Token, nil)
 	}
 	var declaredType Type
 	var ok bool

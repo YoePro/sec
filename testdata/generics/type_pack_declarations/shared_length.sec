@@ -1,0 +1,7 @@
+module main
+
+fn Count[...Types](values: ...ref Types) uint { return values.Len }
+fn Use() uint {
+    let empty := Count()
+    return empty + Count(42, true, "text")
+}

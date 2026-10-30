@@ -16,11 +16,15 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/hardware"
 	"sec/internal/layout"
 	"sec/internal/lexer"
 )
 
 type Analyzer struct {
+	hardwareContext             HardwareModuleContext
+	hardwareFacts               hardware.Facts
+	hardwareFactsValid          bool
 	cleanupIdentities           cleanupIdentityAllocator
 	currentCleanupScope         CleanupScopeID
 	cleanupScopes               map[*ast.BlockStatement]CleanupScopeID
@@ -45,7 +49,18 @@ type Analyzer struct {
 	// scalarPlanWidthBits is the selected CompilationPlan's pointer width,
 	// or zero when no plan was supplied; plan-specific exactness proofs use
 	// only a resolved width (MD-104 Option A).
-	scalarPlanWidthBits          uint16
+	scalarPlanWidthBits uint16
+	// shadowSummaries are the MD-113 shadow-knowledge summaries of register
+	// impl members, keyed "T.M", "T.P.get" or "T.P.set".
+	shadowSummaries map[string]*shadowSummary
+	// shadowContractTokens maps member declaration and call names to their
+	// summary keys for tooling.
+	shadowContractTokens map[sourceTokenKey]string
+	// functionStaticHolders are the function-local static reference holders
+	// whose borrows stay live in every callable (MD-081 § 6(3)).
+	functionStaticHolders []functionStaticHolder
+	// addressDomains are the selected plan's hardware address domains (MD-111).
+	addressDomains               []layout.AddressDomain
 	legacyDefaultAST             bool
 	types                        map[string]Type
 	units                        map[string]UnitDefinition
@@ -557,6 +572,8 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
+	a.hardwareFacts = hardware.Facts{}
+	a.hardwareFactsValid = false
 	a.cleanupIdentities = cleanupIdentityAllocator{}
 	a.currentCleanupScope = 0
 	a.cleanupScopes = nil
@@ -773,6 +790,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateReservedDeclarationNames(program)
 	a.validateModuleDeclaration(program)
 	a.validateModuleDeclarationNamespace(program)
+	a.analyzeHardwareDeclarations(program)
 	a.validateTestDeclarations(program)
 	a.validateAttributeSemantics(program)
 	a.registerTypeDeclarations(program)
@@ -800,11 +818,13 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateResolvedFloatLiterals()
 	a.resolveRegisterHardwareRequests()
 	a.checkRegisterReceiverRequirements()
+	a.analyzeShadowKnowledge(program)
 	a.iteratorLoweringProgram = program
 	// Advisory promotion must not change mandatory ownership/effect analysis.
 	// Rules: rules/control-flow/discard.md — §§5,38.
 	a.emitExplicitDiscardAdvisories()
 	a.emitImplicitDiscardAdvisories()
+	a.freezeStaticScalarInitializers()
 
 	return cloneSemanticErrors(a.errors)
 }
@@ -1201,6 +1221,8 @@ func isNilStatement(stmt ast.Statement) bool {
 	case *ast.FunctionDeclaration:
 		return stmt == nil
 	case *ast.TestDeclaration:
+		return stmt == nil
+	case *ast.HardwareDeclaration:
 		return stmt == nil
 	case *ast.StructStatement:
 		return stmt == nil
@@ -1745,9 +1767,13 @@ func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter,
 		if param == nil || param.Name == nil {
 			continue
 		}
+		kind := GenericType
+		if param.TypePack {
+			kind = GenericTypePackType
+		}
 		current[param.Name.Value] = Type{
 			Name: param.Name.Value,
-			Kind: GenericType,
+			Kind: kind,
 		}
 		currentDefinitions[param.Name.Value] = param.Name.Token
 		a.recordDefinition(param.Name.Token)
@@ -3436,6 +3462,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		Name:               name,
 		Module:             a.currentModule,
 		GenericParameters:  genericParameterNameValues(fn.GenericParameters),
+		GenericTypePack:    genericTypePackName(fn.GenericParameters),
 		GenericConstraints: a.resolvedGenericParameterConstraints(fn.GenericParameters),
 		Token:              fn.Name.Token,
 		Extern:             fn.Extern,
@@ -3521,7 +3548,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 				a.addErrorAtToken(param.Name.Token, "consuming variadic parameters are not supported")
 				continue
 			}
-			if param.Ref || param.MutableRef || paramType.Kind == ReferenceType {
+			if (param.Ref || param.MutableRef || paramType.Kind == ReferenceType) && !isDeclaredTypePackMode(paramType, function.GenericTypePack) {
 				a.addErrorAtToken(param.Name.Token, "variadic parameter cannot use ref type")
 				continue
 			}
@@ -3652,6 +3679,9 @@ func functionFixedParameterCount(function Function) int {
 // functionAcceptsArgumentCount admits zero or more trailing pack elements as
 // required by rules/declarations/functions.md section 28.
 func functionAcceptsArgumentCount(function Function, argumentCount int) bool {
+	if sequence, known := inferredTypePack(function); known {
+		return argumentCount == functionFixedParameterCount(function)+len(sequence)
+	}
 	if _, variadic := functionVariadicParameter(function); variadic {
 		return argumentCount >= functionFixedParameterCount(function)
 	}
@@ -3668,6 +3698,9 @@ func functionAcceptsCallArguments(function Function, argumentCount int, runtimeS
 	}
 	for argumentIndex, runtimeSpread := range runtimeSpreadValues {
 		if runtimeSpread {
+			if function.GenericTypePack != "" {
+				return false
+			}
 			if _, variadic := functionVariadicParameter(function); !variadic || argumentIndex < functionFixedParameterCount(function) {
 				return false
 			}
@@ -3688,6 +3721,17 @@ func functionParameterForArgument(function Function, argumentIndex int) (Functio
 		return function.Parameters[argumentIndex], true
 	}
 	if parameter, variadic := functionVariadicParameter(function); variadic {
+		if sequence, known := inferredTypePack(function); known {
+			index := argumentIndex - fixedCount
+			if index < 0 || index >= len(sequence) {
+				return FunctionParameter{}, false
+			}
+			if parameter.Type.Kind != ReferenceType {
+				return FunctionParameter{}, false
+			}
+			element := sequence[index]
+			parameter.Type.Element = &element
+		}
 		return parameter, true
 	}
 	return FunctionParameter{}, false
@@ -3772,6 +3816,9 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 }
 
 func (a *Analyzer) analyzeFunctionBodyNamed(fn *ast.FunctionDeclaration, name string) {
+	if a.rejectUnavailableTypePackExpansion(fn) {
+		return
+	}
 	if len(fn.GenericParameters) > 0 {
 		a.withGenericTypeParameters(fn.GenericParameters, func() {
 			a.analyzeFunctionBodyInScope(fn, name)
@@ -4302,19 +4349,6 @@ func expressionUsesSelf(expr ast.Expression) bool {
 	return false
 }
 
-func (a *Analyzer) blockDefinitelyReturns(block *ast.BlockStatement) bool {
-	if block == nil {
-		return false
-	}
-
-	for _, stmt := range block.Statements {
-		if a.statementDefinitelyReturns(stmt) {
-			return true
-		}
-	}
-	return false
-}
-
 func blockDefinitelyReturns(block *ast.BlockStatement) bool {
 	if block == nil {
 		return false
@@ -4370,55 +4404,6 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 	default:
 		return false
 	}
-}
-
-func (a *Analyzer) statementDefinitelyReturns(stmt ast.Statement) bool {
-	switch stmt := stmt.(type) {
-	case *ast.IfStatement:
-		if flow, ok := a.resolvedIfFlows[stmt]; ok {
-			return !flow.TruePathContinues && !flow.FalsePathContinues
-		}
-	case *ast.MatchStatement:
-		return a.matchStatementDefinitelyReturns(stmt)
-	case *ast.SwitchStatement:
-		return a.switchStatementDefinitelyReturns(stmt)
-	case *ast.WhileStatement:
-		if flow, ok := a.resolvedWhileFlows[stmt]; ok {
-			return flow.ConditionKnown && flow.ConditionValue && !flow.HasReachableBreak
-		}
-	}
-	return statementDefinitelyReturns(stmt)
-}
-
-func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) bool {
-	if stmt == nil || stmt.Match == nil {
-		return false
-	}
-	// rules/control-flow/flowcontrol_match.md; correction23.md: termination
-	// consumes the canonical normalized coverage and arm-flow plan. Rebuilding
-	// coverage from pattern spellings loses enum aliases and union domains.
-	plan, ok := a.resolvedMatchPlans[stmt.Match]
-	if !ok {
-		plan, ok = a.matchTerminationPlans[stmt.Match]
-	}
-	if !ok || !plan.Exhaustive || len(plan.Arms) == 0 {
-		return false
-	}
-	for _, arm := range plan.Arms {
-		switch arm.Flow {
-		case MatchArmReturns, MatchArmTerminates, MatchArmLoopControl:
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func (a *Analyzer) matchArmDefinitelyReturns(arm *ast.MatchArm) bool {
-	if arm.ReturnBody != nil {
-		return true
-	}
-	return a.blockDefinitelyReturns(arm.BlockBody)
 }
 
 func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
@@ -4518,53 +4503,6 @@ func blockCanFallThrough(block *ast.BlockStatement) bool {
 		}
 	}
 	return true
-}
-
-// blockCanFallThrough is the analyzer-aware control-flow query required by
-// rules/control-flow/flowcontrol_match.md (correction23.md). In particular, it
-// recognizes nested matches through their resolved plans.
-func (a *Analyzer) blockCanFallThrough(block *ast.BlockStatement) bool {
-	if block == nil {
-		return true
-	}
-	for _, stmt := range block.Statements {
-		if !a.statementCanFallThrough(stmt) {
-			return false
-		}
-	}
-	return true
-}
-
-func (a *Analyzer) statementCanFallThrough(stmt ast.Statement) bool {
-	switch stmt := stmt.(type) {
-	case *ast.MatchStatement:
-		return !a.matchStatementDefinitelyReturns(stmt)
-	case *ast.IfStatement:
-		// The resolved flow already accounts for branches that folded
-		// constants or dominating relations prove impossible.
-		if flow, ok := a.resolvedIfFlows[stmt]; ok {
-			return flow.TruePathContinues || flow.FalsePathContinues
-		}
-		if isBoolLiteral(stmt.Condition, true) {
-			return a.blockCanFallThrough(stmt.Consequence)
-		}
-		if isBoolLiteral(stmt.Condition, false) {
-			return a.blockCanFallThrough(stmt.Alternative)
-		}
-		if stmt.Alternative == nil {
-			return true
-		}
-		return a.blockCanFallThrough(stmt.Consequence) || a.blockCanFallThrough(stmt.Alternative)
-	case *ast.WhileStatement:
-		if flow, ok := a.resolvedWhileFlows[stmt]; ok {
-			return flow.ContinuesAfterLoop
-		}
-		return statementCanFallThrough(stmt)
-	case *ast.UnsafeStatement:
-		return a.blockCanFallThrough(stmt.Body)
-	default:
-		return statementCanFallThrough(stmt)
-	}
 }
 
 // statementCanFallThrough is the syntax-directed fallback for block flow and
@@ -7475,7 +7413,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			}
 			a.checkConfusableInDomains(name, fn.Name.Token, fields, properties, events, methods, a.typeMethodTokens(stmt.Target.Name))
 			methods[name] = fn.Name.Token
-			if len(fn.GenericParameters) > 0 {
+			if len(fn.GenericParameters) > 0 && genericTypePackName(fn.GenericParameters) == "" {
 				a.validateGenericTypeParameterNames(fn.GenericParameters)
 				a.addErrorAtToken(fn.Name.Token, "generic methods with additional type parameters are not supported yet")
 				continue
@@ -7492,6 +7430,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		}
 
 		if event, ok := member.(*ast.EventDeclaration); ok {
+			if event.Name != nil && a.rejectReservedRegisterMember(target, event.Name.Value, event.Name.Token) {
+				continue
+			}
 			a.registerImplEventDeclaration(stmt.Target.Name, &target, event, fields, methods, properties, events)
 			targetChanged = true
 			continue
@@ -8008,7 +7949,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
 	a.moveReasons = map[string]string{}
-	a.borrows = map[string][]borrowRecord{}
+	a.borrows = a.staticHolderBorrows()
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
 	a.currentFunctionName = name
@@ -10551,6 +10492,10 @@ func splitUnionVariantTypeName(name string) (string, string, bool) {
 //   - rules/declarations/generics.md — §29 "Overload resolution"
 //   - rules/declarations/generics.md — §33 "Sema requirements"
 func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*ast.TypeReference, argTypes []Type, expected Type) (Function, bool, bool) {
+	if function.GenericTypePack != "" {
+		instance, ok := a.inferSharedTypePackCall(function, refs, argTypes, expected)
+		return instance, !ok, ok
+	}
 	if len(refs) > len(function.GenericParameters) || !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false, false
 	}
@@ -11557,7 +11502,11 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	patternError := false
 	seenEmpty := false
 	// MD-042: a soundly proven active variant restricts the reachable domain.
-	provenVariant := a.provenMatchVariant(expr.Subject, subjectType, maybeEmptySubject)
+	provenActive := a.provenMatchVariant(expr.Subject, subjectType, maybeEmptySubject)
+	provenVariant := ""
+	if provenActive != nil {
+		provenVariant = provenActive.Variant
+	}
 	addArmResult := func(arm *ast.MatchArm, armType Type) {
 		if !valueContext || armType.Kind == InvalidType {
 			return
@@ -11686,7 +11635,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			}
 		}
 
-		if provenVariant != "" && info.Kind == "variant" && info.Variant != "" && info.Variant != provenVariant {
+		provenInactive := provenVariant != "" && info.Kind == "variant" && info.Variant != "" && info.Variant != provenVariant
+		if provenInactive {
 			a.reportInactiveMatchArm(arm, expr.Subject, subjectType, info.Variant, provenVariant)
 		}
 		armRefinementCount := len(a.activeConditionFacts)
@@ -11697,6 +11647,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]
 		branches = append(branches, branch)
 		resolvedArm := a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
+		resolvedArm.ProvenInactive = provenInactive
 		if !guarded && (matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) || provenVariant != "" && seenVariants[provenVariant]) {
 			resolvedArm.ResidualAlwaysMatches = true
 		}
@@ -11721,6 +11672,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		a.reportImplicitEmptyCatchAll(expr, maybeEmptySubject, plan.Arms)
 	}
 	plan.ProvenActiveVariant = provenVariant
+	plan.ProvenActive = provenActive
 	recordPlan := true
 	if !exhaustive {
 		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
@@ -13459,6 +13411,11 @@ func normalizedCallableCapability(capability CallableCapability) CallableCapabil
 
 func statementToken(stmt ast.Statement) lexer.Token {
 	switch stmt := stmt.(type) {
+	case *ast.HardwareDeclaration:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
 	case *ast.ModuleStatement:
 		if stmt == nil {
 			return lexer.Token{}

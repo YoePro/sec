@@ -15,7 +15,7 @@ import (
 // instead of failing, and the coefficient domain is the asymmetric signed one.
 // Rules: rules/types/units.md — "Unit metadata value types" (7);
 // rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 9(7);
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(5).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(5).
 func TestNearestDecimalProjection(t *testing.T) {
 	rat := func(text string) *big.Rat {
 		value, ok := new(big.Rat).SetString(text)

@@ -14,8 +14,8 @@ import (
 // implicit field name dereference that parameter and project the field
 // Place; a call passes the receiver argument Sema resolved: an implicit borrow
 // of an owned receiver Place, a reference holder passed shared or reborrowed,
-// or the caller's own `self`. Consuming receivers and generic implementations
-// stay unsupported.
+// or the caller's own `self`. Ordinary methods cannot consume whole self
+// (functions.md §22); generic implementations still need specialization support.
 //
 // Rules:
 //   - rules/declarations/impl.md — § 8 "self", § 11 "Methods"
@@ -142,8 +142,10 @@ func (fb *functionBuilder) receiverPlace(plans []sema.ResolvedStructMemberPlan, 
 	return place, refType.Mutable, nil
 }
 
-// lowerReceiverRead reads a stored field of the receiver; a bare `self` value
-// is not lowered.
+// lowerReceiverRead reads stored fields or a copy-trivial whole self through
+// the resolved receiver Place; it never consumes the receiver.
+// Rules: rules/declarations/functions.md §22; rules/memory/copy_move.md §18;
+// rules/compiler/semantic_ir.md §§60(3),61(4); rules/mlir/packages/sec-mlir-dialect_package15.md §§59–60.
 func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, error) {
 	if registerPlans, register := fb.receiverRegisterPath(expr); register {
 		return fb.lowerReceiverRegisterRead(expr, registerPlans)
@@ -158,7 +160,25 @@ func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, e
 		return builtValue{}, errNotReference
 	}
 	if !ok {
-		return builtValue{}, fb.unsupported("receiver used as a value or through a non-field member", expressionToken(expr))
+		if fb.isReceiverSelf(expr) {
+			if fb.resolved == nil {
+				return builtValue{}, fb.unsupported("whole receiver value without a resolved method", expressionToken(expr))
+			}
+			facts, known := fb.owner.analyzer.ReceiverReferenceFactsOf(*fb.resolved)
+			if !known || sema.CopyClassificationOf(facts.Referent) != sema.CopyTrivial {
+				return builtValue{}, fb.unsupported("non-copy-trivial whole receiver value", expressionToken(expr))
+			}
+			// functions.md §22 / copy_move.md §18 forbid consuming ordinary self.
+			// An explicit value use copies only when the referent is copy-trivial;
+			// borrow creation/pass paths above retain their original reference plans.
+			place, _, err := fb.receiverRootPlace(locationFromExpression(expr))
+			if err != nil {
+				return builtValue{}, err
+			}
+			typ, _ := fb.owner.module.Types.Lookup(place.typ)
+			return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: locationFromExpression(expr)}, typ.Element), nil
+		}
+		return builtValue{}, fb.unsupported("receiver used through a non-field member", expressionToken(expr))
 	}
 	if sema.CopyClassificationOf(plans[len(plans)-1].MemberType) != sema.CopyTrivial {
 		return builtValue{}, fb.unsupported("non-copy-trivial read of a receiver field", expressionToken(expr))

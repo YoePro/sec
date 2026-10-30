@@ -1,9 +1,13 @@
 package main
 
 import (
+	"errors"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"sec/internal/testsupport"
 )
 
 // TestCompareExchangeResultCLI loads the real core declaration and checks its
@@ -31,8 +35,8 @@ func TestCompareExchangeResultCLI(t *testing.T) {
 }
 
 // TestCompareExchangeResultSemanticIR preserves the associated value through
-// the existing verified sum construction and match path. The LLVM track does
-// not lower sum types yet and names the union operation it stops at.
+// the existing verified sum construction and match path, and the native track
+// returns it from the executed match (lowering v11.33).
 // Rules: rules/concurrency/atomics.md — §6; rules/compiler/semantic_ir.md — Sum types;
 // rules/compiler/compiler_pipeline.md — Unsupported lowering.
 func TestCompareExchangeResultSemanticIR(t *testing.T) {
@@ -46,8 +50,17 @@ func TestCompareExchangeResultSemanticIR(t *testing.T) {
 			t.Fatal(text, stdout)
 		}
 	}
-	_, stderr, code = runCLIForDiagnostics(t, "emit-llvm", file, "-o", filepath.Join(t.TempDir(), "result.ll"))
-	if code != 4 || !strings.Contains(stderr, "unsupported-lowering") || !strings.Contains(stderr, "sec.union.") {
+	testsupport.RequireSecMLIROptPath(t)
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang unavailable")
+	}
+	program := filepath.Join(t.TempDir(), "result")
+	_, stderr, code = runCLIForDiagnostics(t, "build", file, "-o", program)
+	if code != 0 {
 		t.Fatal(code, stderr)
+	}
+	var exit *exec.ExitError
+	if err := exec.Command(program).Run(); !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatalf("status = %v, want the observed value 7", err)
 	}
 }

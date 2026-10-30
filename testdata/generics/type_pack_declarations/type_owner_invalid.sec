@@ -1,0 +1,3 @@
+module main
+type Broken[...Types] struct {}
+fn After() void {}

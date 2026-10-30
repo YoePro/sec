@@ -8,7 +8,7 @@ import "testing"
 //
 // Rules:
 //   - rules/types/types.md — "Decimal scale"; rules/memory/layout.md — § 19
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 3(4), 3(7), 14 DEC-02
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 3(4), 3(7), 14 DEC-02
 func TestDecimalLiteralFitsTargetWidth(t *testing.T) {
 	for name, test := range map[string]struct {
 		body  string

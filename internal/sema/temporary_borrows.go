@@ -24,7 +24,9 @@ const temporaryOriginRootPrefix = "$temporary:"
 
 // freshTemporaryBorrowSource reports an argument or receiver that is a fresh
 // owned value rather than an existing Place or reference: borrowing it needs
-// a compiler-materialized temporary Place.
+// a compiler-materialized temporary Place. Literal and operator results are
+// fresh values too; an existing Place/reference was excluded above.
+// Rules: rules/memory/borrowing.md §5.4(1–3),(6–7).
 func (a *Analyzer) freshTemporaryBorrowSource(expr ast.Expression) bool {
 	if expr == nil {
 		return false
@@ -38,9 +40,13 @@ func (a *Analyzer) freshTemporaryBorrowSource(expr ast.Expression) bool {
 	if _, ok := a.resolvePlace(expr); ok {
 		return false
 	}
-	switch expr.(type) {
-	case *ast.CallExpression, *ast.StructLiteral, *ast.ArrayLiteral:
+	switch expr := expr.(type) {
+	case *ast.CallExpression, *ast.StructLiteral, *ast.ArrayLiteral,
+		*ast.IntegerLiteral, *ast.FloatLiteral, *ast.BooleanLiteral, *ast.CharLiteral, *ast.StringLiteral,
+		*ast.InfixExpression, *ast.ConversionExpression, *ast.BitExtractionExpression:
 		return true
+	case *ast.PrefixExpression:
+		return expr.Operator == "+" || expr.Operator == "-" || expr.Operator == "!"
 	}
 	return false
 }

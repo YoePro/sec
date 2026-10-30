@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-10-29"
+    revised: "2026-10-30"
     document_revision: "2.1"
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
@@ -49,6 +49,8 @@ integrations:
       - cmd/lsp/string_enum_hover.go
       - internal/sema/type_declarations.go
       - internal/sema/enum_string_initializers.go
+      - internal/cst/roles.go
+      - cmd/lsp/enum_document_symbols.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/defaults_test.go
@@ -72,6 +74,18 @@ integrations:
       - cmd/lsp/string_enum_cte_test.go
       - testdata/sema/string_enum_cte/valid.sec
       - testdata/sema/string_enum_cte/invalid.sec
+      - internal/formatter/enum_defaults_test.go
+      - cmd/compiler/enum_defaults_format_test.go
+      - cmd/lsp/enum_defaults_format_test.go
+      - testdata/formatter/enum_defaults.sec
+      - testdata/formatter/enum_defaults.expected.sec
+      - testdata/formatter/enum_default_recovery_invalid.sec
+      - internal/sema/string_enum_surfaces_test.go
+      - internal/formatter/string_enum_surfaces_test.go
+      - cmd/lsp/string_enum_surfaces_test.go
+      - cmd/compiler/string_enum_surfaces_test.go
+      - testdata/tooling/string_enum_surfaces/valid.sec
+      - testdata/tooling/string_enum_surfaces/duplicate_invalid.sec
     normative_delta:
       - generic enums are canonical Sec 0.1 compile-time nominal templates, including valid phantom identity parameters
       - each ordered concrete generic argument list identifies a distinct enum type without runtime generic machinery
@@ -118,11 +132,12 @@ integrations:
       - parser recovery retains malformed member positions as invalid source-ordered EnumValue nodes while preserving later members and declarations; Sema ignores those recovery-only nodes without advancing iota or creating dependent enum members
       - "String-enum hover and conversion repairs (2026-10-29): type/member hover displays the resolved string representation, declared decoded values, closed-domain status, alias representatives, explicit/implicit semantic default, checked runtime string conversion with EnumValueError.UndeclaredValue and infallible enum-to-string conversion. Documentation attachments remain visible. Shared EnumValueClasses uses canonical coverage identity, declaration order and detached value/member copies; it lists declared classes only and never substitutes an open enum runtime domain. Invalid known strings retain their original error and gain unique declared-value/member repairs, while existing runtime conversion help still requires try. String spellings use the lexer-owned Sec escape grammar rather than Go-only escapes. No acceptance, runtime or lowering changes."
       - "string enum initializers and constant string-to-enum construction consume shared semantic CTE instead of literal-only recognition: composed decoded strings and immutable module constants establish member values, aliases/defaults and generic template constants. Known composed/bound string constants convert directly only when declared; undeclared constants remain errors and unknown runtime strings retain checked Result conversion. Required calls/getters unavailable to CTE report the shared S1101 diagnostic; omitted initializers, iota, wrong-kind and runtime initializers remain rejected. CLI and LSP preserve computed values and canonical diagnostics."
+      - "Enum default formatter conformance completed 2026-10-30: parser-owned CST marks a valid member default token as requiring one preceding space, fixing irregular member/default spacing before enum value-column alignment. Integer/string/implicit-default source goldens preserve member order, marker identity, alias values and exact escape spellings, are idempotent at indentation widths 2/4/6, and agree exactly through CLI stdin and LSP formatting. A legacy colon initializer on a default member retains its registered parser diagnostic, default flag, initializer, later members and following declaration after ordinary formatting; the rejected initializer spelling is not silently rewritten."
+      - "String enum frontend/tooling conformance completed 2026-10-30: one shared source fixture verifies precise type/member definitions, alias-specific references with and without declarations, enum/enumMember semantic tokens, complete hierarchical document-symbol ranges including default markers and UTF-16 string initializer endpoints, explicit and implicit semantic defaults, alias-normalized exhaustive switch flow and duplicate-alias errors, plus exact idempotent formatter output. Fixed two reproduced tooling gaps: Sema enum type facts now select the enum token class, and parser-retained real enum body/member endpoints supply outline ranges that contain every child instead of ending at the enum name. Enum symbol projection is extracted into a focused LSP file. CLI JSON preserves the duplicate-case identity and earlier-case source link. Runtime string enum representation and lowering remain separately tracked."
     remaining:
       - preserve concrete generic enum owner and member provenance through Semantic IR, Sec MLIR, deterministic symbol formation, ABI, FFI, and executable backend lowering
       - revalidate concrete-dependent enum representation and generic constraints before representation-dependent lowering
       - extend runtime string membership proofs beyond the implemented canonical compile-time string constants and checked fallback for unknown runtime strings
-      - add focused definition, references, document-symbol, semantic-token, switch, default-initialization, and formatter tests for string-backed enums
       - represent string-backed enum types, constants, value classes, conversions, equality, switch, and match plans in Semantic IR
       - add Sec MLIR types, attributes, operations, or canonical lowering needed to preserve nominal string-enum identity and checked construction
       - lower string-enum constants, comparisons, switches, matches, conversions, and failure flow through supported backends
@@ -130,7 +145,6 @@ integrations:
       - prove enum-to-integer representability over the known value or complete enum domain and use the canonical checked Result path when narrowing may fail
       - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
       - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
-      - add formatter coverage for the enum default marker and recovery from noncanonical initializer spelling
       - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
     required_tests:
       - generic enum declaration, concrete member access, same-instantiation canonicalization, distinct-instantiation rejection, impl owner scope, arity, constraints, and concrete representation validation
@@ -152,6 +166,10 @@ integrations:
       - Semantic IR verification and deterministic Sec MLIR emission
       - end-to-end backend execution for constants, conversion success and failure, equality, switch, and match
     verification:
+      - command: go test ./internal/parser -count=1 -timeout=180s; go test ./internal/sema ./internal/cst ./internal/formatter ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./cmd/lsp ./cmd/compiler -run 'TestStringEnum|TestDocumentSymbols|TestSemanticTokens|TestEnumDefaultFormatting' -count=1 -timeout=150s; go vet ./internal/parser ./internal/ast ./internal/sema ./internal/formatter ./cmd/lsp ./cmd/compiler
+        result: "Passed 2026-10-30: full parser 129.260s, Sema 17.851s, CST 0.008s, formatter 0.900s, Semantic IR 3.738s and nominal 0.132s; targeted LSP/CLI race 24.385s/13.241s; vet passed. Before the repair the enum type had generic type highlighting and the enum document-symbol range excluded all child members. frontend.enums remaining 12 to 11; observed global Remaining 2375 to 2374. String enum IR/backend/runtime is not claimed by these frontend tests."
+      - command: go test ./internal/cst ./internal/formatter -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestEnumDefaultFormatting|TestSharedConstantCondition' -count=1 -timeout=120s; go vet ./internal/sema ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-10-30: full CST and formatter suites 0.009s/0.638s; CLI/LSP golden and proof parity race tests 9.269s/4.396s; vet passed. The golden reproduced extra spaces before default and mismatched enum assignment columns before the CST role repair. One whole formatter/default/recovery point closed; frontend.enums remaining 13 to 12. String enum IR/backend work remains open."
       - command: go test -race ./cmd/compiler ./cmd/lsp -run 'StringEnum.*CTE|StringEnumCTE|StringEnumInitializers|StringEnumHover|StringEnumDiagnostic' -count=1 -timeout=120s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-29; CLI 4.833s and LSP 9.235s under race; computed member/alias/default and generic facts, module constants, direct known conversions, checked runtime fallback, decoded Unicode, missing/iota/wrong-kind/runtime rejection and canonical S1101 transport verified; no string-enum runtime lowering claimed
       - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/... -count=1 -timeout=180s
@@ -234,6 +252,7 @@ integrations:
       - carry ordinary, the complete write-one/write-zero clear/set/toggle family, canonical read-clear, and canonical read-set field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
       - provide semantics-preserving masks, shifts, extraction, insertion, and reserved-bit handling
       - add complete Semantic IR, MLIR, special-access lowering, and end-to-end coverage beyond the completed parser, Sema, diagnostics, and compiler-fact-driven LSP slice
+      - "MD-110 checked integer-to-register conversions (correction §§ 9(3), 11(3), 11(5), 11(6)): lower the try-checked T(x) path through Semantic IR register.value.fits-bits and a guarded from-bits with its failure edge once checked conversions have their try failure lowering (Semantic IR currently stops at \"checked integer-to-register conversion ... needs try\"); add the runtime success/failure tests (-128, -1, 0, 128, 255 / -129, 256) and the register[16] msb-first big-endian byte-order contract test on both endiannesses. The MLIR spelling (fits_bits register_type, guarded dominance) is already implemented."
     verification:
       - command: go test ./internal/parser -run Register -count=1
         result: passed
@@ -680,8 +699,11 @@ integrations:
       - "MD-102 Some payload overloads and generic inference (2026-10-28; functions.md § 20, generics.md § 18.1; internal/sema/some_inference.go): a deferred Some(value) argument checks its independently typed payload against the U of each Option[U] candidate like an ordinary argument (literal shaping, canPassCallArgumentUnrecorded, overloadArgumentRank), so Store(Some(42)) selects Option[int] over Option[string] while Option[int32]/Option[int64] stay ambiguous naming both; a payload mismatch of the only Option candidate reports the payload diagnostic. For generic candidates the deferred Some supplies Option[P] to inference and other deferred contextual arguments are skipped (placeholder), so Process(Some(42)) and Unwrap(Some(42), 0) infer T = int, Unwrap(None, 0) infers from the fallback, and Process(None) still cannot infer; the instantiated Option[T] parameter is re-instantiated from the template before typing the argument. Tests: TestSomePayloadSelectsOverloadAndInfersGenerics, TestSomeInferenceRejections, updated TestBareSomeArgumentUsesParameterContext."
       - accept optional `return <-value` with the same result ownership as `return value`
       - Optional terminal `return <-expression` is retained as ReturnStatement.MoveToken rather than an ordinary prefix move, applies to the complete returned expression, and follows exactly the same Sema ownership, construction, lifetime, Result-forwarding and Semantic IR paths as unmarked return (2026-10-18; functions.md §14; grammar.md ReturnStatement). Fresh values, aggregates and calls are accepted; moved sources, escaping locals and indexed move-only extraction remain rejected. CST formatting preserves and attaches the marker; dangling-marker recovery retains the following declaration. TestNativeTrackBuildsAndRuns/explicit_return builds and executes the program with exactly-once return-operand evaluation.
+      - "MD-117 shared-pack frontend milestone (2026-10-30): free functions with unused ...ref Types bodies are checked without the blanket declaration barrier. Direct calls infer an ordered concrete sequence including empty packs, ordinary scalar generic prefixes and explicit prefix arguments; canonical sequence keys distinguish order and arity. Each expanded receiving parameter uses ordinary reference/ownership checks, including shared reborrows from ref mut, conflicting loans, explicit-move rejection and temporary-reference escape rejection. ResolvedTypePackCallOf publishes detached ordered types and expanded parameter modes. Same-module and imported CLI fixtures with the exact Printf signature check successfully. Pack use, owned/mutable modes, spread preparation and competing pack templates retain explicit capability boundaries; no runtime container, formatter exemption or executable pack expansion is introduced. Tests live under testdata/generics/type_pack_declarations and internal/sema/type_pack_calls_test.go."
+      - "MD-117 shared-pack Len frontend (2026-10-30; functions.md §38A(5)(1-2)): free-function ...ref Types templates may read values.Len as a read-only uint, alongside ordinary bindings/returns, without inventing a common element type. Selected-call facts expose exact compile-time Length for empty and nonempty ordered specializations. Wrong return types and writes receive ordinary type/read-only diagnostics; element indexing, iteration, forwarding and lambda captures retain their expansion boundary. Source/CLI/IR regressions verify successful checking and no partial executable IR. This does not implement specialized-body CTE consumption of Len, element-body expansion or executable pack lowering."
+      - "MD-117 specialized length constants (2026-10-30; functions.md §38A(5)(2),(9), compile_time_evaluation.md §§2(3),4(4),17,47): ResolvedTypePackConstantOf evaluates a typed template expression against one selected shared-pack call using the shared CTE implementation, substituting Len only for the declaration-bound parameter identity. Ordered calls and the template AST remain independent. Target integer bounds are checked at each specialized intermediate; underflow/overflow, runtime arguments and body calls never become false constant proofs. Arithmetic/comparisons, short-circuiting, same-spelled foreign parameters and detached query results have 32/64-bit tests. This query supplies compiler consumers; automatic deferred validation of compile-time-required template positions and executable pack expansion remain open under the existing specialization/IR owners."
     remaining:
-      - "MD-117 call/Sema contract: infer statically known heterogeneous arity and pointwise concrete argument modes for ...Types/...ref Types/...ref mut Types, including empty packs, ordinary literal/overload rules, fixed-arity preference and once-only left-to-right preparation; reject runtime-length heterogeneous inference and ->values: ...Types, and diagnose the failing concrete position/type. Homogeneous native ...T stays distinct (functions.md §38A; correction §§3,4,10)."
+      - "MD-117 call/Sema completion: extend the implemented unused shared-pack free-function/direct-call subset to owned ...Types and mutable ...ref mut Types, generic methods, demanded pack-element bodies, static spreads and competing pack overloads. Complete ordinary contextual literal/overload rules, once-only argument preparation and concrete position/type diagnostics for these forms. Empty shared packs, ordered direct-call inference, ordinary pointwise borrows and preference for a matching non-generic fixed signature are implemented; runtime-length heterogeneous inference remains rejected (functions.md §38A; correction §§3,4,10)."
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
@@ -697,6 +719,12 @@ integrations:
       - runtime-generic callables or unresolved overload sets as function values
       - native variadic ABI equivalence with C or foreign varargs
     verification:
+      - command: go test ./internal/sema ./internal/ir/semantic/... -count=1
+        result: "Passed 2026-10-30: Sema 20.077s, Semantic IR 4.207s, nominal 0.501s; focused CLI/LSP pack tests 0.067s/0.053s and Sema vet passed. New 32/64-bit specialization constant tests cover arithmetic, comparisons, short-circuiting, integer failure boundaries and binding/result isolation. Query support only: automatic compile-time-required template rechecking and executable expansion remain open; remaining 9 to 9."
+      - command: go test ./internal/sema ./internal/ir/semantic/... -count=1
+        result: "Passed 2026-10-30: full Sema 16.804s, Semantic IR 3.633s, nominal 0.124s. Len reads, read-only/type failures, exact empty/nonempty call arity and retained capture/index/executable boundaries are covered. Focused CLI/LSP/IR/Sema pack tests passed. Remaining 9 to 9; specialized-body CTE use and execution remain open."
+      - command: go test ./internal/sema ./internal/ir/semantic/... -count=1
+        result: "Passed 2026-10-30: full Sema 14.958s, Semantic IR 3.069s and nominal 0.095s. Focused CLI pack tests, including imported targets, passed. This verifies the unused shared-pack frontend milestone only; MD-117 executable expansion remains unavailable."
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/parser ./internal/cst ./internal/formatter ./internal/sema ./internal/ir/... ./internal/lowering/... ./cmd/compiler ./cmd/lsp -count=1
         result: Parser, CST, formatter, IR and lowering passed. The two Sema regressions exposed by separating the return marker were fixed and the complete Sema suite then passed (separate command above). The compiler failed only the two existing IO API tests because stdlib/io still calls the removed string.FromByteArray. The full LSP run was interrupted after 158 seconds; no full LSP pass is claimed.
       - command: go vet ./internal/parser ./internal/cst ./internal/formatter ./internal/sema ./internal/ir/... ./cmd/compiler
@@ -715,7 +743,7 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
         result: passed
-    revised: "2026-10-28"
+    revised: "2026-10-30"
 
   - id: frontend.lambda-functions-v2
     area: frontend-analysis-and-lowering
@@ -939,6 +967,7 @@ integrations:
       - testdata/impl_valid.sec
       - testdata/impl_invalid.sec
     implemented:
+      - "P2037 parser.mut-fn-in-impl (owner decision 2026-10-30; impl.md receiver derivation; interfaces.md): `mut fn` is receiver-capability syntax of interface declarations only. On a method of impl or impl extends, also after attributes, it is a dedicated error at the `mut` token; parsing continues with the method, so its body stays checked and no S1106 follows. The S1106 help now names the concrete `fn` form instead of the rejected `mut fn`. Tests: internal/parser/mut_fn_impl_test.go, internal/sema/interface_validation_mut_help_test.go."
       - extends reserved as a lexer keyword and contextual impl-extension marker
       - canonical impl extends Target syntax retained explicitly in the AST
       - one unmarked primary impl block per target
@@ -1112,6 +1141,7 @@ integrations:
       - mandatory S1051 modules.unresolved-import diagnostics preserve the unresolved canonical spelling and exact import-path source range in individual and batched LSP analysis
       - Canonical standard-library source discovery is shared by CLI and LSP before project fallback, including arbitrary nested paths such as net/ip and all production siblings rather than only bootstrap fmt/io/unicode (2026-10-14). Selected target directives are respected and production discovery excludes _test.sec; LSP production import assembly removes test-only siblings. Directory imports with conflicting ModuleName headers fail with registered S1158 modules.inconsistent-source-module on the import-path span and the offending declaration as a related location. Failed imports use shared S1051 metadata and stop misleading dependent lookup diagnostics. Missing function/type call targets use mandatory S1157 names.unknown-call-target with lookup guidance. Regression fixtures verify imported associated Parse calls, missing modules, missing methods, inactive target files, and inconsistent headers in both CLI and LSP. Flattened AST inclusion and complete module binding/surface identity remain tracked below.
     remaining:
+      - publish register impl members' MD-113 shadow-knowledge summaries (Requires, Ensures, EnsuresWhenTrue, Invalidates) in the ModuleSurface when separate compilation exists, with surface compatibility and incremental invalidation on summary changes (modules.md § 2.4 amendment; rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md § 7(4)); today the whole analyzed program, imports included, is summarized together
       - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
       - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
       - complete source-file ownership for private types and module variables while exposing module-internal declarations across sibling files; ordinary free-function access is implemented under frontend.names-scopes-visibility (2026-10-09)
@@ -1479,6 +1509,7 @@ integrations:
       - instance initializers belong to construction rather than the static dependency graph
       - static and instance names share the combined member-name namespace but are different semantic categories
     implemented:
+      - "MD-081 static reference initializers, Sema (2026-10-30; rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md §§ 2-6, 10; static.md § 5 amendment; internal/sema/static.go): explicit `ref` / `ref mut` initializers of statics are compile-time initializers when their root is static storage (module, type-owned `Owner.Name` or function-local static), reached through fields and compile-time indexes; typed and inferred destinations; the provisional symbol-name check, which depended on symbol definition order (arrays were rejected), is replaced by a check against the module pass's static declarations; a runtime index or non-static root gets a reference-specific diagnostic instead of the generic runtime-initializer error, and out-of-bounds keeps S1134 alone; S1169, S1165 and overlapping-borrow errors apply unchanged; borrows held by module/type-owned static holders stay live in every callable body so conflicting direct access is rejected in any declaration order (TestStaticReferenceInitializers, TestStaticReferenceInitializerRejections, TestStaticReferenceHoldersStayLiveInCallables)."
       - static keyword tokenization and declaration-position parsing
       - static let and static let mut parsing at module, function, and impl-member positions
       - static fn parsing and AST classification, including receiver-free interface requirements
@@ -1502,7 +1533,9 @@ integrations:
       - S1026 redundant-static information diagnostic is retired and no longer emitted
       - only explicit static impl bindings enter type-qualified completion and the static initializer dependency graph
       - testdata/associated_values_valid.sec uses explicit static for every type-owned binding
+      - "MD-081 function-local holders and referent validity (2026-10-30; rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md §§ 6(3), 7, 10(3)): every function-local `static let` initialized with a reference is collected before any callable body is analyzed and its borrow is live in every callable, including its own function before the declaration, so conflicting access to the same static anywhere is rejected (S1159-S1162); a borrowed static cannot be replaced or moved (S1162, S1163); a computed reference target keeps the stable non-addressable identity S1168 as its only diagnostic (TestFunctionLocalStaticReferenceHolders, TestStaticReferenceReferentStaysValid)."
     remaining:
+      - "static reference initializers beyond Sema (rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md §§ 4(3), 9, 12(3)): cross-module static roots with module-qualified identity once module statics are accessible across modules (today `cfg.Limit` from an importer is an undefined variable, so such references are rejected); thread-local and non-address-stable backing negative tests once a module-level ThreadLocal or dynamic collection static can be constructed; static-held borrow materialization is tracked under lowering.sec-mlir-package15 P15-42"
       - implement per-instance impl let and let mut storage, construction-time initialization, self/instance lookup, ownership, destruction, layout and lowering before accepting those declarations
       - represent associated immutable values unambiguously in Semantic IR and retain one representation with explicit static identity
       - lower compile-time associated values and addressable immutable associated storage consistently through Sec MLIR and every backend

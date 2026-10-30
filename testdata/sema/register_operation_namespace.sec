@@ -1,0 +1,13 @@
+module main
+
+fn Read() int { return 1 }
+fn Write(value: int) int { return value }
+fn IsShadowKnown() bool { return true }
+
+fn Run() int {
+    let value := stream.Read()
+    let written := stream.Write(value)
+    let known := stream.IsShadowKnown()
+    if known { return written }
+    return 0
+}

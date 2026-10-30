@@ -965,13 +965,14 @@ integrations:
     repository_baseline: 814a584
     notes:
       - "SEC-MLIR-P26 (validated physical reference and descriptor lowering, schema 22) installed 2026-10-20: rules/mlir/packages/sec-mlir-dialect_package26.md and plan package26-todo.md (validated; P26-01..31). Not implemented; P24 ResolvedLayout, P25 CallABIPlan and P17-P19 storage transitions are prerequisites, while the plan records, epoch rule and existing stale-reference path (P26-05/06/09/11/28) can start first."
+      - "Acceptance ownership clarified 2026-10-30 from P15 §§151–155 and MD-061 §§6/7(5): physical reference/LLVM optimization conformance is this existing receiving owner, not a prerequisite for closing the earlier P15 high-level package. P26 verifies physical-to-standard-MLIR transformations it introduces; later LLVM consumers verify that boundary when enabled. P15 preserves canonical facts, verifies its available high-level optimizations and refuses unsupported physical lowering. Full physical conformance remains unimplemented."
     remaining:
       - lower proven direct refs to address-only where valid
       - lower dynamic epoch/generation checks where required
       - lower stable/weak handle resolution with domain/slot/generation identity
       - preserve address-space/capability semantics
       - preserve defined panic/trap for dynamically detected stale ordinary refs
-      - avoid backend nonnull/noalias/dereferenceable/lifetime assumptions stronger than Sec proof
+      - "MD-061 physical optimization safety (correction §§6,7(5); P26 §§13,32,46,53): avoid backend nonnull/noalias/dereferenceable/lifetime assumptions stronger than Sec proof and implement differential plus mutated-IR verification for each enabled physical/LLVM reference transformation. Preserve last-use/parent mutation, overlapping and disjoint reborrows, return/capture/defer retention, matching epoch guards at accesses, relocation and structural invalidation, cleanup/free/destruction/Arena reset/release/pool reuse, MMIO/volatile/atomics/synchronization and opaque FFI retention; reject missing dependencies or forged alias/lifetime promises. Each consuming stage proves its own introduced lowering or keeps an explicit unsupported gate. P15 high-level acceptance does not depend on completing this later physical matrix; no requirement is waived or claimed implemented by the P15 scope correction."
       - omit unused handle/generation runtime support
     required_tests:
       - address-only optimized ref
@@ -979,6 +980,9 @@ integrations:
       - compact slot generation with retirement
       - no global generation manager when unused
       - stale handle not lowered to trap/UB
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package26.md
+      - rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md
 
   - id: platform.reference-model
     area: reference-profile-address-space-ffi-isr
@@ -1325,17 +1329,32 @@ integrations:
   - id: frontend.layout
     status: partial
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling, MD-073 the undecided char conversion, and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - build one shared canonical layout-resolution service
       - complete int/uint target-width consistency
       - complete enum/union/descriptor/reference resolved representations
       - complete representation-validity analysis
       - complete explicit layout contract parsing via owning syntax rulebooks (no rulebook defines the syntax yet; missing-decisions.yaml MD-019)
+    revised: "2026-10-30"
+    implemented:
+      - "P24-12 arithmetic foundation (2026-10-30): internal/layout.SizeArithmetic snapshots explicitly resolved maximum byte extent and supported alignments and implements CheckedAdd, CheckedMul, AlignUp, StrideOf and ArraySize with exact nonnegative big.Int values. No host integer, pointer-width or C ABI fallback supplies a bound, alignment or descriptor. StrideOf consumes the selected placement minimum, preserving target-specific zero-sized policies; ArraySize preserves arbitrary-precision logical counts and rejects an invalid element stride even for count zero. Failures return no result and retain exact requested extent, target bound, operation and caller-supplied field/count/instantiation path. Supported nonbinary alignment, 32/64-bit extent limits, successful and overflowing calculations beyond 256 bits, malformed/missing facts, detached inputs/results, target isolation and concurrent readers are tested. P24-12 is complete in package24-todo.md (unchecked 57 to 56). ResolvedLayout IDs/complete plan keys, actual type SizeOf/AlignOf/StrideOf queries, compiler diagnostic publication, schema 20 and physical reference/LLVM lowering remain separate unimplemented consumers; frontend.layout retains all six broader remaining points."
+    code:
+      - internal/layout/size_arithmetic.go
+    tests:
+      - internal/layout/size_arithmetic_test.go
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package24.md
+      - rules/memory/layout.md
+      - rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md
+      - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md
+    verification:
+      - command: go test -race ./internal/layout -count=1; go test ./internal/layout ./internal/platform/target ./internal/codegen/targetplan -count=1; go vet ./internal/layout; go test ./internal/... -run '^$'
+        result: "Passed 2026-10-30: layout race suite 1.015s, layout/target suites 0.002s/0.001s, targetplan has no tests, vet passes, and all internal packages/tests compile. Wide valid results and exact overflow diagnostics, zero-sized counts, invalid zero-count element stride, explicit placement policies, unsupported/missing alignments and target/reader snapshot isolation are covered. No physical layout or binary/reference lowering is claimed; the earlier P15 full-Go green snapshot is baseline evidence, not a rerun after this new arithmetic code. P24 TODO unchecked 57 to 56; frontend.layout remaining 6 to 6."
 
   - id: semantic-ir.layout
     status: planned
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling, MD-073 the undecided char conversion, and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - introduce canonical ResolvedLayout/ResolvedFieldLayout or equivalent
       - retain size/alignment/offset/stride/padding/union/representation-validity facts
       - attach target-resolved layout before layout-sensitive lowering
@@ -1344,7 +1363,7 @@ integrations:
   - id: lowering.layout
     status: partial
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling, MD-073 the undecided char conversion, and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - make maintained MLIR/LLVM paths consume Sec-resolved layout
       - remove legacy hardcoded enum/int/decimal layout differences
       - support validated unaligned/packed lowering
@@ -1353,7 +1372,7 @@ integrations:
   - id: platform.layout
     status: partial
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling, MD-073 the undecided char conversion, and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - complete FFI layout compatibility
       - complete register access-unit/alignment validation
       - complete target-specific memory/address-space representation integration
@@ -1362,7 +1381,7 @@ integrations:
   - id: tooling.layout
     status: planned
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20) installed 2026-10-16, not implemented: one immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (rules/mlir/packages/sec-mlir-dialect_package24.md, sec_layout_sync_package24.md, sec_semantic_ir_layout_package24.md, sec_mlir_dialect_v20.md, sec_mlir_lowering_v20.md); no new P24 decision; source layout syntax stays blocked by MD-019, string descriptor work by MD-050 and MD-071..MD-073 (P23-D1..D3), decimal by MD-066..MD-068 (P21-D1..D3)"
+      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling, MD-073 the undecided char conversion, and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - expose canonical SizeOf/AlignOf/StrideOf/FieldOffset from shared layout facts
       - show target dependence and stability
       - provide recursive/explicit-layout mentor diagnostics

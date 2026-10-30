@@ -1,0 +1,4 @@
+module main
+fn Wrong[...Types](values: ...ref Types) string {
+    return values.Len
+}

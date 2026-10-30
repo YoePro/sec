@@ -2106,8 +2106,12 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.const.float {bits}`, `sec.float.neg`, `sec.float.binary`, `sec.float.cmp` | P20 §§ 20–26, 63–65, 73–77 (`lowering.sec-mlir-package20`) | 2026-10-18 |
 | `!sec.register<T>`, `!sec.hw_instance<T>`, `sec.register.extract`, `sec.register.update`, `sec.hw.bind`, `sec.hw.observe`, `sec.hw.request_write`, `sec.hw.shadow_observe`, `sec.hw.shadow_intent`, `sec.hw.shadow_invalidate`, `sec.hw.commit` | MD-077 § 19 (v11.41.1 below); P15-42/42a | 2026-10-22 (specification; implementation tracked in governance) |
 | `sec.registers` (`#sec.register_def`, `#sec.register_field`), `sec.field_path`, `sec.write_proof` (`#sec.register_write_proof`) | MD-114 (v11.41.1a below); P15-42 | 2026-10-27 (specification; implementation tracked in governance) |
+| `sec.write_action` (`#sec.register_write_action`) on `sec.hw.request_write` / `sec.hw.shadow_intent` | MD-112 (v11.41.1b below); P15-42 | 2026-10-30 (specification; implementation tracked in governance) |
+| `sec.hw.shadow_known` (with `sec.shadow_fact`) | MD-113 (v11.41.1c below); P15-42 | 2026-10-30 (specification; implementation tracked in governance) |
 | `sec.register.fits_bits`, `sec.register.from_bits`, `sec.register.to_bits` | MD-110 § 8 (v11.41.2 below); P15-42 | 2026-10-25 (specification; implementation tracked in governance) |
+| `sec.int.bit_extract`; `register_type` on `sec.register.fits_bits`; `guarded` and `bit-extraction` bases | MD-110 § 8 (v11.41.2 amendment below); MD-046/MD-056 | 2026-10-30 |
 | `sec.place.static`; `sec.static_id` and `sec.address_taken = true` on `sec.static.global` | MD-116 (v11.41.3 below); P15-42/42a/47 | 2026-10-27 (specification; implementation tracked in governance) |
+| `sec.match_pattern_kind = "result-err-variant"`; `sec.unreachable` reason `exhaustive-try-fallthrough` | MD-008/MD-029 (v11.41.4 below) | 2026-10-30 |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
@@ -2154,6 +2158,8 @@ Neither is equivalent to the other or to an integer. The quoted name must resolv
 
 These may reference immutable module-scoped plan records, which must exist and satisfy every constraint. Free-form descriptive strings never substitute for canonical IDs or typed lists. Definition tables, identities and plan records are module-scoped, unique, deterministically ordered and resolved during verification.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 2, 11, 13(1)).** `sec.hardware_resource_id`, `sec.endpoint_id`, `sec.hardware_binding_id` and `sec.verified_plan_id` carry the canonical `HardwareResourceIdentity`, `HardwareEndpointIdentity`, `HardwareBindingIdentity` and `VerifiedOperationPlanIdentity` of the frozen `CompilationPlan`'s hardware facts, never a raw address, register name or binding spelling. The typed module-scoped plan-record spelling for the first executable subset (one whole-register `MemoryMapped` non-destructive read or replacement write) is specified together with its implementation; until then every `sec.hw.*` physical lowering fails closed.
+
 **References.**
 - `!sec.ref<!sec.hw_instance<T>>` and `!sec.ref_mut<!sec.hw_instance<T>>` are ordinary reference categories over a referable software instance Place.
 - `!sec.ref<!sec.register<T>>` references a detached register value.
@@ -2166,7 +2172,7 @@ These may reference immutable module-scoped plan records, which must exist and s
 
 #### v11.41.1a MD-114 amendment — register table, field paths and write proofs
 
-Installed 2026-10-27 from `rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`. It spells the module register-definition table, `sec.field_path` and the update proof that v11.41.1 requires. This amendment covers only the detached value operations and the MD-110 width lookup. It is an explicit schema-11 early admission: schema 12 inherits it unchanged, and schemas 1–10 reject these constructs. It adds no source syntax, physical layout, ABI, byte swap or hardware access. Hardware records, endpoints and access plans stay with MD-111, and a register table never makes a `sec.hw.*` operation acceptable.
+Installed 2026-10-27 from `rules/corrections/applied/MD-114-canonical-register-value-mlir-contract-correction-20261030.md`. It spells the module register-definition table, `sec.field_path` and the update proof that v11.41.1 requires. This amendment covers only the detached value operations and the MD-110 width lookup. It is an explicit schema-11 early admission: schema 12 inherits it unchanged, and schemas 1–10 reject these constructs. It adds no source syntax, physical layout, ABI, byte swap or hardware access. Hardware records, endpoints and access plans stay with MD-111, and a register table never makes a `sec.hw.*` operation acceptable.
 
 **Module table `sec.registers`.** A module that uses any register type has exactly one module attribute `sec.registers`: an `ArrayAttr` of the typed attribute `#sec.register_def<...>`. A module without register types may omit it, and `sec.registers = []` is an explicit empty table. A module that uses register types may not omit it, and no table is ever assembled from operation names.
 - **Record fields.** `#sec.register_def<identity = ..., width = ..., order = ..., byte_order = ..., fields = [...]>`:
@@ -2207,7 +2213,7 @@ Installed 2026-10-27 from `rules/corrections/MD-114-canonical-register-value-mli
 - Bounds are canonical arbitrary-precision decimal strings: no sign, whitespace or redundant leading zeros, compared without truncation. Missing or extra bounds, an unknown basis, reversed or out-of-field bounds, and a proof that belongs to another field, operand, register or unit are all rejected.
 - This proof is distinct from MD-110's `sec.register_fit_proof`, and the two are never interchanged.
 
-**MD-110 lookup.** `sec.register.fits_bits`, `sec.register.from_bits` and `sec.register.to_bits` resolve their register identity and width through the same `sec.registers` table and never through a guessed integer type. Their names, bases (`constant`, `source-domain`, `guarded`) and semantics are unchanged. The Semantic IR basis `bit-extraction` still has no MLIR spelling (MD-110 § 8(4)). It is reconciled under MD-110 and is never emitted as an invented fourth basis.
+**MD-110 lookup.** `sec.register.fits_bits`, `sec.register.from_bits` and `sec.register.to_bits` resolve their register identity and width through the same `sec.registers` table and never through a guessed integer type. Their names, bases (`constant`, `source-domain`, `guarded`) and semantics are unchanged. The Semantic IR basis `bit-extraction` is transported by the 2026-10-30 amendment of v11.41.2 (`sec.int.bit_extract` plus the fourth basis `bit-extraction`).
 
 **Verification and preservation.**
 - **Attributes.** Both attributes are registered TableGen attributes with exact key names, omission of optional keys and canonical print order. A dictionary that merely looks similar is not accepted.
@@ -2215,6 +2221,48 @@ Installed 2026-10-27 from `rules/corrections/MD-114-canonical-register-value-mli
 - **Operation verifiers.** They check arity, types, the path, reserved-field exclusion, effects and the shape and value of the proof.
 - **Passes.** Passes keep register nominal identity and never strip a table that is still referenced. A table may be regenerated only if it is derived deterministically and completely from the verified semantic identities, with no reordering, renumbering or reserved-bit loss. Layout and proof facts are removed only after a verified lowering has discharged them.
 - **Failure.** A failed verification or an unsupported register operation publishes no partial output and never falls back to plain integer operations.
+
+#### v11.41.1b MD-112 amendment — specialized write actions
+
+Installed 2026-10-30 from `rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 7 and `rules/compiler/semantic_ir.md` § 21(8). It spells the resolved per-bit action of a `write-one-*` / `write-zero-*` hardware field request, which v11.41.1 left implicit. Like v11.41.1a it is an explicit schema-11 early admission: schema 12 inherits it unchanged, schemas 1–10 reject it, and the default emitted schema is unchanged. It adds no operation family, no source syntax and no physical plan; endpoints, footprints and plans stay with MD-111.
+
+**Attribute `sec.write_action`.** A required attribute of the registered typed form `#sec.register_write_action<action = ..., trigger = ..., width = ..., kind = ..., mask = ...>`, with keys printed in that order:
+- `action`: `"clear"`, `"set"` or `"toggle"`;
+- `trigger`: `"one"` or `"zero"`, the triggering bit value;
+- `width`: the positive field width `N`, as i32;
+- `kind`: `"constant"` or `"value-dependent"`;
+- `mask`: present exactly when `kind = "constant"`; the width-`N` logical action mask as a canonical arbitrary-precision decimal string (no sign, whitespace or redundant leading zeros) with `1 <= mask <= 2^N - 1`.
+
+**Placement.**
+- `sec.write_action` is required on every `sec.hw.request_write` and `sec.hw.shadow_intent` whose `sec.field_path` leaf has an effective `write-one-*` / `write-zero-*` access in the `sec.registers` table (v11.41.1a), and forbidden on every other request, intent, `sec.hw.commit` and whole-register write.
+- `action` and `trigger` must equal that effective access (`write-one-clear` is `action = "clear", trigger = "one"`, `write-zero-toggle` is `action = "toggle", trigger = "zero"`, and so on), and `width` must equal the leaf's table width. A record belonging to another field, register or access is rejected.
+
+**Constant requests.** The mask is the resolved action mask. A mask of zero is rejected: an all-neutral request is a logical no-op and is never emitted as a request or intent. The verifier checks the mask against a represented constant request value when one is present and never accepts the text alone; it does not derive a mask from the register width.
+
+**Value-dependent requests.** The request value operand is the action mask itself, of the leaf's exact field type (`i1` for one bit, otherwise the field's unsigned carrier with the `N`-bit contract). Semantic IR computes it before the request in source order: the written value for `trigger = "one"`, and for `trigger = "zero"` the `sec.int.bitwise` exclusive or of the written value with the constant `2^N - 1`. The request must be dominated on every path by the true successor of a `cf.cond_br` whose condition is `sec.int.cmp ne` of that same mask SSA value against a constant zero of the same type, and the false successor performs no request or intent for this field. The verifier checks this dominance as it checks the MD-110 `guarded` basis; it does not re-run the trigger formula.
+
+**Preservation.**
+- Pending intents keep one `sec.write_action` each. Passes may not merge, reorder, cancel or drop clear, set or toggle intents, or remove a request because shadow knowledge suggests its bits already hold the target state, unless a verified plan proves that semantics, order, effects, failure behavior and observability are preserved.
+- `sec.hw.commit` with no pending intent stays a physical no-op. An explicit whole-register `Write(value)` and an ordinary `read-write` field write never carry `sec.write_action` and are never reclassified as neutral.
+- The attribute is discharged only by a verified physical plan (MD-111) that realizes the mask without forbidden collateral effects; until such a plan exists, lowering fails closed with no partial output.
+
+**Admission.** As for v11.41.1a and v11.41.2, C++ registration and round trips, the verifier, the Go emitter, the version gate and the lowering-support manifest must agree on this spelling before it is claimed. Because `sec.hw.request_write` and `sec.hw.shadow_intent` themselves await their MD-077 implementation, this amendment specifies their MD-112 payload in advance.
+
+#### v11.41.1c MD-113 amendment — shadow status query
+
+Installed 2026-10-30 from `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 10 and `rules/compiler/semantic_ir.md` § 21(9). MD-113 § 10(6) delegates the spelling to this document. It is an explicit schema-11 early admission: schema 12 inherits it unchanged, schemas 1–10 reject it, and the default emitted schema is unchanged. It adds no physical plan.
+
+**Mapping.** `register.hw.shadow_known` → `sec.hw.shadow_known`.
+
+**Operation `sec.hw.shadow_known`.**
+- **Operands and result.** One `!sec.hw_instance<T>` operand; result `i1`.
+- **Attributes.** The required `sec.field_path` (v11.41.1a ordinals rooted in `T`), the mandatory hardware identities of v11.41.1 that name the instance and binding (`sec.register_type_id`, `sec.impl_instance_id`, `sec.hardware_binding_id`), `sec.source_provenance`, and the required `sec.shadow_fact = "known" | "unknown" | "runtime"` transporting Sema's availability fact.
+- **Verifier.** The path must reach a declared, non-reserved field whose effective `shadow` policy in `sec.registers` is true; a `noshadow` or reserved leaf, a path rooted in another register type and a detached `!sec.register<T>` operand are rejected. A `write-only` leaf is accepted, because the result is status only. `sec.verified_plan_id`, endpoint and footprint attributes are forbidden: the query needs no physical plan.
+- **Effects.** The operation reads only the compiler-managed shadow-availability state of the instance's shadow group. It has no hardware read or write effect, no allocation, and does not change observed knowledge or pending intents. It is not `sec.hw.observe` and must never be rewritten into one.
+- **Folding.** It may be folded to a constant only when `sec.shadow_fact` is `known` or `unknown` and no intervening operation on the same shadow group can change availability; otherwise it stays a test of bounded per-instance metadata such as a known mask.
+- **Shadow reads.** A hardware field read that is served from shadow carries the same `sec.shadow_fact` and must be `known` on its path; `unknown` is rejected and `runtime` must be dominated by the true successor of a `sec.hw.shadow_known` on the same instance and field path with no intervening shadow transition, call or invalidation on that shadow group.
+
+**Admission.** C++ registration and round trips, the verifier, the Go emitter, the version gate and the lowering-support manifest must agree on this spelling before it is claimed, together with the MD-077 `sec.hw.*` operations.
 
 ### v11.41.2 Register bit-pattern conversions (MD-110 early admission)
 
@@ -2239,6 +2287,13 @@ Installed 2026-10-25 from `rules/corrections/applied/md110-register-bit-pattern-
 - **Representation.** The Sec dialect boundary uses the public `siW` / `uiW` scalar representations. Later signless lowering preserves the bits and carries the signed interpretation; it must not infer the interpretation from a bare `iW`.
 - **What these operations are not.** They are detached, effect-free value computations: never byte serialization, native-memory copies, hardware loads or stores, or an illegal signed-to-signless `arith.bitcast`.
 - **Admission.** C++ registration, round trips, verifiers, the Go emitter, the version gate and the lowering-support manifest must agree on these spellings before any of them is claimed. `from_bits` resolves its register type and width through the MD-114 `sec.registers` table (v11.41.1a, decided 2026-10-27).
+
+**Amendment 2026-10-30 — destination identity and bit-extraction transport.** This closes the two spellings MD-110 § 8 left open. Schema 12 inherits it; schemas 1–10 reject both new forms.
+- **`sec.register.fits_bits` destination.** The canonical destination register type-identity attribute is the inherent `register_type`, a `TypeAttr` holding `!sec.register<"module::TypeName">`: `"sec.register.fits_bits"(%x) <{register_type = !sec.register<"m::T">}> : (si32) -> i1`. The verifier resolves it in `sec.registers` and reads `N` from that definition; a missing, non-register or undefined type is rejected, and `sec.register_type_id` (v11.41.1 hardware metadata) is never accepted in its place.
+- **`guarded` basis.** A `from_bits` with `basis = "guarded"` must be dominated by the true successor of a `cf.cond_br` whose condition is a `sec.register.fits_bits` of the same SSA operand with the same `register_type` as the result; the verifier checks the operand, the type and the dominance, and the false successor is the resolved checked-conversion failure.
+- **Operation `sec.int.bit_extract`.** The MLIR form of Semantic IR `int.bit-extract` (`semantic_ir.md` § 59): `"sec.int.bit_extract"(%x) <{width = N : i32}> : (si32) -> ui8`. It is pure and total. The operand is a builtin signed or unsigned Sec integer of standard width `W`; `1 <= N <= W`; the result is the unsigned builtin integer of the smallest standard width `K >= N` (8, 16, 32, 64, 128 or 256 bits), and its value is the non-negative `x mod 2^N` of the operand's two's-complement bits, independent of the operand's signedness. It is lowered with the scalar integer operations: truncate to `K` when `K < W`, then mask with `2^N - 1` when `N < K`.
+- **`bit-extraction` basis.** `sec.register_fit_proof = {basis = "bit-extraction"}` is the fourth basis. It requires the `from_bits` operand to be the direct result of a `sec.int.bit_extract` whose `width` is at most the destination register's width; the verifier never accepts the basis text alone, and no other operation, mask or constant establishes it.
+- **Effects and lowering.** `fits_bits` and `from_bits` keep the detached register family's high-level form as before; `sec.int.bit_extract` is admitted by `sec-check-lowering-support` and lowered by the integer core pass on the native track.
 
 ### v11.41.3 Static Place roots and static identity (MD-116)
 
@@ -2281,6 +2336,15 @@ Installed 2026-10-27 from `rules/corrections/applied/MD-116-static-place-root-ml
 - P5 never discharges an address-taken static, P6 resolves its scalar types consistently and P8 keeps its Place and reference wrappers (MD-087). `sec-lower-static-storage` keeps lowering scalar-only statics and rejects a reference-dependent static it cannot represent instead of erasing the Place.
 - Failed verification or unsupported emission publishes no partial MLIR.
 
+
+### v11.41.4 Concrete error-variant patterns (MD-008, MD-029)
+
+Installed 2026-10-30 together with the Semantic IR lowering of `Err(E.Variant...)` match arms and try handlers on a closed concrete error channel (`semantic_ir.md` § 71(6); `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 6, 15). It adds no operation; the arms use existing operations only.
+
+- `sec.match_pattern_kind` admits the eighth value `result-err-variant` (§ 10 of the v8 snapshot lists the other seven). Such an arm's `pattern` stage is a `sec.result.is_err` whose true edge reaches a block that unwraps the error with `sec.result.unwrap_err` and tests the variant with `sec.enum` case comparison (enum error) or `sec.union.is_variant` (union error); both false edges reach the next arm. Payload and named-field bindings are `sec.union.unwrap_payload` / `sec.union.unwrap_field` with the `copy-trivial` action on the dedicated true edge of that variant test, exactly as for an ordinary union arm.
+- A try handler list whose last, unconditional handler binds a union error payload or fields still tests its variant, so that the projection sits on a guarded edge; the impossible false edge ends in `sec.unreachable` with `sec.synthesized = true` and reason `exhaustive-try-fallthrough`.
+- Only trivially copyable error types and `copy-trivial` bindings are emitted. Borrowed payloads, ownership-sensitive transfers, open-`error` narrowing and guarded try handlers remain unsupported lowerings and publish no partial MLIR.
+- The attribute verifier accepts the value independently of the schema; emitters produce it only for schema 11 and later, and schema 12 inherits it unchanged.
 
 ---
 

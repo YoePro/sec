@@ -1,0 +1,19 @@
+module consumer
+import board "drivers/gpio"
+hardware endpoint Output {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: board.PeripheralSpace,
+    resource: board.OutputState,
+    offset: 0,
+    size: 4,
+    alignment: 4,
+    read_widths: [],
+    write_widths: [32],
+    write_footprint: HardwareFootprintKind.Whole,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}

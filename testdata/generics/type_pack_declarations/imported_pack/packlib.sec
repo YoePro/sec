@@ -1,0 +1,6 @@
+module packlib
+
+enum WriteFormatError error { Failed }
+fn Printf[...Types](format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    return Ok(0)
+}

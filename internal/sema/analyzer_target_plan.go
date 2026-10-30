@@ -36,7 +36,22 @@ func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth Ana
 	analyzer.targetUintWidthBits = plan.PointerWidthBits
 	analyzer.scalarPlanWidthBits = plan.PointerWidthBits
 	analyzer.registerCFundamentalTypes(plan.CABI)
+	analyzer.addressDomains = append([]layout.AddressDomain(nil), plan.AddressDomains...)
 	return analyzer
+}
+
+// AddressDomain returns the selected plan's hardware address domain with that
+// identity; an analyzer built without a plan has none (MD-111 § 1(6)).
+func (a *Analyzer) AddressDomain(identity string) (layout.AddressDomain, bool) {
+	if a == nil {
+		return layout.AddressDomain{}, false
+	}
+	for _, domain := range a.addressDomains {
+		if domain.Identity == identity {
+			return domain, true
+		}
+	}
+	return layout.AddressDomain{}, false
 }
 
 // ScalarPlanWidthBits is the selected CompilationPlan's pointer width, or

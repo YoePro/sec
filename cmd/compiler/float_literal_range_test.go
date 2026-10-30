@@ -11,7 +11,7 @@ import (
 // target width, and keeps its registered diagnostic and source span in JSON.
 // Rules: rules/compiler/compiler_pipeline.md — §56(1);
 // rules/mlir/packages/sec-mlir-dialect_package20.md — §16;
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §3(7).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §3(7).
 func TestCheckFloatLiteralRangeBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		target string

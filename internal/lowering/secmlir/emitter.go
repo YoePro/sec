@@ -300,6 +300,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitRegisterConversion(operation, values)
 	case semantic.OpRegisterValueExtract, semantic.OpRegisterValueUpdate:
 		return e.emitRegisterValue(operation, values)
+	case semantic.OpIntBitExtract:
+		return e.emitBitExtract(operation, values)
 	case semantic.OpConstInt:
 		if err := e.emitResult(operation); err != nil {
 			return err

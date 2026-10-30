@@ -71,7 +71,7 @@ sec/core/rounding.sec
    exception is decimal division (MD-066 § 5), which rounds an inexact
    quotient once with nearest-even.
 4. **D1 (MD-066) — scale/canonicalization:** decided 2026-10-28
-   (`rules/corrections/md066-md067-md068-decimal-correction-20261028.md`).
+   (`rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md`).
    The public scale is `int32` with a fallible exact setter; operations
    select the exact scale closest to their preferred scale; division alone
    rounds (nearest-even, finest admissible scale); a provably zero decimal

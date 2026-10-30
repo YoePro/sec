@@ -546,6 +546,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifySubobjectState(module, fn); err != nil {
 		return err
 	}
+	if err := verifyTypePackFacts(module, fn); err != nil {
+		return err
+	}
 	return verifyReturnOrigins(module, fn)
 }
 
@@ -576,10 +579,18 @@ func verifyMatchRecords(types *TypeTable, fn *Function, blocks map[BlockID]*Bloc
 				}
 			}
 		}
+		if proof := match.ProvenActive; proof != nil && (!typeHasKind(types, match.SubjectType, TypeUnion) || proof.Binding == "" || proof.Basis != "construction" && proof.Basis != "state-test") {
+			return fmt.Errorf("invalid match %d reachable-state proof", match.ID)
+		}
 		previous := -1
 		for _, arm := range match.Arms {
 			if arm.SourceIndex <= previous || blocks[arm.PatternBlock] == nil || blocks[arm.BodyBlock] == nil || arm.PatternKind == "" {
 				return fmt.Errorf("invalid match %d arm provenance", match.ID)
+			}
+			// A proven-inactive arm is a legal variant arm outside the proven
+			// reachable subset (semantic_ir.md § 71(6)).
+			if arm.ProvenInactive && (match.ProvenActive == nil || arm.PatternKind != "union-variant" || arm.VariantIndex == match.ProvenActive.Variant) {
+				return fmt.Errorf("invalid match %d inactive arm %d", match.ID, arm.SourceIndex)
 			}
 			if arm.Guarded && blocks[arm.GuardBlock] == nil {
 				return fmt.Errorf("invalid match %d guard provenance", match.ID)

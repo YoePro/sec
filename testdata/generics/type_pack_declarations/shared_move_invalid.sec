@@ -1,0 +1,7 @@
+module main
+fn Observe[...Types](values: ...ref Types) void {}
+fn Use() int {
+    let value := 1
+    Observe(<-value)
+    return value
+}

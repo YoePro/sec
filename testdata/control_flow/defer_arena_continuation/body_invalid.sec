@@ -1,0 +1,11 @@
+module main
+
+fn InvalidDeferredBody() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer {
+        mem.Reset()
+        discard values[0]
+    }
+    return Ok(values[0])
+}

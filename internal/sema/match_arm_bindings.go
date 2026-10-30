@@ -101,6 +101,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		if guardType.Kind != InvalidType && guardType.Kind != BoolType {
 			a.addErrorAtToken(expressionToken(arm.Guard), "match guard must be bool, got %s", typeDisplayName(guardType))
 		}
+		a.rejectGuardConsumedBindings(info)
 	}
 
 	if arm.ReturnBody != nil {
@@ -137,4 +138,25 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		a.markMoveSource(arm.Body)
 	}
 	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
+}
+
+// rejectGuardConsumedBindings rejects a guard that consumes a payload or
+// field binding of its arm: the guard runs before the arm is selected, so a
+// false guard must leave the subject, its payload and residual ownership
+// intact for the following arms.
+// Rules: rules/control-flow/flowcontrol_match.md — Guards;
+// rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — § 17 (M029-12).
+func (a *Analyzer) rejectGuardConsumedBindings(info matchPatternInfo) {
+	names := []string{}
+	if info.BindingName != "" {
+		names = append(names, info.BindingName)
+	}
+	for _, field := range info.FieldBindings {
+		names = append(names, field.Name)
+	}
+	for _, name := range names {
+		if token, moved := a.moved[name]; moved {
+			a.addErrorAtToken(token, "match guard must not consume %s before the arm is selected; inspect or borrow it in the guard and move it in the arm body", name)
+		}
+	}
 }

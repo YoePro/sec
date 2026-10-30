@@ -112,6 +112,14 @@ type Parser struct {
 	peekToken lexer.Token
 
 	stopBeforeBrace bool
+
+	// lastGroupOpen and lastGroupClose delimit the most recently closed grouped
+
+	// expression, so a condition can tell one enclosing group from `(a) == f(b)`.
+
+	lastGroupOpen lexer.Token
+
+	lastGroupClose lexer.Token
 	// switchCaseStart identifies the outer case expression only; nested struct
 	// values keep ordinary literal diagnostics.
 	switchCaseStart lexer.Token
@@ -462,6 +470,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		}
 		if p.curToken.Lexeme == contextualTest && p.recoveryContext == RecoveryContextTopLevel {
 			return p.parseTestDeclaration()
+		}
+		if p.curToken.Lexeme == contextualHardware && p.recoveryContext == RecoveryContextTopLevel && isHardwareCategory(p.peekToken) {
+			return p.parseHardwareDeclaration()
 		}
 		if p.curToken.Lexeme == contextualTest && p.peekToken.Type == lexer.STRING {
 			return p.parseNestedTestDeclaration()
@@ -1249,6 +1260,16 @@ func (p *Parser) parseMatchStatement() ast.Statement {
 // Rules:
 //   - rules/foundations/grammar.md — IfStatement
 //   - rules/compiler/parser_recovery.md — "If recovery", "Missing condition"
+//
+// currentTokenClosesGroup reports that the current token is the `)` of the
+// grouped expression opened at open. A condition that merely begins with `(`
+// and ends with `)` is not one group: `(a) == f(b)` ends in a call's delimiter.
+func (p *Parser) currentTokenClosesGroup(open lexer.Token) bool {
+	return p.curToken.Type == lexer.RPAREN &&
+		p.lastGroupOpen.ByteStart == open.ByteStart &&
+		p.lastGroupClose.ByteStart == p.curToken.ByteStart
+}
+
 func (p *Parser) parseIfStatement() ast.Statement {
 	stmt := &ast.IfStatement{Token: p.curToken}
 
@@ -1281,7 +1302,7 @@ func (p *Parser) parseIfStatement() ast.Statement {
 			stmt.Condition = binding.Subject
 			stmt.OptionBinding = &ast.OptionIfBinding{Token: binding.SomeToken, Subject: binding.Subject, Binding: binding.Binding}
 		}
-		if parenthesized && p.curToken.Type == lexer.RPAREN {
+		if parenthesized && p.currentTokenClosesGroup(stmt.ConditionOpen) {
 			stmt.ConditionClose = p.curToken
 		}
 
@@ -1695,7 +1716,7 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 		p.reportConditionPatternBinding(binding.SomeToken, "while")
 		stmt.Condition = binding.Subject
 	}
-	if parenthesized && p.curToken.Type == lexer.RPAREN {
+	if parenthesized && p.currentTokenClosesGroup(stmt.ConditionOpen) {
 		stmt.ConditionClose = p.curToken
 	}
 
@@ -1840,7 +1861,7 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 		if stmt.Subject == nil {
 			return nil
 		}
-		if parenthesized && p.curToken.Type == lexer.RPAREN {
+		if parenthesized && p.currentTokenClosesGroup(stmt.SubjectOpen) {
 			stmt.SubjectClose = p.curToken
 		}
 	}
@@ -2692,7 +2713,7 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	if p.isAttachedGenericListStart(stmt.Name) {
 		p.nextToken()
-		stmt.GenericParameters = p.parseGenericParameters()
+		stmt.GenericParameters = p.parseGenericParameters(false)
 		if stmt.GenericParameters == nil {
 			return nil
 		}
@@ -2926,7 +2947,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 
 	if p.isAttachedGenericListStart(stmt.Name) {
 		p.nextToken()
-		stmt.GenericParameters = p.parseGenericParameters()
+		stmt.GenericParameters = p.parseGenericParameters(false)
 		if stmt.GenericParameters == nil {
 			return nil
 		}
@@ -3345,7 +3366,7 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 	enum.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 	if p.isAttachedGenericListStart(enum.Name) {
 		p.nextToken()
-		enum.GenericParameters = p.parseGenericParameters()
+		enum.GenericParameters = p.parseGenericParameters(false)
 		if enum.GenericParameters == nil {
 			return nil
 		}
@@ -3466,6 +3487,7 @@ func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
 
 // parseEnumBody parses enum members and retains malformed member positions as
 // invalid EnumValue nodes while recovering to later members or the body close.
+// Real body/member endpoints are retained for exact source-tooling ranges.
 //
 // Rules:
 //   - rules/declarations/enums.md — "Enum members"
@@ -3475,6 +3497,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
+	enum.BodyOpen = p.curToken
 
 	seenValue := false
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
@@ -3536,6 +3559,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 				return nil
 			}
 		}
+		value.EndToken = p.curToken
 		enum.Values = append(enum.Values, value)
 		p.attachDocumentation(documentation, value)
 		p.skipPeekOrdinaryComments()
@@ -3566,6 +3590,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	if !p.expectPeek(lexer.RBRACE) {
 		return enum
 	}
+	enum.BodyClose = p.curToken
 
 	return enum
 }
@@ -3638,7 +3663,7 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 
 	if p.isAttachedGenericListStart(fn.Name) {
 		p.nextToken()
-		fn.GenericParameters = p.parseGenericParameters()
+		fn.GenericParameters = p.parseGenericParameters(true)
 		if fn.GenericParameters == nil {
 			return nil
 		}
@@ -3725,7 +3750,7 @@ func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclara
 
 	if p.isAttachedGenericListStart(fn.Name) {
 		p.nextToken()
-		fn.GenericParameters = p.parseGenericParameters()
+		fn.GenericParameters = p.parseGenericParameters(allowVariadic)
 		if fn.GenericParameters == nil {
 			return nil
 		}
@@ -3815,89 +3840,6 @@ func (p *Parser) isAttachedGenericListStart(name *ast.Identifier) bool {
 	}
 	return p.peekToken.Line == name.Token.Line &&
 		p.peekToken.Column == name.Token.Column+len([]rune(name.Value))
-}
-
-// parseGenericParameters parses declaration-owned generic parameters and
-// preserves completed and later comma-separated parameters around a malformed
-// entry instead of discarding the committed declaration.
-//
-// Rules:
-//   - rules/declarations/generics.md — "Generic parameter syntax"
-//   - rules/compiler/parser_recovery.md — "Generic parameter recovery"
-func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
-	params := []*ast.GenericParameter{}
-
-	if p.peekToken.Type == lexer.RBRACKET {
-		p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		p.nextToken()
-		return nil
-	}
-
-	for {
-		if p.peekToken.Type != lexer.IDENT {
-			p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
-			before := p.curToken
-			p.skipGenericParameterList()
-			// A separator followed by EOF or a foreign closer leaves nothing to
-			// skip; retrying from the same comma would make no progress.
-			// rules/compiler/parser_recovery.md — "Recovery invariants": "Progress".
-			if p.curToken.Type == lexer.COMMA && p.curToken != before {
-				if p.peekToken.Type == lexer.RBRACKET {
-					p.nextToken()
-					return params
-				}
-				continue
-			}
-			return params
-		}
-		p.nextToken()
-		param := &ast.GenericParameter{
-			Token: p.curToken,
-			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
-		}
-
-		if p.peekToken.Type == lexer.COLON {
-			p.nextToken()
-			param.Constraints = p.parseGenericConstraintList(param)
-			if len(param.Constraints) == 0 || param.Constraints[len(param.Constraints)-1].Invalid {
-				params = append(params, param)
-				p.skipGenericParameterList()
-				if p.curToken.Type == lexer.COMMA {
-					if p.peekToken.Type == lexer.RBRACKET {
-						p.nextToken()
-						return params
-					}
-					continue
-				}
-				return params
-			}
-		}
-
-		params = append(params, param)
-
-		switch p.peekToken.Type {
-		case lexer.COMMA:
-			p.nextToken()
-			if p.peekToken.Type == lexer.RBRACKET {
-				p.nextToken()
-				return params
-			}
-		case lexer.RBRACKET:
-			p.nextToken()
-			return params
-		default:
-			p.addError("expected ',' or ']' after generic parameter %s at %d:%d", param.Name.Value, p.peekToken.Line, p.peekToken.Column)
-			p.skipGenericParameterList()
-			if p.curToken.Type == lexer.COMMA {
-				if p.peekToken.Type == lexer.RBRACKET {
-					p.nextToken()
-					return params
-				}
-				continue
-			}
-			return params
-		}
-	}
 }
 
 // skipGenericParameterList advances to the next parameter separator, list
@@ -4927,6 +4869,10 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 		}
 
+		if p.curToken.Type == lexer.MUT && p.peekToken.Type == lexer.FN {
+			p.reportMutFnInImpl()
+			p.nextToken()
+		}
 		switch p.curToken.Type {
 		case lexer.TYPE:
 			parsed := p.parseTypeDeclStatement()
@@ -5086,6 +5032,22 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+// reportMutFnInImpl rejects `mut fn` on an impl method at the current `mut`.
+// Only an interface, which has no body to derive from, states receiver
+// capability; a concrete method derives it. Parsing continues with the method
+// so its body stays checked and no missing-member error follows.
+// Rules: rules/declarations/impl.md — "Receiver"; rules/declarations/functions.md
+// — interface receiver capability.
+func (p *Parser) reportMutFnInImpl() {
+	token := p.curToken
+	before := len(p.diagnostics)
+	p.addDiagnostic(compilerdiagnostics.ParserMutFnInImpl, token, nil, &token,
+		"mut fn is only valid in an interface declaration, not on an impl method at %d:%d", token.Line, token.Column)
+	if len(p.diagnostics) > before {
+		p.diagnostics[len(p.diagnostics)-1].Help = "Write `fn`: the compiler derives a concrete method's receiver mutation from its body."
+	}
 }
 
 // appendImplMember retains one parsed impl member and consumes any immediately

@@ -9,7 +9,7 @@ import "testing"
 //
 // Rules:
 //   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division"
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 3–7
 func TestDecimalOperatorPlans(t *testing.T) {
 	analyzer, errs := analyzeSourceWithAnalyzerRaw(t, `
 module main

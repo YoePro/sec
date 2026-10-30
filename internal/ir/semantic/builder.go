@@ -107,6 +107,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 			return nil, err
 		}
 	}
+	if err := b.buildTypePackSpecializations(); err != nil {
+		return nil, err
+	}
 	if err := b.bindCustomFrees(); err != nil {
 		return nil, err
 	}
@@ -129,6 +132,7 @@ func firstCustomFreeDeclaration(program *ast.Program) (*ast.FreeDeclaration, boo
 }
 
 type builder struct {
+	typePacks      typePackState
 	module         *Module
 	analyzer       *sema.Analyzer
 	maxPackage     uint8
@@ -163,9 +167,14 @@ type functionBuilder struct {
 	// that location to the try's Sema exit.
 	propagatingTry     lexer.Token
 	propagationReturns map[sourceKey]sourceKey
+	// typePack is the specialization being built, nil for any other function.
+	typePack *typePackSpecialization
 	// variantGuard is the union.is-variant predicate of the match arm being
 	// lowered, consumed by a borrowed payload binding (P15-45).
 	variantGuard ValueID
+	// errorArm is the unwrapped error value and selected variant of the
+	// `Err(E.Variant...)` match arm being lowered (MD-008, MD-029).
+	errorArm matchErrorArm
 	// temporarySource is the fresh argument or receiver whose owned value is
 	// being produced for a call-lifetime borrow (MD-076); its own borrow plan
 	// does not apply while the value itself is built.
@@ -223,7 +232,22 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	return b.buildResolvedFunction(decl, resolved)
 }
 
+// buildResolvedFunction consumes resolved signatures and bodies; heterogeneous
+// pack callables require their own verified expansion before executable IR.
+// Rules: rules/compiler/semantic_ir.md §§27A,60,75; rules/declarations/functions.md §38A(9).
 func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved sema.Function) error {
+	if resolved.GenericTypePack != "" {
+		// A template has no executable form; each selected call demands one
+		// concrete specialization (type_pack_specialization.go).
+		b.registerTypePackTemplate(decl, resolved)
+		return nil
+	}
+	return b.buildConcreteFunction(decl, resolved, nil)
+}
+
+// buildConcreteFunction builds one function with concrete signature types: an
+// ordinary function, or with spec one type-pack specialization.
+func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved sema.Function, spec *typePackSpecialization) error {
 	returnType, err := b.internSignatureType(resolved.ReturnType)
 	if err != nil {
 		token := decl.Token
@@ -234,8 +258,11 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
 	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
+	if spec != nil {
+		fn.ID, fn.TypePack = spec.id, spec.facts
+	}
 	b.module.Functions = append(b.module.Functions, fn)
-	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1, resolved: &resolved}
+	fb := &functionBuilder{owner: b, typePack: spec, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1, resolved: &resolved}
 	if !resolved.Static && resolved.ImplTarget != "" {
 		if err := fb.addReceiverParameter(resolved, decl); err != nil {
 			return err
@@ -259,7 +286,9 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 		if referenceFacts != nil {
 			fb.recordReference(value.ID, referenceFacts)
 		}
-		if i < len(decl.Parameters) && decl.Parameters[i].Name != nil {
+		// An expanded pack position has no source binding of its own: the pack
+		// is compile-time metadata, never one value (functions.md § 38A(9)).
+		if i < len(decl.Parameters) && decl.Parameters[i].Name != nil && (spec == nil || i < spec.facts.FixedCount) {
 			if fact, ok := b.analyzer.ResolvedBindingOf(decl.Parameters[i].Name); ok {
 				fb.bindings[fact.ID] = binding{value: value.ID, typ: typeID}
 			}
@@ -1594,6 +1623,25 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	if slice, ok := expr.(*ast.SliceExpression); ok && fb.owner.maxPackage >= 14 {
 		return builtValue{}, fb.unsupported("slice expression", slice.Token)
 	}
+	// Imported generic calls may have a resolved target without a standalone
+	// expression-type fact. Refuse the known pack boundary before requiring
+	// executable expression facts (rules/compiler/semantic_ir.md §27A).
+	if call, ok := expr.(*ast.CallExpression); ok {
+		if target, found := fb.owner.analyzer.ResolvedCallTarget(call); found && target.Function.GenericTypePack != "" {
+			if target.Function.Module != fb.owner.module.Identity {
+				return builtValue{}, fb.unsupported("heterogeneous type-pack callable expansion for "+target.Function.Name, call.Token)
+			}
+			if _, err := fb.owner.demandTypePackSpecialization(call, target.Function); err != nil {
+				return builtValue{}, err
+			}
+			return fb.buildCall(call)
+		}
+	}
+	if member, ok := expr.(*ast.MemberExpression); ok {
+		if value, lowered, err := fb.buildTypePackLength(member); lowered || err != nil {
+			return value, err
+		}
+	}
 	resolved, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {
 		// Generic union constructors may be resolved from the expected type or
@@ -2244,10 +2292,17 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if arm.PatternKind == sema.MatchPatternResultErrNarrowed {
 			return builtValue{}, fb.unsupported("open error narrowing match arm", expr.Token)
 		}
-		// MD-008: a concrete error-variant arm needs an Err payload variant
-		// test that Semantic IR match lowering does not represent yet.
+		// MD-029: borrowing an error payload needs a Place through the Result
+		// Err payload, which Semantic IR does not represent yet.
 		if arm.PatternKind == sema.MatchPatternResultErrVariant {
-			return builtValue{}, fb.unsupported("concrete error variant match arm", expr.Token)
+			if arm.BindingAction == sema.MatchBindingBorrowShared || arm.BindingAction == sema.MatchBindingBorrowMutable {
+				return builtValue{}, fb.unsupported("borrowed concrete error variant payload", expr.Token)
+			}
+			for _, field := range arm.FieldBindings {
+				if field.Action != sema.MatchBindingCopyTrivial {
+					return builtValue{}, fb.unsupported("ownership-sensitive concrete error variant field binding "+string(field.Action), expr.Token)
+				}
+			}
 		}
 	}
 	switch plan.SubjectKind {
@@ -2294,6 +2349,13 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		ID: matchID, Subject: subject.id, SubjectType: subject.typ, ResultType: recordResultType,
 		ValueContext: valueContext, Exhaustive: true, MergeBlock: blockIDOrZero(merge, merge != nil), Location: location(expr.Token),
 	}
+	if proof := plan.ProvenActive; proof != nil {
+		for index, variant := range plan.SubjectType.UnionVariants {
+			if variant.Name == proof.Variant {
+				record.ProvenActive = &MatchVariantProof{Variant: UnionVariantIndex(index), Binding: proof.Binding, Basis: string(proof.Basis), Location: location(proof.Source)}
+			}
+		}
+	}
 
 	for planIndex, armPlan := range plan.Arms {
 		if armPlan.SourceIndex < 0 || armPlan.SourceIndex >= len(expr.Arms) {
@@ -2303,6 +2365,11 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		patternBlock := fb.current
 		if patternBlock == nil {
 			return builtValue{}, fmt.Errorf("match pattern chain terminated before arm %d", armPlan.SourceIndex)
+		}
+		fb.errorArm = matchErrorArm{}
+		if armPlan.PatternKind == sema.MatchPatternResultErrVariant {
+			// The variant test block precedes the arm body in the layout.
+			fb.errorArm.testBlock = fb.newBlock()
 		}
 		bodyBlock := fb.newBlock()
 		matchedBlock := bodyBlock
@@ -2337,7 +2404,11 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		var fieldBorrows []builtValue
 		if len(armPlan.FieldBindings) > 0 {
 			restorePayload := restore
-			restoreFields, borrows, err := fb.bindMatchFields(expr.Subject, subject, subjectPlace, armPlan, matchID, arm.Token)
+			fieldSubject := subject
+			if armPlan.PatternKind == sema.MatchPatternResultErrVariant {
+				fieldSubject = fb.errorArm.value
+			}
+			restoreFields, borrows, err := fb.bindMatchFields(expr.Subject, fieldSubject, subjectPlace, armPlan, matchID, arm.Token)
 			if err != nil {
 				restorePayload()
 				return builtValue{}, err
@@ -2395,8 +2466,9 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		record.Arms = append(record.Arms, MatchArmRecord{
 			SourceIndex: armPlan.SourceIndex, PatternKind: string(armPlan.PatternKind), PatternBlock: patternBlock.ID,
 			GuardBlock: blockIDOrZero(matchedBlock, armPlan.Guarded), BodyBlock: bodyBlock.ID,
-			VariantIndex: UnionVariantIndex(armPlan.UnionVariantIndex), EnumValue: cloneBigInt(armPlan.EnumNumericValue),
+			VariantIndex: fb.matchArmVariantIndex(armPlan), EnumValue: cloneBigInt(armPlan.EnumNumericValue),
 			Guarded: armPlan.Guarded, Flow: string(armPlan.Flow), Location: location(arm.Token),
+			ProvenInactive: armPlan.ProvenInactive,
 		})
 		if nextBlock == nil {
 			fb.current = nil
@@ -2458,6 +2530,9 @@ func (fb *functionBuilder) emitMatchPattern(subject builtValue, plan sema.Resolv
 	}
 	if nextBlock == nil {
 		return fmt.Errorf("non-catch-all match arm %d has no false successor", arm.SourceIndex)
+	}
+	if arm.PatternKind == sema.MatchPatternResultErrVariant {
+		return fb.emitErrorVariantPattern(subject, plan, arm, matchedBlock, nextBlock, boolType, meta, token)
 	}
 
 	var condition builtValue
@@ -2533,39 +2608,19 @@ func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.Reso
 		MatchStage: "pattern", MatchPatternKind: string(arm.PatternKind), Location: location(token),
 	}
 	switch arm.PatternKind {
-	case sema.MatchPatternUnionVariant, sema.MatchPatternOptionSome:
-		definition, ok := fb.owner.unionDefinition(subject.typ)
-		if !ok || int(arm.UnionVariantIndex) >= len(definition.Variants) {
-			return builtValue{}, false, fb.unsupported("unresolved union match payload", token)
-		}
-		variant := definition.Variants[arm.UnionVariantIndex]
-		if variant.Kind == UnionVariantFields && variant.SyntheticPayloadStruct != 0 {
-			// Package 13 sections 66-68 materialize a whole struct-like payload
-			// only on the proven variant path, using guarded P11 projections.
-			construct := Operation{Kind: OpStructConstruct, MatchID: matchID, MatchArmIndex: arm.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(arm.PatternKind), Location: location(token)}
-			for _, field := range variant.PayloadFields {
-				projection := meta
-				projection.Kind = OpUnionUnwrapField
-				projection.UnionVariant = UnionVariantIndex(arm.UnionVariantIndex)
-				projection.UnionField = field.Name
-				projection.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
-				value := fb.result(projection, field.Type)
-				construct.Operands = append(construct.Operands, value.id)
-				construct.StructOrigins = append(construct.StructOrigins, StructOriginExplicit)
-				construct.StructActions = append(construct.StructActions, StructActionCopyTrivial)
+	case sema.MatchPatternUnionVariant, sema.MatchPatternOptionSome, sema.MatchPatternResultErrVariant:
+		container, variantIndex := subject, UnionVariantIndex(arm.UnionVariantIndex)
+		if arm.PatternKind == sema.MatchPatternResultErrVariant {
+			if !fb.errorArm.union {
+				return builtValue{}, false, fb.unsupported("concrete error variant payload without a union error", token)
 			}
-			return fb.result(construct, variant.SyntheticPayloadStruct), true, nil
+			container, variantIndex = fb.errorArm.value, fb.errorArm.variant
 		}
-		bindingType, err := fb.owner.internType(arm.BindingType)
+		value, err := fb.unionVariantPayload(container, variantIndex, arm.BindingType, meta, token)
 		if err != nil {
 			return builtValue{}, false, err
 		}
-		if variant.Kind != UnionVariantSingle || variant.Payload != bindingType {
-			return builtValue{}, false, fb.unsupported("mismatched union match payload", token)
-		}
-		meta.Kind = OpUnionUnwrapPayload
-		meta.UnionVariant = UnionVariantIndex(arm.UnionVariantIndex)
-		meta.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
+		return value, true, nil
 	case sema.MatchPatternResultOk, sema.MatchPatternResultErr:
 		bindingType, err := fb.owner.internType(arm.BindingType)
 		if err != nil {
@@ -2628,6 +2683,11 @@ func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMat
 		return nil, fmt.Errorf("match binding %s has no projected payload", plan.BindingName)
 	}
 	identifier := matchArmBindingIdentifier(arm.Pattern.Expression())
+	// `Err(E.Variant(binding))` keeps its binding in the error payload pattern
+	// (MD-029).
+	if payload := arm.Pattern.ErrorPayload; payload != nil && payload.Binding != nil {
+		identifier = payload.Binding.Name
+	}
 	if identifier == nil || identifier.Value == "_" {
 		return nil, fmt.Errorf("match binding %s has no source identifier", plan.BindingName)
 	}
@@ -2893,11 +2953,6 @@ func lowerableTryPlan(plan sema.ResolvedTryPlan) bool {
 		if handler.OpenErrorNarrowing {
 			return false
 		}
-		// MD-029 error-variant payload bindings need variant payload
-		// extraction, which Semantic IR does not lower yet.
-		if handler.ErrorPayload || handler.FieldBindings {
-			return false
-		}
 	}
 	return true
 }
@@ -2961,12 +3016,17 @@ func (fb *functionBuilder) buildTryResidualPropagation(expr *ast.TryExpression, 
 	return nil
 }
 
-func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, merge *Block, exhaustive bool, residual bool, guardFalse *Block) error {
+func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, selected matchErrorArm, merge *Block, exhaustive bool, residual bool, guardFalse *Block) error {
 	if plan.SourceIndex < 0 || plan.SourceIndex >= len(expr.Handlers) {
 		return fb.unsupported("invalid resolved try handler source index", expr.Token)
 	}
 	handler := expr.Handlers[plan.SourceIndex]
 	kind := semanticTryHandlerKind(plan.PatternKind)
+	restoreFields, err := fb.bindTryHandlerPayload(handler, plan, &input, selected)
+	if err != nil {
+		return err
+	}
+	defer restoreFields()
 	previous, hadBinding := binding{}, false
 	var bindingID sema.BindingID
 	if identifier := tryHandlerPatternIdentifier(handler); identifier != nil && identifier.Value != "_" {
@@ -3109,6 +3169,14 @@ func semanticTryHandlerKind(kind sema.ResolvedTryHandlerPatternKind) TryHandlerK
 //   - rules/compiler/semantic_ir.md — source binding identity
 func tryHandlerPatternIdentifier(handler *ast.TryHandler) *ast.Identifier {
 	if handler == nil {
+		return nil
+	}
+	// A structured MD-029 pattern binds only through its payload pattern,
+	// `Err(E.Variant(binding))`; a contextual `.Variant` is no binding.
+	if pattern := handler.ErrPattern; pattern != nil {
+		if pattern.ErrorPayload != nil && pattern.ErrorPayload.Binding != nil {
+			return pattern.ErrorPayload.Binding.Name
+		}
 		return nil
 	}
 	switch pattern := handler.Pattern.(type) {
@@ -3473,6 +3541,15 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if resolved.Kind == sema.ResolvedInterfaceMethodCall {
 		return builtValue{}, fb.unsupported("interface method dispatch", call.Token)
 	}
+	callee := functionID(resolved.Function, fb.owner.module.Types)
+	parameters := resolved.Function.Parameters
+	if resolved.Function.GenericTypePack != "" {
+		spec, err := fb.owner.demandTypePackSpecialization(call, resolved.Function)
+		if err != nil {
+			return builtValue{}, err
+		}
+		callee, parameters = spec.id, spec.function.Parameters
+	}
 	instanceMethod := !resolved.Function.Static && resolved.Function.ImplTarget != "" && resolved.Kind != sema.ResolvedInterfaceMethodCall
 	if instanceMethod && !fb.owner.instanceMethodLowerable(resolved.Function) {
 		return builtValue{}, fb.unsupported("instance method call", call.Token)
@@ -3497,8 +3574,8 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	pendingCancels := len(fb.pendingArgumentCancels)
 	for index, arg := range call.Arguments {
 		expected := TypeID(0)
-		if index < len(resolved.Function.Parameters) {
-			parameter := resolved.Function.Parameters[index]
+		if index < len(parameters) {
+			parameter := parameters[index]
 			if fb.owner.maxPackage >= sliceLoweringPackage && sourceSliceType(parameter.Type) {
 				sliceType, mutable, err := fb.owner.internSourceSliceType(parameter.Type)
 				if err != nil {
@@ -3561,7 +3638,7 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		fb.emit(cancel)
 	}
 	fb.pendingArgumentCancels = fb.pendingArgumentCancels[:pendingCancels]
-	op := Operation{Kind: kind, Callee: functionID(resolved.Function, fb.owner.module.Types), Operands: args, ArgumentActions: actions, Location: location(call.Token)}
+	op := Operation{Kind: kind, Callee: callee, Operands: args, ArgumentActions: actions, Location: location(call.Token)}
 	if call.HasUnsafePrefix() {
 		marker := location(call.Unsafe)
 		op.UnsafeAuthorization = &marker

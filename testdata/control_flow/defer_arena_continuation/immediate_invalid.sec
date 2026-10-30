@@ -1,0 +1,21 @@
+module main
+
+fn ResetNow() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    mem.Reset()
+    return Ok(values[0])
+}
+fn ReleaseNow() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    mem.Release()
+    return Ok(values[0])
+}
+fn DeferredDoesNotHideImmediate() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer { mem.Reset() }
+    mem.Reset()
+    return Ok(values[0])
+}

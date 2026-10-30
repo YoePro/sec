@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-29"
+    revised: "2026-10-30"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -30,6 +30,8 @@ integrations:
       - rules/compiler/semantic_ir.md
       - rules/compiler/generics_lowering.md
       - rules/compiler/monomorphization.md
+      - rules/tooling/diagnostics.md
+      - rules/tooling/formatter.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -44,6 +46,13 @@ integrations:
       - cmd/compiler/main.go
       - cmd/lsp/main.go
       - internal/sema/generic_substitution.go
+      - internal/parser/generic_parameters.go
+      - internal/sema/generic_type_pack_declarations.go
+      - internal/sema/type_navigation.go
+      - internal/sema/compiler_known_members.go
+      - internal/diagnostics/diagnostics.go
+      - cmd/lsp/type_pack_hover.go
+      - cmd/lsp/hover.go
     tests:
       - internal/parser/parser_test.go
       - internal/parser/generic_parameter_recovery_test.go
@@ -68,7 +77,23 @@ integrations:
       - internal/sema/generic_function_members_test.go
       - testdata/sema/generic_function_members/concrete.sec
       - testdata/sema/generic_function_members/copy_invalid.sec
+      - internal/parser/type_pack_declarations_test.go
+      - internal/cst/type_pack_declarations_test.go
+      - internal/sema/generic_type_pack_declarations_test.go
+      - internal/formatter/type_pack_declarations_test.go
+      - cmd/compiler/type_pack_declarations_test.go
+      - cmd/lsp/type_pack_declarations_test.go
+      - testdata/generics/type_pack_declarations/declarations.sec
+      - testdata/generics/type_pack_declarations/empty_call.sec
+      - testdata/generics/type_pack_declarations/formatting.expected.sec
+      - testdata/generics/type_pack_declarations/formatting.sec
+      - testdata/generics/type_pack_declarations/homogeneous_borrow_invalid.sec
+      - testdata/generics/type_pack_declarations/multiple_invalid.sec
+      - testdata/generics/type_pack_declarations/nonfinal_invalid.sec
+      - testdata/generics/type_pack_declarations/roles.sec
+      - testdata/generics/type_pack_declarations/type_owner_invalid.sec
     implemented:
+      - "MD-117 declaration/tooling milestone completed 2026-10-30: the parser and AST retain a trailing [...Types] type-pack parameter with its real spread/name tokens, distinct from an ordinary T; one-pack/final-position/callable-owner diagnostics retain later declarations. Existing SPREAD tokens are reused, ordinary array and spread grammar are unchanged, and empty call argument lists stay syntactically valid. Compiler declaration facts use GenericTypePackType and retain the pack name plus pointwise owned/shared/mutable signature modes, without representing a runtime container or granting runtime SizeOf/ToString members. Formatter/CST round trips preserve the declaration kind and ...Types/...ref Types/...ref mut Types spellings; LSP hovers show exact free-function/method declarations and type-sequence parameter facts. S1177 compiler.type-pack-expansion-unavailable reports unsupported parameter modes, demanded pack-body expansion and call preparation and prevents emission instead of silently using ordinary homogeneous generic semantics. Ordinary homogeneous ref variadic restrictions remain intact. The generic-parameter parser is extracted into a focused sibling file. The subsequent unused shared-pack frontend milestone under frontend.functions-v2 supports ordered direct-call inference and pointwise borrow checks; its detached facts are available to compiler clients, but LSP call-site presentation remains open. Pack body expansion/transfer/iteration, complete specialization and lowering remain with their existing MD-117 owners; MD-117 is not complete."
       - generic parameter parsing on type, function, and interface declarations
       - generic type-argument parsing, nested generic references, and attached explicit generic calls
       - generic declaration arity registration, parameter scopes, and duplicate parameter diagnostics
@@ -106,8 +131,12 @@ integrations:
       - "forwarded constraints and overload fallback (2026-10-10): a template parameter passed as a generic argument satisfies a constraint that its own declaration guarantees (Concat[I: Iterator[string]] calling Join[I: Iterator[string]]), and a call selected through its expected type no longer reports a generic candidate's constraint failure while non-generic overloads remain for the main call path; both surfaced in sec/stdlib/str/join.sec"
       - generic primary and extended impl scopes retain the owning type declaration’s ordered interface constraints and recheck every conjunct when those parameters are reused as generic type arguments; concrete substitutions still require valid explicit conformance, and parameterized interface arguments remain distinct
       - generic function parameter and result substitution recursively updates resolved struct field types alongside nested type arguments; inferred and explicit Box[Item] results expose Item fields rather than stale T, and detached field slices keep concrete specializations independent while @noCopy and unconstrained template copy restrictions remain enforced
+      - "MD-117 call hover increment (2026-10-30): LSP callee hover projects ResolvedTypePackCallOf ordered concrete types and pointwise receiving reference types, including empty packs and shared reborrows, alongside the ordinary function information. No LSP inference or overload model is added. Declaration hover no longer claims that all inference is unavailable. TestTypePackCallHover covers empty, heterogeneous, reordered and reference arguments using the existing shared_unused.sec fixture. Signature help and pack-body/executable expansion remain unchanged."
+      - "S1177 editor presentation (2026-10-30, user decision; diagnostics.md §24(4h)): recognized type-pack implementation limitations appear as Information in LSP instead of a source-code Error. CLI checking/emission retains the mandatory error and compilation stop. Other mandatory diagnostics are unchanged. TestTypePackDeclarationTooling and TestTypePackCapabilityPresentationOnly verify the editor severity, stable identity/help and unchanged ownership Error; TestTypePackDeclarationCLI retains CLI exit and no-artifact checks. No pack expansion is claimed."
+      - "MD-117 resolved-call signature help (2026-10-30): LSP projects ResolvedTypePackCallOf into an expanded concrete receiving signature and ordered pack documentation, with per-source-argument active-parameter selection. Empty packs omit the trailing parameter; scalar generic prefixes and shared/reborrow modes retain concrete types. Ordinary fixed overloads are not replaced by pack candidates. Presentation shares the concrete reference renderer with hover and performs no inference. Unresolved/incomplete pack calls, other modes and executable expansion remain outside this increment (TestTypePackSignatureHelp, TestTypePackSignatureHelpDoesNotReplaceFixedOverload)."
     remaining:
-      - "MD-117 declaration/tooling: parse and retain one trailing generic type-pack parameter [...Types] as a compile-time ordered type sequence (including empty), distinct from an ordinary T and from runtime containers; add parser/CST, formatter and LSP declaration/signature coverage without inventing explicit pack literals or changing ordinary array/spread grammar (correction §§2,10; generics.md §16A). Feature-specific parser status is owned here, not by the cross-cutting grammar-recovery integrations."
+      - "MD-117 call-site tooling (correction § 10(3)): Complete call-site tooling beyond the supported shared-pack subset, including unresolved/incomplete calls and future pack modes. Hover and signature help already project selected ordered types and concrete pointwise receiving signatures for successfully resolved shared-pack calls, the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently, and the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2))."
+      - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented and the correction archived only when every owner item passes (§ 14(7)). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
       - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
@@ -126,10 +155,16 @@ integrations:
       - add the complete revision-2.0 parser, Sema, formatter, LSP, interface, ownership, recursion, Semantic IR, ABI, and backend regression matrix
     excluded:
       - runtime generic dispatch, type erasure, implicit boxing, and runtime reflection-based specialization
-      - higher-kinded types, type-parameter packs, variadic type parameters, generic argument holes, and default generic arguments
+      - higher-kinded types, generic argument holes, and default generic arguments; MD-117 trailing callable type packs are approved and tracked above
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
       - const or value generics without a separate normative rulebook and syntax
     verification:
+      - command: go test ./cmd/lsp -run 'TestTypePack|Test.*Signature|TestRawPointer' -count=1
+        result: "Passed 2026-10-30: pack hover/presentation/signature tests and existing signature/raw-pointer tests, 31.167s; final focused TestTypePack run including fixed-overload isolation passed, 0.048s. No pack expansion or execution claim."
+      - command: go test ./cmd/lsp -run 'TestTypePack' -count=1
+        result: "Passed 2026-10-30: declaration and call hover tests, 0.024s. Scope is presentation of already-resolved shared-pack calls; no source language or lowering expansion. Remaining 18 to 18."
+      - command: go test ./internal/parser -count=1 -timeout=180s; go test ./internal/sema ./internal/diagnostics ./internal/cst ./internal/formatter ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./internal/sema ./cmd/lsp ./cmd/compiler -run 'TypePack|GenericParameter|GenericConstraint|GenericImpl|DiagnosticCatalog' -count=1 -timeout=150s; go vet ./internal/parser ./internal/ast ./internal/sema ./internal/diagnostics ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-10-30: complete parser 113.106s, Sema 21.233s, diagnostics 0.004s, CST 0.010s, formatter 1.070s, Semantic IR/nominal 5.092s/0.167s; final focused race Sema/LSP/CLI 1.401s/8.047s/7.502s and vet passed. Final source-backed parser/CST smoke tests passed after moving all Sec cases into testdata. Parser accepts the approved declarations; check/emit-ir retain exactly five registered compiler-capability boundaries and emit no IR, preventing a false homogeneous-pack implementation. Method declaration signatures, owned/shared/mutable modes, empty call syntax, nonfinal/multiple/non-callable rejections and unchanged homogeneous borrow restrictions are covered. One declaration milestone closed: remaining 19 to 18; observed global Remaining 2380 to 2379. Concrete MD-117 expansion and execution remain unavailable and are not claimed."
       - command: go vet ./internal/sema ./cmd/lsp
         result: passed on 2026-10-29
       - command: go test ./cmd/lsp -run 'TestGenericTypeDefinitionNavigation|TestGenericConstraintNavigationDoesNotGuessSameSpelledType|TestHoverPresentsOrderedMultipleGenericConstraints' -count=1 -timeout=120s
@@ -306,7 +341,7 @@ integrations:
       - unresolved generic parameters are rejected by represented concrete lowering paths where current checks exist
       - unresolved generic extern declarations are rejected before callable registration and every semantic CLI/backend entry; diagnostics retain Invalid proof state, declaration links and all unresolved parameters, while generic Sec wrappers may call concrete extern providers
     remaining:
-      - "MD-117 specialization: make the ordered concrete pack sequence, nominal/reference/mode identities and empty arity part of canonical specialization/cache identity; demand-check concrete element operations and preserve template plus instantiation/position diagnostics, cross-module and target compatibility (correction §§4(6),9,10; monomorphization.md §9.1)."
+      - "MD-117 specialization (function identity and empty arity done for shared packs in Semantic IR, lowering.yaml 2026-10-30): make the ordered concrete pack sequence, nominal/reference/mode identities and empty arity part of canonical specialization/cache identity; demand-check concrete element operations and preserve template plus instantiation/position diagnostics, cross-module and target compatibility (correction §§4(6),9,10; monomorphization.md §9.1)."
       - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
       - separate generic resolution and inference ownership from canonical specialization application
       - implement one canonical demand/provenance graph for nested concrete specialization requests

@@ -1,10 +1,14 @@
 package sema
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
+	"sec/internal/parser"
 )
 
 // MD-042: a match over a soundly proven active variant needs only that
@@ -158,5 +162,69 @@ fn Opaque(a: int) int {
 	}
 	if len(inactive) != 3 {
 		t.Fatalf("want exactly three inactive handlers (none for the opaque call), got %v", inactive)
+	}
+}
+
+// MD-042 provenance: the match plan keeps the proven variant with its basis
+// (construction or a dominating `is` test) and source, and marks exactly the
+// arms the proof excludes (semantic_ir.md § 71(6); correction § 15(2)).
+func TestReachableStateProofProvenance(t *testing.T) {
+	parsed := parser.New(lexer.New(`
+module main
+
+type Figure union {
+    Dot
+    Line(int)
+}
+
+fn Constructed() int {
+    let figure := Figure.Dot
+    match figure {
+        Dot => return 0
+        Line(length) => return length
+    }
+}
+
+fn Tested(input: Figure) int {
+    let figure := input
+    if figure is Line {
+        match figure {
+            Line(length) => return length
+        }
+    }
+    return 0
+}
+`))
+	program := parsed.ParseProgram()
+	analyzer := NewAnalyzer()
+	if errs := analyzer.Analyze(program); len(parsed.Errors()) != 0 || len(errs) != 0 {
+		t.Fatal(parsed.Errors(), errs)
+	}
+	plans := map[string]ResolvedMatchPlan{}
+	for _, statement := range program.Statements {
+		function, ok := statement.(*ast.FunctionDeclaration)
+		if !ok {
+			continue
+		}
+		walkASTValue(reflect.ValueOf(function.Body), func(node any) {
+			if expr, ok := node.(*ast.MatchExpression); ok {
+				plan, ok := analyzer.ResolvedMatchPlanOf(expr)
+				if !ok {
+					t.Fatalf("%s: no plan", function.Name.Value)
+				}
+				plans[function.Name.Value] = plan
+			}
+		})
+	}
+	constructed := plans["Constructed"]
+	if proof := constructed.ProvenActive; proof == nil || proof.Variant != "Dot" || proof.Binding != "figure" || proof.Basis != VariantProofConstruction || proof.Source.Line != 10 {
+		t.Fatalf("construction proof = %+v", constructed.ProvenActive)
+	}
+	if constructed.Arms[0].ProvenInactive || !constructed.Arms[1].ProvenInactive {
+		t.Fatalf("inactive arms = %+v", constructed.Arms)
+	}
+	tested := plans["Tested"]
+	if proof := tested.ProvenActive; proof == nil || proof.Variant != "Line" || proof.Basis != VariantProofStateTest || proof.Source.Line != 19 {
+		t.Fatalf("state-test proof = %+v", tested.ProvenActive)
 	}
 }

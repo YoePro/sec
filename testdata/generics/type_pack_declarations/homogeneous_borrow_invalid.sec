@@ -1,0 +1,2 @@
+module main
+fn Broken[...Types](values: ...ref int) void {}

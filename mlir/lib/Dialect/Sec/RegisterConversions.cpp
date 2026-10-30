@@ -4,6 +4,9 @@
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "llvm/ADT/APInt.h"
 using namespace mlir;
@@ -40,6 +43,24 @@ std::optional<llvm::APInt> constantBits(Value value) {
  }
  return std::nullopt;
 }
+// A guarded conversion is dominated by the true edge of a fits_bits test of
+// the same SSA operand and destination register type.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2 amendment (guarded basis).
+bool guardedByFitsBits(RegisterFromBitsOp conversion) {
+ auto function=conversion->getParentOfType<func::FuncOp>();
+ if (!function) return false;
+ DominanceInfo dominance(function);
+ for (Operation *user : conversion.getValue().getUsers()) {
+  auto test=dyn_cast<RegisterFitsBitsOp>(user);
+  if (!test || test.getRegisterType()!=conversion.getResult().getType()) continue;
+  for (Operation *testUser : test.getResult().getUsers()) {
+   auto branch=dyn_cast<cf::CondBranchOp>(testUser);
+   if (!branch || branch.getCondition()!=test.getResult() || branch.getTrueDest()==branch.getFalseDest()) continue;
+   if (branch.getTrueDest()->getSinglePredecessor()==branch->getBlock() && dominance.dominates(branch.getTrueDest(),conversion->getBlock())) return true;
+  }
+ }
+ return false;
+}
 }
 // Check admitted constant/source-domain fits using the canonical register width.
 // Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2, MD-110 §8(3–4).
@@ -59,8 +80,36 @@ LogicalResult RegisterFromBitsOp::verify() {
   if (!value || (value->isNegative()?value->getSignificantBits():value->getActiveBits())>definition.getWidth()) return emitOpError("register constant bit-fit proof is not established by SSA");
   return success();
  }
- if (basis.getValue()=="guarded") return emitOpError("unsupported MD-110 fits_bits destination-identity transport");
+ if (basis.getValue()=="guarded") {
+  if (!guardedByFitsBits(*this)) return emitOpError("register guarded bit-fit proof requires a dominating successful register.fits_bits of the same operand and register type");
+  return success();
+ }
+ if (basis.getValue()=="bit-extraction") {
+  auto extract=getValue().getDefiningOp<IntBitExtractOp>();
+  if (!extract || static_cast<int64_t>(extract.getWidth())>static_cast<int64_t>(definition.getWidth())) return emitOpError("register bit-extraction proof requires the direct result of an int.bit_extract no wider than the register");
+  return success();
+ }
  return emitOpError("unknown register bit-fit proof basis");
+}
+// Name the destination by TypeAttr and resolve its width in the register table.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2 amendment (2026-10-30).
+LogicalResult RegisterFitsBitsOp::verify() {
+ if (!isa<RegisterType>(getRegisterType()) || !sec::detail::lookupRegister(*this,getRegisterType())) return emitOpError("register.fits_bits requires register_type naming a defined register");
+ if (!integerWidth(getValue().getType(),*this)) return emitOpError("register.fits_bits requires a resolved primitive integer operand");
+ return success();
+}
+// x mod 2^width into the smallest standard unsigned carrier; total and pure.
+// Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2 amendment; semantic_ir.md § 59.
+LogicalResult IntBitExtractOp::verify() {
+ auto sourceWidth=integerWidth(getValue().getType(),*this);
+ auto result=dyn_cast<IntegerType>(getResult().getType());
+ if (!sourceWidth) return emitOpError("int.bit_extract requires a standard-width signed or unsigned integer operand");
+ int64_t width=getWidth();
+ if (width<1 || width>static_cast<int64_t>(*sourceWidth)) return emitOpError("int.bit_extract width must be between 1 and the operand width");
+ unsigned carrier=8;
+ while (carrier<width) carrier*=2;
+ if (!result || !result.isUnsigned() || result.getWidth()!=carrier) return emitOpError("int.bit_extract result must be the smallest standard unsigned integer holding width bits");
+ return success();
 }
 // Preserve nominal source identity and signed/unsigned result interpretation.
 // Rules: rules/mlir/sec_mlir_dialect.md — v11.41.2, MD-110 §8(5).

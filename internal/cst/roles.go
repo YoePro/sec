@@ -760,6 +760,12 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		markSpacingRoles(node)
 		switch node := node.(type) {
 		case *ast.GenericParameter:
+			// MD-117: the declaration spread belongs to the parameter kind,
+			// and stays attached to its name rather than to an array/spread value.
+			// Rules: rules/declarations/generics.md — §16A; formatter.md — §6.
+			if node.TypePack {
+				mark(node.PackToken, PrefixOperator)
+			}
 			for index, operator := range node.ConstraintOperators {
 				// A separator whose right-hand constraint is recovered is part of an
 				// uncertain region and deliberately receives no formatting role.
@@ -973,6 +979,13 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				}
 			}
 		case *ast.EnumValue:
+			// The default marker belongs to this member, including recovered
+			// colon initializers; it is not a switch/default body label.
+			// Rules: rules/declarations/enums.md — §§5,8.2;
+			// rules/tooling/formatter.md — §§6,15(4).
+			if !node.Invalid && node.Default {
+				mark(node.DefaultToken, SpacedBefore)
+			}
 			if !node.Invalid && node.Initializer != nil && node.InitializerToken.Type == lexer.ASSIGN {
 				mark(node.InitializerToken, EnumValueAssignment)
 			}

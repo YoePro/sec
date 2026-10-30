@@ -12,7 +12,7 @@ import (
 //
 // Rules:
 //   - rules/library/core-library.md — § 10.1 (MD-066)
-//   - rules/corrections/md066-md067-md068-decimal-correction-20261028.md — §§ 12(1), 13(4)
+//   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 12(1), 13(4)
 func TestDecimalScaleAccessFailsClosed(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"module main\nfn Use(x: decimal) Result[decimal, PrecisionError] {\n    let mut y := x\n    try y.Scale = 2\n    return Ok(y)\n}\n", "decimal Scale setter"},

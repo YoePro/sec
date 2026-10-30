@@ -1,13 +1,13 @@
 # MD-110 — Detached register bit-pattern conversions and their Semantic IR / Sec MLIR representation
 
-- **Status:** Decision finalized — normative integration and implementation pending
+- **Status:** **APPLIED 2026-10-30** — normatively integrated 2026-10-26 (registers.md § 12/§ 12.3, types.md, semantic_ir.md §§ 21(6)/59(5), sec_mlir_dialect.md v11.41.2 and the v11 snapshot, P15 note); MLIR spelling completed 2026-10-30 (TypeAttr register_type, sec.int.bit_extract, basis "bit-extraction"; lowering v11.30). Sema, the three Semantic IR operations, C++ verifiers, Go emitter and native bit[N]/from_bits/to_bits execution are implemented and tested. The checked try T(x) path still stops fail-closed in Semantic IR until checked conversions get try failure lowering; it and the § 11(3)/§ 11(5) tests stay in governance/declarations.yaml frontend.registers.
 - **Created:** 2026-10-25
 - **Last updated:** 2026-10-25
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Decision ID:** `MD-110`
 - **Classification:** Constraining (per `missing-decisions.yaml`, 2026-10-23)
-- **Canonical destination on acceptance:** `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md`
+- **Archived at:** `rules/corrections/applied/md110-register-bit-pattern-conversion-ir-20261025.md`
 - **Primary normative owners:** `rules/declarations/registers.md`; `rules/compiler/semantic_ir.md`; `rules/mlir/sec_mlir_dialect.md`; `rules/mlir/dialect-versions/sec_mlir_dialect_v11.md`
 - **Additional integration:** `rules/types/types.md` (cross-reference to the existing `bit[N](value)` contract); matching schema-12 inheritance; P15 detached register-value implementation/tests; applicable `governance/` fragments; `missing-decisions.yaml`
 - **Related decisions:** MD-056 (`bit[N](value)`), MD-077 (register values / hardware instances / Semantic IR / MLIR), MD-104 (exact integer conversion proof transport)

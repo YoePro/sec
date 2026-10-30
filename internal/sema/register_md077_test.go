@@ -340,8 +340,8 @@ let mut events: Events
 // hardware-register-access.md §§ 4, 6.2-6.3, 13.1 and MD-077 § 18(4): a field
 // step on a hardware instance or impl receiver is a logical request derived
 // from the field contract; requests invalid on hardware are rejected on a
-// hardware instance and make an impl member software-only (MD-112 for
-// non-trigger special writes).
+// hardware instance and make an impl member software-only. Non-trigger and
+// runtime special writes are per-bit action requests (MD-112).
 func TestMD077HardwareRequests(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, md077Requests+`
 fn Use(value: Control, snapshot: Events) bool {
@@ -356,9 +356,7 @@ fn Use(value: Control, snapshot: Events) bool {
 }
 `)
 	want := []string{
-		"hardware register access writes a value other than the trigger constant to write-one-clear register field Pending",
 		"register field Pending with write-one-clear semantics cannot use compound assignment",
-		"Control.Clear cannot be used on hardware instance of Control: it writes a value other than the trigger constant to write-one-clear register field Pending",
 		"Control.Bump cannot be used on hardware instance of Control: it uses compound assignment on write-one-clear register field Pending",
 		"Events.IsReady cannot be used on hardware instance of Events: it observes Ready, which would also perform the destructive read-clear read of Count",
 	}
@@ -387,8 +385,9 @@ fn Use(value: Control, snapshot: Events) bool {
 	}
 	for key, expected := range map[string]ResolvedRegisterHardwareRequest{
 		"Control.IsReady.get/Ready":   {Kind: RegisterRequestObserve, Shadow: RegisterNoShadow},
-		"Control.Acknowledge/Pending": {Kind: RegisterRequestAction, Effect: "clear", Shadow: RegisterNoShadow},
-		"Control.Acknowledge/Enable":  {Kind: RegisterRequestAction, Effect: "set", Shadow: RegisterNoShadow},
+		"Control.Acknowledge/Pending": {Kind: RegisterRequestAction, Effect: "clear", Shadow: RegisterNoShadow, ActionMask: "1"},
+		"Control.Acknowledge/Enable":  {Kind: RegisterRequestAction, Effect: "set", Shadow: RegisterNoShadow, ActionMask: "1"},
+		"Control.Clear/Pending":       {Kind: RegisterRequestAction, Effect: "clear", Shadow: RegisterNoShadow, ValueDependent: true},
 		"Control.Acknowledge/Mode":    {Kind: RegisterRequestWriteValue, Shadow: RegisterNoShadow},
 		"Events.Drain/Count":          {Kind: RegisterRequestDestructiveObserve, Effect: "clear", Shadow: RegisterNoShadow},
 	} {

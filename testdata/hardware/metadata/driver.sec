@@ -1,0 +1,12 @@
+module driver
+hardware region PeripheralSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource OutputState { width: 32, }
+hardware resource _Internal { width: 32, }
+hardware resource __Private { width: 32, }

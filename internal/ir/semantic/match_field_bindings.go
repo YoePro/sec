@@ -15,11 +15,18 @@ import (
 // plan, so omitted fields are neither read nor copied. It returns the
 // restore function and the borrowed references the arm must end.
 func (fb *functionBuilder) bindMatchFields(subjectExpr ast.Expression, subject builtValue, subjectPlace *matchSubjectPlace, armPlan sema.ResolvedMatchArm, matchID MatchID, token lexer.Token) (func(), []builtValue, error) {
+	// An `Err(E.Variant { ... })` arm projects from the unwrapped error value
+	// that its variant test guards (MD-029).
+	variantIndex := UnionVariantIndex(armPlan.UnionVariantIndex)
+	errorArm := armPlan.PatternKind == sema.MatchPatternResultErrVariant
+	if errorArm {
+		variantIndex = fb.errorArm.variant
+	}
 	definition, ok := fb.owner.unionDefinition(subject.typ)
-	if !ok || armPlan.PatternKind != sema.MatchPatternUnionVariant || int(armPlan.UnionVariantIndex) >= len(definition.Variants) {
+	if !ok || armPlan.PatternKind != sema.MatchPatternUnionVariant && !(errorArm && fb.errorArm.union) || int(variantIndex) >= len(definition.Variants) {
 		return nil, nil, fb.unsupported("named-field match pattern without a resolved union variant", token)
 	}
-	variant := definition.Variants[armPlan.UnionVariantIndex]
+	variant := definition.Variants[variantIndex]
 	if variant.Kind != UnionVariantFields {
 		return nil, nil, fb.unsupported("named-field match pattern of a variant without named fields", token)
 	}
@@ -55,7 +62,7 @@ func (fb *functionBuilder) bindMatchFields(subjectExpr ast.Expression, subject b
 		switch field.Action {
 		case sema.MatchBindingCopyTrivial:
 			value = fb.result(Operation{
-				Kind: OpUnionUnwrapField, Operands: []ValueID{subject.id}, UnionVariant: UnionVariantIndex(armPlan.UnionVariantIndex),
+				Kind: OpUnionUnwrapField, Operands: []ValueID{subject.id}, UnionVariant: variantIndex,
 				UnionField: field.Field, PayloadActions: []UnionPayloadAction{UnionPayloadCopyTrivial},
 				MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(armPlan.PatternKind),
 				Location: location(field.Identifier.Token),

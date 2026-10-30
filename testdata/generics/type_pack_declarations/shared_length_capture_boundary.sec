@@ -1,0 +1,5 @@
+module main
+fn Capture[...Types](values: ...ref Types) uint {
+    let read := fn() uint { return values.Len }
+    return read()
+}

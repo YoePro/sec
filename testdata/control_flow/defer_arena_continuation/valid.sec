@@ -1,0 +1,45 @@
+module main
+
+fn DeferredReset() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer { mem.Reset() }
+    return Ok(values[0])
+}
+fn DeferredRelease() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer { mem.Release() }
+    return Ok(values[0])
+}
+fn AllocateAfterRegistration() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    defer { mem.Reset() }
+    let values := try mem.Alloc[byte](4u)
+    return Ok(values[0])
+}
+fn Multiple() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer { mem.Reset() }
+    defer { mem.Reset() }
+    return Ok(values[0])
+}
+fn Conditional(enabled: bool) Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    if enabled { defer { mem.Reset() } }
+    return Ok(values[0])
+}
+fn DeferredConditional(enabled: bool) Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer { if enabled { mem.Reset() } }
+    return Ok(values[0])
+}
+fn AllocateAfterDeferredRelease() Result[byte, AllocationError] {
+    let mut mem: Arena := Arena {}
+    defer { mem.Release() }
+    let values := try mem.Alloc[byte](4u)
+    return Ok(values[0])
+}

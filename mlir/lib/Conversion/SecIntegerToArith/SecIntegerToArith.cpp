@@ -48,10 +48,20 @@ bool containsUnresolvedPlainInteger(Type type) {
   return false;
 }
 
+// A bit extraction that proves a register.from_bits stays with the detached
+// register family, which keeps its high-level form (v11.41.2 amendment).
+bool feedsRegisterConversion(Operation *operation) {
+  return llvm::any_of(operation->getUsers(), [](Operation *user) {
+    return isa<sec::RegisterFromBitsOp>(user);
+  });
+}
+
 bool isCheckedIntegerOperation(Operation *operation) {
   return isa<sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
-             sec::IntShiftCheckedOp, sec::IntCmpOp>(operation);
+             sec::IntShiftCheckedOp, sec::IntCmpOp>(operation) ||
+         (isa<sec::IntBitExtractOp>(operation) &&
+          !feedsRegisterConversion(operation));
 }
 
 IntegerType signlessType(MLIRContext *context, Type type) {
@@ -504,6 +514,27 @@ public:
       rewriter.replaceOp(operation, operands[0]);
       return success();
     }
+    // v11.41.2 amendment: x mod 2^N as the smallest standard unsigned width.
+    if (auto extract = dyn_cast<sec::IntBitExtractOp>(operation)) {
+      auto resultType = dyn_cast_or_null<IntegerType>(
+          getTypeConverter()->convertType(extract.getResult().getType()));
+      if (!resultType)
+        return failure();
+      unsigned carrier = resultType.getWidth();
+      unsigned bits = extract.getWidth();
+      Value value = operands[0];
+      if (carrier < width)
+        value = arith::TruncIOp::create(rewriter, location, resultType, value)
+                    .getResult();
+      if (bits < carrier)
+        value = arith::AndIOp::create(
+                    rewriter, location, value,
+                    integerConstant(rewriter, location, resultType,
+                                    APInt::getLowBitsSet(carrier, bits)))
+                    .getResult();
+      rewriter.replaceOp(operation, value);
+      return success();
+    }
     if (isa<sec::IntBitNotOp>(operation)) {
       Value ones = integerConstant(rewriter, location, type,
                                    APInt::getAllOnes(width));
@@ -858,6 +889,8 @@ public:
                         sec::IntBinaryCheckedOp, sec::IntBitNotOp,
                         sec::IntBitwiseOp, sec::IntShiftCheckedOp,
                         sec::IntCmpOp>();
+    target.addDynamicallyLegalOp<sec::IntBitExtractOp>(
+        [](Operation *op) { return feedsRegisterConversion(op); });
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       if (!typeConverter.isSignatureLegal(op.getFunctionType()))
         return false;
@@ -900,7 +933,8 @@ public:
              sec::IntBitNotOp::getOperationName(),
              sec::IntBitwiseOp::getOperationName(),
              sec::IntShiftCheckedOp::getOperationName(),
-             sec::IntCmpOp::getOperationName()})
+             sec::IntCmpOp::getOperationName(),
+             sec::IntBitExtractOp::getOperationName()})
       patterns.add<IntegerSemanticOpLowering>(typeConverter, context,
                                               operationName);
     populateCallOpTypeConversionPattern(patterns, typeConverter);

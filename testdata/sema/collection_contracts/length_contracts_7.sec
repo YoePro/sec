@@ -1,6 +1,6 @@
 
-type UniqueValues int[] unique
-type UniqueText string[] unique
+type UniqueValues int[3] unique
+type UniqueText string[2] unique
 
 let valid: UniqueValues := [1, 2, 3]
 let duplicate: UniqueValues := [1, 2, 1]

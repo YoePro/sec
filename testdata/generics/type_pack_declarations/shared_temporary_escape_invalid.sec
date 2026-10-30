@@ -1,0 +1,3 @@
+module main
+fn Head[...Types](head: ref int, values: ...ref Types) ref int { return head }
+fn Invalid() ref int { return Head(1, true) }

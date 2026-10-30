@@ -1,0 +1,3 @@
+module main
+fn Owned[...Types](values: ...Types) void {}
+fn Use() void { Owned() }

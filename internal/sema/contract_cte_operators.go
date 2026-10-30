@@ -105,6 +105,11 @@ func (a *Analyzer) compileTimeBinary(op string, left, right DefaultConstant) (De
 		}
 		return DefaultConstant{Kind: BoolType, Bool: equal, Lexeme: strconv.FormatBool(equal)}, compileTimeEvaluated
 	}
+	if left.Integer != nil && right.Integer != nil {
+		if integer, ok := constant.IntegerBinary(op, left.Integer, right.Integer); ok {
+			return DefaultConstant{Kind: IntType, Lexeme: integer.String(), Integer: integer}, compileTimeEvaluated
+		}
+	}
 	isText := func(v DefaultConstant) bool { return v.Kind == StringType || v.Kind == CharType || v.Kind == RuneType }
 	if isText(left) && isText(right) {
 		if left.NominalText || right.NominalText {

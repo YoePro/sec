@@ -71,6 +71,21 @@ a stronger target contract exists.
 
 The endpoint may be memory-mapped, port-mapped, instruction-encoded, runtime-mapped or target-defined; only the first is necessarily a memory-mapped domain.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 1(4), 10(1), 10(7)).** In Sec 0.1 a static hardware register binding names an endpoint; the only forms are
+
+```sec
+@address(GpioOutput)
+let mut gpio: GpioRegister
+
+@address(Project.GpioOutput)
+let mut projectGpio: GpioRegister
+
+@address(Project.GpioOutputAlias, alias)
+let mut acknowledgedAlias: GpioRegister
+```
+
+The first argument resolves statically to a named canonical endpoint: a source `hardware endpoint`, an imported one, or a project export `Project.<name>`. A naked numeric `@address(0x...)` is a compile-time error even when a region would cover it; numeric addresses appear only inside typed hardware metadata. Arithmetic, raw pointers, variables and runtime-computed endpoints are invalid. The numeric examples and numeric-binding rules of this rulebook are superseded for static hardware bindings; the checked runtime-mapping and explicit unsafe `RawPtr` models stay separate and never forge an endpoint contract.
+
 ## 3. Fixed-address contract
 
 A fixed-address binding consumes the canonical storage contract, including:
@@ -215,6 +230,8 @@ This applies to Hosted, RTOS, and BareMetal targets. A Hosted target may permit
 explicitly modeled mapped device regions, but not arbitrary process virtual
 addresses merely because their spelling is constant.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 3–6, 11).** The endpoint carries the validated facts listed above: its region supplies the address domain, `kind`, permissions and range, and the endpoint's `offset`, `size`, `alignment`, transfer widths, footprints and effects must be contained in and compatible with that region and with the target. The register type, its type-owned `impl`, the endpoint and the target must agree on width, layout and permitted operations before a binding is valid; a valid binding whose requested operation has no supported verified plan is an explicit unsupported-capability diagnostic, not a numeric fallback.
+
 ## 9. Initialization
 
 An addressed binding refers to existing external or platform storage. Its
@@ -244,6 +261,8 @@ policy.
 Bindings known to overlap incompatibly are a compile-time error. Intentional
 overlap is valid only when a compiler-known platform contract declares the
 views compatible. This rule introduces no source-level alias keyword.
+
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 10(2)–(6)).** The compiler warns about every detectable, unacknowledged pair of bindings that (a) are proven to share a canonical resource, (b) overlap in a common address domain without established shared-resource semantics, or (c) overlap incompatibly; (c) is a compile-time error and (b) stays a warning, or an error when safe planning needs a missing fact. The contextual marker `alias` in `@address(Endpoint, alias)` acknowledges only (a) for that binding: it is invalid when no other statically known binding to the same canonical resource exists, and it never creates an alias, grants ownership, relaxes borrow exclusivity, lifetime, mutability, permissions, shadow rules, effects or ordering, or makes an illegal access legal. Endpoints declared for the same resource are hardware facts and need no acknowledgement; region-overlap warnings are separate and cannot be waived by `alias`. `alias` is not a keyword, attribute or expression, and `@address` takes exactly one endpoint plus that optional marker.
 
 ## 11. Register implementations on addressed storage
 

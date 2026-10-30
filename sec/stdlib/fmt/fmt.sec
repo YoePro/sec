@@ -2,6 +2,8 @@ module fmt
 
 import "io"
 
-fn Println(value: string) void {
-    io.Println(value)
-}
+/*
+ * fn Println(value: string) void {
+ *     io.Println(value)
+ * }
+ */

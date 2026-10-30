@@ -1,0 +1,14 @@
+module main
+
+enum Status string {
+    Active default = "å🙂",
+    Alias = "å🙂",
+}
+fn Duplicate(status: Status) void {
+    switch status {
+    case Status.Active:
+        return
+    case Status.Alias:
+        return
+    }
+}

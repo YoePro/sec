@@ -14,7 +14,7 @@ import "sec/internal/ast"
 //   - rules/types/types.md — "Contextual and self-inferred `Some(value)`"
 //   - rules/declarations/functions.md — § 20 "Overload ranking"
 //   - rules/declarations/generics.md — § 18.1 "`Some(value)` payloads (MD-102)"
-//   - rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 11–14
+//   - rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 11–14
 
 // someIndependentPayloadType returns the type the payload of a bare
 // Some(value) has without an expected Option type. A payload that itself

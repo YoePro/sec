@@ -1080,7 +1080,7 @@ The same rules apply to ordinary calls, methods, `init(...)` and `new` construct
 `Some(value)` is the canonical one-payload Option constructor when it resolves
 to the compiler-known `Option[T].Some`, not to a visible ordinary callable named
 `Some` (MD-102, 2026-10-28,
-`rules/corrections/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
+`rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md`
 §§ 11–14). It is valid wherever ordinary type resolution establishes its
 `Option[T]` type, and a valid use never produces `S1157`.
 

@@ -2099,6 +2099,7 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 		}
 		return nil
 	}
+	p.lastGroupOpen, p.lastGroupClose = open, p.curToken
 	// MD-006: grouping decides chaining and enables the explicit corrections
 	// of `(test) == true` and `!(test)`.
 	if _, _, _, isTest := ast.StateTestOf(expr); isTest {

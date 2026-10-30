@@ -1,0 +1,30 @@
+module hardwaremeta
+
+hardware region PeripheralSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x10000000000000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource OutputState { width: 32, }
+hardware endpoint Output {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: PeripheralSpace,
+    resource: OutputState,
+    offset: 0x0,
+    size: 4,
+    alignment: 4,
+    read_widths: [32, 8, 16],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}

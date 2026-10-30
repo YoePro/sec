@@ -165,6 +165,20 @@ a general heap allocator, final LLVM/ABI encoding or interface-view layout.
   MD-070 conversions until decided (book §§ 29, 36). **Blocked on P25.**
   Note 2026-10-22: MD-070 was decided and applied on 2026-10-21. The public spellings are the unsafe compiler-known `RawPtr[T].AsRef()` / `AsRefMut()` (`raw_pointers.md` § 18A), and their Semantic IR operation is still a capability boundary. The "reject public conversions" part of this item therefore becomes: lower them only once that operation exists with its proof facts (MD-070 § 6).
 
+## MD-061 acceptance ownership — clarified 2026-10-30
+
+P15 establishes and preserves high-level reference/borrow/guard facts and rejects
+unsupported physical lowering. It can close its own acceptance without waiting
+for this package. P26 owns proof and differential/negative-IR tests of every
+physical reference transformation it introduces (book §§13,32,46,53; MD-061
+§§6/7(5)): guards, invalidation/relocation, cleanup, retention and justified alias/
+lifetime promises. LLVM consumers inherit the same obligations at their own
+boundary; they are not prerequisites for P26's high-level-to-standard-MLIR
+boundary. Unavailable operations remain rejected, not counted as tested.
+The cross-stage physical matrix has one existing governance owner:
+`lowering.reference-model` in governance/memory.yaml. No requirement is dropped
+and no earlier package is held open solely for a later representation.
+
 ## F. Regression and handoff
 
 - [ ] P26-24 — Test 32/64-bit, hosted/hardened/bare-metal/unsupported

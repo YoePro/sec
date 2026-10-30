@@ -783,7 +783,7 @@ func compilerKnownSequenceType(typ Type) bool {
 func compilerKnownToStringReceiver(typ Type) bool {
 	value := dereferenceType(typ)
 	switch value.Kind {
-	case InvalidType, VoidType, NeverType, GenericType, InterfaceType, VariadicPackType:
+	case InvalidType, VoidType, NeverType, GenericType, GenericTypePackType, InterfaceType, VariadicPackType:
 		return false
 	default:
 		return true
@@ -833,8 +833,13 @@ func compilerKnownMutableSlice(typ Type) bool {
 }
 
 func compilerKnownSizedType(typ Type) bool {
+	// MD-117 packs and their pointwise reference modes describe a compile-time
+	// type sequence, not a sized value. Rules: generics.md — §16A(1–5).
+	if typ.Kind == ReferenceType && typ.Element != nil && typ.Element.Kind == GenericTypePackType {
+		return false
+	}
 	switch typ.Kind {
-	case InvalidType, VoidType, NeverType, GenericType, InterfaceType, VariadicPackType:
+	case InvalidType, VoidType, NeverType, GenericType, GenericTypePackType, InterfaceType, VariadicPackType:
 		return false
 	default:
 		return true

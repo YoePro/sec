@@ -82,27 +82,6 @@ fn Use() int {
 	}
 }
 
-func TestPackage15ReceiverBoundaries(t *testing.T) {
-	for name, test := range map[string]struct{ source, want string }{
-		"receiver as value": {`module main
-
-type Counter struct { value: int }
-
-impl Counter {
-    fn Copy() Counter {
-        return self
-    }
-}
-`, "receiver used as a value or through a non-field member"},
-	} {
-		module, err := analyzedModule(t, test.source, 15)
-		var unsupported *UnsupportedFeatureError
-		if module != nil || !errors.As(err, &unsupported) || unsupported.Feature != test.want {
-			t.Errorf("%s: module=%t err=%v, want %q", name, module != nil, err, test.want)
-		}
-	}
-}
-
 // A write to an implicit field makes Sema derive a mutable receiver (impl.md
 // § 8); the write lowers through the ref mut self parameter.
 func TestPackage15ImplicitFieldWriteUsesMutableReceiver(t *testing.T) {

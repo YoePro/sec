@@ -1262,12 +1262,46 @@ Added 2026-10-27 (`rules/corrections/applied/MD-116-static-place-root-mlir-corre
 
 ## v11.30 Detached register values (MD-114)
 
-Added 2026-10-27 (`rules/corrections/MD-114-canonical-register-value-mlir-contract-correction.md`; dialect v11.41.1a).
+Added 2026-10-27 (`rules/corrections/applied/MD-114-canonical-register-value-mlir-contract-correction-20261030.md`; dialect v11.41.1a).
 - **Register table.** The Go emitter writes `sec.registers` deterministically from the verified Semantic IR `Module.Registers` table, in its first-use order. Every field is included (reserved ones too), with its ordinal, logical offset, width, resolved type, effective access and shadow policy and unit identity. Definitions are never fabricated from operation-local types or guessed offsets.
 - **Extract and update.** `register.value.extract` / `update` lower to `sec.register.extract` / `update`. Their resolved `RegisterFieldID` steps become `sec.field_path`, either as one-element paths per nested operation or as a proven composed path. Paths are never synthesized from source text.
 - **Write proof.** `RegisterWriteProof` becomes `sec.write_proof` with the same basis and exact bounds. An update without an established proof is rejected, never emitted as an unchecked mask.
-- **MD-110 conversions.** They resolve width through the same table. The Semantic IR basis `bit-extraction` has no MLIR spelling yet (MD-110 § 8(4)), so such conversions fail closed.
+- **MD-110 conversions.** They resolve width through the same table. `register.value.fits-bits` becomes `sec.register.fits_bits` with `register_type`, the `guarded` basis keeps the dominating `cf.cond_br`, `int.bit-extract` becomes `sec.int.bit_extract`, and the `bit-extraction` basis is emitted only on its direct result (dialect v11.41.2 amendment, 2026-10-30). `sec.int.bit_extract` lowers in the integer core pass to `arith.trunci` and `arith.andi`.
 - **Hardware and unsupported cases.** Hardware operations stay with MD-077 / MD-111. Unrepresentable categories fail with no partial output.
+- **Inheritance.** Schema 12 inherits this section unchanged.
+
+---
+
+## v11.31 Specialized hardware write actions (MD-112)
+
+Added 2026-10-30 (`rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md` § 7; dialect v11.41.1b; `semantic_ir.md` § 21(8)).
+- **Emission.** When `register.hw.request_write` / `register.hw.shadow_intent` are emitted (MD-077), the Go emitter writes `sec.write_action` from the Sema-resolved request carried by Semantic IR: action, trigger, field width, and either the constant mask or `kind = "value-dependent"`. It never derives the action from the field name or the mask from the register width.
+- **No-op requests.** A request whose constant mask is zero produces no operation.
+- **Runtime masks.** The emitter writes the mask computation and the `sec.int.cmp ne` zero test with its `cf.cond_br` exactly as Semantic IR orders them, and places the request only on the true successor.
+- **Physical lowering.** `sec.write_action` is consumed only by a verified MD-111 plan; without one the request fails closed with no partial output.
+- **Inheritance.** Schema 12 inherits this section unchanged.
+
+---
+
+## v11.32 Shadow status query (MD-113)
+
+Added 2026-10-30 (`rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 10; dialect v11.41.1c; `semantic_ir.md` § 21(9)).
+- **Emission.** `register.hw.shadow_known` lowers to `sec.hw.shadow_known` with the resolved `sec.field_path` and the availability fact as `sec.shadow_fact`. Shadow-served field reads carry their fact as well.
+- **Realization.** A `known` or `unknown` query becomes a constant only under the dialect's folding rule. A `runtime` query becomes a test of bounded compiler-managed per-instance metadata (for example a known-mask bit test) in ordinary memory, never an MMIO, CSR or port access and never a `read-clear`/`read-set` effect.
+- **Metadata.** Known-mask storage is materialized only where a `runtime` fact needs it, follows the instance's ordinary lifetime, borrowing, sharing and destruction rules, and is never a global registry, background manager or polling service.
+- **Failure.** True hardware operations still need their MD-111 plan and fail closed without it; the query itself never depends on such a plan.
+- **Inheritance.** Schema 12 inherits this section unchanged.
+
+## v11.33 Native Result and union values with scalar payloads
+
+Added 2026-10-30 (`rules/memory/layout.md` §§ 15–16; dialect v11.41.4). `sec-lower-tagged-values` runs after checked-integer lowering and before `sec-finalize-for-llvm`, in the final binary track only. Earlier pipelines keep the nominal `!sec.result` and `!sec.union` types.
+
+- **Admission.** `sec-check-lowering-support` admits `sec.result.*`, `sec.union.construct|is_variant|unwrap_payload|unwrap_field` and `sec.storage.*` over such a type only when every payload position is a resolved scalar, an ordinary integer enum, or again such a Result or union. Any other payload (string, struct, array, reference, decimal, ...) is rejected by name at the track entry and publishes no partial output.
+- **Representation.** An LLVM literal struct: the discriminator, then one slot per payload position in declaration order (`Result`: `i1` with Err set, Ok slot, Err slot; union: `i32` declaration-order variant index, then each single payload and each named field). Slots do not overlap and no niche or tag elision is used. Inactive slots are undefined and never read (layout.md § 15(5)–(6)), because every projection stays on its verified guard edge.
+- **Stability.** This selection is an internal compiler representation. It is neither a source-visible size nor an FFI or module ABI; a later layout may overlap payloads or use a proven niche under layout.md § 15(8) and § 16(4).
+- **Transport.** Construction, tests, projections, direct calls, returns, branches, merge arguments and function signatures convert together. `sec-lower-integer-enums` first resolves enums nested in payloads to their integer representation.
+- **Storage.** A mutable binding is one `llvm.alloca` in the function's entry block, so a declaration inside a loop does not grow the stack. Whole values are copied by `llvm.load` / `llvm.store`.
+- **Boundaries.** `Result[void, E]` stays unrepresented (`sec.result` requires non-void payloads). Place-based borrowed projection (`sec.place.union_payload`), ownership-sensitive payloads and destruction stay outside this slice.
 - **Inheritance.** Schema 12 inherits this section unchanged.
 
 ---

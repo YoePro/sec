@@ -1,0 +1,23 @@
+module main
+
+type Counter struct { value: int }
+impl Counter {
+    fn Copy() Counter { return self }
+    fn ResetAndCopy() Counter {
+        self.value = 9
+        return self
+    }
+    fn Read() int { return value }
+}
+fn Use() int {
+    let mut counter := Counter { value: 2 }
+    let first := counter.Copy()
+    let second := counter.ResetAndCopy()
+    return first.value + second.value + counter.Read()
+}
+
+type Number int
+impl Number {
+    fn Copy() Number { return self }
+}
+fn CopyNumber(value: ref Number) Number { return value.Copy() }

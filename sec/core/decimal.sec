@@ -1,8 +1,26 @@
 module core
 
+// Rulebook: library/core-library.md §§ 10.1-10.7 (MD-066, MD-068). Scale, the
+// value predicates, the scale/rounding methods and the ToInt*/ToFloat*
+// conversions are compiler-known members (compiler_known_members.md "Decimal
+// types"); the ToString overloads are declared here.
+
 impl decimal {
+    // Formats the invariant, scale-preserving round-trip representation.
     fn ToString() Result[string, StringError] {
         // TODO: Implement decimal.ToString()
+        return Ok("")
+    }
+
+    // Formats using an explicit invariant format code (R, G, F<n>, N<n>, E<n>).
+    fn ToString(format: string) Result[string, StringError] {
+        // TODO: Implement decimal.ToString(format)
+        return Ok("")
+    }
+
+    // Formats using explicit decimal and grouping separators.
+    fn ToString(format: string, decimalSeparator: string, groupSeparator: string) Result[string, StringError] {
+        // TODO: Implement decimal.ToString(format, decimalSeparator, groupSeparator)
         return Ok("")
     }
 }

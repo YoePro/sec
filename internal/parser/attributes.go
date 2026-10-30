@@ -249,6 +249,10 @@ func (p *Parser) parseAttributedImplMember() ast.ImplMember {
 		}
 		return property
 	}
+	if p.peekToken.Type == lexer.MUT && p.tokenAfterPeek() == lexer.FN {
+		p.nextToken()
+		p.reportMutFnInImpl()
+	}
 	p.nextToken()
 	start := p.curToken
 	statement := p.parseStatement()

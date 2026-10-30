@@ -1,6 +1,6 @@
 # P21 Normative Synchronization — Decimal, Precision and October Corrections
 
-- **Status:** D1–D3 decided 2026-10-28 by `rules/corrections/md066-md067-md068-decimal-correction-20261028.md` (MD-066/MD-067/MD-068); the decided semantics are owned by the canonical rulebooks; implementation pending
+- **Status:** D1–D3 decided 2026-10-28 by `rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md` (MD-066/MD-067/MD-068); the decided semantics are owned by the canonical rulebooks; implementation pending
 - **Created:** 2026-10-16
 - **Last updated:** 2026-10-28 (D1–D3 decided; unapproved recommendations superseded)
 - **Document revision:** 1.1

@@ -592,6 +592,8 @@ capture(ref mut value)
 
 **§ 19.2(2)** Lifetime analysis must not treat synchronization correctness as implied by long lifetime.
 
+**§ 19.2(3)** *(MD-081, 2026-10-30, `rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md` §§ 4(4), 6–7.)* A reference held by a static needs a static origin **and** a valid object and borrow authority over its whole required live range: the Place exists, the referenced object stays initialized and valid, and no move, replacement or destruction invalidates it while a holder can still use it. A mutable borrow held by a static lasts as long as its holder's potential uses, so it does not end when the initializer finishes; overlap and exclusivity follow `rules/memory/borrowing.md`, and analysis that cannot prove exclusivity fails closed.
+
 ### § 19.3 Thread-local storage
 
 **§ 19.3(1)** A reference into thread-local storage is additionally bounded by the execution/thread contract of that storage.

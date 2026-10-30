@@ -1,0 +1,37 @@
+module main
+
+let Base: int := 6 * 7
+let Forward: int := Later + Base
+let Later: int := 10
+let Negative: int := -7 / 2
+let Remainder: int := -7 % 2
+let Bits: int := (1 << 12) | 3
+let Ready: bool := Base == 42 && !(Later < 10)
+let IsRounded: bool := 16777216.0g == 16777217.0g
+let mut Count: int := Base
+let InitialCount: int := Count + 1
+let WideSeed: uint256 := 1606938044258990275541962092341162602522202993782792835301376
+let Wide: uint256 := WideSeed + WideSeed
+
+fn Step() int {
+    static let mut calls: int := Base / 7
+    calls = calls + 1
+    return calls
+}
+
+fn Shadow() int {
+    static let Seed: int := 3
+    static let Local: int := Seed * 2
+    return Local
+}
+
+fn Advance() int {
+    Count = 100
+    return InitialCount
+}
+
+fn Other() int {
+    static let Seed: int := 5
+    static let Local: int := Seed * 2
+    return Local
+}

@@ -56,6 +56,13 @@ func (a *Analyzer) ResolvedCallTarget(call *ast.CallExpression) (ResolvedCall, b
 	}
 	fact, ok := a.resolvedCalls[call]
 	fact.Function.Parameters = append([]FunctionParameter(nil), fact.Function.Parameters...)
+	if fact.Function.GenericSubstitution != nil {
+		substitution := map[string]Type{}
+		for name, typ := range fact.Function.GenericSubstitution {
+			substitution[name] = semanticSnapshotType(typ)
+		}
+		fact.Function.GenericSubstitution = substitution
+	}
 	fact.InterfaceContract = cloneOpenCallableContract(fact.InterfaceContract)
 	return fact, ok
 }

@@ -1,6 +1,6 @@
 
-type TwoToThree int[] minLen 2 maxLen 3
-type ExactlyTwo int[] exactLen 2
+type TwoToThree int[2] minLen 2 maxLen 3
+type ExactlyTwo int[2] exactLen 2
 type Present int[] notEmpty
 
 let valid: TwoToThree := [1, 2]

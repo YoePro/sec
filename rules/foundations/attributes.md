@@ -174,6 +174,13 @@ compilation plan.
 
 These bind a declaration to target-specific storage or interrupt machinery.
 
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 10).** `@address` takes exactly
+one statically resolved endpoint path and an optional second contextual marker
+`alias`: `@address(Endpoint)` or `@address(Endpoint, alias)`. A numeric,
+computed or runtime argument, a third argument, an unknown second marker and a
+duplicated `alias` are invalid. `alias` is not a separate `@alias` attribute
+(`rules/platform/fixed-address-bindings.md` §§ 2, 10).
+
 ## Verified guarantee attributes
 
 ```text

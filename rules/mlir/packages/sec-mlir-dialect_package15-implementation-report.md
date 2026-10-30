@@ -4,6 +4,157 @@ P15-74 report in the exact section-156 topic order. **P15 remains partial.**
 Completed mapping and execution tasks do not turn failed acceptance criteria
 into passes. See [the 56-row acceptance matrix](sec-mlir-dialect_package15-acceptance.md).
 
+## Producer increments — 2026-10-30
+
+Two additional P15 producer slices are implemented and tested:
+
+- Scalar static CTE materialization consumes frozen Sema initial-value facts
+  through the existing scalar-global schema. It handles arithmetic/boolean
+  expressions and resolved static dependencies, including exact wide integers,
+  source-order-independent module dependencies, distinct function-local scopes,
+  target-width floating operands in bool calculations and mutable initial values.
+  No runtime startup computation is emitted. Forged conflicting/out-of-domain
+  static initializer payloads fail Semantic IR verification and emit no MLIR.
+- Ordinary copy-trivial whole-self value uses lower via one read from the existing
+  borrowed receiver Place, preserving struct/named-scalar identities, reference
+  capabilities and later receiver availability. Whole-self consumption remains
+  forbidden (`functions.md` §22, `copy_move.md` §18); the old consuming-receiver
+  completion requirement is obsolete, not an operation to invent.
+
+Full Sema passes (16.560s); final full Semantic IR/nominal/emitter suites pass
+(3.555s/0.119s/15.505s). New source cases pass schema 11 and 12 on 32/64 plans,
+including all three P15 native verifiers and P5/P6/P8 preservation. Native
+`static_cte` and `statics` cases pass through the single source-to-binary track
+(2/2, 0.898s); vet passes and compiler/LSP packages compile. No new full-Go or
+full native-lit snapshot is claimed for this delta.
+
+P15 remains **partial**, with **3 → 3** remaining governance entries: storage/root
+producers (static-held references, aggregate/executor-dependent initializers and
+effective addressed/hardware facts/bindings/IR), generic receiver/root-dependent
+return producers, and final package acceptance. MD-081 and MD-111 are decided;
+their remaining producer work is implementation, not an open normative decision.
+Physical reference representation/LLVM remains a later stage, not a P15 gate.
+
+## Acceptance scope correction — 2026-10-30
+
+The earlier statement that P15 must wait for the physical MD-061 optimization
+matrix was too broad. P15 §§151–155 explicitly exclude physical representation
+and LLVM generation. MD-061 §§6/7(5) require preservation/proof across available
+transformations; each later lowering consumer must demonstrate the same safety
+when it introduces physical operations. These guarantees do not make P15 depend
+on completion of P24/P25/P26/P27. No safety requirement is waived.
+
+New tests `TestPackage15HighLevelOptimizationBoundary` and
+`TestPackage15OptimizationDependencyCFG` exercise the currently executable
+boundary. Source reborrows, parent mutation after last use and returned origins
+are verified on 32/64 plans in unlowered, scalar and integer stages, then after
+canonicalize and CSE with all three P15 verifiers at each boundary. Unsupported
+physical lowering remains rejected; no LLVM pointer/alias/lifetime promises are
+introduced. Existing valid and malformed CFG cases cover epoch guards, lifetime
+and transfer dependencies. Expected invalid chunks stop before an optimizer
+could hide the error and emit no module; valid control chunks still emit.
+
+The full physical/LLVM matrix remains explicitly owned by
+`lowering.reference-model` in governance/memory.yaml. The erroneous P15 item is
+removed by ownership reconciliation: P15 remaining **4 → 3** (storage/root
+producers, receiver/return producers, final acceptance). P15 remains partial.
+This audit changes implementation planning and tests, not language semantics or
+the 56 normative criteria. Earlier full-Go execution below remains frozen
+baseline evidence; the new test-only delta is verified by focused and complete
+Semantic IR/emitter suites and vet, not labelled a new full-Go run.
+
+## P15-75 revalidation — 2026-10-30
+
+**The seven known Go test failures are repaired.** The full isolated Go run now
+passes: **43 packages passed, 4 packages without tests, 0 failed**. There are
+7952 passing test/subtest events (including nesting), with two tool-gated skips
+whose execution was then explicitly verified below. The complete LSP package
+passed in 539.859s. Full `go vet ./...` also passed.
+
+The frozen source worktree is based on HEAD `aa59b4c18c91ed04eef69c7dd0028e41630067f5`
+plus the current tracked/untracked source overlay, excluding distribution
+binaries and the untracked root executable. Its 3989-file manifest is
+`e9a65f8e08c1fd606ac7b9cc7efb3a6bb4791cea4261e8c2cb0adf180e5f036a`.
+The copied `sec-mlir-opt` SHA-256 is
+`039679b11d817bae2fb622084053a18d63486d6d18ef23697d2c10b4424f8e03`.
+All implementation and test files in the primary tree were compared with that
+manifest after execution; only acceptance/report/governance/status/handoff
+text was changed afterward. No skipped or filtered failure was made green.
+
+Repairs and their owners:
+
+- `cmd/unicodegen/main.go` now emits the existing field alignment and ASCII
+  range-membership spelling. The pinned Unicode 18.0.0 table/data is unchanged.
+- `testdata/sema/collection_contracts/` uses fixed-array literals for the
+  length/spread and uniqueness proofs. The three tests keep their exact
+  diagnostic expectations and 32/64-bit, Interactive/Standard/Deep matrix;
+  nonempty owning dynamic-array literals remain invalid.
+- `TestNumericStringConstructorRelations` replaces the stale legacy oracle:
+  primitive numeric-to-string relations remain valid, while direct nominal
+  string constructors must produce located S1174 under MD-051/MD-093.
+- Both IO tests now use checked-in fixtures under `testdata/compiler/io/` and
+  the actual target-aware `check --target=linux-amd64` pipeline. This supplies
+  the selected scalar plan instead of the old targetless analyzer.
+- `inferRegisterOperationCall` no longer probes an already registered
+  qualified free-function namespace as a runtime receiver. The dedicated
+  `TestRegisterOperationLookupPreservesQualifiedFunctions` covers Read, Write
+  and IsShadowKnown; ordinary register operation restrictions still pass.
+- `sec/stdlib/io/transfer.sec` and legacy file Copy/Directory.Next form checked
+  slice views before the fallible call. Ordinary slice checks retain their
+  default panic semantics; IO/StringError propagation is kept separate, with
+  no invented RangeError mapping. CopyN ends its mutable view before reading
+  the chunk. This does not close MD-026 or implement MD-109/P23 runtime string
+  materialization; no collect/Builder/URL migration is claimed.
+
+Commands (`P15_SNAPSHOT` names the frozen worktree, `LLVM_LIT` and
+`LLVM_TOOLS_BIN` name the configured LLVM build tools):
+
+```sh
+cd "${P15_SNAPSHOT}"
+SEC_MLIR_BIN="${P15_SNAPSHOT}/_p15-tools" go test ./... -count=1 -json
+SEC_MLIR_BIN="${P15_SNAPSHOT}/_p15-tools" go vet ./...
+"${LLVM_LIT}" -sv "${P15_SNAPSHOT}/_p15-native/test"
+"${LLVM_LIT}" -sv --filter='schema(9|10|11)' "${P15_SNAPSHOT}/_p15-native/test"
+SEC_MLIR_BIN="${P15_SNAPSHOT}/_p15-tools" \
+  SEC_LEGACY_MLIR_BIN="${LLVM_TOOLS_BIN}" \
+  go test ./internal/lowering/secmlir -run '^TestExecuteBoolean(Equality|Not)ThroughSecMLIR$' -count=1 -v
+go run ./cmd/yamlstatus check
+git diff --check
+```
+
+The full native suite passed **191/191** in the frozen test tree; explicit
+schema-9/10/11 selection passed **28/28**, with 163 excluded by that named
+selection. The configured primary `check-sec-mlir -j2` target also passed
+191/191 before freezing the source/tool. LLVM/MLIR is 24.0.0git, optimized with
+assertions; lit is 24.0.0dev; Go is go1.26.8 linux/amd64.
+
+`TestPackage15SourceToSchema11Pipeline` passed all **12/12** source/target
+cases in the full run, with the three P15 verifiers and P6/P8 preservation.
+The two Boolean execution tests that skipped in the full command because
+`SEC_LEGACY_MLIR_BIN` was absent were explicitly rerun with both absolute tool
+directories: **2/2 passed**, including native execution (0.442s). This is an
+existing test-only tool variable, not a separate compiler backend.
+
+Governance validation passed with **0 problems in 45 fragments**. The acceptance
+inventory audit matched all **56 ordered criteria exactly** against §155,
+all **46 report topics** against §156, and all eight required P15 rulebook
+inventory entries to existing files/directories. Whitespace checks passed.
+
+**P15-75 remains open for final package closure.** P15-42/42a still lack
+addressed/hardware producers (MD-111), aggregate/non-literal static producers
+and the separately gated static-reference initializer (MD-081); P15-47 still
+has generic receivers and unrepresented root-dependent returns.
+The full physical MD-061 matrix is retained by its later lowering consumers;
+it does not gate P15 (see the scope correction above). P15 producer requirements
+are neither waived nor arbitrarily moved. MD-116 scalar static
+roots and MD-114 detached register transports are already implemented and no
+longer counted as missing. The owning governance entry remains `partial`, with
+**4 remaining items before and after** this prerequisite repair pass.
+
+The numbered sections below preserve the historical 2026-10-25 report. Their
+old failing-suite observations are superseded by this dated revalidation;
+original evidence is retained rather than rewritten as a successful run.
+
 ## 1. repository HEAD implemented against
 
 Implemented against HEAD `9eb7c77e4e3153b61d29610581e33e07e57e2fa0`, a verified descendant of
@@ -260,7 +411,7 @@ facts and remains a separate source capability boundary.
 array-element/call summaries. MD-085 requires structural paths and only the
 callee's declared origins. The new `ReturnShared` source function checks shared
 return composition through a mutable-to-shared call. Static origins stay MD-116;
-consuming/generic receivers remain P15-47 producer/dependency work.
+generic receivers remain P15-47 producer/dependency work; ordinary whole-self consumption is forbidden by the current rules.
 
 ## 36. proven-reference tests
 
@@ -381,13 +532,15 @@ This is source-to-semantic-MLIR inspection, not executable reference ABI support
 
 ## 45. deviations
 
-P15 remains partial. MD-111 blocks addressed/hardware fact production;
-MD-114 blocks register operation text; new MD-116 blocks static Place root
-serialization/verification. MD-081 concerns legal static reference initializers
-and is distinct. MD-110 register/integer conversion is also separate. None of
-these decisions is invented to force acceptance.
+Historical deviation notes below are superseded by the producer increments and
+acceptance correction above. MD-114 detached-register transport, MD-116 static
+Place roots and the MD-110 destination/bit-extraction spellings are implemented.
+MD-081 is decided; static-held reference materialization still lacks its producer
+and representation. MD-111 is decided and source schema/Sema facts exist;
+effective plan assembly, named endpoints/bindings and hardware IR are still work.
+No undecided language semantics is invented or waived to force P15 acceptance.
 
-Remaining source work includes generic/consuming reference receivers and complete
+Remaining source work includes generic reference receivers and complete
 root/return support (P15-42/42a/47). Nontrivial lifecycle/cleanup belongs to P17;
 owning arrays to P18; physical reference representation to later lowering. The
 MD-061 differential optimization matrix is not replaced by high-level tests.

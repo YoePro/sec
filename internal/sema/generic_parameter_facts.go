@@ -11,6 +11,7 @@ import (
 // instance-method surface those constraints guarantee inside the generic
 // body. Tooling presents it instead of reconstructing constraints from syntax.
 type GenericParameterFact struct {
+	TypePack          bool
 	Name              string
 	Token             lexer.Token
 	Constraints       []GenericConstraint
@@ -34,6 +35,7 @@ func (a *Analyzer) recordGenericParameterFact(typ Type, token lexer.Token, implT
 		return
 	}
 	a.genericParameterFacts[sourceTokenLocation(token)] = GenericParameterFact{
+		TypePack:          typ.Kind == GenericTypePackType,
 		Name:              typ.Name,
 		Token:             token,
 		Constraints:       append([]GenericConstraint(nil), typ.GenericConstraints...),

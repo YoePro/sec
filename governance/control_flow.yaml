@@ -17,15 +17,25 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/lifetime_analysis.md
       - rules/compiler/semantic_ir.md
+      - rules/memory/arena.md
+      - rules/memory/reference_model.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/semantic_facts.go
+      - internal/sema/analyzer_defer.go
+      - internal/sema/analyzer_arena.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
       - testdata/defer_valid.sec
       - testdata/defer_invalid.sec
+      - internal/sema/defer_arena_continuation_test.go
+      - cmd/compiler/defer_arena_continuation_test.go
+      - cmd/lsp/defer_arena_continuation_test.go
+      - testdata/control_flow/defer_arena_continuation/valid.sec
+      - testdata/control_flow/defer_arena_continuation/immediate_invalid.sec
+      - testdata/control_flow/defer_arena_continuation/body_invalid.sec
     implemented:
       - defer body is analyzed in copied symbol state
       - defer body is analyzed in copied definite-assignment state
@@ -35,22 +45,20 @@ integrations:
       - defer body is analyzed in copied Arena-generation and current resource-close state
       - captured outer uses are converted to pending deferred-use borrow records after defer-body analysis
       - immediate Arena.Reset and Arena.Release increment arena generation so older arena-derived references become stale
+      - "Deferred Arena continuation regressions completed 2026-10-30: seven valid source cases preserve pre-existing reference use, Arena ownership and allocation after registering deferred Reset/Release, including repeated invalidation, conditional registration and a conditional deferred body. Three immediate Reset/Release cases retain stale-use diagnostics, including an immediate Reset after a registered deferred Reset. Sema, CLI JSON and unsaved-source LSP agree on acceptance and primary/allocation-source locations. A temporary Go overlay that disabled the existing copied generation state made the valid fixture fail with stale-reference errors, confirming regression sensitivity without modifying repository implementation. The duplicate remaining claim that Arena generation isolation was absent is removed: analyzer_defer.go already copies and restores it. Future cleanup-effect representation, ordering and cleanup-edge execution remain open."
     partial:
       - deferred cleanup effects are not yet represented independently for later cleanup-edge consumers
     remaining:
-      - isolate arena generation state while validating a deferred body
       - represent deferred Arena.Reset/Release invalidation as a future cleanup effect rather than mutating the ordinary continuation
       - audit every mutable Sema flow domain touched by defer-body analysis for registration-time versus cleanup-time semantics
       - separate current resource lifecycle state from registered future cleanup where the present closedResources model conflates them
       - preserve deferred cleanup effects explicitly in resolved Sema/Semantic IR facts with registration point and canonical cleanup order
       - apply arena/resource invalidation only on cleanup edges in later flow analysis and lowering
-      - add focused regression coverage for ordinary use between defer registration and cleanup
     bug_reference:
       - correction18.md
     governance_reconciliation:
-      - "Keep frontend.defer-v2 partial. Qualify the implemented registration and delayed-use statements: pending outer-value use restrictions are represented, but cleanup-time state mutation is not completely isolated from registration-time analysis."
-      - Add "isolate cleanup-time state mutations such as Arena.Reset/Release generation invalidation from ordinary post-registration flow state" to remaining work.
       - Existing remaining work for unified cleanup order, callable contexts, dynamic loop registration, Semantic IR, and backend lowering remains unchanged.
+      - "2026-10-30 verification supersedes the old registration-state audit claim: Arena generations and current resource-close state are copied during deferred-body validation and restored before ordinary continuation. Keep frontend.defer-v2 partial because explicit future cleanup effects, source-ordered cleanup execution and cleanup-edge consumers remain incomplete."
     required_tests:
       - deferred Arena.Reset does not stale a pre-existing arena reference before cleanup
       - immediate Arena.Reset still stales an older arena reference
@@ -58,6 +66,12 @@ integrations:
       - multiple deferred arena invalidations do not mutate current generation at registration
       - conditional deferred arena invalidation does not leak into ordinary continuation
       - cleanup-time arena invalidation retains canonical LIFO ordering
+    revised: "2026-10-30"
+    verification:
+      - command: go test -race ./internal/sema -run "TestDeferredArena(Continuation|BodyStillValidates)" -count=1 -timeout=90s
+        result: "Passed 2026-10-30: deferred-body Reset still rejects the stale use inside that body, while generation state is restored even after that diagnostic so the later ordinary return adds no stale-use error. This guards against implementing isolation by disabling deferred-body validation."
+      - command: go test ./internal/sema -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestDeferredArenaContinuation|TestMatchTermination' -count=1 -timeout=150s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-10-30: complete Sema 17.087s; targeted compiler/LSP race 8.475s/6.029s; vet passed. Focused Sema/CLI/LSP test also passed without race instrumentation. Mutation check: removing copied Arena generations in a temporary Go overlay causes the valid regression fixture to fail with stale-reference errors. No production source or runtime cleanup lowering changed. One required regression point closed and one stale duplicate isolation claim reconciled; remaining 7 to 5, observed global Remaining 2377 to 2375."
 
   - id: frontend.loop-arena-generation-fixed-point
     area: frontend-control-flow-and-reference-validity
@@ -932,6 +946,8 @@ integrations:
       - internal/ir/semantic/match_field_bindings_test.go
       - testdata/semantic_ir/match_field_patterns.sec
     implemented:
+      - "guard consumption (2026-10-30, internal/sema/match_arm_bindings.go rejectGuardConsumedBindings): a match guard that consumes its arm's payload or field binding is rejected, as for try-handler guards, so a false guard leaves the subject and payload for later arms (TestErrorPatternGuardOwnership)"
+      - "MD-042 IR and tooling (2026-10-30; semantic_ir.md § 71(6), lsp.md \"Error patterns, inactive arms and Some\"): ResolvedMatchPlan.ProvenActive keeps the proven variant with its provenance (immutable binding, basis construction or state-test, source token) and ResolvedMatchArm.ProvenInactive marks the arms the proof excludes; Semantic IR MatchRecord.ProvenActive/MatchArmRecord.ProvenInactive carry the reachable subset separately from the declared domain and arm coverage, the verifier rejects a proof on a non-union subject, an unknown basis or an inactive arm on the proven variant, the inactive arm keeps its lowered body and the residual stays the verbatim exhaustive-match-fallthrough; LSP hover on an inactive arm shows the proof; CLI JSON/human and LSP report the same A2008 identity, Information severity and pattern location (TestReachableStateProofProvenance, TestMatchRecordsCarryReachableStateProof, TestInactiveMatchArmCLI, TestInactiveMatchArmLSP). Semantic IR does not yet lower `is` tests, so state-test proofs reach IR once that operation exists."
       - "MD-042 reachable-state coverage and inactive arms (2026-10-29; flowcontrol_match.md §§ 5, 25A; internal/sema/match_reachable_state.go, try_failure_provenance.go): a match on an immutable union binding whose active variant is proven by construction or a dominating unmutated `is` fact (knownVariantTest) is exhaustive once that variant is covered unguarded (`let f := Figure.Dot; match f { Dot => ... }`), recorded as ResolvedMatchPlan.ProvenActiveVariant so termination and Semantic IR residuals follow; other valid arms emit the new configurable Information A2008 control-flow.inactive-match-arm with the proof, are still fully checked, and duplicates stay errors. Owned by-value parameters and `let mut` bindings are mutable working bindings and prove nothing (a mutable-receiver method may change the variant), so their matches keep the whole domain; guarded arms never cover. Try handlers over ArithmeticError use complete failure provenance: when every failure point is a checked integer operation (+ - * unary - give Overflow; / % DivisionByZero and Overflow; << InvalidShift and Overflow; >> InvalidShift) and no carrier is typed ArithmeticError or error, handlers for other variants are A2008-inactive; a Result[int, ArithmeticError] call proves nothing. Tests: TestReachableStateMatchCoverage, TestTryFailureProvenanceInactiveHandlers."
       - "MD-029 Result match error patterns (2026-10-29): Err(E.V(binding)), Err(E.V { fields }), Err(E.V {}) and Err(.V...) arms take part in closed exhaustiveness and source-order coverage like Err(E.V); payload places project Result → Err → variant for borrows (analyzeUnionFieldPatternAt shares the field-pattern rules). See frontend.errorhandling-v2 for the full contract and tests."
       - "MD-029 bare payload-carrying variant patterns (2026-10-29; flowcontrol_match.md § 8, unions.md § 9.2a, diagnostics.md § 24(4e)): `Variant` and `Union.Variant` arms over a payload-carrying union variant are valid full-variant coverage without a payload binding (guarded ones cover only the guarded subset) and emit the new configurable Information A2007 / union.omitted-payload-pattern naming the payload type or fields with the binding and explicit `Variant(_)` / `Variant {}` spellings; the explicit forms suppress it. S1152 union.pattern-payload-binding-required is retired. Semantic IR lowers the arm as union.is-variant without a payload read. Tests: TestBarePayloadVariantPatterns, TestUnionVariantMissingPayloadHasStableDiagnostics (value-position S1151 unchanged), TestBuildDiagnosticCatalogContainsEveryRegisteredDefinition."
@@ -987,7 +1003,6 @@ integrations:
       - make every whole-payload plain binding action explicitly resolve to copy, legal move, or temporary forwarding without silent borrow or clone
       - reject move-only payload transfer from ref and ref mut subjects unless an explicit permitted pattern borrow is used
       - delay guarded move-only binding commitment until guard success and retain ownership on the guard-false continuation
-      - reject consuming use of a prospective move-only payload binding inside its guard
       - retain precise Moved, PartiallyAvailable, and ConditionallyAvailable states and provenance across every continuing arm
       - apply ordinary discardability and must-use rules to statement-match arm results rather than erasing produced values
       - implement contextual final-expression values for block arms in expression-match result position on every continuing path
@@ -997,7 +1012,6 @@ integrations:
       - extend explicit source-order CFG with reachable compiler-known empty state once frontend initialization-state facts exist
       - extend statement-match continuation with non-trivial ownership, cleanup, and discard effects
       - complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage
-      - "md042-ir-and-tooling: carry the proven reachable subset and its provenance from ResolvedMatchPlan.ProvenActiveVariant into Semantic IR (the residual still lowers as `unreachable reason=exhaustive-match-fallthrough`, which the Sec MLIR verifier requires verbatim) and show the proof in LSP hover (semantic_ir.md § 71(6), lsp.md \"Error patterns, inactive arms and Some\"); CLI/JSON/LSP parity test for A2008. Sema facts and the advisory are implemented."
     required_tests:
       - match subject expression evaluates exactly once
       - source arm order is preserved
@@ -1173,7 +1187,7 @@ integrations:
       - "loop-binding borrows (2026-10-29, flowcontrol_for.md §§6-7; borrowing.md §§8.1(11), 14.5(2), 18(4)): every ref and ref mut loop binding holds a shared or exclusive borrow of the iterable Place, so reads, assignments and borrow creation that conflict with the live binding inside the body are rejected through the canonical S1160-S1162 diagnostics naming the binding as holder. The borrow is iteration-local: holder liveness ends it after the binding's last required use (a binding is fresh per iteration, and a later loop reusing the name is not a use), and the loop clears it at the iteration boundary and on every break and continue edge. The rulebook's iteration-local end points replace the earlier whole-body wording of this item; structural mutation keeps its dedicated S1075 check, and iteration dependency facts publish the binding borrow once in the iteration-binding phase (TestForBindingBorrowsIterable, TestIteratorStorageAndBorrowDependencies)"
       - "binding-position modes (verified 2026-10-29, flowcontrol_for.md §§9, 14, 20, 21): the sequential two-binding index is an ordinary int (or discard) and rejects reference modes; map iteration accepts plain, ref and ref mut values with mutable authority, shared or plain keys, and rejects ref mut keys and ref mut through a shared map; set iteration accepts plain-copy and shared-reference elements and rejects ref mut; discard bindings introduce no copy or move requirement, so move-only elements may be discarded (TestForBindingPositionModes, TestForBindingModeDiagnostics)"
     remaining:
-      - "MD-117 heterogeneous iteration: produce concrete per-position expansion plans for ordinary for, for ref and for ref mut with statically typed indexes/Len; reject by-value iteration of move-only elements and runtime heterogeneous indexing, preserve empty iteration, break/continue/return/defer/try/panic and executed side effects without a for static keyword (flowcontrol_for.md §13A; correction §5)."
+      - "MD-117 heterogeneous iteration: produce concrete per-position expansion plans for ordinary for, for ref and for ref mut with statically typed indexes/Len; reject by-value iteration of move-only elements and runtime heterogeneous indexing, preserve empty iteration, break/continue/return/defer/try/panic and executed side effects without a for static keyword (flowcontrol_for.md §13A; correction §5). Reference-carrying elements bind per §13A(4) (MD-119): for value copies a ref T holder, for ref / for ref mut reborrow the referent, never ref ref T or a moved-out ref mut holder."
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
       - "lower explicit for range steps (Known hole, verified 2026-10-17): Semantic IR rejects `step` as 'for range with an explicit step'"
@@ -1388,9 +1402,9 @@ integrations:
 
   - id: frontend.logical-short-circuit-flow
     area: frontend-expression-control-flow
-    status: partial
+    status: implemented
     audited: "2026-08-19"
-    revised: "2026-10-29"
+    revised: "2026-10-30"
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_if.md
     document_revision: "2.0"
@@ -1404,6 +1418,7 @@ integrations:
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
       - rules/compiler/semantic_ir.md
+      - rules/compiler/compile_time_evaluation.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/analyzer_integer_refinement.go
@@ -1414,6 +1429,7 @@ integrations:
       - internal/lowering/secmlir
       - internal/ir/semantic/boolean.go
       - internal/ir/semantic/logical_flow.go
+      - internal/sema/analyzer_control_flow.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_logical_test.go
@@ -1422,6 +1438,11 @@ integrations:
       - internal/ir/semantic/boolean_test.go
       - testdata/build/native/logical_contexts.sec
       - cmd/compiler/native_track_test.go
+      - internal/sema/logical_constant_proofs_test.go
+      - cmd/compiler/logical_constant_proofs_test.go
+      - cmd/lsp/logical_constant_proofs_test.go
+      - testdata/control_flow/logical_constants/valid.sec
+      - testdata/control_flow/logical_constants/unreachable_invalid.sec
     implemented:
       - "regression coverage (2026-10-29; internal/sema/analyzer_logical_coverage_test.go): a conditional RHS move merges with the bypass path in let, nested && / ||, if and while conditions (S1089 conditionally available on the later borrow), a folded skipped RHS keeps the value available, and a conditional RHS call is a reachable call-graph edge with its panic effect; resource and Arena restoration on folded RHS stays covered by TestFoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects. Found and fixed with it: a value consumed by a while condition was not rechecked across iterations (frontend.while-statements-v2)."
       - logical bool operand type validation
@@ -1442,8 +1463,8 @@ integrations:
       - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
       - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining S1023 warnings for insufficient guards
       - "Canonical logical-flow IR/lowering bridge completed 2026-10-29: boolean lowering consumes Sema ResolvedLogicalFlow for never/always/conditional RHS execution, selected edge and bypass result rather than reconstructing source proofs. A focused invariant gate now rejects non-bool types, unknown operators/execution and contradictory edge/result facts before operand construction or IR mutation. Existing exact CFG merge/branch tests plus the new shared source/native fixture cover left-first once-only effects, skipped RHS, nested logical operands, local initializers, call arguments, while conditions and return expressions, including compiler-folded skip/required paths. Sec MLIR and the sole native track consume that canonical CFG; no second boolean evaluator or backend was introduced. Broader source-state regression and compile-time proof extensions remain their separate items."
-    remaining:
-      - extend canonical compile-time bool proof beyond the current immutable-integer and boolean operator subset
+      - "Shared semantic constant bool proof completed 2026-10-30: control-flow selection consumes the canonical semantic CTE evaluator for composed strings, decoded char/rune values, floating/decimal constants, same-enum value aliases and immutable bool bindings/composition, retaining existing local integer proofs. Mutable/transient dependencies are excluded from invariant proof; unavailable calls/getters and runtime values remain unknown. ResolvedLogicalFlow publishes never/always/conditional RHS execution for downstream IR without a separate evaluator. Source regressions check skipped ownership transfer, noPanic and call-graph exclusion, required/conditional calls, transient loop values and canonical S3001 diagnostics for unreachable if/while bodies in CLI JSON and LSP."
+    remaining: []
     bug_reference:
       - correction22.md
     governance_reconciliation:
@@ -1453,6 +1474,8 @@ integrations:
       - Removed legacy remaining claims for the dedicated flow path, skipped-RHS isolation, conditional state merging, and call-graph exclusion because the migrated entry already records those corrections as implemented.
       - The 2026-09-24 frontend step publishes the selected RHS edge as ResolvedLogicalFlow without extending backend scope.
     verification:
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestLogicalSharedConstantProofs|TestSharedConstantUnreachablePolicy|TestSharedConstantCondition' -count=1 -timeout=120s; go vet ./internal/sema ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-10-30: complete Sema 14.907s and final source-regression suite 22.873s; diagnostics, Semantic IR and nominal suites passed. Focused race Sema/CLI/LSP 1.168s/4.196s/3.052s; vet passed. Before the repair the new constant cases published conditional RHS execution and the unreachable fixture produced no errors. Remaining 1 to 0; integration now implemented. CTE execution of calls/getters remains owned by its separate compiler integration."
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "TestNativeTrackBuildsAndRuns|TestSecMLIRPublication|TestRetainedSecMLIR|TestReference.*Inspection" -count=1 -timeout=150s; go vet ./internal/ir/semantic ./cmd/compiler
         result: "passed 2026-10-29: full IR/emission/toolchain suites (3.5s/15.6s/1.0s), native/publication/inspection regressions (20.5s) and vet. Two whole governance points closed: logical flow 3 to 2 and lowering pipeline 5 to 4."
       - command: go test ./internal/sema -run 'TestResolvedLogicalFlowRecordsSelectedRHSEdge|TestLogicalShortCircuitDoesNotCommitImpossibleMove|TestLogicalOperatorsRequireBool' -count=1
@@ -1477,7 +1500,7 @@ integrations:
     area: frontend-control-flow
     status: partial
     audited: "2026-08-19"
-    revised: "2026-09-24"
+    revised: "2026-10-30"
     repository_baseline: c515862
     document_revision: "2.0"
     document_created: "2026-08-17"
@@ -1489,18 +1512,27 @@ integrations:
       - rules/declarations/enums.md
       - rules/compiler/semantic_ir.md
       - rules/mlir/packages/sec-mlir-dialect_package12.md
+      - rules/memory/unsafe.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/semantic_facts.go
       - internal/ir/semantic/model.go
       - internal/ir/semantic/builder.go
       - internal/lowering/secmlir/emitter.go
+      - internal/sema/analyzer_statement_flow.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/package12_test.go
       - testdata/match_valid.sec
       - testdata/semantic_ir/match_cfg.sec
+      - internal/sema/match_termination_matrix_test.go
+      - internal/ir/semantic/match_termination_matrix_test.go
+      - cmd/compiler/match_termination_matrix_test.go
+      - cmd/lsp/match_termination_matrix_test.go
+      - testdata/control_flow/match_termination/valid.sec
+      - testdata/control_flow/match_termination/continuing_invalid.sec
+      - testdata/control_flow/match_termination/unreachable_invalid.sec
     implemented:
       - canonical analyzeMatch coverage for Result
       - canonical analyzeMatch coverage for UnionType including Option
@@ -1512,10 +1544,10 @@ integrations:
       - Package 12 consumes ResolvedMatchPlan for enum, union, Result, and Option CFG
       - statement termination consumes ResolvedMatchPlan.Exhaustive and resolved arm flow
       - nested analyzed match statements participate in analyzer-aware block fallthrough and return queries
+      - "Focused match termination matrix completed 2026-10-30: shared source fixtures cover exhaustive union and Option matches, integer enum aliases, complete open-bit enum domains, nested matches, unsafe block wrappers, guarded fallbacks and panic arms. Valid functions require no synthetic final return; six continuing-arm counterexamples retain missing-return errors and six post-termination statements retain S3001. Reproduced and fixed an analyzer gap where an unsafe wrapper fell back to syntax-only return analysis, falsely rejecting NestedUnsafe and missing its unreachable successor. The wrapper now recurses through analyzer-owned statement flow while preserving the existing asm-return rule. Cohesive analyzer-aware return/continuation queries are extracted from analyzer.go into analyzer_statement_flow.go. CLI JSON/LSP agree with Sema, and Semantic IR verifies exact return counts and the non-returning panic arm. Broader replacement of package-level structural helpers and cleanup-flow unification remain open."
     remaining:
       - replace package-level structural flow reconstruction with compiler-owned resolved statement-flow facts
       - ensure function return, unreachable-code, cleanup, Semantic IR, and lowering consume one canonical match flow result
-      - add union, Option, alias-enum, open-bit-enum, and nested-match termination regression coverage
     bug_reference:
       - correction23.md
     governance_reconciliation:
@@ -1533,6 +1565,9 @@ integrations:
       - duplicate alias arm remains rejected
       - nested exhaustive match can terminate an outer match arm
       - ResolvedMatchPlan exhaustiveness agrees with function-return analysis
+    verification:
+      - command: go test ./internal/sema ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestMatchTermination|TestSharedConstantCondition|TestInactiveMatch' -count=1 -timeout=150s; go test -race ./internal/sema -run 'TestMatchTerminationMatrix|TestUnsafeFunctionAllowsAsm|TestAssertFalse' -count=1 -timeout=90s; go vet ./internal/sema ./internal/ir/semantic/... ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-10-30: complete Sema 32.213s and Semantic IR/nominal 4.943s/0.163s; targeted compiler/LSP race 18.569s/16.023s; focused Sema race and vet passed. Before the repair NestedUnsafe produced a false missing-return error and only five of six unreachable successors were diagnosed. frontend.match-termination-consistency remaining 3 to 2; observed global Remaining 2375 to 2374. No MLIR/native execution claim or cleanup-flow completion is made."
 
   - id: frontend.switch-cfg-and-enum-coverage
     area: frontend-control-flow

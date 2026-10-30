@@ -20,7 +20,7 @@ const maxDecimalScaleShift = 200
 // `1.25e-3` scale 5 and `1e3` scale -3. It never passes through binary
 // floating point.
 // Rules: rules/types/types.md — "Decimal scale";
-// rules/corrections/md066-md067-md068-decimal-correction-20261028.md — § 3(7).
+// rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — § 3(7).
 func DecimalLiteral(spelling string) (coefficient *big.Int, scale int64, ok bool) {
 	negative := strings.HasPrefix(spelling, "-")
 	spelling = strings.TrimPrefix(spelling, "-")

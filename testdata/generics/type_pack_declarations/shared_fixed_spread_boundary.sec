@@ -1,0 +1,3 @@
+module main
+fn Observe[...Types](values: ...ref Types) void {}
+fn Use(values: int[2]) void { Observe(values...) }

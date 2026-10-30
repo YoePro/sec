@@ -133,6 +133,24 @@ The exact in-memory and serialized representation is implementation-defined.
 A `ModuleSurface` is semantic. It does not define ABI representation or binary
 linkage names.
 
+**Amendment MD-113 (2026-10-30, `rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` § 7(4)).** The
+`SemanticSignatures` of public register `impl` members include their
+compiler-inferred shadow-knowledge and hardware-effect summaries
+(`RequiresKnown`, `EnsuresKnown`, conditional `return == true => ShadowKnown`,
+invalidations, pending-intent effects and hardware observation, write and read
+side effects). Importers check calls against the same summaries a local call
+uses, and a change to a summary changes surface compatibility and incremental
+invalidation.
+
+**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 2(2), 8(3), 9(3), 12(3)).**
+`hardware region`, `hardware resource` and `hardware endpoint` declarations are
+module members identified by canonical `ModuleIdentity`, category and name.
+They follow ordinary import qualification and visibility; there is no implicit
+`Platform.*` alias. A project override selects them by canonical import path and
+declaration name, never by short module name or enumeration order, and their
+effective provenance and the `Project.<name>` export names are retained across
+separate compilation.
+
 ---
 
 ## 3. Source directory and module membership

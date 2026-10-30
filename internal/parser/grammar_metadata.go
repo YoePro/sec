@@ -267,6 +267,7 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 const (
 	contextualTarget      = "target"
 	contextualTest        = "test"
+	contextualHardware    = "hardware"
 	contextualDo          = "do"
 	contextualDetach      = "detach"
 	contextualNot         = "not"

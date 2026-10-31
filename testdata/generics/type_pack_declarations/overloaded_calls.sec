@@ -1,0 +1,11 @@
+module main
+fn Pick[...Types](tag: int, values: ...ref Types) uint { return values.Len }
+fn Pick[...Types](tag: bool, values: ...ref Types) uint { return values.Len }
+fn Fixed[T](value: ref T) int { return 1 }
+fn Fixed[...Types](values: ...ref Types) int { return 2 }
+fn Use() uint {
+    let first: uint := Pick(1, true)
+    let second := Pick(false, 42)
+    return first + second + Pick(true)
+}
+fn UseFixed() int { return Fixed(42) }

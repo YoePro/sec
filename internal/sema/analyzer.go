@@ -19,12 +19,15 @@ import (
 	"sec/internal/hardware"
 	"sec/internal/layout"
 	"sec/internal/lexer"
+	"sec/internal/modules"
 )
 
 type Analyzer struct {
 	hardwareContext             HardwareModuleContext
 	hardwareFacts               hardware.Facts
 	hardwareFactsValid          bool
+	hardwareImports             map[string]map[string][]modules.ModuleIdentity // per-file hardware import scope for @address
+	hardwareBindings            map[sourceTokenKey]ResolvedHardwareBinding
 	cleanupIdentities           cleanupIdentityAllocator
 	currentCleanupScope         CleanupScopeID
 	cleanupScopes               map[*ast.BlockStatement]CleanupScopeID
@@ -91,6 +94,7 @@ type Analyzer struct {
 	resolvedTestMetadata         map[*ast.TestDeclaration]ResolvedTestMetadata
 	resolvedTests                []ResolvedTestMetadata
 	resolvedCalls                map[*ast.CallExpression]ResolvedCall
+	typePackByValueLoops         map[sourceTokenKey]lexer.Token
 	foreignExtentContracts       *ForeignBufferExtentContractStore
 	resolvedForeignBufferExtents map[*ast.CallExpression][]ResolvedForeignBufferExtent
 	resolvedTestingOperations    map[*ast.CallExpression]ResolvedTestingOperation
@@ -574,6 +578,8 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.hardwareFacts = hardware.Facts{}
 	a.hardwareFactsValid = false
+	a.hardwareImports = nil
+	a.hardwareBindings = nil
 	a.cleanupIdentities = cleanupIdentityAllocator{}
 	a.currentCleanupScope = 0
 	a.cleanupScopes = nil
@@ -615,6 +621,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTestMetadata = map[*ast.TestDeclaration]ResolvedTestMetadata{}
 	a.resolvedTests = nil
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.typePackByValueLoops = nil
 	a.resolvedForeignBufferExtents = map[*ast.CallExpression][]ResolvedForeignBufferExtent{}
 	a.resolvedTestingOperations = map[*ast.CallExpression]ResolvedTestingOperation{}
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
@@ -815,6 +822,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
+	a.checkTypePackByValueLoops()
 	a.validateResolvedFloatLiterals()
 	a.resolveRegisterHardwareRequests()
 	a.checkRegisterReceiverRequirements()
@@ -3710,8 +3718,8 @@ func functionAcceptsCallArguments(function Function, argumentCount int, runtimeS
 }
 
 // functionParameterForArgument maps every trailing source argument to the
-// variadic element parameter. rules/declarations/functions.md section 33
-// specifies ordinary by-value processing separately for each such element.
+// variadic element parameter, retaining owned/shared/exclusive mode per position.
+// Rules: rules/declarations/functions.md §§33,38A(3),(9).
 func functionParameterForArgument(function Function, argumentIndex int) (FunctionParameter, bool) {
 	if argumentIndex < 0 {
 		return FunctionParameter{}, false
@@ -3726,11 +3734,12 @@ func functionParameterForArgument(function Function, argumentIndex int) (Functio
 			if index < 0 || index >= len(sequence) {
 				return FunctionParameter{}, false
 			}
-			if parameter.Type.Kind != ReferenceType {
-				return FunctionParameter{}, false
-			}
 			element := sequence[index]
-			parameter.Type.Element = &element
+			if parameter.Type.Kind == ReferenceType {
+				parameter.Type.Element = &element
+			} else {
+				parameter.Type = element
+			}
 		}
 		return parameter, true
 	}
@@ -8055,9 +8064,7 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 		a.addErrorAtToken(expressionToken(stmt.Value), "addressed register %s cannot have initializer", stmt.Name.Value)
 	}
 
-	if _, ok := stmt.Address.(*ast.IntegerLiteral); !ok {
-		a.addErrorAtToken(expressionToken(stmt.Address), "@address requires compile-time integer address")
-	}
+	endpoint, bound := a.resolveAddressEndpoint(stmt)
 
 	symbol := a.symbols[stmt.Name.Value]
 	// MD-077 § 4(7): the binding denotes the software instance of T.
@@ -8065,7 +8072,10 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 	symbol.Type = hardwareInstanceType(declaredType)
 	symbol.Addressed = true
 	symbol.Volatile = true
-	symbol.Address = stmt.Address.String()
+	if bound {
+		symbol.Address = endpoint.Identity.Module.String() + "::" + endpoint.Identity.Name
+		a.recordHardwareBinding(stmt, declaredType, endpoint)
+	}
 	// Fixed placement is orthogonal to storage origin. A platform-owned
 	// hardware region remains Unknown until a target contract proves more.
 	symbol.Storage = StorageOriginUnknown
@@ -10493,7 +10503,7 @@ func splitUnionVariantTypeName(name string) (string, string, bool) {
 //   - rules/declarations/generics.md — §33 "Sema requirements"
 func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*ast.TypeReference, argTypes []Type, expected Type) (Function, bool, bool) {
 	if function.GenericTypePack != "" {
-		instance, ok := a.inferSharedTypePackCall(function, refs, argTypes, expected)
+		instance, ok := a.inferTypePackCall(function, refs, argTypes, expected)
 		return instance, !ok, ok
 	}
 	if len(refs) > len(function.GenericParameters) || !functionAcceptsArgumentCount(function, len(argTypes)) {
@@ -10535,34 +10545,6 @@ func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*as
 	}
 
 	return a.instantiateGenericFunction(function, substitution), false, true
-}
-
-func (a *Analyzer) instantiateGenericFunction(function Function, substitution map[string]Type) Function {
-	key := genericFunctionInstanceKey(function, substitution)
-	if existing, ok := a.genericFuncInstances[key]; ok {
-		return existing
-	}
-
-	out := function
-	out.GenericSubstitution = make(map[string]Type, len(substitution))
-	for name, typ := range substitution {
-		out.GenericSubstitution[name] = typ
-	}
-	out.GenericParameters = nil
-	out.GenericConstraints = make([]GenericConstraint, 0, len(function.GenericConstraints))
-	for _, constraint := range function.GenericConstraints {
-		constraint.Interface = substituteGenericType(constraint.Interface, substitution)
-		out.GenericConstraints = append(out.GenericConstraints, constraint)
-	}
-	out.GenericConstraintFailure = a.genericFunctionConstraintFailure(function, substitution)
-	out.Parameters = make([]FunctionParameter, 0, len(function.Parameters))
-	for _, param := range function.Parameters {
-		param.Type = substituteGenericType(param.Type, substitution)
-		out.Parameters = append(out.Parameters, param)
-	}
-	out.ReturnType = substituteGenericType(function.ReturnType, substitution)
-	a.genericFuncInstances[key] = out
-	return out
 }
 
 // genericFunctionConstraintFailure verifies every concrete generic function

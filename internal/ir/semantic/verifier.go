@@ -37,6 +37,9 @@ func Verify(module *Module) error {
 	if err := verifyRegisterDefinitions(module); err != nil {
 		return err
 	}
+	if err := verifyHardwareBindings(module); err != nil {
+		return err
+	}
 	if err := verifyDestructionPlans(module); err != nil {
 		return err
 	}
@@ -549,6 +552,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyTypePackFacts(module, fn); err != nil {
 		return err
 	}
+	if err := verifySpecializationFacts(module, fn); err != nil {
+		return err
+	}
 	return verifyReturnOrigins(module, fn)
 }
 
@@ -802,6 +808,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 				want = ArgumentSharedReference
 			} else if ok && parameter.Kind == TypeMutableSlice {
 				want = ArgumentMutableReference
+			} else if ok && parameter.Kind == TypeHardwareInstance {
+				want = ArgumentHardwareInstance
 			} else if !trivialDestruction(module, callee.Parameters[i].Value.Type) {
 				want = ArgumentMove
 			}
@@ -1109,6 +1117,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyRegisterValueOperation(module, op, values); err != nil {
 			return err
 		}
+	case OpHardwareBind, OpHardwareObserve, OpHardwareRequestWrite, OpHardwareShadowObserve, OpHardwareShadowIntent, OpHardwareCommit, OpHardwareShadowKnown:
+		if err := verifyHardwareOperation(module, op, values); err != nil {
+			return err
+		}
 	case OpRegisterValueFitsBits, OpRegisterValueFromBits, OpRegisterValueToBits:
 		if err := verifyRegisterConversionOperation(module, op, values); err != nil {
 			return err
@@ -1339,6 +1351,9 @@ func package14TrivialValue(module *Module, id TypeID) bool {
 	}
 	switch typ.Kind {
 	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum, TypeRawPointer:
+		return true
+	case TypeRegister:
+		// A detached register value is a pure bit-layout value (MD-077 § 5).
 		return true
 	case TypeArray:
 		return package14TrivialValue(module, typ.Element)

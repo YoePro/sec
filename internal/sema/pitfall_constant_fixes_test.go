@@ -28,7 +28,7 @@ func TestPitfallConstantFixes(t *testing.T) {
 		t.Fatal(p.Errors())
 	}
 	a := NewAnalyzerWithDepth(AnalysisDeep)
-	if errs := a.Analyze(program); len(errs) != 0 {
+	if errs := analyzeWithHardwareTestTarget(a, program); len(errs) != 0 {
 		t.Fatal(errs)
 	}
 	for _, test := range []struct {
@@ -80,7 +80,7 @@ func TestPitfallConstantFixes(t *testing.T) {
 			if len(p.Errors()) != 0 {
 				t.Fatal(p.Errors())
 			}
-			if errs := NewAnalyzerWithDepth(AnalysisDeep).Analyze(replacement); len(errs) != 0 {
+			if errs := analyzeWithHardwareTestTarget(NewAnalyzerWithDepth(AnalysisDeep), replacement); len(errs) != 0 {
 				t.Fatal(errs)
 			}
 			for _, field := range []string{"EvaluationOrder", "EvaluationCount", "Effects", "Failure", "Ownership", "Borrow", "ControlFlow"} {

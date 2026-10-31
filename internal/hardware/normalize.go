@@ -81,7 +81,10 @@ func Normalize(target TargetFacts, declarations []Declaration) (Facts, []Issue) 
 		n.issue("context", declarations[0].Origin, Origin{}, "hardware metadata requires a resolved target uint width")
 	}
 	for i, d := range declarations {
-		if _, err := modules.NewCrossModuleDeclarationIdentity(d.Identity.Module, d.Identity.Name); err != nil || d.Scope.Module != d.Identity.Module || d.Scope.File == "" {
+		// The resolver-owned module identity is the requirement; the file
+		// locator may be the empty name of a single unnamed in-memory source
+		// that the resolver context explicitly places.
+		if _, err := modules.NewCrossModuleDeclarationIdentity(d.Identity.Module, d.Identity.Name); err != nil || d.Scope.Module != d.Identity.Module {
 			n.issue("context", d.Origin, Origin{}, "hardware declaration %q requires canonical resolver-owned module and source context", d.Identity.Name)
 			continue
 		}

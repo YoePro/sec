@@ -1,0 +1,8 @@
+module main
+fn Pick[...Types](values: ...Types) uint { return values.Len }
+fn Pick[...Items](values: ...Items) int { return 1 }
+fn Use() uint {
+    let data: int[] := []
+    discard Pick(<-data)
+    return data.Len
+}

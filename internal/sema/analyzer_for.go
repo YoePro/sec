@@ -228,6 +228,9 @@ func (a *Analyzer) forIterationSource(stmt *ast.ForStatement) (forIterationCateg
 //   - rules/control-flow/flowcontrol_for.md — §14 "Sequential collections", §17 "Slices", §19 "Strings", §20 "Sets", §21 "Maps"
 //   - rules/control-flow/flowcontrol_for.md — §37 "Compiler-known `Iterator[T]`", §40 "Unsupported forms"
 func (a *Analyzer) applyForBindingModes(stmt *ast.ForStatement, bindingTypes []Type) []Type {
+	if result, pack := a.packForBindingModes(stmt, bindingTypes); pack {
+		return result
+	}
 	category, isReference, mutableReference := a.forIterationSource(stmt)
 	result := append([]Type{}, bindingTypes...)
 	for i, binding := range stmt.Bindings {
@@ -462,6 +465,13 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			// attached there and must remain visible in the loop body.
 			runeType := a.types["rune"]
 			return a.inferSequentialForBindingTypes(stmt, runeType, indexType)
+		}
+		if iterableType.Kind == VariadicPackType && iterableType.Element != nil {
+			if element, pack := typePackElementType(*iterableType.Element); pack {
+				// MD-117: a heterogeneous pack iterates type-aware; each
+				// specialization unrolls the body per concrete position.
+				return a.inferSequentialForBindingTypes(stmt, element, indexType)
+			}
 		}
 		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType || iterableType.Kind == VariadicPackType) && iterableType.Element != nil {
 			// rules/declarations/functions.md section 30 permits read-only

@@ -356,6 +356,7 @@ const (
 	HardwareRegionConflict     = "S1185"
 	HardwareSchemaUnavailable  = "S1186"
 	HardwareContextUnavailable = "S1187"
+	HardwareAddressBinding     = "S1188"
 	HardwareRegionOverlap      = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
@@ -421,6 +422,7 @@ var registry = map[string]Definition{
 	HardwareRegionConflict:                {ID: HardwareRegionConflict, Name: "hardware.region-conflict", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
 	HardwareSchemaUnavailable:             {ID: HardwareSchemaUnavailable, Name: "compiler.hardware-schema-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
 	HardwareContextUnavailable:            {ID: HardwareContextUnavailable, Name: "compiler.hardware-context-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareAddressBinding:                {ID: HardwareAddressBinding, Name: "hardware.address-binding", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
 	HardwareRegionOverlap:                 {ID: HardwareRegionOverlap, Name: "hardware.region-overlap", Family: "hardware", DefaultSeverity: SeverityWarning, Mandatory: false},
 	UselessExplicitDiscard:                {ID: UselessExplicitDiscard, Name: "ownership.useless-explicit-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
 	RedundantVoidDiscard:                  {ID: RedundantVoidDiscard, Name: "ownership.redundant-void-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},

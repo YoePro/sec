@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
 	"sec/internal/parser"
+	"sec/internal/project"
 	"sec/internal/sema"
 	"sec/internal/sourceimports"
 )
@@ -102,4 +104,22 @@ func compilerStandardLibrarySources(path string, target CompilerTarget, sources 
 		}
 	}
 	return selected, true
+}
+
+// cliHardwareModuleContext gives Sema the resolver-owned identity of every
+// assembled source file and the modules its imports select, using the same
+// import resolution that loaded the sources. The entry directory is the
+// anonymous root of sources outside a Project.
+// Rules: MD-111 §§2,12; rules/projects/modules.md — §§2.2,8–9;
+// rules/projects/projects.md — §13(9).
+func cliHardwareModuleContext(program *ast.Program, target CompilerTarget, sourceFiles []string) sema.HardwareModuleContext {
+	entry := "."
+	if len(sourceFiles) != 0 {
+		entry = filepath.Dir(sourceFiles[0])
+	}
+	resolver := project.NewSourceModuleResolver(findCompilerSourceRoot(sourceFiles), entry)
+	return sema.HardwareModuleContextFor(program, resolver.ModuleIdentity, func(file, path string) []string {
+		paths, _ := sourceIncludePathsWithSources(path, target, []string{file})
+		return paths
+	})
 }

@@ -1,0 +1,14 @@
+module main
+
+fn Tagged[...Types](base: uint, values: ...ref Types) uint {
+    return base + values.Len
+}
+fn Direct() uint { return Tagged(10, 1, true) }
+fn Typed() uint {
+    let value: uint := Tagged(20, false)
+    return value
+}
+fn Inferred() uint {
+    let value := Tagged(30)
+    return value
+}

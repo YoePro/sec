@@ -36,6 +36,7 @@ func newLSPAnalyzerForInputs(uri string, program *ast.Program, overlay sourceOve
 // rules/tooling/lsp.md — "Configuration", "Snapshots".
 func newLSPAnalyzerForInputsAtDepth(uri string, program *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) *sema.Analyzer {
 	analyzer := newTargetLSPAnalyzer(uri, program, overlay, depth)
+	analyzer.SetHardwareModuleContext(lspHardwareModuleContext(program, pathFromURI(uri)))
 	analyzer.SetDiagnosticRules(lspDiagnosticRules(pathFromURI(uri)))
 	return analyzer
 }

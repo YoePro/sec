@@ -27,7 +27,7 @@ type Actions register[16] {
     Mode: bit[2],
 }
 
-@address(0x40003000)
+@address(ActionsEndpoint)
 let mut actions: Actions
 
 impl Actions {
@@ -75,6 +75,35 @@ fn Detached(value: Actions) Actions {
     copy.Pending = 0b0011
     copy.OneClear = false
     return copy
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ActionsState { width: 16, }
+hardware endpoint ActionsEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ActionsState,
+    offset: 0x3000,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `)
 	if len(errors) != 0 {

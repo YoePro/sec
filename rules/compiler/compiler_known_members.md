@@ -1889,7 +1889,7 @@ Examples:
 let runes: rune[2] := ['A', 'B']
 let first := runes.ToString()
 
-let chars := "test string".ToCharArray()
+let chars := try "test string".ToCharArray()
 let second := chars[0..<4].ToString()
 ```
 
@@ -1941,17 +1941,17 @@ grapheme segmentation;
 zero-terminated character scanning.
 ```
 
-If the final `char` model restricts representable text, the compiler must
-diagnose or use the canonical conversion behavior defined there.
-
 This rulebook requires consistency between:
 
 ```text
-string.ToCharArray();
 char.ToString();
 char-array/slice ToString();
 string char iteration where defined.
 ```
+
+`string.ToCharArray()` is not part of that group: it is the byte-preserving
+counterpart of `ToByteArray()` (MD-073), and char-sequence `ToString()` does not
+reinterpret a `char` sequence as UTF-8 because of where it came from.
 
 ---
 
@@ -2082,30 +2082,51 @@ Mutating it does not mutate the source string.
 Required on `string`:
 
 ```sec
-let chars := "test string".ToCharArray()
+fn ToCharArray() Result[char[], CollectionError]
+
+let chars := try "test string".ToCharArray()
 ```
 
-It materializes an owning `char[]`.
+It materializes an owning `char[]` and reports unavailable or insufficient
+result storage as `CollectionError`, exactly as `ToByteArray()` does (MD-072).
 
-The produced elements follow the canonical `char` interpretation of the string.
+`ToCharArray()` is byte-preserving (MD-073, 2026-10-31): the result contains one
+`char` for each byte of the string's UTF-8 encoding, in byte order, with the
+identical numeric value. It is conceptually `ToByteArray()` followed by an exact
+per-element `char(byte)` conversion. It does not iterate Unicode scalars and
+performs no `rune`-to-`char` representability check, so no scalar is rejected,
+truncated or replaced: a scalar encoded in several UTF-8 bytes contributes
+several `char` elements.
+
+```sec
+let ascii := try "ABC".ToCharArray()  // [0x41t, 0x42t, 0x43t]
+let accent := try "é".ToCharArray()    // [0xC3t, 0xA9t]
+let omega := try "Ω".ToCharArray()     // [0xCEt, 0xA9t]
+```
+
+The result has exactly `text.SizeOf` elements, never `text.Len`; element `i`
+equals `text.ByteAt(i)`. All bytes, including zero and continuation bytes, are
+preserved.
 
 The operation:
 
 ```text
-preserves logical order;
+preserves byte order;
 does not append a terminator;
 does not expose string backing as mutable aliases;
 does not consume or mutate the source;
-returns an empty array for an empty string.
+returns an empty array for an empty string;
+does not encode into a locale, ANSI or code-page encoding;
+introduces no ConversionError, StringError or Unicode-range failure.
 ```
 
-The result count is the number of canonical `char` elements, not necessarily the
-encoded byte length.
+`"é"` yields the UTF-8 bytes `C3 A9`, not the Latin-1 byte `E9`. Producing a
+code-page encoding requires an explicit codec.
 
-The exact relationship between `char`, Unicode scalar values, and string
-iteration is owned by the type and string rulebooks.
-
-This document requires all related operations to agree.
+Failure publishes no partly formed array and leaves the source intact. An
+implementation may reuse the byte-array materialization path and need not
+allocate a separate intermediate `byte[]`, but no source-visible implicit
+`byte[]` to `char[]` conversion or unsound storage retyping exists.
 
 ---
 
@@ -2186,15 +2207,13 @@ content.
 
 ## Chars
 
-```text
-text.ToCharArray().ToString()
-```
-
-must reconstruct equivalent string content when every string value is fully
-representable by the canonical `char` model.
-
-When that condition does not hold, the char/string rulebook must define the
-failure or exclusion explicitly.
+No round-trip invariant `text.ToCharArray().ToString() == text` holds for
+non-ASCII text (MD-073). `ToCharArray()` preserves UTF-8 bytes, while
+char-sequence `ToString()` keeps its own per-`char` interpretation (see
+"Char-sequence semantics") and is not changed into a UTF-8 byte decoder to make
+the round trip succeed. For ASCII content (`U+0000..U+007F`) one element per
+scalar is produced and the round trip reconstructs the text. Decoding a byte
+sequence back to text uses `str.FromByteArray` on `ToByteArray()` output.
 
 ---
 
@@ -3899,8 +3918,9 @@ terminator, and do not alias mutable string storage.
 
 `ToRuneArray()` returns Unicode scalar values.
 
-`ToCharArray()` follows the canonical Sec char model and must remain consistent
-with char iteration and char-sequence `ToString()`.
+`ToCharArray()` returns `Result[char[], CollectionError]` with one `char` per
+UTF-8 byte and the same numeric values as `ToByteArray()` (MD-073); it performs
+no rune-range check and no code-page encoding.
 
 Materializing operations preserve allocation-context and effect facts and never
 silently fall back to an unrelated heap.

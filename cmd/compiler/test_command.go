@@ -370,6 +370,7 @@ func analyzeTestProgram(program *ast.Program, target CompilerTarget, sourceFiles
 		return nil, 1
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisStandard)
+	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	errors := analyzer.Analyze(program)
 	printSemaWarnings(analyzer)
 	for _, err := range errors {
@@ -426,6 +427,7 @@ func validateProductionGraph(testProgram *ast.Program, target CompilerTarget) in
 		return 0
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisStandard)
+	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(production, target, files))
 	errors := analyzer.Analyze(production)
 	for _, err := range errors {
 		printSemaError(os.Stderr, err)

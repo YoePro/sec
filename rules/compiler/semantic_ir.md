@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -649,6 +649,18 @@ Semantic IR remains the source of truth. Lowering reconstructs no names, layout 
 
 § 21(10) *Hardware facts (MD-111, 2026-10-30; `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 13(1)).* Hardware operations reference the frozen `CompilationPlan`'s canonical hardware facts by separate identities for address domain, region, resource, endpoint, binding, physical operation and verified operation plan, together with the plan's compatibility, capability, effect, footprint and alias evidence. `register.hw.bind` records the binding's endpoint identity and alias acknowledgement; no operation carries a raw address in place of an endpoint, and no physical operation is lowered without a verified plan. Detached register values stay pure, physical register bits are never `Place`s, and the MD-110/MD-114 register table stays the only register-definition encoding.
 
+§ 21(11) *Binding roots (2026-10-31).* A module's hardware register bindings form its `hardware` table, separate from `statics`: each record is one `register.hw.bind` root with a dense ID, the binding symbol and mutability, the nominal register type `T` (which must have a register definition) and the interned `hardware-instance<T>` type, the alias acknowledgement, the resolver-owned endpoint, resource and region identities (`root:path::name`), the endpoint kind, address domain, domain address, extent, alignment and read/write transfer widths taken from Sema's resolved endpoint fact. The record establishes authority only. A use of the bound instance requires the `register.hw.*` operations of § 21(2) with a verified plan; until those exist it is an explicit unsupported boundary, never an addressed `Place`. The verifier checks identity order, unique symbols, the register/instance pairing, non-empty identities, an admitted endpoint kind (`MemoryMapped` in 0.1), a positive extent and transfer widths within it. Sec MLIR emits each record as a module-level `sec.hw.binding` (dialect v11.41.5); the instance-yielding `sec.hw.bind` comes with the first `register.hw.*` use (MD-077 § 19(5)).
+
+§ 21(12) *Hardware variants and operations (2026-10-31).* A member of `impl T` called on a hardware instance runs its hardware variant `T.M[hardware]`, which is built on demand once per member. Its `self` is the `hardware-instance<T>` authority, passed with the call argument action `hardware-instance` (lent, neither copied nor moved). The call site obtains the authority with `register.hw.bind #N` from the binding root. A hardware-only member, one that calls `Read()`/`Write()`/`IsShadowKnown`, has no software body, and a software-only member is never called on a hardware instance. Inside a hardware variant, and for a binding field reached directly inside `impl T`, Sema's resolved logical requests become:
+- a field read: `register.hw.observe field=#k`, followed by `register.hw.shadow_observe` for a shadowed field;
+- a field write: `register.hw.request_write`, or `register.hw.shadow_intent` for a shadowed field, with the write proof. A `no-op` request emits no operation (MD-112 § 3(1)), and the value is still evaluated;
+- `Read()`: a whole-register `register.hw.observe`, followed by `register.hw.shadow_observe` when the register has shadowed fields;
+- `Write()`: `register.hw.commit`;
+- `Write(value)`: a whole-register `register.hw.request_write` with `request=write-register`;
+- `IsShadowKnown(T.F)`: `register.hw.shadow_known field=#k`, of type bool.
+
+Every request records the request kind, effect, shadow policy, MD-112 action mask and value dependence, and `plan=unverified`, the only plan state admitted until verified MD-111 operation plans exist. The verifier checks the instance operand and its register definition, accessible non-reserved fields, value and result types, the shadow policy of each shadow operation, no write to a read-only field, and the plan state. Nested register field paths, compound assignments and properties on a hardware instance remain explicit unsupported boundaries. Sec MLIR emission rejects any `register.hw.*` operation until its plan is verified (MD-077 § 11(4)).
+
 ---
 
 ## § 22 Enums
@@ -764,6 +776,8 @@ no hidden allocation
 § 27A(3) A CompilationPlan or target ABI may affect lowering and reuse compatibility, never the pack's semantic type identity; cache reuse fails closed when the specialization or relevant target facts differ.
 
 § 27A(4) A type-pack template has no executable form of its own. Each selected call demands one concrete function whose identity includes the ordered type sequence, so order and arity select distinct specializations and an identical sequence shares one. Each expanded position is an ordinary concrete parameter, and `values.Len` is that specialization's exact length (2026-10-30).
+
+§ 27A(5) *Pack loops (2026-10-31).* A `for` over the specialization's pack is one `for-pack` loop record. A compiler-generated position cursor of type `uint` starts at 0; the condition is `cursor < N`; the body loads the position and advances the cursor before user code, so `continue` returns to the condition; a dispatch on the position selects one body per position k, each built from the template body with the opaque element `Types[i]` bound to the concrete element k and the loop binding bound to position k's expanded parameter (the index binding is the constant k). Every generic call in that body therefore demands its own specialization per position. `break`, `continue`, `return` and evaluation order use the ordinary loop edges; unrolling is a later optimization. An empty pack yields a loop whose condition is the constant false and that has no body. `for ref` over an owned pack and `for ref mut` remain explicit unsupported boundaries until their per-position borrow facts are produced.
 
 ---
 

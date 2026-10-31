@@ -35,6 +35,26 @@ func NewModuleIdentity(importRootIdentity, importPath string) (ModuleIdentity, e
 	}, nil
 }
 
+// NewRootModuleIdentity is the identity of the source module formed by the
+// files directly in an import root (projects.md § 14). Its canonical import
+// path is empty: it can never be named by an import, so it cannot collide with
+// any importable module of the same root.
+func NewRootModuleIdentity(importRootIdentity string) (ModuleIdentity, error) {
+	if importRootIdentity == "" {
+		return ModuleIdentity{}, fmt.Errorf("module import-root identity is empty")
+	}
+	return ModuleIdentity{ImportRootIdentity: importRootIdentity}, nil
+}
+
+// ValidateModulePath accepts a canonical import path or the empty path of an
+// import root's own module (NewRootModuleIdentity).
+func ValidateModulePath(path string) error {
+	if path == "" {
+		return nil
+	}
+	return ValidateImportPath(path)
+}
+
 // String returns the human-readable root-qualified module identity.
 func (identity ModuleIdentity) String() string {
 	return identity.ImportRootIdentity + ":" + identity.CanonicalImportPath
@@ -74,7 +94,7 @@ func NewCrossModuleDeclarationIdentity(module ModuleIdentity, declaration string
 	if module.ImportRootIdentity == "" {
 		return CrossModuleDeclarationIdentity{}, fmt.Errorf("cross-module declaration identity has an empty import-root identity")
 	}
-	if err := ValidateImportPath(module.CanonicalImportPath); err != nil {
+	if err := ValidateModulePath(module.CanonicalImportPath); err != nil {
 		return CrossModuleDeclarationIdentity{}, fmt.Errorf("cross-module declaration identity has an invalid module path: %w", err)
 	}
 	if declaration == "" {

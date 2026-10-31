@@ -1,0 +1,8 @@
+module main
+fn Context[T, ...Types](tag: bool, values: ...Types) Option[T] { return None }
+fn Context[...Items](tag: int, values: ...Items) bool { return false }
+fn Use() uint {
+    let data: int[] := []
+    discard Context(true, <-data)
+    return data.Len
+}

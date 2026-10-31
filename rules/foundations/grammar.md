@@ -1618,13 +1618,16 @@ Executable startup and shutdown planning belong to
 
 ```text
 AddressedLetDeclaration
-    ::= "@" Contextual("address") "(" Expression ")" LetDeclaration
+    ::= "@" Contextual("address") "(" EndpointPath [ "," Contextual("alias") ] ")" LetDeclaration
+
+EndpointPath
+    ::= Identifier [ "." Identifier ]
 ```
 
 Example:
 
 ```sec
-@address(0x40021000)
+@address(MotorProtocolEndpoint)
 let mut motorProtocol: MotorProtocol
 ```
 

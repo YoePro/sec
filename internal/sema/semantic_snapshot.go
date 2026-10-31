@@ -54,6 +54,15 @@ func semanticSnapshotTypeSeen(typ Type, seen map[string]bool) Type {
 		result.Fields[index].Type = semanticSnapshotTypeSeen(field.Type, seen)
 		result.Fields[index].Tags = append([]StructTag(nil), field.Tags...)
 	}
+	// A register's bit layout is part of its post-Sema identity: receiver and
+	// place facts must let Semantic IR build the same register definition as
+	// a direct use of the type (MD-077 § 10(1)).
+	result.RegisterAllocationOrder = typ.RegisterAllocationOrder
+	result.RegisterByteOrder = typ.RegisterByteOrder
+	result.RegisterShadow = typ.RegisterShadow
+	// Field carriers keep their complete declared types (bit-backed enum
+	// representation, nested register layout); the declaration is immutable.
+	result.RegisterFields = append([]RegisterField(nil), typ.RegisterFields...)
 	result.UnionVariants = make([]UnionVariant, len(typ.UnionVariants))
 	for index, variant := range typ.UnionVariants {
 		result.UnionVariants[index] = variant

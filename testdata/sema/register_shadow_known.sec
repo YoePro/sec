@@ -68,9 +68,38 @@ impl Plain {
     }
 }
 
-@address(0x40000000)
+@address(ControlEndpoint)
 let mut control: Control
 
 fn Outside() bool {
     return control.IsShadowKnown(Control.Mode) || control.HasKnownMode()
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ControlState { width: 16, }
+hardware endpoint ControlEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ControlState,
+    offset: 0x0,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

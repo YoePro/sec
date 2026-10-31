@@ -1,0 +1,12 @@
+module main
+type Counter struct { Total: uint }
+impl Counter {
+    fn Add[...Types](values: ...ref Types) uint {
+        self.Total += values.Len
+        return self.Total
+    }
+}
+fn Use() uint {
+    let counter := Counter { Total: 0 }
+    return counter.Add(1)
+}

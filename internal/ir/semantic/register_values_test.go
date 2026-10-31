@@ -157,6 +157,27 @@ fn main() int {
 	}
 }
 
+// A hardware-only member (one that calls Read()) has no software body; it is
+// built only as the hardware variant a bound instance demands.
+func TestHardwareOnlyRegisterMemberHasNoSoftwareBody(t *testing.T) {
+	module, err := buildPackage15Source(t, registerValueSource+`
+impl Header {
+    fn Snap() Header {
+        return self.Read()
+    }
+}
+fn main() int {
+    return 0
+}
+`, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(Format(module), "Header.Snap") {
+		t.Fatal(Format(module))
+	}
+}
+
 // MD-077 § 9(4), § 11(4) and MD-110: operations without an admitted
 // Semantic IR representation fail closed with a specific diagnostic.
 func TestRegisterValueBoundariesFailClosed(t *testing.T) {
@@ -176,24 +197,50 @@ impl Header {
     }
 }
 
-@address(0x40000000)
+@address(StatusEndpoint)
 let status: Header
 
 fn Check() bool {
     return status.IsSet
 }
-`,
-		"read": `
-impl Header {
-    fn Snap() Header {
-        return self.Read()
-    }
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource StatusState { width: 32, }
+hardware endpoint StatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: StatusState,
+    offset: 0x0,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `,
 	} {
-		want := map[string]string{"conversion": "checked integer-to-register conversion Header(...)", "hardware": "MD-077", "read": "hardware register operation read-register on Header"}
+		want := map[string]string{"conversion": "checked integer-to-register conversion Header(...)", "hardware": "MD-077"}
 		t.Run(name, func(t *testing.T) {
-			_, err := buildPackage15Source(t, registerValueSource+body+"\nfn main() int {\n    return 0\n}\n", "")
+			triple := ""
+			if name == "hardware" {
+				triple = "x86_64-pc-linux-gnu" // hardware metadata needs a selected target
+			}
+			_, err := buildPackage15Source(t, registerValueSource+body+"\nfn main() int {\n    return 0\n}\n", triple)
 			if err == nil {
 				t.Fatalf("%s must fail closed", name)
 			}

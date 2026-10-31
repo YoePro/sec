@@ -1,0 +1,7 @@
+module main
+fn Tagged[...Types](base: uint8, values: ...ref Types) uint { return values.Len }
+fn Invalid() void {
+    discard Tagged(-1, true)
+    discard Tagged(256, 42)
+    discard Tagged("wrong", false)
+}

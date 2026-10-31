@@ -1,0 +1,29 @@
+module main
+
+// Methods of a generic implementation specialize per receiver instance
+// (monomorphization.md § 9.3; P15-47 receivers).
+
+type Box[T] struct {
+    Value: T,
+    Count: int,
+}
+
+impl Box[T] {
+    fn Get() T {
+        return self.Value
+    }
+
+    fn Bump() void {
+        self.Count = self.Count + 1
+    }
+}
+
+fn Use() int {
+    let mut box := Box[int] { Value: 3, Count: 0 }
+    box.Bump()
+    let flag := Box[bool] { Value: true, Count: 1 }
+    if flag.Get() {
+        return box.Get() + box.Count
+    }
+    return 0
+}

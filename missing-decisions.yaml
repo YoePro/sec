@@ -1,5 +1,6 @@
 schema_version: 1
-updated: "2026-10-30"
+updated: "2026-10-31"
+last_id: MD-121
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -482,32 +483,6 @@ decisions:
       (c) Separate-compilation axis identity (module surfaces/serialization).
     classification: localized
     status: decided-implementation-pending
-  - id: MD-073
-    area: char-array-conversion-outside-char-domain
-    rulebooks:
-      - rules/types/types.md
-      - rules/library/core-library.md
-      - rules/compiler/compiler_known_members.md
-      - rules/mlir/packages/sec-mlir-dialect_package23.md
-    description: >-
-      SEC-MLIR-P23 decision P23-D3 (2026-10-16). `char` is numeric 0..255 and
-      `rune` a Unicode scalar; compiler_known_members.md describes
-      string.ToCharArray() and char-sequence ToString() but leaves scalars
-      above 255 open. "Ω" (U+03A9) is valid UTF-8, so this is not MD-050.
-      Decide what converting valid text containing scalars above 255 to
-      char[] does: (A) fail with an explicit approved Result conversion
-      error, preserving every scalar; (B) allow ToCharArray only on strings
-      statically proven within the char domain; (C) lossy substitution or
-      truncation (conflicts with the preservation philosophy). Also confirm
-      that char.ToString() encodes the char as code point U+0000..U+00FF in
-      canonical UTF-8 (0xE9 becomes bytes C3 A9) rather than copying the raw
-      byte. Package recommendation, not accepted: A, with the exact error
-      type synchronized with MD-072 (decided 2026-10-17: Result[..., CollectionError]), and the UTF-8 encoding for
-      char.ToString(). Gates general public ToCharArray and non-ASCII char
-      sequence conversion; rune array conversion for valid strings and char
-      conversion of proven ASCII/≤255 input may proceed. Keep char 0..255.
-    classification: constraining
-    status: open
   - id: MD-075
     area: webassembly-target-identity-and-profile
     rulebooks:
@@ -930,8 +905,52 @@ decisions:
       selected call through shared CTE, preserving binding identities and target
       integer bounds. Automatic deferral and rechecking of compile-time-required
       template positions remain pending, separately from this query.
-      Owned/mutable packs, pack-element body use,
-      spreads, competing pack overloads and executable expansion remain pending.
+      Exclusive borrowed packs (...ref mut Types) now also support direct-call
+      inference and ordinary per-position borrow/reborrow/overlap checks for
+      unused/Len-only bodies (2026-10-31); their IR support followed below.
+      Owned non-reference pack elements now use ordinary copy/move argument
+      transfers with call-entry commit for unused/Len-only bodies (2026-10-31).
+      Owned reference-holder elements keep an explicit representation boundary
+      instead of borrowing or copying a mutable holder implicitly.
+      Owned reference-holder modes, pack-element body use,
+      spreads and complete executable expansion remain pending. Pack overloads
+      now select from uncached argument-only partial signatures, then complete
+      missing scalar substitutions from result context and validate all
+      constraints for a unique winner before ownership commit (2026-10-31).
+      Return context cannot discriminate candidates; no incomplete call facts
+      or function-cache instances are published.
+      Concrete-owner pack-only instance/static methods now support unused/Len-only
+      bodies and ordinary receiver authority, implicit self, argument loans and
+      copy/move checks (2026-10-31). Generic-instance cache hits refresh late-bound
+      reference/reset summaries so references from temporary receivers cannot
+      escape. Generic/interface owners and additional scalar method generics
+      retain capability boundaries. Concrete-owner static and instance shared-pack
+      methods now register and specialize through verified Semantic IR and Sec
+      MLIR (2026-10-31). Instance methods preserve explicit shared/mutable self,
+      reborrows and receiver-dependent returned-reference origins; published IR
+      pack offsets include self without changing source pack binding or Len.
+      Exclusive borrowed positions now also specialize through verified IR/Sec
+      MLIR for unused/Len-only free functions and concrete-owner methods
+      (2026-10-31). Sema supplies distinct per-position borrow/lifetime identities;
+      the verifier checks mode, reference mutability and ownership agree. Origin
+      storage remains conservative pending element/return-origin expansion.
+      Supported trivially copyable/destructible owned by-value positions now also
+      specialize for unused/Len-only bodies (2026-10-31); a scalar-only fixture
+      builds and executes through the native track. Owned cleanup requiring real
+      destruction and explicit source moves in the current call path remain
+      unsupported, as do generic-owner/scalar-generic method forms. MD-117 stays
+      implementation-pending.
+      Remaining MD-117 points, each a remaining item in governance
+      (2026-10-31): pack-element iteration (frontend.for-loops-v2), owned
+      reference-holder modes and pack-element body use (frontend.functions-v2),
+      spreads (frontend.spread), C-vararg boundary (frontend.ffi-v2), call-site
+      tooling and the § 14 conformance matrix (frontend.generics-v2), pack
+      lifetime/provenance (frontend.lifetime-analysis), owned-pack
+      transfer/cleanup (frontend.copy-move), pointwise pack borrowing
+      (frontend.borrowing), Semantic IR pack expansion (semantic-ir.core-v2),
+      specialization identity (compiler.monomorphization), concrete lowering
+      (compiler.generics-lowering), CallABIPlan classification
+      (lowering.abi-model) and the fmt integration (stdlib.fmt).
     classification: architectural
     status: decided-implementation-pending
 
@@ -956,19 +975,59 @@ decisions:
     classification: constraining
     status: open
 
-
-  - id: MD-119
-    area: pack-carried-reference-dereference-spelling
+  - id: MD-120
+    area: generic-error-parameters
     rulebooks:
-      - rules/memory/references.md
-      - rules/declarations/functions.md
-      - rules/control-flow/flowcontrol_for.md
+      - rules/declarations/generics.md
+      - rules/errors/errorhandling.md
+      - rules/types/types.md
+      - rules/declarations/interfaces.md
     description: >-
-      Decided and applied 2026-10-30
-      (rules/corrections/applied/MD-119-pack-carried-reference-access-correction-20261030.md):
-      references carried by native variadic packs use ordinary holder/referent
-      syntax (references.md § 3.4(10), functions.md § 38A(8)(6),
-      flowcontrol_for.md § 13A(4)). Kept as a record so the ID is not reused;
-      conformance tests are tracked under the existing MD-117 governance owners.
-    classification: localized
-    status: decided
+      Raised 2026-10-31 by sec/core/format.sec (`interface FormatSink[E] {
+      mut fn WriteText(text: string) Result[void, E] }`). Result[T, E] requires
+      E to be the error root or a declared error type, and constraints must be
+      interfaces, so no template can use a caller-chosen error channel today;
+      the only alternative is the open Result[T, error]. Decide (proposal
+      rules/corrections/md120-generic-error-parameters-proposal-20261031.md):
+      D1 spelling, recommended `[E: error]` as a compiler-known category
+      constraint rather than a marker `[E error]` or reserving the name `E`;
+      D2 admitted arguments, including the error root; D3 the template
+      environment (Err/Ok, try propagation and widening to error, catch-all
+      matching, no variant patterns, no implied copyability); D4 generic error
+      declarations such as `type FormatWriteError[E: error] union error`;
+      D5 generic interfaces and borrowed views requiring their argument
+      (`ref mut FormatSink[IOError]`, never a bare `FormatSink`); D6 ordinary
+      inference; D7 activation in Sec 0.1 or 0.1.1. Blocks the MD-118 sink
+      contract.
+    classification: constraining
+    status: open
+
+  - id: MD-121
+    area: ordinary-addressed-storage-bindings
+    rulebooks:
+      - rules/platform/fixed-address-bindings.md
+      - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md
+      - rules/memory/references.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+    description: >-
+      Deferred to Sec 0.5 with all hardware communication (owner decision
+      2026-10-31); it blocks no current package. Raised 2026-10-31 while
+      closing P15-42/42a. fixed-address-bindings.md
+      (MD-077 § 12(3)) and P15 name a second addressed binding category,
+      ordinary addressed storage (reference-compatible RAM/ROM at a fixed
+      address) that would become a P15 Place root. Sec 0.1 has no source
+      form for it: Sema accepts @address only on register types, and MD-111
+      § 4(3) makes RAM/ROM regions only candidates whose Place/ref
+      eligibility needs an independently proven lifetime, storage, authority,
+      reference-compatibility and mutability contract that no rule defines.
+      Decide: (A) recommended: no ordinary addressed storage in Sec 0.1;
+      @address stays register-only, the category is reserved for a later
+      version, and P15 discharges its addressed Place root and addressed
+      return paths as not applicable; (B) admit @address on a non-register
+      type bound to a RAM/ROM endpoint and define the contract facts (who
+      proves lifetime and exclusive authority, initialization, ROM
+      mutability, volatility, alignment, reference eligibility), which then
+      makes them P15 Place roots; (C) admit only linker-provided static
+      regions with Static origin and no source-chosen endpoint.
+    classification: constraining
+    status: open

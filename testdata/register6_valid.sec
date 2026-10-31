@@ -111,13 +111,13 @@ impl TmpStatus {
 // MEMORY-MAPPED HARDWARE INSTANCES
 // =====================================================================
 
-@address(0x40013030)
+@address(TMP126_CFGEndpoint)
 let mut TMP126_CFG: TmpConfig
 
-@address(0x40013032)
+@address(TMP126_STATEndpoint)
 let TMP126_STAT: TmpStatus
 
-@address(0x40013034)
+@address(TMP126_RESULTEndpoint)
 let TMP126_RESULT: TmpResultBuffer
 
 // =====================================================================
@@ -138,4 +138,73 @@ fn ReadTmp126Temperature() void {
 
     // 3. Read temperature with full unit safety
     let currentTemp: <DegC> := TMP126_RESULT.Temperature
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40010000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource TMP126_CFGState { width: 16, }
+hardware endpoint TMP126_CFGEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: TMP126_CFGState,
+    offset: 0x3030,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource TMP126_STATState { width: 16, }
+hardware endpoint TMP126_STATEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: TMP126_STATState,
+    offset: 0x3032,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource TMP126_RESULTState { width: 16, }
+hardware endpoint TMP126_RESULTEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: TMP126_RESULTState,
+    offset: 0x3034,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

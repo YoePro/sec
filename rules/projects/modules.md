@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-08-14
-- **Document revision:** 1
+- **Last updated:** 2026-10-31 (§ 2.2 root-module and anonymous-root identities)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/projects/modules.md`
 
@@ -99,6 +99,19 @@ module order
 They remain distinct modules because their canonical identities differ.
 
 The compiler must never identify modules only by their short source-level name.
+
+The source files directly in an import root, such as the Project-root module of
+`rules/projects/projects.md` § 14, form that root's own module. Its
+`CanonicalImportPath` is empty (owner decision, 2026-10-31). No import path can
+name it, so it cannot collide with an importable module of the same root.
+
+A source file that belongs to no Project has no Project UUID. For one
+compilation it belongs to a compilation-local anonymous import root whose
+modules are the directories relative to the entry source's directory; the
+entry directory itself is that root's own module (owner decision, 2026-10-31).
+Anonymous identities are not stable across compilations and are never exported
+or persisted as a Project identity. A file that belongs to no resolvable import
+root has no `ModuleIdentity`, and analyses that require one fail closed.
 
 ### 2.3 ModuleInstance
 

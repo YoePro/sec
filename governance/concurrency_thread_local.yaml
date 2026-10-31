@@ -100,6 +100,7 @@ integrations:
       - "implement TLS-specific Semantic IR facts without treating the legacy opcode list as normative"
       - "implement target-specific lowering/backends"
       - "complete LSP constructor/navigation support, TLS provenance diagnostics, ThreadAttachError, and ThreadAttachment tooling"
+      - "Moved from P15-42a (owner decision 2026-10-31): Semantic IR/MLIR representation of module statics that own a ThreadLocal[T] TLS key and its lazy per-thread initialization; Sec 0.1 has no thread-local static syntax (static.md § 4)"
     required_tests:
       - "ThreadLocal[T] exact generic arity and noCopy identity"
       - "local automatic ThreadLocal key is rejected"

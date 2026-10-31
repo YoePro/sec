@@ -24,7 +24,7 @@ impl ClockConfig {
     }
 }
 
-@address(0x40021000)
+@address(ClockConfigEndpoint)
 let mut clockConfig: ClockConfig
 
 fn SelectExternalClock() void {
@@ -33,4 +33,33 @@ fn SelectExternalClock() void {
 
 fn main() int {
     return int(ClockSource.Bypass)
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40020000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ClockConfigState { width: 32, }
+hardware endpoint ClockConfigEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ClockConfigState,
+    offset: 0x1000,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

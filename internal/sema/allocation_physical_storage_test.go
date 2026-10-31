@@ -37,7 +37,7 @@ func TestAllocationPhysicalStorageSeparation(t *testing.T) {
 					t.Fatal(p.Errors())
 				}
 				a := NewAnalyzerWithScalarPlanAndDepth(layout.ResolvedScalarPlan{Profile: profile, PointerWidthBits: 32}, depth)
-				if errors := a.Analyze(program); len(errors) != 0 {
+				if errors := analyzeWithHardwareTestTarget(a, program); len(errors) != 0 {
 					t.Fatal(errors)
 				}
 				symbol := a.symbols["device"]
@@ -97,7 +97,7 @@ func TestAllocationPhysicalStorageInvalidAccess(t *testing.T) {
 		t.Fatal(p.Errors())
 	}
 	a := NewAnalyzer()
-	if errors := a.Analyze(program); len(errors) != 1 {
+	if errors := analyzeWithHardwareTestTarget(a, program); len(errors) != 1 {
 		t.Fatal("unsafe validity changed", errors)
 	}
 	for _, fact := range a.AllocationFacts() {

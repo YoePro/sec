@@ -1,0 +1,7 @@
+module main
+fn Take(first: int[], second: int[]) void {}
+fn Use() uint {
+    let data: int[] := []
+    Take(<-data, <-data)
+    return data.Len
+}

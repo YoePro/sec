@@ -31,7 +31,7 @@ fn Work() void {
 @noAlloc
 extern "C" fn write(fd: int32) int32
 
-@address(0x40000000)
+@address(Board.Port)
 let mut Device: uint32
 
 type Reader struct {}
@@ -94,11 +94,14 @@ func TestGeneralAttributeParserValidation(t *testing.T) {
 		{"unknown argument name", "@target(rack: \"a\")\nfn F() void {}\n", diagnostics.AttributeInvalidArgument, "@target has no argument named rack; expected os, arch, cpu, device, board at 1:9"},
 		{"positional for named", "@interrupt(3)\nfn F() void {}\n", diagnostics.AttributeInvalidArgument, "@interrupt takes only named arguments (vector) at 1:12"},
 		{"missing required", "@interrupt()\nfn F() void {}\n", diagnostics.AttributeInvalidArgument, "@interrupt requires the named argument vector at 1:2"},
-		{"missing positional", "@address\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "@address requires exactly one positional argument at 1:2"},
+		{"missing positional", "@address\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "@address requires one endpoint argument and an optional alias marker at 1:2"},
 		{"argument on argument-free", "@isr(fast)\nfn F() void {}\n", diagnostics.AttributeInvalidArgument, "@isr does not take arguments at 1:5"},
 		{"non-string link name", "@link_name(42)\nextern \"C\" fn f() int32\n", diagnostics.AttributeInvalidArgument, "@link_name requires a string literal at 1:12"},
 		{"empty link name", "@link_name(\"\")\nextern \"C\" fn f() int32\n", diagnostics.AttributeInvalidArgument, "@link_name requires a non-empty symbol name at 1:12"},
 		{"link name on Sec function", "@link_name(\"x\")\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "@link_name may only annotate an extern declaration at 2:1"},
+		{"address third argument", "@address(Port, alias, alias)\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "@address requires one endpoint argument and an optional alias marker at 1:2"},
+		{"address unknown marker", "@address(Port, shared)\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "the second argument of @address must be the alias marker at 1:16"},
+		{"address named argument", "@address(endpoint: Port)\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "@address takes no named arguments at 1:10"},
 		{"address on function", "@address(16)\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "@address may only annotate a let declaration at 2:1"},
 		{"effect on type", "@noBlock\ntype T int\n", diagnostics.AttributeNotAllowedOnTarget, "@noBlock may only annotate a function or method at 2:1"},
 		{"local attachment", "fn F() void {\n    @noPanic\n    let x := 1\n}\n", diagnostics.AttributeNotAllowedOnTarget, "@noPanic may annotate a local let only when it directly initializes a lambda (fn or capture(...) fn) at 2:5"},
@@ -137,7 +140,7 @@ func TestAttributeConflicts(t *testing.T) {
 	tests := []struct {
 		name, source, id, message string
 	}{
-		{"two addresses", "@address(0x40000000)\n@address(0x50000000)\nlet mut D: uint32\n", diagnostics.AttributeConflict, "conflicting @address attributes at 2:1 and 1:1; a declaration has exactly one absolute address"},
+		{"two addresses", "@address(0x40000000)\n@address(0x50000000)\nlet mut D: uint32\n", diagnostics.AttributeConflict, "conflicting @address attributes at 2:1 and 1:1; a register binding has exactly one hardware endpoint"},
 		{"same address twice", "@address(0x40000000)\n@address(0x40000000)\nlet mut D: uint32\n", diagnostics.AttributeDuplicate, "duplicate attribute @address at 2:1; first declared at 1:1"},
 		{"two vectors", "@interrupt(vector: 3)\n@interrupt(vector: 4)\nfn H() void {}\n", diagnostics.AttributeConflict, "conflicting @interrupt attributes at 2:1 and 1:1; a handler binds exactly one interrupt vector"},
 		{"contradicts #target", "#target(os: \"linux\", arch: \"amd64\")\nmodule main\n@target(arch: \"arm64\")\nfn F() void {}\n", diagnostics.AttributeConflict, "@target(arch: \"arm64\") at 3:9 contradicts the file's #target(arch: \"amd64\") at 1:1; the declaration could never be active"},

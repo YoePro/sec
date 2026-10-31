@@ -148,7 +148,7 @@ func validateModuleIdentity(identity ModuleIdentity) error {
 	if identity.ImportRootIdentity == "" {
 		return fmt.Errorf("module import-root identity is empty")
 	}
-	if err := ValidateImportPath(identity.CanonicalImportPath); err != nil {
+	if err := ValidateModulePath(identity.CanonicalImportPath); err != nil {
 		return fmt.Errorf("invalid module identity %s: %w", identity, err)
 	}
 	return nil

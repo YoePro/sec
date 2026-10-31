@@ -401,12 +401,12 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	}
 	if typ.Kind == StringType {
 		members = append(members,
-			// MD-072 (2026-10-17): byte and rune materialization returns an
-			// independent owning array and reports storage failure as
-			// CollectionError (core-library.md § 5.3). ToCharArray keeps its
-			// infallible form until MD-073 settles the char domain.
+			// MD-072 (2026-10-17): byte, char and rune materialization returns
+			// an independent owning array and reports storage failure as
+			// CollectionError (core-library.md § 5.3). ToCharArray is
+			// byte-preserving: one char per UTF-8 byte (MD-073, 2026-10-31).
 			CompilerKnownMember{ID: "CKM-STRING-TOBYTEARRAY", Name: "ToByteArray", Kind: CompilerKnownMethod, Result: compilerKnownResult(compilerKnownDynamicArray(builtinType("byte")), builtinType("CollectionError"))},
-			CompilerKnownMember{ID: "CKM-STRING-TOCHARARRAY", Name: "ToCharArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("char"))},
+			CompilerKnownMember{ID: "CKM-STRING-TOCHARARRAY", Name: "ToCharArray", Kind: CompilerKnownMethod, Result: compilerKnownResult(compilerKnownDynamicArray(builtinType("char")), builtinType("CollectionError"))},
 			CompilerKnownMember{ID: "CKM-STRING-TORUNEARRAY", Name: "ToRuneArray", Kind: CompilerKnownMethod, Result: compilerKnownResult(compilerKnownDynamicArray(builtinType("rune")), builtinType("CollectionError"))},
 		)
 	}

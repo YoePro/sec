@@ -1,0 +1,4 @@
+module main
+fn Context[T, ...Types](tag: bool, values: ...ref Types) Option[T] { return None }
+fn Context[...Items](tag: bool, values: ...ref Items) bool { return false }
+fn Use() Option[int] { return Context(true) }

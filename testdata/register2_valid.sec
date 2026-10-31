@@ -93,11 +93,11 @@ impl TimerConfig {
 // =====================================================================
 
 // Base address for Timer 0 Configuration
-@address(0x3FF5F000)
+@address(TMR0_CONFIGEndpoint)
 let mut TMR0_CONFIG: TimerConfig
 
 // Base address for Timer 0 Current Value
-@address(0x3FF5F004)
+@address(TMR0_VALUEEndpoint)
 let TMR0_VALUE: TimerValue
 
 // =====================================================================
@@ -118,4 +118,53 @@ fn CheckTimerStatus() void {
 
     // Read the current elapsed ticks with unit safety verification
     let currentCount: uint32<ticks> := TMR0_VALUE.CurrentTicks
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x3FF50000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource TMR0_CONFIGState { width: 32, }
+hardware endpoint TMR0_CONFIGEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: TMR0_CONFIGState,
+    offset: 0xF000,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource TMR0_VALUEState { width: 32, }
+hardware endpoint TMR0_VALUEEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: TMR0_VALUEState,
+    offset: 0xF004,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

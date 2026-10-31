@@ -57,7 +57,7 @@ If front end proves fully static content, collapse into static literal bytes wit
 
 ## § 12. Text arrays
 
-`StringToArray(kind)` yields independent P18 owner, and `SequenceToString(kind)` yields a string; preserve exact element data/bounds and materialization facts. Public error/parameter form gated MD-072 (P23-D2) and MD-050/MD-073 (P23-D3) as relevant.
+`StringToArray(kind)` yields independent P18 owner, and `SequenceToString(kind)` yields a string; preserve exact element data/bounds and materialization facts. Public error/parameter form gated MD-072 (P23-D2) and MD-050/MD-073 (P23-D3) as relevant. **MD-073 amendment (2026-10-31):** `StringToArray(char)` is byte-preserving: `SizeOf` elements equal to the UTF-8 bytes, `Result[char[], CollectionError]`, sharing the byte kind's materialization; no range-check edge exists.
 
 ## § 13. String identity ToString
 

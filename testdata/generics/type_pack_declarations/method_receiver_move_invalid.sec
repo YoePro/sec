@@ -1,0 +1,10 @@
+module main
+type Counter struct { Data: int[] }
+impl Counter {
+    fn Count[...Types](values: ...Types) uint { return values.Len }
+}
+fn Use() uint {
+    let counter := Counter { Data: [] }
+    discard counter.Count(<-counter)
+    return counter.Data.Len
+}

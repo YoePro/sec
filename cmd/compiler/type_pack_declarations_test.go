@@ -14,7 +14,7 @@ import (
 // Rules: rules/declarations/generics.md — §16A; MD-117 — §10;
 // rules/tooling/diagnostics.md — §24(4h).
 func TestTypePackDeclarationCLI(t *testing.T) {
-	path := typePackCLIFixture(t, "declarations.sec")
+	path := typePackCLIFixture(t, "method_generic_owner_boundary.sec")
 	_, output, code := runCLIForDiagnostics(t, "parse", path)
 	if code != 0 {
 		t.Fatal(code, output)
@@ -26,7 +26,7 @@ func TestTypePackDeclarationCLI(t *testing.T) {
 		}
 		stdout, output, code := runCLIForDiagnostics(t, args...)
 		doc := decodeOccurrenceDocument(t, output)
-		if code != 3 || len(doc.Occurrences) != 4 || stdout != "" {
+		if code != 3 || len(doc.Occurrences) != 1 || stdout != "" {
 			t.Fatal(command, code, stdout, output)
 		}
 		for _, d := range doc.Occurrences {
@@ -46,7 +46,6 @@ func TestSharedTypePackSpecializationCLI(t *testing.T) {
 		{"shared_unused.sec", "non-trivial call argument"},
 		{"printf_stub.sec", "non-trivial call argument"},
 		{"shared_length.sec", "borrowed temporary of a non-trivial type"},
-		{"shared_scalar_prefix.sec", "type-pack callable with a scalar generic prefix"},
 	} {
 		file := typePackCLIFixture(t, test.name)
 		_, output, code := runCLIForDiagnostics(t, "check", file, "--target", "linux-amd64")
@@ -61,6 +60,11 @@ func TestSharedTypePackSpecializationCLI(t *testing.T) {
 	file := typePackCLIFixture(t, "shared_specialization.sec")
 	stdout, output, code := runCLIForDiagnostics(t, "emit-ir", file, "--target", "linux-amd64", "-o", "-")
 	if code != 0 || !strings.Contains(stdout, `"main::Count[...Types<int,bool>](ref int,ref bool)"`) || !strings.Contains(stdout, "type-pack(Types=") {
+		t.Fatal(code, stdout, output)
+	}
+	prefix := typePackCLIFixture(t, "shared_scalar_prefix.sec")
+	stdout, output, code = runCLIForDiagnostics(t, "emit-ir", prefix, "--target", "linux-amd64", "-o", "-")
+	if code != 0 || !strings.Contains(stdout, `"main::Select[T=int,...Types<bool>](int,ref bool)"`) || !strings.Contains(stdout, "specialization(Select: T=") {
 		t.Fatal(code, stdout, output)
 	}
 	if os.Getenv("SEC_MLIR_BIN") != "" {

@@ -310,7 +310,7 @@ type MotorProtocol register[8] {
 	_: bit[3],
 }
 
-@address(0x40021000)
+@address(MotorEndpoint, alias)
 let mut motorProtocol: MotorProtocol
 `
 
@@ -342,7 +342,7 @@ let mut motorProtocol: MotorProtocol
 	}
 
 	letStmt := program.Statements[1].(*ast.LetStatement)
-	if letStmt.Address == nil || letStmt.Address.String() != "0x40021000" {
+	if letStmt.Address == nil || letStmt.Address.String() != "MotorEndpoint" || !letStmt.AddressAlias {
 		t.Fatalf("wrong address: %#v", letStmt.Address)
 	}
 	if !letStmt.Mutable {

@@ -1,0 +1,61 @@
+module main
+type Control register[32] {
+    Enabled: bit,
+    Mode: bit[2],
+    Speed: bit[4] shadow,
+    _: bit[25],
+}
+impl Control {
+    fn Enable() void { self.Enabled = true }
+    fn IsOn() bool { return Enabled }
+    fn SetSpeed(value: uint8) void {
+        if value < 16 { Speed = value }
+    }
+    fn Apply() void { Write() }
+    fn Snapshot() Control { return Read() }
+    fn Known() bool { return IsShadowKnown(Control.Speed) }
+    fn Both() void {
+        Enable()
+        self.Mode = 2
+    }
+}
+hardware region Space {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ControlState { width: 32, }
+hardware endpoint ControlPort {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: Space,
+    resource: ControlState,
+    offset: 0x10,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+@address(ControlPort)
+let mut control: Control
+fn main() int {
+    control.Both()
+    control.SetSpeed(3)
+    control.Apply()
+    if control.IsOn() && control.Known() {
+        return 1
+    }
+    let snap := control.Snapshot()
+    return 0
+}

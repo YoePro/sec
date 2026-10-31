@@ -1,0 +1,42 @@
+module main
+
+// Semantic IR monomorphization of generic free functions: each selected call
+// demands one concrete specialization; forwarded arguments are made concrete
+// through the enclosing substitution (monomorphization.md §§ 6, 8.3, 9.1).
+
+fn Id[T](value: T) T {
+    return value
+}
+
+fn Pick[T](first: T, second: T, takeFirst: bool) T {
+    if takeFirst {
+        return first
+    }
+    return second
+}
+
+fn Twice[T](value: T) T {
+    return Id(Id(<-value))
+}
+
+fn Pair[A, B](first: A, second: B) B {
+    discard Id(<-first)
+    return second
+}
+
+fn Head[T, ...Types](head: T, values: ...ref Types) T {
+    return head
+}
+
+fn Use() int {
+    let number := Id(4)
+    let flag   := Id(true)
+    let chosen := Pick(1, 2, flag)
+    let again  := Twice(number)
+    let paired := Pair(true, 7)
+    let headed := Head(3, true, number)
+    if Pick(false, true, true) {
+        return number + chosen + again + paired + headed
+    }
+    return 0
+}

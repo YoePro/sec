@@ -243,7 +243,7 @@ Examples:
 ```
 
 ```sec
-@address(0x40021000)
+@address(GpioOutput)
 ```
 
 ```sec
@@ -544,7 +544,7 @@ import "platform/linux"
 
 ```sec
 @target(device: "controller-a")
-@address(0x40010000)
+@address(DeviceEndpoint)
 let mut Device: DeviceRegisters
 ```
 
@@ -741,11 +741,11 @@ Example:
 
 ```sec
 @target(device: "controller-a")
-@address(0x40010000)
+@address(GPIOEndpoint)
 let mut GPIO: GPIORegisters
 
 @target(device: "controller-b")
-@address(0x50020000)
+@address(GPIOEndpoint)
 let mut GPIO: GPIORegisters
 ```
 
@@ -1077,12 +1077,17 @@ Target-dependent semantic errors are evaluated only when the source is active.
 
 ## Purpose
 
-`@address` binds one module-scope storage declaration to a compile-time address.
+`@address` binds one module-scope register declaration to a named hardware
+endpoint (MD-111 § 10(1)); the endpoint's metadata supplies the address. A
+numeric, arithmetic, call or variable argument is rejected with S1188
+`hardware.address-binding`; an unknown, inaccessible or wrong-category name
+with S1183 `hardware.symbol-resolution`. `@address(Endpoint, alias)` adds the
+contextual alias acknowledgement.
 
 Canonical:
 
 ```sec
-@address(0x40021000)
+@address(GPIOEndpoint)
 let mut GPIO: GPIORegisters
 ```
 
@@ -1090,7 +1095,7 @@ let mut GPIO: GPIORegisters
 
 # Address semantics
 
-`@address(value)` means:
+`@address(Endpoint)` means:
 
 ```text
 the storage exists at the supplied address
@@ -1130,7 +1135,7 @@ other explicitly defined compile-time address constant
 Examples:
 
 ```sec
-@address(0x40021000)
+@address(GPIOEndpoint)
 let mut GPIO: GPIORegisters
 ```
 
@@ -1177,7 +1182,7 @@ types
 Invalid:
 
 ```sec
-@address(0x40021000)
+@address(FirstEndpoint)
 let mut first: Register, second: Register
 ```
 
@@ -1213,11 +1218,11 @@ Use mutually exclusive declaration variants.
 
 ```sec
 @target(device: "controller-a")
-@address(0x40010000)
+@address(GPIOEndpoint)
 let mut GPIO: GPIORegisters
 
 @target(device: "controller-b")
-@address(0x50020000)
+@address(GPIOEndpoint)
 let mut GPIO: GPIORegisters
 ```
 
@@ -2053,8 +2058,8 @@ type Identity struct {
 Invalid:
 
 ```sec
-@address(0x40000000)
-@address(0x50000000)
+@address(DeviceEndpoint)
+@address(OtherDeviceEndpoint)
 let mut Device: DeviceRegisters
 ```
 
@@ -2149,12 +2154,12 @@ These are semantically equivalent:
 
 ```sec
 @target(device: "controller-a")
-@address(0x40010000)
+@address(DeviceEndpoint)
 let mut Device: DeviceRegisters
 ```
 
 ```sec
-@address(0x40010000)
+@address(DeviceEndpoint)
 @target(device: "controller-a")
 let mut Device: DeviceRegisters
 ```

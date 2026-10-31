@@ -1,0 +1,8 @@
+module main
+fn Pick[...Types](tag: int, values: ...ref Types) uint { return values.Len }
+fn Pick[...Types](tag: bool, values: ...ref Types) uint { return values.Len }
+fn Consume(-> value: int[]) int { return 1 }
+fn Use() uint {
+    let data: int[] := []
+    return Pick(Consume(<-data), true)
+}

@@ -1,0 +1,26 @@
+module main
+
+type Counter struct { Total: uint }
+impl Counter {
+    fn Count[...Types](values: ...ref Types) uint { return values.Len }
+    fn Add[...Types](base: uint, values: ...ref Types) uint {
+        self.Total = self.Total + base + values.Len
+        return self.Total
+    }
+    fn ThroughSelf() uint { return Count(1, true) }
+    fn ThroughMutableSelf() uint {
+        self.Total = 1
+        return Add(2, true)
+    }
+}
+fn Use() uint {
+    let mut counter := Counter { Total: 0 }
+    discard counter.Count()
+    discard counter.Count(1, true)
+    discard counter.Count(true, 1)
+    discard counter.ThroughSelf()
+    discard counter.Add(2)
+    discard counter.Add(3, true)
+    discard counter.ThroughMutableSelf()
+    return counter.Count(2, false)
+}

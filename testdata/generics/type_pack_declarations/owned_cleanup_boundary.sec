@@ -1,0 +1,5 @@
+module main
+@noCopy
+type Handle struct { Code: int }
+fn Count[...Types](values: ...Types) uint { return values.Len }
+fn Use() uint { return Count(Handle { Code: 1 }) }

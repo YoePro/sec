@@ -37,11 +37,11 @@ Project-defined canonical endpoints are valid as well:
 let mut control: FpgaControlRegisters
 ```
 
-A numeric form remains available for the target's canonical linear hardware
-address domain:
+The former numeric form is superseded (MD-111 §§ 1(4), 10(7)); the address
+lives in the endpoint's metadata and the binding names the endpoint:
 
 ```sec
-@address(0x40021000)
+@address(StatusEndpoint)
 let status: DeviceStatus
 ```
 
@@ -147,7 +147,7 @@ Sec does not require a separate source-level `volatile` keyword for an
 Binding mutability and volatility are independent.
 
 ```sec
-@address(0x40021000)
+@address(StatusEndpoint)
 let status: DeviceStatus
 ```
 
@@ -155,7 +155,7 @@ This binding is volatile and readable when its type and fields permit reading,
 but Sec code cannot write through it. Hardware may still change its value.
 
 ```sec
-@address(0x40021000)
+@address(ControlEndpoint)
 let mut control: DeviceControl
 ```
 
@@ -238,14 +238,14 @@ An addressed binding refers to existing external or platform storage. Its
 declaration must not perform an implicit write, so an initializer is invalid:
 
 ```sec
-@address(0x40021000)
+@address(ControlEndpoint)
 let mut control: DeviceControl := initialValue
 ```
 
 Required initialization writes are explicit after the binding:
 
 ```sec
-@address(0x40021000)
+@address(ControlEndpoint)
 let mut control: DeviceControl
 
 control.Enabled = true
@@ -286,7 +286,7 @@ access volatile. No impl member adds storage to the physical register layout.
 Sec 0.1 accepts the addressed-register form:
 
 ```sec
-@address(0x40021000)
+@address(StatusEndpoint)
 let status: RegisterType
 ```
 

@@ -1,0 +1,7 @@
+module main
+fn Count[...Types](first: ref int, values: ...ref mut Types) uint { return values.Len }
+fn Use() int {
+    let mut value := 1
+    discard Count(value, value)
+    return value
+}

@@ -238,6 +238,11 @@ func (fb *functionBuilder) staticOfIdentifier(identifier *ast.Identifier) (Stati
 // the static address-taken so it keeps one stable location. Fixed-address
 // and non-ordinary address spaces stay unsupported.
 func (fb *functionBuilder) lowerStaticRootPlace(reference *ast.RefExpression, plan sema.ResolvedReferencePlan, rootExpr ast.Expression) (builtValue, error) {
+	if binding, ok := fb.hardwareBindingRoot(rootExpr); ok {
+		// MD-077 § 12(2): a hardware binding is a register.hw.bind root, never
+		// a Place; its uses need register.hw.* operations with verified plans.
+		return builtValue{}, fb.unsupported("use of hardware register instance "+binding.Symbol+" (register.hw.observe/request_write need verified MD-111 operation plans, MD-077 § 18(4))", reference.Token)
+	}
 	if plan.Facts.AddressStability == sema.AddressStabilityFixed || plan.Facts.AddressSpace != sema.AddressSpaceOrdinary {
 		return builtValue{}, fb.unsupported("addressed or non-ordinary Place root", reference.Token)
 	}

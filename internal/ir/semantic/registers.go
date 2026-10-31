@@ -139,6 +139,11 @@ func (fb *functionBuilder) hardwareInstanceMemberBoundary(expr *ast.MemberExpres
 // buildRegisterFieldRead lowers a detached field read to
 // register.value.extract.
 func (fb *functionBuilder) buildRegisterFieldRead(expr *ast.MemberExpression, plan sema.ResolvedRegisterFieldPlan) (builtValue, error) {
+	if plan.Root == sema.RegisterRootHardware {
+		if instance, ok := fb.hardwareInstanceOperand(expr.Object); ok {
+			return fb.lowerHardwareFieldRead(instance, []sema.ResolvedRegisterFieldPlan{plan}, expr.Token)
+		}
+	}
 	if err := fb.registerHardwareBoundary(plan, expr.Token); err != nil {
 		return builtValue{}, err
 	}
@@ -170,6 +175,11 @@ type registerAssignmentStep struct {
 // rebuilt leaf-to-root with register.value.update / struct.replace-field and
 // stored once.
 func (fb *functionBuilder) buildRegisterFieldAssignment(stmt *ast.AssignmentStatement, target *ast.MemberExpression) error {
+	if plan, ok := fb.owner.analyzer.ResolvedRegisterFieldOf(target); ok && plan.Root == sema.RegisterRootHardware {
+		if instance, bound := fb.hardwareInstanceOperand(target.Object); bound {
+			return fb.lowerHardwareFieldWrite(instance, stmt, []sema.ResolvedRegisterFieldPlan{plan})
+		}
+	}
 	var reversed []registerAssignmentStep
 	var root *ast.Identifier
 	for expression := ast.Expression(target); root == nil; {

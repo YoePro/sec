@@ -125,13 +125,13 @@ impl SpiStatus {
 // MEMORY-MAPPED HARDWARE INSTANCES
 // =====================================================================
 
-@address(0x40013000)
+@address(SPI1_CREndpoint)
 let mut SPI1_CR: SpiControl
 
-@address(0x40013004)
+@address(SPI1_SREndpoint)
 let SPI1_SR: SpiStatus
 
-@address(0x4001300C)
+@address(SPI1_DREndpoint)
 let mut SPI1_DR: SpiDataBuffer
 
 // =====================================================================
@@ -175,7 +175,7 @@ impl AccelerationBuffer {
     }
 }
 
-@address(0x40013020)
+@address(ADXL345_BUFFEREndpoint)
 let ADXL345_BUFFER: AccelerationBuffer
 
 // =====================================================================
@@ -200,4 +200,93 @@ fn ReadAccelerationData() void {
 
     // 5. Koppla från Chip Select
     SPI1_CR.DeselectSlave()
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40010000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource SPI1_CRState { width: 32, }
+hardware endpoint SPI1_CREndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: SPI1_CRState,
+    offset: 0x3000,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource SPI1_SRState { width: 32, }
+hardware endpoint SPI1_SREndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: SPI1_SRState,
+    offset: 0x3004,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource SPI1_DRState { width: 32, }
+hardware endpoint SPI1_DREndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: SPI1_DRState,
+    offset: 0x300C,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ADXL345_BUFFERState { width: 32, }
+hardware endpoint ADXL345_BUFFEREndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ADXL345_BUFFERState,
+    offset: 0x3020,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

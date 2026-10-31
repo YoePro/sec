@@ -1,0 +1,25 @@
+module main
+
+type Counter struct { Total: uint }
+type Other struct { Total: uint }
+impl Counter {
+    static fn Count[...Types](values: ...ref Types) uint { return values.Len }
+    static fn Tagged[...Types](base: uint, values: ...ref Types) uint {
+        return base + values.Len
+    }
+    static fn Unused[...Types](values: ...ref Types) uint { return 7 }
+}
+impl Other {
+    static fn Count[...Types](values: ...ref Types) uint { return values.Len }
+}
+fn Produce() uint { return 1 }
+fn Use() uint {
+    discard Counter.Count()
+    discard Counter.Count(1, true)
+    discard Counter.Count(true, 1)
+    discard Counter.Count(2, false)
+    discard Other.Count(3, true)
+    discard Counter.Unused()
+    discard Counter.Unused(1)
+    return Counter.Tagged(Produce(), 1, true)
+}

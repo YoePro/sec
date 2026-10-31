@@ -1,0 +1,17 @@
+module main
+fn Count[...Types](values: ...Types) uint { return values.Len }
+fn NewData() int[] { return [] }
+type Pair struct { Left: int[], Right: int[] }
+fn Use() int {
+    let value := 1
+    let data: int[] := []
+    discard Count()
+    discard Count(value, true)
+    discard Count(<-data)
+    discard Count(NewData())
+    let old := value
+    discard Count(<-old)
+    let pair := Pair { Left: [], Right: [] }
+    discard Count(<-pair.Left, <-pair.Right)
+    return value
+}

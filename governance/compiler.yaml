@@ -526,6 +526,7 @@ integrations:
       - add deterministic symbol, archive, provider, reachability, dead-stripping, LTO, toolchain-materialization, search-path, artifact-verification, cross-compilation, and diagnostic regression tests
       - update repository-level implementation-status verification commands once the first canonical LinkPlan vertical slice is implemented
       - integrate requested debug level and placement, exact image/companion correlation, post-LTO mapping finalization, and safe strip policy under compiler.debug-information-v1
+      - "Moved from P15-42a (owner decision 2026-10-31): statics and static return origins of another module, which today fail closed in Semantic IR, need separately compiled module surfaces"
     excluded:
       - Sec module and source declaration identity semantics
       - ABI parameter/return classification

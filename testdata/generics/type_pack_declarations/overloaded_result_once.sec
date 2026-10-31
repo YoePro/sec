@@ -1,0 +1,8 @@
+module main
+fn Context[T, ...Types](tag: bool, values: ...ref Types) Option[T] { return None }
+fn Context[...Items](tag: int, values: ...ref Items) bool { return false }
+fn Consume(-> value: int[]) bool { return true }
+fn Use() Option[int] {
+    let data: int[] := []
+    return Context(Consume(<-data), 42)
+}

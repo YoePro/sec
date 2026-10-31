@@ -30,11 +30,40 @@ impl Control {
     }
 }
 
-@address(0x40000000)
+@address(ControlEndpoint)
 let mut control: Control
 
 fn Use() bool {
     return control.HasPending()
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ControlState { width: 8, }
+hardware endpoint ControlEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ControlState,
+    offset: 0x0,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 	uri := uriFromPath(filepath.Join(t.TempDir(), "main.sec"))

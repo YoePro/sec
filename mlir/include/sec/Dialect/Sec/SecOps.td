@@ -693,4 +693,21 @@ def Sec_IntBitExtractOp : Sec_Op<"int.bit_extract", [Pure]> {
   let results = (outs AnyType:$result);
   let hasVerifier = 1;
 }
+// MD-077 § 19(5): one module-level register.hw.bind root (semantic_ir.md
+// § 21(11)). It associates a hardware-instance authority with its resolved
+// MD-111 endpoint, resource and region and records the endpoint's domain
+// extent and transfer widths; it reads, writes and initializes nothing.
+// Address, size and alignment are exact decimal domain values (a domain may
+// exceed 64 bits). Admitted from schema 11 (dialect v11.41.5, 2026-10-31).
+def Sec_HwBindingOp : Sec_Op<"hw.binding", [Symbol]> {
+  let summary = "Sec hardware register binding root";
+  let arguments = (ins SymbolNameAttr:$sym_name, I32Attr:$hardware_binding_id,
+                       TypeAttr:$instance_type, BoolAttr:$is_mutable,
+                       BoolAttr:$alias, StrAttr:$endpoint_id,
+                       StrAttr:$hardware_resource_id, StrAttr:$region_id,
+                       StrAttr:$endpoint_kind, StrAttr:$domain,
+                       StrAttr:$address, StrAttr:$size, StrAttr:$alignment,
+                       I64ArrayAttr:$read_widths, I64ArrayAttr:$write_widths);
+  let hasVerifier = 1;
+}
 #endif // SEC_DIALECT_SEC_OPS_TD

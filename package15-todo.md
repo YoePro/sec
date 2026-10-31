@@ -433,7 +433,7 @@ equally named roots of different declarations stay distinct alternatives
   placeholder operation.
 
   Completed 2026-10-11: at package 15 (`BuildOptions.MaxPackage = 15`; the default stays 14) `internal/ir/semantic/reference_lowering.go` routes every expression with a resolved reference plan, a resolved reference use or a reference type, every assignment target and every reference parameter through the P15 plans: missing plans, uncheckable references and not-yet-lowered plan kinds are package-15 `UnsupportedFeatureError`s naming the planned facts (for example "borrow of reference shared-direct of local storage"), the pre-P15 reference-parameter approximation is never used, `ref T` / `ref mut T` intern as P15 reference types, and `Build` returns no module on any failure. Reference-free programs build identically at packages 14 and 15, and earlier packages keep their boundaries (`TestPackage15BuilderConsumesReferencePlans`, `TestPackage15BoundaryLeavesEarlierPackagesUnchanged`).
-- [ ] P15-42 — Lower local/static/addressed roots and reference-dependent
+- [x] P15-42 — Lower local/static/addressed roots and reference-dependent
   mutable storage through high-level storage plus Place roots. Mark/address
   track address-taken storage so P5 trivial-core lowering cannot erase it before
   the P15 representation boundary is discharged.
@@ -441,6 +441,9 @@ equally named roots of different declarations stay distinct alternatives
   Status 2026-10-11 (partial): borrows of whole local bindings lower through Place roots: an immutable binding becomes a read-only `place.value-root` over its SSA value, a mutable binding a `place.storage-root` over its P5 storage, which is marked `AddressTaken` (printed `address-taken`; the verifier rejects a storage root over unmarked storage, so P5 trivial-core lowering cannot erase it) and is neither loaded nor copied; the borrow carries the resolved reference facts unchanged (`TestPackage15LowersLocalRootBorrows`). Static roots (2026-10-16, with P15-42a): `ref` / `ref mut` of a module static or function-local static lowers to `place.static-root @N` with the static's authority, marks the static address-taken and carries Sema's static-storage facts (`TestPackage15LowersStaticPlaceRoots`). Remaining: addressed (fixed-address/MMIO) roots, blocked by MD-077 (no Semantic IR register types or operations are specified; Semantic IR rejects every register access).
   MD-077 (decided 2026-10-22, `rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md`): addressed roots split by binding category. Ordinary addressed storage becomes a Place root. A hardware register binding becomes a `register.hw.bind` resource/instance root of type `HardwareInstance[T]`, never a Place, with no `ref` to physical bits. The schema is `sec_mlir_dialect.md` v11.41.1. P15-42/42a stays open until MD-077 steps 2–5 are implemented.
   Current closure boundary (updated 2026-10-28): ordinary addressed roots and hardware operation serialization require MD-111 endpoint/region facts; detached register serialization under MD-114 is implemented as described below. Detached register/hardware-instance types exist, so the earlier statement that no register IR types exist is historical. MD-116 static reference emission and identity verification are implemented (2026-10-27); physical reference-dependent static lowering remains separate. None is waived by the evidence tasks below.
+
+  2026-10-31: the MD-111 prerequisites on the frontend are in place. CLI and LSP supply resolver-owned module identities, and `@address(Endpoint[, alias])` resolves to a published HardwareFacts endpoint (numeric bindings are rejected with S1188), so Sema now records the endpoint identity of every hardware register binding. The P15 remainder for addressed hardware roots is the Semantic IR side: carry that endpoint identity and its region/domain/extent facts on the binding, then serialize hardware operations against it. Project exports (`Project.<name>`) and binding alias diagnostics remain separate.
+  Later on 2026-10-31, the binding-root half of that Semantic IR remainder was done. Each resolved hardware register binding is a `register.hw.bind` record in the module `hardware` table (semantic_ir.md § 21(11)), typed `hardware-instance<T>`, with endpoint, resource, region, domain, extent and transfer facts, and verified. A use of the instance reports an explicit `register.hw.*` boundary instead of the generic addressed-Place error, and emit-sec-mlir fails explicitly until the dialect admits `sec.hw.bind`. Also fixed: receiver facts dropped register layouts (`semanticSnapshotType`), so impl methods of registers with reserved fields failed IR verification, and `place.read` now accepts detached register referents. The dialect now has the module-level `sec.hw.binding` record (v11.41.5); emit-sec-mlir carries the roots, and native verification passes at schemas 11/12. Hardware operations are produced too (semantic_ir.md § 21(12)): members on a bound instance run `T.M[hardware]` variants, and fields, `Read()`, `Write()`, `Write(value)` and `IsShadowKnown` become `register.hw.*` operations with `plan=unverified`. This meets MD-077 § 12(5) for P15 (root identity, no hardware borrows, `HardwareInstance[T]` typing, faithful production; lacking capability fails closed). Still open: verified MD-111 operation plans (and with them the instance-yielding `sec.hw.bind @binding` in MLIR), plus nested field paths, compound assignments and properties on hardware instances.
 
   2026-10-27:
   - MD-116 is decided and implemented; see P15-42a.
@@ -458,7 +461,7 @@ equally named roots of different declarations stay distinct alternatives
     explicitly rather than erasing types or trusting unverified intervals.
     MD-111 hardware endpoints/operations and physical register lowering are
     separate; P15-42/42a and final P15 acceptance remain open.
-- [ ] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
+- [x] P15-42a — Added 2026-10-11 (dependency discovered by P15-42): represent
   static (module-level), thread-local and addressed (fixed-address binding,
   register/MMIO) storage in Semantic IR, which today has only local-automatic
   storage, then lower static and addressed Place roots through it with their
@@ -483,8 +486,8 @@ equally named roots of different declarations stay distinct alternatives
 
   Remaining:
   - addressed storage (fixed-address register/MMIO bindings) and its Place roots;
-  - thread-local storage: Sec 0.1 has no thread-local static syntax, only `ThreadLocal[T]` owning a TLS key (static.md § 4);
-  - aggregate, reference-held and executor-dependent static initializers (available scalar CTE is implemented below).
+  - thread-local storage: Sec 0.1 has no thread-local static syntax, only `ThreadLocal[T]` owning a TLS key (static.md § 4). Moved to `concurrency.thread-local-v2` (owner decision 2026-10-31);
+  - aggregate, reference-held and executor-dependent static initializers (available scalar CTE is implemented below). Aggregate and executor-dependent initializers moved to `lowering.sec-mlir-package17` (2026-10-31); the reference-held static (MD-081) moved to `lowering.reference-model` (owner decision 2026-10-31).
 
   MD-116 (decided 2026-10-27, `rules/corrections/applied/MD-116-static-place-root-mlir-correction-20261027.md`; dialect v11.41.3, lowering v11.29) specifies the MLIR form of a static Place root. That form covers P15-42 static roots and P15-47 static return origins as well:
   - `place.static-root` emits as zero-operand `sec.place.static {global, place_root_id, storage_identity, address_space}`;
@@ -509,10 +512,10 @@ equally named roots of different declarations stay distinct alternatives
     - Lit: `Dialect/Sec/invalid-schema11-place-static.mlir`, `Analysis/verify-static-place-roots.mlir` (including a round trip), `Analysis/invalid-static-return-origins.mlir`, `Conversion/SecToCore/schema11-static-place-root.mlir`.
     - Go: `TestPackage15EmitsStaticPlaceRoots`, from source on 32-bit and 64-bit plans, checking determinism and running the P15 verifier and P5/P6/P8 pipeline.
 
-  Remaining:
-  - static field and element projections, once aggregate statics exist (only integer and bool statics are representable today);
-  - cross-module static origins, which fail closed;
-  - physical lowering of reference-dependent statics.
+  Remaining (all moved 2026-10-31, owner decision):
+  - static field and element projections, once aggregate statics exist → `lowering.sec-mlir-package17`;
+  - cross-module static origins, which fail closed → `compiler.incremental-compilation-v1`;
+  - physical lowering of reference-dependent statics → `lowering.reference-model` (P26).
   Update 2026-10-30 — scalar CTE producers completed: `ResolvedStatic.Initializer`
   is frozen by Sema using the shared evaluator and resolved declaration identities.
   Arithmetic, bitwise and boolean expressions, forward/static dependencies,
@@ -552,7 +555,7 @@ equally named roots of different declarations stay distinct alternatives
   only on the true edge.
 
   Completed 2026-10-15 (partial 2026-10-12, explicit reborrow after MD-061): reads, writes and equality are lowered through one validity policy taken from the facts of the exact reference SSA they consume (the builder records the metadata of every reference it creates). A read through a holder is `ref.deref-place` (Place authority from the reference), the resolved field/fixed-array element steps via the shared `projectPlace`, and a copy-trivial `place.read`. A write forms the destination Place first, then evaluates the source and ends in `place.write` (trivially replaceable referents through `ref mut` only). Equality is `ref.compare eq|ne`. Proven references keep their proof metadata and emit no check. A dynamic-epoch reference is validated once with `ref.is-valid` on the same SSA value: the false edge ends in `fail.reference-generation` and the guarded operation, carrying `ReferenceGuard`, exists only on the true edge. Tests: `TestPackage15LowersProvenReferenceUses`, plus the white-box `TestPackage15DynamicReferenceUseValidatesOnce`, because Arena references cannot be built from source yet. Explicit reborrow (2026-10-15, MD-061): `ref r` / `ref mut r` over a reference holder is typed `ref T` / `ref mut T` in Sema and lowers to `ref.reborrow-shared` / `ref.reborrow-mut` of the holder's reference with a derived BorrowID and the holder's storage origins (`TestPackage15LowersExplicitReborrows`). Compound assignment and non-trivial reads/writes through references stay unsupported (P17).
-- [ ] P15-47 — Lower reference parameters, implicit owned-place borrows,
+- [x] P15-47 — Lower reference parameters, implicit owned-place borrows,
   existing shared-reference passing, mutable-reference move/reborrow passing,
   allowed returned input/subfield references, and preserved return-origin
   summaries. Do not choose a physical ABI or silently copy `ref mut`.
@@ -570,6 +573,16 @@ equally named roots of different declarations stay distinct alternatives
   rejections remain authoritative. Source IR and schemas 11/12 pass on 32/64
   targets through all three P15 verifiers and P5/P6/P8 preservation. Generic
   specialization and addressed/root-dependent returns keep P15-47 unchecked.
+
+  Update 2026-10-31 — generic receivers: methods of a generic implementation
+  specialize per receiver instance in Semantic IR (`Box.Get[T=int]()`,
+  `Box.Bump[T=int]()`), with the self reference targeting the concrete instance,
+  and pass verified Sec MLIR emission. Two Sema fixes were needed: `Box[int]` is
+  the exact receiver of `impl Box[T]`, and the method signature takes the
+  receiver's arguments. Generic receivers whose arguments need ownership or
+  cleanup plans and generic methods with their own parameters moved to
+  `lowering.sec-mlir-package17` (owner decision 2026-10-31). Still unchecked:
+  addressed/root-dependent returns (P15-42/42a, MD-111).
 
 - [x] P15-48 — Integrate effects and `@noPanic`: proven use adds no invalid-
   reference panic; a reachable dynamic failure adds the exact panic reason;
@@ -847,6 +860,8 @@ equally named roots of different declarations stay distinct alternatives
 - [x] P15-74 — Write the section-156 implementation report in the P15 package
   directory, covering all 46 required topics in order, deviations, exact
   commands/results, and Package 16 recommendations.
+  Closed 2026-10-31 (owner decision): hardware communication is a Sec 0.5 feature. All remaining hardware/addressed parts of P15-42, P15-42a and P15-47 (verified MD-111 plans, addressed/hardware roots and returns, MD-121) are deferred to 0.5 under `platform.hardware-register-access`. Every other remaining point is implemented or moved to its owning package (see the 2026-10-31 moves above).
+
 - [ ] P15-75 — Re-run the acceptance matrix, governance unique-ownership check,
   rulebook-status check, complete Go/vet suites with absolute MLIR tooling, and
   full Sec MLIR suite before handoff. Confirm every P15 TODO item is either

@@ -16,7 +16,7 @@
 **GitHub review date:** 2026-10-16  
 **Exact GitHub SHA:** Not established by public web inspection; implementer must run `git rev-parse HEAD`.  
 **Decisions:** MD-050 (existing), MD-071 (P23-D1), MD-072 (P23-D2), MD-073 (P23-D3) (recorded in `missing-decisions.yaml`)  
-**Decision status (2026-10-17):** MD-050, MD-071 (P23-D1) and MD-072 (P23-D2) are decided by `rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md`: every `string` is valid UTF-8 (`types.md`, "Valid UTF-8 invariant"); `IndexOf`/`LastIndexOf`/`Slice`/`GetRune`/`RuneAt` use rune positions and `GetByte`/`ByteAt`/`CharAt` byte indexes (`core-library.md` § 5.7); `FromByteArray`/`FromRuneArray` borrow and return `Result[string, StringError]`, `ToByteArray`/`ToRuneArray` return `Result[byte[]/rune[], CollectionError]` (§§ 5.2–5.3). Where this package says a behavior is gated by those three decisions, the decided rule now applies; `StringValidateUTF8Op` validates at decoding boundaries only. MD-073 (P23-D3) remains open; MD-074 was decided 2026-10-17 (`len(...)` is `uint`, `rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`).  
+**Decision status (2026-10-17):** MD-050, MD-071 (P23-D1) and MD-072 (P23-D2) are decided by `rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md`: every `string` is valid UTF-8 (`types.md`, "Valid UTF-8 invariant"); `IndexOf`/`LastIndexOf`/`Slice`/`GetRune`/`RuneAt` use rune positions and `GetByte`/`ByteAt`/`CharAt` byte indexes (`core-library.md` § 5.7); `FromByteArray`/`FromRuneArray` borrow and return `Result[string, StringError]`, `ToByteArray`/`ToRuneArray` return `Result[byte[]/rune[], CollectionError]` (§§ 5.2–5.3). Where this package says a behavior is gated by those three decisions, the decided rule now applies; `StringValidateUTF8Op` validates at decoding boundaries only. MD-073 (P23-D3) was decided 2026-10-31 (`rules/corrections/applied/MD-073-string-to-char-array-byte-preserving-correction-20261031.md`): `ToCharArray` is byte-preserving, `Result[char[], CollectionError]`, one `char` per UTF-8 byte (`compiler_known_members.md` "`ToCharArray()`", `core-library.md` § 5.3) and is no longer a design gate; MD-074 was decided 2026-10-17 (`len(...)` is `uint`, `rules/corrections/applied/md051-md074-md088-length-numeric-string-correction-20261017.md`).  
 
 ---
 
@@ -116,7 +116,7 @@ The high-level operation returns `(string candidate, i1 failed, AllocationError 
 
 ## § 24. ToByteArray/ToRuneArray/ToCharArray
 
-These return **independent owning dynamic arrays** on the required semantic surface, not `ref byte[]`/`ref rune[]` views. `ToByteArray` yields exact UTF-8 payload bytes, `ToRuneArray` one rune per scalar, `ToCharArray` follows char domain. No terminator. The source does not mutate/consume; returned arrays can be mutated independently. Allocation/error signatures remain to be synchronized with MD-072 (P23-D2); invalid-UTF8 branch tied to MD-050; char >255 branch tied to MD-073 (P23-D3). Reuse P18 owner lifecycle and P19 allocation facts where implemented.
+These return **independent owning dynamic arrays** on the required semantic surface, not `ref byte[]`/`ref rune[]` views. `ToByteArray` yields exact UTF-8 payload bytes, `ToRuneArray` one rune per scalar, `ToCharArray` follows char domain. No terminator. The source does not mutate/consume; returned arrays can be mutated independently. Allocation/error signatures remain to be synchronized with MD-072 (P23-D2); invalid-UTF8 branch tied to MD-050; char >255 branch tied to MD-073 (P23-D3). **MD-073 amendment (2026-10-31):** no char >255 branch exists; `ToCharArray` returns `Result[char[], CollectionError]` with exactly `SizeOf` elements equal to the UTF-8 bytes and may reuse the `ToByteArray` materialization path without a source-visible `byte[]`→`char[]` retyping. Reuse P18 owner lifecycle and P19 allocation facts where implemented.
 
 ## § 25. Text-sequence ToString
 
@@ -128,7 +128,7 @@ For exactly `byte`, `char`, `rune` elements in fixed arrays, dynamic owning arra
 
 ## § 27. Char and rune scope
 
-`char` represents numeric values 0..255; `rune` is Unicode scalar U+0000..U+10FFFF excluding surrogate range. `rune` to UTF-8 encodes 1–4 bytes, including U+0000 and non-BMP. `char` cannot directly represent every possible rune; byte reinterpretation is NOT equivalent to char-to-string conversion. `MD-073 (P23-D3)` asks for lossless/failure/selection behavior for `ToCharArray` on Unicode scalars >255 and char sequence encoding. Do not silently replace out-of-range values or assume Latin-1 bytes are UTF-8 without a rule.
+`char` represents numeric values 0..255; `rune` is Unicode scalar U+0000..U+10FFFF excluding surrogate range. `rune` to UTF-8 encodes 1–4 bytes, including U+0000 and non-BMP. `char` cannot directly represent every possible rune; byte reinterpretation is NOT equivalent to char-to-string conversion. `MD-073 (P23-D3)` asks for lossless/failure/selection behavior for `ToCharArray` on Unicode scalars >255 and char sequence encoding. Do not silently replace out-of-range values or assume Latin-1 bytes are UTF-8 without a rule. **MD-073 amendment (2026-10-31):** decided as byte-preserving `ToCharArray` (§ 24 amendment); no rune-to-char conversion, replacement or code-page encoding happens. Char-sequence `ToString()` keeps its own per-`char` semantics and is not turned into a UTF-8 decoder.
 
 ## § 28. P22 contract interoperability
 
@@ -184,7 +184,7 @@ Reject fabricated UTF-8 proof; no post-bound read; no string-array index syntax;
 
 ## § 41. Unicode and conversion test matrix
 
-UTF-8: 1-,2-,3-,4-byte scalars, invalid continuation, truncated sequence, overlong, surrogate, U+10FFFF, > max, NUL, arbitrary byte 0xFF (gated MD-050). Check `ToByteArray` ownership independence, to/from rune array parity for known-valid strings, `char` 0..255 and >255 cases gated MD-073 (P23-D3), zero-element arrays, static/dynamic owner and slices, slice bounded views, no terminator search, allocation failure preserving original source, no hidden provider. Tests for unresolved public signature must be marked blocked, not green.
+UTF-8: 1-,2-,3-,4-byte scalars, invalid continuation, truncated sequence, overlong, surrogate, U+10FFFF, > max, NUL, arbitrary byte 0xFF (gated MD-050). Check `ToByteArray` ownership independence, to/from rune array parity for known-valid strings, `ToCharArray` byte preservation for ASCII, `é`, `€`, `😀` and NUL (count `SizeOf`, elements equal to `ToByteArray`, MD-073 decided 2026-10-31), zero-element arrays, static/dynamic owner and slices, slice bounded views, no terminator search, allocation failure preserving original source, no hidden provider. Tests for unresolved public signature must be marked blocked, not green.
 
 ## § 42. MD-004 tests
 
@@ -200,7 +200,7 @@ Reuse existing implementation/governance IDs; query current `governance/` before
 
 ## § 45. Acceptance gates
 
-Gate A: repository SHA/predecessor matrix, exact current core declarations, read-only Sema plans, immutable static string facts, correct UTF-8 `.Len`/`.SizeOf`, no public aliases, string allocation-free copy, string literal/compare equality, v19 ops parse/print/verify, pure tests. Gate B: P15/P17 backing/subrange lifetime and ownership verifier; MD-004 one-materialization, P18/P19 alloc context + `AllocationError`, array independence and cleanup, noalloc/32/64 tests. Gate C: MD-071/MD-072/MD-073/MD-050 approved and synchronized before dependent source overloads/Unicode error cases. Gate D: fresh full build and end-to-end IR -> MLIR tests; governance synchronized. No gate is auto-passed.
+Gate A: repository SHA/predecessor matrix, exact current core declarations, read-only Sema plans, immutable static string facts, correct UTF-8 `.Len`/`.SizeOf`, no public aliases, string allocation-free copy, string literal/compare equality, v19 ops parse/print/verify, pure tests. Gate B: P15/P17 backing/subrange lifetime and ownership verifier; MD-004 one-materialization, P18/P19 alloc context + `AllocationError`, array independence and cleanup, noalloc/32/64 tests. Gate C (all four decided by 2026-10-31): MD-071/MD-072/MD-073/MD-050 approved and synchronized before dependent source overloads/Unicode error cases. Gate D: fresh full build and end-to-end IR -> MLIR tests; governance synchronized. No gate is auto-passed.
 
 ## § 46. Required implementation report
 

@@ -699,6 +699,8 @@ integrations:
         result: passed on 2026-09-30 with registered mandatory S1052 identity, explanatory payload-Place message, actionable ownership/borrow help, and catalog exposure
       - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
         result: passed on 2026-09-30 with registered mandatory S1055 identity, concrete cycle-path messages, actionable indirection help, and valid recursion boundaries
+    remaining:
+      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 10(7)): reuse constraint-failure IDs; allocate IDs only for distinct cases (unconstrained E in Result, variant pattern on unknown E, bare generic interface view)"
 
   - id: diagnostics.move-into-borrowed-parameter
     status: implemented

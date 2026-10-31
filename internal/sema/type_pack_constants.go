@@ -7,7 +7,7 @@ import (
 )
 
 // ResolvedTypePackConstantOf evaluates a typed template expression for one
-// selected shared-pack call. Only the actual parameter's Len is substituted;
+// selected pack call. Only the actual parameter's Len is substituted;
 // ordinary argument values, same-spelled foreign bindings and function/getter
 // execution never acquire compile-time values from this query. The template
 // remains unchanged, so different calls can have independent constant results.
@@ -26,8 +26,8 @@ func (a *Analyzer) ResolvedTypePackConstantOf(call *ast.CallExpression, expressi
 	if !known {
 		return DefaultConstant{}, false
 	}
-	parameter, shared := sharedTypePackParameter(target.Function)
-	if !shared {
+	parameter, supported := typePackParameter(target.Function)
+	if !supported {
 		return DefaultConstant{}, false
 	}
 	binding, known := a.ResolvedBindingDeclaredAt(parameter.Token.File, parameter.Token.Line, parameter.Token.Column)

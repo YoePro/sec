@@ -965,6 +965,9 @@ type LetStatement struct {
 	SynthesizedDefault bool
 	Address            Expression
 	AddressToken       lexer.Token
+	// AddressAlias records the contextual `alias` marker of
+	// `@address(Endpoint, alias)` (MD-111 § 10(1)).
+	AddressAlias bool
 	// Attributes is the attachment set written before a top-level let; the
 	// Address fields are derived from its @address attribute.
 	Attributes []*Attribute

@@ -26,7 +26,7 @@ impl Status {
 	}
 }
 
-@address(0x40021000)
+@address(StatusEndpoint)
 let status: Status
 
 fn InvalidDeclarationMove() void {
@@ -44,6 +44,35 @@ fn ValidSnapshotMove() Status {
 	let snapshot := status.Snapshot()
 	let moved :<- snapshot
 	return moved
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40020000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource StatusState { width: 8, }
+hardware endpoint StatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: StatusState,
+    offset: 0x1000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `)
 	if len(errors) != 3 {

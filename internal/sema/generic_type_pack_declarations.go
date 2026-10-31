@@ -18,19 +18,19 @@ func genericTypePackName(parameters []*ast.GenericParameter) string {
 }
 
 // rejectUnavailableTypePackExpansion keeps recognized declaration metadata
-// available to tooling. Shared packs unused or observed only through Len can
-// be checked; other modes and bodies retain the concrete expansion gate.
+// available to tooling. Packs unused or observed only through Len can
+// be checked; unsupported elements and bodies retain the concrete expansion gate.
 // A type sequence must never silently acquire the meaning of one generic T.
 // Rules: rules/declarations/generics.md — §16A(1–5);
 // rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md — §§2,9–10.
 func (a *Analyzer) rejectUnavailableTypePackExpansion(fn *ast.FunctionDeclaration) bool {
-	if a.supportedSharedTypePackBody(fn) {
+	if a.supportedTypePackBody(fn) {
 		return false
 	}
 	for _, parameter := range fn.GenericParameters {
 		if parameter != nil && parameter.TypePack {
 			a.addErrorAtTokenWithMetadata(parameter.PackToken, diagnostics.GenericTypePackExpansionUnavailable,
-				"The declaration is recognized. Shared-pack bodies with no pack use or only Len reads and direct-call inference are supported. This parameter mode or body needs heterogeneous expansion that is not implemented yet; no runtime container or ordinary single-type parameter is substituted.",
+				"The declaration is recognized. Pack bodies with no pack use or only Len reads and direct-call inference are supported. This parameter mode or body needs heterogeneous expansion that is not implemented yet; no runtime container or ordinary single-type parameter is substituted.",
 				"compiler capability unavailable: semantic expansion of heterogeneous type pack %s", parameter.Name.Value)
 			return true
 		}

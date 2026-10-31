@@ -113,8 +113,8 @@ preflight and canonical resolver integration remain separate TODOs.
    alignment or explicit field offsets.
 7. **Reconcile stale P23 references before implementation:** current authority
    resolves MD-050, MD-071 and MD-072 for valid UTF-8, public position units
-   and core materialization boundaries. MD-073 (char conversion) and MD-109
-   (stdlib materialization) remain gated. Descriptor selection must not alter
+   and core materialization boundaries; MD-073 (byte-preserving `ToCharArray`)
+   was decided 2026-10-31. MD-109 (stdlib materialization) remains gated. Descriptor selection must not alter
    any of these source contracts.
 8. **One track only:** accepted work is Sema → Semantic IR → Sec dialect MLIR
    → standard MLIR → LLVM dialect → LLVM IR → `llc` object (same LLVM build) → clang link
@@ -134,7 +134,7 @@ has an explicit static, runtime or lower-level discharge proof.
 P24 does not implement final callable/foreign ABI, a universal physical
 reference/slice/string/Arena descriptor, a global allocator ABI, source
 packing syntax, MMIO/volatile access strategy, raw serialization, implicit
-`reinterpret`, final LLVM lowering, MD-073 or MD-109.
+`reinterpret`, final LLVM lowering or MD-109.
 
 ## A. Establish baseline and synchronize authority
 
@@ -151,7 +151,7 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
   Do not invent a missing rulebook or assume a file name.
 - [ ] P24-04 — Reconcile P24's package documents and governance wording with
   October corrections: MD-014/MD-012 authority, P21 mapped decisions and the
-  settled P23 MD-050/071/072 state. Keep only MD-019, MD-073 and MD-109 as
+  settled P23 MD-050/071/072 state. Keep only MD-019 and MD-109 (MD-073 decided 2026-10-31) as
   string/layout-adjacent decision gates where their behavior actually matters.
 - [ ] P24-05 — Define the preflight predecessor/capability matrix: scalar and
   fixed aggregate first; P15 refs/P16 slices/P17 ownership/P18 arrays/P19 Arena
@@ -432,7 +432,7 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
 - [ ] P24-61 — Produce the required implementation report: snapshot,
   predecessor truth, source authority, resolver/key/cache inventory, supported
   layouts/policies, IR/schema/pass behavior, verifier and test evidence,
-  unresolved MD-019/MD-073/MD-109 gates, deviations and P25 handoff.
+  unresolved MD-019/MD-109 gates, deviations and P25 handoff.
 
 ## Recommended execution order
 
@@ -445,5 +445,5 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
    while retaining all ownership/borrow/contract boundaries.
 4. F/G/H: attach verified layout refs, then schema 20 and one native-track
    representation lowering for individually eligible operations.
-5. I/J: prove target/cache/tooling parity and leave ABI, MD-019, MD-073,
+5. I/J: prove target/cache/tooling parity and leave ABI, MD-019,
    MD-109 and unsupported descriptor policies explicit rather than speculative.

@@ -2069,11 +2069,40 @@ impl MotorProtocol {
 	}
 }
 
-@address(0x40021000)
+@address(MotorProtocolEndpoint)
 let mut motorProtocol: MotorProtocol
 
 fn StartMotor(speed: uint16<rpm>) void {
 	motorProtocol.Start(speed)
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40020000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource MotorProtocolState { width: 8, }
+hardware endpoint MotorProtocolEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: MotorProtocolState,
+    offset: 0x1000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 
@@ -2088,7 +2117,7 @@ fn StartMotor(speed: uint16<rpm>) void {
 		t.Fatalf("wrong register fields: %+v", register.RegisterFields)
 	}
 	symbol := analyzer.symbols["motorProtocol"]
-	if !symbol.Addressed || !symbol.Volatile || symbol.Address != "0x40021000" {
+	if !symbol.Addressed || !symbol.Volatile || symbol.Address != "test:hardware::MotorProtocolEndpoint" {
 		t.Fatalf("wrong addressed symbol: %+v", symbol)
 	}
 }
@@ -2622,14 +2651,63 @@ impl MotorProtocol {
 	}
 }
 
-@address(0x40021000)
+@address(MotorStatusEndpoint)
 let motorStatus: MotorStatus
 
-@address(0x40021001)
+@address(MotorProtocolEndpoint)
 let mut motorProtocol: MotorProtocol
 
 fn Outside() void {
 	motorProtocol.Enabled = true
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40020000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource MotorStatusState { width: 8, }
+hardware endpoint MotorStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: MotorStatusState,
+    offset: 0x1000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource MotorProtocolState { width: 8, }
+hardware endpoint MotorProtocolEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: MotorProtocolState,
+    offset: 0x1001,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 
@@ -2689,16 +2767,65 @@ impl TimerValue {
 	}
 }
 
-@address(0x3FF5F000)
+@address(ConfigEndpoint)
 let mut config: TimerConfig
 
-@address(0x3FF5F004)
+@address(ValueEndpoint)
 let value: TimerValue
 
 fn Test() void {
 	config.Start(ClockSource.PLL_CLK)
 	let active := config.IsRunning
 	let count: uint32<ticks> := value.Count
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x3FF50000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ConfigState { width: 32, }
+hardware endpoint ConfigEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ConfigState,
+    offset: 0xF000,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ValueState { width: 32, }
+hardware endpoint ValueEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ValueState,
+    offset: 0xF004,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 
@@ -4704,11 +4831,40 @@ impl ClockConfig {
 	}
 }
 
-@address(0x40000000)
+@address(ConfigEndpoint)
 let mut config: ClockConfig
 
 fn Configure() void {
 	config.UseExternal()
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ConfigState { width: 32, }
+hardware endpoint ConfigEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ConfigState,
+    offset: 0x0,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 
@@ -12210,6 +12366,7 @@ func analyzeSourceWithAnalyzerRaw(t *testing.T, input string) (*Analyzer, []Erro
 	}
 
 	analyzer := NewAnalyzer()
+	useHardwareTestTarget(analyzer, program)
 	return analyzer, analyzer.Analyze(program)
 }
 

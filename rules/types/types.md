@@ -515,6 +515,13 @@ reinterpretation or guessing, and no encoding is inferred automatically.
 may hold values outside ASCII without being ASCII, UTF-8 or Latin-1 text, and
 a `rune` is always a Unicode scalar value.
 
+`string.ToCharArray()` is byte-preserving (MD-073, 2026-10-31): it yields one
+`char` per byte of the UTF-8 encoding with the identical numeric value, so
+`"Ω".ToCharArray()` yields `0xCEt, 0xA9t`. It is not a `rune`-to-`char`
+conversion and needs no range check. It does not make `char` Unicode text,
+Latin-1 or an implicit alias of `byte`, and it does not change the `char`
+domain, literal rules or the valid UTF-8 invariant (`core-library.md` § 5.3).
+
 Public string positions of the core search, slicing and rune-access members
 are rune indexes; byte-access members use UTF-8 byte indexes and say so
 (`core-library.md` § 5.7, MD-071).

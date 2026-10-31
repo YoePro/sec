@@ -25,7 +25,7 @@ impl InterruptStatus {
     }
 }
 
-@address(0x40001000)
+@address(InterruptStatusEndpoint)
 let mut interruptStatus: InterruptStatus
 
 fn Inspect(device: ref HardwareInstance[InterruptStatus]) bool {
@@ -34,6 +34,35 @@ fn Inspect(device: ref HardwareInstance[InterruptStatus]) bool {
 
 fn Acknowledge() void {
     interruptStatus.@@
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource InterruptStatusState { width: 8, }
+hardware endpoint InterruptStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: InterruptStatusState,
+    offset: 0x1000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 
@@ -108,8 +137,37 @@ impl Status {
     }
 }
 
-@address(0x40004000)
+@address(StatusEndpoint)
 let mut status: Status
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource StatusState { width: 8, }
+hardware endpoint StatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: StatusState,
+    offset: 0x4000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
 `
 	for marker, want := range map[string]string{
 		"Pending = true": "On a hardware instance: `action (clear) mask 0b1`. On a software value: an ordinary field.",

@@ -1,0 +1,6 @@
+module main
+
+type Counter struct { Total: uint }
+impl Counter {
+    static fn Count[...Types](values: ...ref Types) uint { return values.Len }
+}

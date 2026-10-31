@@ -1,0 +1,7 @@
+module main
+fn Count[...Types](values: ...Types) uint { return values.Len }
+fn Use() uint {
+    let data: int[] := []
+    discard Count(<-data)
+    return data.Len
+}

@@ -465,12 +465,17 @@ func referenceCreationKind(plan sema.ResolvedReferencePlan) string {
 // p15ReferenceParameter returns the callee-side reference facts of a ref or
 // ref mut parameter from Sema (package 15 § 59), or nil for any other
 // parameter. The pre-P15 representation (the referent value with reference
-// ownership) is never used at package 15.
-func (fb *functionBuilder) p15ReferenceParameter(parameter sema.FunctionParameter) (*ReferenceMetadata, error) {
+// ownership) is never used at package 15. Expanded pack positions use separate
+// Sema grants (rules/declarations/functions.md §38A(3),(9);
+// rules/compiler/semantic_ir.md §27A(1–2)).
+func (fb *functionBuilder) p15ReferenceParameter(parameter sema.FunctionParameter, packPosition int) (*ReferenceMetadata, error) {
 	if !parameter.Ref && !parameter.MutableRef && parameter.Type.Kind != sema.ReferenceType {
 		return nil, nil
 	}
 	facts, ok := fb.owner.analyzer.ReferenceParameterFactsOf(parameter)
+	if packPosition >= 0 {
+		facts, ok = fb.owner.analyzer.TypePackReferenceParameterFactsOf(parameter, packPosition)
+	}
 	if !ok {
 		return nil, fb.unsupported("reference parameter "+parameter.Name+" without resolved reference facts", parameter.Token)
 	}

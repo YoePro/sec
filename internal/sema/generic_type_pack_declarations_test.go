@@ -24,8 +24,8 @@ func TestTypePackDeclarationFacts(t *testing.T) {
 	}
 	analyzer := NewAnalyzer()
 	errs := analyzer.Analyze(parsed.Program)
-	if len(errs) != 4 {
-		t.Fatalf("want boundaries only for unsupported owned/mutable/method declarations: %v", errs)
+	if len(errs) != 0 {
+		t.Fatalf("supported declarations must check: %v", errs)
 	}
 	for _, err := range errs {
 		if err.ID != diagnostics.GenericTypePackExpansionUnavailable || err.Help == "" {

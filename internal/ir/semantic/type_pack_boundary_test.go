@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -127,16 +126,21 @@ func TestTypePackFactsAreVerified(t *testing.T) {
 	}
 }
 
-// A template without a call builds nothing, and forms whose body needs
-// monomorphization that Semantic IR lacks return no partial module.
-func TestTypePackBoundariesFailClosed(t *testing.T) {
+// A template without a call builds nothing, and a scalar generic prefix
+// specializes together with its type pack.
+func TestTypePackTemplateAndScalarPrefix(t *testing.T) {
 	module, err := analyzedModule(t, "module main\nfn Count[...Types](values: ...ref Types) uint { return values.Len }\n", 15)
 	if err != nil || len(module.Functions) != 0 {
 		t.Fatal(err, module)
 	}
 	built, err := typePackFixtureModule(t, "shared_scalar_prefix.sec")
-	var unsupported *UnsupportedFeatureError
-	if built != nil || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "type-pack callable with a scalar generic prefix") {
-		t.Fatal(built, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(built); err != nil {
+		t.Fatal(err)
+	}
+	if specializationIDs(built)["main::Select[T=int,...Types<bool>](int,ref bool)"] == nil {
+		t.Fatal(specializationIDs(built))
 	}
 }

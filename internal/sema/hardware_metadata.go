@@ -45,6 +45,54 @@ func (a *Analyzer) SetHardwareModuleContext(context HardwareModuleContext) {
 	a.hardwareFactsValid = false
 }
 
+// HardwareModuleContextFor assembles the resolver context of an assembled
+// program: identify supplies each source file's resolver-owned identity and
+// resolveImport the source files an import path of a file selects. Files and
+// imports the resolver cannot place are left out, so their hardware
+// declarations still fail closed with S1187.
+// Rules: MD-111 §§2,8(3),12; rules/projects/modules.md — §§2.2,9.
+func HardwareModuleContextFor(program *ast.Program, identify func(file string) (modules.ModuleIdentity, bool), resolveImport func(file, path string) []string) HardwareModuleContext {
+	context := HardwareModuleContext{Files: map[string]modules.ModuleIdentity{}, Imports: map[string]map[string][]modules.ModuleIdentity{}}
+	if program == nil {
+		return context
+	}
+	known := map[string]bool{}
+	fileIdentity := func(file string) (modules.ModuleIdentity, bool) {
+		if !known[file] {
+			known[file] = true
+			if id, ok := identify(file); ok {
+				context.Files[file] = id
+			}
+		}
+		id, ok := context.Files[file]
+		return id, ok
+	}
+	for _, stmt := range program.Statements {
+		file := statementToken(stmt).File
+		if file == "" {
+			continue
+		}
+		fileIdentity(file)
+		imp, ok := stmt.(*ast.ImportStatement)
+		if !ok || imp == nil {
+			continue
+		}
+		var candidates []modules.ModuleIdentity
+		seen := map[modules.ModuleIdentity]bool{}
+		for _, source := range resolveImport(file, imp.Path) {
+			if id, ok := fileIdentity(source); ok && !seen[id] {
+				seen[id] = true
+				candidates = append(candidates, id)
+			}
+		}
+		if context.Imports[file] == nil {
+			context.Imports[file] = map[string][]modules.ModuleIdentity{}
+		}
+		context.Imports[file][imp.Path] = candidates
+	}
+	return context
+}
+
 // HardwareFacts returns an isolated, validated declaration snapshot. False means
 // no successful hardware pass, never permission to fall back to guessed facts.
 // Rules: MD-111 §§2,4(3),6,12; incremental_compilation.md §15.
@@ -127,6 +175,7 @@ func (a *Analyzer) ResolveHardwareDeclarations(program *ast.Program) (hardware.F
 			ordinary[module][decl.Name] = decl.Token
 		}
 	}
+	a.hardwareImports = imports
 	declarations := []hardware.Declaration{}
 	for _, stmt := range program.Statements {
 		decl, ok := stmt.(*ast.HardwareDeclaration)
@@ -216,4 +265,67 @@ func hardwareDiagnostic(issue hardware.Issue) Error {
 	endLine, endColumn := token.EndPosition()
 	related := issue.Related.Token
 	return Error{ID: id, Severity: diagnostics.DefaultSeverity(id), Message: issue.Message, Help: issue.Help, File: token.File, Line: token.Line, Column: token.Column, EndLine: endLine, EndColumn: endColumn, PreviousFile: related.File, PreviousLine: related.Line, PreviousColumn: related.Column, RelatedLabel: "related hardware declaration or property"}
+}
+
+// resolveAddressEndpoint resolves the first `@address` argument to a named
+// canonical hardware endpoint: `Name` in the binding's module or
+// `qualifier.Name` through an actual import. Numeric, arithmetic, pointer,
+// variable and call forms are rejected (S1188) even when a region would
+// cover the address; `Project.<name>` needs the manifest export tables, which
+// are not available yet (S1187). Invalid metadata already reported its own
+// errors and publishes no facts, so no binding is resolved against it.
+// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§1(4),10(1),10(7);
+// rules/platform/fixed-address-bindings.md.
+func (a *Analyzer) resolveAddressEndpoint(stmt *ast.LetStatement) (hardware.Endpoint, bool) {
+	token := expressionToken(stmt.Address)
+	path, ok := hardwareEndpointPath(stmt.Address)
+	if !ok {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.HardwareAddressBinding,
+			"Declare the address in a `hardware endpoint` and bind to its name, for example @address(GpioOutput); numeric addresses belong only in hardware metadata.",
+			"@address requires a named hardware endpoint, not %s", addressArgumentKind(stmt.Address))
+		return hardware.Endpoint{}, false
+	}
+	if len(path) == 2 && path[0] == "Project" && len(a.hardwareImports[token.File]["Project"]) == 0 {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.HardwareContextUnavailable,
+			"Project hardware exports from .sec/sec.toml are not available to the compiler yet; bind to a source or imported hardware endpoint.",
+			"compiler capability unavailable: Project hardware export %s", strings.Join(path, "."))
+		return hardware.Endpoint{}, false
+	}
+	if !a.hardwareFactsValid {
+		return hardware.Endpoint{}, false
+	}
+	scope := hardware.Scope{Module: a.hardwareContext.Files[token.File], File: token.File, Imports: a.hardwareImports[token.File]}
+	endpoint, issue := a.hardwareFacts.LookupEndpoint(scope, path, hardware.Origin{Token: token})
+	if issue != nil {
+		a.appendError(hardwareDiagnostic(*issue))
+		return hardware.Endpoint{}, false
+	}
+	return endpoint, true
+}
+
+// hardwareEndpointPath accepts only `Name` and `qualifier.Name` spellings.
+func hardwareEndpointPath(expression ast.Expression) ([]string, bool) {
+	switch value := expression.(type) {
+	case *ast.Identifier:
+		return []string{value.Value}, true
+	case *ast.MemberExpression:
+		object, ok := value.Object.(*ast.Identifier)
+		if !ok || value.Property == nil || len(value.OwnerGenericArguments) != 0 {
+			return nil, false
+		}
+		return []string{object.Value, value.Property.Value}, true
+	}
+	return nil, false
+}
+
+func addressArgumentKind(expression ast.Expression) string {
+	switch expression.(type) {
+	case *ast.IntegerLiteral:
+		return "a numeric address"
+	case *ast.InfixExpression, *ast.PrefixExpression:
+		return "an address expression"
+	case *ast.CallExpression:
+		return "a call"
+	}
+	return "this expression"
 }

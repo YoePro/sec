@@ -120,14 +120,83 @@ impl OtherStatus {
     }
 }
 
-@address(0x40001000)
+@address(FirstEndpoint)
 let mut first: InterruptStatus
 
-@address(0x40001004)
+@address(SecondEndpoint)
 let mut second: InterruptStatus
 
-@address(0x40001008)
+@address(OtherEndpoint)
 let mut other: OtherStatus
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource FirstState { width: 8, }
+hardware endpoint FirstEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: FirstState,
+    offset: 0x1000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource SecondState { width: 8, }
+hardware endpoint SecondEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: SecondState,
+    offset: 0x1004,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource OtherState { width: 8, }
+hardware endpoint OtherEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: OtherState,
+    offset: 0x1008,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
 `
 
 // MD-077 §§ 2, 4 and § 16(4), (7), (11): an @address binding denotes a
@@ -171,7 +240,7 @@ type Bare register[8] {
     _: bit[7],
 }
 
-@address(0x4000100C)
+@address(BareEndpoint)
 let bare: Bare
 
 fn Detached(value: ref InterruptStatus) bool {
@@ -191,6 +260,27 @@ fn Misuse(snapshot: InterruptStatus) bool {
 }
 
 fn NotARegister(value: HardwareInstance[int]) void {
+}
+
+hardware resource BareState { width: 8, }
+hardware endpoint BareEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: BareState,
+    offset: 0x100C,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `
 	errors := analyzeSourceRaw(t, input)
@@ -330,11 +420,60 @@ impl Events {
     }
 }
 
-@address(0x40002000)
+@address(ControlEndpoint)
 let mut control: Control
 
-@address(0x40002004)
+@address(EventsEndpoint)
 let mut events: Events
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ControlState { width: 8, }
+hardware endpoint ControlEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ControlState,
+    offset: 0x2000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource EventsState { width: 8, }
+hardware endpoint EventsEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: EventsState,
+    offset: 0x2004,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
 `
 
 // hardware-register-access.md §§ 4, 6.2-6.3, 13.1 and MD-077 § 18(4): a field
@@ -476,10 +615,10 @@ impl Plain {
     }
 }
 
-@address(0x40003000)
+@address(ControlEndpoint)
 let mut control: Control
 
-@address(0x40003004)
+@address(PlainEndpoint)
 let mut plain: Plain
 
 fn Use(value: Control) Control {
@@ -487,6 +626,55 @@ fn Use(value: Control) Control {
     control.Commit()
     discard control.Read()
     return value.Wrapped()
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ControlState { width: 8, }
+hardware endpoint ControlEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ControlState,
+    offset: 0x3000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource PlainState { width: 8, }
+hardware endpoint PlainEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: PlainState,
+    offset: 0x3004,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }
 `)
 	want := []string{

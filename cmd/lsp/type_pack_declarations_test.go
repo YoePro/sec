@@ -56,7 +56,15 @@ func TestTypePackDeclarationTooling(t *testing.T) {
 		t.Fatal(hover)
 	}
 	items := analyze(uri, source)
-	if len(items) != 4 {
+	if len(items) != 0 {
+		t.Fatal(items)
+	}
+	boundary, err := os.ReadFile("../../testdata/generics/type_pack_declarations/method_generic_owner_boundary.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items = analyze(uri, string(boundary))
+	if len(items) != 1 {
 		t.Fatal(items)
 	}
 	for _, d := range items {

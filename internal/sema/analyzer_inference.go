@@ -536,6 +536,9 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		return a.inferExpression(expr)
 	}
 	if typ, value, ok := a.inferCallExpressionWithExpected(call, expected); ok {
+		// Context-selected calls publish the same expression fact as the
+		// ordinary call path (rules/compiler/semantic_ir.md §§27A,60).
+		a.expressionTypes[expr] = typ
 		return typ, value
 	}
 	typ, value := a.inferExpression(expr)
@@ -2094,9 +2097,6 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if a.rejectUnavailableTypePackOverloads(functions, expr) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
 
 	arityMatches := []Function{}
 	for _, function := range functions {
@@ -2119,6 +2119,8 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	partialPackSelection := !isMethodCall && typePackOverloadSet(functions)
+	partialTemplates := map[sourceTokenKey]Function{}
 	matches := []overloadMatch{}
 	var receiverError string
 	var constraintFailure *GenericConstraintFailure
@@ -2129,7 +2131,33 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	hadExplicitGenericArityMatch := false
 	hadExplicitGenericInferenceFailure := false
 	for _, function := range arityMatches {
-		if hadExplicitGenericCall {
+		if partialPackSelection && len(function.GenericParameters) > 0 {
+			template := function
+			hadGenericArityMatch = true
+			if hadExplicitGenericCall {
+				hadGenericFunctionForExplicitCall = true
+				hadExplicitGenericArityMatch = hadExplicitGenericArityMatch || len(expr.GenericArguments) <= len(function.GenericParameters)
+			}
+			inferenceTypes := sourceArgTypes
+			if a.hasDeferredContextualArgument(sourceArgs) {
+				inferenceTypes = a.contextualInferenceArgumentTypes(sourceArgs, sourceArgTypes)
+			}
+			partial, ok := a.partialPackOverload(function, expr.GenericArguments, inferenceTypes)
+			if !ok {
+				hadExplicitGenericInferenceFailure = hadExplicitGenericInferenceFailure || hadExplicitGenericCall
+				continue
+			}
+			hadGenericInference = true
+			if partial.GenericConstraintFailure != nil {
+				if constraintFailure == nil {
+					failure := *partial.GenericConstraintFailure
+					constraintFailure = &failure
+				}
+				continue
+			}
+			function = partial
+			partialTemplates[sourceTokenLocation(function.Token)] = template
+		} else if hadExplicitGenericCall {
 			if len(function.GenericParameters) == 0 {
 				continue
 			}
@@ -2175,11 +2203,22 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			}
 			function = instantiated
 		}
+		if isMethodCall {
+			function = a.instantiateGenericImplMethod(function, methodReceiver)
+		}
 		matchesArguments := true
 		rank := 0
 		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
-		if isMethodCall && functionUsesReceiver(function) && !a.canPassImplicitMethodReceiver(function, methodReceiver) {
-			receiverError = a.implicitMethodReceiverError(function, methodReceiver)
+		candidateReceiver, candidateMethod := methodReceiver, isMethodCall
+		if function.GenericTypePack != "" && functionUsesReceiver(function) && !candidateMethod {
+			candidateReceiver, candidateMethod = a.implicitTypePackReceiver(function, expr)
+			if !candidateMethod {
+				receiverError = "method " + function.Name + " requires an instance receiver"
+				matchesArguments = false
+			}
+		}
+		if candidateMethod && functionUsesReceiver(function) && !a.canPassImplicitMethodReceiver(function, candidateReceiver) {
+			receiverError = a.implicitMethodReceiverError(function, candidateReceiver)
 			matchesArguments = false
 		}
 		for i := range argTypes {
@@ -2216,6 +2255,20 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	best := bestOverloadMatches(matches)
+	if len(best) == 1 {
+		if template, partial := partialTemplates[sourceTokenLocation(best[0].Function.Token)]; partial {
+			completed, known := a.completePackOverload(template, best[0].Function.GenericSubstitution, a.expectedExpressionTypes[expr])
+			if !known {
+				a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s", name)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			if failure := completed.GenericConstraintFailure; failure != nil {
+				a.addErrorAtToken(expr.Token, "type %s does not satisfy constraint %s for %s", typeDisplayName(failure.Argument), typeDisplayName(failure.Interface), failure.Parameter)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			best[0].Function = completed
+		}
+	}
 	if len(best) > 1 && a.reportAmbiguousContextualArguments(expr.Token, name, best, sourceArgs) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -2226,6 +2279,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if a.rejectUnavailableTypePackCall(best[0].Function, expr, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if !isMethodCall && best[0].Function.GenericTypePack != "" && functionUsesReceiver(best[0].Function) {
+			methodReceiver, isMethodCall = a.implicitTypePackReceiver(best[0].Function, expr)
+		}
 		if best[0].Function.Unsafe && !a.callUnsafeAuthorized(expr) {
 			kind := "function"
 			if best[0].Function.Extern {
@@ -2235,6 +2291,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if a.checkCompileTimeCallArgumentContracts(best[0].Function, sourceArgs) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if isMethodCall && !a.validateTypePackReceiverArguments(best[0].Function, methodReceiver, sourceArgs) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues, expr) {
@@ -2260,6 +2319,8 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			if dereferenceType(methodReceiver.Type).Kind == InterfaceType {
 				dispatch = CallDispatchInterface
 			}
+		} else if best[0].Function.GenericTypePack != "" && best[0].Function.Static && best[0].Function.ImplTarget != "" {
+			dispatch = CallDispatchStaticMethod
 		} else if best[0].Function.Extern {
 			dispatch = CallDispatchForeign
 		}
@@ -2907,6 +2968,17 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	if len(functions) == 0 {
 		return Type{}, expressionValue{}, false
 	}
+	for _, function := range functions {
+		if function.GenericTypePack != "" && functionUsesReceiver(function) {
+			return Type{}, expressionValue{}, false
+		}
+	}
+	// Competing pack signatures use the ordinary argument-only resolver. Defer
+	// before argument preparation: neither expected returns nor repeated nested
+	// calls may affect selection (rules/declarations/functions.md §38A(4)(5),(6)(1–2)).
+	if typePackOverloadSet(functions) {
+		return Type{}, expressionValue{}, false
+	}
 	// This path only infers generic arguments from the expected type. A call
 	// without a generic candidate, or with a contextual None/Some/[]/null
 	// argument that needs MD-027 deferral, belongs to the ordinary call path;
@@ -2927,13 +2999,6 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	argTypes, args, preparedSpreadValues, runtimeSpreadValues, argsOK := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
 	if !argsOK {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	if a.rejectUnavailableTypePackOverloads(functions, expr) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if a.sharedTypePackHasFixedAlternative(functions, argTypes, args, runtimeSpreadValues) {
-		return Type{}, expressionValue{}, false
 	}
 
 	matches := []overloadMatch{}
@@ -3002,10 +3067,14 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		}
 		a.recordCallArgumentUnitConversions(function, args, argTypes)
 		a.setDefinitions(callCalleeDefinitionToken(expr), function.Token)
-		a.recordResolvedCall(expr, function, CallDispatchDirect, Type{})
+		dispatch := CallDispatchDirect
+		if function.Static && function.ImplTarget != "" {
+			dispatch = CallDispatchStaticMethod
+		}
+		a.recordResolvedCall(expr, function, dispatch, Type{})
 		a.recordGenericInstantiation(function, callCalleeDefinitionToken(expr))
 		if execution, recordCall := a.callGraphExecutionForCall(expr); !a.summaryPass && a.callGraphPathReachable && recordCall {
-			a.callGraph.addCall(a.currentCallable, function, callCalleeDefinitionToken(expr), CallDispatchDirect, execution)
+			a.callGraph.addCall(a.currentCallable, function, callCalleeDefinitionToken(expr), dispatch, execution)
 		}
 		a.setCallReferenceOrigin(expr, function, args, false)
 		a.markMovedCallArguments(function, args, runtimeSpreadValues, false)
@@ -3047,7 +3116,7 @@ func anyNonGenericFunction(functions []Function) bool {
 
 func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
 	if function.GenericTypePack != "" {
-		return a.inferSharedTypePackCall(function, nil, argTypes, Type{})
+		return a.inferTypePackCall(function, nil, argTypes, Type{})
 	}
 	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false
@@ -3078,7 +3147,7 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 
 func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, argTypes []Type, expected Type) (Function, bool) {
 	if function.GenericTypePack != "" {
-		return a.inferSharedTypePackCall(function, nil, argTypes, expected)
+		return a.inferTypePackCall(function, nil, argTypes, expected)
 	}
 	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false

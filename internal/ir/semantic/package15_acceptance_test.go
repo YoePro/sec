@@ -9,6 +9,7 @@ import (
 
 	"sec/internal/codegen/targetplan"
 	"sec/internal/lexer"
+	"sec/internal/modules"
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
@@ -47,6 +48,8 @@ func buildPackage15Source(t *testing.T, source, triple string) (*Module, error) 
 		}
 		analyzer = sema.NewAnalyzerWithScalarPlan(plan)
 	}
+	// The one sample source is its resolver-owned module, as in the CLI.
+	analyzer.SetHardwareModuleContext(sema.HardwareModuleContext{Files: map[string]modules.ModuleIdentity{"sample.sec": {ImportRootIdentity: "test", CanonicalImportPath: "sample"}}})
 	if errs := analyzer.Analyze(parsed.Program); len(errs) != 0 {
 		return nil, fmt.Errorf("sema: %v", errs)
 	}

@@ -2112,6 +2112,7 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.int.bit_extract`; `register_type` on `sec.register.fits_bits`; `guarded` and `bit-extraction` bases | MD-110 § 8 (v11.41.2 amendment below); MD-046/MD-056 | 2026-10-30 |
 | `sec.place.static`; `sec.static_id` and `sec.address_taken = true` on `sec.static.global` | MD-116 (v11.41.3 below); P15-42/42a/47 | 2026-10-27 (specification; implementation tracked in governance) |
 | `sec.match_pattern_kind = "result-err-variant"`; `sec.unreachable` reason `exhaustive-try-fallthrough` | MD-008/MD-029 (v11.41.4 below) | 2026-10-30 |
+| `sec.hw.binding` (module-level `register.hw.bind` record) | MD-077 § 19(5), MD-111 (v11.41.5 below); P15-42 | 2026-10-31 |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
@@ -2345,6 +2346,16 @@ Installed 2026-10-30 together with the Semantic IR lowering of `Err(E.Variant...
 - A try handler list whose last, unconditional handler binds a union error payload or fields still tests its variant, so that the projection sits on a guarded edge; the impossible false edge ends in `sec.unreachable` with `sec.synthesized = true` and reason `exhaustive-try-fallthrough`.
 - Only trivially copyable error types and `copy-trivial` bindings are emitted. Borrowed payloads, ownership-sensitive transfers, open-`error` narrowing and guarded try handlers remain unsupported lowerings and publish no partial MLIR.
 - The attribute verifier accepts the value independently of the schema; emitters produce it only for schema 11 and later, and schema 12 inherits it unchanged.
+
+### v11.41.5 Hardware binding records (MD-077 § 19(5), MD-111)
+
+Installed 2026-10-31 together with the Semantic IR `hardware` table (`semantic_ir.md` § 21(11)). The v11.41.1 MLIR form of `register.hw.bind` is split into the module-scoped record and the instance-yielding use, so that the binding root exists before any function uses it.
+
+- **`sec.hw.binding`** is a module-level `Symbol` operation, a direct child of the module, with no operands and no results. Its inherent attributes are `sym_name` (the binding symbol, `module::name`), `hardware_binding_id` (positive `i32`, unique in the module), `instance_type` (`!sec.hw_instance<T>`; `T` must have a definition in `sec.registers`), `is_mutable`, `alias`, `endpoint_id`, `hardware_resource_id` and `region_id` (the resolver-owned MD-111 identities `root:path::name`), `endpoint_kind` (only `"MemoryMapped"` is admitted in 0.1), `domain`, `address`, `size` and `alignment` (exact canonical decimal strings, so a domain address beyond 64 bits survives), and `read_widths`/`write_widths` (positive `i64` arrays, each at most the extent in bits).
+- It establishes the authority association only. It performs no read, write or initialization, and it is never a Place or a static.
+- **`sec.hw.bind @binding`** is reserved as the in-function operation that yields `!sec.hw_instance<T>` from a `sec.hw.binding`, carrying the v11.41.1 identities. It is admitted together with the first `sec.hw.observe`/`sec.hw.request_write` lowering. Until then, a function that uses a bound instance fails in Semantic IR with an explicit `register.hw.*` boundary.
+- The verifier checks schema 11 or later, the module parentage, the instance type and its register definition, non-empty identities, the endpoint kind, decimal extents, a positive size and alignment, the widths and identity uniqueness. Schema 12 inherits the record unchanged.
+- `--sec-check-lowering-support` and `--sec-lower-to-llvm` reject the record (`does not lower 'sec.hw.binding' yet`, together with its `!sec.hw_instance` type): selecting a physical representation still needs a verified target plan.
 
 ---
 

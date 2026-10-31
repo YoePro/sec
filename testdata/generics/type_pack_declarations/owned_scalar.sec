@@ -1,0 +1,3 @@
+module main
+fn Count[...Types](values: ...Types) uint { return values.Len }
+fn Use() uint { return Count(1, true) }

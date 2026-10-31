@@ -26,7 +26,7 @@ func fixSafetyFixture(t *testing.T) (*ast.Program, *Analyzer) {
 		t.Fatal(p.Errors())
 	}
 	analyzer := NewAnalyzerWithDepth(AnalysisDeep)
-	if errs := analyzer.Analyze(program); len(errs) != 0 {
+	if errs := analyzeWithHardwareTestTarget(analyzer, program); len(errs) != 0 {
 		t.Fatal(errs)
 	}
 	return program, analyzer
@@ -283,7 +283,7 @@ func TestPitfallFixSafetyRetainsInvalidity(t *testing.T) {
 			t.Fatal(p.Errors())
 		}
 		analyzer := NewAnalyzerWithDepth(depth)
-		if errs := analyzer.Analyze(program); len(errs) == 0 {
+		if errs := analyzeWithHardwareTestTarget(analyzer, program); len(errs) == 0 {
 			t.Fatal("invalid fixture passed", depth)
 		}
 		finding := fixSafetyResultFor(t, program, analyzer, "NumericIntent")
@@ -315,7 +315,7 @@ func TestPitfallProvenFixesRemainValidInSourceContext(t *testing.T) {
 		if len(p.Errors()) != 0 {
 			t.Fatalf("%s: %v", name, p.Errors())
 		}
-		if errs := NewAnalyzerWithDepth(AnalysisDeep).Analyze(replacementProgram); len(errs) != 0 {
+		if errs := analyzeWithHardwareTestTarget(NewAnalyzerWithDepth(AnalysisDeep), replacementProgram); len(errs) != 0 {
 			t.Fatalf("%s replacement is invalid: %v", name, errs)
 		}
 	}
@@ -329,7 +329,7 @@ func TestPitfallProvenFixesRemainValidInSourceContext(t *testing.T) {
 	if len(p.Errors()) != 0 {
 		t.Fatal(p.Errors())
 	}
-	if errs := NewAnalyzer().Analyze(replacementProgram); len(errs) != 0 {
+	if errs := analyzeWithHardwareTestTarget(NewAnalyzer(), replacementProgram); len(errs) != 0 {
 		t.Fatal(errs)
 	}
 }

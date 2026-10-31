@@ -2,6 +2,7 @@ package secmlir
 
 import (
 	"fmt"
+	"strings"
 
 	"sec/internal/ir/semantic"
 	"sec/internal/layout"
@@ -48,6 +49,9 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := semantic.Verify(module); err != nil {
 		return nil, fmt.Errorf("verify Semantic IR: %w", err)
 	}
+	if err := rejectUnverifiedHardwarePlans(module); err != nil {
+		return nil, err
+	}
 	if err := semantic.VerifyRegisterEmissionEvidence(module); err != nil {
 		return nil, &UnsupportedLoweringError{Feature: "register field-write SSA proof transport: " + err.Error()}
 	}
@@ -81,4 +85,20 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 		return nil, err
 	}
 	return []byte(e.out.String()), nil
+}
+
+// rejectUnverifiedHardwarePlans fails emission for any register.hw.* use:
+// its physical plan is not verified yet, and MD-077 § 11(4) forbids emitting
+// a plausible but incomplete hardware operation.
+func rejectUnverifiedHardwarePlans(module *semantic.Module) error {
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, op := range block.Operations {
+				if strings.HasPrefix(string(op.Kind), "register.hw.") {
+					return &UnsupportedLoweringError{Feature: string(op.Kind) + " needs a verified MD-111 operation plan, which Semantic IR does not carry yet", Function: function.ID}
+				}
+			}
+		}
+	}
+	return nil
 }

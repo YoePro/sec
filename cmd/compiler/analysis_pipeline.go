@@ -76,6 +76,7 @@ func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarge
 		exitCLI(1)
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
+	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
 	errors := analyzer.Analyze(program)
 	// `sec analyse` prints its warnings itself after resolving its analysis

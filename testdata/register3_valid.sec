@@ -123,16 +123,16 @@ impl MatterStatus {
 // 4. MEMORY-MAPPED PERIPHERAL INSTANCES
 // =====================================================================
 
-@address(0xFE200000)
+@address(GPFSEL0Endpoint)
 let mut GPFSEL0: GpioFunctionSelect
 
-@address(0xFE20001C)
+@address(GPSET0Endpoint)
 let mut GPSET0: GpioOutputSet
 
-@address(0xFE200028)
+@address(GPCLR0Endpoint)
 let mut GPCLR0: GpioOutputClear
 
-@address(0xFE200100)
+@address(MATTER_HATEndpoint)
 let MATTER_HAT: MatterStatus
 
 // =====================================================================
@@ -151,4 +151,93 @@ fn ResetMatterHat() void {
 fn MonitorNetwork() void {
     let isProvisioned: bool := MATTER_HAT.IsReady
     let currentSignal: <dBm> := MATTER_HAT.Rssi
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0xFE200000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource GPFSEL0State { width: 32, }
+hardware endpoint GPFSEL0Endpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: GPFSEL0State,
+    offset: 0x0,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource GPSET0State { width: 32, }
+hardware endpoint GPSET0Endpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: GPSET0State,
+    offset: 0x1C,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource GPCLR0State { width: 32, }
+hardware endpoint GPCLR0Endpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: GPCLR0State,
+    offset: 0x28,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource MATTER_HATState { width: 32, }
+hardware endpoint MATTER_HATEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: MATTER_HATState,
+    offset: 0x100,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

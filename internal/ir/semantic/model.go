@@ -266,6 +266,9 @@ type Module struct {
 	Structs     []StructDefinition
 	// Registers is the module's register-definition table (MD-077 § 10(1)).
 	Registers []RegisterDefinition
+	// HardwareBindings are the register.hw.bind roots of the module's
+	// hardware register bindings (MD-077 §§ 12, 19(5); hardware_bindings.go).
+	HardwareBindings []HardwareBinding
 	// DestructionPlans are the type-level destruction plans own.* operations
 	// reference (P17 §§ 20–21, 57; ownership_ops.go).
 	DestructionPlans []DestructionPlanRecord
@@ -311,7 +314,24 @@ type Function struct {
 	ReturnOrigins []ReturnOrigin
 	// TypePack is set on one concrete specialization of a type-pack callable.
 	TypePack *TypePackFacts
-	Location Location
+	// Specialization is set on one concrete specialization of a generic
+	// template: its template and concrete scalar generic arguments.
+	Specialization *SpecializationFacts
+	Location       Location
+}
+
+// SpecializationFacts identify one demand-driven concrete instantiation of a
+// generic template (monomorphization.md §§ 4, 9.1). A type pack's sequence is
+// in TypePackFacts instead.
+type SpecializationFacts struct {
+	Template  string
+	Arguments []SpecializationArgument
+}
+
+// SpecializationArgument is one scalar generic parameter and its concrete type.
+type SpecializationArgument struct {
+	Name string
+	Type TypeID
 }
 
 // TypePackFacts are the semantic_ir.md § 27A facts of one specialization: the
@@ -321,7 +341,8 @@ type Function struct {
 type TypePackFacts struct {
 	Parameter string
 	Types     []TypeID
-	// FixedCount is the number of parameters before the first pack position.
+	// FixedCount is the number of IR parameters before the first pack position,
+	// including an explicit instance receiver (semantic_ir.md §§27A,60(3)).
 	FixedCount int
 	Positions  []TypePackPosition
 }
@@ -329,7 +350,11 @@ type TypePackFacts struct {
 // TypePackMode is the receiving mode of one expanded pack position.
 type TypePackMode string
 
-const TypePackShared TypePackMode = "shared"
+const (
+	TypePackOwned   TypePackMode = "owned"
+	TypePackShared  TypePackMode = "shared"
+	TypePackMutable TypePackMode = "mutable"
+)
 
 // TypePackPosition is one expanded pack parameter with its mode and source
 // position in the template signature.
@@ -828,6 +853,10 @@ type Operation struct {
 	// and, for an update, the Sema proof that the value fits (MD-077 § 10(1)).
 	RegisterField RegisterFieldID
 	RegisterWrite RegisterWriteProof
+	// HardwareBinding and HardwareRequest carry a register.hw.* operation's
+	// binding root and logical request (MD-077 §§ 9–10; hardware_operations.go).
+	HardwareBinding HardwareBindingID
+	HardwareRequest *HardwareRequest
 	// RegisterConversion carries a register.value.fits-bits / from-bits /
 	// to-bits destination, proof and interpretation (MD-110 § 7).
 	RegisterConversion  *RegisterConversionFacts

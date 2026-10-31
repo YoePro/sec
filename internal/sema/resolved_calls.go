@@ -159,7 +159,12 @@ func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver met
 	if receiver.Type.Kind == InvalidType {
 		return false
 	}
-	exactReceiver := typeDisplayName(dereferenceType(receiver.Type)) == function.ImplTarget
+	// An instance of a generic implementation target (`Box[int]` for
+	// `impl Box[T]`) is the exact receiver; its display name carries the
+	// arguments the target name omits.
+	receiverType := dereferenceType(receiver.Type)
+	exactReceiver := typeDisplayName(receiverType) == function.ImplTarget ||
+		len(receiverType.TypeArgs) != 0 && receiverType.Name == function.ImplTarget
 	inheritedCoreReceiver := false
 	if !exactReceiver && dereferenceType(receiver.Type).Kind == StringType && a.isTrustedCoreSourceToken(function.Token) {
 		for _, underlying := range a.relatedUnderlyingTypes(dereferenceType(receiver.Type)) {
@@ -195,6 +200,29 @@ func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver met
 		return a.freshTemporaryBorrowSource(receiver.Expr)
 	}
 	return true
+}
+
+// instantiateGenericImplMethod substitutes the arguments of a generic
+// implementation target's instance receiver into a method of that impl, so
+// `box.Get()` on `Box[int]` has the signature `fn Get() int`
+// (monomorphization.md §§ 8.2, 9.3; generics.md impl members).
+func (a *Analyzer) instantiateGenericImplMethod(function Function, receiver methodReceiverInfo) Function {
+	receiverType := dereferenceType(receiver.Type)
+	if function.ImplTarget == "" || len(function.GenericSubstitution) != 0 || len(receiverType.TypeArgs) == 0 || receiverType.Name != function.ImplTarget {
+		return function
+	}
+	target, ok := a.types[function.ImplTarget]
+	if !ok || len(target.GenericParameters) != len(receiverType.TypeArgs) {
+		return function
+	}
+	substitution := make(map[string]Type, len(target.GenericParameters))
+	for index, name := range target.GenericParameters {
+		substitution[name] = receiverType.TypeArgs[index]
+	}
+	// The instance cache is keyed by the template's generic parameters, which
+	// for an impl method are the implementation's.
+	function.GenericParameters = append(append([]string(nil), target.GenericParameters...), function.GenericParameters...)
+	return a.instantiateGenericFunction(function, substitution)
 }
 
 // implicitMethodReceiverError explains a rejected borrow or receiver capability.

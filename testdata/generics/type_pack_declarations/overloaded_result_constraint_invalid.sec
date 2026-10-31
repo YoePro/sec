@@ -1,0 +1,5 @@
+module main
+interface Marker {}
+fn Context[T: Marker, ...Types](tag: bool, values: ...ref Types) Option[T] { return None }
+fn Context[...Items](tag: int, values: ...ref Items) bool { return false }
+fn Use() Option[int] { return Context(true) }

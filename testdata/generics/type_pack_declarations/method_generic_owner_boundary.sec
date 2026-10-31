@@ -1,0 +1,5 @@
+module main
+type Box[T] struct { Value: T }
+impl Box[T] {
+    fn Count[...Types](values: ...ref Types) uint { return values.Len }
+}

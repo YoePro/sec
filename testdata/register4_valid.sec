@@ -132,15 +132,15 @@ impl SensorDataBuffer {
 // =====================================================================
 
 // Mutable hardware registers because our code must write commands into them
-@address(0x40005400)
+@address(I2C_CR1Endpoint)
 let mut I2C_CR1: I2cControl
 
 // Immutable instance by default: reading status flags should not modify hardware layout state
-@address(0x40005404)
+@address(I2C_SREndpoint)
 let I2C_SR: GpioStatus
 
 // Immutable instance by default: sensor buffers are read-only hardware registers
-@address(0x40005410)
+@address(BME280_BUFFEREndpoint)
 let BME280_BUFFER: SensorDataBuffer
 
 // =====================================================================
@@ -162,4 +162,73 @@ fn ReadEnvironmentSensors() void {
     // Read the values safely with unit validation guarantees
     let currentTemp: <K> := BME280_BUFFER.Temperature
     let currentPressure: <Pa> := BME280_BUFFER.Pressure
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40000000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource I2C_CR1State { width: 32, }
+hardware endpoint I2C_CR1Endpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: I2C_CR1State,
+    offset: 0x5400,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource I2C_SRState { width: 32, }
+hardware endpoint I2C_SREndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: I2C_SRState,
+    offset: 0x5404,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource BME280_BUFFERState { width: 32, }
+hardware endpoint BME280_BUFFEREndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: BME280_BUFFERState,
+    offset: 0x5410,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

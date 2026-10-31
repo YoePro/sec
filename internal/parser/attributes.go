@@ -37,6 +37,9 @@ const (
 	attributeOnePositional
 	attributeNamedArguments
 	attributeOneStringLiteral
+	// attributeEndpointBinding is `@address(Endpoint[, alias])`: one positional
+	// endpoint path and an optional contextual `alias` marker (MD-111 § 10(1)).
+	attributeEndpointBinding
 )
 
 // attributeSpec is the registry entry of one compiler-known attribute: its
@@ -59,7 +62,7 @@ type attributeSpec struct {
 var compilerKnownAttributes = map[string]attributeSpec{
 	contextualTarget: {targets: attributeOnAnyTopLevel, targetText: "a top-level declaration", shape: attributeNamedArguments, named: []string{"os", "arch", "cpu", "device", "board"}, summary: "Selects the declaration for the compilation plans whose target matches every selector."},
 	"when":           {targets: attributeOnAnyTopLevel, targetText: "a top-level declaration", shape: attributeOnePositional, summary: "Selects the declaration when a compile-time configuration condition holds."},
-	"address":        {targets: attributeOnLet, targetText: "a let declaration", shape: attributeOnePositional, summary: "Binds a module-scope register declaration to an absolute address."},
+	"address":        {targets: attributeOnLet, targetText: "a let declaration", shape: attributeEndpointBinding, summary: "Binds a module-scope register declaration to a named hardware endpoint."},
 	"interrupt":      {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNamedArguments, named: []string{"vector"}, required: []string{"vector"}, summary: "Binds the function as the handler of one interrupt vector; implies @isr."},
 	"isr":            {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares and verifies an interrupt service routine without binding a vector; implies @noPanic, @noAlloc, and @noBlock."},
 	"interruptSafe":  {targets: attributeOnFunction | attributeOnMethod, targetText: "a function or method", shape: attributeNoArguments, summary: "Declares that the function may be called from ISR code; implies @noPanic, @noAlloc, and @noBlock."},
@@ -361,6 +364,22 @@ func (p *Parser) validateAttributeArguments(attribute *ast.Attribute, spec attri
 				invalid(attribute.Arguments[0].Token, "@%s requires a non-empty symbol name", name)
 			}
 		}
+	case attributeEndpointBinding:
+		if len(attribute.Arguments) == 0 || len(attribute.Arguments) > 2 {
+			invalid(attribute.Name.Token, "@%s requires one endpoint argument and an optional alias marker", name)
+			return
+		}
+		for _, argument := range attribute.Arguments {
+			if argument.Name != nil {
+				invalid(argument.Token, "@%s takes no named arguments", name)
+				return
+			}
+		}
+		if len(attribute.Arguments) == 2 {
+			if marker, ok := attribute.Arguments[1].Value.(*ast.Identifier); !ok || marker.Value != "alias" {
+				invalid(attribute.Arguments[1].Token, "the second argument of @%s must be the alias marker", name)
+			}
+		}
 	case attributeNamedArguments:
 		seen := map[string]*ast.AttributeArgument{}
 		for _, argument := range attribute.Arguments {
@@ -424,9 +443,10 @@ func (p *Parser) attachAttributes(statement ast.Statement, attributes []*ast.Att
 		statement.Attributes = append(statement.Attributes, accepted...)
 	case *ast.LetStatement:
 		statement.Attributes = append(statement.Attributes, accepted...)
-		if address := findAttribute(accepted, "address"); address != nil && len(address.Arguments) == 1 {
+		if address := findAttribute(accepted, "address"); address != nil && len(address.Arguments) >= 1 && len(address.Arguments) <= 2 {
 			statement.Address = address.Arguments[0].Value
 			statement.AddressToken = address.Token
+			statement.AddressAlias = len(address.Arguments) == 2
 		}
 	case *ast.LetGroupStatement:
 		if address := findAttribute(accepted, "address"); address != nil {
@@ -523,7 +543,7 @@ func attributesConflict(previous, current *ast.Attribute) (bool, string) {
 	}
 	switch current.Name.Value {
 	case "address":
-		return true, "a declaration has exactly one absolute address"
+		return true, "a register binding has exactly one hardware endpoint"
 	case "interrupt":
 		return true, "a handler binds exactly one interrupt vector"
 	}
@@ -636,6 +656,8 @@ func CompilerKnownAttribute(name string) (AttributeInfo, bool) {
 		info.Arguments = "one positional compile-time value"
 	case attributeOneStringLiteral:
 		info.Arguments = "one non-empty string literal"
+	case attributeEndpointBinding:
+		info.Arguments = "one hardware endpoint name, optionally followed by alias"
 	case attributeNamedArguments:
 		info.Arguments = "named: " + strings.Join(spec.named, ", ")
 		if len(spec.required) > 0 {

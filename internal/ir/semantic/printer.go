@@ -62,6 +62,7 @@ func Format(module *Module) string {
 		out.WriteString("  }\n")
 	}
 	formatRegisters(&out, module.Registers)
+	formatHardwareBindings(&out, module.HardwareBindings)
 	formatDestructionPlans(&out, module.DestructionPlans)
 	formatStatics(&out, module.Statics)
 	for _, fn := range module.Functions {
@@ -94,6 +95,9 @@ func formatType(t Type) string {
 	}
 	if t.Kind == TypeRegister {
 		return fmt.Sprintf("register %q width=%d", t.Identity, t.BitWidth)
+	}
+	if t.Kind == TypeHardwareInstance {
+		return fmt.Sprintf("hardware-instance<!%d>", t.Element)
 	}
 	if t.Kind == TypeArray {
 		return fmt.Sprintf("array<!%d, %q>", t.Element, t.Length)
@@ -135,6 +139,9 @@ func formatFunction(out *strings.Builder, fn *Function) {
 	}
 	if len(fn.ReturnOrigins) > 0 {
 		out.WriteString(formatReturnOrigins(fn.ReturnOrigins))
+	}
+	if fn.Specialization != nil {
+		out.WriteString(formatSpecializationFacts(fn.Specialization))
 	}
 	if fn.TypePack != nil {
 		out.WriteString(formatTypePackFacts(fn.TypePack))
@@ -375,6 +382,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d field=#%d value=%%%d", op.Operands[0], op.StructField, op.Operands[1])
 	case OpRegisterValueExtract, OpRegisterValueUpdate:
 		formatRegisterValueOperation(out, op)
+	case OpHardwareBind, OpHardwareObserve, OpHardwareRequestWrite, OpHardwareShadowObserve, OpHardwareShadowIntent, OpHardwareCommit, OpHardwareShadowKnown:
+		formatHardwareOperation(out, op)
 	case OpRegisterValueFitsBits, OpRegisterValueFromBits, OpRegisterValueToBits:
 		formatRegisterConversionOperation(out, op)
 	case OpOwnCopy, OpOwnSemanticCopy, OpOwnMove, OpOwnCopyFromPlace, OpOwnMoveFromPlace,

@@ -75,9 +75,11 @@ governance/lexer.yaml
    not a decoder. How stdlib (`str.FromByteArray`, `Builder.Finish`, io, url)
    materializes validated bytes is open as MD-109; until then those paths
    panic or fail to compile (Known hole).
-5. **MD-073 remains open:** scalar-to-`char` behavior above byte range is not
-   decided. `ToCharArray`, char conversion expansion and related lowering stay
-   blocked or explicitly unsupported.
+5. **MD-073 decided (2026-10-31):** `ToCharArray` is byte-preserving,
+   `Result[char[], CollectionError]`, one `char` per UTF-8 byte
+   (`rules/corrections/applied/MD-073-string-to-char-array-byte-preserving-correction-20261031.md`).
+   It is no longer a design gate; its lowering waits only on the same P18/P19
+   array materialization as `ToByteArray`.
 6. **Existing package dependencies remain feature-specific:** P18/P19 own
    array/collection representation and ownership; P22 owns named-contract
    interoperability; schema 18 must be executable before schema 19.
@@ -96,7 +98,7 @@ position/error unit must remain the settled rune-or-byte unit, source operands
 must evaluate once left-to-right, and failures must use established `Result`
 and error identities.
 
-P23 does not decide MD-073 or MD-109, define grapheme/locale/normalization
+P23 does not decide MD-109, define grapheme/locale/normalization
 semantics, expose core byte decoding, choose a physical string descriptor/ABI,
 introduce a general runtime, or implement broad collection conversion before
 its prerequisites.
@@ -113,7 +115,8 @@ its prerequisites.
   governance rules without renumbering canonical paragraphs.
 - [ ] P23-04 — Update stale P23/source registry wording so MD-050/071/072 and
   MD-074 are recorded as resolved, MD-091's API removal is honored, and only
-  MD-073/MD-109 remain explicit string-design dependencies.
+  MD-109 remains an explicit string-design dependency (MD-073 decided
+  2026-10-31).
 - [ ] P23-05 — Update the existing relevant governance entries and
   `language-rulebook-status.md` with accurate partial/evidence status; do not
   create duplicate implementation IDs or promote frontend-only facts to a
@@ -242,10 +245,10 @@ its prerequisites.
 - [ ] P23-32 — Lower private `_stringFromUtf8` only where its borrowed input,
   strict validation and `Result[string, StringError]` guarantees can be
   represented. Keep stdlib decode/lossy-decode lowering behind MD-109.
-- [ ] P23-33 — Lower `ToByteArray`, `ToRuneArray` and `FromRuneArray` only
-  once P18/P19 array allocation, copying, ownership, `CollectionError` and
-  rune iteration support are executable. Keep `ToCharArray` unavailable under
-  MD-073.
+- [ ] P23-33 — Lower `ToByteArray`, `ToCharArray`, `ToRuneArray` and
+  `FromRuneArray` only once P18/P19 array allocation, copying, ownership,
+  `CollectionError` and rune iteration support are executable. `ToCharArray`
+  reuses the byte materialization (MD-073, decided 2026-10-31).
 - [ ] P23-34 — Add target capability checks for UTF-8 scan, allocation,
   overflow, noalloc and FFI boundary paths; produce structured unsupported
   lowering instead of choosing an ABI or runtime implicitly.
@@ -270,8 +273,9 @@ its prerequisites.
   (§§16, 23, 31).
 - [ ] P23-40 — Test private `_stringFromUtf8`, public stdlib-only decoding
   boundary, byte/rune array conversions where P18/P19 permit them, and explicit
-  rejection for removed core `FromByteArray`, `byte[].ToString()` decoding and
-  MD-073 char paths (§§4–5, 24, 33).
+  rejection for removed core `FromByteArray` and `byte[].ToString()` decoding;
+  byte-preserving `ToCharArray` positives and negatives per the MD-073
+  correction § 6 (§§4–5, 24, 33).
 - [ ] P23-41 — Add Semantic IR/MLIR verifier negatives, deterministic
   parse/print, target 32/64/noalloc controls and differential native-track
   tests; run focused Go/vet/dialect/lowering/lit suites plus full repository
@@ -302,5 +306,5 @@ its prerequisites.
 4. E/F: only after executable schema-18 predecessors, install schema 19 and
    lower through the one native track; widen to arrays/stdlib decoding only as
    their dependencies close.
-5. G/H: retain structured unsupported boundaries for MD-073, MD-109 and every
+5. G/H: retain structured unsupported boundaries for MD-109 and every
    unavailable P18/P19 capability; promote status only with end-to-end proof.

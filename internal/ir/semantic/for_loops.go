@@ -37,6 +37,9 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 	if stmt.Iterable == nil && len(stmt.Bindings) == 0 {
 		return fb.buildInfiniteFor(stmt)
 	}
+	if handled, err := fb.buildPackFor(stmt); handled {
+		return err
+	}
 	rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression)
 	if !ok {
 		return fb.unsupported("for iteration over a collection, string or iterator", stmt.Token)

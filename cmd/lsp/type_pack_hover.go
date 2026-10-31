@@ -17,7 +17,7 @@ func typePackDeclarationHover(text string, program *ast.Program, analyzer *sema.
 		for _, function := range overloads {
 			if function.GenericTypePack != "" && sameSourceToken(function.Token, token) {
 				contents := functionHoverContents([]sema.Function{function}, program, token.File)
-				contents += "\n\nType-pack declaration; shared-pack bodies with no pack use or only Len reads and direct-call inference are supported. Pack-element body expansion and lowering remain unavailable."
+				contents += "\n\nType-pack declaration; pack bodies with no pack use or only Len reads and direct-call inference are supported. Pack-element body expansion and lowering remain unavailable."
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: tokenRange(text, token)}, true
 			}
 		}

@@ -1,0 +1,6 @@
+module main
+type Counter struct { Value: int }
+impl Counter {
+    fn Borrow[...Types](values: ...ref Types) ref int { return ref self.Value }
+}
+fn Escape() ref int { return Counter { Value: 1 }.Borrow() }

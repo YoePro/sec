@@ -1,0 +1,23 @@
+module main
+static let mut calls: int := 0
+fn Next() int {
+    calls += 1
+    return calls
+}
+fn Count[...Types](values: ...Types) uint { return values.Len }
+fn Tagged[...Types](base: uint, values: ...Types) uint { return base + values.Len }
+type Counter struct { Total: uint }
+impl Counter {
+    static fn Count[...Types](values: ...Types) uint { return values.Len }
+}
+fn main() int {
+    let number := 7
+    if Count() != 0 { return 1 }
+    if Count(number, true) != 2 { return 2 }
+    if Count(false, number) != 2 { return 3 }
+    if Count(Next(), Next()) != 2 { return 4 }
+    if calls != 2 { return 5 }
+    if Tagged(4, number, true) != 6 { return 6 }
+    if Counter.Count(number, false) != 2 { return 7 }
+    return number - 7
+}

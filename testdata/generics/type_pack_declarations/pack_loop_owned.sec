@@ -1,0 +1,29 @@
+module main
+fn Count[...Types](values: ...Types) uint {
+    let mut n: uint := 0
+    for index, value in values {
+        if index == 1 {
+            continue
+        }
+        n = n + 1
+        if n > 10 {
+            break
+        }
+    }
+    return n
+}
+fn Empty[...Types](values: ...Types) uint {
+    let mut n: uint := 0
+    for value in values {
+        n = n + 1
+    }
+    return n
+}
+fn main() int {
+    let total := Count(7, true, 3)
+    let none := Empty()
+    if total == 2 && none == 0 {
+        return 0
+    }
+    return 1
+}

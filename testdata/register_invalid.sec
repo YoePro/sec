@@ -114,10 +114,10 @@ impl MotorRegister {
     }
 }
 
-@address(0x40025000)
+@address(MotorStatusEndpoint)
 let motorStatus: MotorRegister
 
-@address(0x40025004)
+@address(MotorControlEndpoint)
 let mut motorControl: MotorRegister
 
 fn PublicFieldAccess() void {
@@ -147,7 +147,7 @@ impl ReservedAccessRegister {
     }
 }
 
-@address(0x40026000)
+@address(ReservedStatusEndpoint)
 let reservedStatus: ReservedAccessRegister
 
 // =============================================================================
@@ -174,18 +174,18 @@ type NoImplRegister register[8] {
     _: bit[7],
 }
 
-@address(0x40027020)
+@address(NoImplRegisterEndpoint)
 let noImplRegister: NoImplRegister
 
-@address(0x40027000)
+@address(SourceAddressRegisterEndpoint)
 let sourceAddressRegister: AddressRegister
 
 // ERROR: @address requires a register type.
-@address(0x40027004)
+@address(AddressedScalarEndpoint)
 let addressedScalar: Scalar
 
 // ERROR: An addressed binding cannot have an initializer.
-@address(0x40027008)
+@address(InitializedAddressRegisterEndpoint)
 let mut initializedAddressRegister: AddressRegister := sourceAddressRegister
 
 fn RuntimeAddress() int {
@@ -209,7 +209,7 @@ let inferredAddressRegister := sourceAddressRegister
 // Writes to read-only addressed storage
 // =============================================================================
 
-@address(0x40028000)
+@address(ReadOnlyAddressRegisterEndpoint)
 let readOnlyAddressRegister: AddressRegister
 
 // =============================================================================
@@ -236,7 +236,7 @@ impl BoundedRegister {
     }
 }
 
-@address(0x40029000)
+@address(BoundedRegisterEndpoint)
 let mut boundedRegister: BoundedRegister
 
 // =============================================================================
@@ -260,7 +260,7 @@ impl ImplRegister {
     }
 }
 
-@address(0x4002A000)
+@address(ReadOnlyImplRegisterEndpoint)
 let readOnlyImplRegister: ImplRegister
 
 fn CallMutatingMethodOnReadOnlyRegister() void {
@@ -274,7 +274,7 @@ type BadGpio register[2] {
     _: bit
 }
 
-@address(0xFE200000)
+@address(PI_GPIOEndpoint)
 let PI_GPIO: BadGpio
 
 impl BadGpio {
@@ -300,4 +300,233 @@ fn FailApplication() void {
     // ERROR 4: Assigning an incompatible unit type
     // Let's assume 'm' (meters) is assigned to something expecting 'dBm' or a standard bit
     let wrongUnit: m := PI_GPIO.Pin0
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40020000,
+    size: 0xBE1F0000,
+    readable: true,
+    writable: true,
+}
+hardware resource MotorStatusState { width: 8, }
+hardware endpoint MotorStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: MotorStatusState,
+    offset: 0x5000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource MotorControlState { width: 8, }
+hardware endpoint MotorControlEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: MotorControlState,
+    offset: 0x5004,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ReservedStatusState { width: 8, }
+hardware endpoint ReservedStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ReservedStatusState,
+    offset: 0x6000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource NoImplRegisterState { width: 8, }
+hardware endpoint NoImplRegisterEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: NoImplRegisterState,
+    offset: 0x7020,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource SourceAddressRegisterState { width: 8, }
+hardware endpoint SourceAddressRegisterEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: SourceAddressRegisterState,
+    offset: 0x7000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource AddressedScalarState { width: 32, }
+hardware endpoint AddressedScalarEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: AddressedScalarState,
+    offset: 0x7004,
+    size: 4,
+    alignment: 4,
+    read_widths: [32],
+    write_widths: [32],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource InitializedAddressRegisterState { width: 8, }
+hardware endpoint InitializedAddressRegisterEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: InitializedAddressRegisterState,
+    offset: 0x7008,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ReadOnlyAddressRegisterState { width: 8, }
+hardware endpoint ReadOnlyAddressRegisterEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ReadOnlyAddressRegisterState,
+    offset: 0x8000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource BoundedRegisterState { width: 8, }
+hardware endpoint BoundedRegisterEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: BoundedRegisterState,
+    offset: 0x9000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ReadOnlyImplRegisterState { width: 8, }
+hardware endpoint ReadOnlyImplRegisterEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ReadOnlyImplRegisterState,
+    offset: 0xA000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource PI_GPIOState { width: 8, }
+hardware endpoint PI_GPIOEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: PI_GPIOState,
+    offset: 0xBE1E0000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

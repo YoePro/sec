@@ -75,6 +75,11 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 			moduleLets = append(moduleLets, let)
 		}
 	}
+	// Hardware register bindings are register.hw.bind roots, not statics
+	// (MD-077 § 12(2)).
+	if err := b.buildHardwareBindings(moduleLets); err != nil {
+		return nil, err
+	}
 	// Module-level bindings have static storage duration (static.md § 3);
 	// they are declared in source order with their compile-time initializers.
 	for _, let := range moduleLets {
@@ -107,7 +112,7 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 			return nil, err
 		}
 	}
-	if err := b.buildTypePackSpecializations(); err != nil {
+	if err := b.buildSpecializations(); err != nil {
 		return nil, err
 	}
 	if err := b.bindCustomFrees(); err != nil {
@@ -132,15 +137,20 @@ func firstCustomFreeDeclaration(program *ast.Program) (*ast.FreeDeclaration, boo
 }
 
 type builder struct {
-	typePacks      typePackState
-	module         *Module
-	analyzer       *sema.Analyzer
-	maxPackage     uint8
-	definedEnums   map[TypeID]bool
-	definedUnions  map[TypeID]bool
-	definedStructs map[TypeID]bool
-	statics        staticRegistry
-	slicePlans     *sliceLoweringPlans
+	specializations specializationState
+	// substitution is the concrete argument map of the specialization being
+	// built; nil while building ordinary functions.
+	substitution map[string]sema.Type
+	// hardwareVariants are the demanded `T.M[hardware]` impl member variants.
+	hardwareVariants map[FunctionID]bool
+	module           *Module
+	analyzer         *sema.Analyzer
+	maxPackage       uint8
+	definedEnums     map[TypeID]bool
+	definedUnions    map[TypeID]bool
+	definedStructs   map[TypeID]bool
+	statics          staticRegistry
+	slicePlans       *sliceLoweringPlans
 	// borrowEnds indexes Sema's last-required-use borrow ends (MD-065).
 	borrowEnds map[string][]sema.ReferenceLifetimeEnd
 	// customFrees maps a type to its built custom `free` (P17).
@@ -167,8 +177,8 @@ type functionBuilder struct {
 	// that location to the try's Sema exit.
 	propagatingTry     lexer.Token
 	propagationReturns map[sourceKey]sourceKey
-	// typePack is the specialization being built, nil for any other function.
-	typePack *typePackSpecialization
+	// specialization is the one being built, nil for any other function.
+	specialization *specialization
 	// variantGuard is the union.is-variant predicate of the match arm being
 	// lowered, consumed by a borrowed payload binding (P15-45).
 	variantGuard ValueID
@@ -236,10 +246,10 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 // pack callables require their own verified expansion before executable IR.
 // Rules: rules/compiler/semantic_ir.md §§27A,60,75; rules/declarations/functions.md §38A(9).
 func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved sema.Function) error {
-	if resolved.GenericTypePack != "" {
+	if resolved.GenericTypePack != "" || len(resolved.GenericParameters) != 0 {
 		// A template has no executable form; each selected call demands one
-		// concrete specialization (type_pack_specialization.go).
-		b.registerTypePackTemplate(decl, resolved)
+		// concrete specialization (generic_specialization.go).
+		b.registerGenericTemplate(decl, resolved)
 		return nil
 	}
 	return b.buildConcreteFunction(decl, resolved, nil)
@@ -247,7 +257,7 @@ func (b *builder) buildResolvedFunction(decl *ast.FunctionDeclaration, resolved 
 
 // buildConcreteFunction builds one function with concrete signature types: an
 // ordinary function, or with spec one type-pack specialization.
-func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved sema.Function, spec *typePackSpecialization) error {
+func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved sema.Function, spec *specialization) error {
 	returnType, err := b.internSignatureType(resolved.ReturnType)
 	if err != nil {
 		token := decl.Token
@@ -259,19 +269,35 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
 	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
 	if spec != nil {
-		fn.ID, fn.TypePack = spec.id, spec.facts
+		fn.ID, fn.TypePack, fn.Specialization = spec.id, spec.facts, spec.generic
 	}
 	b.module.Functions = append(b.module.Functions, fn)
-	fb := &functionBuilder{owner: b, typePack: spec, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1, resolved: &resolved}
-	if !resolved.Static && resolved.ImplTarget != "" {
+	fb := &functionBuilder{owner: b, specialization: spec, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1, resolved: &resolved}
+	if !resolved.Static && resolved.ImplTarget != "" && spec != nil && spec.hardware {
+		if err := fb.addHardwareReceiverParameter(resolved, decl); err != nil {
+			return err
+		}
+	} else if !resolved.Static && resolved.ImplTarget != "" {
 		if err := fb.addReceiverParameter(resolved, decl); err != nil {
 			return err
+		}
+		if spec != nil && spec.facts != nil {
+			// Sema's fixed count excludes implicit self. Published IR positions
+			// index the explicit signature, while body binding below still uses
+			// the source count (rules/compiler/semantic_ir.md §§27A,60(3)).
+			facts := *spec.facts
+			facts.FixedCount++
+			fn.TypePack = &facts
 		}
 	}
 	for i, parameter := range resolved.Parameters {
 		var referenceFacts *ReferenceMetadata
 		if b.maxPackage >= referenceLoweringPackage {
-			facts, err := fb.p15ReferenceParameter(parameter)
+			position := -1
+			if spec != nil && spec.facts != nil && i >= spec.facts.FixedCount {
+				position = i - spec.facts.FixedCount
+			}
+			facts, err := fb.p15ReferenceParameter(parameter, position)
 			if err != nil {
 				return err
 			}
@@ -288,7 +314,7 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 		}
 		// An expanded pack position has no source binding of its own: the pack
 		// is compile-time metadata, never one value (functions.md § 38A(9)).
-		if i < len(decl.Parameters) && decl.Parameters[i].Name != nil && (spec == nil || i < spec.facts.FixedCount) {
+		if i < len(decl.Parameters) && decl.Parameters[i].Name != nil && (spec == nil || spec.facts == nil || i < spec.facts.FixedCount) {
 			if fact, ok := b.analyzer.ResolvedBindingOf(decl.Parameters[i].Name); ok {
 				fb.bindings[fact.ID] = binding{value: value.ID, typ: typeID}
 			}
@@ -345,6 +371,11 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 // Rules: rules/types/types.md — Type identity; rules/compiler/semantic_ir.md — §20;
 // rules/mlir/packages/sec-mlir-dialect_package11.md — §26 Result relationship.
 func (b *builder) internType(t sema.Type) (TypeID, error) {
+	// A specialization interns its typed template under the concrete
+	// substitution (monomorphization.md §§ 8.3, 13.3).
+	if len(b.substitution) != 0 {
+		t = b.substituteTemplateType(t, b.substitution)
+	}
 	// Units cannot become ordinary scalars before their resolved quantity facts
 	// and operations have a representation (Semantic IR §20, units correction).
 	if t.Unit != "" || !t.Dimension.IsZero() || t.UnitSemantics.Identity != "" {
@@ -810,7 +841,11 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 			if !ok {
 				if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
-					return fb.unsupported("hardware register operation "+string(operation.Kind)+" on "+operation.Register.Name+" (register.hw.*, MD-077 § 18(4); physical plans need MD-111)", call.Token)
+					// An unused Read() observation stays: it is externally visible.
+					if _, err := fb.buildHardwareRegisterOperation(call, operation); err != nil {
+						return err
+					}
+					continue
 				}
 				return fb.unsupported("unresolved function call", call.Token)
 			}
@@ -1627,11 +1662,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	// expression-type fact. Refuse the known pack boundary before requiring
 	// executable expression facts (rules/compiler/semantic_ir.md §27A).
 	if call, ok := expr.(*ast.CallExpression); ok {
-		if target, found := fb.owner.analyzer.ResolvedCallTarget(call); found && target.Function.GenericTypePack != "" {
-			if target.Function.Module != fb.owner.module.Identity {
+		if target, found := fb.owner.analyzer.ResolvedCallTarget(call); found && isGenericInstance(target.Function) {
+			if target.Function.GenericTypePack != "" && target.Function.Module != fb.owner.module.Identity {
 				return builtValue{}, fb.unsupported("heterogeneous type-pack callable expansion for "+target.Function.Name, call.Token)
 			}
-			if _, err := fb.owner.demandTypePackSpecialization(call, target.Function); err != nil {
+			if _, err := fb.owner.demandSpecialization(call, target.Function); err != nil {
 				return builtValue{}, err
 			}
 			return fb.buildCall(call)
@@ -1788,7 +1823,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		if fb.owner.maxPackage >= 13 {
 			if plan, resolved := fb.owner.analyzer.ResolvedStructMemberOf(e); resolved && plan.Kind == sema.MemberStoredField {
-				if plan.Action != sema.StructFieldCopyTrivial {
+				if plan.Action != sema.StructFieldCopyTrivial && !fb.owner.concreteTriviallyCopyable(plan.MemberType) {
 					return builtValue{}, fb.unsupported("non-trivial struct field read", e.Token)
 				}
 				if owned, isOwned := fb.ownedStorageOf(e.Object); isOwned {
@@ -2103,6 +2138,11 @@ func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema
 			return builtValue{}, fmt.Errorf("struct field %d has no resolved source", index)
 		}
 		action, ok := semanticStructAction(field.Action)
+		// A template's move of an unknown parameter is a trivial copy for a
+		// trivially copyable concrete argument (monomorphization.md § 11.2).
+		if ok && action == StructActionMove && len(fb.owner.substitution) != 0 && fb.owner.concreteTriviallyCopyable(field.FieldType) {
+			action = StructActionCopyTrivial
+		}
 		if !ok || action != StructActionConstructDirect && action != StructActionCopyTrivial {
 			return builtValue{}, fb.unsupported("non-trivial struct field action "+string(field.Action), expr.Token)
 		}
@@ -2174,7 +2214,7 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			return builtValue{}, fb.unsupported("single-payload union construction", expressionToken(expr))
 		}
 		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
-		if semaVariant.Payload == nil || sema.CopyClassificationOf(*semaVariant.Payload) != sema.CopyTrivial {
+		if semaVariant.Payload == nil || !fb.owner.concreteTriviallyCopyable(*semaVariant.Payload) {
 			return builtValue{}, fb.unsupported("non-trivial union payload transfer", expressionToken(call.Arguments[0]))
 		}
 		payload, err := fb.buildExpr(call.Arguments[0], variant.Payload)
@@ -3529,7 +3569,7 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 			}
 		}
 		if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
-			return builtValue{}, fb.unsupported("hardware register operation "+string(operation.Kind)+" on "+operation.Register.Name+" (register.hw.*, MD-077 § 18(4); physical plans need MD-111)", call.Token)
+			return fb.buildHardwareRegisterOperation(call, operation)
 		}
 		if result, typed := fb.owner.analyzer.TypeOf(call); typed && result.Kind == sema.RegisterType {
 			// MD-110 conversions are built before buildCall; reaching here
@@ -3543,8 +3583,8 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	}
 	callee := functionID(resolved.Function, fb.owner.module.Types)
 	parameters := resolved.Function.Parameters
-	if resolved.Function.GenericTypePack != "" {
-		spec, err := fb.owner.demandTypePackSpecialization(call, resolved.Function)
+	if isGenericInstance(resolved.Function) && resolved.Kind != sema.ResolvedInterfaceMethodCall {
+		spec, err := fb.owner.demandSpecialization(call, resolved.Function)
 		if err != nil {
 			return builtValue{}, err
 		}
@@ -3561,7 +3601,17 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	}
 	args := make([]ValueID, 0, len(call.Arguments)+1)
 	actions := make([]ArgumentAction, 0, len(call.Arguments)+1)
-	if instanceMethod {
+	if instance, hardware := fb.hardwareReceiverArgument(call); instanceMethod && hardware {
+		// MD-077 § 12(2): a member called on a hardware instance runs its
+		// hardware variant with the lent instance authority.
+		variant, err := fb.owner.demandHardwareVariant(resolved.Function, call.Token)
+		if err != nil {
+			return builtValue{}, err
+		}
+		callee = variant
+		args = append(args, instance.id)
+		actions = append(actions, ArgumentHardwareInstance)
+	} else if instanceMethod {
 		receiver, action, err := fb.buildReceiverArgument(call, resolved.Function)
 		if err != nil {
 			return builtValue{}, err

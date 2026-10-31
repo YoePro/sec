@@ -168,6 +168,11 @@ func (e *emitter) emitModule() error {
 		e.out.WriteString(mlirString(source))
 	}
 	e.out.WriteString("]} {\n")
+	for _, binding := range e.module.HardwareBindings {
+		if err := e.emitHardwareBinding(binding); err != nil {
+			return err
+		}
+	}
 	for _, static := range e.module.Statics {
 		if err := e.emitStaticGlobal(static); err != nil {
 			return err
@@ -1198,6 +1203,10 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 		}
 	case semantic.TypeRegister:
 		text = fmt.Sprintf("!sec.register<%s>", mlirString(typeValue.Identity))
+	case semantic.TypeHardwareInstance:
+		if register, ok := e.module.Types.Lookup(typeValue.Element); ok && register.Kind == semantic.TypeRegister {
+			text = fmt.Sprintf("!sec.hw_instance<%s>", mlirString(register.Identity))
+		}
 	case semantic.TypeNamed:
 		base, err := e.typeText(typeValue.Base)
 		if err != nil {
@@ -1580,5 +1589,45 @@ func (e *emitter) emitStaticGlobal(static semantic.Static) error {
 	}
 	fmt.Fprintf(&e.out, "  \"sec.static.global\"() <{initial = %s, is_mutable = %t, sym_name = %s, type = %s}> {%ssec.source_name = %s, sec.static_id = %d : i32} : () -> ()\n",
 		mlirString(initial), static.Mutable, mlirString(staticSymbol(static.ID)), typ, addressTaken, mlirString(static.Name), static.ID)
+	return nil
+}
+
+// emitHardwareBinding writes one register.hw.bind root as a module-level
+// sec.hw.binding record (dialect v11.41.5, MD-077 § 19(5)): every resolved
+// identity, the exact decimal domain extent and the transfer widths survive.
+// Schemas before 11 have no binding root and reject the module.
+func (e *emitter) emitHardwareBinding(binding semantic.HardwareBinding) error {
+	if e.schemaVersion < 11 {
+		return &UnsupportedLoweringError{Feature: "hardware register binding " + binding.Symbol + " before schema 11", SchemaVersion: e.schemaVersion}
+	}
+	instance, err := e.typeText(binding.Instance)
+	if err != nil {
+		return err
+	}
+	widths := func(values []*big.Int) (string, error) {
+		parts := make([]string, len(values))
+		for index, value := range values {
+			if !value.IsInt64() {
+				return "", &UnsupportedLoweringError{Feature: "hardware transfer width beyond 64 bits on " + binding.Symbol}
+			}
+			parts[index] = value.String()
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
+	}
+	reads, err := widths(binding.ReadWidths)
+	if err != nil {
+		return err
+	}
+	writes, err := widths(binding.WriteWidths)
+	if err != nil {
+		return err
+	}
+	alignment := "1"
+	if binding.Alignment != nil {
+		alignment = binding.Alignment.String()
+	}
+	fmt.Fprintf(&e.out, "  \"sec.hw.binding\"() <{address = %s, alias = %t, alignment = %s, domain = %s, endpoint_id = %s, endpoint_kind = %s, hardware_binding_id = %d : i32, hardware_resource_id = %s, instance_type = %s, is_mutable = %t, read_widths = %s, region_id = %s, size = %s, sym_name = %s, write_widths = %s}> : () -> ()\n",
+		mlirString(binding.Address.String()), binding.Alias, mlirString(alignment), mlirString(binding.Domain), mlirString(binding.Endpoint), mlirString(binding.EndpointKind), binding.ID,
+		mlirString(binding.Resource), instance, binding.Mutable, reads, mlirString(binding.Region), mlirString(binding.Size.String()), mlirString(binding.Symbol), writes)
 	return nil
 }

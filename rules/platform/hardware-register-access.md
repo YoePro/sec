@@ -1275,10 +1275,10 @@ It must not be reduced to an ordinary integer constant before those facts are co
 
 ### 22.5 Numeric address form
 
-A compile-time numeric address may be used only in the target's canonical linear hardware address domain and only when the complete binding resolves unambiguously to a canonical valid region/storage contract.
+**Superseded for static hardware bindings (MD-111 §§ 1(4), 10(7), 2026-10-30).** A numeric `@address(0x...)` is a compile-time error (S1188) even when an applicable region is known. Numeric addresses appear only inside typed `hardware region`/`hardware endpoint` metadata, and the binding names the endpoint:
 
 ```sec
-@address(0x40021000)
+@address(ControlEndpoint)
 let mut control: ControlRegisters
 ```
 

@@ -159,26 +159,26 @@ impl StatusRegister {
 // mut controls whether Sec code may write to the storage.
 // =============================================================================
 
-@address(0x40021000)
+@address(ReadOnlyStatusEndpoint)
 let readOnlyStatus: StatusRegister
 
-@address(0x40021004)
+@address(WritableStatusEndpoint)
 let mut writableStatus: StatusRegister
 
-@address(0x40022000)
+@address(ReadOnlyMotorEndpoint)
 let readOnlyMotor: MotorRegister
 
-@address(0x40022004)
+@address(WritableMotorEndpoint)
 let mut writableMotor: MotorRegister
 
-@address(0x40023000)
+@address(WritableControlEndpoint)
 let mut writableControl: ControlRegister
 
-@address(0x40024000)
+@address(ReadOnlyPowerEndpoint)
 let readOnlyPower: PowerRegister
 
 // Decimal compile-time integer addresses are valid as well.
-@address(1073889296)
+@address(DecimalAddressStatusEndpoint)
 let decimalAddressStatus: StatusRegister
 
 // =============================================================================
@@ -240,4 +240,153 @@ fn InspectSnapshot(snapshot: ref StatusRegister) bool {
 
 fn UpdateSnapshot(snapshot: ref mut StatusRegister) void {
     snapshot.ClearError()
+}
+
+hardware region RegisterSpace {
+    domain: "cpu-physical",
+    kind: HardwareRegionKind.MMIO,
+    base: 0x40020000,
+    size: 0x10000,
+    readable: true,
+    writable: true,
+}
+hardware resource ReadOnlyStatusState { width: 8, }
+hardware endpoint ReadOnlyStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ReadOnlyStatusState,
+    offset: 0x1000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource WritableStatusState { width: 8, }
+hardware endpoint WritableStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: WritableStatusState,
+    offset: 0x1004,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ReadOnlyMotorState { width: 8, }
+hardware endpoint ReadOnlyMotorEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ReadOnlyMotorState,
+    offset: 0x2000,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource WritableMotorState { width: 8, }
+hardware endpoint WritableMotorEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: WritableMotorState,
+    offset: 0x2004,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource WritableControlState { width: 16, }
+hardware endpoint WritableControlEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: WritableControlState,
+    offset: 0x3000,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource ReadOnlyPowerState { width: 16, }
+hardware endpoint ReadOnlyPowerEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: ReadOnlyPowerState,
+    offset: 0x4000,
+    size: 2,
+    alignment: 2,
+    read_widths: [16],
+    write_widths: [16],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
+}
+hardware resource DecimalAddressStatusState { width: 8, }
+hardware endpoint DecimalAddressStatusEndpoint {
+    kind: HardwareEndpointKind.MemoryMapped,
+    region: RegisterSpace,
+    resource: DecimalAddressStatusState,
+    offset: 0x4010,
+    size: 1,
+    alignment: 1,
+    read_widths: [8],
+    write_widths: [8],
+    read_footprint: HardwareFootprintKind.Whole,
+    write_footprint: HardwareFootprintKind.Whole,
+    read_effect: HardwareReadEffect.NonDestructive,
+    write_operation: HardwareWriteOperation.Replace,
+    ordering: HardwareOrdering.Volatile,
+    completion: HardwareCompletion.Issued,
+    atomicity: HardwareAtomicity.Unspecified,
+    context: HardwareAccessContext.Current,
+    fault: HardwareFaultContract.Platform,
 }

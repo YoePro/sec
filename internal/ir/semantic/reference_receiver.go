@@ -23,10 +23,11 @@ import (
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 59-60
 
 // instanceMethodLowerable reports an instance method Semantic IR builds:
-// package 15, a borrowed (not consuming) receiver and no generic parameters.
+// package 15, a borrowed (not consuming) receiver and no generic parameters of
+// its own; a method of a generic implementation is built per specialization.
 func (b *builder) instanceMethodLowerable(function sema.Function) bool {
 	return b.maxPackage >= referenceLoweringPackage && !function.Static && function.ImplTarget != "" &&
-		!function.ReceiverConsuming && len(function.GenericParameters) == 0 && len(function.GenericSubstitution) == 0
+		!function.ReceiverConsuming && len(function.GenericParameters) == 0
 }
 
 // addReceiverParameter adds the explicit `self` reference parameter.
@@ -148,6 +149,9 @@ func (fb *functionBuilder) receiverPlace(plans []sema.ResolvedStructMemberPlan, 
 // rules/compiler/semantic_ir.md §§60(3),61(4); rules/mlir/packages/sec-mlir-dialect_package15.md §§59–60.
 func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, error) {
 	if registerPlans, register := fb.receiverRegisterPath(expr); register {
+		if fb.hardwareReceiver() {
+			return fb.lowerHardwareFieldRead(fb.receiver, registerPlans, expressionToken(expr))
+		}
 		return fb.lowerReceiverRegisterRead(expr, registerPlans)
 	}
 	plans, steps, rooted, ok := fb.receiverFieldPath(expr)
@@ -165,7 +169,7 @@ func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, e
 				return builtValue{}, fb.unsupported("whole receiver value without a resolved method", expressionToken(expr))
 			}
 			facts, known := fb.owner.analyzer.ReceiverReferenceFactsOf(*fb.resolved)
-			if !known || sema.CopyClassificationOf(facts.Referent) != sema.CopyTrivial {
+			if !known || !fb.owner.concreteTriviallyCopyable(facts.Referent) {
 				return builtValue{}, fb.unsupported("non-copy-trivial whole receiver value", expressionToken(expr))
 			}
 			// functions.md §22 / copy_move.md §18 forbid consuming ordinary self.
@@ -180,7 +184,7 @@ func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, e
 		}
 		return builtValue{}, fb.unsupported("receiver used through a non-field member", expressionToken(expr))
 	}
-	if sema.CopyClassificationOf(plans[len(plans)-1].MemberType) != sema.CopyTrivial {
+	if !fb.owner.concreteTriviallyCopyable(plans[len(plans)-1].MemberType) {
 		return builtValue{}, fb.unsupported("non-copy-trivial read of a receiver field", expressionToken(expr))
 	}
 	place, _, err := fb.receiverPlace(plans, steps)
@@ -196,6 +200,9 @@ func (fb *functionBuilder) lowerReceiverRead(expr ast.Expression) (builtValue, e
 // evaluation order").
 func (fb *functionBuilder) lowerReceiverWrite(stmt *ast.AssignmentStatement) (bool, error) {
 	if registerPlans, register := fb.receiverRegisterPath(stmt.Target); register {
+		if fb.hardwareReceiver() {
+			return true, fb.lowerHardwareFieldWrite(fb.receiver, stmt, registerPlans)
+		}
 		return true, fb.lowerReceiverRegisterWrite(stmt, registerPlans)
 	}
 	plans, steps, rooted, ok := fb.receiverFieldPath(stmt.Target)
@@ -205,7 +212,7 @@ func (fb *functionBuilder) lowerReceiverWrite(stmt *ast.AssignmentStatement) (bo
 	if !ok || stmt.Operator != "=" {
 		return true, fb.unsupported("receiver write other than a plain field assignment", stmt.Token)
 	}
-	if !sema.TriviallyDestructible(plans[len(plans)-1].MemberType) {
+	if !fb.owner.concreteTriviallyDestructible(plans[len(plans)-1].MemberType) {
 		return true, fb.unsupported("non-trivial replacement of a receiver field", stmt.Token)
 	}
 	place, mutable, err := fb.receiverPlace(plans, steps)
@@ -232,7 +239,13 @@ func (fb *functionBuilder) buildReceiverArgument(call *ast.CallExpression, calle
 	if !ok {
 		return builtValue{}, "", fb.unsupported("instance method call without receiver facts", call.Token)
 	}
-	element, err := fb.owner.internType(target.Referent)
+	// The facts belong to the method template; a method of a generic
+	// implementation receives the instance its call selected.
+	referent := target.Referent
+	if len(callee.GenericSubstitution) != 0 {
+		referent = fb.owner.substituteTemplateType(referent, callee.GenericSubstitution)
+	}
+	element, err := fb.owner.internType(referent)
 	if err != nil {
 		return builtValue{}, "", err
 	}

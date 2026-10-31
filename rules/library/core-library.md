@@ -541,7 +541,8 @@ contain; fixed byte arrays and borrowed byte views keep their collection
 fallback formatting and likewise never decode. Producing the summary still
 uses the ordinary `ToString` storage/error contract. Decode bytes with
 `str.FromByteArray` or `str.FromByteArrayLossy`; char sequences apply
-`char.ToString()` element semantics (char-domain details: MD-073); rune
+`char.ToString()` element semantics, which `string.ToCharArray()` (§ 5.3,
+MD-073) does not change; rune
 sequences encode each Unicode scalar as `string.FromRuneArray` does. Other
 concrete values retain the universal compiler-provided fallback described by
 `compiler_known_members.md`, but do not use these text-sequence semantics.
@@ -577,6 +578,7 @@ impl string {
     fn Split(separator: string) StringSplitIterator
 
     fn ToByteArray() Result[byte[], CollectionError]
+    fn ToCharArray() Result[char[], CollectionError]
     fn ToRuneArray() Result[rune[], CollectionError]
 }
 ```
@@ -595,6 +597,14 @@ returns exactly `self.Len` scalar values in order. Neither has an
 `InvalidUtf8` path, because the source is valid. Storage failure uses the
 existing `CollectionError` family, consistent with array allocation and growth;
 a failed materialization is never reported as a successful empty array.
+
+`ToCharArray` (MD-073, 2026-10-31) shares that contract and is byte-preserving:
+it returns exactly `self.SizeOf` `char` elements — one per UTF-8 byte, element
+`i` numerically equal to `self.ByteAt(i)` — never `self.Len` elements. It
+performs no rune-to-`char` range check and no code-page encoding (`"é"` yields
+`0xC3t, 0xA9t`), and it has no conversion or Unicode-range failure; only
+`CollectionError` storage failure. Byte, char and rune materialization thus
+differ in units: `SizeOf` bytes, `SizeOf` chars, `Len` runes.
 
 ## 5.4 Bytes and runes
 
@@ -620,6 +630,7 @@ Materializing conversions use:
 
 ```sec
 ToByteArray()
+ToCharArray()
 ToRuneArray()
 ```
 

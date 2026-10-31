@@ -58,7 +58,7 @@ governance/memory.yaml
 ## Authority and dependency constraints
 
 1. **Decisions:** MD-070 (`RawPtr` ↔ safe reference spelling), MD-019
-   (explicit layout spelling), MD-073 and MD-109 (string/char materialization)
+   (explicit layout spelling), MD-109 (string materialization)
    and MD-108 (borrowed interface view representation, book § 27) are open
    gates. MD-061, MD-050, MD-071, MD-072 and MD-004 are applied and not
    reopened.

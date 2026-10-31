@@ -31,7 +31,7 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int], amount: decimal) void {
 	let formatted: Result[string, StringError] := true.ToString()
 	let encoded: Result[byte[], CollectionError] := text.ToByteArray()
 	let mut bytes: byte[]
-	let chars: char[] := text.ToCharArray()
+	let chars: Result[char[], CollectionError] := text.ToCharArray()
 	let decoded: Result[rune[], CollectionError] := text.ToRuneArray()
 	let joined: Result[string, StringError] := runes.ToString()
 	let fromRunes: Result[string, StringError] := string.FromRuneArray(runes)
@@ -959,5 +959,45 @@ func TestRegistryStringMaterializers(t *testing.T) {
 	info := compilerKnownSyntheticCatalog["CKM-TOSTRING-BYTE-SEQUENCE"]
 	if !strings.Contains(info.Documentation, "never UTF-8 decoding") || !strings.Contains(info.Documentation, "string.FromByteArray") {
 		t.Fatalf("byte ToString docs imply decoding: %q", info.Documentation)
+	}
+}
+
+// TestStringToCharArrayIsByteMaterialization checks the source contract of
+// MD-073: ToCharArray returns Result[char[], CollectionError] like
+// ToByteArray, propagates with try, and does not make char[] and byte[]
+// interchangeable.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "`ToCharArray()`"
+//   - rules/library/core-library.md — § 5.3
+//   - rules/corrections/applied/MD-073-string-to-char-array-byte-preserving-correction-20261031.md — § 6
+func TestStringToCharArrayIsByteMaterialization(t *testing.T) {
+	valid := `
+module main
+
+fn Chars(text: string) Result[char[], CollectionError] {
+	let chars := try text.ToCharArray()
+	return Ok(chars)
+}
+
+fn Bytes(text: string) Result[byte[], CollectionError] {
+	let bytes := try text.ToByteArray()
+	return Ok(bytes)
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	for _, test := range []struct{ name, body string }{
+		{"no infallible form", `let chars: char[] := text.ToCharArray()`},
+		{"no char to byte array", `let bytes: Result[byte[], CollectionError] := text.ToCharArray()`},
+		{"no byte to char array", `let chars: Result[char[], CollectionError] := text.ToByteArray()`},
+		{"no StringError channel", `let chars: Result[char[], StringError] := text.ToCharArray()`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := "module main\n\nfn Test(text: string) void {\n\t" + test.body + "\n}\n"
+			if errors := analyzeSourceRaw(t, input); len(errors) == 0 {
+				t.Fatalf("%s accepted", test.body)
+			}
+		})
 	}
 }

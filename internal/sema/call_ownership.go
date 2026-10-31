@@ -15,6 +15,9 @@ import (
 //   - rules/memory/copy_move.md — §§7,8.1–8.3,28.1
 //   - rules/declarations/functions.md — §9 "Explicit consuming parameter"
 func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, call *ast.CallExpression) bool {
+	if !a.validateCallTransferSources(function, sourceArgs, preparedSpreadValues) {
+		return false
+	}
 	valid := true
 	for sourceIndex, arg := range sourceArgs {
 		param, ok := functionParameterForArgument(function, sourceIndex)
@@ -72,6 +75,69 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 		valid = false
 	}
 	return valid
+}
+
+// validateCallTransferSources reserves explicit owning sources without ending
+// their lifetime. A source cannot be transferred twice or handed to the same
+// callee as both owned storage and a live reference into that storage. Argument
+// evaluation is already complete; failed validation commits no source moves.
+// Rules: rules/declarations/functions.md §§17–18,38A(6)(1–3);
+// rules/memory/ownership.md — single ownership; rules/memory/borrowing.md §15.4.
+func (a *Analyzer) validateCallTransferSources(function Function, args []ast.Expression, prepared []bool) bool {
+	type transfer struct {
+		place Place
+		index int
+	}
+	transfers := []transfer{}
+	for i, argument := range args {
+		if i < len(prepared) && prepared[i] {
+			continue
+		}
+		parameter, known := functionParameterForArgument(function, i)
+		if !known {
+			continue
+		}
+		if _, borrowed := callParameterBorrowMode(parameter); borrowed {
+			continue
+		}
+		move, explicit := explicitMoveArgument(argument)
+		if !explicit {
+			continue
+		}
+		place, reusable := a.resolvePlace(move.Right)
+		if !reusable {
+			continue
+		}
+		for _, previous := range transfers {
+			if placesMayOverlap(place, previous.place) {
+				a.addErrorAtToken(move.Token, "argument %d moves %s while overlapping storage is already selected for transfer by argument %d", i+1, place.String(), previous.index+1)
+				return false
+			}
+		}
+		transfers = append(transfers, transfer{place, i})
+	}
+	for _, source := range transfers {
+		for i, argument := range args {
+			if i < len(prepared) && prepared[i] {
+				continue
+			}
+			parameter, known := functionParameterForArgument(function, i)
+			if !known {
+				continue
+			}
+			if _, borrowed := callParameterBorrowMode(parameter); !borrowed {
+				continue
+			}
+			place, reusable := a.callArgumentBorrowPlace(argument)
+			if reusable && placesMayOverlap(source.place, place) {
+				a.addErrorAtTokenWithMetadata(expressionToken(args[source.index]), diagnostics.BorrowOwnershipEndConflict,
+					"Pass separate owned storage, or end the borrowed use before transferring this source.",
+					"argument %d moves %s while argument %d borrows overlapping storage", source.index+1, source.place.String(), i+1)
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // validateOwningConstructionSource preserves ordinary copy semantics outside

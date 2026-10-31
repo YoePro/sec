@@ -11,6 +11,7 @@ add_mlir_dialect_library(SecMLIRDialect
   RegisterContracts.cpp
   RegisterWriteEvidence.cpp
   RegisterConversions.cpp
+  HardwareBindings.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/sec/Dialect/Sec

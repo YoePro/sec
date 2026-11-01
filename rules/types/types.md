@@ -2081,8 +2081,9 @@ Named unit types remain distinct according to their unit semantics.
 They are not special parser spellings for ordinary type references.
 
 `Result[T, E]` participates in explicit typed error handling. `E` must be the
-compiler-known `error` root or a concrete Sec type declared as an error type.
-`Result[T, string]` is invalid.
+compiler-known `error` root, a concrete Sec type declared as an error type, or
+a generic parameter constrained by `error` (`rules/declarations/generics.md`
+§ 15A, MD-120). `Result[T, string]` is invalid.
 
 For a concrete error type, implicit widening `ConcreteError -> error` is valid
 and preserves concrete type identity, active variant, payload, ownership, and

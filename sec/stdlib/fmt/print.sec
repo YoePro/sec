@@ -161,12 +161,16 @@ fn Printf[...Types](format: string, values: ...ref Types) Result[uint, WriteForm
 
         Err(error) => {
             match error {
-                FormatRenderError.Text(cause) => {
+                Text(cause) => {
                     return Err(WriteFormatError.Text(cause))
                 }
 
-                FormatRenderError.IO(cause) => {
+                Sink(cause) => {
                     return Err(WriteFormatError.IO(cause))
+                }
+
+                SizeOverflow => {
+                    return Err(WriteFormatError.IO(IOError.InvalidInput))
                 }
             }
         }

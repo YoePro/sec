@@ -51,7 +51,7 @@ type FormatSpec struct {
  * stdlib/fmt/std-fmt.md, sections 2, 9 and 10.
  * rules/declarations/interfaces.md, section 3.
  */
-interface FormatSink[E] {
+interface FormatSink[E: error] {
     /**
      * Writes one complete UTF-8 text segment.
      *
@@ -470,13 +470,17 @@ fn ValidateCompositeFormat(format: string, argumentCount: uint) Result[void, For
  * Allocation:
  * Does not allocate.
  */
-fn _WriteFormatSegment(sink: ref mut FormatSink, text: string, total: uint) Result[uint, FormatRenderError] {
+fn _WriteFormatSegment[E: error](sink: ref mut FormatSink[E], text: string, total: uint) Result[uint, FormatRenderError[E]] {
     let next := try total + text.SizeOf {
-        Err(_) => return Err(FormatRenderError.IO(IOError.InvalidInput))
+        Err(_) => {
+            return Err(FormatRenderError[E].SizeOverflow)
+        }
     }
 
     try sink.WriteText(text) {
-        Err(error) => return Err(FormatRenderError.IO(error))
+        Err(error) => {
+            return Err(FormatRenderError[E].Sink(error))
+        }
     }
 
     return Ok(next)
@@ -526,10 +530,10 @@ fn _WriteFormatSegment(sink: ref mut FormatSink, text: string, total: uint) Resu
  * stdlib/fmt/std-fmt.md, sections 3 and 8-10.
  * rules/declarations/functions.md, section 38A.
  */
-fn FormatComposite[...Types](format: string, sink: ref mut FormatSink, values: ...ref Types) Result[uint, FormatRenderError] {
+fn FormatComposite[E: error, ...Types](format: string, sink: ref mut FormatSink[E], values: ...ref Types) Result[uint, FormatRenderError[E]] {
     try ValidateCompositeFormat(format, values.Len) {
         Err(error) => {
-            return Err(FormatRenderError.Text(StringError.Format(error)))
+            return Err(FormatRenderError[E].Text(StringError.Format(error)))
         }
     }
 
@@ -539,7 +543,7 @@ fn FormatComposite[...Types](format: string, sink: ref mut FormatSink, values: .
     for tokenResult in cursor {
         let token := try tokenResult {
             Err(error) => {
-                return Err(FormatRenderError.Text(StringError.Format(error)))
+                return Err(FormatRenderError[E].Text(StringError.Format(error)))
             }
         }
 
@@ -547,9 +551,7 @@ fn FormatComposite[...Types](format: string, sink: ref mut FormatSink, values: .
             _FormatToken.Literal { Start: start, End: end } => {
                 let text := try _SliceUtf8Bytes(format, start, end) {
                     Err(_) => {
-                        return Err(FormatRenderError.Text(
-                            StringError.Format(FormatError.InvalidFormat),
-                        ))
+                        return Err(FormatRenderError[E].Text(StringError.Format(FormatError.InvalidFormat)))
                     }
                 }
 

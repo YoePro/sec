@@ -1,0 +1,6 @@
+module main
+
+fn Long(value: int, values: int[65]) bool { return value not in values }
+fn Boolean(value: bool, values: bool[2]) bool { return value in values }
+fn Character(value: char, values: char[2]) bool { return value in values }
+fn Floating(value: float64, values: float64[2]) bool { return value in values }

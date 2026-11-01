@@ -1,0 +1,41 @@
+module main
+
+type Box[V] struct {
+    Value: V,
+}
+
+type Counter struct {
+    Total: uint,
+}
+
+impl Box[V] {
+    fn Size[...Types](values: ...Types) uint {
+        return values.Len
+    }
+
+    fn Get[...Types](values: ...Types) V {
+        return self.Value
+    }
+
+    fn Both[H, ...Types](head: H, values: ...Types) H {
+        return head
+    }
+}
+
+impl Counter {
+    fn Head[H, ...Types](head: H, values: ...ref Types) H {
+        return head
+    }
+}
+
+fn Use() int {
+    let ints     := Box[int] { Value: 7 }
+    let bools    := Box[bool] { Value: true }
+    let counter  := Counter { Total: 0 }
+    let flag     := true
+    let same     := ints.Size(1, true) + bools.Size(1, true) + ints.Size()
+    let kept     := bools.Get(1)
+    let text     := ints.Both(flag, 1)
+    let explicit := counter.Head[int](1)
+    return ints.Get(true) + ints.Both(5, true) + counter.Head(9, flag)
+}

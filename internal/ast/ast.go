@@ -2473,6 +2473,9 @@ type ImplStatement struct {
 	Target     *TypeReference
 	Implements []*TypeReference
 	Members    []ImplMember
+	// ConformanceRecovery records an already diagnosed implements clause on
+	// an extension; Sema must not repeat the parser diagnostic (parser_recovery.md §17).
+	ConformanceRecovery *RecoveryInfo
 }
 
 func (is *ImplStatement) statementNode() {}

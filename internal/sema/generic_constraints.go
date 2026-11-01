@@ -28,7 +28,9 @@ func (a *Analyzer) validateGenericParameterConstraints(parameters []*ast.Generic
 				a.addErrorAtToken(reference.Token, "unknown generic constraint %s for %s", reference.Name, parameter.Name.Value)
 				continue
 			}
-			if constraint.Kind != InterfaceType {
+			// `error` is the compiler-known error category (MD-120 § 2), not an
+			// interface; other concrete types stay invalid.
+			if constraint.Kind != InterfaceType && constraint.Kind != ErrorRootType {
 				a.addErrorAtToken(reference.Token, "generic constraint %s is not an interface", reference.Name)
 			}
 		}
@@ -55,11 +57,11 @@ func (a *Analyzer) resolvedGenericParameterConstraints(parameters []*ast.Generic
 				continue
 			}
 			base, exists := a.types[a.resolveTypeName(reference.Name)]
-			if !exists || base.Kind != InterfaceType {
+			if !exists || base.Kind != InterfaceType && base.Kind != ErrorRootType {
 				continue
 			}
 			constraint, ok := a.resolveType(reference)
-			if !ok || constraint.Kind != InterfaceType {
+			if !ok || constraint.Kind != InterfaceType && constraint.Kind != ErrorRootType {
 				continue
 			}
 			constraints = append(constraints, GenericConstraint{
@@ -94,6 +96,9 @@ func (a *Analyzer) constrainedGenericParameterType(parameter *ast.GenericParamet
 		typ.GenericConstraints = a.resolvedGenericParameterConstraints([]*ast.GenericParameter{parameter})
 	}
 	for _, constraint := range typ.GenericConstraints {
+		// `E: error` inhabits the error domain: Result[T, E] is valid and a
+		// value of E widens to error (rules/declarations/generics.md § 15A).
+		typ.ErrorAssignable = typ.ErrorAssignable || constraint.Interface.Kind == ErrorRootType
 		for _, method := range constraint.Interface.InterfaceMethods {
 			if method.Static || containsEquivalentConstraintMethod(typ.InterfaceMethods, method) {
 				continue
@@ -193,7 +198,7 @@ func (a *Analyzer) validateGenericTypeConstraintArguments(token lexer.Token, tem
 		// so a template signature such as Box[T] is checked from those
 		// guarantees. Concrete arguments still require explicit conformance.
 		// Rules: rules/declarations/generics.md — §§8,14–15,25.
-		if genericArgumentGuaranteesConstraint(argument, required) || a.hasValidExplicitInterfaceConformance(argument, required) {
+		if genericArgumentGuaranteesConstraint(argument, required) || a.satisfiesGenericConstraint(argument, required) {
 			continue
 		}
 		a.addErrorAtToken(token,
@@ -202,4 +207,18 @@ func (a *Analyzer) validateGenericTypeConstraintArguments(token lexer.Token, tem
 		valid = false
 	}
 	return valid
+}
+
+// satisfiesGenericConstraint checks a concrete argument: the error category
+// admits exactly the arguments Result admits (the error root or a declared
+// error type, MD-120 § 3); an interface needs explicit valid conformance.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction", §15A
+//   - rules/errors/errorhandling.md — §4
+func (a *Analyzer) satisfiesGenericConstraint(argument, required Type) bool {
+	if required.Kind == ErrorRootType {
+		return argument.Kind == ErrorRootType || argument.ErrorAssignable
+	}
+	return a.hasValidExplicitInterfaceConformance(argument, required)
 }

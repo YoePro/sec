@@ -1,0 +1,10 @@
+module main
+interface Counter {
+    mut fn Increment() void
+}
+fn Exclusive(value: ref mut Counter) void {
+    value.Increment()
+}
+fn ExclusiveIterator(values: ref mut Iterator[int]) void {
+    for value in values { discard value }
+}

@@ -33,6 +33,8 @@ func interruptPanicHelp(kind EffectKind, attribute string) string {
 		return prefix + "Prove the operand ranges, or use try with local handlers for ArithmeticError; the handlers must also be ISR-safe."
 	case EffectMayPanicBounds:
 		return prefix + "Prove the index is in range, or use try with local handlers for IndexError; the handlers must also be ISR-safe."
+	case EffectMayPanicStringMaterialization:
+		return prefix + "Use try with local handlers for StringError; the handlers must not panic."
 	case EffectMayPanicContract:
 		return prefix + "Prove the constrained conversion, or use try with local handlers for its error; the handlers must also be ISR-safe."
 	case EffectMayPanicAssertion:

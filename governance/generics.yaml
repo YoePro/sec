@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-30"
+    revised: "2026-11-01"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -41,6 +41,7 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/generic_constraints.go
       - internal/sema/generic_parameter_facts.go
+      - internal/sema/source_type_facts.go
       - internal/sema/types.go
       - internal/formatter/cst_spacing.go
       - cmd/compiler/main.go
@@ -53,7 +54,13 @@ integrations:
       - internal/diagnostics/diagnostics.go
       - cmd/lsp/type_pack_hover.go
       - cmd/lsp/hover.go
+      - cmd/lsp/interface_tooling.go
+      - cmd/lsp/signature_help.go
+      - cmd/lsp/error_pattern_completion.go
     tests:
+      - internal/sema/source_type_facts_test.go
+      - cmd/lsp/generic_error_interface_test.go
+      - testdata/lsp/generic_error_parameters
       - internal/parser/parser_test.go
       - internal/parser/generic_parameter_recovery_test.go
       - internal/cst/roles_test.go
@@ -93,6 +100,8 @@ integrations:
       - testdata/generics/type_pack_declarations/roles.sec
       - testdata/generics/type_pack_declarations/type_owner_invalid.sec
     implemented:
+      - "MD-120 LSP (2026-11-01; correction §§10(7),11(6)): interface and requirement declarations, borrowed instantiated type references and selected interface calls expose exact Result error channels (unknown E, concrete IOError or explicit error root). Hover distinguishes error-category constraints from root arguments and never substitutes an unrelated value named error. Signature help retains receiver mode, borrowed parameters, active argument and selected channel, including inherited requirements and zero-argument calls during incomplete editing. Member completion uses instantiated requirements and preserves shared/exclusive receiver authority. Generic Err(. recovery offers a fresh whole-channel binding instead of guessing concrete variants or unproved discardability; accepting edits is re-analyzed. Canonical source type-use facts are detached, read-only and reanalysis-safe; final existing interface instances supply completed requirement metadata. Source diagnostics still reject bare interfaces and non-error arguments; navigation retains the requirement declaration. No new source inference, erasure, variance, runtime dispatch or backend representation is introduced."
+      - "MD-120 Sema (2026-11-01; generics.md §§ 11–15A, 18, 22–23): [E: error] is a compiler-known category constraint, alone or with & interfaces; arguments are the error root or declared error types; [T: int] and [E error] stay invalid; template E has Result/Option/ref positions, Err/Ok, try propagation and widening to error, whole-channel Err(e); variant patterns, members, narrowing, implied copy and unproved Err(_) are rejected; E is inferred from arguments, expected results, explicit arguments and a unique interface conformance, with no fallback to error (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "MD-117 declaration/tooling milestone completed 2026-10-30: the parser and AST retain a trailing [...Types] type-pack parameter with its real spread/name tokens, distinct from an ordinary T; one-pack/final-position/callable-owner diagnostics retain later declarations. Existing SPREAD tokens are reused, ordinary array and spread grammar are unchanged, and empty call argument lists stay syntactically valid. Compiler declaration facts use GenericTypePackType and retain the pack name plus pointwise owned/shared/mutable signature modes, without representing a runtime container or granting runtime SizeOf/ToString members. Formatter/CST round trips preserve the declaration kind and ...Types/...ref Types/...ref mut Types spellings; LSP hovers show exact free-function/method declarations and type-sequence parameter facts. S1177 compiler.type-pack-expansion-unavailable reports unsupported parameter modes, demanded pack-body expansion and call preparation and prevents emission instead of silently using ordinary homogeneous generic semantics. Ordinary homogeneous ref variadic restrictions remain intact. The generic-parameter parser is extracted into a focused sibling file. The subsequent unused shared-pack frontend milestone under frontend.functions-v2 supports ordered direct-call inference and pointwise borrow checks; its detached facts are available to compiler clients, but LSP call-site presentation remains open. Pack body expansion/transfer/iteration, complete specialization and lowering remain with their existing MD-117 owners; MD-117 is not complete."
       - generic parameter parsing on type, function, and interface declarations
       - generic type-argument parsing, nested generic references, and attached explicit generic calls
@@ -134,7 +143,10 @@ integrations:
       - "MD-117 call hover increment (2026-10-30): LSP callee hover projects ResolvedTypePackCallOf ordered concrete types and pointwise receiving reference types, including empty packs and shared reborrows, alongside the ordinary function information. No LSP inference or overload model is added. Declaration hover no longer claims that all inference is unavailable. TestTypePackCallHover covers empty, heterogeneous, reordered and reference arguments using the existing shared_unused.sec fixture. Signature help and pack-body/executable expansion remain unchanged."
       - "S1177 editor presentation (2026-10-30, user decision; diagnostics.md §24(4h)): recognized type-pack implementation limitations appear as Information in LSP instead of a source-code Error. CLI checking/emission retains the mandatory error and compilation stop. Other mandatory diagnostics are unchanged. TestTypePackDeclarationTooling and TestTypePackCapabilityPresentationOnly verify the editor severity, stable identity/help and unchanged ownership Error; TestTypePackDeclarationCLI retains CLI exit and no-artifact checks. No pack expansion is claimed."
       - "MD-117 resolved-call signature help (2026-10-30): LSP projects ResolvedTypePackCallOf into an expanded concrete receiving signature and ordered pack documentation, with per-source-argument active-parameter selection. Empty packs omit the trailing parameter; scalar generic prefixes and shared/reborrow modes retain concrete types. Ordinary fixed overloads are not replaced by pack candidates. Presentation shares the concrete reference renderer with hover and performs no inference. Unresolved/incomplete pack calls, other modes and executable expansion remain outside this increment (TestTypePackSignatureHelp, TestTypePackSignatureHelpDoesNotReplaceFixedOverload)."
+      - "MD-122 universal ToString() in Sema (2026-11-01, owner decision A): value.ToString() type-checks on unconstrained and constrained generic parameters, E: error, opaque pack elements in every loop mode and through values[k], and interface values, returning Result[string, StringError]; a constraint's requirement takes precedence. In a template the call is an unknown callee, so @noPanic and @noAlloc are rejected there. No other member or formatting interface is granted; interpolation holes keep their own contract rule."
     remaining:
+      - "MD-122 lowering (generics.md § 15; compiler_known_members.md Generic lookup): in a specialization select an exact user ToString or the concrete fallback; the call stops at a named boundary until P23 string lowering. Interface values need dispatch of ToString, which needs a view-table entry for every interface. A per-specialization @noPanic and @noAlloc proof through the selected ToString replaces today's conservative unknown callee."
+      - "MD-120 remaining conformance (§11(4)): move-only E ownership cases require the ownership-sensitive generic specialization gate lifted (lowering.sec-mlir-package17); interface error-channel LSP hover, member/pattern completion and signature-help coverage are implemented above"
       - "MD-117 call-site tooling (correction § 10(3)): Complete call-site tooling beyond the supported shared-pack subset, including unresolved/incomplete calls and future pack modes. Hover and signature help already project selected ordered types and concrete pointwise receiving signatures for successfully resolved shared-pack calls, the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently, and the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2))."
       - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented and the correction archived only when every owner item passes (§ 14(7)). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
@@ -153,17 +165,20 @@ integrations:
       - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
       - prevent unresolved generic parameters or constraints from reaching ABI, FFI, Sec MLIR, LLVM, or any representation-dependent lowering
       - add the complete revision-2.0 parser, Sema, formatter, LSP, interface, ownership, recursion, Semantic IR, ABI, and backend regression matrix
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 2): parse and resolve the compiler-known category constraint `[E: error]`, alone and combined with interfaces by `&`; reject `[E error]`, `[T: int]` and inferring an error requirement from use"
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 3): check `E: error` arguments against Result error eligibility (error root or declared error types), reject non-error arguments with argument/parameter/requirement diagnostics, keep FormatSink[IOError] and FormatSink[error] distinct without variance"
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 4): template environment for `E: error`: Result[T, E]/Option[E]/ref E positions, Err(value)/Ok, try propagation within E and widening into Result[T, error], whole-value Err(e) and provable-discard Err(_), no variant patterns, members, construction, narrowing or comparison of unknown E, no implied Copy/discard/default/trivial destruction"
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 7): inference of E from arguments, expected result type, explicit/partial arguments and a unique interface conformance; no fallback to error (Ready() without context stays uninferrable)"
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 11): conformance matrix §§ 11(1)–11(4) (positive, negative, inference, ownership/pattern cases)"
     excluded:
       - runtime generic dispatch, type erasure, implicit boxing, and runtime reflection-based specialization
       - higher-kinded types, generic argument holes, and default generic arguments; MD-117 trailing callable type packs are approved and tracked above
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
       - const or value generics without a separate normative rulebook and syntax
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -count=1 -timeout=240s
+        result: broad LSP suite not green on 2026-11-01; it reached the 240-second limit and exposed allocation-hover, discard-advisory and older fmt.Println return-contract failures. The seven non-MD-120 failures reproduced with the new source-fact recording and interface hover/completion/signature hooks disabled through a temporary Go build overlay. An early MD-120 snapshot failure was fixed; final focused MD-120 and neighboring regression tests pass. No full-suite success is claimed.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'TestGenericErrorInterface|TestGenericErrorWholeChannel|TestGenericErrorParameterHover|TestErrorPattern|TestHoverPresentsOrderedMultipleGenericConstraints|TestGenericTypeDefinitionNavigation' -count=1
+        result: passed on 2026-11-01; declarations, unknown/concrete/root channels, canonical requirement navigation, inherited requirements, incomplete calls, shared/exclusive member completion, borrowed/active signature parameters, invalid arguments and re-analyzed whole-channel completion edits
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -count=1
+        result: passed on 2026-11-01; source type-use snapshots detach arguments and requirement signatures, retain completed instance metadata and clear on reanalysis
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-11-01
       - command: go test ./cmd/lsp -run 'TestTypePack|Test.*Signature|TestRawPointer' -count=1
         result: "Passed 2026-10-30: pack hover/presentation/signature tests and existing signature/raw-pointer tests, 31.167s; final focused TestTypePack run including fixed-overload isolation passed, 0.048s. No pack expansion or execution claim."
       - command: go test ./cmd/lsp -run 'TestTypePack' -count=1
@@ -338,6 +353,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/destruction.md
     implemented:
+      - "MD-120 error channels (2026-11-01; monomorphization.md §§ 5.3, 9.1): each error argument selects a distinct specialization with the exact channel (Forward[E=main::IOError], Forward[E=main::NetError]); enums first reached through a generic argument keep their case values and bit width through semanticSnapshotType (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - generic declarations are registered as compile-time templates in the frontend
       - repeated concrete generic type and function requests are cached canonically within current analysis scopes
       - generic struct, union, enum, interface, impl, and function substitution has substantial frontend coverage
@@ -347,6 +363,7 @@ integrations:
       - unresolved generic extern declarations are rejected before callable registration and every semantic CLI/backend entry; diagnostics retain Invalid proof state, declaration links and all unresolved parameters, while generic Sec wrappers may call concrete extern providers
       - "Semantic IR monomorphization of generic free functions (2026-10-31; internal/ir/semantic/generic_specialization.go): a generic template builds nothing; each selected call demands one concrete function identified by its ordered arguments (main::Pair[A=bool,B=int](bool,int), main::Select[T=int,...Types<bool>](int,ref bool)), deduplicated across call sites and nesting. The typed template is built under the call's substitution without cloning the AST (§ 8.3); forwarded arguments inside a specialization are made concrete through the enclosing substitution, so Twice[T=int] reuses Id[T=int] and Down[T=int] recurses into itself. Function.Specialization carries template and arguments and is verified. Generic structs and Option payloads specialize (Box<int>, Wrap[T=int]); a template move of an unknown parameter becomes a trivial copy for a trivially copyable argument (§ 11.2). Demand stops with a resource-limit failure after 4096 specializations (§ 18.7). Sema substituteGenericType now also substitutes union variant payloads, which fixed `match Wrap(3) { Some(v) => ... }` reporting payload type T. Tests: internal/ir/semantic/generic_specialization_test.go, type_pack_boundary_test.go, TestSharedTypePackSpecializationCLI."
     remaining:
+      - "MD-120 backend gates (§ 11(5)): specializations with E = error need a Semantic IR representation of the open error root, and owning error payloads need per-specialization ownership and destruction plans; both are explicit unsupported boundaries today"
       - "specialize generic arguments that are not trivially copyable and trivially destructible: the template's ownership, cleanup and transfer plans are computed for an unknown parameter, so Semantic IR rejects such arguments by name until those plans are derived per specialization (monomorphization.md § 11.2, § 12.3)"
       - "terminate polymorphic recursion in Sema: `fn Grow[T](value: T, n: int) int { return Grow(Box[T] { Value: value }, n - 1) }` makes Sema recurse without bound in typeDisplayName during template analysis (verified 2026-10-31 against HEAD 1eba0fd, before Semantic IR is reached); the compiler must report a semantic non-convergence or resource-limit failure instead (§§ 18.1, 18.5, 18.7)"
       - "Semantic IR specialization of generic methods and generic impl members, imported templates, and constraint-mediated calls inside a specialization (static resolution per § 10.2; Measure[T: Sized] calling value.Size() still stops at instance method call without receiver facts)"
@@ -380,7 +397,6 @@ integrations:
       - expose canonical generic template and specialization facts to LSP and compiler inspection without creating build reachability
       - add size, performance, debug, and profiling realization policies without changing semantic specialization identity
       - add the complete identity, demand, substitution, ownership, analysis, closure, sharing, linking, ABI/FFI, incremental, termination, cost, diagnostic, and determinism regression matrix required by rules/compiler/monomorphization.md
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md §§ 10(6), 11(5)): distinct specialization identities per error argument (E = IOError vs E = error), exact error payload/destruction facts per instance, no implicit interface erasure or conversion"
     required_tests:
       - identical canonical generic requests reuse one semantic instantiation
       - explicit and inferred arguments converge on one canonical instantiation

@@ -4,7 +4,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-28 (§ 9.2a variant-only patterns for payload-bearing variants, MD-029); 2026-08-26
+- **Last updated:** 2026-11-01 (§ 16 generic error unions, MD-120); 2026-10-28 (§ 9.2a variant-only patterns for payload-bearing variants, MD-029); 2026-08-26
 - **Document revision:** 2.1
 - **Replaces:** unions.txt
 - **Sec language version:** 0.1
@@ -981,6 +981,8 @@ Generic parameters may appear in unnamed payloads, struct-like payload fields, n
 Each concrete generic instantiation is a distinct concrete union type.
 
 Constructor syntax and inference follow the generic construction rules.
+
+A generic union may carry the `error` marker: `type ForwardError[E: error] union error { Format(FormatError) Sink(E) }`. Each instance is a distinct nominal error type with its concrete payload identity (MD-120; `rules/errors/errorhandling.md` § 3.5).
 
 ---
 

@@ -19,3 +19,12 @@ func TestFormatMultilineContextualInfixUsesCanonicalPrecedence(t *testing.T) {
 		t.Fatalf("second pass changed output:\n%s", again)
 	}
 }
+
+// The formatter keeps the programmer's source-selected try on string + and +=
+// (correction MD-004-MD-039 § 6(6)).
+func TestFormatPreservesStringTryForms(t *testing.T) {
+	source := "module main\n\nfn A(n: string) Result[string, StringError] {\n    let mut t := \"x\" + n\n    t += n\n    try t += n\n    t += try n.ToString()\n    try t += n {\n        Err(_) => {\n            t = \"e\"\n        }\n    }\n    return Ok(try \"a\" + n)\n}\n"
+	if got := Format(Source{Text: source}, Options{}).Text; got != source {
+		t.Fatalf("got:\n%s", got)
+	}
+}

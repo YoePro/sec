@@ -53,6 +53,25 @@ Print every integration that lists a given path, for example
 source file this answers "which governance entries must change?" in one call.
 The writing counterpart is `repath` in section 4.3.
 
+**Implemented (2026-11-01)** as `-uses PATH`. It reports exact scalar-list
+references in `code`, `tests` and `rules` with the owning YAML file, line,
+integration ID, status and field. Structured rule requirements and prose are
+not path references. Completed integrations and library-only integrations are
+included, even when they have no remaining points.
+
+Paths are matched exactly after separator/dot-segment normalization; native
+absolute paths are compared relative to the ledger directory's parent
+(the repository root for `governance/`). Referenced files need not exist and
+source-file symlinks are not resolved. `-dir` selects the ledger; `-file` and
+`-id` restrict the report; `-json` emits the same references and integration
+count. A valid query with no matches succeeds with an empty report.
+Selection/statistics-only options are rejected rather than silently ignored.
+
+```bash
+go run ./cmd/yamlstatus -uses internal/sema/stack_budget.go
+go run ./cmd/yamlstatus -uses cmd/yamlstatus/cli.go -id governance.yamlstatus-tooling -json
+```
+
 ## 4. Harmonize, add and change data
 
 **Implemented (2026-10-09):** `fmt` (with `-check`, `-diff`, `-fix-types`,

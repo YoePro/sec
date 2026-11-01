@@ -783,7 +783,9 @@ func compilerKnownSequenceType(typ Type) bool {
 func compilerKnownToStringReceiver(typ Type) bool {
 	value := dereferenceType(typ)
 	switch value.Kind {
-	case InvalidType, VoidType, NeverType, GenericType, GenericTypePackType, InterfaceType, VariadicPackType:
+	// A generic parameter and a pack element always hold an ordinary value, so
+	// the fallback exists for every concrete argument (MD-122).
+	case InvalidType, VoidType, NeverType, GenericTypePackType, VariadicPackType:
 		return false
 	default:
 		return true

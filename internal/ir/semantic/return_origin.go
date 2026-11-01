@@ -22,7 +22,24 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 	}
 	offset := len(fb.fn.Parameters) - len(resolved.Parameters)
 	var origins []ReturnOrigin
+	// A pack origin may be any expanded position (functions.md § 38A(8)(3)).
+	sources := make([]sema.ReturnReferenceOrigin, 0, len(summary.Origins))
 	for _, source := range summary.Origins {
+		if !source.Pack {
+			sources = append(sources, source)
+			continue
+		}
+		spec := fb.specialization
+		if spec == nil || spec.facts == nil {
+			return nil, fb.unsupported("returned reference from a variadic pack outside a pack specialization", decl.Token)
+		}
+		for k := range spec.facts.Types {
+			position := source
+			position.Pack, position.Parameter = false, spec.facts.FixedCount+k
+			sources = append(sources, position)
+		}
+	}
+	for _, source := range sources {
 		origin := ReturnOrigin{Kind: ReturnOriginParameter}
 		switch source.Kind {
 		case sema.ReturnOriginParameter:

@@ -633,6 +633,7 @@ func (s *server) handle(message rpcMessage) error {
 		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
 		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
 		actions = append(actions, missingSeparatorCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
+		actions = append(actions, stringTryCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, params.Context.Diagnostics, s.sourceOverlay())...)
 		actions = append(actions, pitfallCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay(), s.pitfallSettingsSnapshot())...)
 		return s.respond(message.ID, actions)
 	case "textDocument/completion":
@@ -2968,6 +2969,10 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 		}
 		seen[item.Label] = true
 		items = append(items, item)
+	}
+	for _, method := range interfaceCompletionMethods(exprType, static) {
+		label, _ := interfaceMethodLabel(method)
+		addTyped(completionItem{Label: method.Name, Kind: 2, Detail: label}, method.ReturnType)
 	}
 	for _, member := range sema.CompilerKnownMembersForType(exprType, static) {
 		if item, ok := compilerKnownCompletionItem(member); ok {

@@ -1,0 +1,39 @@
+module main
+
+fn Read[...Types](values: ...ref Types) uint {
+    return values.Len
+}
+
+fn Write[...Types](values: ...ref mut Types) uint {
+    return values.Len
+}
+
+fn LendOwned[...Types](values: ...Types) uint {
+    return Read(values...)
+}
+
+fn ReadOn[...Types](values: ...ref Types) uint {
+    return Read(values...)
+}
+
+fn WriteOn[...Types](values: ...ref mut Types) uint {
+    return Write(values...)
+}
+
+fn ShareMutable[...Types](values: ...ref mut Types) uint {
+    return Read(values...)
+}
+
+fn FixedReferences(a: ref int, b: ref bool) uint {
+    return 2
+}
+
+fn ToFixed[...Types](values: ...ref Types) uint {
+    return FixedReferences(values...)
+}
+
+fn Use() uint {
+    let mut a := 1
+    let mut b := true
+    return LendOwned(1, true) + ReadOn(a, b) + WriteOn(a, b) + ShareMutable(a, b) + ToFixed(a, b)
+}

@@ -45,6 +45,7 @@ integrations:
       - testdata/cst/groups_invalid.sec
       - internal/cst/recovery_test.go
     implemented:
+      - "Control-condition parenthesis correction keeps a condition that merely begins with ( and ends with ) (2026-10-31): `if (first & byte(0xC0)) == byte(0x80) {` no longer loses its pairing on fix (internal/formatter/control_condition_parentheses_test.go)"
       - retain source-ordered lexer tokens, comments, whitespace, invalid tokens, lexical diagnostics, original byte ranges, and an initial BOM without changing original source bytes
       - preserve exact round trips over Unicode, CRLF, nested comments, interpolated and raw strings, and invalid UTF-8 bytes
       - use lexer-owned comment tokens for trailing-comment boundary detection during formatter alignment

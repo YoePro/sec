@@ -28,6 +28,9 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 			if help, ok := typePackSignatureHelp(analyzer, expression, activeConstructionParameter(text, call.open, offset)); ok {
 				return help, true
 			}
+			if help, ok := interfaceSignatureHelp(analyzer, expression, activeConstructionParameter(text, call.open, offset)); ok {
+				return help, true
+			}
 			if member, ok := expression.Callee.(*ast.MemberExpression); ok && member != nil && member.Property != nil {
 				known, found := analyzer.CompilerKnownMemberAt(member.Property.Token.File, member.Property.Token.Line, member.Property.Token.Column)
 				if found && strings.HasPrefix(known.ID, "CKM-RAWPTR-") {

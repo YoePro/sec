@@ -1457,6 +1457,11 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		if leftType.Element == nil {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if leftType.Kind == VariadicPackType {
+			if element, heterogeneous := a.typePackIndexElement(expr, *leftType.Element); heterogeneous {
+				return element, expressionValue{Display: expr.String()}
+			}
+		}
 		if leftType.Kind != VariadicPackType && !a.checkConstantIndexBounds(expr, leftType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -2088,6 +2093,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.bindDefinitions(callCalleeDefinitionToken(expr), functionDeclarationTokens(functions))
+	if a.callExpandsDeclaredPack(expr) {
+		return a.inferTypePackForward(expr, functions, methodReceiver, isMethodCall)
+	}
 
 	releaseNullContexts := a.bindNullArgumentContexts(functions, expr.Arguments)
 	releaseDeferred := a.deferContextualArguments(expr.Arguments)
@@ -2123,6 +2131,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	partialTemplates := map[sourceTokenKey]Function{}
 	matches := []overloadMatch{}
 	var receiverError string
+	var receiverErrorDeclaration lexer.Token
 	var constraintFailure *GenericConstraintFailure
 	hadGenericArityMatch := false
 	hadGenericInference := false
@@ -2131,6 +2140,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	hadExplicitGenericArityMatch := false
 	hadExplicitGenericInferenceFailure := false
 	for _, function := range arityMatches {
+		// A pack method infers its own parameters with the owner's already fixed.
+		if isMethodCall && function.GenericTypePack != "" {
+			function = a.instantiateGenericImplMethod(function, methodReceiver)
+		}
 		if partialPackSelection && len(function.GenericParameters) > 0 {
 			template := function
 			hadGenericArityMatch = true
@@ -2214,11 +2227,13 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			candidateReceiver, candidateMethod = a.implicitTypePackReceiver(function, expr)
 			if !candidateMethod {
 				receiverError = "method " + function.Name + " requires an instance receiver"
+				receiverErrorDeclaration = function.Token
 				matchesArguments = false
 			}
 		}
 		if candidateMethod && functionUsesReceiver(function) && !a.canPassImplicitMethodReceiver(function, candidateReceiver) {
 			receiverError = a.implicitMethodReceiverError(function, candidateReceiver)
+			receiverErrorDeclaration = function.Token
 			matchesArguments = false
 		}
 		for i := range argTypes {
@@ -2276,7 +2291,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if len(best) == 1 {
-		if a.rejectUnavailableTypePackCall(best[0].Function, expr, preparedSpreadValues) {
+		if !a.validateConsumingPackSpreads(best[0].Function, expr) || a.rejectUnavailableTypePackCall(best[0].Function, expr, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !isMethodCall && best[0].Function.GenericTypePack != "" && functionUsesReceiver(best[0].Function) {
@@ -2356,6 +2371,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
 		a.markMovedCallArguments(best[0].Function, sourceArgs, preparedSpreadValues, isMethodCall)
+		a.markConsumedPackSpreads(expr)
 		if isMethodCall && best[0].Function.ReceiverMutable {
 			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
 				a.invalidateMutexAcquisitionsForWrite(member.Object)
@@ -2413,12 +2429,17 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if receiverError != "" {
-		a.addErrorAtToken(expr.Token, "%s", receiverError)
+		a.addErrorAtTokenWithPreviousMetadata(expr.Token, receiverErrorDeclaration, diagnostics.InterfaceReceiverCapability, "Use a receiver with the authority required by this method; a shared borrow cannot grant mutable or consuming access.", "%s", receiverError)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
 	for _, function := range arityMatches {
 		displayName := name
+		// Selection compared the owner's concrete arguments, so the report does
+		// too; a template's V would accept anything and report nothing.
+		if isMethodCall {
+			function = a.instantiateGenericImplMethod(function, methodReceiver)
+		}
 		if hadExplicitGenericCall {
 			if len(function.GenericParameters) == 0 {
 				continue
@@ -2941,6 +2962,10 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 			a.invalidateCallProofFacts(expr)
 		}
 	}()
+	// A forward's arity exists per specialization, so no expected type selects it.
+	if a.callExpandsDeclaredPack(expr) {
+		return Type{}, expressionValue{}, false
+	}
 	name := callExpressionName(expr)
 	if name == "fill" {
 		return a.inferCompilerKnownFill(expr, expected, true)
@@ -3047,7 +3072,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		// call-graph checks as the main call path, so effects, borrows and
 		// moves of calls in return and typed-let positions are not lost.
 		function := best[0].Function
-		if a.rejectUnavailableTypePackCall(function, expr, preparedSpreadValues) {
+		if !a.validateConsumingPackSpreads(function, expr) || a.rejectUnavailableTypePackCall(function, expr, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if function.Unsafe && !a.callUnsafeAuthorized(expr) {
@@ -3078,6 +3103,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		}
 		a.setCallReferenceOrigin(expr, function, args, false)
 		a.markMovedCallArguments(function, args, runtimeSpreadValues, false)
+		a.markConsumedPackSpreads(expr)
 		return function.ReturnType, expressionValue{Display: expr.String()}, true
 	}
 	if len(best) > 1 {
@@ -3132,7 +3158,7 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 		if isDeferredContextualPlaceholder(argType) {
 			continue
 		}
-		if !inferGenericArgumentSubstitution(parameter.Type, argType, substitution) {
+		if !inferGenericArgumentSubstitution(parameter.Type, a.conformingViewArgument(parameter.Type, argType, substitution), substitution) {
 			return Function{}, false
 		}
 	}
@@ -3156,7 +3182,7 @@ func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, a
 	substitution := map[string]Type{}
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
-		if !parameterOK || !inferGenericArgumentSubstitution(parameter.Type, argType, substitution) {
+		if !parameterOK || !inferGenericArgumentSubstitution(parameter.Type, a.conformingViewArgument(parameter.Type, argType, substitution), substitution) {
 			return Function{}, false
 		}
 	}
@@ -3795,15 +3821,19 @@ func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, val
 	}
 	if operator == "+=" && (isTextConcatKind(target) || isTextConcatKind(value)) {
 		if target.Kind == StringType && !target.Named && isDirectTextConcatOperand(value) {
+			a.recordStringAppend(expr, false)
 			return Type{Name: "string", Kind: StringType}, true
 		}
-		// The failure policy of compound `string +=` is undecided (MD-039),
-		// so a fallible text operand cannot join it; the operand's own try
-		// handles its StringError.
+		// A Result operand is never unwrapped implicitly: an outer try covers it
+		// and the append as one StringError channel (MD-039 § 3).
 		if target.Kind == StringType && !target.Named && isToStringResultType(value) {
+			if a.tryAppendValue == expr {
+				a.recordStringAppend(expr, true)
+				return Type{Name: "string", Kind: StringType}, true
+			}
 			a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.OperatorInvalidConcatOperand,
-				"Handle the operand's StringError first: write `target += try value.ToString()`.",
-				"string += cannot append Result[string, StringError] directly; only + concatenation joins a fallible text operand")
+				"Write `try target += value.ToString()` to handle the operand and the append together, or `target += try value.ToString()` to handle only the operand.",
+				"string += cannot append an unhandled Result[string, StringError]; its failure must be handled")
 			return Type{Kind: InvalidType}, false
 		}
 		a.addInvalidConcatOperandError(expressionToken(expr), target, value)

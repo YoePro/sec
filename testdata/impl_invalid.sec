@@ -259,8 +259,7 @@ impl StaticSelfTarget {
 
 // -----------------------------------------------------------------------------
 // Separate "impl Interface for Type" syntax is not used by current interface
-// rules. Interfaces are listed in the type declaration and satisfied by the
-// type's ordinary impl block.
+// rules. Interfaces are listed on the type's primary impl block.
 //
 // Keep this parser-level rejection last so it cannot prevent later diagnostics.
 // -----------------------------------------------------------------------------

@@ -95,6 +95,11 @@ type Analyzer struct {
 	resolvedTests                []ResolvedTestMetadata
 	resolvedCalls                map[*ast.CallExpression]ResolvedCall
 	typePackByValueLoops         map[sourceTokenKey]lexer.Token
+	typePackLoopBorrows          map[*ast.ForStatement]ResolvedReferencePlan
+	typePackIndexes              map[*ast.IndexExpression]int
+	typePackBorrowedIndexes      map[*ast.IndexExpression]bool
+	typePackIndexLimits          map[sourceTokenKey]typePackIndexLimit
+	typePackForwards             map[*ast.CallExpression]*typePackForward
 	foreignExtentContracts       *ForeignBufferExtentContractStore
 	resolvedForeignBufferExtents map[*ast.CallExpression][]ResolvedForeignBufferExtent
 	resolvedTestingOperations    map[*ast.CallExpression]ResolvedTestingOperation
@@ -109,6 +114,12 @@ type Analyzer struct {
 	// runtime string materializations and the try that protects each (MD-004).
 	stringMaterializationSites      map[ast.Expression]stringMaterializationSite
 	protectedStringMaterializations map[ast.Expression]bool
+	// stringAppends and their sites resolve compound `string +=` (MD-039);
+	// tryAppendValue is the right operand of the try assignment being analyzed.
+	stringAppends          map[ast.Expression]ResolvedStringAppend
+	stringAppendSites      map[ast.Expression]stringMaterializationSite
+	protectedStringAppends map[ast.Expression]bool
+	tryAppendValue         ast.Expression
 	// checkedConversions and protectedCheckedConversions track explicit
 	// scalar conversions that may fail at run time and the subset a try
 	// protects (rules/types/types.md "Explicit conversions"; ffi.md §8).
@@ -278,6 +289,7 @@ type Analyzer struct {
 	// a SemanticCompileTimeRequiredContext may read (MD-011).
 	moduleImmutableBindings map[string]map[string]*ast.LetStatement
 	atomicTypeUses          map[sourceTokenKey]atomicTypeUse
+	resolvedSourceTypeUses  map[sourceTokenKey]resolvedSourceTypeUse
 	// moduleSurfaces maps each module to its first top-level declaration per
 	// name (units excluded), the unqualified module scope of shadowing checks.
 	moduleSurfaces map[string]map[string]moduleDeclaration
@@ -622,6 +634,11 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTests = nil
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
 	a.typePackByValueLoops = nil
+	a.typePackLoopBorrows = nil
+	a.typePackIndexes = nil
+	a.typePackBorrowedIndexes = nil
+	a.typePackIndexLimits = nil
+	a.typePackForwards = nil
 	a.resolvedForeignBufferExtents = map[*ast.CallExpression][]ResolvedForeignBufferExtent{}
 	a.resolvedTestingOperations = map[*ast.CallExpression]ResolvedTestingOperation{}
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
@@ -630,6 +647,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.confusableModuleIndex = map[string]map[string][]confusableDeclaration{}
 	a.stringMaterializationSites = map[ast.Expression]stringMaterializationSite{}
 	a.protectedStringMaterializations = map[ast.Expression]bool{}
+	a.stringAppends = map[ast.Expression]ResolvedStringAppend{}
+	a.stringAppendSites = map[ast.Expression]stringMaterializationSite{}
+	a.protectedStringAppends = map[ast.Expression]bool{}
 	a.checkedConversions = map[ast.Expression]checkedConversion{}
 	a.protectedCheckedConversions = map[ast.Expression]bool{}
 	a.arenaGenericRequirements = map[sourceTokenKey][]arenaGenericRequirement{}
@@ -749,6 +769,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerWidthConstants = map[string]map[string]*big.Int{}
 	a.moduleImmutableBindings = map[string]map[string]*ast.LetStatement{}
 	a.atomicTypeUses = map[sourceTokenKey]atomicTypeUse{}
+	a.resolvedSourceTypeUses = map[sourceTokenKey]resolvedSourceTypeUse{}
 	a.moduleSurfaces = map[string]map[string]moduleDeclaration{}
 	a.unitConversionSuggestions = nil
 	a.constInts = map[string]*big.Int{}
@@ -822,7 +843,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
-	a.checkTypePackByValueLoops()
+	instances := a.typePackInstances()
+	a.checkTypePackByValueLoops(instances)
+	a.checkTypePackIndexLimits(instances)
 	a.validateResolvedFloatLiterals()
 	a.resolveRegisterHardwareRequests()
 	a.checkRegisterReceiverRequirements()
@@ -5023,6 +5046,9 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 		}
 		return a.matchScopedReferenceOriginInExpression(expr.Right)
 	case *ast.InfixExpression:
+		if a.membershipDropsReferenceOrigins(expr) {
+			return "", lexer.Token{}, false
+		}
 		if name, token, ok := a.matchScopedReferenceOriginInExpression(expr.Left); ok {
 			return name, token, true
 		}
@@ -5323,6 +5349,9 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 		}
 		return a.localReferenceOriginInExpression(expr.Right)
 	case *ast.InfixExpression:
+		if a.membershipDropsReferenceOrigins(expr) {
+			return "", lexer.Token{}, false
+		}
 		if name, token, ok := a.localReferenceOriginInExpression(expr.Left); ok {
 			return name, token, true
 		}
@@ -7349,7 +7378,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	targetChanged := false
 	if len(stmt.Implements) > 0 {
 		if stmt.Extends {
-			a.addErrorAtToken(stmt.Token, "impl extends %s cannot declare interface conformance; place implements on the primary impl", stmt.Target.Name)
+			if !parserReported(stmt.ConformanceRecovery) {
+				a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.InterfaceConformancePlacement, "Move the implements list to the primary impl of "+stmt.Target.Name+"; keep the extension members here.", "impl extends %s cannot declare interface conformance; place implements on the primary impl", stmt.Target.Name)
+			}
 		} else {
 			target.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Target.Name)
 			targetChanged = true
@@ -8823,6 +8854,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	if ok {
 		typ = a.withCustomFree(typ)
 		a.recordAtomicTypeReference(ref, typ)
+		a.recordSourceTypeReference(ref, typ)
 	}
 	return typ, ok
 }
@@ -10289,6 +10321,27 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread 
 	preparedSpreadValues := []bool{}
 	runtimeSpreadValues := []bool{}
 	for _, arg := range args {
+		if move, spread, consuming := consumingPackSpread(arg); consuming {
+			// `<-values...` moves a complete owned pack into the trailing pack
+			// of the selected callee (functions.md §38A(7)(3–4),(7)).
+			argType, _ := a.inferExpression(spread.Value)
+			if argType.Kind == InvalidType {
+				return nil, nil, nil, nil, false
+			}
+			if argType.Kind != VariadicPackType || argType.Element == nil || argType.Element.Kind == ReferenceType {
+				a.addErrorAtToken(move.Token, "<-%s... needs a complete, currently owned native parameter pack; %s cannot be spread consumingly", spread.Value.String(), typeDisplayName(argType))
+				return nil, nil, nil, nil, false
+			}
+			if !allowVariadicSpread {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", typeDisplayName(argType))
+				return nil, nil, nil, nil, false
+			}
+			types = append(types, *argType.Element)
+			expressions = append(expressions, spread.Value)
+			preparedSpreadValues = append(preparedSpreadValues, true)
+			runtimeSpreadValues = append(runtimeSpreadValues, true)
+			continue
+		}
 		if spread, ok := arg.(*ast.SpreadExpression); ok {
 			argType, _ := a.inferExpression(spread.Value)
 			if argType.Kind == InvalidType {
@@ -10529,6 +10582,9 @@ func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*as
 			// Implicit call-site borrow (borrowing.md §15.2).
 			pattern = *pattern.Element
 		}
+		if parameterOK {
+			argType = a.conformingViewArgument(pattern, argType, substitution)
+		}
 		if !parameterOK || !inferGenericTypeSubstitutionWithFixed(pattern, argType, substitution, fixed) {
 			return Function{}, true, false
 		}
@@ -10569,7 +10625,7 @@ func (a *Analyzer) genericFunctionConstraintFailure(function Function, substitut
 			// at its call (rules/declarations/generics.md — §14).
 			continue
 		}
-		if !a.hasValidExplicitInterfaceConformance(argument, required) {
+		if !a.satisfiesGenericConstraint(argument, required) {
 			return &GenericConstraintFailure{
 				Parameter: constraint.Parameter,
 				Argument:  argument,
@@ -12364,6 +12420,8 @@ func (a *Analyzer) recordStringConcatPlan(root *ast.InfixExpression, left ast.Ex
 	if !leftOK || !rightOK {
 		return
 	}
+	leftInterpolated := leftNested && a.stringConcatPlans[left].Interpolated
+	rightInterpolated := rightNested && a.stringConcatPlans[right].Interpolated
 	if leftNested {
 		delete(a.stringConcatPlans, left)
 	}
@@ -12373,6 +12431,10 @@ func (a *Analyzer) recordStringConcatPlan(root *ast.InfixExpression, left ast.Ex
 	segments = appendStringConcatSegments(segments, leftSegments...)
 	segments = appendStringConcatSegments(segments, rightSegments...)
 	a.storeStringConcatPlan(root, segments)
+	if plan, ok := a.stringConcatPlans[root]; ok && (leftInterpolated || rightInterpolated) {
+		plan.Interpolated = true
+		a.stringConcatPlans[root] = plan
+	}
 }
 
 // recordInterpolationStringConcatPlan consumes the formatter decisions for an
@@ -12427,6 +12489,10 @@ func (a *Analyzer) recordInterpolationStringConcatPlan(expr *ast.InterpolatedStr
 		segments = appendStringConcatSegments(segments, segment)
 	}
 	a.storeStringConcatPlan(expr, segments)
+	if plan, ok := a.stringConcatPlans[expr]; ok {
+		plan.Interpolated = true
+		a.stringConcatPlans[expr] = plan
+	}
 }
 
 // stringConcatSegments returns a child maximal plan when present, or one direct

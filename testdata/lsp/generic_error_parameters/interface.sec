@@ -1,0 +1,25 @@
+module main
+
+interface MyInterf[E: error] {
+    fn myFunc() Result[void, E]
+}
+
+enum IOError error { Closed }
+
+fn Forward[E: error](value: ref MyInterf[E]) Result[void, E] {
+    return value.myFunc()
+}
+
+fn Concrete(value: ref MyInterf[IOError]) Result[void, IOError] {
+    return value.myFunc()
+}
+
+fn Open(value: ref MyInterf[error]) Result[void, error] {
+    return value.myFunc()
+}
+
+interface Child[E: error] implements MyInterf[E] {}
+
+fn ChildCall(value: ref Child[IOError]) Result[void, IOError] {
+    return value.myFunc()
+}

@@ -48,14 +48,16 @@ func (a *Analyzer) deduceTypePackArguments(function Function, refs []*ast.TypeRe
 	if !supported || !a.typePackOwnerSupported(function.ImplTarget) || !functionAcceptsArgumentCount(function, len(arguments)) {
 		return nil, false
 	}
-	if function.ImplTarget != "" && len(function.GenericParameters) != 1 {
-		return nil, false
-	}
 	if len(refs) > len(function.GenericParameters)-1 {
 		return nil, false
 	}
 	substitution := map[string]Type{}
 	fixed := map[string]struct{}{}
+	// A generic owner's arguments are already fixed by the receiver.
+	for name, typ := range function.GenericSubstitution {
+		substitution[name] = typ
+		fixed[name] = struct{}{}
+	}
 	for i, ref := range refs {
 		typ, ok := a.resolveType(ref)
 		if !ok {
@@ -83,7 +85,7 @@ func (a *Analyzer) deduceTypePackArguments(function Function, refs []*ast.TypeRe
 		if pattern.Kind == ReferenceType && pattern.Element != nil && argument.Kind != ReferenceType {
 			pattern = *pattern.Element
 		}
-		if !inferGenericTypeSubstitutionWithFixed(pattern, argument, substitution, fixed) {
+		if !inferGenericTypeSubstitutionWithFixed(pattern, a.conformingViewArgument(pattern, argument, substitution), substitution, fixed) {
 			return nil, false
 		}
 	}
@@ -125,16 +127,14 @@ func typePackPatternNeedsInference(typ Type, name ...string) bool {
 	return typ.FunctionReturnType != nil && typePackPatternNeedsInference(*typ.FunctionReturnType, name...)
 }
 
-// supportedTypePackBody permits ordinary checking of unused packs and
-// read-only Len observations, whose uint type does not depend on element types.
-// Element access, loops, forwarding and capture still require pack expansion.
+// supportedTypePackBody permits ordinary checking of unused packs, read-only
+// Len observations, whose uint type does not depend on element types, `for`
+// iteration, constant element indexing and call spreads. Capture and spreads
+// outside a call argument list still require expansion.
 // Rules: rules/declarations/functions.md §38A(4–8), especially (5)(1–2);
 // rules/declarations/generics.md §16A.
 func (a *Analyzer) supportedTypePackBody(fn *ast.FunctionDeclaration) bool {
 	if fn == nil || !a.typePackOwnerSupported(a.currentImplTarget) || fn.Body == nil || len(fn.Parameters) == 0 {
-		return false
-	}
-	if a.currentImplTarget != "" && len(fn.GenericParameters) != 1 {
 		return false
 	}
 	parameter := fn.Parameters[len(fn.Parameters)-1]
@@ -157,6 +157,36 @@ func (a *Analyzer) supportedTypePackBody(fn *ast.FunctionDeclaration) bool {
 		if loop, ok := node.(*ast.ForStatement); ok && loop != nil {
 			if iterable, ok := loop.Iterable.(*ast.Identifier); ok && iterable.Value == parameter.Name.Value {
 				iterated[iterable] = true
+			}
+		}
+		if reference, ok := node.(*ast.RefExpression); ok && reference != nil {
+			if index, ok := reference.Value.(*ast.IndexExpression); ok && index != nil {
+				if a.typePackBorrowedIndexes == nil {
+					a.typePackBorrowedIndexes = map[*ast.IndexExpression]bool{}
+				}
+				a.typePackBorrowedIndexes[index] = true
+			}
+		}
+		// values[k] selects one position (§38A(5)(2)); inferIndexExpression
+		// requires the constant index and types the selected element.
+		if index, ok := node.(*ast.IndexExpression); ok && index != nil {
+			if left, ok := index.Left.(*ast.Identifier); ok && left.Value == parameter.Name.Value {
+				iterated[left] = true
+			}
+		}
+		// `values...` and `<-values...` forward the pack through a call;
+		// inferTypePackForward checks them (§38A(7)).
+		if call, ok := node.(*ast.CallExpression); ok && call != nil {
+			for _, argument := range call.Arguments {
+				spread, isSpread := argument.(*ast.SpreadExpression)
+				if !isSpread {
+					_, spread, isSpread = consumingPackSpread(argument)
+				}
+				if isSpread {
+					if source, ok := spread.Value.(*ast.Identifier); ok && source.Value == parameter.Name.Value {
+						iterated[source] = true
+					}
+				}
 			}
 		}
 		// A nested callable must not capture the ephemeral pack merely to
@@ -207,16 +237,22 @@ func (a *Analyzer) ResolvedTypePackCallOf(call *ast.CallExpression) (ResolvedTyp
 	if !ok {
 		return ResolvedTypePackCall{}, false
 	}
-	sequence, known := inferredTypePack(resolved.Function)
+	return TypePackCallOfInstance(resolved.Function)
+}
+
+// TypePackCallOfInstance publishes the same facts for one selected instance,
+// which a forwarding call resolves per specialization (§38A(7)).
+func TypePackCallOfInstance(function Function) (ResolvedTypePackCall, bool) {
+	sequence, known := inferredTypePack(function)
 	if !known {
 		return ResolvedTypePackCall{}, false
 	}
-	result := ResolvedTypePackCall{Name: resolved.Function.GenericTypePack, Length: uint64(len(sequence)), FixedCount: functionFixedParameterCount(resolved.Function), Types: make([]Type, len(sequence))}
+	result := ResolvedTypePackCall{Name: function.GenericTypePack, Length: uint64(len(sequence)), FixedCount: functionFixedParameterCount(function), Types: make([]Type, len(sequence))}
 	for i, typ := range sequence {
 		result.Types[i] = semanticSnapshotType(typ)
 	}
 	for i := 0; i < result.FixedCount+len(sequence); i++ {
-		parameter, ok := functionParameterForArgument(resolved.Function, i)
+		parameter, ok := functionParameterForArgument(function, i)
 		if !ok {
 			return ResolvedTypePackCall{}, false
 		}
@@ -226,8 +262,10 @@ func (a *Analyzer) ResolvedTypePackCallOf(call *ast.CallExpression) (ResolvedTyp
 	return result, true
 }
 
-// rejectUnavailableTypePackCall refuses unrepresented reference-holder transfer
-// and static spread transport before ownership/borrow commitment.
+// rejectUnavailableTypePackCall refuses unmaterialized temporaries and static
+// spread transport before ownership/borrow commitment. A reference element of an
+// owned pack is an ordinary by-value generic argument: a borrowed parameter of
+// that reference type, as for `fn F[T](value: T)` with T = ref int.
 // Runtime-length heterogeneous spread is excluded by functionAcceptsCallArguments.
 // Rules: rules/declarations/functions.md §38A(4),(6–7); rules/tooling/diagnostics.md §24(4h).
 func (a *Analyzer) rejectUnavailableTypePackCall(function Function, call *ast.CallExpression, prepared []bool) bool {
@@ -239,17 +277,6 @@ func (a *Analyzer) rejectUnavailableTypePackCall(function Function, call *ast.Ca
 		return false
 	}
 	borrowed := parameter.Type.Kind == ReferenceType
-	if !borrowed {
-		sequence, _ := inferredTypePack(function)
-		for i, element := range sequence {
-			if element.Kind == ReferenceType {
-				a.addErrorAtTokenWithMetadata(call.Token, diagnostics.GenericTypePackExpansionUnavailable,
-					"Owned reference-holder pack elements need a distinct transfer mode; no implicit borrow or mutable-reference copy is substituted.",
-					"compiler capability unavailable: owned type-pack argument %d of type %s requires reference-holder transfer facts", functionFixedParameterCount(function)+i+1, typeDisplayName(element))
-				return true
-			}
-		}
-	}
 	for i, arg := range call.Arguments {
 		if _, explicit := explicitMoveArgument(arg); explicit {
 			continue
@@ -274,22 +301,25 @@ func (a *Analyzer) rejectUnavailableTypePackCall(function Function, call *ast.Ca
 	return false
 }
 
-// TypePackElementName is the template name of a heterogeneous pack's
-// per-position element type: `Types[i]` for pack `Types`. It is not a source
-// identifier, so it never collides with the pack's own substitution key;
-// Semantic IR binds it to the concrete element of each unrolled iteration.
-func TypePackElementName(pack string) string { return pack + "[i]" }
+// TypePackElementName is the template name of a pack loop's per-position
+// element type: `Types[value]` for `for value in values`. Each loop has its own
+// name, because nested loops over one pack visit different positions and their
+// elements must not unify; a nested loop cannot redeclare an enclosing binding.
+// It is not a source identifier, so it never collides with the pack's own
+// substitution key. Semantic IR binds it to the concrete element of each
+// position of that loop.
+func TypePackElementName(pack, binding string) string { return pack + "[" + binding + "]" }
 
 // typePackElementType replaces the pack sequence inside a pack parameter's
 // element type with the opaque per-position element: an unconstrained
 // generic parameter, so the loop body admits exactly the operations valid for
 // every element (functions.md §38A(4)(6); generics.md §16A(4)).
-func typePackElementType(typ Type) (Type, bool) {
+func typePackElementType(typ Type, binding string) (Type, bool) {
 	switch {
 	case typ.Kind == GenericTypePackType:
-		return Type{Name: TypePackElementName(typ.Name), Kind: GenericType}, true
+		return Type{Name: TypePackElementName(typ.Name, binding), Kind: GenericType}, true
 	case typ.Kind == ReferenceType && typ.Element != nil:
-		element, ok := typePackElementType(*typ.Element)
+		element, ok := typePackElementType(*typ.Element, binding)
 		if !ok {
 			return typ, false
 		}

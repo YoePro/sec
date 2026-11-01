@@ -1,0 +1,108 @@
+module main
+
+type Point struct {
+    X: int,
+    Y: int,
+}
+
+type Other struct {
+    X: int,
+    Y: int,
+}
+
+type Holder struct {
+    Items: int[],
+}
+
+type Required struct {
+    Value: fn(int) int,
+}
+
+fn Two(a: int, b: int) int {
+    return a + b
+}
+
+fn Words(a: string, b: string) int {
+    return 0
+}
+
+fn Scalar(value: int) int {
+    return Two(value...)
+}
+
+fn RuntimeLength(values: int[]) int {
+    return Two(values...)
+}
+
+fn Arity(values: int[3]) int {
+    return Two(values...)
+}
+
+fn WrongType(values: int[2]) int {
+    return Words(values...)
+}
+
+@noCopy
+type Handle struct {
+    Id: int,
+}
+
+fn MoveOnlyElement(values: Handle[2]) int {
+    return TwoHandles(values...)
+}
+
+fn TwoHandles(a: Handle, b: Handle) int {
+    return 0
+}
+
+fn RuntimeLiteral(values: int[]) int {
+    let items: int[2] := [values...]
+    return 0
+}
+
+fn ElementMismatch(values: bool[2]) int {
+    let items: int[2] := [values...]
+    return 0
+}
+
+fn LengthOverflow(values: int[2]) int {
+    let items: int[1] := [values...]
+    return 0
+}
+
+fn WrongStruct(other: Other) int {
+    let point := Point { other... }
+    return point.X
+}
+
+fn MissingField() int {
+    let required := Required {}
+    return 0
+}
+
+fn DuplicateField(base: Point) int {
+    let point := Point { base..., X: 1, X: 2 }
+    return point.X
+}
+
+fn MoveOnlyStruct(holder: Holder) int {
+    let copied := Holder { holder... }
+    return 0
+}
+
+fn ConsumingArray(values: int[2]) int {
+    return Two(<-values...)
+}
+
+fn ConsumingSlice(values: int[]) int {
+    return Total(<-values...)
+}
+
+fn ConsumingLiteral(values: int[2]) int {
+    let items: int[2] := [<-values...]
+    return 0
+}
+
+fn Total(values: ...int) int {
+    return 0
+}

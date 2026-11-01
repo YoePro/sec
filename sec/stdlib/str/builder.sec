@@ -216,7 +216,7 @@ impl Builder {
     fn Append(value: rune) Result[void, CollectionError] {
         let codepoint := int(value)
         let mut encoded: byte[4]
-        let mut count: uint := 0
+        let mut count:   uint := 0
 
         if codepoint <= 0x7F {
             encoded[0] = byte(codepoint)
@@ -467,8 +467,39 @@ impl Builder {
         for value in storage {
             try bytes.Append(value)
         }
-        // TODO(MD-109): byte[].ToString() is a type summary, not a decoder
-        // (MD-091), and stdlib has no bytes -> string materialization path yet.
-        panic "Builder.Finish: string materialization is undecided (MD-109)"
+
+        match string.FromByteArray(bytes) {
+            Ok(text) => {
+                return Ok(text)
+            }
+
+            Err(failure) => {
+                match failure {
+                    Allocation(cause) => {
+                        match cause {
+                            AllocationError.OutOfMemory => {
+                                return Err(CollectionError.AllocationFailed)
+                            }
+
+                            AllocationError.InvalidSize => {
+                                return Err(CollectionError.SizeOverflow)
+                            }
+
+                            AllocationError.Unsupported => {
+                                return Err(CollectionError.CapacityExceeded)
+                            }
+
+                            AllocationError.InvalidAlignment => {
+                                panic "Builder.Finish: invalid byte storage alignment"
+                            }
+                        }
+                    }
+
+                    _ => {
+                        panic "Builder.Finish: internal UTF-8 invariant violated"
+                    }
+                }
+            }
+        }
     }
 }

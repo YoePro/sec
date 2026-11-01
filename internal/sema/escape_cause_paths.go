@@ -217,7 +217,11 @@ func (a *Analyzer) appendEscapeExpressionSteps(path *EscapeCausePath, expr ast.E
 			walk(member.Object)
 		}
 		for index, argument := range expr.Arguments {
-			if escapeSummaryUsesRoot(resolved.Function.ReturnOrigin, fmt.Sprintf("$param:%d", index), 0) && a.escapeExpressionHasOrigin(argument, origin) {
+			usesPack := false
+			for position := 0; position <= index; position++ {
+				usesPack = usesPack || escapeSummaryUsesRoot(resolved.Function.ReturnOrigin, fmt.Sprintf("%s%d", typePackOriginRoot, position), 0)
+			}
+			if (usesPack || escapeSummaryUsesRoot(resolved.Function.ReturnOrigin, fmt.Sprintf("$param:%d", index), 0)) && a.escapeExpressionHasOrigin(argument, origin) {
 				walk(argument)
 			}
 		}

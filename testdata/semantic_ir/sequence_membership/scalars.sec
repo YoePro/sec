@@ -1,0 +1,34 @@
+module main
+
+enum State { Ready, Pending }
+fn Boolean(value: bool, values: bool[2]) bool { return value in values }
+fn Character(value: char, values: char[2]) bool { return value not in values }
+fn Rune(value: rune, values: rune[2]) bool { return value in values }
+fn Floating(value: float64, values: float64[2]) bool { return value in values }
+fn Enumeration(value: State, values: State[2]) bool { return value in values }
+fn Long(value: int, values: int[65]) bool { return value in values }
+fn Large(value: int, values: int[4096]) bool { return value not in values }
+fn Shared(value: int, values: ref int[]) bool { return value in values }
+fn Mutable(value: uint, values: ref mut uint[]) bool {
+    let found := value not in values
+    let count := values.Len
+    return found && count > 0u
+}
+fn BooleanSlice(value: bool, values: ref bool[]) bool { return value in values }
+fn FloatSlice(value: float32, values: ref float32[]) bool { return value not in values }
+fn EnumSlice(value: State, values: ref State[]) bool { return value in values }
+fn CharSlice(value: char, values: ref char[]) bool { return value in values }
+fn RuneSlice(value: rune, values: ref rune[]) bool { return value in values }
+fn Needle() int { return 1 }
+fn Source(values: int[65]) int[65] { return values }
+fn View(values: ref int[]) ref int[] { return values }
+fn Effects(values: int[65]) bool { return Needle() in Source(values) }
+fn SliceEffects(values: ref int[]) bool { return Needle() not in View(values) }
+fn InlineBorrow(value: int, values: int[4]) bool { return value in ref values[..] }
+fn InlineReborrow(value: int, values: ref mut int[]) bool { return value not in ref values[..] }
+fn LocalBorrow(value: int, values: int[4]) bool {
+    let view := ref values[..]
+    let found := value in view
+    discard view
+    return found
+}

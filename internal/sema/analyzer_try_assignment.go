@@ -29,9 +29,17 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 
 	errorsBefore := len(a.errors)
 	before := a.currentBranchAnalysisState()
+	a.tryAppendValue = stmt.Assignment.Value
 	a.analyzeAssignmentStatement(stmt.Assignment, true)
+	a.tryAppendValue = nil
 	if len(a.errors) != errorsBefore {
 		return
+	}
+	// `try s += x` protects the append and the plans of its right operand, so
+	// one StringError channel covers the statement (MD-039 §§ 2(1),3(2)).
+	if _, appended := a.stringAppends[stmt.Assignment.Value]; appended {
+		a.protectedStringAppends[stmt.Assignment.Value] = true
+		a.collectTryFailurePoints(stmt.Assignment.Value)
 	}
 
 	errorType, ok := a.tryAssignmentErrorType(stmt.Assignment)
@@ -114,6 +122,9 @@ func (a *Analyzer) analyzeTryAssignmentHandlers(stmt *ast.TryAssignmentStatement
 }
 
 func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, bool) {
+	if _, appended := a.stringAppends[stmt.Value]; appended {
+		return a.types["StringError"], true
+	}
 	switch target := stmt.Target.(type) {
 	case *ast.MemberExpression:
 		// The decimal Scale setter fails with PrecisionError (core-library.md § 10.1).

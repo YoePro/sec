@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-10-31"
-last_id: MD-121
+updated: "2026-11-01"
+last_id: MD-123
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -248,8 +248,15 @@ decisions:
       `s += part` without try, rejects `try s += part` (S1096), and rejects a
       Result[string, StringError] operand of `+=` with S1022 pointing to
       `s += try value.ToString()`.
+      Approved by the owner, dated 2026-10-31
+      (rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md):
+      `string +` and `+=` take explicit try for recoverable StringError, and
+      without try panic on materialization failure. It narrowly amends MD-004
+      for `+` and `+=` only; interpolation is not changed. Rulebooks
+      synchronized 2026-11-01; implementation steps tracked under
+      frontend.allocation.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-044
     area: stack-budget-project-contracts
@@ -982,25 +989,25 @@ decisions:
       - rules/errors/errorhandling.md
       - rules/types/types.md
       - rules/declarations/interfaces.md
+      - rules/declarations/unions.md
+      - rules/declarations/enums.md
     description: >-
-      Raised 2026-10-31 by sec/core/format.sec (`interface FormatSink[E] {
-      mut fn WriteText(text: string) Result[void, E] }`). Result[T, E] requires
-      E to be the error root or a declared error type, and constraints must be
-      interfaces, so no template can use a caller-chosen error channel today;
-      the only alternative is the open Result[T, error]. Decide (proposal
-      rules/corrections/md120-generic-error-parameters-proposal-20261031.md):
-      D1 spelling, recommended `[E: error]` as a compiler-known category
-      constraint rather than a marker `[E error]` or reserving the name `E`;
-      D2 admitted arguments, including the error root; D3 the template
-      environment (Err/Ok, try propagation and widening to error, catch-all
-      matching, no variant patterns, no implied copyability); D4 generic error
-      declarations such as `type FormatWriteError[E: error] union error`;
-      D5 generic interfaces and borrowed views requiring their argument
-      (`ref mut FormatSink[IOError]`, never a bare `FormatSink`); D6 ordinary
-      inference; D7 activation in Sec 0.1 or 0.1.1. Blocks the MD-118 sink
-      contract.
+      Decided D1-D7 and applied to the rulebooks 2026-11-01
+      (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md):
+      `[E: error]` is a compiler-known category constraint for Sec 0.1,
+      combinable by `&`; arguments are the error root or declared error types;
+      templates get Result/Err/Ok, try propagation and widening, whole-channel
+      Err(e), and no variant patterns, members, narrowing or implied
+      copy/discard; generic enums and unions may carry the error marker;
+      generic interfaces and borrowed views name their complete argument;
+      inference has no fallback to error. Implementation is tracked by the
+      MD-120 remaining items under frontend.generics-v2,
+      compiler.monomorphization, frontend.errorhandling-v2, frontend.interfaces,
+      frontend.unions, frontend.enums, frontend.types-core and
+      errors.diagnostics. sec/core/format.sec and the fmt result contract stay
+      with MD-118.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-121
     area: ordinary-addressed-storage-bindings
@@ -1030,4 +1037,51 @@ decisions:
       makes them P15 Place roots; (C) admit only linker-provided static
       regions with Static origin and no source-chosen endpoint.
     classification: constraining
+    status: open
+
+  - id: MD-122
+    area: universal-tostring-on-generic-parameters
+    rulebooks:
+      - rules/compiler/compiler_known_members.md
+      - rules/declarations/generics.md
+      - rules/library/stdlib.md
+    description: >-
+      Raised 2026-11-01 by MD-117 pack loops. compiler_known_members.md makes
+      ToString() a universal fallback on every Sec type, yet Sema rejects
+      value.ToString() on an unconstrained generic T and therefore on a pack
+      element, since a template is checked only against its declared guarantees
+      (generics.md § 15, monomorphization.md § 5.1). A heterogeneous fmt cannot
+      render its arguments until this is settled. Decide: (A) ToString() is
+      available on every generic parameter and pack element, resolved per
+      specialization, because the fallback exists for every concrete argument;
+      (B) it needs an explicit constraint, which requires a declared compiler-known
+      interface that every type satisfies; (C) it is pack-only. Decided by the
+      owner 2026-11-01: A, ToString() works on everything that holds a value.
+      Rulebooks synchronized and Sema implemented; per-specialization lowering
+      tracked under frontend.generics-v2.
+    classification: constraining
+    status: decided-implementation-pending
+
+  - id: MD-123
+    area: returning-a-pack-element-directly
+    rulebooks:
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/memory/references.md
+    description: >-
+      Raised 2026-11-01 by MD-117 § 38A(8). functions.md § 38A(8) and MD-119 § 5
+      permit returning a reference carried by a pack, but no signature can name
+      a position's element type: return-type packs are excluded (generics.md
+      § 16A(2)) and `fn G[...T](values: ...ref T) ref int { return values[0] }`
+      is rejected because the template sees the opaque element `Types[0]`, not
+      int. Today a pack-carried reference returns only through a call, as in
+      `return Pick(values...)` with `fn Pick(a: ref int, b: ref bool) ref int`, or
+      through a leading generic parameter `fn G[U, ...R](first: ref U, rest: ...ref R) ref U`.
+      Decide: (A) keep this: both forms already express every returned type, and
+      no new rule is needed; (B) check `values[k]` against a concrete return type
+      per specialization, so `ref int` is accepted when position k is int, which
+      moves template errors to call sites; (C) add syntax naming a position's
+      type in a signature, which reverses the exclusion of return-type packs.
+      Recommended: A. Governance owner: lifetime MD-117 pack provenance.
+    classification: localized
     status: open

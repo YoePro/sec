@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-10-28 (§ 18.1 `Some(value)` payload inference, MD-102); 2026-10-27 (MD-117 heterogeneous type packs, § 16A)
+- **Last updated:** 2026-11-01 (§ 15 universal `ToString()`, MD-122; §§ 11–15, 15A, 18, 22–23, 31 error parameters, MD-120); 2026-10-28 (§ 18.1 `Some(value)` payload inference, MD-102); 2026-10-27 (MD-117 heterogeneous type packs, § 16A)
 - **Document revision:** 2.4
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
@@ -399,6 +399,16 @@ through the view (`rules/declarations/interfaces.md` § 7.1). Neither form is
 shorthand for the other; Sec has no `dyn` keyword and no implicit anonymous
 generic parameter (MD-057).
 
+A generic parameter may also carry the compiler-known error-category requirement `error` (MD-120, 2026-10-31, `rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md`):
+
+```sec
+interface FormatSink[E: error] {
+    mut fn WriteText(text: string) Result[void, E]
+}
+```
+
+`error` here is a category requirement, neither an interface nor a request for `implements error`. It supplies only the guarantees of § 15A. Parameter names such as `E` have no special meaning, the form `[E error]` does not exist, and using a parameter in `Result[T, E]` never infers the requirement.
+
 ## 12. Multiple constraints
 
 Multiple interface constraints use `&`.
@@ -434,9 +444,11 @@ fn Convert[
 }
 ```
 
+The category requirement combines with interfaces in the same way: `[E: error & Printable]` needs every conjunct satisfied by its own rule (MD-120).
+
 ## 13. Constraint resolution
 
-Each constraint must resolve to an interface type or a valid concrete generic interface instantiation.
+Each constraint must resolve to an interface type, a valid concrete generic interface instantiation, or the compiler-known error category `error` (MD-120).
 
 Valid:
 
@@ -467,6 +479,8 @@ Expected diagnostic:
 ```text
 generic constraint int is not an interface
 ```
+
+`int` remains invalid after MD-120: it is an ordinary concrete type, and no numeric-family or conversion-based constraint exists.
 
 Unknown constraints are invalid.
 
@@ -509,11 +523,13 @@ Constraints do not:
 - automatically implement interfaces;
 - infer structural conformance from matching member names.
 
+An argument satisfies `E: error` exactly when it is eligible as the error argument of `Result`: the compiler-known root `error` or a declared Sec error type (`rules/errors/errorhandling.md` §§ 2–4). `FormatSink[string]` is invalid, and the diagnostic names the argument, the parameter and the failed requirement. `FormatSink[IOError]` and `FormatSink[error]` are distinct instantiations: widening an individual error value adds no generic variance, conversion or view substitution (MD-120).
+
 ## 15. Operations available on generic parameters
 
 A generic declaration is checked against the guarantees provided by its parameters and constraints.
 
-An unconstrained parameter supports only operations that are valid without assuming additional capabilities.
+An unconstrained parameter supports only operations that are valid without assuming additional capabilities. Every parameter has `ToString()`, which exists for every concrete argument and resolves per specialization (MD-122, `rules/compiler/compiler_known_members.md` "Generic lookup").
 
 A constrained parameter may use members guaranteed by its constraints.
 
@@ -528,6 +544,24 @@ The generic body must not use extra members merely because one concrete instanti
 This keeps generic semantics independent of accidental properties of particular call sites.
 
 Concrete-dependent checks such as final layout, defaultability and copy/move classification are still performed after substitution where required.
+
+### 15A. Error parameters (MD-120)
+
+A parameter `E: error` has the error-category guarantee, any explicitly added interface guarantees, `ToString()` as every parameter does (§ 15), and nothing more. The template is checked under these guarantees before specialization (`rules/compiler/monomorphization.md` § 5.1).
+
+(1) `E` may appear in `Result[T, E]`, `Option[E]`, `ref E`, `ref mut E` where ordinarily lawful, in generic payloads and in other positions that admit a type argument.
+
+(2) With the expected channel `Result[T, E]`, `Err(value)` accepts a value assignable to `E`; `Ok(value)` and `Ok()` follow the normal rules. No particular variant of `E` can be constructed.
+
+(3) Naked `try` propagates `Result[U, E]` through an enclosing `Result[T, E]`, and a value of `E` into an enclosing `Result[T, error]` through the existing error widening, preserving identity and payload. No other channel conversion, `Result` covariance or hidden wrapper exists.
+
+(4) `Err(e)` binds the whole value of type `E`. `Err(_)` is valid only where discarding the payload is legal and provable (`rules/errors/errorhandling.md` § 17); `E: error` alone does not establish that.
+
+(5) A template cannot use a variant pattern of an unknown `E`, including `Err(E.Variant)` and contextual `Err(.Variant)`, cannot assume members, construct a variant, narrow `E` to a concrete error type, or compare `E` values without an additional constraint. Known outer variants of a declared generic error union stay matchable when a payload has type `E` (`errorhandling.md` § 3.5).
+
+(6) `E: error` does not imply copyability, discardability, defaultability or trivial destruction. Instantiations add no implicit copying.
+
+(7) A match on `Result[T, E]` is exhaustive with `Ok(...)` and a whole-channel `Err(...)` arm. Variants of `E` are never inferred from possible instantiations.
 
 ## 16. Ownership, copying and borrowing
 
@@ -681,6 +715,8 @@ short-lived reference (`rules/types/types.md` "Contextual and self-inferred
 `Some(value)`";
 `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` § 12).
 
+`E: error` uses the same inference (MD-120 § 7): ordinary arguments, receiver or owner, an expected result type with a unique answer, explicit arguments, and a unique compatible interface conformance (`interfaces.md` § 9). A result-only `E` without such context stays uninferrable: `let result := Ready()` is invalid, with no fallback to `error`. An explicit expected `Result[int, error]` infers `E = error` normally.
+
 ## 19. Explicit generic arguments
 
 A caller may provide all generic arguments explicitly.
@@ -792,16 +828,20 @@ Conformance must match the concrete instantiated interface contract.
 
 Interface inheritance may refer to generic interface instantiations according to the interface rules.
 
+A generic interface with an error parameter is implemented per complete concrete instantiation, and a borrowed view names its argument: `ref mut FormatSink[IOError]`, or `ref mut FormatSink[E]` in a generic body. A bare `FormatSink` is invalid; there is no default argument and no erasure to `error` (`interfaces.md` §§ 7.1, 9; MD-120).
+
 ## 23. Generic unions
 
 Generic union variants are substituted with concrete types before layout, construction, matching and destruction.
 
 ```sec
-type Result[T, E] union {
+type Result[T, E: error] union {
     Ok(T)
     Err(E)
 }
 ```
+
+This shows the shape and the requirement of the predeclared `Result` (MD-120); user code does not redeclare it.
 
 For:
 
@@ -812,6 +852,8 @@ Result[int, IOError]
 the compiler operates on a concrete closed union with concrete variant payload types.
 
 Exhaustiveness and payload ownership are checked on the substituted concrete union.
+
+Generic unions and enums may carry the `error` marker (`rules/errors/errorhandling.md` § 3.5).
 
 ## 24. Recursive generic structures
 
@@ -971,6 +1013,7 @@ The following are not part of the Sec 0.1 generic model:
 - variadic type-parameter lists other than that type pack;
 - generic argument holes;
 - automatic structural constraints inferred from member names;
+- constraints on concrete types such as `[T: int]`, and error requirements inferred from a parameter's name or use;
 - automatic interface implementation;
 - negative constraints;
 - union-of-types constraints;

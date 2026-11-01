@@ -292,6 +292,9 @@ func leftmostExpressionToken(expr ast.Expression) lexer.Token {
 		}
 		return node.Token
 	case *ast.CallExpression:
+		if node.Callee != nil {
+			return leftmostExpressionToken(node.Callee)
+		}
 		if node.Function != nil {
 			return leftmostExpressionToken(node.Function)
 		}

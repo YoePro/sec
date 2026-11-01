@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -484,7 +484,7 @@ lifetime/storage dependency
 
 § 17(5) Conversion to foreign strings remains an explicit FFI operation.
 
-§ 17(6) A runtime string concatenation or interpolation is one fallible materialization operation producing one `string`, represented from the frontend `StringConcatPlan`. Semantic IR must not introduce observable intermediate strings for individual concatenation steps, and it must represent the materialization's failure as the ordinary error flow selected by the source `try`.
+§ 17(6) A runtime string concatenation or interpolation is one materialization operation, with its source-selected failure mode (`try` or panic, MD-039), producing one `string`, represented from the frontend `StringConcatPlan`. Semantic IR must not introduce observable intermediate strings for individual concatenation steps, and it must represent the materialization's failure as the mode the source selected: the ordinary error flow under `try`, otherwise a non-returning panic for `+` and `+=`.
 
 § 17(7) A concatenation or interpolation fully resolved at compile time is represented as static string data and carries no runtime failure.
 
@@ -724,6 +724,9 @@ precise versus open Result channel
 
 § 25(4) Physical error representation is deferred to verified ABI/layout lowering.
 
+§ 25(5) A specialization with `E: error` (MD-120) preserves the exact instantiated error channel: `E = IOError` and `E = error` are distinct specializations, a generic `E` is never treated as an implicitly open `error`, and no representation is invented for it.
+
+
 ---
 
 ## § 26 Properties
@@ -777,7 +780,15 @@ no hidden allocation
 
 § 27A(4) A type-pack template has no executable form of its own. Each selected call demands one concrete function whose identity includes the ordered type sequence, so order and arity select distinct specializations and an identical sequence shares one. Each expanded position is an ordinary concrete parameter, and `values.Len` is that specialization's exact length (2026-10-30).
 
-§ 27A(5) *Pack loops (2026-10-31).* A `for` over the specialization's pack is one `for-pack` loop record. A compiler-generated position cursor of type `uint` starts at 0; the condition is `cursor < N`; the body loads the position and advances the cursor before user code, so `continue` returns to the condition; a dispatch on the position selects one body per position k, each built from the template body with the opaque element `Types[i]` bound to the concrete element k and the loop binding bound to position k's expanded parameter (the index binding is the constant k). Every generic call in that body therefore demands its own specialization per position. `break`, `continue`, `return` and evaluation order use the ordinary loop edges; unrolling is a later optimization. An empty pack yields a loop whose condition is the constant false and that has no body. `for ref` over an owned pack and `for ref mut` remain explicit unsupported boundaries until their per-position borrow facts are produced.
+§ 27A(5) *Pack loops (2026-10-31).* A `for` over the specialization's pack is one `for-pack` loop record. A compiler-generated position cursor of type `uint` starts at 0; the condition is `cursor < N`; the body loads the position and advances the cursor before user code, so `continue` returns to the condition; a dispatch on the position selects one body per position k, each built from the template body with the loop's opaque element `Types[value]` bound to the concrete element k and the loop binding bound to position k's expanded parameter (the index binding is the constant k). Every generic call in that body therefore demands its own specialization per position. `break`, `continue`, `return` and evaluation order use the ordinary loop edges; unrolling is a later optimization. An empty pack yields a loop whose condition is the constant false and that has no body. `for ref mut` reborrows the position's `ref mut` parameter at each use with Sema's plan; `for ref` over an owned position forms `place.value-root` over the parameter and `ref.borrow-shared` with the loop's resolved borrow.
+
+§ 27A(6) *Constant pack indexing (2026-11-01).* `values[k]` has the element type `Types[k]`, bound to the concrete element for the whole specialization, and selects position k's expanded parameter: a reference position is passed, reborrowed or copied like a named holder, and `ref values[k]` over an owned position forms a read-only `place.value-root`. Sema has proved that k exists in every selected call, so no bounds check or runtime index exists.
+
+§ 27A(7) *Pack forwarding (2026-11-01).* A call expanding the specialization's pack through `values...` or `<-values...` is an ordinary direct call of the callee Sema selects for the concrete expanded argument types, including an overload selected per specialization, with one operand per expanded argument in source order after any receiver, so order and arity select the callee's specialization and no runtime sequence exists. The call records `PackForwardFacts`: the pack name, one entry per operand holding the pack position it reads or -1 for an ordinary argument, and whether the spread is the consuming whole-pack transfer. A copied or moved element is its expanded parameter; a move of a trivial element is a copy in the operand, and the source pack ends in Sema. An owned position lent to a `ref` parameter forms `place.value-root` and `ref.borrow-shared`; a shared holder is copied with `ref.copy-shared`; a `ref mut` holder is reborrowed with `ref.reborrow-shared` or `ref.reborrow-mut`. Each expanded reference has its own borrow and lifetime identity. The verifier rejects facts disagreeing with the operand count or the pack, and a consuming position that is not an owned element's expanded parameter.
+
+§ 27A(8) *Owners and holders (2026-11-01).* A pack method of a generic owner is one specialization per owner argument, method generic argument and ordered sequence; the owner's arguments join the canonical identity. A reference element of an owned pack is a by-value generic argument holding a reference: it has the same named lowering boundary as `T = ref int` and never takes the facts of a `...ref Types` position, whose sequence holds referents.
+
+§ 27A(9) *Returned references (2026-11-01).* A returned-origin root naming a pack parameter stands for every expanded position, so a specialization's `returns-from` lists each of them; the finite set may be wider than the position a specialization actually returns from and never narrower, and `verifyReturnOrigins` traces the returned value through the callee's summary to a listed parameter. An owned position's storage ends with the invocation and is never a returned origin.
 
 ---
 

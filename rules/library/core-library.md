@@ -1628,8 +1628,10 @@ heterogeneous native variadic type packs (`rules/declarations/functions.md`
 ## 15.1 `StringError`
 
 `StringError` is the one compiler-known failure family of text. Every
-`ToString`, every runtime string concatenation, and every runtime interpolation
-fails with it, so all text-producing operations share one error channel:
+`ToString`, every runtime interpolation, and every runtime string concatenation
+under `try` fails with it, so all text-producing operations share one error
+channel; `+` and `+=` without `try` panic instead (MD-039,
+`rules/foundations/operators.md`):
 
 ```sec
 type StringError union error {

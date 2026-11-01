@@ -53,7 +53,10 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 		if !reusable {
 			continue
 		}
-		needsTransfer := param.Consuming || requiresOwnershipTransfer(place.Type)
+		// An owned pack element copied into an ordinary value parameter is
+		// proved copyable per selected call (checkTypePackByValueLoops); a
+		// consuming parameter would extract it and stays rejected.
+		needsTransfer := param.Consuming || requiresOwnershipTransfer(place.Type) && !(isOwnedTypePackElement(place.Type) && a.variadicPackElementExpression(source))
 		if !needsTransfer {
 			// Publish the already selected ordinary copy for canonical
 			// consumers, including final-use advice; do not perform a move.

@@ -400,7 +400,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 				// § 37.1: only an exclusive borrowed view may advance the
 				// iterator; the callee never owns it.
 				if iterableType.Kind != ReferenceType || !iterableType.ReferenceMutable {
-					a.addErrorAtToken(expressionToken(iterable), "Iterator[%s] iteration through an interface view requires ref mut Iterator[%s]; a shared ref cannot call mut fn Next", typeDisplayName(elementType), typeDisplayName(elementType))
+					a.addErrorAtTokenWithMetadata(expressionToken(iterable), diagnostics.InterfaceReceiverCapability, "Pass a ref mut Iterator view to iterate; a shared ref grants no mutable receiver authority.", "Iterator[%s] iteration through an interface view requires ref mut Iterator[%s]; a shared ref cannot call mut fn Next", typeDisplayName(elementType), typeDisplayName(elementType))
 					return nil, false
 				}
 				plan.Source = ForIteratorBorrowedView
@@ -466,8 +466,8 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			runeType := a.types["rune"]
 			return a.inferSequentialForBindingTypes(stmt, runeType, indexType)
 		}
-		if iterableType.Kind == VariadicPackType && iterableType.Element != nil {
-			if element, pack := typePackElementType(*iterableType.Element); pack {
+		if iterableType.Kind == VariadicPackType && iterableType.Element != nil && len(stmt.Bindings) != 0 {
+			if element, pack := typePackElementType(*iterableType.Element, stmt.Bindings[len(stmt.Bindings)-1].Name); pack {
 				// MD-117: a heterogeneous pack iterates type-aware; each
 				// specialization unrolls the body per concrete position.
 				return a.inferSequentialForBindingTypes(stmt, element, indexType)

@@ -5,8 +5,9 @@ import (
 	"sec/internal/diagnostics"
 )
 
-// typePackOwnerSupported admits free functions and concrete impl owners. Generic
-// impl owners need receiver substitutions composed with method-owned parameters.
+// typePackOwnerSupported admits free functions and non-interface impl owners; a
+// generic owner's arguments compose with the method's own parameters. An
+// interface requirement has no static expansion, because dispatch is not static.
 // Rules: rules/declarations/functions.md §§21–24,38A(1–4);
 // rules/compiler/monomorphization.md §§8.2,9.3.
 func (a *Analyzer) typePackOwnerSupported(owner string) bool {
@@ -14,7 +15,7 @@ func (a *Analyzer) typePackOwnerSupported(owner string) bool {
 		return true
 	}
 	target, known := a.types[owner]
-	return known && target.Kind != InterfaceType && len(target.GenericParameters) == 0
+	return known && target.Kind != InterfaceType
 }
 
 // implicitTypePackReceiver supplies the enclosing ordinary method's existing

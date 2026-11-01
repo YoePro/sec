@@ -24,12 +24,13 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	random := flags.Bool("random", false, "Choose a random matching remaining point")
 	point := flags.Int("point", 0, "Choose a remaining point by its 1-based index (requires -id)")
 	exclude := flags.String("exclude", "", "Exclude points containing this text (case insensitive)")
-	jsonOutput := flags.Bool("json", false, "Print selected point and integration context as JSON")
+	jsonOutput := flags.Bool("json", false, "Print selected point or path references as JSON")
+	uses := flags.String("uses", "", "List code/tests/rules references to a repository path (supports -file, -id and -json)")
 	verbose := flags.Bool("verbose", false, "Show all data otherwise just the most relevant.")
 	html := flags.Bool("html", false, "Return the output as HTML.")
 	itemOnly := flags.Bool("itemonly", false, "Only show the status for items")
 	flags.Usage = func() {
-		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.")
+		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.\nWith -uses PATH, lists integrations referencing a file in code/tests/rules.")
 		flags.PrintDefaults()
 		fmt.Fprintln(errOut, "\n"+editUsage)
 	}
@@ -45,6 +46,20 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	if flags.NArg() == 1 {
 		*dir = flags.Arg(0)
 	}
+	usesMode := false
+	flags.Visit(func(option *flag.Flag) {
+		if option.Name == "uses" {
+			usesMode = true
+		}
+	})
+	if usesMode {
+		if strings.TrimSpace(*uses) == "" {
+			return fmt.Errorf("-uses requires a non-empty path")
+		}
+		if *random || *point != 0 || *exclude != "" || *html || *itemOnly || *verbose {
+			return fmt.Errorf("-uses cannot be combined with -random, -point, -exclude, -html, -itemonly or -verbose")
+		}
+	}
 	if *point < 0 || (*point > 0 && *id == "") {
 		return fmt.Errorf("-point must be positive and requires -id")
 	}
@@ -52,7 +67,7 @@ func runCLI(args []string, out, errOut io.Writer) error {
 		return fmt.Errorf("-point and -random cannot be combined")
 	}
 	selection := *random || *file != "" || *id != "" || *point > 0
-	if !selection && (*jsonOutput || *exclude != "") {
+	if !selection && !usesMode && (*jsonOutput || *exclude != "") {
 		return fmt.Errorf("-json and -exclude require -random, -file or -id")
 	}
 	input := *dir
@@ -73,6 +88,17 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	stats, err := collectStats(input)
 	if err != nil {
 		return err
+	}
+	if usesMode {
+		root, err := referenceRoot(*dir)
+		if err != nil {
+			return err
+		}
+		report, err := findPathUses(stats.Entries, *uses, root, *id)
+		if err != nil {
+			return err
+		}
+		return printPathUses(out, report, *jsonOutput)
 	}
 	if !selection {
 		if !*html {

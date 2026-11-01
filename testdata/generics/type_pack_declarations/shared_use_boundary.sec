@@ -1,2 +1,5 @@
 module main
-fn Observe[...Types](values: ...ref Types) uint { return values[0] }
+fn Observe[...Types](values: ...ref Types) uint {
+    let keep := fn() uint { return values.Len }
+    return 0
+}

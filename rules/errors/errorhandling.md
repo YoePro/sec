@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-21
-- **Last updated:** 2026-10-28 (§§ 15.3, 20, 27.2b, 37.5 payload-bearing and contextual error patterns, MD-029/MD-042); 2026-10-28 (§ 3.4 most specific applicable error, MD-067)
+- **Last updated:** 2026-11-01 (§§ 3.5, 4, 12.1 generic error channels and types, MD-120); 2026-10-28 (§§ 15.3, 20, 27.2b, 37.5 payload-bearing and contextual error patterns, MD-029/MD-042); 2026-10-28 (§ 3.4 most specific applicable error, MD-067)
 - **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/errorhandling.md`
@@ -206,6 +206,29 @@ names them or uses `Err(_)` (§ 17).
 Compiler diagnostics and internal failure reasons may be more detailed than
 the public error value.
 
+### 3.5 Generic error types
+
+Generic enums and generic unions may carry the existing `error` marker (MD-120, 2026-10-31, `rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md`). Each fully substituted instance is a distinct nominal error type, eligible as the error argument of `Result`. No new declaration form, inheritance, mapping between error families or automatic wrapper is introduced.
+
+```sec
+type ForwardError[E: error] union error {
+    Format(FormatError)
+    Sink(E)
+}
+
+type ParseError[T] union error {
+    InvalidValue(T)
+    UnexpectedEnd
+}
+
+enum OperationError[T] error {
+    Failed
+    Cancelled
+}
+```
+
+The marker does not require the type arguments to be error types. `ForwardError[IOError]` and `ForwardError[error]` are distinct types with the statically known outer variants `Format` and `Sink`. A generic body may match the outer `Sink(payload)`, but may not test a variant inside a payload of unknown `E`. A phantom enum parameter affects nominal identity only and stores nothing.
+
 ---
 
 ## 4. `Result[T, E]`
@@ -224,7 +247,7 @@ Result[T, E]
 
 - `T` is the success type;
 - `E` is the declared error-channel type;
-- `E` must be `error` or a concrete type declared as an error type;
+- `E` must be `error`, a concrete type declared as an error type, or a generic parameter constrained by `error` (`rules/declarations/generics.md` § 15A, MD-120);
 - a value is either `Ok(T)` or `Err(E)`;
 - when `T` is `void`, success is written `Ok()`.
 
@@ -690,6 +713,8 @@ fn Run() Result[Data, error] {
 ```
 
 No hidden wrapper is created.
+
+A generic error channel follows the same rules (MD-120): `try` propagates `Result[U, E]` within the channel `E`, and widens a value of `E` into an enclosing `Result[T, error]`, preserving identity, payload and ownership (§§ 2.1, 29). A variant of an unknown `E` is never assumed; `Err(_)` remains subject to § 17.
 
 ### 12.2 Option propagation
 
@@ -1229,6 +1254,12 @@ programming recommendation rather than a language restriction.
 ## 23. Fallible assignment
 
 A fallible assignment uses `try`.
+
+`string +=` is a compiler-known operation with its own two forms (MD-039,
+`rules/foundations/operators.md` "Compound concatenation assignment"): `try s += x`
+is a fallible assignment with error type `StringError`, and `s += x` is an ordinary
+panicking form, not an unhandled fallible assignment. No other assignment gains a
+non-`try` form.
 
 Naked propagation is valid:
 

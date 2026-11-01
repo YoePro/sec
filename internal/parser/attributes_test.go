@@ -102,7 +102,7 @@ func TestGeneralAttributeParserValidation(t *testing.T) {
 		{"address third argument", "@address(Port, alias, alias)\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "@address requires one endpoint argument and an optional alias marker at 1:2"},
 		{"address unknown marker", "@address(Port, shared)\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "the second argument of @address must be the alias marker at 1:16"},
 		{"address named argument", "@address(endpoint: Port)\nlet mut D: uint32\n", diagnostics.AttributeInvalidArgument, "@address takes no named arguments at 1:10"},
-		{"address on function", "@address(16)\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "@address may only annotate a let declaration at 2:1"},
+		{"address on function", "@address(Port)\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "@address may only annotate a let declaration at 2:1"},
 		{"effect on type", "@noBlock\ntype T int\n", diagnostics.AttributeNotAllowedOnTarget, "@noBlock may only annotate a function or method at 2:1"},
 		{"local attachment", "fn F() void {\n    @noPanic\n    let x := 1\n}\n", diagnostics.AttributeNotAllowedOnTarget, "@noPanic may annotate a local let only when it directly initializes a lambda (fn or capture(...) fn) at 2:5"},
 		{"unknown inside a set", "@noPanic\n@audit\nfn F() void {}\n", diagnostics.UnknownAttribute, "unknown attribute @audit at 2:1"},
@@ -140,8 +140,8 @@ func TestAttributeConflicts(t *testing.T) {
 	tests := []struct {
 		name, source, id, message string
 	}{
-		{"two addresses", "@address(0x40000000)\n@address(0x50000000)\nlet mut D: uint32\n", diagnostics.AttributeConflict, "conflicting @address attributes at 2:1 and 1:1; a register binding has exactly one hardware endpoint"},
-		{"same address twice", "@address(0x40000000)\n@address(0x40000000)\nlet mut D: uint32\n", diagnostics.AttributeDuplicate, "duplicate attribute @address at 2:1; first declared at 1:1"},
+		{"two addresses", "@address(PortA)\n@address(PortB)\nlet mut D: uint32\n", diagnostics.AttributeConflict, "conflicting @address attributes at 2:1 and 1:1; a register binding has exactly one hardware endpoint"},
+		{"same address twice", "@address(Port)\n@address(Port)\nlet mut D: uint32\n", diagnostics.AttributeDuplicate, "duplicate attribute @address at 2:1; first declared at 1:1"},
 		{"two vectors", "@interrupt(vector: 3)\n@interrupt(vector: 4)\nfn H() void {}\n", diagnostics.AttributeConflict, "conflicting @interrupt attributes at 2:1 and 1:1; a handler binds exactly one interrupt vector"},
 		{"contradicts #target", "#target(os: \"linux\", arch: \"amd64\")\nmodule main\n@target(arch: \"arm64\")\nfn F() void {}\n", diagnostics.AttributeConflict, "@target(arch: \"arm64\") at 3:9 contradicts the file's #target(arch: \"amd64\") at 1:1; the declaration could never be active"},
 	}

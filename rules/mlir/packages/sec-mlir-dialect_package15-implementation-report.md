@@ -575,3 +575,10 @@ CFG evidence remain named unsupported boundaries under MD-114 §§3(8),7(8).
 Hardware endpoints/plans remain MD-111; no physical register representation or
 binary support is selected. Current commands/results and the single ownership
 record are in governance/lowering.yaml, lowering.sec-mlir-package15.
+
+
+## Final acceptance — 2026-11-01
+
+Final run 2026-11-01 on HEAD `40376a4` plus the working tree, with `sec/` replaced by the patched scratch copy because `sec/core` and `sec/stdlib` are the owner's uncompilable draft: full `go test ./...` with absolute `SEC_MLIR_BIN`: 43 packages pass; the only failures are `TestAnalyzeLoadsFmtPackageAndTransitiveImports` and `TestAnalyzeGroupedPackageImportsAndShortNames` in `cmd/lsp`, which load the owner's draft `fmt` and are not P15 behavior. Full `go vet` passes; `git diff --check` reports nothing. `check-sec-mlir` passes 196/196; schema 9/10/11 selection passes 29/29 (167 excluded). `TestPackage15SourceToSchema11Pipeline`, `TestPackage15HighLevelOptimizationBoundary` and `TestPackage15OptimizationDependencyCFG` pass. `yamlstatus check` reports 0 problems.
+
+Hardware communication is a Sec 0.5 feature (owner decision 2026-10-31): the hardware/addressed parts of P15-42, P15-42a and P15-47 are deferred under `platform.hardware-register-access`, and the non-hardware remainders moved to `lowering.sec-mlir-package17`, `concurrency.thread-local-v2`, `compiler.incremental-compilation-v1` and `lowering.reference-model`.

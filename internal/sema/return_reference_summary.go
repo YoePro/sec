@@ -23,6 +23,8 @@ const (
 type ReturnReferenceOrigin struct {
 	Kind      ReturnReferenceOriginKind
 	Parameter int
+	// Pack marks a variadic parameter, whose every expanded position may be the origin.
+	Pack bool
 	// Static names the module-level static binding of a static origin.
 	Static      string
 	Projections []PlaceProjection
@@ -55,6 +57,13 @@ func (a *Analyzer) ReturnReferenceSummaryOf(function Function) (ReturnReferenceS
 				continue
 			}
 			resolved.Kind, resolved.Parameter = ReturnOriginParameter, index
+		case strings.HasPrefix(place.Root, typePackOriginRoot):
+			index, err := strconv.Atoi(strings.TrimPrefix(place.Root, typePackOriginRoot))
+			if err != nil {
+				summary.Unknown = true
+				continue
+			}
+			resolved.Kind, resolved.Parameter, resolved.Pack = ReturnOriginParameter, index, true
 		case place.Root == "$receiver":
 			resolved.Kind = ReturnOriginReceiver
 		case strings.HasPrefix(place.Root, "$static:"):

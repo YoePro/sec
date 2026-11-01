@@ -1,0 +1,23 @@
+module main
+
+enum IOError error { Closed }
+
+fn Generic[E: error](result: Result[int, E]) int {
+    match result {
+        Ok(value) => return value
+        Err(cause) => return 0
+    }
+}
+
+fn GenericTry[E: error](result: Result[int, E]) int {
+    return try result {
+        Err(cause) => 0
+    }
+}
+
+fn Concrete(result: Result[int, IOError]) int {
+    match result {
+        Ok(value) => return value
+        Err(.Closed) => return 0
+    }
+}

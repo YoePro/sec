@@ -5,16 +5,17 @@ package diagnostics
 type PanicReasonID uint32
 
 const (
-	PanicReasonArithmeticOverflow         PanicReasonID = 1
-	PanicReasonDivisionByZero             PanicReasonID = 2
-	PanicReasonInvalidShift               PanicReasonID = 3
-	PanicReasonBoundsFailure              PanicReasonID = 4
-	PanicReasonContractFailure            PanicReasonID = 5
-	PanicReasonAssertionFailure           PanicReasonID = 6
-	PanicReasonCheckedUnreachableReached  PanicReasonID = 7
-	PanicReasonInvalidReferenceGeneration PanicReasonID = 8
-	PanicReasonExplicitPanic              PanicReasonID = 9
-	PanicReasonForeignAbort               PanicReasonID = 10
+	PanicReasonArithmeticOverflow           PanicReasonID = 1
+	PanicReasonDivisionByZero               PanicReasonID = 2
+	PanicReasonInvalidShift                 PanicReasonID = 3
+	PanicReasonBoundsFailure                PanicReasonID = 4
+	PanicReasonContractFailure              PanicReasonID = 5
+	PanicReasonAssertionFailure             PanicReasonID = 6
+	PanicReasonCheckedUnreachableReached    PanicReasonID = 7
+	PanicReasonInvalidReferenceGeneration   PanicReasonID = 8
+	PanicReasonExplicitPanic                PanicReasonID = 9
+	PanicReasonForeignAbort                 PanicReasonID = 10
+	PanicReasonStringMaterializationFailure PanicReasonID = 11
 )
 
 // PanicReasonDefinition is one stable panic registry entry. Name is a
@@ -35,6 +36,7 @@ var panicReasonRegistry = [...]PanicReasonDefinition{
 	{ID: PanicReasonInvalidReferenceGeneration, Name: "InvalidReferenceGeneration"},
 	{ID: PanicReasonExplicitPanic, Name: "ExplicitPanic"},
 	{ID: PanicReasonForeignAbort, Name: "ForeignAbort"},
+	{ID: PanicReasonStringMaterializationFailure, Name: "StringMaterializationFailure"},
 }
 
 // PanicReasonByID resolves a stable numeric PanicID without allocation.

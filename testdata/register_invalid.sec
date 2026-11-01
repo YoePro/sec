@@ -202,7 +202,7 @@ let booleanAddressRegister: AddressRegister
 
 // ERROR: @address requires an explicit register type. The initializer is also
 // invalid because addressed bindings cannot be initialized.
-@address(0x40027010)
+@address(InferredAddressEndpoint)
 let inferredAddressRegister := sourceAddressRegister
 
 // =============================================================================

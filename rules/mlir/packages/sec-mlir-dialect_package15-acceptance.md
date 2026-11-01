@@ -1,4 +1,4 @@
-# Package 15 acceptance matrix — updated 2026-10-30
+# Package 15 acceptance matrix — updated 2026-11-01
 
 This is the completed P15-69 mapping of all 56 section-155 criteria, not a claim
 that all criteria pass. Each criterion has a focused test or exact implementation
@@ -68,10 +68,7 @@ Current execution details, failures and package boundaries are in
 
 ## Scope of completion
 
-P15-69 is complete because every criterion is mapped. P15 package acceptance is
-still partial: addressed/hardware facts and operations (MD-111), remaining
-P15-42/42a storage producers and P15-47 receivers/return paths are not waived
-by aggregate test success. P15 §§151–155 exclude physical reference layout and
+P15-69 is complete because every criterion is mapped. P15 package acceptance closed 2026-11-01 (P15-75). Hardware communication is a Sec 0.5 feature (owner decision 2026-10-31): the hardware/addressed parts of P15-42, P15-42a and P15-47 are deferred under `platform.hardware-register-access`, and the non-hardware remainders moved to `lowering.sec-mlir-package17`, `concurrency.thread-local-v2`, `compiler.incremental-compilation-v1` and `lowering.reference-model`. P15 §§151–155 exclude physical reference layout and
 LLVM generation: later physical/LLVM consumers own the corresponding MD-061
 differential matrix. That matrix is retained under `lowering.reference-model`
 in governance/memory.yaml; it is not a prerequisite for closing P15.
@@ -100,3 +97,5 @@ retaining receiver authority and availability. Both slices pass schema 11/12 on
 methods are forbidden by functions.md §22/copy_move.md §18 and are not a pending
 receiver mode. These increments narrow P15-42/42a/47 but do not satisfy the
 remaining producer or final-acceptance gates; P15 stays partial (3 open entries).
+
+Final run 2026-11-01 on HEAD `40376a4` plus the working tree, with `sec/` replaced by the patched scratch copy because `sec/core` and `sec/stdlib` are the owner's uncompilable draft: full `go test ./...` with absolute `SEC_MLIR_BIN`: 43 packages pass; the only failures are `TestAnalyzeLoadsFmtPackageAndTransitiveImports` and `TestAnalyzeGroupedPackageImportsAndShortNames` in `cmd/lsp`, which load the owner's draft `fmt` and are not P15 behavior. Full `go vet` passes; `git diff --check` reports nothing. `check-sec-mlir` passes 196/196; schema 9/10/11 selection passes 29/29 (167 excluded). `TestPackage15SourceToSchema11Pipeline`, `TestPackage15HighLevelOptimizationBoundary` and `TestPackage15OptimizationDependencyCFG` pass. `yamlstatus check` reports 0 problems.

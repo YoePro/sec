@@ -347,6 +347,16 @@ type TypePackFacts struct {
 	Positions  []TypePackPosition
 }
 
+// PackForwardFacts record where the operands of a call expanding the enclosing
+// specialization's pack come from (semantic_ir.md § 27A(1),(7)). Positions has
+// one entry per operand: the pack position it reads, or -1 for an ordinary
+// argument. Consuming marks the whole-pack transfer `<-values...`.
+type PackForwardFacts struct {
+	Parameter string
+	Consuming bool
+	Positions []int
+}
+
 // TypePackMode is the receiving mode of one expanded pack position.
 type TypePackMode string
 
@@ -833,6 +843,7 @@ type Operation struct {
 	// `unsafe` prefix (MD-079); nil when the call carries no prefix.
 	UnsafeAuthorization *Location
 	ArgumentActions     []ArgumentAction
+	PackForward         *PackForwardFacts
 	Successors          []BranchTarget
 	IntegerBinary       IntegerCheckedBinaryKind
 	IntegerBitwise      IntegerBitwiseKind

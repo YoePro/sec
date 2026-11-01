@@ -22,6 +22,9 @@ func (fb *functionBuilder) buildBooleanOperator(expr ast.Expression) (builtValue
 		}
 		if resolved, ok := fb.owner.analyzer.ResolvedOperatorOf(expression); ok && fb.owner.maxPackage >= 14 &&
 			(resolved.Kind == sema.ResolvedMembershipCompare || resolved.Kind == sema.ResolvedNegatedMembershipCompare) {
+			if fb.owner.maxPackage >= sliceLoweringPackage && resolved.RightType != nil && sourceSliceType(*resolved.RightType) {
+				return fb.buildSequenceMembership(expression, resolved)
+			}
 			if value, handled, err := fb.buildFixedArrayMembership(expression, resolved); handled {
 				return value, true, err
 			}

@@ -20,6 +20,19 @@ func semanticSnapshotTypeSeen(typ Type, seen map[string]bool) Type {
 	result.AssociatedEnum = typ.AssociatedEnum
 	result.ErrorAssignable = typ.ErrorAssignable
 	result.EnumValues = append([]string(nil), typ.EnumValues...)
+	// Case values and bit-backed width let Semantic IR define an enum first
+	// reached through a generic argument (monomorphization.md § 9.1). Other
+	// types' BitWidth depends on the selected target and stays out of the
+	// target-independent snapshot.
+	if typ.Kind == EnumType {
+		result.BitWidth = typ.BitWidth
+	}
+	if typ.EnumConsts != nil {
+		result.EnumConsts = make(map[string]EnumValue, len(typ.EnumConsts))
+		for name, constant := range typ.EnumConsts {
+			result.EnumConsts[name] = constant
+		}
+	}
 	result.EnumDefault = typ.EnumDefault
 	result.UnionDefault = typ.UnionDefault
 	result.DeclarationToken = typ.DeclarationToken

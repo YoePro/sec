@@ -8555,7 +8555,15 @@ func TestImplInvalidFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	errors := analyzeSourceRaw(t, string(input))
+	// The final obsolete conformance syntax is rejected by the parser;
+	// recovery still exposes all preceding declarations to Sema.
+	// Rules: rules/declarations/interfaces.md §§4,12; parser_recovery.md §17.
+	p := parser.New(lexer.New(string(input)))
+	program := p.ParseProgram()
+	if ds := p.Diagnostics(); len(ds) != 1 || ds[0].ID != diagnostics.ParserInterfaceConformancePlacement {
+		t.Fatalf("unexpected parser diagnostics: %+v", ds)
+	}
+	errors := NewAnalyzer().Analyze(program)
 	if len(errors) == 0 {
 		t.Fatal("expected impl_invalid.sec to produce semantic errors")
 	}

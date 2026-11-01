@@ -131,7 +131,7 @@ fn _WriteStdoutString(value: string) Result[uint, IOError] {
 type _StdoutFormatSink struct {
 }
 
-impl _StdoutFormatSink implements FormatSink {
+impl _StdoutFormatSink implements FormatSink[IOError] {
     /**
      * Writes a complete UTF-8 text segment to stdout.
      *

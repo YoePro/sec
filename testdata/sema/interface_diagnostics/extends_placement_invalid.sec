@@ -1,0 +1,8 @@
+module main
+interface Counter { fn Read() int }
+type Count struct { value: int }
+impl Count {}
+impl extends Count implements Counter {
+    fn Read() int { return self.value }
+}
+fn Following() int { return 1 }

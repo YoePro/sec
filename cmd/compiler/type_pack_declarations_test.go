@@ -14,7 +14,7 @@ import (
 // Rules: rules/declarations/generics.md — §16A; MD-117 — §10;
 // rules/tooling/diagnostics.md — §24(4h).
 func TestTypePackDeclarationCLI(t *testing.T) {
-	path := typePackCLIFixture(t, "method_generic_owner_boundary.sec")
+	path := typePackCLIFixture(t, "shared_use_boundary.sec")
 	_, output, code := runCLIForDiagnostics(t, "parse", path)
 	if code != 0 {
 		t.Fatal(code, output)

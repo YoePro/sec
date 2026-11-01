@@ -219,6 +219,17 @@ func (a *Analyzer) instantiateGenericImplMethod(function Function, receiver meth
 	for index, name := range target.GenericParameters {
 		substitution[name] = receiverType.TypeArgs[index]
 	}
+	// A pack method stays generic in its own parameters; the owner's arguments
+	// seed its inference and stay in the instance's substitution (§38A(9)(1)).
+	if function.GenericTypePack != "" {
+		function.GenericSubstitution = substitution
+		function.Parameters = append([]FunctionParameter(nil), function.Parameters...)
+		for index := range function.Parameters {
+			function.Parameters[index].Type = substituteGenericType(function.Parameters[index].Type, substitution)
+		}
+		function.ReturnType = substituteGenericType(function.ReturnType, substitution)
+		return function
+	}
 	// The instance cache is keyed by the template's generic parameters, which
 	// for an impl method are the implementation's.
 	function.GenericParameters = append(append([]string(nil), target.GenericParameters...), function.GenericParameters...)

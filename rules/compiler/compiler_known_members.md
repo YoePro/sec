@@ -676,9 +676,18 @@ The compiler must not assume that every unconstrained `T` has:
 
 ```text
 Len;
-ToString;
 Ptr.
 ```
+
+`ToString()` is the exception (MD-122, decided 2026-11-01): every generic parameter,
+pack element and interface value holds an ordinary value, so the fallback exists for
+every concrete argument and the template may call it. It returns
+`Result[string, StringError]`. The call resolves per specialization to an exact user
+`ToString`, or else to the fallback of the concrete type; a constraint's `ToString`
+requirement takes precedence. Because the concrete type is unknown in the template,
+the call counts as an unknown callee, so `@noPanic` and `@noAlloc` cannot rest on it.
+This grants no other member and no implicit formatting interface. Interpolation
+holes keep their own formatting contract rule.
 
 `SizeOf` is available only when `T` is statically sized for the active
 CompilationPlan.
@@ -1717,9 +1726,8 @@ every concrete type that can produce an ordinary value.
 
 This is a compiler-provided fallback surface, not a claim that every type has
 the same formatting behavior. Scalar, sequence, collection, and aggregate
-families retain their distinct canonical representations. Generic and
-interface member lookup may use the fallback only when the active contract or
-concrete specialization establishes its availability.
+families retain their distinct canonical representations. Generic parameters,
+pack elements and interface values have the fallback too ("Generic lookup").
 
 Numeric formatting overloads may also include:
 

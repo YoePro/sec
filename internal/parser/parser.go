@@ -2877,9 +2877,11 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	return stmt
 }
 
+// rejectTypeImplementsClause retains recovery while diagnosing noncanonical
+// conformance placement. Rules: rules/declarations/interfaces.md — §§4,12.
 func (p *Parser) rejectTypeImplementsClause(typeName string) {
 	p.nextToken()
-	p.addError("interface conformance for %s belongs on its primary impl; use impl %s implements Interface at %d:%d", typeName, typeName, p.curToken.Line, p.curToken.Column)
+	p.addInterfacePlacementDiagnostic(p.curToken, "interface conformance for %s belongs on its primary impl; use impl %s implements Interface at %d:%d", typeName, typeName, p.curToken.Line, p.curToken.Column)
 	_ = p.parseImplementsList()
 }
 
@@ -4828,12 +4830,14 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	}
 	if p.peekToken.Type == lexer.IMPLEMENTS {
 		p.nextToken()
+		implementsToken := p.curToken
 		stmt.Implements = p.parseImplementsList()
 		if stmt.Implements == nil {
 			return nil
 		}
 		if stmt.Extends {
-			p.addError("impl extends %s cannot declare interface conformance; place implements on the primary impl at %d:%d", stmt.Target.Name, p.curToken.Line, p.curToken.Column)
+			p.addInterfacePlacementDiagnostic(implementsToken, "impl extends %s cannot declare interface conformance; place implements on the primary impl at %d:%d", stmt.Target.Name, implementsToken.Line, implementsToken.Column)
+			stmt.ConformanceRecovery = &ast.RecoveryInfo{Reported: true, DiagnosticID: compilerdiagnostics.ParserInterfaceConformancePlacement, Start: implementsToken, End: p.curToken}
 		}
 	}
 
@@ -4843,6 +4847,8 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			Token:   p.curToken,
 			Message: "separate impl Interface for Type syntax is not supported; use impl Type implements Interface",
 		}
+		p.addInterfacePlacementDiagnostic(p.curToken, "%s at %d:%d", invalid.Message, p.curToken.Line, p.curToken.Column)
+		invalid.Recovery = &ast.RecoveryInfo{Reported: true, DiagnosticID: compilerdiagnostics.ParserInterfaceConformancePlacement, Start: p.curToken, Message: invalid.Message}
 		p.skipUntilBlockStart()
 		p.skipCurrentBlock()
 		return invalid

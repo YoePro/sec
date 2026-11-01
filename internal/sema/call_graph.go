@@ -151,6 +151,9 @@ const (
 	// EffectMayPanicContract is a run-time conversion into a constrained
 	// named type outside try (rules/errors/panic.md ContractFailure).
 	EffectMayPanicContract EffectKind = "may-panic-contract"
+	// EffectMayPanicStringMaterialization is a runtime string `+` or `+=` without
+	// a protecting try (rules/foundations/operators.md, MD-039).
+	EffectMayPanicStringMaterialization EffectKind = "may-panic-string-materialization"
 	// EffectMayPanicForeign is a call to an extern function without a trusted
 	// @noPanic foreign contract (rules/errors/panic.md § 19(3), ForeignAbort).
 	EffectMayPanicForeign EffectKind = "may-panic-foreign"
@@ -979,7 +982,7 @@ func IsPanicEffectKind(kind EffectKind) bool { return isPanicEffectKind(kind) }
 
 func isPanicEffectKind(kind EffectKind) bool {
 	switch kind {
-	case EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee, EffectMayPanicInvalidReference:
+	case EffectMayPanicStringMaterialization, EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee, EffectMayPanicInvalidReference:
 		return true
 	}
 	return false

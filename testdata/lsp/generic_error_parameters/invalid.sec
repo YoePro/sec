@@ -1,0 +1,9 @@
+module main
+interface MyInterf[E: error] {
+    fn MyFunc() Result[void, E]
+}
+fn Bare(value: ref MyInterf) void {}
+fn Invalid(value: ref MyInterf[string]) void {}
+fn NoVariance(value: ref MyInterf[error]) Result[void, error] {
+    return value.MyFunc()
+}

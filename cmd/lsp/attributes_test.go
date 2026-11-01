@@ -126,7 +126,7 @@ func TestAttributeCodeActions(t *testing.T) {
 		name, source, code, title, result string
 	}{
 		{"duplicate", "module main\n\n@noPanic\n@noPanic\nfn F() void {}\n", diagnostics.AttributeDuplicate, "Remove duplicate @noPanic", "module main\n\n@noPanic\nfn F() void {}\n"},
-		{"conflict", "module main\n\n@address(0x40000000)\n@address(0x50000000)\nlet mut D: uint32\n", diagnostics.AttributeConflict, "Keep the first @address and remove this one", "module main\n\n@address(0x40000000)\nlet mut D: uint32\n"},
+		{"conflict", "module main\n\n@address(PortA)\n@address(PortB)\nlet mut D: uint32\n", diagnostics.AttributeConflict, "Keep the first @address and remove this one", "module main\n\n@address(PortA)\nlet mut D: uint32\n"},
 		{"wrong target", "module main\n\n@noCopy\nfn F() void {}\n", diagnostics.AttributeNotAllowedOnTarget, "Remove @noCopy", "module main\n\nfn F() void {}\n"},
 		{"arguments", "module main\n\n@noPanic(fast)\nfn F() void {}\n", diagnostics.AttributeInvalidArgument, "Remove the arguments of @noPanic", "module main\n\n@noPanic\nfn F() void {}\n"},
 	} {

@@ -1827,6 +1827,11 @@ be `Result[_, E]` with the exact setter error type `E`; this form does not
 propagate `Option` and performs no implicit error conversion. With a handler
 block, the ordinary local-handler rules apply.
 
+`try` on a compound string assignment uses this production with error type
+`StringError`, and the whole statement is the protected operation, including a
+`Result[string, StringError]` right operand (MD-039). This does not make `try` a
+panic catcher or change its precedence.
+
 ---
 
 # Statement grammar

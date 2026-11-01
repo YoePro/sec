@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/lexer"
 	"sec/internal/sema"
 )
 
@@ -48,6 +49,23 @@ func (fb *functionBuilder) referenceHolder(holder *ast.Identifier) (builtValue, 
 		return builtValue{}, nil, fb.unsupported("reference holder "+holder.Value+" without lowered reference facts", holder.Token)
 	}
 	return builtValue{id: held.value, typ: held.typ}, metadata, nil
+}
+
+// referenceHolderExpression resolves a named holder or a pack position whose
+// expanded parameter holds the reference (rules/memory/references.md § 3.4(10)).
+func (fb *functionBuilder) referenceHolderExpression(expr ast.Expression) (builtValue, *ReferenceMetadata, lexer.Token, error) {
+	switch holder := expr.(type) {
+	case *ast.Identifier:
+		value, metadata, err := fb.referenceHolder(holder)
+		return value, metadata, holder.Token, err
+	case *ast.IndexExpression:
+		if value, pack := fb.packIndexValue(holder); pack {
+			if metadata, ok := fb.references[value.id]; ok {
+				return value, metadata, holder.Token, nil
+			}
+		}
+	}
+	return builtValue{}, nil, expressionToken(expr), fb.unsupported("reference pass of a non-holder expression", expressionToken(expr))
 }
 
 // validateReference applies the validity policy to one use of reference and
@@ -390,22 +408,23 @@ func (fb *functionBuilder) lowerReferenceEquality(expr ast.Expression, use sema.
 // parameter is reborrowed shared, and a mutable reference to a ref mut
 // parameter is reborrowed mutably for the call, never silently copied.
 func (fb *functionBuilder) lowerReferencePass(expr ast.Expression, use sema.ResolvedReferenceUse) (builtValue, error) {
-	holder, ok := expr.(*ast.Identifier)
-	if !ok {
-		return builtValue{}, fb.unsupported("reference pass of a non-holder expression", expressionToken(expr))
-	}
-	source, metadata, err := fb.referenceHolder(holder)
+	source, metadata, token, err := fb.referenceHolderExpression(expr)
 	if err != nil {
 		return builtValue{}, err
 	}
 	sourceType, ok := fb.owner.module.Types.Lookup(source.typ)
 	if !ok || sourceType.Kind != TypeReference {
-		return builtValue{}, fmt.Errorf("passed reference %s is not a reference value", holder.Value)
+		return builtValue{}, fmt.Errorf("passed reference %s is not a reference value", expr.String())
 	}
-	loc := location(holder.Token)
-	mutable := use.Facts.MutableAuthority
+	return fb.passReference(source, sourceType, metadata, referenceMetadataOf(use.Facts), use.Facts.MutableAuthority, token)
+}
+
+// passReference copies a shared reference with its borrow or reborrows a
+// mutable one under the derived facts, never copying a ref mut.
+func (fb *functionBuilder) passReference(source builtValue, sourceType Type, metadata, derived *ReferenceMetadata, mutable bool, token lexer.Token) (builtValue, error) {
+	loc := location(token)
 	if mutable && !sourceType.Mutable {
-		return builtValue{}, fb.unsupported("passing a shared reference to a ref mut parameter", holder.Token)
+		return builtValue{}, fb.unsupported("passing a shared reference to a ref mut parameter", token)
 	}
 	if !mutable && !sourceType.Mutable {
 		copied := *metadata
@@ -419,10 +438,9 @@ func (fb *functionBuilder) lowerReferencePass(expr ast.Expression, use sema.Reso
 	if mutable {
 		kind, ownership = OpReferenceReborrowMutable, OwnershipMutableReference
 	}
-	derived := referenceMetadataOf(use.Facts)
 	derived.SourceBorrow = metadata.Borrow
 	if derived.Validity != metadata.Validity {
-		return builtValue{}, fb.unsupported("reference pass whose validity policy differs from its reference", holder.Token)
+		return builtValue{}, fb.unsupported("reference pass whose validity policy differs from its reference", token)
 	}
 	referenceType := fb.owner.module.Types.Intern(Type{Kind: TypeReference, Element: sourceType.Element, Mutable: mutable})
 	value := fb.newValue(referenceType, ownership, loc)
@@ -441,14 +459,14 @@ func (fb *functionBuilder) lowerReferencePass(expr ast.Expression, use sema.Reso
 // Rules:
 //   - rules/memory/borrowing.md — § 11.4 "Explicit reborrow"
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — reborrow operations
-func (fb *functionBuilder) lowerExplicitReborrow(reference *ast.RefExpression, holder *ast.Identifier, plan sema.ResolvedReferencePlan) (builtValue, error) {
-	source, metadata, err := fb.referenceHolder(holder)
+func (fb *functionBuilder) lowerExplicitReborrow(reference *ast.RefExpression, holder ast.Expression, plan sema.ResolvedReferencePlan) (builtValue, error) {
+	source, metadata, _, err := fb.referenceHolderExpression(holder)
 	if err != nil {
 		return builtValue{}, err
 	}
 	sourceType, ok := fb.owner.module.Types.Lookup(source.typ)
 	if !ok || sourceType.Kind != TypeReference {
-		return builtValue{}, fmt.Errorf("reborrowed holder %s is not a reference value", holder.Value)
+		return builtValue{}, fmt.Errorf("reborrowed holder %s is not a reference value", holder.String())
 	}
 	if reference.Mutable && !sourceType.Mutable {
 		return builtValue{}, fmt.Errorf("explicit reborrow elevates a shared reference")

@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-08-30
-- Last updated: 2026-10-12 (MD-058 collection capacity reservation)
+- Last updated: 2026-11-01 (§§ 10(6), 17(6), 17(8) string `+` and `+=`, MD-039); 2026-10-12 (MD-058 collection capacity reservation)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/allocation.md`
@@ -252,6 +252,8 @@ let storage := try arena.Alloc[byte](4096)
 
 § 10(5) An allocation may be treated as infallible only when the compiler or platform contract proves the required storage, capacity, alignment, and other preconditions.
 
+§ 10(6) Narrow exception to § 10(3) (MD-039): an operation whose canonical rule declares both a recoverable `try` mode and an ordinary panic mode may panic in the latter. Sec 0.1 declares this only for runtime string `+` and `+=` (`rules/foundations/operators.md`). Allocator APIs and all other fallible allocations keep §§ 10(1)–(5).
+
 ---
 
 ## § 11 Storage ownership versus value ownership
@@ -379,11 +381,11 @@ reference or slice
 
 § 17(5) Compile-time folded string materialization is not a runtime dynamic allocation merely because constant data is stored in the output image.
 
-§ 17(6) Runtime string concatenation and interpolation are one fallible materialization each and use the canonical active allocation context of § 5. Sec 0.1 defines no string-specific allocator and no string-specific allocation domain.
+§ 17(6) Runtime string concatenation and interpolation are one materialization each, and use the canonical active allocation context of § 5. Sec 0.1 defines no string-specific allocator and no string-specific allocation domain.
 
 § 17(7) The frontend resolves the applicable allocation context before Semantic IR; Semantic IR preserves it with the ordinary failure channel, ownership, and lifetime facts (§ 25), and lowering consumes it without choosing an allocator independently.
 
-§ 17(8) Allocation failure of runtime string materialization is reported through the text failure family `StringError` as `StringError.Allocation(AllocationError)` (§ 10; `rules/library/core-library.md` § 15.1). When the resulting string escapes a local allocation lifetime, materialization uses a context whose lifetime suffices for the result; a backend must not repair an invalid lifetime by silently reallocating into another domain (§ 7).
+§ 17(8) Under `try`, allocation failure of runtime string materialization is reported through the text failure family `StringError` as `StringError.Allocation(AllocationError)`; runtime `+` and `+=` without `try` panic instead (§ 10(6), MD-039), and runtime interpolation requires `try` (§ 10; `rules/library/core-library.md` § 15.1). When the resulting string escapes a local allocation lifetime, materialization uses a context whose lifetime suffices for the result; a backend must not repair an invalid lifetime by silently reallocating into another domain (§ 7).
 
 § 17(9) Without a valid allocation context, compilation fails (§ 22(4)). Under a profile that prohibits dynamic allocation, runtime string materialization is valid only when the compiler proves the allocation is eliminated while preserving Sec semantics (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 5).
 

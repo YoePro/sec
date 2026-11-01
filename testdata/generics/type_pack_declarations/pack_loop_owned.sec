@@ -19,10 +19,15 @@ fn Empty[...Types](values: ...Types) uint {
     }
     return n
 }
+fn First[...Types](values: ...Types) uint {
+    let first := values[0]
+    return values.Len
+}
 fn main() int {
     let total := Count(7, true, 3)
     let none := Empty()
-    if total == 2 && none == 0 {
+    let length := First(5, false)
+    if total == 2 && none == 0 && length == 2 {
         return 0
     }
     return 1

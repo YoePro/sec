@@ -2,7 +2,7 @@
 
 - Status: Canonical normative rulebook
 - Created: 2026-09-04
-- Last updated: 2026-10-27 (MD-117 type-pack specialization identity, § 9.1)
+- Last updated: 2026-11-01 (§§ 5.3, 11 error parameters, MD-120); 2026-10-27 (MD-117 type-pack specialization identity, § 9.1)
 - Document revision: 1.0
 - Language version: Sec 0.1
 - Canonical path: `rules/compiler/monomorphization.md`
@@ -191,7 +191,7 @@ The compiler may preserve explicit-versus-inferred information as source provena
 
 A generic declaration is semantically validated as a template under its declared generic contracts before concrete monomorphization.
 
-Monomorphization specializes a valid generic declaration. It does not make an otherwise invalid generic declaration legal merely because one particular concrete argument happens to provide an undeclared operation.
+Monomorphization specializes a valid generic declaration. It does not make an otherwise invalid generic declaration legal merely because one particular concrete argument happens to provide an undeclared operation. `ToString()` exists for every concrete argument and is therefore part of every generic contract, resolved per specialization (MD-122).
 
 ### 5.2 No deferred duck typing
 
@@ -218,6 +218,8 @@ fn Serialize[T: Serializable](value: T) Result[void, IOError] {
 template analysis may rely on the capabilities guaranteed by `Serializable`.
 
 Concrete specialization later resolves the canonical conformance and the concrete operation selected for the concrete argument.
+
+A parameter `E: error` (MD-120, `rules/declarations/generics.md` § 15A) gives the template only the error-category guarantee and any added interfaces. A concrete specialization does not retroactively legitimize a variant pattern, member access or copy the template's contract does not justify. Each error argument selects a distinct specialization with the exact error identity and the payload ownership and destruction obligations of that argument; no implicit copy, conversion or interface erasure is added.
 
 ### 5.4 Explicit guarantees
 

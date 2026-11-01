@@ -81,6 +81,16 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 				return fb.lowerReceiverFieldReborrow(implicit, plan, plans, steps)
 			}
 		}
+		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit {
+			// `ref values[k]` over a reference position reborrows its referent.
+			if index, indexed := reference.Value.(*ast.IndexExpression); indexed {
+				if element, pack := fb.packIndexValue(index); pack {
+					if typ, ok := fb.owner.module.Types.Lookup(element.typ); ok && typ.Kind == TypeReference {
+						return fb.lowerExplicitReborrow(reference, index, plan)
+					}
+				}
+			}
+		}
 		if reference, explicit := expr.(*ast.RefExpression); explicit && !plan.Implicit && !plan.Reborrow && onlyFieldProjections(plan.Place) {
 			return fb.lowerPlaceBorrow(reference, plan)
 		}
@@ -120,6 +130,11 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 		}
 	}
 	if resolved, ok := analyzer.ResolvedTypeOf(expr); ok && resolved.Kind == sema.ReferenceType {
+		if index, indexed := expr.(*ast.IndexExpression); indexed {
+			if value, pack := fb.packIndexValue(index); pack {
+				return value, nil
+			}
+		}
 		// Naming an immutable reference holder yields its SSA reference value.
 		if identifier, named := expr.(*ast.Identifier); named {
 			if fact, bound := analyzer.ResolvedBindingOf(identifier); bound {
@@ -195,6 +210,16 @@ func (fb *functionBuilder) lowerPlaceBorrow(reference *ast.RefExpression, plan s
 // rules/mlir/packages/sec-mlir-dialect_package15.md — §§39–43;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §42.
 func (fb *functionBuilder) lowerBorrowPlace(reference *ast.RefExpression, plan sema.ResolvedReferencePlan) (builtValue, error) {
+	if index, indexed := reference.Value.(*ast.IndexExpression); indexed {
+		if element, pack := fb.packIndexValue(index); pack {
+			// An owned pack position is a read-only value root (§38A(3)(5)).
+			if reference.Mutable {
+				return builtValue{}, fb.unsupported("mutable borrow of an owned pack position", reference.Token)
+			}
+			placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element.typ})
+			return fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{element.id}, Place: placeMetadataOf(plan.Place), Location: location(index.Token)}, placeType), nil
+		}
+	}
 	var steps []ast.Expression
 	current := reference.Value
 	for {

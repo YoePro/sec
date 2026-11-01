@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-30 (`mut fn` is interface-only, P2037); 2026-10-18 (MD-057 borrowed interface views)
+- **Last updated:** 2026-11-01 (§§ 7.1, 9 error-constrained generic interfaces, MD-120); 2026-10-30 (`mut fn` is interface-only, P2037); 2026-10-18 (MD-057 borrowed interface views)
 - **Document revision:** 2.2
 - **Replaces:** `rules/declarations/interfaces.txt`
 - **Sec language version:** 0.1
@@ -281,6 +281,8 @@ generic containers, or new rules for type-level and static members. Members
 that depend on a statically known concrete `Self`, including static
 constructors, keep their existing rules.
 
+A view of a generic interface names its complete instantiation (MD-120): `ref mut FormatSink[IOError]`, or `ref mut FormatSink[E]` in a generic body with `E` fixed per specialization. A bare `ref mut FormatSink` is invalid; there is no default argument and no erasure to `error`. MD-057 dispatch is unchanged, and no owned interface value, boxing or heap allocation is implied.
+
 ## 8. Properties instead of required fields
 
 Interfaces do not declare required stored fields.
@@ -353,6 +355,22 @@ interface Mapper[T] {
 
 Interface inheritance and explicit implementation participate in generic
 constraint satisfaction.
+
+Error-constrained generic interfaces (MD-120, 2026-10-31) follow the same rules. An implementation names the complete concrete specialization and satisfies a `mut fn` contract with an ordinary `fn`:
+
+```sec
+interface FormatSink[E: error] {
+    mut fn WriteText(text: string) Result[void, E]
+}
+
+impl StdoutSink implements FormatSink[IOError] {
+    fn WriteText(text: string) Result[void, IOError] {
+        return Ok()
+    }
+}
+```
+
+When an argument's explicit conformance determines exactly one compatible `FormatSink[E]` instantiation, ordinary inference may derive `E` from it. With more than one candidate, inference does not guess; explicit arguments or other unambiguous context must resolve it. Conformance to `FormatSink[IOError]` neither satisfies nor produces a view of `FormatSink[error]`.
 
 ### 9.1 Compiler-known generic interfaces
 

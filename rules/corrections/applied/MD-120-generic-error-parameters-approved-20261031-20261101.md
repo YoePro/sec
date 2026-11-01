@@ -2,12 +2,12 @@
 
 - **Decision ID:** MD-120 — `generic-error-parameters`
 - **Document kind:** Approved normative correction and implementation handoff
-- **Status:** **APPROVED — D1–D7**; canonical rulebook/governance integration and implementation verification pending
+- **Status:** **APPROVED — D1–D7**; applied to the canonical rulebooks and governance 2026-11-01; implementation verification pending
 - **Created / approved:** 2026-10-31
 - **Document revision:** 1.0
 - **Sec language version:** **0.1**
 - **Reviewed repository:** `YoePro/sec`, `main` at `1eba0fd61642f2273a2ff9918ab453006c72bc80` (verified 2026-10-31)
-- **Supersedes:** `rules/corrections/md120-generic-error-parameters-proposal-20261031.md` (proposal revision 0.1)
+- **Supersedes:** `rules/corrections/applied/md120-generic-error-parameters-proposal-20261031-superseded.md` (proposal revision 0.1)
 - **Normative owners:** `rules/declarations/generics.md`, `rules/errors/errorhandling.md`, `rules/types/types.md`, `rules/declarations/interfaces.md`, `rules/declarations/unions.md`, `rules/declarations/enums.md`
 - **Integration owners:** `rules/compiler/monomorphization.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`, applicable governance entries and focused conformance tests
 - **Related:** MD-029 (error patterns), MD-057 (borrowed interface views), MD-117 (heterogeneous type packs), MD-118 (`fmt` public API)

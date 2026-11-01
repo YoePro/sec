@@ -46,6 +46,10 @@ func (a *Analyzer) symbolicFunctionOriginRoot(root string) (string, bool) {
 	function := a.currentFunctionMetadata
 	for index, param := range function.Parameters {
 		if param.Name == root {
+			// A pack parameter names every expanded position (functions.md §38A(8)(3)).
+			if param.Variadic {
+				return typePackOriginRoot + strconv.Itoa(index), true
+			}
 			return "$param:" + strconv.Itoa(index), true
 		}
 	}
@@ -139,10 +143,35 @@ func (a *Analyzer) instantiateReturnOriginAt(summary localReferenceOrigin, args 
 	return result
 }
 
+// typePackOriginRoot is the symbolic root of a variadic parameter; its index is
+// where the expanded arguments begin at a call.
+const typePackOriginRoot = "$pack:"
+
+// actualPackOrigin joins the finite caller-side origins of every expanded position.
+// Rules: rules/declarations/functions.md §38A(8)(3); correction MD-119 §5(3).
+func (a *Analyzer) actualPackOrigin(root string, args []ast.Expression) (localReferenceOrigin, bool) {
+	index, err := strconv.Atoi(strings.TrimPrefix(root, typePackOriginRoot))
+	if err != nil || index < 0 {
+		return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
+	}
+	origins := []localReferenceOrigin{}
+	for position := index; position < len(args); position++ {
+		origin, known := a.actualOriginForSummaryRoot("$param:"+strconv.Itoa(position), args, nil)
+		if !known {
+			return origin, false
+		}
+		origins = append(origins, origin)
+	}
+	return mergeLocalReferenceOrigins(origins, false), true
+}
+
 // actualOriginForSummaryRoot reads existing argument/receiver provenance and
 // preserves Unknown when no verified caller relation is available.
 // Rules: rules/memory/lifetime_analysis.md — §28; rules/mlir/packages/sec-mlir-dialect_package16.md — §§66–67.
 func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression, receiver ast.Expression) (localReferenceOrigin, bool) {
+	if strings.HasPrefix(root, typePackOriginRoot) {
+		return a.actualPackOrigin(root, args)
+	}
 	if strings.HasPrefix(root, "$param:") {
 		index, err := strconv.Atoi(strings.TrimPrefix(root, "$param:"))
 		if err != nil || index < 0 || index >= len(args) {

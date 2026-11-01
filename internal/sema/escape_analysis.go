@@ -375,8 +375,8 @@ func escapeSourceFromPlace(place Place, function Function, carrierPath string, f
 	if source.Token.Line == 0 {
 		source.Token = fallback
 	}
-	if strings.HasPrefix(place.Root, "$param:") {
-		index, err := strconv.Atoi(strings.TrimPrefix(place.Root, "$param:"))
+	if strings.HasPrefix(place.Root, "$param:") || strings.HasPrefix(place.Root, typePackOriginRoot) {
+		index, err := strconv.Atoi(strings.TrimPrefix(strings.TrimPrefix(place.Root, "$param:"), typePackOriginRoot))
 		if err != nil {
 			source.Kind = EscapeSourceUnknown
 			return source

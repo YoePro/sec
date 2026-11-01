@@ -85,9 +85,9 @@ integrations:
       - check validates the ledger (loading, fragment header, index.yaml fragment list, unique IDs, id/status, status vocabulary, verification items, checklist item shapes, merged list items) with file, line and integration ID, and edit commands refuse changes that add a problem; its first run found and fixed 24 problems
       - "library scope (2026-10-10): index.yaml fragments with implementation_scope: library (stdlib.yaml) are not compiler implementation; yamlstatus statistics exclude their integrations and checklist items, report them on a separate Not counted line, and keep their points selectable"
       - "HTML reporting (-html): a complete escaped document using the sec-lang.com manual layout, shared stylesheet/logo, navigation/sidebar/breadcrumb/footer, compiler-only overview and progress, separate integration/checklist/metadata tables and explicit library exclusion. Embedded html/template keeps markup separate from Go; no plain-text prefix or printf interpretation of generated percentages. Source-backed CLI tests cover report output, escaping, empty states, stable metadata ordering and unchanged library scope; text-statistics regression uses nonempty input and current labels."
+      - "-uses PATH (2026-11-01): read-only reverse references in code/tests/rules with exact YAML scalar file/line, integration ID, status and field; includes completed and library integrations without requiring remaining points or source-file existence. Exact normalized repository-relative/native absolute paths, stable human/JSON output, -dir/-file/-id filters, empty reports and malformed/incompatible/ambiguous-request rejection are covered. Structured rule requirements and prose are not path references; source files and YAML stay unchanged (IDEAS.md §3)."
     remaining:
       - "-paths: report code, tests and rules paths that do not exist (IDEAS.md section 2)"
-      - "-uses PATH: list integrations referencing a file (IDEAS.md section 3)"
       - canonical key order per integration, which needs an agreed order first (IDEAS.md section 4.1)
       - "-md: missing-decision cross-references and stale references to closed decisions (IDEAS.md section 5)"
       - "-corrections: applied-correction bookkeeping (IDEAS.md section 6)"
@@ -107,6 +107,7 @@ integrations:
       - cmd/yamlstatus/check.go
       - cmd/yamlstatus/html_endpoint.go
       - cmd/yamlstatus/html_endpoint.html
+      - cmd/yamlstatus/uses.go
     tests:
       - cmd/yamlstatus/main_test.go
       - cmd/yamlstatus/selection_test.go
@@ -114,7 +115,10 @@ integrations:
       - cmd/yamlstatus/check_test.go
       - cmd/yamlstatus/library_scope_test.go
       - cmd/yamlstatus/html_endpoint_test.go
+      - cmd/yamlstatus/uses_test.go
     verification:
+      - command: go test ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus; go run ./cmd/yamlstatus -uses cmd/yamlstatus/uses.go -json; go run ./cmd/yamlstatus check
+        result: passed 2026-11-01 for whole -uses PATH point. Tests cover normalized/missing exact paths, code/tests/rules locations, completed/library owners, structured rule requirements, prose/prefix exclusion, filters, human/JSON/empty output, malformed and incompatible requests, ambiguous IDs and byte-identical YAML after queries. Live repository lookup passed. Remaining under this ID 8 to 7; governance.yaml 22 to 21; no replacement remaining added.
       - command: go test ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus; go run ./cmd/yamlstatus check
         result: passed 2026-10-28 after HTML reporting cleanup; generated report visually inspected in headless Firefox at desktop (1440px) and mobile (390px) widths against sec-lang.com/stdlib.html. CLI emits only HTML, escapes governance text and preserves compiler/library counts; 0 structural governance problems. Existing text-output test now uses nonempty statistics and current labels.
       - command: go run ./cmd/yamlstatus check; git log --name-status -- governance/concurrency_events.yaml governance/concurrency_spawn.yaml

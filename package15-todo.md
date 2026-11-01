@@ -862,10 +862,12 @@ equally named roots of different declarations stay distinct alternatives
   commands/results, and Package 16 recommendations.
   Closed 2026-10-31 (owner decision): hardware communication is a Sec 0.5 feature. All remaining hardware/addressed parts of P15-42, P15-42a and P15-47 (verified MD-111 plans, addressed/hardware roots and returns, MD-121) are deferred to 0.5 under `platform.hardware-register-access`. Every other remaining point is implemented or moved to its owning package (see the 2026-10-31 moves above).
 
-- [ ] P15-75 — Re-run the acceptance matrix, governance unique-ownership check,
+- [x] P15-75 — Re-run the acceptance matrix, governance unique-ownership check,
   rulebook-status check, complete Go/vet suites with absolute MLIR tooling, and
   full Sec MLIR suite before handoff. Confirm every P15 TODO item is either
   complete or explicitly moved to its owning later package.
+
+  Closed 2026-11-01. Final run 2026-11-01 on HEAD `40376a4` plus the working tree, with `sec/` replaced by the patched scratch copy because `sec/core` and `sec/stdlib` are the owner's uncompilable draft: full `go test ./...` with absolute `SEC_MLIR_BIN`: 43 packages pass; the only failures are `TestAnalyzeLoadsFmtPackageAndTransitiveImports` and `TestAnalyzeGroupedPackageImportsAndShortNames` in `cmd/lsp`, which load the owner's draft `fmt` and are not P15 behavior. Full `go vet` passes; `git diff --check` reports nothing. `check-sec-mlir` passes 196/196; schema 9/10/11 selection passes 29/29 (167 excluded). `TestPackage15SourceToSchema11Pipeline`, `TestPackage15HighLevelOptimizationBoundary` and `TestPackage15OptimizationDependencyCFG` pass. `yamlstatus check` reports 0 problems. Hardware communication is a Sec 0.5 feature (owner decision 2026-10-31): the hardware/addressed parts of P15-42, P15-42a and P15-47 are deferred under `platform.hardware-register-access`, and the non-hardware remainders moved to `lowering.sec-mlir-package17`, `concurrency.thread-local-v2`, `compiler.incremental-compilation-v1` and `lowering.reference-model`.
 
   Revalidated 2026-10-30 (partial final acceptance): the seven known failing
   Go tests are repaired. Frozen HEAD `aa59b4c18c91ed04eef69c7dd0028e41630067f5` plus

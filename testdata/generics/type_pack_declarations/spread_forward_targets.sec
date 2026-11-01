@@ -1,0 +1,66 @@
+module main
+
+type Box[V] struct {
+    Value: V,
+}
+
+type Counter struct {
+    Total: uint,
+}
+
+impl Box[V] {
+    fn Size[...Types](values: ...Types) uint {
+        return values.Len
+    }
+}
+
+impl Counter {
+    fn Count[...Types](values: ...ref Types) uint {
+        return values.Len
+    }
+
+    fn Inner[...Types](values: ...ref Types) uint {
+        return Count(values...)
+    }
+}
+
+fn Pick(a: int) int {
+    return 1
+}
+
+fn Pick(a: bool) int {
+    return 2
+}
+
+fn Pick(a: int, b: int) int {
+    return 3
+}
+
+fn Add(a: int, b: int) int {
+    return a + b
+}
+
+fn Choose[...Types](values: ...Types) int {
+    return Pick(values...)
+}
+
+fn Trailing[...Types](values: ...Types) int {
+    return Add(values..., 7)
+}
+
+fn ThroughMethod[...Types](counter: Counter, values: ...ref Types) uint {
+    return counter.Count(values...)
+}
+
+fn ThroughGeneric[...Types](box: Box[int], values: ...Types) uint {
+    return box.Size(values...)
+}
+
+fn Use() uint {
+    let counter := Counter { Total: 0 }
+    let box     := Box[int] { Value: 1 }
+    let number  := 1
+    let flag    := true
+    let chosen  := Choose(1) + Choose(true) + Choose(1, 2) + Trailing(3)
+    return ThroughMethod(counter, number, flag) + ThroughGeneric(box, true) + counter.Inner(number)
+}

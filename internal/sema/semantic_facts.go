@@ -164,6 +164,11 @@ type StringConcatPlan struct {
 	// Allocation is the resolved allocation context and failure channel of a
 	// runtime plan.
 	Allocation StringMaterializationAllocation
+	// Interpolated marks a plan holding an interpolation, whose materialization
+	// keeps the mandatory try of MD-004 (MD-039 § 1(4)).
+	Interpolated bool
+	// Failure is the failure mode the source selected for a runtime plan.
+	Failure StringMaterializationFailureMode
 }
 
 type ResolvedForIterationKind string

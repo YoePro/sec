@@ -305,6 +305,9 @@ func formatOperation(out *strings.Builder, op Operation) {
 		if op.UnsafeAuthorization != nil {
 			fmt.Fprintf(out, " unsafe-direct@%s", formatLocation(*op.UnsafeAuthorization))
 		}
+		if op.PackForward != nil {
+			out.WriteString(formatPackForwardFacts(op.PackForward))
+		}
 		formatReferenceMetadata(out, op.Reference)
 	case OpBranch:
 		formatTarget(out, op.Successors[0])

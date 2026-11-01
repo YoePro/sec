@@ -211,6 +211,7 @@ integrations:
       - cmd/compiler/module_sources.go
       - testdata/diagnostics/emitted_occurrences_invalid.sec
     implemented:
+      - "MD-039 diagnostics and tooling (2026-11-01; correction MD-004-MD-039 § 6(5–6)): S1097 only for an unhandled Result operand or interpolation, S1096 accepts try string +=, S1022 accepts the protected operand, S1098 kept. LSP hover on + and += states panic mode, try mode, the protected operand and the invalid unhandled operand from Sema's plan. Quick fixes for S1097 and S1022 and refactors from panic to try are verified by re-analysis of the edited source, so a callable that cannot carry StringError gets none. The formatter keeps the source-selected try (cmd/lsp/string_operator_tooling.go)."
       - "2026-10-26: after active/retired ID checks, allocated S1174 types.conversion-unavailable as the general mandatory error for an unavailable explicit conversion relation, distinct from S1139 checked-conversion protection and S1093 error-channel compatibility. Both explicit conversion inference paths publish it; numeric-to-named-string rejection includes the explicit ToString/try repair (MD-093). CLI human/JSON and LSP conformance are tested by the types-core owner; source positions and mandatory error severity are retained."
       - id: diagnostics.escape-ids
         description: >-
@@ -700,7 +701,7 @@ integrations:
       - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
         result: passed on 2026-09-30 with registered mandatory S1055 identity, concrete cycle-path messages, actionable indirection help, and valid recursion boundaries
     remaining:
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md § 10(7)): reuse constraint-failure IDs; allocate IDs only for distinct cases (unconstrained E in Result, variant pattern on unknown E, bare generic interface view)"
+      - "MD-120 (§ 10(7)): decide when implementing the tooling whether the existing unidentified messages for an unconstrained E in Result, a variant pattern on unknown E and a bare generic view need stable IDs; today they reuse existing diagnostics and no new ID has been allocated"
 
   - id: diagnostics.move-into-borrowed-parameter
     status: implemented

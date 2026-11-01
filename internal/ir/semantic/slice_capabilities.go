@@ -21,6 +21,15 @@ func (b *builder) deferredSliceCapability(expr ast.Expression) (string, bool) {
 	case *ast.InfixExpression:
 		if typ, known := b.analyzer.ResolvedTypeOf(expr.Right); known && sourceSliceType(typ) {
 			if operation, known := b.analyzer.ResolvedOperatorOf(expr); known && (operation.Kind == sema.ResolvedMembershipCompare || operation.Kind == sema.ResolvedNegatedMembershipCompare) {
+				source := typ
+				if source.Kind == sema.ReferenceType && source.Element != nil {
+					source = *source.Element
+				}
+				if b.maxPackage >= sliceLoweringPackage && source.Element != nil {
+					if element, err := b.internType(*source.Element); err == nil && membershipScalarType(b.module.Types, element) {
+						return "", false
+					}
+				}
 				return "slice membership lowering", true
 			}
 		}

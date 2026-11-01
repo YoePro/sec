@@ -794,6 +794,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Operands) != len(callee.Parameters) || len(op.ArgumentActions) != len(op.Operands) {
 			return fmt.Errorf("call argument arity mismatch")
 		}
+		if err := verifyPackForwardFacts(fn, &op); err != nil {
+			return err
+		}
 		for i, id := range op.Operands {
 			if values[id].Type != callee.Parameters[i].Value.Type {
 				return fmt.Errorf("call argument type mismatch")

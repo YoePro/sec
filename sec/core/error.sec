@@ -366,22 +366,31 @@ type ShapeError union error {
 }
 
 /**
- * Reports an error while rendering formatted text to a destination.
+ * Reports an error while rendering formatted text.
  *
  * Description:
- * Distinguishes text representation and format errors from
- * failures reported by the output destination.
+ * Preserves the distinction between text conversion failures,
+ * destination-specific failures and output size overflow.
+ *
+ * Type parameters:
+ * - E: Concrete destination error type.
  *
  * Ownership:
- * Owns its error payload according to normal Sec union rules.
+ * Owns the active error payload according to Sec union rules.
+ *
+ * Allocation:
+ * Does not inherently allocate.
  *
  * Rulebook:
- * stdlib/fmt/std-fmt.md, sections 2, 5 and 9-10.
+ * stdlib/fmt/std-fmt.md, sections 2 and 9.
  */
-type FormatRenderError union error {
-    // Format validation, text conversion or materialization failed.
+type FormatRenderError[E: error] union error {
+    // Format validation or text conversion failed.
     Text(StringError)
 
-    // The output destination failed to accept the complete text.
-    IO(IOError)
+    // The selected destination reported an error.
+    Sink(E)
+
+    // The complete UTF-8 byte count cannot fit in uint.
+    SizeOverflow
 }

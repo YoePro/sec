@@ -1662,6 +1662,10 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	// expression-type fact. Refuse the known pack boundary before requiring
 	// executable expression facts (rules/compiler/semantic_ir.md §27A).
 	if call, ok := expr.(*ast.CallExpression); ok {
+		// A forward's callee exists per specialization (§ 27A(7)).
+		if fb.owner.analyzer.IsTypePackForward(call) {
+			return fb.buildCall(call)
+		}
 		if target, found := fb.owner.analyzer.ResolvedCallTarget(call); found && isGenericInstance(target.Function) {
 			if target.Function.GenericTypePack != "" && target.Function.Module != fb.owner.module.Identity {
 				return builtValue{}, fb.unsupported("heterogeneous type-pack callable expansion for "+target.Function.Name, call.Token)
@@ -1913,6 +1917,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return fb.buildArrayLiteral(e, typeID)
 	case *ast.IndexExpression:
+		if value, pack := fb.packIndexValue(e); pack {
+			return value, nil
+		}
 		if fb.owner.maxPackage < 14 {
 			return builtValue{}, fb.unsupported("fixed-array index", e.Token)
 		}
@@ -3556,6 +3563,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		// MD-047: Semantic IR has no rounding-conversion operation yet.
 		return builtValue{}, fb.unsupported("explicit rounded conversion (RoundingMode)", call.Token)
 	}
+	if fb.owner.analyzer.IsTypePackForward(call) {
+		return fb.buildPackForward(call)
+	}
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {
 		// Public lookup is implemented, but checked materialization needs
@@ -3566,6 +3576,8 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 			site := member.Property.Token
 			if known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-STRING-FROMBYTEARRAY" || known.ID == "CKM-STRING-FROMRUNEARRAY") {
 				return builtValue{}, fb.unsupported("string."+known.Name+" materialization requires P23 allocation/string lowering", site)
+			} else if ok && strings.HasPrefix(known.ID, "CKM-TOSTRING") {
+				return builtValue{}, fb.unsupported("ToString() needs P23 allocation/string lowering and per-specialization selection of a user ToString", site)
 			}
 		}
 		if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
@@ -3623,6 +3635,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	// after every argument was prepared (destruction.md § 9.2(3)).
 	pendingCancels := len(fb.pendingArgumentCancels)
 	for index, arg := range call.Arguments {
+		if _, spread := explicitMoveFree(arg).(*ast.SpreadExpression); spread {
+			return builtValue{}, fb.unsupported("spread call argument", expressionToken(arg))
+		}
 		expected := TypeID(0)
 		if index < len(parameters) {
 			parameter := parameters[index]

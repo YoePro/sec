@@ -80,3 +80,22 @@ func GenericConstraintDisplays(parameter string, constraints []GenericConstraint
 	}
 	return conjuncts
 }
+
+// GenericConstraintAt exposes the resolved constraint at its own source token,
+// distinguishing the error-category requirement from an explicit error root use.
+// Rules: rules/declarations/generics.md — §§11–15A;
+// rules/tooling/lsp.md — "Hover"; MD-120 §10(7).
+func (a *Analyzer) GenericConstraintAt(token lexer.Token) (GenericConstraint, bool) {
+	if a == nil {
+		return GenericConstraint{}, false
+	}
+	for _, parameter := range a.genericParameterFacts {
+		for _, constraint := range parameter.Constraints {
+			if sourceTokenLocation(constraint.Token) == sourceTokenLocation(token) {
+				constraint.Interface = semanticSnapshotType(constraint.Interface)
+				return constraint, true
+			}
+		}
+	}
+	return GenericConstraint{}, false
+}

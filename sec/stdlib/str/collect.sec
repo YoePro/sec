@@ -92,7 +92,7 @@ fn ToRuneArray(value: string) Result[rune[], CollectionError] {
  */
 fn ToByteArray(value: string) Result[byte[], CollectionError] {
     let mut result: byte[]
-    let mut index: uint := 0
+    let mut index:  uint := 0
 
     while index < value.SizeOf {
         try result.Append(value.ByteAt(index))
@@ -258,7 +258,7 @@ fn FromByteArray(value: ref byte[]) Result[string, StringError] {
             continue
         }
 
-        let mut width: uint := 0
+        let mut width:     uint := 0
         let mut secondMin: byte := 0x80
         let mut secondMax: byte := 0xBF
 
@@ -385,10 +385,10 @@ fn FromByteArrayLossy(value: ref byte[]) Result[string, CollectionError] {
             continue
         }
 
-        let mut width: uint := 0
+        let mut width:     uint := 0
         let mut secondMin: byte := 0x80
         let mut secondMax: byte := 0xBF
-        let mut scalar: int := 0
+        let mut scalar:    int  := 0
 
         if first in 0xC2..0xDF {
             width = 2

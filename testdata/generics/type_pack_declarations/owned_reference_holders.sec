@@ -1,0 +1,39 @@
+module main
+
+fn Count[...Types](values: ...Types) uint {
+    return values.Len
+}
+
+fn Read[...Types](values: ...ref Types) uint {
+    return values.Len
+}
+
+fn FromShared[...Types](values: ...ref Types) uint {
+    return Count(values...)
+}
+
+fn FromMutable[...Types](values: ...ref mut Types) uint {
+    return Count(values...)
+}
+
+fn Moved[...Types](values: ...Types) uint {
+    return Count(<-values...)
+}
+
+fn Lent[...Types](values: ...Types) uint {
+    return Read(values...)
+}
+
+fn Use() uint {
+    let mut value := 1
+    let other     := 2
+    let shared    := ref other
+    let total     := Count(ref other, shared, shared, 3) + FromShared(other) + Lent(ref other, 2)
+    return total + Count(ref mut value) + FromMutable(value) + Moved(ref mut value, 1)
+}
+
+fn Held() uint {
+    let mut value := 1
+    let grant     := ref mut value
+    return Count(grant)
+}

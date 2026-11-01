@@ -1,6 +1,6 @@
 # MD-120 — Generic error parameters (`[E: error]`)
 
-- **Status:** Proposal — owner decisions D1–D7 required; no canonical rulebook is amended yet
+- **Status:** Superseded by the owner-approved `MD-120-generic-error-parameters-approved-20261031-20261101.md`; kept as background only
 - **Decision ID:** MD-120
 - **Created:** 2026-10-31
 - **Document revision:** 0.1

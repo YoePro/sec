@@ -73,11 +73,16 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 	if mode == ast.OwnershipMove && a.rejectPhysicalStorageMove(place, token) {
 		return false
 	}
-	if a.variadicPackElementExpression(value) && (mode == ast.OwnershipMove || requiresOwnershipTransfer(place.Type)) {
+	// A heterogeneous owned element may be copied when each specialization
+	// supplies a copyable one, which checkTypePackByValueLoops proves per call.
+	if a.variadicPackElementExpression(value) && (mode == ast.OwnershipMove || requiresOwnershipTransfer(place.Type) && !isOwnedTypePackElement(place.Type)) {
 		// rules/declarations/functions.md section 34: no direct or partial
 		// move may extract an element from the invocation-lifetime pack.
 		a.addErrorAtToken(expressionToken(value), "cannot move element out of variadic parameter pack")
 		return false
+	}
+	if a.variadicPackElementExpression(value) && isOwnedTypePackElement(place.Type) {
+		return true
 	}
 	if _, _, _, unavailable := a.unavailablePlace(place); unavailable {
 		// inferExpression has already emitted the primary use-after-move error;

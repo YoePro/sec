@@ -1,0 +1,5 @@
+module main
+
+fn Dangling(values: int[4]) ref int[] {
+    return ref values[..]
+}

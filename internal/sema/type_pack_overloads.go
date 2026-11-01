@@ -1,6 +1,10 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sort"
+
+	"sec/internal/ast"
+)
 
 // typePackOverloadSet routes every competing signature set containing a type
 // pack to ordinary argument-only overload selection. A single pack template may
@@ -57,7 +61,7 @@ func (a *Analyzer) partialPackOverload(function Function, refs []*ast.TypeRefere
 			if pattern.Kind == ReferenceType && pattern.Element != nil && argument.Kind != ReferenceType {
 				pattern = *pattern.Element
 			}
-			if !inferGenericTypeSubstitutionWithFixed(pattern, argument, substitution, fixed) {
+			if !inferGenericTypeSubstitutionWithFixed(pattern, a.conformingViewArgument(pattern, argument, substitution), substitution, fixed) {
 				return Function{}, false
 			}
 		}
@@ -121,5 +125,13 @@ func (a *Analyzer) completePackOverload(function Function, partial map[string]Ty
 			return Function{}, false
 		}
 	}
+	// The instance key follows GenericParameters, so a generic owner's arguments
+	// join them: Box[int].Size(true) and Box[bool].Size(true) are distinct.
+	owners := []string{}
+	for name := range function.GenericSubstitution {
+		owners = append(owners, name)
+	}
+	sort.Strings(owners)
+	function.GenericParameters = append(owners, function.GenericParameters...)
 	return a.instantiateGenericFunction(function, substitution), true
 }

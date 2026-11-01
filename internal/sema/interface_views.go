@@ -34,6 +34,56 @@ func (a *Analyzer) borrowedInterfaceView(expected, actual Type) bool {
 	return a.hasValidExplicitInterfaceConformance(concrete, *expected.Element)
 }
 
+// conformingViewArgument lets generic inference read a concrete argument of a
+// generic interface view parameter (`ref mut Sink[E]`) through its explicit
+// conformance: when exactly one declared `implements` of that interface is
+// compatible with the arguments known so far, inference sees that instantiation.
+// With zero or several candidates the argument is returned unchanged, so
+// inference fails instead of guessing. The later ordinary view check decides
+// validity.
+//
+// Rules:
+//   - rules/declarations/interfaces.md — § 9 (MD-120)
+//   - rules/declarations/generics.md — § 18
+func (a *Analyzer) conformingViewArgument(parameter, argument Type, known map[string]Type) Type {
+	view := parameter
+	if view.Kind == ReferenceType && view.Element != nil {
+		view = *view.Element
+	}
+	concrete := dereferenceType(argument)
+	if view.Kind != InterfaceType || len(view.TypeArgs) == 0 || concrete.Kind == InterfaceType || concrete.Kind == ReferenceType {
+		return argument
+	}
+	var selected *Type
+	for index := range concrete.Implements {
+		declared := concrete.Implements[index]
+		if declared.Name != view.Name || declared.Module != view.Module {
+			continue
+		}
+		trial := make(map[string]Type, len(known))
+		for name, typ := range known {
+			trial[name] = typ
+		}
+		if !inferGenericTypeSubstitution(view, declared, trial) {
+			continue
+		}
+		if selected != nil {
+			return argument
+		}
+		selected = &concrete.Implements[index]
+	}
+	if selected == nil {
+		return argument
+	}
+	if argument.Kind == ReferenceType {
+		result := argument
+		element := *selected
+		result.Element = &element
+		return result
+	}
+	return *selected
+}
+
 // rejectInterfaceByValueParameter reports a parameter of the compiler-known
 // interface Iterator[T] written by value: MD-057 does not make Iterator[T] a
 // by-value type and forbids treating it as an owned value or an implicit

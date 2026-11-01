@@ -126,6 +126,8 @@ func noPanicEffectHelp(kind EffectKind) string {
 		return "Checked arithmetic can overflow, divide by zero, or shift out of range. Prove the operand ranges, or use try to turn the failure into ArithmeticError."
 	case EffectMayPanicBounds:
 		return "Indexing panics when the index is out of range. Prove the index (for example with a range-constrained index type or a dominating assert), or use try to handle IndexError."
+	case EffectMayPanicStringMaterialization:
+		return "A runtime string + or += without try panics if its result cannot be materialized. Write try and handle or propagate StringError, or build the text from constants."
 	case EffectMayPanicContract:
 		return "Converting a run-time value into a constrained type panics when the value breaks the type's contract. Use try to handle ContractError."
 	case EffectMayPanicExplicit:

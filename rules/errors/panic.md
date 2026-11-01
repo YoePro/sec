@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-09-27
+- Last updated: 2026-11-01 (§§ 3.1(2), 13(1) string materialization failure, MD-039); 2026-09-27
 - Document revision: 2.3
 - Sec language version: 0.1
 - Canonical path: `rules/errors/panic.md`
@@ -73,7 +73,7 @@ test-harness boundary
 
 Examples include customer absence, insufficient credit, unavailable inventory, concurrent update, and invalid user input.
 
-**§ 3.1(2)** Expected technical failures such as file-not-found, disk-full, allocation failure, timeout, and connection failure are not automatically panic.
+**§ 3.1(2)** Expected technical failures such as file-not-found, disk-full, allocation failure, timeout, and connection failure are not automatically panic. Runtime string `+` and `+=` without `try` are the one declared exception: their storage materialization failure panics with a registered reason (`rules/memory/allocation.md` § 10(6), MD-039).
 
 **§ 3.1(3)** Where a failure is expected to be handled, the canonical API must provide a panic-free recoverable path.
 
@@ -301,6 +301,7 @@ checked unreachable reached
 invalid reference generation
 explicit panic
 foreign abort/trusted-boundary failure
+string materialization failure
 ```
 
 **§ 13(2)** Exact reason spelling and numeric assignments belong to the

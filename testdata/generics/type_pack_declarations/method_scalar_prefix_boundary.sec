@@ -1,5 +1,0 @@
-module main
-type Counter struct { Total: uint }
-impl Counter {
-    fn Head[T, ...Types](head: T, values: ...ref Types) T { return head }
-}

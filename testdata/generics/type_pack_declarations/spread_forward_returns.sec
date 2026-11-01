@@ -1,0 +1,47 @@
+module main
+
+fn Pick(a: ref int, b: ref bool) ref int {
+    return a
+}
+
+fn PickMutable(a: ref mut int, b: ref mut bool) ref mut int {
+    return a
+}
+
+fn Leading[V, ...R](first: ref V, rest: ...ref R) ref V {
+    return first
+}
+
+fn Shared[...Types](values: ...ref Types) ref int {
+    return Pick(values...)
+}
+
+fn Exclusive[...Types](values: ...ref mut Types) ref mut int {
+    return PickMutable(values...)
+}
+
+fn Through[...Types](first: ref int, values: ...ref Types) ref int {
+    return Leading(first, values...)
+}
+
+fn LocalUse[...Types](values: ...Types) int {
+    let held := Pick(values...)
+    return *held
+}
+
+fn Use(number: ref int, flag: ref bool) ref int {
+    return Shared(number, flag)
+}
+
+fn Write() int {
+    let mut number := 1
+    let mut flag   := true
+    let held       := Exclusive(number, flag)
+    *held = 2
+    return LocalUse(3, true)
+}
+
+fn Exact(number: ref int) ref int {
+    let local := true
+    return Through(number, local)
+}

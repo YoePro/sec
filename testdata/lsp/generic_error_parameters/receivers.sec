@@ -1,0 +1,16 @@
+module main
+
+enum IOError error { Closed }
+
+interface Buffer[E: error] {
+    fn Read() Result[void, E]
+    mut fn Write(first: int, second: ref int) Result[void, E]
+}
+
+fn Shared(view: ref Buffer[IOError]) Result[void, IOError] {
+    return view.Read()
+}
+
+fn Exclusive(view: ref mut Buffer[IOError], other: int) Result[void, IOError] {
+    return view.Write(1, other)
+}

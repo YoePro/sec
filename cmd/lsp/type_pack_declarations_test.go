@@ -59,7 +59,7 @@ func TestTypePackDeclarationTooling(t *testing.T) {
 	if len(items) != 0 {
 		t.Fatal(items)
 	}
-	boundary, err := os.ReadFile("../../testdata/generics/type_pack_declarations/method_generic_owner_boundary.sec")
+	boundary, err := os.ReadFile("../../testdata/generics/type_pack_declarations/shared_use_boundary.sec")
 	if err != nil {
 		t.Fatal(err)
 	}

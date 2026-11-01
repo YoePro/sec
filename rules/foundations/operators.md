@@ -268,8 +268,9 @@ The following are not yet implemented completely:
 - materialization of accepted compile-time string concatenation as one folded
   constant before Semantic IR/lowering;
 - active allocation-context resolution for runtime concatenation;
-- rejection of runtime concatenation and interpolation without `try`
-  (`AllocationError` flow only; the former implicit-panic form is removed);
+- rejection of runtime interpolation without `try`, and of an unhandled
+  `Result[string, StringError]` concatenation operand; runtime `+` and `+=`
+  select `try` or panic from source (MD-039);
 - Semantic IR and lowering consumption of the canonical frontend
   `StringConcatPlan`;
 - transactional fallible `string +=` semantics;
@@ -1763,7 +1764,15 @@ let text := try "A" + value.ToString() + "B"     // one try for the whole plan
 let both := try left.ToString() + ":" + right.ToString()
 ```
 
-A missing `try` is the ordinary runtime-materialization diagnostic (S1097).
+An operand of this type is never unwrapped implicitly: without a protecting `try`
+the expression is rejected (S1097), not turned into a panic. A separately
+protected operand handles only that operand, and the surrounding `+` stays in
+ordinary panic mode:
+
+```sec
+let text := "Value: " + (try value.ToString())
+```
+
 Each fallible operand evaluates exactly once, left to right, as one segment of
 the maximal concatenation plan, and the first failure ends the plan. The operand
 must be exactly `Result[string, StringError]`; any other `Result` or non-text
@@ -1771,9 +1780,14 @@ value remains invalid with S1022. Runtime concatenation and interpolation fail
 with `StringError` (`rules/library/core-library.md` § 15.1); an allocation
 failure is `StringError.Allocation`.
 
-Compound `string +=` does not accept a fallible text operand while its failure
-policy is undecided (MD-039); `s += try value.ToString()` handles the operand
-first.
+Compound `string +=` admits the same operand under an outer `try`, where one
+`StringError` channel covers the operand and the append (MD-039):
+
+```sec
+try text += value.ToString()     // one try for operand and append
+text += try value.ToString()     // the operand's try; the append may panic
+text += value.ToString()         // invalid: the Result is not handled (S1022)
+```
 
 The compiler must not silently insert `ToString()`.
 
@@ -1804,31 +1818,45 @@ string constant with:
 ```text
 no runtime allocation
 no allocation context requirement
-no try
+no try required
 no allocation-failure panic
 no StringBuilder recommendation
 ```
 
+`try` on a fully folded concatenation is legal and has an unreachable failure
+path (MD-039). This does not make unrelated infallible expressions valid `try`
+operands.
+
 ## Runtime allocation and failure policy
 
-Runtime string concatenation and runtime string interpolation are fallible
-materialization operations. A concatenation or interpolation expression is
-semantically one materialization that produces one resulting `string`; the
-language requires no observable intermediate `string` value for an individual
-concatenation step.
+A runtime concatenation or interpolation expression is semantically one
+materialization that produces one resulting `string`; the language requires no
+observable intermediate `string` value for an individual concatenation step.
 
-Runtime materialization failure propagates through Sec's ordinary
-fallible-operation mechanism. A runtime concatenation that may fail therefore
-requires the normal `try` handling of a fallible expression; allocation failure
-is propagated or locally handled as `AllocationError`, while the successful
-value remains `string`:
+Decided 2026-10-31 (MD-039; `rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md`).
+Runtime `+` and `+=` have two failure modes selected by source syntax, never by
+function return type, build mode, optimization, target or expected type:
 
 ```sec
-let result := try ("Hello " + name)
+let ordinary := "Hello " + name        // Materialization failure panics.
+let recoverable := try "Hello " + name // Materialization failure is StringError.
 ```
 
-A runtime concatenation without `try` is a compile-time error. There is no
-implicit allocation-panic form.
+Under `try`, a storage failure is `StringError.Allocation(AllocationError)`,
+handled or propagated by the ordinary rules. A failed materialization size check
+follows the existing text classification and never wraps or truncates.
+
+Without `try`, storage materialization failure invokes a compiler-visible,
+non-returning panic with the registered reason `StringMaterializationFailure`. It
+returns no `Err`, does not propagate through the caller's `Result`, is not caught
+by a `try` elsewhere, and reaches the allocation-free minimum panic path.
+
+The result value, exact-once left-to-right evaluation, ownership, lifetime,
+allocation context and encoding do not depend on the selected mode.
+
+Runtime interpolation is unchanged by this decision: it is a fallible
+materialization that requires `try`, and a concatenation containing an
+interpolation requires it for that materialization.
 
 Runtime concatenation uses the canonical active allocation context defined by
 `rules/memory/allocation.md`. Sec 0.1 defines no string-specific allocator and
@@ -1842,11 +1870,13 @@ runtime materialization is valid only when the compiler proves the dynamic
 allocation is eliminated while preserving Sec semantics (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md`
 §§ 5.10–5.19).
 
-| Form | May allocate | Requires `try` |
-|---|---:|---:|
-| Fully compile-time-folded concatenation | No | No |
-| Runtime concatenation | Yes | Yes |
-| Runtime concatenation without allocation context | Compile-time error | Not applicable |
+| Form | May allocate | Failure without `try` | Failure under `try` |
+|---|---:|---:|---:|
+| Fully compile-time-folded concatenation | No | None | None |
+| Runtime `+` or `+=` | Yes | Panic | `StringError` |
+| Runtime `+` or `+=` with a `Result[string, StringError]` operand | Yes | Compile-time error | `StringError` |
+| Runtime interpolation | Yes | Compile-time error | `StringError` |
+| Runtime materialization without allocation context | Compile-time error in both modes | | |
 
 Optimization and backends may remove temporaries or allocations only when the
 specified success, failure, ownership, and destruction behavior is preserved
@@ -1854,9 +1884,12 @@ specified success, failure, ownership, and destruction behavior is preserved
 
 ## `@noPanic` and `try` scope
 
-Because runtime concatenation always uses `try`, materialization failure is an
-ordinary error flow and never a panic. A runtime concatenation in a `@noPanic`
-function is valid when its `AllocationError` flow is handled or propagated.
+Under `@noPanic`, including restrictions inherited from interrupt contexts, an
+unprotected runtime `+` or `+=` violates the guarantee unless a static proof shows
+it needs no failing allocation. A protecting `try` satisfies it when `StringError`
+is legally handled or propagated and no other panic effect is reachable. Under
+`@noAlloc` both modes are rejected when an allocation effect is reachable: `try`
+is not permission to allocate.
 
 `try` covers the concatenation's explicit fallible flow and nested operations
 whose error flow is explicitly part of the expression. It does not catch an
@@ -1886,8 +1919,8 @@ only an optimization after ownership, lifetime, and effect proof.
 Every segment evaluates left to right and exactly once. The plan may then
 measure segment lengths, calculate the total with checked arithmetic, allocate
 or otherwise prepare final storage once, and write segments in source order.
-Static impossibility is a compile-time error; dynamic length failure is part of
-the plan's ordinary `try` error flow and never wraps silently.
+Static impossibility is a compile-time error; dynamic length failure follows the
+plan's selected failure mode and never wraps silently.
 
 The canonical result is allocated at most once. User-defined `ToString()` calls
 may allocate separate temporary strings; compiler-known formatting may be fused
@@ -1895,18 +1928,31 @@ without a temporary.
 
 ## Compound concatenation assignment
 
-`string +=` uses the same direct operand matrix and failure-policy choice:
+`string +=` uses the same direct operand matrix and source-selected failure mode
+as `+` (MD-039):
 
 ```sec
-s += part
-try s += part
+s += part        // Materialization failure panics.
+try s += part    // Materialization failure is StringError.
 ```
 
 It is transactional: evaluate the destination place once, read the old value,
-evaluate the appended segment once, construct and validate the new value, then
-commit. A failed `try` leaves the destination unchanged. In-place append is
-permitted only after proof of unique ownership, sufficient capacity, no
-conflicting alias, stable storage, and compatible allocation context.
+evaluate the appended operand once, prepare the new value, then commit, producing
+no value. On failure while evaluating or materializing the appended value the
+append commits nothing: under `try` the failure is recoverable, and in ordinary
+mode materialization failure panics before commit. Independent side effects the
+program caused while evaluating the operand are not undone.
+
+An outer `try` handles a `Result[string, StringError]` operand and the append as
+one `StringError` channel; see "Fallible text operands".
+
+In-place append is permitted only after proof of unique ownership, sufficient
+capacity, no conflicting alias, stable storage, and compatible allocation
+context, and must preserve the selected failure mode and the transactional
+commit. A `string +=` without `try` is a distinct ordinary panicking form of a
+compiler-known string operation, not an unhandled fallible assignment; no general
+non-`try` fallible assignment is introduced (`rules/errors/errorhandling.md`
+§ 23).
 
 ## `string.Concat`
 
@@ -3814,7 +3860,7 @@ error[S....]: runtime string concatenation requires an allocation context
 
 ```text
 error[S....]: runtime concatenation without `try` may panic on allocation failure
-help: use the valid `try` form and handle or propagate AllocationError
+help: write `try` and handle or propagate StringError
 ```
 
 ---
@@ -3871,7 +3917,7 @@ Operator: string concatenation
 Result: string
 May allocate: yes
 Allocation context: current arena
-Failure policy: panic or AllocationError through try
+Failure policy: panic, or StringError through try
 Concat plan: maximal chain
 ```
 
@@ -4192,9 +4238,11 @@ left-to-right exact-once evaluation, active allocation contexts, panic and
 `try` policies, `@noPanic`, checked total length, one maximal concat plan, and
 at-most-once canonical result allocation.
 
-For `string +=`, test exact-once destination and source evaluation,
-transactional failure, unchanged destination after failed `try`, and semantic
-equivalence under proven in-place optimization. Test that structural
+For `string +=`, test exact-once destination and source evaluation, both failure
+modes, the protected and separately protected `Result[string, StringError]`
+operand, rejection of an unhandled one, transactional failure, unchanged
+destination after failed `try`, and semantic equivalence under proven in-place
+optimization. Test that structural
 `StringBuilder` information appears only for repeated reconstruction and never
 for one isolated operation or one maximal chain.
 
@@ -4752,7 +4800,7 @@ Add a focused diagnostic.
 2. Reject non-text operands without hidden conversion.
 3. Recognize interpolation as an explicit formatting context.
 4. Resolve the active allocation context.
-5. Select panic or `AllocationError` flow from source `try` context.
+5. Select panic or `StringError` flow from source `try` context.
 6. Enforce `@noPanic`.
 7. Construct one maximal `StringConcatPlan`.
 8. Preserve left-to-right exact-once evaluation.

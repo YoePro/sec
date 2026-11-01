@@ -8,11 +8,11 @@ import (
 )
 
 // maxUnrolledMembershipLength bounds the element tests a fixed-array
-// membership expands to; longer arrays stay an explicit capability boundary.
+// membership expands to; longer arrays use a bounded-size loop instead.
 const maxUnrolledMembershipLength = 64
 
 // buildFixedArrayMembership lowers `value in array` and `value not in array`
-// for a fixed array of built-in integers. The value is evaluated first and the
+// for a fixed array of represented scalar values. The value is evaluated first and the
 // array second, each exactly once; the elements are then compared in index
 // order with constant, proven-safe extracts, and the first equal element ends
 // the search. `not in` negates the completed result.
@@ -26,8 +26,11 @@ func (fb *functionBuilder) buildFixedArrayMembership(expr *ast.InfixExpression, 
 	}
 	arraySource := *resolved.RightType
 	length, fixed := sema.FixedArrayLength(arraySource)
-	if !fixed || arraySource.Element == nil || !length.IsInt64() || length.Int64() > maxUnrolledMembershipLength {
+	if !fixed || arraySource.Element == nil {
 		return builtValue{}, false, nil
+	}
+	if !length.IsInt64() || length.Int64() > maxUnrolledMembershipLength {
+		return fb.buildSequenceMembership(expr, resolved)
 	}
 	arrayType, err := fb.owner.internType(arraySource)
 	if err != nil {
@@ -37,7 +40,7 @@ func (fb *functionBuilder) buildFixedArrayMembership(expr *ast.InfixExpression, 
 	if err != nil {
 		return builtValue{}, true, err
 	}
-	if !isBuiltinIntegerType(fb.owner.module.Types, elementType) {
+	if !membershipScalarType(fb.owner.module.Types, elementType) {
 		return builtValue{}, false, nil
 	}
 	boolType, err := fb.boolType()
@@ -76,7 +79,7 @@ func (fb *functionBuilder) buildFixedArrayMembership(expr *ast.InfixExpression, 
 				ArrayActions:   []ArrayTransferAction{ArrayActionCopyTrivial},
 				ArrayCheckKind: ArrayIndexProvenSafe, ArrayProofKind: ArrayIndexProofConstant, Location: loc,
 			}, elementType)
-			equal := fb.result(Operation{Kind: OpIntCompare, IntegerCompare: IntegerCompareEQ, Operands: []ValueID{element.id, value.id}, Operator: expr.Operator, Location: loc}, boolType)
+			equal := fb.membershipScalarEquality(element, value, boolType, loc)
 			if index == count-1 {
 				fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{equal.id}}}, Operator: expr.Operator, Location: loc})
 				break

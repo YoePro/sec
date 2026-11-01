@@ -1807,6 +1807,13 @@ Sec does not require a `std/units` source spelling.
 
 Hover should present the most useful compiler-known information.
 
+Hover on a string `+` or `+=` states the source-selected failure mode from Sema's
+plan and separates ordinary materialization, which may panic, from `try`, which
+reports `StringError`, and from an unhandled `Result` operand, which is invalid
+(MD-039). Its `try` quick fixes and refactors are offered only when analysis of the
+edited source proves them; `+=` with an unhandled operand offers both `try`
+placements, naming that the operand's `try` leaves the append in panic mode.
+
 General hover may include:
 
 ```text
@@ -1899,6 +1906,8 @@ value without modifying source. Explicit code actions may expand defaulted
 fields, insert an explicit default value, or declare a named-type default. These
 are refactorings and must not run as ordinary formatting. The LSP must call the
 same `DefaultValueOf` semantics as Sema rather than reimplement selection.
+
+An error parameter (MD-120) is presented so that a constrained unknown `E: error`, the explicit root `error` and a concrete instantiation stay distinct; a specialized location shows its concrete argument. Completion in a template offers only whole-channel `Err(...)` bindings, never variants of an unknown `E`.
 
 ---
 

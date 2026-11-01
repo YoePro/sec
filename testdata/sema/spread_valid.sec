@@ -1,0 +1,78 @@
+module main
+
+type Point struct {
+    X: int,
+    Y: int,
+    Z: int,
+}
+
+type Required struct {
+    Value: fn(int) int,
+    Other: int,
+}
+
+fn Same(value: int) int {
+    return value
+}
+
+fn Three(a: int, b: int, c: int) int {
+    return a + b + c
+}
+
+fn Four(a: int, b: int, c: int, d: int) int {
+    return a + b + c + d
+}
+
+fn Pick(a: int, b: int) int {
+    return a
+}
+
+fn Pick(a: int, b: int, c: int) int {
+    return b
+}
+
+fn Source(first: int) int[2] {
+    return [first, first]
+}
+
+fn Calls() int {
+    let pair:   int[2] := [1, 2]
+    let triple: int[3] := [1, 2, 3]
+    let one       := Three(triple...)
+    let mixed     := Three(0, pair...)
+    let multiple  := Four(pair..., pair...)
+    let overload  := Pick(triple...)
+    let evaluated := Three(0, Source(1)...)
+    return one + mixed + multiple + overload + evaluated
+}
+
+fn Literals() int {
+    let pair: int[2] := [1, 2]
+    let inferred := [pair..., 3]
+    let typed: int[3] := [0, pair...]
+    let multiple := [pair..., pair...]
+    return inferred[0] + typed[0] + multiple[0]
+}
+
+fn Structs() int {
+    let base       := Point { X: 1, Y: 2 }
+    let one        := Point { base... }
+    let overridden := Point { base..., X: 5 }
+    let multiple   := Point { base..., one..., }
+    let required   := Required { Value: Same, Other: 2 }
+    let satisfied  := Required { required... }
+    let defaulted  := Point { X: 1, Y: 2 }
+    return one.X + overridden.X + multiple.X + satisfied.Other + defaulted.Z
+}
+
+fn Forward(values: ...int) int {
+    return Sum(values...)
+}
+
+fn Transfer(values: ...int) int {
+    return Sum(<-values...)
+}
+
+fn Sum(values: ...int) int {
+    return 0
+}

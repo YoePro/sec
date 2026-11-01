@@ -1,0 +1,62 @@
+module main
+
+fn Count[...Types](values: ...Types) uint {
+    return values.Len
+}
+
+fn CopyOn[...Types](values: ...Types) uint {
+    return Count(values...)
+}
+
+fn MoveOn[...Types](values: ...Types) uint {
+    return Count(<-values...)
+}
+
+fn WithPrefix[...Types](values: ...Types) uint {
+    return Count(true, values...)
+}
+
+fn Twice[...Types](values: ...Types) uint {
+    return Count(values..., values...)
+}
+
+fn Ordered(a: int, b: int, c: int) int {
+    return a * 100 + b * 10 + c
+}
+
+fn FixedTarget[...Types](values: ...Types) int {
+    return Ordered(values...)
+}
+
+fn PrefixedTarget[...Types](values: ...Types) int {
+    return Ordered(1, values...)
+}
+
+fn Chain[...Types](values: ...Types) uint {
+    return CopyOn(values...)
+}
+
+fn main() int {
+    if CopyOn(1, true) != 2 {
+        return 1
+    }
+    if MoveOn(1, 2, 3) != 3 {
+        return 2
+    }
+    if WithPrefix(1) != 2 {
+        return 3
+    }
+    if Twice(1, true) != 4 {
+        return 4
+    }
+    if FixedTarget(4, 5, 6) != 456 {
+        return 5
+    }
+    if PrefixedTarget(2, 3) != 123 {
+        return 6
+    }
+    if Chain() != 0 {
+        return 7
+    }
+    return 0
+}

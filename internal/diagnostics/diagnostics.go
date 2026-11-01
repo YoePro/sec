@@ -81,6 +81,7 @@ const (
 	ParserRemovedUppercaseForeignQualifier        = "P2035"
 	ParserInvalidHardwareDeclaration              = "P2036"
 	ParserMutFnInImpl                             = "P2037"
+	ParserInterfaceConformancePlacement           = "P2038"
 	MissingModuleDeclaration                      = "S1001"
 	DuplicateModuleDeclaration                    = "S1002"
 	ModuleDeclarationConflict                     = "S1003"
@@ -357,7 +358,12 @@ const (
 	HardwareSchemaUnavailable  = "S1186"
 	HardwareContextUnavailable = "S1187"
 	HardwareAddressBinding     = "S1188"
-	HardwareRegionOverlap      = "A2010"
+
+	// InterfaceReceiverCapability identifies a rejected method/iteration receiver.
+	InterfaceReceiverCapability = "S1189"
+	// InterfaceConformancePlacement is the Sema guard for recovered/programmatic ASTs.
+	InterfaceConformancePlacement = "S1190"
+	HardwareRegionOverlap         = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
@@ -443,6 +449,8 @@ var registry = map[string]Definition{
 	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicOrderNotCompileTime:             {ID: AtomicOrderNotCompileTime, Name: "atomic.order-not-compile-time", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
+	InterfaceReceiverCapability:           {ID: InterfaceReceiverCapability, Name: "interfaces.receiver-capability", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	InterfaceConformancePlacement:         {ID: InterfaceConformancePlacement, Name: "interfaces.conformance-placement", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceByValueParameter:             {ID: InterfaceByValueParameter, Name: "interfaces.by-value-parameter", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	ShapedMetadataLiteralInvalid:          {ID: ShapedMetadataLiteralInvalid, Name: "collections.shaped-metadata-literal", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	ConversionUnavailable:                 {ID: ConversionUnavailable, Name: "types.conversion-unavailable", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
@@ -650,6 +658,7 @@ var registry = map[string]Definition{
 	// rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md §2.1
 	ParserRemovedUppercaseForeignQualifier: parserDefinition(ParserRemovedUppercaseForeignQualifier, "parser.removed-uppercase-foreign-qualifier"),
 	ParserInvalidHardwareDeclaration:       parserDefinition(ParserInvalidHardwareDeclaration, "parser.invalid-hardware-declaration"),
+	ParserInterfaceConformancePlacement:    parserDefinition(ParserInterfaceConformancePlacement, "parser.interface-conformance-placement"),
 	ParserMutFnInImpl:                      parserDefinition(ParserMutFnInImpl, "parser.mut-fn-in-impl"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,

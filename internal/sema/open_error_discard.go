@@ -37,6 +37,11 @@ func (a *Analyzer) openErrorObligations() []Type {
 // the program's declared error types as the compiler-owned set of possible
 // concrete payloads.
 func (a *Analyzer) isDiscardable(typ Type) bool {
+	// `E: error` does not establish discardability (MD-120 § 4(4)): its
+	// instantiation may carry a lifecycle obligation the template cannot see.
+	if typ.Kind == GenericType && typ.ErrorAssignable {
+		return false
+	}
 	if !isDiscardableType(typ) {
 		return false
 	}

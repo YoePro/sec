@@ -120,6 +120,12 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		}
 		return Type{}, expressionValue{}, false
 	case "ToString":
+		// The concrete type is unknown here, and with it a user ToString's effects
+		// (MD-122), so no @noPanic or @noAlloc proof may rely on this call.
+		if kind := dereferenceType(lookupType).Kind; (kind == GenericType || kind == InterfaceType) && !a.summaryPass && a.callGraphPathReachable {
+			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: expr.Token})
+			a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: expr.Token, UnknownAllocation: true})
+		}
 		maxArguments := 0
 		if isNumericType(lookupType) {
 			maxArguments = 1

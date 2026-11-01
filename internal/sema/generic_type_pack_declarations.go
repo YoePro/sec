@@ -30,7 +30,7 @@ func (a *Analyzer) rejectUnavailableTypePackExpansion(fn *ast.FunctionDeclaratio
 	for _, parameter := range fn.GenericParameters {
 		if parameter != nil && parameter.TypePack {
 			a.addErrorAtTokenWithMetadata(parameter.PackToken, diagnostics.GenericTypePackExpansionUnavailable,
-				"The declaration is recognized. Pack bodies with no pack use or only Len reads and direct-call inference are supported. This parameter mode or body needs heterogeneous expansion that is not implemented yet; no runtime container or ordinary single-type parameter is substituted.",
+				"The declaration is recognized. Pack bodies with no pack use, Len reads, `for` loops over the pack, constant element indexing, call spreads and direct-call inference are supported. This parameter mode or body needs heterogeneous expansion that is not implemented yet; no runtime container or ordinary single-type parameter is substituted.",
 				"compiler capability unavailable: semantic expansion of heterogeneous type pack %s", parameter.Name.Value)
 			return true
 		}

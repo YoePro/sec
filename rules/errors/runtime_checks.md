@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
+- **Last updated:** 2026-11-01 (string materialization failure modes, MD-039); 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
@@ -794,6 +794,10 @@ custom embedded allocator
 ```
 
 No mandatory heap runtime is introduced.
+
+Runtime string `+` and `+=` are the exception: without `try` a materialization
+failure panics with `StringMaterializationFailure`, and with `try` it is
+`StringError.Allocation` (MD-039, `rules/foundations/operators.md`).
 
 ---
 

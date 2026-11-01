@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -19,9 +20,10 @@ func errorPatternCompletionItems(uri, text string, offset int, overlay sourceOve
 	if !ok {
 		return nil, false
 	}
-	// Replacing the selector with a discard preserves preceding source
-	// positions and lets Sema resolve the channel without a guessed variant.
-	insertion := "_" + strings.Repeat(" ", offset-dot-1)
+	// A fresh whole-channel binding is valid even for an unknown E whose
+	// discardability is not proven. Err(_) would invalidate that recovery.
+	binding := freshErrorPatternBinding(uri, text)
+	insertion := binding + strings.Repeat(" ", offset-dot-1)
 	if rest := strings.TrimSpace(text[offset:]); !strings.HasPrefix(rest, ")") {
 		insertion += ") => " + subjectCompletionPlaceholder
 	}
@@ -37,6 +39,12 @@ func errorPatternCompletionItems(uri, text string, offset int, overlay sourceOve
 		return []completionItem{}, true
 	}
 	items := []completionItem{}
+	if channel.Kind == sema.GenericType && channel.ErrorAssignable {
+		return []completionItem{{Label: "Err(" + binding + ")", Kind: 6,
+			Detail:        "Bind the whole error channel " + lspTypeName(channel),
+			Documentation: "The constrained error type is unknown in this template. Bind the whole error; no concrete variants or discardability are implied.",
+			FilterText:    "." + prefix, TextEdit: &textEdit{Range: offsetsRange(text, dot, offset), NewText: binding}}}, true
+	}
 	if channel.Kind == sema.ErrorRootType {
 		// An open channel supplies no variant context. Offer explicit visible
 		// concrete type qualifications, not variants from a workspace search.
@@ -112,4 +120,25 @@ func errorPatternChannelAt(program *ast.Program, analyzer *sema.Analyzer, token 
 		}
 	}
 	return sema.Type{}, false
+}
+
+// freshErrorPatternBinding chooses an unused source spelling for the inserted
+// binding without performing name resolution or assuming an error variant.
+// Rules: rules/tooling/lsp.md — "Completion"; MD-120 §§4(4–7),10(7).
+func freshErrorPatternBinding(uri, text string) string {
+	used := map[string]bool{}
+	for _, token := range sourceTokens(uri, text) {
+		if token.Type == lexer.IDENT {
+			used[token.Lexeme] = true
+		}
+	}
+	for index := 0; ; index++ {
+		name := "cause"
+		if index > 0 {
+			name += strconv.Itoa(index)
+		}
+		if !used[name] {
+			return name
+		}
+	}
 }

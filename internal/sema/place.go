@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -589,6 +590,15 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 			elementType = containerType.Element
 		} else if isCompilerKnownListType(containerType) {
 			elementType = &containerType.TypeArgs[0]
+		} else if containerType.Kind == VariadicPackType && containerType.Element != nil {
+			if position, known := a.typePackConstantPosition(expr); known {
+				if element, pack := typePackElementType(*containerType.Element, strconv.Itoa(position)); pack {
+					elementType = &element
+					// A `ref mut` element grants its referent; the pack itself
+					// stays read-only (§38A(3)(5)).
+					base.Mutable = element.Kind == ReferenceType && element.ReferenceMutable
+				}
+			}
 		}
 		if elementType == nil {
 			return Place{}, false

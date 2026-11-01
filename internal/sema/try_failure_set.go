@@ -485,9 +485,14 @@ func (a *Analyzer) addBodylessTryError(token lexer.Token, format string, args ..
 // Rules:
 //   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 5.1–5.6, 5.15
 func (a *Analyzer) appendStringMaterializationPoint(points []TryFailurePoint, expr ast.Expression, token lexer.Token) []TryFailurePoint {
-	if !a.runtimeStringMaterialization(expr) {
+	// A folded plan's try is legal with an unreachable failure path, so both
+	// spellings stay valid (MD-039 § 2(5)).
+	plan, known := a.stringConcatPlans[expr]
+	if !known {
 		return points
 	}
-	a.protectedStringMaterializations[expr] = true
+	if plan.Runtime {
+		a.protectedStringMaterializations[expr] = true
+	}
 	return append(points, TryFailurePoint{Kind: TryFailureAllocation, ErrorType: a.types["StringError"], Expression: expr, Token: token})
 }

@@ -226,6 +226,7 @@ integrations:
       - sec/stdlib/fmt/fmt.sec
     implemented: []
     remaining:
+      - "MD-120 handoff (§ 9): sec/core/format.sec and sec/stdlib/fmt/print.linux.amd64.sec still declare interface FormatSink[E] and use bare FormatSink; they must become [E: error] with complete uses, and the fmt error contract must keep formatter, materialization, output-count and destination failures separate (MD-118; owner draft, not touched by compiler work)"
       - Specify and implement the public fmt surface after MD-118 settles format grammar/validation, builtin and user participation, text materialization versus output, allocation and StringError/IO errors; the existing Println(string) stub does not define Printf or the unresolved API.
       - Integrate the implemented MD-117 native type-pack facility for mixed concrete arguments without fmt-specific compiler rules, implicit any/boxing or C-vararg adaptation; language owners are frontend.generics-v2, frontend.functions-v2 and frontend.spread, with ownership/control-flow, Semantic IR, specialization and P25 ABI work in their existing owners. Pack-carried references use ordinary reference access syntax (references.md § 3.4(10), MD-119 applied 2026-10-30).
     required_tests:

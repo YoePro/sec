@@ -4,7 +4,7 @@
 **Language version:** Sec 0.1
 **Document revision:** 2.1
 **Created:** 2026-08-13
-**Last updated:** 2026-09-04
+**Last updated:** 2026-11-01 (§ 16.1 generic error enums, MD-120); 2026-09-04
 **Repository baseline reviewed:** `f22b07a`
 **Replaces:** the previous enum rulebook revision
 
@@ -124,6 +124,8 @@ semantics, and makes the enum assignable to compiler-known `error`. Different
 concrete error enums remain non-assignable to one another. Widening preserves
 the concrete enum and member identity. Bit-backed enums are not automatically
 error types.
+
+A generic enum may carry the `error` marker (§ 16.1, MD-120).
 
 ---
 
@@ -879,6 +881,8 @@ conversion, comparison, `switch`, `match`, and representation rules.
 
 Generic enum members remain payload-less. Payload-bearing alternatives belong
 to unions.
+
+A generic enum may carry the `error` marker: `enum OperationError[T] error { Failed Cancelled }`. It stays payload-less; a phantom parameter affects nominal identity only and stores nothing (MD-120; `rules/errors/errorhandling.md` § 3.5).
 
 ---
 

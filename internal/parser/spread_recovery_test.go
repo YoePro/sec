@@ -103,3 +103,26 @@ func TestSpreadOutOfContextKeepsSourceExpression(t *testing.T) {
 		t.Fatalf("want both spread expressions, got %d", spreads)
 	}
 }
+
+// A consuming spread has no struct-literal form (functions.md §38A(7)(4)), while
+// `<-values...` in a call keeps the `...` under the marker.
+func TestConsumingSpreadShape(t *testing.T) {
+	outcome, finished := robustParse("module main\nfn F(point: Point) Point {\n    return Point { <-point... }\n}\n")
+	if !finished || outcome.panicked != nil || !outcome.result.HasErrors {
+		t.Fatalf("consuming struct spread: %+v", outcome)
+	}
+	outcome, finished = robustParse("module main\nfn F(values: ...int) int {\n    return G(<-values...)\n}\n")
+	if !finished || outcome.panicked != nil || outcome.result.HasErrors {
+		t.Fatalf("consuming call spread: %+v", outcome)
+	}
+	found := false
+	ast.Visit(outcome.result.Program, func(node any) bool {
+		if move, ok := node.(*ast.PrefixExpression); ok && move.Operator == "<-" {
+			_, found = move.Right.(*ast.SpreadExpression)
+		}
+		return true
+	})
+	if !found {
+		t.Fatal("<-values... must parse as a move of the spread")
+	}
+}

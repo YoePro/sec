@@ -14,6 +14,7 @@ func TestCanonicalPanicReasonRegistryIsStableAndComplete(t *testing.T) {
 		{ID: 8, Name: "InvalidReferenceGeneration"},
 		{ID: 9, Name: "ExplicitPanic"},
 		{ID: 10, Name: "ForeignAbort"},
+		{ID: 11, Name: "StringMaterializationFailure"},
 	}
 	got := PanicReasonDefinitions()
 	if len(got) != len(want) {

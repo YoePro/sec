@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -173,7 +174,7 @@ func (b *builder) demandSpecialization(call *ast.CallExpression, target sema.Fun
 	parameters := make([]sema.FunctionParameter, 0, len(target.Parameters))
 	var facts *TypePackFacts
 	if target.GenericTypePack != "" {
-		fact, ok := b.analyzer.ResolvedTypePackCallOf(call)
+		fact, ok := sema.TypePackCallOfInstance(target)
 		if !ok {
 			return nil, unsupported("heterogeneous type-pack callable expansion without a resolved sequence")
 		}
@@ -183,6 +184,11 @@ func (b *builder) demandSpecialization(call *ast.CallExpression, target sema.Fun
 			element = concrete(element)
 			if !concreteSemaType(element) {
 				return nil, unsupported("type-pack specialization with an unresolved element")
+			}
+			// A reference element of an owned pack is a by-value generic argument
+			// holding a reference, the boundary of ordinary T = ref int too.
+			if element.Kind == sema.ReferenceType {
+				return nil, unsupported("type-pack specialization with the reference-holder element " + canonicalSemaType(element))
 			}
 			typeID, err := b.internType(element)
 			if err != nil {
@@ -280,6 +286,14 @@ func (b *builder) buildSpecializations() error {
 			}
 		}
 		b.substitution = spec.substitution
+		// Every constant index `values[k]` of the template names `Types[k]`.
+		if spec.facts != nil {
+			if pack, ok := spec.substitution[spec.facts.Parameter]; ok {
+				for position, element := range pack.TypeArgs {
+					b.substitution[sema.TypePackElementName(spec.facts.Parameter, strconv.Itoa(position))] = element
+				}
+			}
+		}
 		err := b.buildConcreteFunction(decl, spec.function, spec)
 		b.substitution = nil
 		if err != nil {

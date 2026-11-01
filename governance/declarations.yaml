@@ -100,6 +100,7 @@ integrations:
       - failed runtime string conversion produces EnumValueError.UndeclaredValue and never OutOfRange
       - match exhaustiveness, equality, switch comparison, member completion, hover, and lowering operate on declared string value classes while preserving nominal identity
     implemented:
+      - MD-120 generic error enums with phantom parameters (2026-11-01; enums.md § 16.1) are accepted (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)
       - generic enum declaration parsing, template registration, concrete member resolution, generic impl scope, arity diagnostics, instance caching, and distinct concrete nominal frontend identity
       - ordinary enum declarations with default int or explicit integer underlying representation
       - exact-width open bit and bit[N] enum identities from width 1 through 256
@@ -146,7 +147,6 @@ integrations:
       - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
       - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
       - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md §§ 5(4), 10(5)): admit the error marker on generic enums, including phantom parameters"
     required_tests:
       - generic enum declaration, concrete member access, same-instantiation canonicalization, distinct-instantiation rejection, impl owner scope, arity, constraints, and concrete representation validation
       - string-backed enum declaration and member access
@@ -229,6 +229,7 @@ integrations:
       - testdata/register8_valid.sec
       - testdata/register_invalid.sec
     implemented:
+      - "Register layouts survive post-Sema snapshots (2026-10-31): semanticSnapshotType keeps allocation order, byte order, shadow policy and fields, so an impl method of a register with a reserved field builds the same definition as a direct use; place.read accepts detached register referents (TestRegisterReceiverKeepsReservedFields)"
       - "MD-077 steps 1-2 (2026-10-22, rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md): detached bit[N] carriers, proven field writes and the no-truncation rules are locked by tests. @address bindings resolve to the compiler-known HardwareInstance[T] (types.go, hardware_instances.go), which is non-copyable, trivially destructible and only for register T. The type-owned primary impl is mandatory. Physical fields resolve only inside impl T, with a diagnostic naming the public members. ref/ref mut of physical bits (through an instance or self) are rejected, while ref of the instance is ref HardwareInstance[T] and never crosses with ref T. LSP completion offers impl members, not fields. Fixtures register_valid, register2/3/5, register_invalid, bit_enum_*, allocation_physical_storage_valid and the pitfall fixtures were migrated to the impl API (register_md077_test.go, cmd/lsp/hardware_instance_test.go)."
       - "MD-077 step 3, detached part (2026-10-23): Sema records immutable register field plans (ResolvedRegisterFieldOf: register type, field ordinal, field contract, root kind detached/hardware-instance/impl-receiver) and write proofs (ResolvedRegisterWriteOf: typed, constant or interval). Semantic IR has the register type, the module register-definition table (bit slices, carriers, access, unit, reserved fields; verified complete and non-overlapping) and the pure register.value.extract/update operations, including nested registers, registers inside structs and impl members on a software receiver (self.Field and implicit Field read the receiver Place, then extract/update; owner clarification 2026-10-23 in registers.md § 11.7: the receiver kind, not the impl, decides hardware versus software semantics); a differently typed proven value is converted exactly to the field carrier (register_values_test.go). A member that borrows a receiver register field is software-receiver-only and is rejected on a hardware instance, also through implicit-self calls (register_receivers.go). Hardware roots, HardwareInstance[T] and integer-to-register conversion (MD-110) fail closed with specific diagnostics; This historical emitter gate is superseded by the MD-114 detached table/extract/update and MD-110 constant/source-domain/to-bits subset implemented on 2026-10-28 under lowering.sec-mlir-package15; hardware and remaining conversion/proof transport stay explicit boundaries."
       - nominal declarations through type Name register[N] with positive allocation-free compile-time integer expressions, including source-order-independent immutable module constants
@@ -321,6 +322,7 @@ integrations:
       - testdata/tooling/union_empty_catch_all.sec
       - testdata/tooling/union_empty_catch_all_invalid.sec
     implemented:
+      - MD-120 generic error unions (2026-11-01; unions.md § 16) are accepted; each instance is a distinct concrete closed union error and builds verified Semantic IR (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)
       - named closed payload-less, single-payload, struct-like, and mixed union declarations
       - nominal variant namespaces, duplicate and empty-union validation, payload arity checking, and broad payload type compatibility; complete representability and ownership preparation remain partial
       - generic union declarations, expected-type and payload-driven constructor inference, and concrete payload substitution
@@ -360,7 +362,6 @@ integrations:
       - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
       - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
       - add complete parser recovery, formatter, valid/invalid, dataflow, LSP, Semantic IR, MLIR, and end-to-end coverage
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md §§ 5, 10(5)): admit the error marker on generic unions; each instance a distinct nominal error type"
     verification:
       - command: go test ./cmd/compiler ./cmd/lsp -run 'TestImplicitEmptyCatchAll|TestDiagnosticCatalog' -count=1 -timeout=120s; go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: "passed on 2026-10-29: compiler 1.486s, LSP 1.427s, vet clean. Real manifests verify default/off/info/warning/error policy, human warning text, JSON registered identity/location/help, unsaved-source LSP identity/range/help and source rejection only on explicit promotion."
@@ -529,6 +530,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-09-03"
+    revised: "2026-11-01"
     document_revision: "2.1"
     summary: >-
       Implements canonical behavioral interface declarations, inherited
@@ -548,6 +550,10 @@ integrations:
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     code:
+      - internal/diagnostics/diagnostics.go
+      - internal/parser/interface_placement.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/analyzer_for.go
       - internal/lexer/lexer.go
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -559,6 +565,11 @@ integrations:
       - cmd/lsp/main.go
       - vscode/syntaxes/sec.tmLanguage.json
     tests:
+      - internal/parser/interface_placement_test.go
+      - internal/sema/interface_diagnostics_test.go
+      - cmd/compiler/interface_diagnostic_ids_test.go
+      - cmd/lsp/interface_diagnostic_ids_test.go
+      - testdata/sema/interface_diagnostics
       - internal/lexer/lexer_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -566,6 +577,7 @@ integrations:
       - testdata/interface_valid.sec
       - testdata/interface_invalid.sec
     implemented:
+      - "MD-120 error-constrained generic interfaces (2026-11-01; interfaces.md §§ 7.1, 9): complete concrete conformance, instantiated borrowed views, rejection of a bare view and of FormatSink[IOError] -> FormatSink[error], E inferred from a unique compatible conformance (conformingViewArgument) (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "interface conformance diagnostics and Self (2026-10-04): `Self` in requirement parameter and result types resolves to a placeholder during interface resolution and is substituted with the conforming type before conformance comparison and in generic-constraint satisfaction; missing members report S1106 interfaces.missing-member on the implements reference and incompatible members S1107 interfaces.incompatible-member on the implementing member, both with the requirement as related location labelled interface requirement (sema.Error.RelatedLabel, shown by CLI, JSON, and LSP); incompatible methods name the first difference and show the Self-substituted requirement as help, so platform implementations such as stdlib/os file.windows.amd64.sec now show their conformance errors in their own file. Tests: internal/sema/interface_conformance_test.go"
       - interface declarations and interface inheritance through implements
       - bodyless method, property, and event requirements
@@ -587,7 +599,9 @@ integrations:
       - concrete generic interface method, property, and event requirement substitution before conformance validation
       - statically resolved Iterator[T] conformance publishes the selected concrete Next operation without runtime dispatch
       - "MD-057 Sema (2026-10-18): a call argument whose concrete type has valid explicit conformance (including interface inheritance) is accepted for a ref I / ref mut I parameter, explicitly borrowed or through the ordinary implicit call-site borrow; shared authority never becomes a ref mut view and mutability/lifetime checks of the call-site borrow still apply; matching member names without implements do not conform; a by-value Iterator[T] parameter is S1172 interfaces.by-value-parameter with both repairs (TestBorrowedInterfaceViewsAcceptConformingArguments, TestBorrowedInterfaceViewsRejectInvalidUses; testdata/sema/interface_views_*.sec)"
+      - "stable interface diagnostics (2026-11-01): P2038 parser.interface-conformance-placement identifies obsolete type-level conformance, implements on impl extends and impl Interface for Type, with exact keyword ranges and canonical primary-impl repair help; S1190 interfaces.conformance-placement guards recovered/programmatic extension ASTs. RecoveryInfo.Reported suppresses duplicate parser/Sema errors without accepting the invalid clause. S1189 interfaces.receiver-capability covers rejected method receivers and shared Iterator view iteration, with actionable authority advice and method declaration links. Existing stricter-than-shared conformance mismatches retain dedicated S1107 with their requirement link. Source fixtures, public CLI JSON and LSP regressions retain identities/ranges/help and accept valid exclusive calls. No interface runtime representation or dispatch lowering is claimed."
     remaining:
+      - "MD-120 Semantic IR for generic interface views: borrowed interface dispatch has no Semantic IR yet (MD-057), so ref mut FormatSink[E] calls stay an explicit boundary until that exists"
       - "MD-057 borrowed interface views (rules synced 2026-10-18: interfaces.md § 7.1, § 9.1; generics.md § 11; flowcontrol_for.md § 13, § 37.1, § 40, § 42). Known hole (verified 2026-10-18): Semantic IR rejects interface method dispatch and view iteration (readiness reason names the missing runtime dispatch); no view representation exists in the compilation track (MD-108); correction § 8.8 escape/overlap and § 8.10 allocation/cleanup/debug tests are not written. Other interfaces written by value keep their unspecified treatment (MD-107)"
       - remove `-> fn` whole-self consuming instance receiver contracts from parser/Sema/tooling while preserving consuming ordinary parameters and consuming callable-value capability
       - permit owned member consumption only through sufficient mutable/exclusive receiver authority and ordinary partial-ownership rules
@@ -599,9 +613,15 @@ integrations:
       - implement interface value representation and dynamic dispatch in MLIR and LLVM lowering
       - complete indirect interface target sets in call-graph and effect analysis
       - expose receiver capability and inherited requirement provenance in hover, completion, and diagnostics
-      - add stable dedicated diagnostic IDs for the new conformance-placement and receiver-capability errors
-      - "MD-120 (approved 2026-10-31, rules/corrections/MD-120-generic-error-parameters-approved-20261031.md §§ 6, 10(4)): error-constrained generic interfaces, complete concrete conformance (impl X implements FormatSink[IOError] with fn, not mut fn), fully instantiated borrowed views (reject bare FormatSink), unique-conformance inference, no FormatSink[IOError] -> FormatSink[error]"
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/diagnostics ./internal/sema -count=1
+        result: passed on 2026-11-01; registry and full Sema regressions, recovered extension guard, valid exclusive receivers and original conformance diagnostics pass
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/parser -count=1
+        result: passed on 2026-11-01; complete parser suite including recovery robustness
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run TestInterfaceDiagnosticIDsCLI -count=1 && GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'TestInterfaceDiagnosticIDsLSP|TestInterfaceConformanceLens|TestInterfaceLens' -count=1
+        result: passed on 2026-11-01; compiler JSON and LSP preserve stable IDs, severity, ranges and repair help with no duplicate parser/Sema report; builtin-only CLI source workspace isolates unrelated core migration
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/ast ./internal/diagnostics ./internal/parser ./internal/sema ./cmd/lsp ./cmd/compiler
+        result: passed on 2026-11-01
       - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/formatter -run 'TestOperators|TestParseInterface|TestRejectsTypeLevel|TestInterface|TestFormatInterface' -count=1
         result: passed
 
@@ -708,13 +728,19 @@ integrations:
       - "MD-117 shared-pack Len frontend (2026-10-30; functions.md §38A(5)(1-2)): free-function ...ref Types templates may read values.Len as a read-only uint, alongside ordinary bindings/returns, without inventing a common element type. Selected-call facts expose exact compile-time Length for empty and nonempty ordered specializations. Wrong return types and writes receive ordinary type/read-only diagnostics; element indexing, iteration, forwarding and lambda captures retain their expansion boundary. Source/CLI/IR regressions verify successful checking and no partial executable IR. This does not implement specialized-body CTE consumption of Len, element-body expansion or executable pack lowering."
       - "MD-117 specialized length constants (2026-10-30; functions.md §38A(5)(2),(9), compile_time_evaluation.md §§2(3),4(4),17,47): ResolvedTypePackConstantOf evaluates a typed template expression against one selected shared-pack call using the shared CTE implementation, substituting Len only for the declaration-bound parameter identity. Ordered calls and the template AST remain independent. Target integer bounds are checked at each specialized intermediate; underflow/overflow, runtime arguments and body calls never become false constant proofs. Arithmetic/comparisons, short-circuiting, same-spelled foreign parameters and detached query results have 32/64-bit tests. This query supplies compiler consumers; automatic deferred validation of compile-time-required template positions and executable pack expansion remain open under the existing specialization/IR owners."
       - "MD-117 fixed-prefix argument and contextual call facts (2026-10-31; functions.md §38A(4)(4-5),(9), semantic_ir.md §27A): concrete fixed parameters no longer participate in type-variable deduction, so unsuffixed integer literals such as Tagged(10, 1, true) reach ordinary uint argument compatibility while pack inference retains int/bool independently. Only structurally generic positions contribute substitutions. Expected-type call selection now publishes the result expression type just like ordinary calls; direct-return, typed-let and inferred-let pack calls reach the existing concrete IR specialization producer. Negative uint8/out-of-range/wrong-type arguments remain rejected without selected-call facts. TestTypePackFixedArgumentContext, TestTypePackFixedContextReachesIR and TestTypePackFixedContextCLI cover the source-to-IR/verified Sec MLIR increment; no source library or physical pack lowering changes."
+      - "MD-117 owned reference holders, Sema (2026-11-01; functions.md §38A(2)(3),(3)(2–4),(7)(6)): a reference element of ...Types is an ordinary by-value generic argument, matching T = ref int, instead of S1177: `ref a`, `ref mut a` and held references are accepted with ordinary overlap checks, a ref mut holder is reborrowed and <-holder reports S1176, by-value loops reject ref mut per call. Forwarding uses each position's own mode, so ...ref and ...ref mut packs may forward into an owned pack and a by-value concrete parameter never receives an implicit dereference."
+      - "Generic-owner call mismatch diagnostics (2026-11-01): the no-match report compares against the receiver's concrete owner arguments. A pack method's fixed parameter of owner type previously reported nothing, leaving an unselected call without an error, and an ordinary method's message named V instead of int."
+      - "MD-117 pack methods on generic owners and with scalar parameters (2026-11-01; functions.md §§22,38A(2),(9)): instance calls fix the owner's arguments before the method's parameters are inferred, the result and parameters see the concrete owner, explicit arguments address method parameters only, the instance identity includes the owner, and bodies keep ordinary template checking. Semantic IR specializes them per owner, sequence and method argument and verifies in Sec MLIR; native execution of instance methods waits for P24."
       - "MD-117 exclusive borrowed-pack Sema (2026-10-31; functions.md §38A(3)(2-5),(4),(8), borrowing.md §15.2-15.4): ...ref mut Types free functions with unused/Len-only bodies infer concrete ordered arguments, including empty packs, and reuse ordinary per-position exclusive loans, compiler temporary Places and mutable reborrows. Returned use of the original mutable holder remains valid after a call-bounded reborrow; no ref ref T or copied mutable reference is manufactured. Direct aliasing, repeated reborrow of one holder, overlap with a fixed shared parameter, shared-to-exclusive upgrades, immutable Places and explicit move into a borrowed parameter are rejected without selected-call facts or committed moves. Detached call/length facts retain mutable authority, and LSP hover/signature help show concrete ref mut modes. Source, 32/64-bit Sema, CLI and LSP regressions cover these cases. Owned packs, pack-element body expansion and non-shared IR specialization remain open; no runtime/physical lowering claim."
       - "MD-117 owned-pack Sema (2026-10-31; functions.md §38A(3)(2-3),(6), copy_move.md §8.3): ...Types free functions with unused/Len-only bodies infer non-reference concrete elements as by-value parameters. Ordinary named copyable values copy; named move-only values require explicit <-; fresh owned temporaries need no marker. Call-entry transfer commits only after all arguments validate. Canonical source Place reservations now reject duplicate/overlapping explicit moves and owning sources also borrowed by that same call before registering the selected call or ending ownership; disjoint field moves remain valid, and ordinary calls share the same checks. Specialized length and detached copy/move facts, CLI checking and LSP owned-mode hover/signature help are covered on 32/64-bit plans. Owned reference-holder elements keep a named S1177 boundary because the current parameter model would otherwise reinterpret them as borrows. Declaration capability fixture now retains only the method boundary (three to one); owned/mixed-owned declarations check. Per-element cleanup, body expansion and owned IR modes remain open; no executable pack support is claimed."
       - "MD-117 argument-deducible pack overloads (2026-10-31; functions.md §38A(4)(5),(6)(1-2), generics.md §29): competing pack signatures now use ordinary argument-only overload selection instead of the blanket S1177 gate. Expected-type inference defers before argument preparation when argument signatures provide the type substitutions, preserving exactly-once nested calls/moves and excluding return types from discrimination. Fixed generic signatures retain preference over equivalent pack signatures; ambiguity produces ordinary errors and no selected-call facts or committed moves. Existing single-pack expected-result inference is preserved. Multiple pack candidates needing an undeduced scalar generic parameter retain a narrow S1177 partial-inference boundary. Source-backed Sema and configured CLI tests cover distinct fixed prefixes, empty tails, typed/inferred/return contexts, fixed generic ranking, nested consuming calls, return-only ambiguity, transactional ambiguity and legacy contextual inference; supported overloads reach Sec MLIR without IR-builder changes. Helpers are in internal/sema/type_pack_overloads.go."
       - "MD-117 staged partial overload inference (2026-10-31; generics.md §§14,18,20,29, functions.md §38A(4)(5),(6)(1-2),(9)): pack overload sets prepare arguments once and rank uncached partial signatures using argument-derived or explicit substitutions. Known constraints may eliminate candidates; dependent constraints wait until a unique winner receives missing scalar types from expected result context. Deductions already supplied by arguments/explicit types remain fixed, and full constraints are checked before publishing the selected call or committing outer moves. The partial-inference S1177 gate is removed: ambiguous results, missing context and failed constraints receive ordinary semantic errors with no emitted artifact or incomplete instance-cache entries. Source-backed 32/64 tests cover independent Option[int]/Option[bool] instances, explicit prefixes, deferred Option None, nested consuming arguments, ambiguity, missing context with a prepared move, constraints and preservation of argument-bound types. Supported cases reach IR/Sec MLIR and LSP concrete signatures through existing consumers; no IR or public-fact shape changes."
       - "MD-117 concrete-owner pack-only methods (2026-10-31; functions.md §§21-24,38A): instance and static methods with [...Types] and unused/Len-only bodies support owned non-reference, shared and exclusive pack arguments, including empty tails and implicit self. Ordinary receiver authority and receiver/argument loan or move conflicts are checked before call-entry commit. Returned references retain canonical receiver provenance; local receivers pass and temporary receiver escapes fail. Generic-instance cache hits refresh late-bound reference/reset summaries without changing specialization identities, extracted into internal/sema/generic_function_instances.go. Source-backed 32/64-bit Sema, CLI and LSP tests cover the subset. Generic/interface owners, additional scalar method generics, element bodies and method IR specialization remain explicit boundaries; no executable method-pack support is claimed."
     remaining:
-      - "MD-117 call/Sema completion: extend the implemented unused/Len-only pack free-function/direct-call and concrete-owner pack-only method subset to owned reference-holder elements, pack methods on generic/interface owners or with additional scalar generic parameters, demanded pack-element bodies, and static spreads. Complete contextual literal/overload rules, once-only argument preparation and concrete position/type diagnostics for the remaining forms. Concrete fixed parameters now use ordinary argument compatibility rather than generic deduction; selected expected-type calls retain expression facts for IR. Empty owned/shared/exclusive packs and non-reference owned element copy/move transfers, ordered direct-call inference, ordinary pointwise borrows/reborrows and exclusive overlap checks and staged argument-only pack overload selection with result-context completion and preference for a matching fixed signature (including generic fixed signatures) are implemented; runtime-length heterogeneous inference remains rejected (functions.md §38A; correction §§3,4,10)."
+      - "MD-117 call/Sema completion: complete contextual literal rules, once-only argument preparation and concrete position/type diagnostics for the remaining forms; runtime-length heterogeneous inference stays rejected. Forwarding targets are tracked under frontend.spread (functions.md §38A; correction §§3,4,10)."
+      - "MD-117 pack methods on interface owners: an interface requirement has no static expansion and reports S1177; whether such a requirement is valid at all, given no runtime dispatch of packs, needs confirming against functions.md §38A(1),(9) and interfaces.md."
+      - "MD-117 static pack methods of a generic owner called as Box[int].Make(...): reports the error of ordinary static generic-owner methods (`Box.Make is not generic`), so it follows that gap rather than being pack-specific (monomorphization.md §§8.2,9.3)."
+      - "MD-117 reference-holder positions in Semantic IR: an owned pack with a reference element, and for ref or ref values[k] over it which must reborrow instead of forming ref ref T (references.md §3.4(10); correction MD-119 §6(2)), stop at the named boundary shared with ordinary T = ref int; both need reference-typed generic arguments under compiler.monomorphization."
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
@@ -1679,7 +1705,7 @@ integrations:
 
   - id: frontend.spread
     area: frontend-analysis-and-semantic-ir
-    revised: "2026-10-29"
+    revised: "2026-11-01"
     status: partial
     integrated: "2026-08-13"
     summary: >-
@@ -1702,6 +1728,8 @@ integrations:
       - internal/sema/struct_spread.go
       - internal/sema/analyzer_inference.go
       - internal/parser/spread.go
+      - internal/sema/type_pack_spreads.go
+      - internal/ir/semantic/pack_loops.go
     tests:
       - internal/lexer/lexer_test.go
       - internal/parser/parser_test.go
@@ -1714,6 +1742,13 @@ integrations:
       - testdata/parser/spread_repeated_invalid.sec
       - testdata/parser/spread_missing_source_invalid.sec
       - testdata/parser/spread_out_of_context_invalid.sec
+      - internal/sema/type_pack_spreads_test.go
+      - internal/ir/semantic/pack_forward_test.go
+      - cmd/compiler/type_pack_spreads_test.go
+      - testdata/sema/spread_valid.sec
+      - testdata/sema/spread_invalid.sec
+      - testdata/generics/type_pack_declarations/spread_forward_owned.sec
+      - testdata/generics/type_pack_declarations/spread_forward_references.sec
     implemented:
       - postfix expression... syntax in call arguments, fixed-array literals, and struct literal entries
       - fixed-array expansion counts for calls and array literals
@@ -1724,11 +1759,17 @@ integrations:
       - rejection of hidden consuming reads for move-only fixed-array elements and move-only struct sources
       - diagnostics that retain the original reference or dynamic-array source type for runtime-arity failures
       - "Struct spread construction boundaries (2026-10-29): validateStructSpreadSource checks exact nominal identity, implicit copyability and accessibility of every direct field before a spread can populate the final construction plan or suppress omitted-field defaults. Cross-module spread of hidden representation now reports the inaccessible field at the spread site; inaccessible NonDefaultable fields remain unsupplied. Permanent two-module regressions verify legal same-module and public-field updates, hidden value/reference rejection with no published construction plan, field-contract overrides and nominal mismatch. Source checks were extracted from analyzer_inference.go into struct_spread.go; no new constructor or ownership semantics."
+      - "MD-117 pack forwarding in Sema (2026-11-01): <-values... parses with the spread under the move marker and is legal only for a complete, currently owned native pack, homogeneous or heterogeneous; arrays, slices, structs, borrowed packs, <-values[0] and bare <-values are rejected. Non-consuming values... of a heterogeneous pack is a supported template use. Mode rules hold in the template (authority never grows, a ref mut is never copied, a borrowing target rejects a move, an expansion that moves or lends mutably cannot repeat), the transfer commits with the call and ordinary S1088/S1089 flow reports later uses, including branches and loops; live loans and overlapping arguments are rejected. Arity, position types and copyability are proved per selected sequence, through forward chains, bounded at 256 specializations per source call, and reported at the source call with the forwarding call as related location and the position and concrete type named. Fixed-arity, homogeneous, generic and pack targets are all reachable; by-value loop and pack index proofs now also follow chains. spread.md §4.4; functions.md §38A(7)."
+      - "MD-117 pack forwarding in Semantic IR (2026-11-01): per specialization the callee of the concrete expansion is demanded and each expanded argument is an ordinary operand with PackForwardFacts: pack name, per-operand position and the consuming mark, printed and verified (semantic_ir.md §27A(7)). Owned positions copy or lend through place.value-root; shared holders copy, ref mut holders reborrow with their own borrow identity. Trivial owned forwards run natively, including position order; ref and ref mut forwards verify in Sec MLIR."
+      - "MD-117 forwarding into methods and overload sets (2026-11-01; functions.md §§22–24,37,38A(4)(5),(7)): instance, implicit-self and static methods, including generic owners, take the receiver checks of a direct call. Every overload stays a candidate and each specialization selects with ordinary ranking, a fixed signature winning a tie and ambiguity an error, reported at the source call; the template fixes only the result type and the ordinary argument and receiver modes. Ordinary arguments may follow a pack spread, with the mode of a single variadic target or as copies. Semantic IR passes the receiver as operand 0 with no pack position; overload selection and static methods run natively, instance method forwards verify in Sec MLIR."
+      - "Canonical spread fixtures (2026-11-01): testdata/sema/spread_valid.sec and spread_invalid.sec cover every Sema-reachable family of spread.md §14; parser families have their own fixtures. Ordinary call spreads now reach a named Semantic IR boundary instead of an internal missing-type error."
       - "Spread parser recovery (2026-10-29): permanent prefix, repeated, missing-source and out-of-context fixtures verify progress, explicit invalid nodes, preserved sibling statements and following functions. Repeated postfix markers now produce one focused P2007 invalid postfix node retaining the already parsed spread and its real source; further repeated markers record exact skipped-token recovery without consuming the list closer. Complete standalone spread remains in the AST for Sema, which rejects both let and return uses rather than accepting an expansion as a value."
     remaining:
-      - "MD-117 spread source legality: parse and resolve complete owned native parameter-pack <-values... for homogeneous and heterogeneous packs; retain non-consuming values..., reject single-element/partial consumption and consuming array/slice/list/tuple/struct spread. Publish resolved source/expansion facts to the ownership/call producers rather than committing transfers in syntax handling (spread.md §4.4; correction §7)."
-      - preserve exactly-once evaluation, expansion order, ownership decisions, and struct override/default provenance in Semantic IR or a proven equivalent normalized representation
-      - add permanent spread_valid.sec and spread_invalid.sec fixtures covering all canonical cases
+      - "MD-117 forwarding targets not yet represented, each reporting S1177 instead of ordinary generic semantics (functions.md §38A(4)(5),(7)): interface dispatch; a method consuming its receiver; overloads with different result types, receiver modes or modes for an ordinary argument; an ordinary argument after a pack spread that must move or borrow into a non-variadic target; an array or slice spread in the same call as a pack spread; a fixed-array spread into a pack parameter; a callee returning a value that contains a reference; a result type depending on the pack."
+      - "MD-117 forward specialization proofs through generic calls: Sema proves forwards reached by direct concrete calls and forward chains. A chain entered from a template body through a call with generic or per-position arguments, such as Inner(value) inside a pack loop or Forward(x) in a [T] body, is proved by Semantic IR when it becomes concrete, as an unsupported-lowering error rather than a source diagnostic at check time (functions.md §38A(4)(6),(10)(2))."
+      - "Semantic IR for ordinary call spreads: fixed-array and homogeneous pack call spreads, including <-values... of a homogeneous pack and forwarding a heterogeneous pack into a homogeneous parameter, are checked by Sema and stop at a named unsupported-lowering boundary; exactly-once evaluation and indexed copies still need their operation (spread.md §12; semantic_ir.md §27A(1))."
+      - "Executable reference pack forwarding: ref and ref mut forwarding reach verified Sec MLIR; native execution waits for P24 references, as all references do."
+      - "Owned moved pack forwarding with cleanup: a forward of move-only or destructible elements is accepted by Sema but needs ownership-sensitive pack positions in Semantic IR (frontend.functions-v2, monomorphization.md §11)."
       - support runtime-length sequence spread only if a separate runtime-arity destination rule defines it
     verification:
       - command: go test ./internal/parser -count=1 -timeout=180s; go vet ./internal/parser ./internal/sema
